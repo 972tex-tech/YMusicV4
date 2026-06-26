@@ -1,0 +1,14 @@
+.idea
+.gradle
+androidApp/build
+buildSrc/build
+build
+.kotlin
+temp
+.DS_Store
+.opencode
+.claude
+kmpHttp/core/test-cache
+kmpHttp/test/test-cache
+design/logo/_mockups
+test-cache
