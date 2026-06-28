@@ -1,7 +1,8 @@
 plugins {
-    id("com.android.application") version Versions.agp apply false
-    id("com.android.library") version Versions.agp apply false
-    // Core Kotlin plugins - version resolved from buildSrc classpath (see buildSrc/build.gradle.kts)
+    // AGP + core Kotlin plugins - versions resolved from the buildSrc classpath (see
+    // buildSrc/build.gradle.kts), so they're applied without a version here.
+    id("com.android.application") apply false
+    id("com.android.library") apply false
     kotlin("android") apply false
     kotlin("multiplatform") apply false
     // Kotlin compiler plugins - need explicit version (not bundled in kotlin-gradle-plugin)
