@@ -15,31 +15,17 @@ kotlin {
         }
     }
 
-    listOf(
-        iosX64(),
-        iosArm64(),
-        iosSimulatorArm64(),
-        macosX64(),
-        macosArm64()
-    ).forEach {
-        it.binaries.framework {
+    // Full native matrix (host-gated, via the shared KmpTargets helpers) so any consumer can depend on
+    // this for every one of its targets: :kmpHttp:core / :kmpHttp:curl (apple + linux) and :kmpFfmpeg
+    // (which additionally has tvOS/watchOS). No android target: kmpCommon is pure Kotlin, and an Android
+    // KMP consumer resolves the `jvm` variant via Gradle's jvm-environment compatibility rule.
+    withAppleTargets {
+        binaries.framework {
             baseName = "kmpCommon"
             isStatic = true
         }
     }
-
-    linuxX64()
-
-    // JavaScript targets
-    js {
-        browser()
-        nodejs()
-    }
-
-    wasmJs {
-        browser()
-        nodejs()
-    }
+    withLinuxTargets()
 
     sourceSets {
         commonMain.dependencies {
