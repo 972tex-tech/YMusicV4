@@ -40,19 +40,26 @@ class KmpProcessBuilder(
 
     /** Set an environment variable for the child. Chainable. */
     fun setEnv(key: String, value: String): KmpProcessBuilder = apply { environment[key] = value }
+    fun setEnv(map: Map<String, String>): KmpProcessBuilder = apply {
+        map.entries.forEach { entry ->
+            environment[entry.key] = entry.value
+        }
+    }
 
     /**
      * Send the child's stdout to `/dev/null` instead of a pipe. Use when you won't read it — an
      * un-drained stdout pipe stalls the child once its OS buffer fills. [KmpProcess.stdout] is then
      * empty. Chainable.
      */
-    fun discardStdout(discard: Boolean = true): KmpProcessBuilder = apply { isStdoutDiscarded = discard }
+    fun discardStdout(discard: Boolean = true): KmpProcessBuilder =
+        apply { isStdoutDiscarded = discard }
 
     /**
      * Send the child's stderr to `/dev/null` instead of a pipe. Use when you won't read it.
      * [KmpProcess.stderr] is then empty. Chainable.
      */
-    fun discardStderr(discard: Boolean = true): KmpProcessBuilder = apply { isStderrDiscarded = discard }
+    fun discardStderr(discard: Boolean = true): KmpProcessBuilder =
+        apply { isStderrDiscarded = discard }
 
     /**
      * Launch the process and return it. This is a quick `fork`/`exec` — it does not block on the
