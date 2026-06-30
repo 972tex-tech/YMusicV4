@@ -6,7 +6,7 @@ object Versions {
     const val targetSdk = 35
 
     // KMP
-    const val coroutines = "1.9.0"
+    const val coroutines = "1.11.0"
     const val ktor = "3.0.2"
     const val kotlinxSerialization = "1.7.3"
     const val kotlinxDateTime = "0.7.1"
