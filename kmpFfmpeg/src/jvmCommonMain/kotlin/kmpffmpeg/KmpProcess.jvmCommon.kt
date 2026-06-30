@@ -1,8 +1,11 @@
 package kmpffmpeg
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -15,6 +18,7 @@ import okio.blackholeSink
 import okio.buffer
 import okio.sink
 import okio.source
+import java.io.IOException
 import java.io.InputStream
 
 /** JVM / Android backend over [ProcessBuilder], exposed as a streaming [KmpProcess]. */
@@ -35,13 +39,35 @@ private class JvmKmpProcess(
     override val stdout: Source = exposeOrDrain(process.inputStream, discardStdout)
     override val stderr: Source = exposeOrDrain(process.errorStream, discardStderr)
     override val pid: Long = process.obtainPid()
-    override val exitCode: Deferred<Int> = scope.async {
-        runInterruptible { process.waitFor() }
+    override val exitCode = CompletableDeferred<Int>()
+
+    init {
+        scope.launch {
+            val code = runInterruptible { process.waitFor() }
+            exitCode.complete(code)
+        }
     }
 
-    override fun terminate() {
-        process.destroy()
-        scope.cancel()
+    private var closed = false
+    override fun close(error: Throwable?) {
+        if (closed) return
+        closed = true
+
+        // If the child is still running, fail its exit code with the reason and destroy it (which also
+        // unblocks a blocked stdout/stderr read). Mirrors the posix backend.
+        if (!exitCode.isCompleted) {
+            exitCode.completeExceptionally(error ?: CancellationException("process canceled"))
+            process.destroy()
+        }
+
+        if (error is CancellationException) {
+            scope.cancel(error)
+        } else {
+            scope.cancel("Process closed", error)
+        }
+        runCatching { stdin.close() }          // release the parent-side pipe fds
+        runCatching { stdout.close() }
+        runCatching { stderr.close() }
     }
 
     /**
@@ -57,7 +83,15 @@ private class JvmKmpProcess(
             // Close the source inside the coroutine, after draining — closing it here (around the
             // launch) would shut it before the coroutine ever reads it.
             scope.launch {
-                stream.source().use { blackholeSink().buffer().writeAll(it) }
+                try {
+                    stream.source().use { blackholeSink().buffer().writeAll(it) }
+                } catch (e: IOException) {
+                    // The discarded stream was closed/interrupted under us — e.g. close() destroying the
+                    // process mid-drain throws InterruptedIOException on the blocked read. Nothing
+                    // consumes these bytes, so there's nothing to report. Critically, an uncaught throw
+                    // from this fire-and-forget launch reaches the thread's uncaught handler and kills
+                    // the whole process (observed crashing the app on API 31).
+                }
             }
             Buffer()
         }

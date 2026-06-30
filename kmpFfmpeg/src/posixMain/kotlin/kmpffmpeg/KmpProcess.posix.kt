@@ -18,6 +18,8 @@ import kotlinx.cinterop.set
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okio.Buffer
 import okio.IOException
 import okio.Sink
@@ -50,6 +53,7 @@ import platform.posix.read
 import platform.posix.strerror
 import platform.posix.waitpid
 import platform.posix.write
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Desktop-native backend (macOS + Linux) over `fork` + `execve` (macOS's `platform.posix` does not
@@ -134,26 +138,50 @@ private class PosixKmpProcess(
     override val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     override val pid: Long = processId.toLong()
 
-    override val exitCode: Deferred<Int> = scope.async {
-        // Non-blocking reap so we never tie up a worker thread waiting on the child.
-        while (true) {
-            val (reaped, status) = memScoped {
-                val s = alloc<IntVar>()
-                waitpid(processId, s.ptr, WNOHANG) to s.value
+    override val exitCode = CompletableDeferred<Int>()
+
+    init {
+        scope.launch {
+            // Non-blocking reap so we never tie up a worker thread waiting on the child.
+            while (true) {
+                val (reaped, status) = memScoped {
+                    val s = alloc<IntVar>()
+                    waitpid(processId, s.ptr, WNOHANG) to s.value
+                }
+                if (reaped == processId) {
+                    exitCode.complete(exitCodeOf(status))
+                    return@launch
+                }
+                if (reaped < 0) {
+                    if (errno == EINTR) continue
+                    exitCode.complete(-1)
+                    return@launch
+                }
+                delay(50.milliseconds)
             }
-            if (reaped == processId) return@async exitCodeOf(status)
-            if (reaped < 0) {
-                if (errno == EINTR) continue
-                return@async -1
-            }
-            delay(50)
         }
-        @Suppress("UNREACHABLE_CODE") -1
     }
 
-    override fun terminate() {
-        kill(processId, SIGTERM)
-        scope.cancel()
+    private var closed = false
+    override fun close(error: Throwable?) {
+        if (closed) return
+        closed = true
+
+        // Kill if still running (guarded against a reaped, possibly-reused pid); also makes a blocked
+        // read on the child's stdout/stderr return. Then drop everything, fire-and-forget.
+        if (!exitCode.isCompleted) {
+            exitCode.completeExceptionally(error ?: CancellationException("process canceled"))
+            kill(processId, SIGTERM)
+        }
+
+        if (error is CancellationException) {
+            scope.cancel(error)
+        } else {
+            scope.cancel("Process closed", error)
+        }
+        runCatching { stdin.close() }
+        runCatching { stdout.close() }
+        runCatching { stderr.close() }
     }
 }
 
@@ -165,6 +193,7 @@ private class PosixKmpProcess(
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 private class FdSource(private val fd: Int) : Source {
     private var eof = false
+    private var closed = false
     override fun read(sink: Buffer, byteCount: Long): Long {
         if (byteCount == 0L) return 0L
         if (eof) return -1L
@@ -215,7 +244,8 @@ private class FdSource(private val fd: Int) : Source {
     }
 
     override fun timeout(): Timeout = Timeout.NONE
-    override fun close() { close(fd) }
+    // Guard against double-close: a second close(fd) could hit a since-reused descriptor.
+    override fun close() { if (!closed) { closed = true; close(fd) } }
 }
 
 /**
@@ -224,6 +254,7 @@ private class FdSource(private val fd: Int) : Source {
  */
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 private class FdSink(private val fd: Int) : Sink {
+    private var closed = false
     override fun write(source: Buffer, byteCount: Long) {
         if (byteCount == 0L) return
         var remaining = byteCount
@@ -255,7 +286,8 @@ private class FdSink(private val fd: Int) : Sink {
 
     override fun flush() = Unit
     override fun timeout(): Timeout = Timeout.NONE
-    override fun close() { close(fd) }
+    // Guard against double-close: a second close(fd) could hit a since-reused descriptor.
+    override fun close() { if (!closed) { closed = true; close(fd) } }
 }
 
 /** Non-blocking probe: true if [fd] has data — or EOF — ready to read right now (a zero-timeout poll). */

@@ -24,12 +24,24 @@ interface KmpProcess {
     /** Completes with the child's exit code once it terminates. */
     val exitCode: Deferred<Int>
 
-    /** Scope tied to this process; cancelled by [terminate]. Use it to drive side-channel I/O. */
+    /** Scope tied to this process; cancelled by [close]. Use it to drive side-channel I/O. */
     val scope: CoroutineScope
 
     /** The child's process id. */
     val pid: Long
 
-    /** Send `SIGTERM` and cancel [scope]. */
-    fun terminate()
+    /**
+     * The one lifecycle method, idempotent and non-blocking: if the child is still running (its
+     * [exitCode] hasn't completed) send `SIGTERM`/`destroy`, then cancel [scope] and close
+     * stdin/stdout/stderr. Fire-and-forget — it does NOT wait for the child to exit or for side-channel
+     * coroutines to finish. Releasing the fds is mandatory: nothing else closes them, and on native they
+     * have no finalizer, so an un-closed process leaks fds.
+     *
+     * Killing the child also makes a blocked read on its stdout/stderr return, so running such a read on
+     * [scope] and then calling [close] is how you unblock a stuck pipe read (e.g. on a timeout).
+     *
+     * Drain/serve any side-channel endpoint (e.g. an `FfOutput` that must flush) *before* calling this,
+     * since cancelling [scope] stops their coroutines.
+     */
+    fun close(error: Throwable? = null)
 }
