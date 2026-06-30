@@ -11,9 +11,9 @@ repositories {
 dependencies {
     // Required for kmp-targets convention plugin.
     // Keep version in sync with Versions.kotlin in Dependencies.kt
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
-    // Android Gradle Plugin on the shared buildSrc classpath so modules can apply
-    // `id("com.android.library")`/`application` without a version (and KMP's androidTarget can infer
-    // the AGP version under configuration-on-demand). Keep in sync with Versions.agp.
-    implementation("com.android.tools.build:gradle:8.7.3")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0")
+    // Android Gradle Plugin on the shared buildSrc classpath so modules can apply the android plugins
+    // without a version. Keep in sync with Versions.agp. (Root only — YMusicLegacy's buildSrc pins its
+    // own AGP independently and is untouched.)
+    implementation("com.android.tools.build:gradle:8.13.2")
 }
