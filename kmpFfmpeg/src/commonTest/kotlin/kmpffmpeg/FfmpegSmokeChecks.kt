@@ -1,12 +1,19 @@
 package kmpffmpeg
 
+import kmpcommon.uri.Uri
+import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kmpffmpeg.metadata.StreamMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.Buffer
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import okio.buffer
 import okio.use
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -132,6 +139,83 @@ internal suspend fun ffmpegStdinPipeCheck() {
     val err = withContext(Dispatchers.Default) { proc.stderr.buffer().readUtf8() }
     assertEquals(0, proc.exitCode.await(), "decoding WAV from stdin should exit 0:\n$err")
     assertTrue("Audio: pcm_s16le" in err, "stdin-fed WAV stream not decoded:\n$err")
+}
+
+/**
+ * End-to-end metadata read: drive the real ffmpeg binary through [FfmpegMetadataGetter] over each
+ * fixture and assert the parsed container/stream model — exercising launch → stderr capture → parse.
+ */
+internal suspend fun ffmpegMetadataGetterChecks() {
+    val bin = FfmpegTestConfig.binaryPath ?: return
+
+    val getter = FfmpegMetadataGetter(bin)
+    for (name in listOf("sample_with_metadata.flac", "sample_with_metadata.m4a", "sample_with_metadata.mka")) {
+        val meta = getter.getMetadata(Uri.parse("file:${FfmpegTestConfig.testDataDir}/$name"))
+
+        assertEquals("Midnight Drive", meta.container.metadataMap.title, "title for $name")
+        assertEquals("The Kotlin Quartet", meta.container.metadataMap.artist, "artist for $name")
+        assertEquals("Multiplatform Sessions", meta.container.metadataMap.album, "album for $name")
+        // ~2s fixtures; the .mka container rounds to 2.02s, so assert a tight range rather than exact.
+        assertTrue(meta.container.duration!! in 2000..2100, "duration(ms) for $name was ${meta.container.duration}")
+
+        val audio = meta.streams.filterIsInstance<StreamMetadata.Audio>().single()
+        assertEquals(44100, audio.sample, "sample rate for $name")
+        assertEquals(1, audio.channels, "channels for $name")
+        assertFalse(meta.hasVideo(), "$name should not be a video")
+    }
+
+    // A non-media file has no Input block → the getter surfaces a parse failure rather than bad data.
+    assertFailsWith<kmpffmpeg.metadata.FfmpegInfoParseException> { getter.getMetadata(Uri.parse("file:$bin")) }
+}
+
+/**
+ * The [FfInputResolver] seam: a custom resolver maps an opaque (content://-style) URI to a real `file:`
+ * spec, and the getter must route through it — invoking `resolve`, `onProcessStarted`, and `close`, and
+ * keeping the *logical* URI on the result (not the resolved spec). This is the hook Android uses to
+ * proxy `content://` to `pipe:0`/`ymix:`; here we just remap to a file so there's no pipe lifecycle.
+ */
+internal suspend fun ffmpegInputResolverChecks() {
+    val bin = FfmpegTestConfig.binaryPath ?: return
+
+    var resolvedUri: String? = null
+    var started = false
+    var closed = false
+    val resolver = FfInputResolver { uri ->
+        resolvedUri = uri.toString()
+        object : FfInput {
+            override val spec = "file:${FfmpegTestConfig.testDataDir}/sample_with_metadata.flac"
+            override fun onProcessStarted(process: KmpProcess) { started = true }
+            override suspend fun close() { closed = true }
+        }
+    }
+
+    val meta = FfmpegMetadataGetter(bin, resolver).getMetadata(Uri.parse("ymusic-content://42"))
+
+    assertEquals("ymusic-content://42", resolvedUri, "resolver should see the logical uri")
+    assertEquals("flac", meta.container.name, "should probe the resolved file: spec")
+    assertEquals("Midnight Drive", meta.container.metadataMap.title)
+    assertEquals("ymusic-content://42", meta.uri.toString(), "result keeps the logical uri, not the spec")
+    assertTrue(started, "input.onProcessStarted() must be called")
+    assertTrue(closed, "input.close() must be called")
+}
+
+/**
+ * End-to-end space-in-path: copy a fixture to a name with spaces, then probe it through the default
+ * (passthrough) getter using a percent-encoded `file:` URI. The resolver must decode it to a literal
+ * path (ffmpeg's file protocol doesn't percent-decode), and the spaced arg must survive argv intact.
+ */
+internal suspend fun ffmpegSpacedFilePathCheck() {
+    val bin = FfmpegTestConfig.binaryPath ?: return
+    val dir = FfmpegTestConfig.testDataDir
+    val spaced = "$dir/with space probe.flac".toPath()
+    FileSystem.SYSTEM.copy("$dir/sample_with_metadata.flac".toPath(), spaced)
+    try {
+        val meta = FfmpegMetadataGetter(bin).getMetadata(Uri.parse("file:$dir/with%20space%20probe.flac"))
+        assertEquals("flac", meta.container.name, "encoded file: URI should resolve + open")
+        assertEquals("Midnight Drive", meta.container.metadataMap.title)
+    } finally {
+        FileSystem.SYSTEM.delete(spaced)
+    }
 }
 
 /**

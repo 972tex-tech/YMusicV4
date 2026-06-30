@@ -27,4 +27,13 @@ class KmpProcessTest {
 
     @Test
     fun passesArgsWithSpacesVerbatim() = runTest { ffmpegArgWithSpaceCheck() }
+
+    @Test
+    fun readsMetadataViaGetter() = runTest { ffmpegMetadataGetterChecks() }
+
+    @Test
+    fun routesThroughInputResolver() = runTest { ffmpegInputResolverChecks() }
+
+    @Test
+    fun probesEncodedFileUriWithSpaces() = runTest { ffmpegSpacedFilePathCheck() }
 }
