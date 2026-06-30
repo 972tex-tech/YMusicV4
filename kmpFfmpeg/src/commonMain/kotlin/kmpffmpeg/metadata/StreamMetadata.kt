@@ -6,11 +6,15 @@ package kmpffmpeg.metadata
  * no per-stream bitrate); a null means "ffmpeg didn't report it", not "zero".
  */
 sealed class StreamMetadata {
+    /** The ffmpeg stream index within its input — the `N` of `Stream #0:N`, used as `-map 0:N`. NOT
+     *  this stream's position in [MediaFileMetadata.streams] (that list drops Data/Attachment streams). */
+    abstract val index: Int
     abstract val codec: String
     abstract val metadataMap: MetadataMap
     abstract val disposition: Set<String>
 
     data class Audio(
+        override val index: Int,
         override val codec: String,
         val duration: Long?,
         val sample: Long?,
@@ -21,6 +25,7 @@ sealed class StreamMetadata {
     ) : StreamMetadata()
 
     data class Video(
+        override val index: Int,
         override val codec: String,
         val duration: Long?,
         val width: Int?,
@@ -30,6 +35,7 @@ sealed class StreamMetadata {
     ) : StreamMetadata()
 
     data class Text(
+        override val index: Int,
         override val codec: String,
         override val metadataMap: MetadataMap,
         override val disposition: Set<String>

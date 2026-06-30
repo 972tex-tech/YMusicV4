@@ -25,7 +25,7 @@ object FfmpegInfoParser {
     private val DURATION = Regex("""Duration:\s*(\d+):(\d+):(\d+)(?:\.(\d+))?""")
     private val CONTAINER_BITRATE = Regex("""bitrate:\s*(\d+)\s*kb/s""")
     private val STREAM = Regex(
-        """^Stream #\d+:\d+(?:\[[^\]]*\])?(?:\(([^)]+)\))?:\s*(Audio|Video|Subtitle|Data|Attachment):\s*(.*)$"""
+        """^Stream #\d+:(\d+)(?:\[[^\]]*\])?(?:\(([^)]+)\))?:\s*(Audio|Video|Subtitle|Data|Attachment):\s*(.*)$"""
     )
     private val HZ = Regex("""(\d+)\s*Hz""")
     private val KBPS = Regex("""(\d+)\s*kb/s""")
@@ -133,9 +133,10 @@ object FfmpegInfoParser {
      */
     private fun parseStream(content: String): Pair<StreamMetadata, MutableMap<String, String?>>? {
         val m = STREAM.matchEntire(content) ?: return null
-        val language = m.groupValues[1].takeIf { it.isNotEmpty() && it != "und" }
-        val type = m.groupValues[2]
-        val rest = m.groupValues[3]
+        val index = m.groupValues[1].toInt()
+        val language = m.groupValues[2].takeIf { it.isNotEmpty() && it != "und" }
+        val type = m.groupValues[3]
+        val rest = m.groupValues[4]
 
         val params = splitParams(rest)
         val codec = params.firstOrNull()?.substringBefore(' ')?.trim().orEmpty()
@@ -150,6 +151,7 @@ object FfmpegInfoParser {
 
         val stream: StreamMetadata = when (type) {
             "Audio" -> StreamMetadata.Audio(
+                index = index,
                 codec = codec,
                 duration = null, // not printed per-stream in the text dump
                 sample = params.firstNotNullOfOrNull { HZ.find(it)?.groupValues?.get(1)?.toLong() },
@@ -162,6 +164,7 @@ object FfmpegInfoParser {
             "Video" -> {
                 val dims = params.firstNotNullOfOrNull { DIMENSIONS.find(it) }
                 StreamMetadata.Video(
+                    index = index,
                     codec = codec,
                     duration = null,
                     width = dims?.groupValues?.get(1)?.toInt(),
@@ -172,6 +175,7 @@ object FfmpegInfoParser {
             }
 
             "Subtitle" -> StreamMetadata.Text(
+                index = index,
                 codec = codec,
                 metadataMap = MetadataMap(meta),
                 disposition = disposition,

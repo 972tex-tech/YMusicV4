@@ -151,11 +151,31 @@ class FfmpegInfoParserTest {
 
         val video = meta.streams.filterIsInstance<StreamMetadata.Video>().single()
         assertEquals("png", video.codec)
+        assertEquals(1, video.index) // the `N` of `Stream #0:1`
         assertEquals(32, video.width)
         assertEquals(32, video.height)
         assertTrue(StreamMetadata.DISPOSITION_ATTACHED_PIC in video.disposition)
         assertTrue(video.isAttachedThumbnail())
         assertFalse(meta.hasVideo()) // attached cover art doesn't make it "a video"
+    }
+
+    @Test
+    fun streamIndexIsFfmpegIndexNotListPosition() {
+        // A Data stream sits between the audio and the cover. We don't model Data streams, so the cover
+        // is at list position 1 but ffmpeg index 2 — `index` records the real #0:N, not the position.
+        val out = """
+            Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'withdata.m4a':
+              Duration: 00:00:02.00, start: 0.000000, bitrate: 76 kb/s
+              Stream #0:0[0x1](und): Audio: aac (LC), 44100 Hz, mono, fltp, 70 kb/s (default)
+              Stream #0:1[0x2](und): Data: bin_data (text / 0x74786574)
+              Stream #0:2[0x3]: Video: mjpeg, yuvj420p, 600x600, 90k tbr (attached pic)
+        """.trimIndent()
+
+        val meta = FfmpegInfoParser.parse(Uri.parse("file:test"), out)
+        assertEquals(2, meta.streams.size) // Data dropped
+        val cover = meta.streams.filterIsInstance<StreamMetadata.Video>().single()
+        assertEquals(1, meta.streams.indexOf(cover)) // its position in the list…
+        assertEquals(2, cover.index)                 // …is NOT its ffmpeg index
     }
 
     @Test
