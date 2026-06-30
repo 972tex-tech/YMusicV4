@@ -45,3 +45,28 @@ interface KmpProcess {
      */
     fun close(error: Throwable? = null)
 }
+
+/**
+ * Runs [block], then [close]s this process exactly once — the `use`-style scope for a [KmpProcess].
+ * If [block] throws, the process is closed with that throwable as the cause (so [exitCode] completes
+ * exceptionally with it and the child is terminated), and the throwable is rethrown; on success it is
+ * closed with no error. [close] is idempotent and non-blocking, so this never masks the original failure.
+ *
+ * [block] receives the process, so it reads as a self-contained scope:
+ * ```
+ * val out = KmpProcessBuilder(bin).appendArg("-version").start().autoClose { proc ->
+ *     proc.stdout.buffer().readUtf8()
+ * }
+ * ```
+ */
+inline fun <T> KmpProcess.autoClose(block: (KmpProcess) -> T): T {
+    var cause: Throwable? = null
+    try {
+        return block(this)
+    } catch (t: Throwable) {
+        cause = t
+        throw t
+    } finally {
+        close(cause)
+    }
+}

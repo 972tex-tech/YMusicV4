@@ -82,7 +82,7 @@ class FfmpegRealBinaryTest {
         val input = object : FfInput {
             override val spec = server.url
             override fun onProcessStarted(process: KmpProcess) = server.onProcessStarted(process)
-            override suspend fun close() = server.close()
+            override fun close() = server.close()
         }
         val meta = FfmpegMetadataGetter(ffmpegBinary, FfInputResolver { input })
             .getMetadata(kmpcommon.uri.Uri.parse("content://probe/1"))

@@ -185,7 +185,7 @@ internal suspend fun ffmpegInputResolverChecks() {
         object : FfInput {
             override val spec = "file:${FfmpegTestConfig.testDataDir}/sample_with_metadata.flac"
             override fun onProcessStarted(process: KmpProcess) { started = true }
-            override suspend fun close() { closed = true }
+            override fun close() { closed = true }
         }
     }
 

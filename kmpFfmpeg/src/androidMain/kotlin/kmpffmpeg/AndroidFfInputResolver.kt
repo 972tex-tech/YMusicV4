@@ -9,11 +9,11 @@ import kmpcommon.uri.Uri
  * unchanged.
  *
  * ```
- * FfmpegMetadataGetter(ffmpegBinary, ContentFfInputResolver(context.contentResolver))
+ * FfmpegMetadataGetter(ffmpegBinary, AndroidFfInputResolver(context.contentResolver))
  *     .getMetadata(Uri.parse("content://media/external/audio/media/42"))
  * ```
  */
-class ContentFfInputResolver(
+class AndroidFfInputResolver(
     private val contentResolver: ContentResolver,
 ) : FfInputResolver {
     override suspend fun resolve(uri: Uri): FfInput = when (uri.scheme?.toString()) {
@@ -26,7 +26,7 @@ class ContentFfInputResolver(
                 override val spec: String = server.url
                 // Give the server the process so a fatal proxy error fails it with the real cause.
                 override fun onProcessStarted(process: KmpProcess) = server.onProcessStarted(process)
-                override suspend fun close() = server.close()
+                override fun close() = server.close()
             }
         }
         // ffmpeg opens plain files itself — no proxy needed.
