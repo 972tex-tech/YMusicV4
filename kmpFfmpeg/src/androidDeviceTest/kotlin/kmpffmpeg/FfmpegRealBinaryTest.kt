@@ -42,7 +42,7 @@ class FfmpegRealBinaryTest {
     @Before
     fun materializeFixture() {
         fixture = File(context.cacheDir, "sample_with_metadata.m4a").apply {
-            writeBytes(Base64.decode(FfmpegAndroidFixtures.sampleM4aBase64, Base64.DEFAULT))
+            writeBytes(Base64.decode(FfmpegAndroidFixtures.filesBase64.getValue("sample_with_metadata.m4a"), Base64.DEFAULT))
         }
     }
 
