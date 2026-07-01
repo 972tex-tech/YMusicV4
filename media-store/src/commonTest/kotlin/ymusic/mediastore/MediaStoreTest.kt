@@ -1,0 +1,273 @@
+package ymusic.mediastore
+
+import app.cash.sqldelight.db.SqlDriver
+import kmpcommon.uri.Uri
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import ymusic.mediastore.model.BucketDraft
+import ymusic.mediastore.model.MediaItemDraft
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class MediaStoreTest {
+
+    private lateinit var driver: SqlDriver
+    private lateinit var store: BetterMediaStore
+
+    @BeforeTest
+    fun setup() {
+        driver = testSqlDriver()
+        store = BetterMediaStore.create(driver)
+    }
+
+    @AfterTest
+    fun teardown() {
+        driver.close()
+    }
+
+    // ---- helpers ----
+
+    private suspend fun bucket(uri: String, name: String = uri, parentId: Long? = null) =
+        store.upsertBucket(BucketDraft(uri = Uri.parse(uri), name = name, parentId = parentId))
+
+    private suspend fun item(
+        bucketId: Long,
+        uri: String,
+        fileSize: Long,
+        title: String = uri,
+        videoId: String? = null,
+    ) = store.upsertItem(
+        bucketId,
+        MediaItemDraft(
+            uri = Uri.parse(uri),
+            title = title,
+            mimeType = "audio/mpeg",
+            fileSize = fileSize,
+            lastModified = 1_000L,
+            youtubeVid = videoId,
+        ),
+    )
+
+    // ---- buckets ----
+
+    @Test
+    fun upsertBucket_inserts_then_updates_by_uri() = runTest {
+        val a = bucket("file:///music", name = "music")
+        assertTrue(a.id > 0)
+
+        val a2 = bucket("file:///music", name = "renamed")
+        assertEquals(a.id, a2.id, "same uri -> same row")
+        assertEquals("renamed", a2.name)
+        assertEquals(1, store.allBuckets().size)
+    }
+
+    @Test
+    fun bucket_hierarchy() = runTest {
+        val root = bucket("file:///music")
+        val child = bucket("file:///music/rock", parentId = root.id)
+
+        assertEquals(listOf(root.id), store.childBuckets(null).map { it.id })
+        assertEquals(listOf(child.id), store.childBuckets(root.id).map { it.id })
+        assertEquals(root.id, store.findBucket(child.id)!!.parentId)
+    }
+
+    @Test
+    fun setBucketAlias() = runTest {
+        val b = bucket("file:///music")
+        store.setBucketAlias(b.id, "My Music")
+        assertEquals("My Music", store.findBucket(b.id)!!.aliasName)
+        store.setBucketAlias(b.id, null)
+        assertNull(store.findBucket(b.id)!!.aliasName)
+    }
+
+    @Test
+    fun softDeleteBucket_hides_it_and_tombstones_its_items() = runTest {
+        val b = bucket("file:///music")
+        val it1 = item(b.id, "file:///music/a.mp3", fileSize = 10)
+
+        store.deleteBucket(b.id)
+        assertNull(store.findBucket(b.id))
+        assertTrue(store.allBuckets().isEmpty())
+        assertNull(store.findItem(it1.id), "item soft-deleted with its bucket")
+    }
+
+    @Test
+    fun upsertBucket_revives_soft_deleted() = runTest {
+        val b = bucket("file:///music", name = "music")
+        store.deleteBucket(b.id)
+        val revived = bucket("file:///music", name = "music-again")
+        assertEquals(b.id, revived.id)
+        assertNotNull(store.findBucket(b.id))
+    }
+
+    @Test
+    fun hardDeleteBucket_cascades() = runTest {
+        val b = bucket("file:///music")
+        val i = item(b.id, "file:///music/a.mp3", fileSize = 10)
+        store.deleteBucket(b.id, hard = true)
+        // A brand-new bucket at the same uri gets a fresh id (old row truly gone).
+        val b2 = bucket("file:///music")
+        assertTrue(b2.id > b.id)
+        assertNull(store.findItem(i.id))
+    }
+
+    // ---- items ----
+
+    @Test
+    fun upsertItem_insert_and_update_by_uri() = runTest {
+        val b = bucket("file:///music")
+        val i = item(b.id, "file:///music/a.mp3", fileSize = 10, title = "A")
+        val i2 = store.upsertItem(
+            b.id,
+            MediaItemDraft(Uri.parse("file:///music/a.mp3"), title = "A (edited)",
+                mimeType = "audio/mpeg", fileSize = 12, lastModified = 2_000),
+        )
+        assertEquals(i.id, i2.id)
+        assertEquals("A (edited)", i2.title)
+        assertEquals(12, store.findItem(i.id)!!.fileSize)
+        assertEquals(1, store.itemsInBucket(b.id).size)
+    }
+
+    @Test
+    fun upsertItem_detects_move_by_fileSize() = runTest {
+        val b = bucket("file:///music")
+        val original = item(b.id, "file:///music/a.mp3", fileSize = 4242, title = "Song")
+        store.deleteItem(original.id) // scanner marks the old path missing
+
+        // Same file reappears under a new name/uri, same size, same bucket.
+        val moved = item(b.id, "file:///music/renamed.mp3", fileSize = 4242, title = "Song")
+        assertEquals(original.id, moved.id, "moved file reuses the row id")
+        assertEquals("file:///music/renamed.mp3", moved.uri.toString())
+        assertNull(store.findItemByUri(Uri.parse("file:///music/a.mp3")))
+    }
+
+    @Test
+    fun upsertItem_inserts_new_when_no_fingerprint_match() = runTest {
+        val b = bucket("file:///music")
+        val a = item(b.id, "file:///music/a.mp3", fileSize = 1)
+        val c = item(b.id, "file:///music/c.mp3", fileSize = 2)
+        assertTrue(a.id != c.id)
+        assertEquals(2, store.itemsInBucket(b.id).size)
+    }
+
+    @Test
+    fun findItemsByVideoId() = runTest {
+        val b = bucket("file:///music")
+        item(b.id, "file:///music/[dQw4w9WgXcQ].mp3", fileSize = 1, videoId = "dQw4w9WgXcQ")
+        val found = store.findItemsByVideoId("dQw4w9WgXcQ")
+        assertEquals(1, found.size)
+    }
+
+    @Test
+    fun purgeDeletedItems_removes_old_tombstones() = runTest {
+        val b = bucket("file:///music")
+        val i = item(b.id, "file:///music/a.mp3", fileSize = 1)
+        store.deleteItem(i.id)
+        val purged = store.purgeDeletedItems(olderThan = Long.MAX_VALUE)
+        assertEquals(1, purged)
+        // Now the fileSize can't revive it: a re-add is a fresh row.
+        val again = item(b.id, "file:///music/a.mp3", fileSize = 1)
+        assertTrue(again.id > i.id)
+    }
+
+    // ---- playlists ----
+
+    @Test
+    fun reserved_playlists_seeded() = runTest {
+        val ids = store.playlists().map { it.id }
+        assertTrue(BetterMediaStore.FAVORITE_PLAYLIST_ID in ids)
+        assertTrue(BetterMediaStore.RECENT_PLAY_PLAYLIST_ID in ids)
+    }
+
+    @Test
+    fun createRenameDeletePlaylist() = runTest {
+        val p = store.createPlaylist("Chill")
+        assertTrue(p.id > 0)
+        store.renamePlaylist(p.id, "Chill v2")
+        assertEquals("Chill v2", store.playlists().first { it.id == p.id }.name)
+        store.deletePlaylist(p.id)
+        assertTrue(store.playlists().none { it.id == p.id })
+    }
+
+    @Test
+    fun cannot_delete_reserved_playlist() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            store.deletePlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID)
+        }
+    }
+
+    @Test
+    fun addToPlaylist_appends_and_dedups() = runTest {
+        val b = bucket("file:///music")
+        val i1 = item(b.id, "file:///music/1.mp3", fileSize = 1)
+        val i2 = item(b.id, "file:///music/2.mp3", fileSize = 2)
+        val p = store.createPlaylist("P")
+
+        store.addToPlaylist(p.id, listOf(i1.id, i2.id, i1.id)) // duplicate i1 ignored
+        val items = store.playlistItems(p.id)
+        assertEquals(listOf(i1.id, i2.id), items.map { it.mediaItemId })
+        assertEquals(listOf(0, 1), items.map { it.position })
+
+        store.addToPlaylist(p.id, listOf(i2.id)) // already present -> no change
+        assertEquals(2, store.playlistItems(p.id).size)
+    }
+
+    @Test
+    fun movePlaylistItem_reorders_contiguously() = runTest {
+        val b = bucket("file:///music")
+        val ids = (1..3).map { item(b.id, "file:///music/$it.mp3", fileSize = it.toLong()).id }
+        val p = store.createPlaylist("P")
+        store.addToPlaylist(p.id, ids)
+
+        val third = store.playlistItems(p.id).first { it.mediaItemId == ids[2] }
+        store.movePlaylistItem(third.id, toPosition = 0)
+
+        val ordered = store.playlistItems(p.id)
+        assertEquals(listOf(ids[2], ids[0], ids[1]), ordered.map { it.mediaItemId })
+        assertEquals(listOf(0, 1, 2), ordered.map { it.position })
+    }
+
+    @Test
+    fun playlistItemDetails_joins_media() = runTest {
+        val b = bucket("file:///music")
+        val i = item(b.id, "file:///music/a.mp3", fileSize = 1, title = "A")
+        val p = store.createPlaylist("P")
+        store.addToPlaylist(p.id, listOf(i.id))
+
+        val details = store.playlistItemDetails(p.id)
+        assertEquals(1, details.size)
+        assertEquals("A", details[0].mediaItem.title)
+        assertEquals(i.id, details[0].mediaItem.id)
+    }
+
+    @Test
+    fun favorite_and_cascade_on_item_hard_delete() = runTest {
+        val b = bucket("file:///music")
+        val i = item(b.id, "file:///music/a.mp3", fileSize = 1)
+        store.addToPlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID, listOf(i.id))
+        assertTrue(store.isFavorite(i.id))
+
+        store.deleteItem(i.id, hard = true)
+        assertTrue(store.playlistItems(BetterMediaStore.FAVORITE_PLAYLIST_ID).isEmpty())
+        assertTrue(!store.isFavorite(i.id))
+    }
+
+    // ---- reactive ----
+
+    @Test
+    fun playlistChanges_emits_current_membership() = runTest {
+        val b = bucket("file:///music")
+        val i = item(b.id, "file:///music/a.mp3", fileSize = 1)
+        val p = store.createPlaylist("P")
+        store.addToPlaylist(p.id, listOf(i.id))
+
+        val emitted = store.playlistChanges(p.id).first()
+        assertEquals(listOf(i.id), emitted.map { it.mediaItemId })
+    }
+}
