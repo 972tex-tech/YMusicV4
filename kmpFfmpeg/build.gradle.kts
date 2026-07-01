@@ -133,9 +133,10 @@ kotlin {
     }
 
     // Android is a separate target from desktop JVM: it shares the ProcessBuilder runner (jvmCommonMain)
-    // but owns the ymix proxy (LocalServerSocket), which desktop JVM never uses. Uses the new AGP KMP
-    // plugin; the old top-level `android {}` block + `androidTarget {}` are gone (deprecated in AGP 9).
-    androidLibrary {
+    // but owns the ymix proxy (LocalServerSocket), which desktop JVM never uses. Uses the AGP KMP
+    // plugin's `android {}` target (renamed from `androidLibrary {}` in AGP 9; the old top-level
+    // `android {}` block + `androidTarget {}` are gone).
+    android {
         namespace = "kmpffmpeg"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
@@ -143,10 +144,7 @@ kotlin {
         // needs a real file on disk, so force the (test) APK to extract native libs into
         // nativeLibraryDir instead of mmap-ing them out of the APK (extractNativeLibs=false default).
         packaging { jniLibs { useLegacyPackaging = true } }
-        @Suppress("DEPRECATION") // android KMP compilation exposes jvmTarget only via this accessor
-        compilations.configureEach {
-            compilerOptions.configure { jvmTarget.set(JvmTarget.JVM_17) }
-        }
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
         // Instrumented (on-device) tests for the ymix server (needs the Android runtime). Gradle
         // Managed Devices pin the matrix to Android 7 (API 24, our minSdk) and Android 11 (API 30) —
         // auto-provisioned aosp emulators. Run the whole matrix with:
