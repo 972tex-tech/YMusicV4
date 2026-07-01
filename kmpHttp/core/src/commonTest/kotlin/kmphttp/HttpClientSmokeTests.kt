@@ -25,7 +25,7 @@ import kotlin.uuid.Uuid
 /**
  * Smoke-test suite for the platform-default [KmpHttpClient] (OkHttp on JVM, NSURLSession on Apple,
  * libcurl on Linux) created via [KmpHttpClient.create]. Cache tests use a platform disk cache from
- * [newTestCache]. Hits live httpbun.com.
+ * [newTestCache]. Hits the local [TestServer].
  */
 class HttpClientSmokeTests {
 
@@ -34,8 +34,8 @@ class HttpClientSmokeTests {
         configure: KmpHttpClient.BaseBuilder<*>.() -> Unit = {}
     ): KmpHttpClient = KmpHttpClient.create {
         defaultExecuteTimeout = 30.seconds
-        // Trust httpbun's build-generated certs (anchors-only); see [httpbunSslConfig].
-        sslConfig = httpbunSslConfig()
+        // Trust the local test server's self-signed leaf (anchors-only); see [testServerSslConfig].
+        sslConfig = testServerSslConfig()
         configure()
     }
 
@@ -44,7 +44,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testSimpleGet() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/get").get().build()
+        val request = RequestBuilder().url(TestServer.url("/get")).get().build()
         client.execute(request).use { response ->
             assertEquals(200, response.code)
             assertNotNull(response.body)
@@ -53,7 +53,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testGetWithQueryParams() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/get?foo=bar&baz=qux").get().build()
+        val request = RequestBuilder().url(TestServer.url("/get?foo=bar&baz=qux")).get().build()
         client.execute(request).use { response ->
             assertEquals(200, response.code)
             val bodyString = response.body.utf8String()
@@ -65,7 +65,7 @@ class HttpClientSmokeTests {
     @Test
     fun testGetWithHeaders() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/headers")
+            .url(TestServer.url("/headers"))
             .header("X-Custom-Header", "CustomValue")
             .header("X-Another-Header", "AnotherValue")
             .get()
@@ -82,7 +82,7 @@ class HttpClientSmokeTests {
     @Test
     fun testPost() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/post")
+            .url(TestServer.url("/post"))
             .post("Hello, World!".toRequestBody(null))
             .build()
         client.execute(request).use { response ->
@@ -95,7 +95,7 @@ class HttpClientSmokeTests {
     @Test
     fun testPut() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/put")
+            .url(TestServer.url("/put"))
             .put("""{"key":"value"}""".toRequestBody(null))
             .build()
         client.execute(request).use { response ->
@@ -106,14 +106,14 @@ class HttpClientSmokeTests {
 
     @Test
     fun testDelete() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/delete").deleteWithoutBody().build()
+        val request = RequestBuilder().url(TestServer.url("/delete")).deleteWithoutBody().build()
         client.execute(request).use { response -> assertEquals(200, response.code) }
     }
 
     @Test
     fun testPatch() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/patch")
+            .url(TestServer.url("/patch"))
             .patch("""{"patched":true}""".toRequestBody(null))
             .build()
         client.execute(request).use { response ->
@@ -124,10 +124,10 @@ class HttpClientSmokeTests {
 
     @Test
     fun testStatusCodes() = runTest {
-        client.execute(RequestBuilder().url("https://httpbun.com/status/404").get().build()).use {
+        client.execute(RequestBuilder().url(TestServer.url("/status/404")).get().build()).use {
             assertEquals(404, it.code)
         }
-        client.execute(RequestBuilder().url("https://httpbun.com/status/500").get().build()).use {
+        client.execute(RequestBuilder().url(TestServer.url("/status/500")).get().build()).use {
             assertEquals(500, it.code)
         }
     }
@@ -135,7 +135,7 @@ class HttpClientSmokeTests {
     @Test
     fun testExpect100Continue() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/post")
+            .url(TestServer.url("/post"))
             .post("test body".toRequestBody(null))
             .header("Expect", "100-continue")
             .build()
@@ -149,7 +149,7 @@ class HttpClientSmokeTests {
     @Test
     fun testResponseHeaders() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/response-headers?X-Test-Header=TestValue&Access-Control-Expose-Headers=X-Test-Header")
+            .url(TestServer.url("/response-headers?X-Test-Header=TestValue&Access-Control-Expose-Headers=X-Test-Header"))
             .get()
             .build()
         client.execute(request).use { response ->
@@ -167,7 +167,7 @@ class HttpClientSmokeTests {
                 chain.proceed(chain.request.newBuilder().addHeader("X-Interceptor", "Added").build())
             }
         }
-        val request = RequestBuilder().url("https://httpbun.com/headers").get().build()
+        val request = RequestBuilder().url(TestServer.url("/headers")).get().build()
         newClient.execute(request).use { response ->
             assertEquals(200, response.code)
             assertTrue(called)
@@ -192,7 +192,7 @@ class HttpClientSmokeTests {
                 response
             }
         }
-        val request = RequestBuilder().url("https://httpbun.com/get").get().build()
+        val request = RequestBuilder().url(TestServer.url("/get")).get().build()
         newClient.execute(request).use { response ->
             assertEquals(200, response.code)
             assertEquals(listOf(1, 2, 3, 4), callOrder)
@@ -208,7 +208,7 @@ class HttpClientSmokeTests {
                 chain.proceed(chain.request.newBuilder().addHeader("X-Net-Interceptor", "net").build())
             }
         }
-        val request = RequestBuilder().url("https://httpbun.com/headers").get().build()
+        val request = RequestBuilder().url(TestServer.url("/headers")).get().build()
         newClient.execute(request).use { response ->
             assertEquals(200, response.code)
             assertTrue(called, "network interceptor should run inside the engine chain")
@@ -219,14 +219,14 @@ class HttpClientSmokeTests {
     @Test
     fun testNewBuilderRoundTrips() = runTest {
         val derived = client.newBuilder().build()
-        val request = RequestBuilder().url("https://httpbun.com/get").get().build()
+        val request = RequestBuilder().url(TestServer.url("/get")).get().build()
         derived.execute(request).use { response -> assertEquals(200, response.code) }
     }
 
     @Test
     fun testUserAgent() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/headers")
+            .url(TestServer.url("/headers"))
             .header("User-Agent", "KmpHttpTest/1.0")
             .get()
             .build()
@@ -238,7 +238,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testFollowRedirects() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/redirect/3").get().build()
+        val request = RequestBuilder().url(TestServer.url("/redirect/3")).get().build()
         val options = RedirectOptions(followRedirects = true, followSslRedirects = true)
         client.execute(request, options).use { response ->
             assertEquals(200, response.code)
@@ -248,7 +248,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testDisableFollowRedirects() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/redirect/1").get().build()
+        val request = RequestBuilder().url(TestServer.url("/redirect/1")).get().build()
         val options = RedirectOptions(followRedirects = false, followSslRedirects = false)
         client.execute(request, options).use { response ->
             assertEquals(302, response.code)
@@ -258,7 +258,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testRedirectToAbsoluteUrl() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/absolute-redirect/2").get().build()
+        val request = RequestBuilder().url(TestServer.url("/absolute-redirect/2")).get().build()
         val options = RedirectOptions(followRedirects = true, followSslRedirects = true)
         client.execute(request, options).use { response ->
             assertEquals(200, response.code)
@@ -268,7 +268,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testPriorResponseChain() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/redirect/2").get().build()
+        val request = RequestBuilder().url(TestServer.url("/redirect/2")).get().build()
         client.execute(request).use { response ->
             assertEquals(200, response.code)
             val prior1 = response.priorResponse
@@ -283,7 +283,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testExecuteTimeout() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/delay/3").get().build()
+        val request = RequestBuilder().url(TestServer.url("/delay/3")).get().build()
         assertFailsWith<TimeoutCancellationException> {
             client.execute(request, timeout = 500.milliseconds)
         }
@@ -291,7 +291,7 @@ class HttpClientSmokeTests {
 
     @Test
     fun testExecuteWithinTimeout() = runTest {
-        val request = RequestBuilder().url("https://httpbun.com/delay/1").get().build()
+        val request = RequestBuilder().url(TestServer.url("/delay/1")).get().build()
         client.execute(request, timeout = 5.seconds).use { response ->
             assertEquals(200, response.code)
         }
@@ -300,7 +300,7 @@ class HttpClientSmokeTests {
     @Test
     fun testTimeoutWhileReadingResponseBody() = runTest {
         val request = RequestBuilder()
-            .url("https://httpbun.com/drip?duration=5&numbytes=10&code=200&delay=0")
+            .url(TestServer.url("/drip?duration=5&numbytes=10&code=200&delay=0"))
             .get()
             .build()
         client.execute(request, timeout = 30.seconds).use { response ->
@@ -328,7 +328,7 @@ class HttpClientSmokeTests {
             override fun close() {}
         }
         val request = RequestBuilder()
-            .url("https://httpbun.com/post")
+            .url(TestServer.url("/post"))
             .post(slowSource.asOneshotRequestBody())
             .header("Expect", "100-continue")
             .build()
@@ -344,7 +344,7 @@ class HttpClientSmokeTests {
     @Test
     fun testCacheHit() = runTest {
         val cached = newClient { cache = newTestCache() }
-        val request = RequestBuilder().url("https://httpbun.com/cache/60").get().build()
+        val request = RequestBuilder().url(TestServer.url("/cache/60")).get().build()
 
         cached.execute(request).use { response1 ->
             assertEquals(200, response1.code)
@@ -363,7 +363,7 @@ class HttpClientSmokeTests {
     fun testCacheMissForNonCacheableResponse() = runTest {
         val cached = newClient { cache = newTestCache() }
         val request = RequestBuilder()
-            .url("https://httpbun.com/response-headers?Cache-Control=no-store")
+            .url(TestServer.url("/response-headers?Cache-Control=no-store"))
             .get()
             .build()
         cached.execute(request).use { it.body.utf8String() }
@@ -378,7 +378,7 @@ class HttpClientSmokeTests {
     fun testForceCacheReturns504WhenNotCached() = runTest {
         val cached = newClient { cache = newTestCache() }
         val request = RequestBuilder()
-            .url("https://httpbun.com/get?unique=${Uuid.random()}")
+            .url(TestServer.url("/get?unique=${Uuid.random()}"))
             .cacheControl(CacheControl.FORCE_CACHE)
             .get()
             .build()
@@ -391,7 +391,7 @@ class HttpClientSmokeTests {
     @Test
     fun testForceNetworkBypassesCache() = runTest {
         val cached = newClient { cache = newTestCache() }
-        val url = "https://httpbun.com/cache/60"
+        val url = TestServer.url("/cache/60")
         cached.execute(RequestBuilder().url(url).get().build()).use { it.body.utf8String() }
         val forceNetwork = RequestBuilder().url(url).cacheControl(CacheControl.FORCE_NETWORK).get().build()
         cached.execute(forceNetwork).use { response2 ->
@@ -403,7 +403,7 @@ class HttpClientSmokeTests {
     @Test
     fun testNoCacheDirectiveForcesRevalidation() = runTest {
         val cached = newClient { cache = newTestCache() }
-        val url = "https://httpbun.com/cache/60"
+        val url = TestServer.url("/cache/60")
         cached.execute(RequestBuilder().url(url).get().build()).use { it.body.utf8String() }
         val noCache = RequestBuilder().url(url).header("Cache-Control", "no-cache").get().build()
         cached.execute(noCache).use { response2 ->
@@ -416,7 +416,7 @@ class HttpClientSmokeTests {
     fun testPrivateCacheControlIsCacheable() = runTest {
         val cached = newClient { cache = newTestCache() }
         val request = RequestBuilder()
-            .url("https://httpbun.com/response-headers?Cache-Control=private,max-age=60")
+            .url(TestServer.url("/response-headers?Cache-Control=private,max-age=60"))
             .get()
             .build()
         cached.execute(request).use { it.body.utf8String() }
@@ -431,7 +431,7 @@ class HttpClientSmokeTests {
     fun testMaxAgeZeroForcesNetwork() = runTest {
         val cached = newClient { cache = newTestCache() }
         val request = RequestBuilder()
-            .url("https://httpbun.com/response-headers?Cache-Control=max-age=0")
+            .url(TestServer.url("/response-headers?Cache-Control=max-age=0"))
             .get()
             .build()
         cached.execute(request).use { it.body.utf8String() }
@@ -446,7 +446,7 @@ class HttpClientSmokeTests {
     fun testCacheWithVaryHeader() = runTest {
         val cached = newClient { cache = newTestCache() }
         val uniqueId = Uuid.random().toString()
-        val url = "https://httpbun.com/response-headers?Cache-Control=max-age=60&Vary=Accept-Language&X-Unique=$uniqueId"
+        val url = TestServer.url("/response-headers?Cache-Control=max-age=60&Vary=Accept-Language&X-Unique=$uniqueId")
 
         val request1 = RequestBuilder().url(url).header("Accept-Language", "en").get().build()
         cached.execute(request1).use { it.body.utf8String() }
