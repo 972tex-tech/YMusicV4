@@ -58,8 +58,8 @@ val generateFfmpegTestConfig = tasks.register("generateFfmpegTestConfig") {
 // API, so we stage the per-ABI binaries into the jniLibs *convention* dir (src/androidDeviceTest/
 // jniLibs, gitignored); and since the plugin doesn't pick up an assets dir either, we embed the
 // fixture as base64 in a generated test source. ABIs cover the emulators we run on: arm64-v8a on
-// Apple Silicon hosts, x86_64 on x86_64 CI.
-val ffmpegAndroidAbis = listOf("arm64-v8a", "x86_64")
+// Apple Silicon hosts, x86_64 on x86_64 CI, and x86 for the aosp API 24 image (32-bit-only).
+val ffmpegAndroidAbis = listOf("arm64-v8a", "x86", "x86_64")
 val stageFfmpegDeviceTestJni = tasks.register<Copy>("stageFfmpegDeviceTestJni") {
     description = "Stage prebuilt android ffmpeg into the androidDeviceTest jniLibs convention dir."
     into(layout.projectDirectory.dir("src/androidDeviceTest/jniLibs"))
@@ -152,10 +152,7 @@ kotlin {
                     create<com.android.build.api.dsl.ManagedVirtualDevice>("android7Api24") {
                         device = "Pixel 2"
                         apiLevel = 24
-                        // google_apis (x86_64) — API 24's only image with an ABI we ship a libffmpeg.so
-                        // for. The "aosp" source resolves to a 32-bit-x86 image (no matching binary, and
-                        // no HW accel on Apple Silicon). Emulated x86_64 here, so slower than arm64 API 30.
-                        systemImageSource = "google_apis"
+                        systemImageSource = "aosp"
                     }
                     create<com.android.build.api.dsl.ManagedVirtualDevice>("android11Api30") {
                         device = "Pixel 2"
