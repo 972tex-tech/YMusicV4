@@ -1,0 +1,40 @@
+-- Playlist membership. References media by mediaItemId (a hard FK) — move-in-place keeps the
+-- referenced row id stable across file moves/rescans, so links don't orphan. position gives
+-- explicit user ordering.
+CREATE TABLE playlistItem (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    playlistId  INTEGER NOT NULL REFERENCES playlist(id) ON DELETE CASCADE,
+    mediaItemId INTEGER NOT NULL REFERENCES mediaItem(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    addedAt     INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX playlistItem_pl_item ON playlistItem(playlistId, mediaItemId);
+CREATE INDEX        playlistItem_pl_pos  ON playlistItem(playlistId, position);
+
+-- Idempotent add: a duplicate (playlistId, mediaItemId) is ignored via the unique index.
+insertPlaylistItem:
+INSERT OR IGNORE INTO playlistItem(playlistId, mediaItemId, position, addedAt)
+VALUES (?, ?, ?, ?);
+
+maxPosition:
+SELECT COALESCE(MAX(position), -1) FROM playlistItem WHERE playlistId = ?;
+
+deletePlaylistItem:
+DELETE FROM playlistItem WHERE id = ?;
+
+updatePlaylistItemPosition:
+UPDATE playlistItem SET position = ? WHERE id = ?;
+
+findPlaylistItem:
+SELECT * FROM playlistItem WHERE id = ?;
+
+playlistItemsOrdered:
+SELECT * FROM playlistItem WHERE playlistId = ? ORDER BY position;
+
+-- Membership ids in a playlist (ordered), for resolving to media items in Kotlin.
+playlistMediaItemIds:
+SELECT mediaItemId FROM playlistItem WHERE playlistId = ? ORDER BY position;
+
+isFavorite:
+SELECT EXISTS(SELECT 1 FROM playlistItem WHERE playlistId = 0 AND mediaItemId = ?);

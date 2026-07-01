@@ -1,0 +1,93 @@
+-- A media item is a single audio/video file with its extracted metadata.
+-- Identified externally by its uri (UNIQUE); id is a generated surrogate key.
+-- fileSize + lastModified are the cheap change/move fingerprint (see findDeletedByFingerprint).
+CREATE TABLE mediaItem (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    bucketId             INTEGER NOT NULL REFERENCES bucket(id) ON DELETE CASCADE,
+    uri                  TEXT    NOT NULL UNIQUE,
+    title                TEXT    NOT NULL,
+    mimeType             TEXT    NOT NULL,
+    artist               TEXT,
+    album                TEXT,
+    trackNumber          INTEGER,
+    year                 INTEGER,
+    durationMs           INTEGER,
+    audioCodec           TEXT,
+    videoCodec           TEXT,
+    subtitleCodec        TEXT,
+    bitrate              INTEGER,
+    width                INTEGER,
+    height               INTEGER,
+    thumbnailStreamIndex INTEGER,
+    youtubeVid           TEXT,
+    youtubeItags         TEXT,
+    fileSize             INTEGER NOT NULL,
+    lastModified         INTEGER NOT NULL,
+    deleted              INTEGER NOT NULL DEFAULT 0,
+    createdAt            INTEGER NOT NULL,
+    updatedAt            INTEGER NOT NULL
+);
+
+CREATE INDEX mediaItem_bucketId  ON mediaItem(bucketId);
+CREATE INDEX mediaItem_fileSize  ON mediaItem(fileSize);
+CREATE INDEX mediaItem_updatedAt ON mediaItem(updatedAt);
+
+insertItem:
+INSERT INTO mediaItem(
+    bucketId, uri, title, mimeType, artist, album, trackNumber, year, durationMs,
+    audioCodec, videoCodec, subtitleCodec, bitrate, width, height, thumbnailStreamIndex,
+    youtubeVid, youtubeItags, fileSize, lastModified, deleted, createdAt, updatedAt
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+-- Full metadata update by id, also un-deletes. Used for the plain "changed in place" path AND
+-- the move-in-place path (the row id is preserved, so playlist FKs survive) — the only difference
+-- is that a move also rewrites uri/bucketId, which this statement already covers.
+updateItem:
+UPDATE mediaItem SET
+    bucketId = ?, uri = ?, title = ?, mimeType = ?, artist = ?, album = ?, trackNumber = ?,
+    year = ?, durationMs = ?, audioCodec = ?, videoCodec = ?, subtitleCodec = ?, bitrate = ?,
+    width = ?, height = ?, thumbnailStreamIndex = ?, youtubeVid = ?, youtubeItags = ?,
+    fileSize = ?, lastModified = ?, deleted = 0, updatedAt = ?
+WHERE id = ?;
+
+setItemDeleted:
+UPDATE mediaItem SET deleted = 1, updatedAt = ? WHERE id = ?;
+
+setItemsInBucketDeleted:
+UPDATE mediaItem SET deleted = 1, updatedAt = ? WHERE bucketId = ? AND deleted = 0;
+
+-- Hard-purge tombstones older than a cutoff (cascades to playlistItem rows). Returns rows removed.
+purgeDeleted:
+DELETE FROM mediaItem WHERE deleted = 1 AND updatedAt < ?;
+
+-- Hard-delete a single item now (cascades to its playlistItem rows).
+hardDeleteItem:
+DELETE FROM mediaItem WHERE id = ?;
+
+findItemById:
+SELECT * FROM mediaItem WHERE id = ? AND deleted = 0;
+
+findItemByUri:
+SELECT * FROM mediaItem WHERE uri = ? AND deleted = 0;
+
+findItemByUriIncludingDeleted:
+SELECT * FROM mediaItem WHERE uri = ?;
+
+-- Move detection: a soft-deleted row in the same bucket with a matching fingerprint is the same
+-- file re-appearing under a new uri. Reuse its id so playlist links survive.
+findDeletedByFingerprint:
+SELECT * FROM mediaItem
+WHERE bucketId = ? AND fileSize = ? AND deleted = 1
+ORDER BY updatedAt DESC;
+
+itemsInBucket:
+SELECT * FROM mediaItem WHERE bucketId = ? AND deleted = 0 ORDER BY title;
+
+itemsByIds:
+SELECT * FROM mediaItem WHERE id IN ? AND deleted = 0;
+
+findItemByVideoId:
+SELECT * FROM mediaItem WHERE youtubeVid = ? AND deleted = 0;
