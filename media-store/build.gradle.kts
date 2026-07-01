@@ -49,9 +49,12 @@ kotlin {
          */
         val commonMain by getting {
             dependencies {
-                implementation(project(":kmpCommon"))
+                // api: both appear in the public API surface — Uri in BetterMediaStore/model
+                // signatures, and SqlDriver in BetterMediaStore.create + the driver builders — so
+                // consumers (e.g. :media-scanner) must see them on their compile classpath.
+                api(project(":kmpCommon"))
+                api(Libs.SqlDelight.runtime)
                 implementation(Libs.Kotlinx.coroutinesCore)
-                implementation(Libs.SqlDelight.runtime)
                 implementation(Libs.SqlDelight.coroutinesExtensions)
             }
         }
@@ -66,7 +69,10 @@ kotlin {
 
         val nativeMain by getting {
             dependencies {
-                implementation(Libs.SqlDelight.nativeDriver)
+                // api (not implementation): the sqliter cinterop carries the `-lsqlite3` linker flag,
+                // which must reach any native binary that links this module (apps + :media-scanner's
+                // test binary) — a transitive `implementation` drops it and the link fails.
+                api(Libs.SqlDelight.nativeDriver)
             }
         }
 
