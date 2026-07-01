@@ -7,12 +7,11 @@ object Versions {
 
     // KMP
     const val coroutines = "1.11.0"
-    const val ktor = "3.0.2"
-    const val kotlinxSerialization = "1.7.3"
-    const val kotlinxDateTime = "0.7.1"
+    const val kotlinxSerialization = "1.9.0"
+    const val kotlinxDateTime = "0.8.0"
     const val composeMultiplatform = "1.7.1"
-    const val okhttp = "5.3.0"
-    const val okio = "3.16.2"
+    const val okhttp = "5.4.0"
+    const val okio = "3.17.0"
 
     // AndroidX
     const val coreKtx = "1.15.0"
@@ -21,11 +20,12 @@ object Versions {
     const val composeBom = "2024.12.01"
 
     // Benchmark
-    const val kotlinxBenchmark = "0.4.13"
+    const val kotlinxBenchmark = "0.4.17"
 
     // Testing
     const val junit = "4.13.2"
-    const val junitExt = "1.2.1"
+    const val junitExt = "1.3.0"
+    const val testRunner = "1.7.0"
     const val espresso = "3.6.1"
 }
 
@@ -37,14 +37,6 @@ object Libs {
         const val serializationJson = "org.jetbrains.kotlinx:kotlinx-serialization-json:${Versions.kotlinxSerialization}"
         const val serializationJsonOkio = "org.jetbrains.kotlinx:kotlinx-serialization-json-okio:${Versions.kotlinxSerialization}"
         const val dateTime = "org.jetbrains.kotlinx:kotlinx-datetime:${Versions.kotlinxDateTime}"
-    }
-
-    object Ktor {
-        const val clientCore = "io.ktor:ktor-client-core:${Versions.ktor}"
-        const val clientOkHttp = "io.ktor:ktor-client-okhttp:${Versions.ktor}"
-        const val clientDarwin = "io.ktor:ktor-client-darwin:${Versions.ktor}"
-        const val clientContentNegotiation = "io.ktor:ktor-client-content-negotiation:${Versions.ktor}"
-        const val serializationKotlinxJson = "io.ktor:ktor-serialization-kotlinx-json:${Versions.ktor}"
     }
 
     object AndroidX {
@@ -67,6 +59,7 @@ object Libs {
     object Testing {
         const val junit = "junit:junit:${Versions.junit}"
         const val junitExt = "androidx.test.ext:junit:${Versions.junitExt}"
+        const val runner = "androidx.test:runner:${Versions.testRunner}"
         const val espresso = "androidx.test.espresso:espresso-core:${Versions.espresso}"
     }
 

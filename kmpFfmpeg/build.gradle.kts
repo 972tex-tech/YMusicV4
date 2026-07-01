@@ -270,7 +270,7 @@ kotlin {
                 implementation(kotlin("test"))            // FfmpegSmokeTest uses kotlin.test.Test
                 implementation(Libs.Kotlinx.coroutinesTest) // …and runTest
                 implementation(Libs.Testing.junitExt)
-                implementation("androidx.test:runner:1.6.2")
+                implementation(Libs.Testing.runner)
             }
         }
     }
