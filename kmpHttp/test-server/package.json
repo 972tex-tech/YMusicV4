@@ -1,0 +1,16 @@
+{
+  "name": "kmphttp-test-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local HTTPS test server (httpbin-compatible + TLS scenarios) for the kmpHttp test suite. Replaces the live httpbun.com / badssl.com dependencies.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0"
+  }
+}

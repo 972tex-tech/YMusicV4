@@ -13,3 +13,10 @@ kmpHttp/test/test-cache
 design/logo/_mockups
 test-cache
 ymusic-android
+
+# test-server (local HTTPS test server) - generated/machine-specific artifacts
+kmpHttp/test-server/node_modules/
+kmpHttp/test-server/certs/
+kmpHttp/test-server/server.log
+kmpHttp/test-server/server.pid
+kmpHttp/test-server/server-info.json
