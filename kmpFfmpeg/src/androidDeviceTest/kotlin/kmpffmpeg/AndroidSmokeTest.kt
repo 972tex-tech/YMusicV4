@@ -7,18 +7,27 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 
 /**
- * Android concrete [FfmpegSmokeTest]: runs the shared smoke suite on the emulator, with every fixture
- * served through the **ymix** proxy instead of a plain `file:` — so the suite exercises the real
- * `FfYmixProtocolServer` read path end-to-end against the prebuilt binary (version / probe / transcode
- * / stdin-feed), on top of the targeted ymix tests in [FfmpegRealBinaryTest].
+ * Android concrete smoke suites: run the shared [KmpProcessSmokeTest] + [FfmpegMetadataGetterSmokeTest]
+ * on the emulator, with every fixture served through the **ymix** proxy instead of a plain `file:` — so
+ * the process-level suite exercises the real [FfYmixProtocolServer] read path end-to-end against the
+ * prebuilt binary (version / probe / transcode / stdin-feed), on top of the targeted ymix tests in
+ * [FfmpegRealBinaryTest].
  *
- * The base class + check bodies are pulled into this (separate) source-set tree by `srcDir`, since the
- * on-device test set can't `dependsOn` `processTest`. The binary is the `libffmpeg.so` the installer
- * extracted into `nativeLibraryDir`; the fixtures are the base64-embedded [FfmpegAndroidFixtures]
- * materialized once into the app cache.
+ * The base classes + check bodies are pulled into this (separate) source-set tree by `srcDir`, since the
+ * on-device test set can't `dependsOn` `processTest`. [AndroidFfmpegTestEnv] resolves the binary +
+ * fixtures once at runtime and both suites share it.
  */
-class AndroidSmokeTest : FfmpegSmokeTest() {
-    override val config: FfmpegTestConfig by lazy {
+class AndroidKmpProcessTest : KmpProcessSmokeTest() {
+    override val config get() = AndroidFfmpegTestEnv.config
+}
+
+class AndroidFfmpegMetadataGetterTest : FfmpegMetadataGetterSmokeTest() {
+    override val config get() = AndroidFfmpegTestEnv.config
+}
+
+/** Resolves the on-device ffmpeg + fixtures once, serving every fixture over a fresh ymix server. */
+private object AndroidFfmpegTestEnv {
+    val config: FfmpegTestConfig by lazy {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val binary = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath
         val dir = File(context.cacheDir, "ffmpeg-fixtures").apply { mkdirs() }
