@@ -70,6 +70,7 @@ object Libs {
 
     object Okio {
         const val core = "com.squareup.okio:okio:${Versions.okio}"
+        const val fakeFileSystem = "com.squareup.okio:okio-fakefilesystem:${Versions.okio}"
     }
 
     object SqlDelight {
