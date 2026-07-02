@@ -1,0 +1,54 @@
+-- A bucket is a folder. Hierarchy via the self-referencing parentId (root buckets have NULL).
+-- Identified externally by its uri (UNIQUE); id is a generated surrogate key.
+CREATE TABLE bucket (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    parentId  INTEGER REFERENCES bucket(id) ON DELETE CASCADE,
+    uri       TEXT    NOT NULL UNIQUE,
+    name      TEXT    NOT NULL,
+    aliasName TEXT,
+    deleted   INTEGER NOT NULL DEFAULT 0,   -- soft-delete tombstone (0/1)
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+CREATE INDEX bucket_parentId ON bucket(parentId);
+
+insertBucket:
+INSERT INTO bucket(parentId, uri, name, aliasName, deleted, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, 0, ?, ?);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+-- Full update (also un-deletes: used by upsert when a previously-removed folder reappears).
+updateBucket:
+UPDATE bucket SET parentId = ?, name = ?, aliasName = ?, deleted = 0, updatedAt = ?
+WHERE id = ?;
+
+setBucketAlias:
+UPDATE bucket SET aliasName = ?, updatedAt = ? WHERE id = ?;
+
+setBucketDeleted:
+UPDATE bucket SET deleted = ?, updatedAt = ? WHERE id = ?;
+
+hardDeleteBucket:
+DELETE FROM bucket WHERE id = ?;
+
+findBucketById:
+SELECT * FROM bucket WHERE id = ? AND deleted = 0;
+
+findBucketByUri:
+SELECT * FROM bucket WHERE uri = ? AND deleted = 0;
+
+-- Includes tombstones — upsert needs to find a soft-deleted row to revive by uri.
+findBucketByUriIncludingDeleted:
+SELECT * FROM bucket WHERE uri = ?;
+
+childBuckets:
+SELECT * FROM bucket WHERE parentId = ? AND deleted = 0 ORDER BY name;
+
+rootBuckets:
+SELECT * FROM bucket WHERE parentId IS NULL AND deleted = 0 ORDER BY name;
+
+allBuckets:
+SELECT * FROM bucket WHERE deleted = 0 ORDER BY name;

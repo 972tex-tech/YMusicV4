@@ -1,0 +1,101 @@
+-- A media item is a single audio/video file with its extracted metadata.
+-- Identified externally by its uri (UNIQUE); id is a generated surrogate key.
+-- fileSize + lastModified are the cheap change/move fingerprint (see findDeletedByFingerprint).
+CREATE TABLE mediaItem (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Nullable: a NULL bucketId is an orphan item (no containing bucket yet). A single-file scan
+    -- inserts an orphan; a later folder scan adopts it (sets bucketId).
+    bucketId             INTEGER REFERENCES bucket(id) ON DELETE CASCADE,
+    uri                  TEXT    NOT NULL UNIQUE,
+    title                TEXT    NOT NULL,
+    mimeType             TEXT    NOT NULL,
+    artist               TEXT,
+    album                TEXT,
+    trackNumber          INTEGER,
+    year                 INTEGER,
+    durationMs           INTEGER,
+    audioCodec           TEXT,
+    videoCodec           TEXT,
+    subtitleCodec        TEXT,
+    bitrate              INTEGER,
+    width                INTEGER,
+    height               INTEGER,
+    thumbnailStreamIndex INTEGER,
+    youtubeVid           TEXT,
+    youtubeItags         TEXT,
+    fileSize             INTEGER NOT NULL,
+    lastModified         INTEGER NOT NULL,
+    deleted              INTEGER NOT NULL DEFAULT 0,
+    createdAt            INTEGER NOT NULL,
+    updatedAt            INTEGER NOT NULL
+);
+
+CREATE INDEX mediaItem_bucketId  ON mediaItem(bucketId);
+CREATE INDEX mediaItem_fileSize  ON mediaItem(fileSize);
+CREATE INDEX mediaItem_updatedAt ON mediaItem(updatedAt);
+
+insertItem:
+INSERT INTO mediaItem(
+    bucketId, uri, title, mimeType, artist, album, trackNumber, year, durationMs,
+    audioCodec, videoCodec, subtitleCodec, bitrate, width, height, thumbnailStreamIndex,
+    youtubeVid, youtubeItags, fileSize, lastModified, deleted, createdAt, updatedAt
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+-- Full metadata update by id, also un-deletes. Used for the plain "changed in place" path AND
+-- the move-in-place path (the row id is preserved, so playlist FKs survive).
+-- bucketId uses COALESCE(?, bucketId): a non-null value adopts the item into that bucket (a folder
+-- scan claiming an orphan), while NULL preserves the current bucket — so a single-file scan can never
+-- un-adopt (re-orphan) an already-filed item.
+updateItem:
+UPDATE mediaItem SET
+    bucketId = COALESCE(:bucketId, bucketId), uri = ?, title = ?, mimeType = ?, artist = ?, album = ?, trackNumber = ?,
+    year = ?, durationMs = ?, audioCodec = ?, videoCodec = ?, subtitleCodec = ?, bitrate = ?,
+    width = ?, height = ?, thumbnailStreamIndex = ?, youtubeVid = ?, youtubeItags = ?,
+    fileSize = ?, lastModified = ?, deleted = 0, updatedAt = ?
+WHERE id = ?;
+
+setItemDeleted:
+UPDATE mediaItem SET deleted = 1, updatedAt = ? WHERE id = ?;
+
+setItemsInBucketDeleted:
+UPDATE mediaItem SET deleted = 1, updatedAt = ? WHERE bucketId = ? AND deleted = 0;
+
+-- Hard-purge tombstones older than a cutoff (cascades to playlistItem rows). Returns rows removed.
+purgeDeleted:
+DELETE FROM mediaItem WHERE deleted = 1 AND updatedAt < ?;
+
+-- Hard-delete a single item now (cascades to its playlistItem rows).
+hardDeleteItem:
+DELETE FROM mediaItem WHERE id = ?;
+
+findItemById:
+SELECT * FROM mediaItem WHERE id = ? AND deleted = 0;
+
+findItemByUri:
+SELECT * FROM mediaItem WHERE uri = ? AND deleted = 0;
+
+findItemByUriIncludingDeleted:
+SELECT * FROM mediaItem WHERE uri = ?;
+
+-- Resolve a "@fileSize:durationSec" playlist code back to an item — duration compared in whole
+-- seconds (matches the code's (durationMs ?: 0) / 1000, absorbing sub-second wobble). May match
+-- more than one item on a collision; callers take the first.
+findItemByFingerprint:
+SELECT * FROM mediaItem
+WHERE fileSize = ? AND COALESCE(durationMs, 0) / 1000 = ? AND deleted = 0;
+
+itemsInBucket:
+SELECT * FROM mediaItem WHERE bucketId = ? AND deleted = 0 ORDER BY title;
+
+-- Orphan items (no bucket yet) — not under any folder.
+orphanItems:
+SELECT * FROM mediaItem WHERE bucketId IS NULL AND deleted = 0 ORDER BY title;
+
+itemsByIds:
+SELECT * FROM mediaItem WHERE id IN ? AND deleted = 0;
+
+findItemByVideoId:
+SELECT * FROM mediaItem WHERE youtubeVid = ? AND deleted = 0;

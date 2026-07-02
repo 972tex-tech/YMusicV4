@@ -1,0 +1,29 @@
+CREATE TABLE playlist (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT    NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+-- Seed the two reserved playlists at schema creation (unlabeled statements run inside
+-- Schema.create). AUTOINCREMENT hands out positive ids for user playlists, so 0/-1 never collide.
+INSERT INTO playlist(id, name, createdAt, updatedAt) VALUES (0, 'Favorite', 0, 0);
+INSERT INTO playlist(id, name, createdAt, updatedAt) VALUES (-1, 'Recent play', 0, 0);
+
+insertPlaylist:
+INSERT INTO playlist(name, createdAt, updatedAt) VALUES (?, ?, ?);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+renamePlaylist:
+UPDATE playlist SET name = ?, updatedAt = ? WHERE id = ?;
+
+deletePlaylist:
+DELETE FROM playlist WHERE id = ?;
+
+findPlaylist:
+SELECT * FROM playlist WHERE id = ?;
+
+allPlaylists:
+SELECT * FROM playlist ORDER BY id;

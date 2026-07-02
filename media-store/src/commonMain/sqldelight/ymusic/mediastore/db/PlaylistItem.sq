@@ -1,0 +1,29 @@
+-- Playlist membership, content-addressed: a row references media by `code` (a stable content
+-- fingerprint — youtubeVid or "@fileSize:durationSec"), not by a row id, so moves/renames/rescans
+-- never break a playlist. Identity is (playlistId, code); there is no surrogate id.
+-- sortKey orders items within the playlist (append = a monotonic clock value; reorder rewrites it).
+CREATE TABLE playlistItem (
+    playlistId INTEGER NOT NULL REFERENCES playlist(id) ON DELETE CASCADE,
+    code       TEXT    NOT NULL,
+    sortKey    INTEGER NOT NULL,
+    addedAt    INTEGER NOT NULL,
+    PRIMARY KEY (playlistId, code)
+);
+
+CREATE INDEX playlistItem_order ON playlistItem(playlistId, sortKey);
+
+-- Append; a duplicate (playlistId, code) is ignored via the primary key.
+addPlaylistItem:
+INSERT OR IGNORE INTO playlistItem(playlistId, code, sortKey, addedAt) VALUES (?, ?, ?, ?);
+
+removePlaylistItem:
+DELETE FROM playlistItem WHERE playlistId = ? AND code = ?;
+
+setSortKey:
+UPDATE playlistItem SET sortKey = ? WHERE playlistId = ? AND code = ?;
+
+playlistItemsOrdered:
+SELECT * FROM playlistItem WHERE playlistId = ? ORDER BY sortKey;
+
+isFavorite:
+SELECT EXISTS(SELECT 1 FROM playlistItem WHERE playlistId = 0 AND code = ?);

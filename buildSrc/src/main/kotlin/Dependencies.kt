@@ -12,6 +12,7 @@ object Versions {
     const val composeMultiplatform = "1.7.1"
     const val okhttp = "5.4.0"
     const val okio = "3.17.0"
+    const val sqldelight = "2.3.2"
 
     // AndroidX
     const val coreKtx = "1.15.0"
@@ -69,6 +70,15 @@ object Libs {
 
     object Okio {
         const val core = "com.squareup.okio:okio:${Versions.okio}"
+        const val fakeFileSystem = "com.squareup.okio:okio-fakefilesystem:${Versions.okio}"
+    }
+
+    object SqlDelight {
+        const val runtime = "app.cash.sqldelight:runtime:${Versions.sqldelight}"
+        const val coroutinesExtensions = "app.cash.sqldelight:coroutines-extensions:${Versions.sqldelight}"
+        const val sqliteDriver = "app.cash.sqldelight:sqlite-driver:${Versions.sqldelight}"     // JVM (JDBC)
+        const val androidDriver = "app.cash.sqldelight:android-driver:${Versions.sqldelight}"
+        const val nativeDriver = "app.cash.sqldelight:native-driver:${Versions.sqldelight}"     // sqliter
     }
 
     object Doist {

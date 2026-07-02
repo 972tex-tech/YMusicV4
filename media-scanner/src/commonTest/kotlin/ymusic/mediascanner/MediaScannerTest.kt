@@ -1,0 +1,278 @@
+package ymusic.mediascanner
+
+import app.cash.sqldelight.db.SqlDriver
+import kmpcommon.uri.Uri
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
+import ymusic.mediascanner.MediaScanner.Progress
+import ymusic.mediastore.BetterMediaStore
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class MediaScannerTest {
+
+    private lateinit var driver: SqlDriver
+    private lateinit var store: BetterMediaStore
+
+    @BeforeTest
+    fun setup() {
+        driver = newTestDriver()
+        store = BetterMediaStore.create(driver)
+    }
+
+    @AfterTest
+    fun teardown() {
+        driver.close()
+    }
+
+    private fun FakeFileSystem.file(path: String, size: Int) {
+        val p = path.toPath()
+        p.parent?.let { createDirectories(it) }
+        write(p) { write(ByteArray(size)) }
+    }
+
+    private fun scanner(fs: FakeFileSystem, failOn: Set<String> = emptySet()) =
+        MediaScanner.create(store, FileSystemDocumentsProvider(fs), FakeMetadataExtractor(failOn))
+
+    private fun uri(s: String) = Uri.parse(s)
+    private fun leaf(u: Uri) = u.toString().substringAfterLast('/')
+
+    @Test
+    fun scans_tree_and_indexes_media() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/a.mp3", 100)
+            file("/music/rock/b.flac", 200)
+        }
+        val progress = scanner(fs).scan(uri("file:///music")).last()
+
+        assertEquals(2, progress.added)
+        assertTrue(progress.errors.isEmpty())
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        val rock = assertNotNull(store.findBucketByUri(uri("file:///music/rock")))
+        assertEquals(music.id, rock.parentId, "rock is a child of music")
+        assertEquals(listOf("a.mp3"), store.itemsInBucket(music.id).map { leaf(it.uri) })
+        assertEquals(listOf("b.flac"), store.itemsInBucket(rock.id).map { leaf(it.uri) })
+    }
+
+    @Test
+    fun ignores_non_media_and_dotfolders() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/a.mp3", 100)
+            file("/music/notes.txt", 10)
+            file("/music/.hidden/secret.mp3", 50)
+        }
+        scanner(fs).scan(uri("file:///music")).last()
+
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        assertEquals(listOf("a.mp3"), store.itemsInBucket(music.id).map { leaf(it.uri) })
+        assertNull(store.findBucketByUri(uri("file:///music/.hidden")), "dotfolder not scanned")
+    }
+
+    @Test
+    fun rescan_unchanged_skips() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/a.mp3", 100)
+            file("/music/b.mp3", 200)
+        }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+
+        val second = s.scan(uri("file:///music")).last()
+        assertEquals(0, second.added)
+        assertEquals(0, second.updated)
+        assertEquals(2, second.scanned)
+    }
+
+    @Test
+    fun rescan_soft_deletes_vanished() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/a.mp3", 100) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+        assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+
+        fs.delete("/music/a.mp3".toPath())
+        val second = s.scan(uri("file:///music")).last()
+        assertEquals(1, second.deleted)
+        assertNull(store.findItemByUri(uri("file:///music/a.mp3")))
+    }
+
+    @Test
+    fun folder_rescan_of_a_rename_replaces_the_row() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/song.mp3", 100) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+        val originalId = assertNotNull(store.findItemByUri(uri("file:///music/song.mp3"))).id
+
+        fs.delete("/music/song.mp3".toPath())
+        fs.file("/music/renamed.mp3", 100)
+        s.scan(uri("file:///music")).last()
+
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        val items = store.itemsInBucket(music.id)
+        assertEquals(listOf("renamed.mp3"), items.map { leaf(it.uri) }, "one live item")
+        assertNull(store.findItemByUri(uri("file:///music/song.mp3")), "old uri gone")
+        // No move-in-place any more: a rename is just a fresh row. Playlist continuity is handled by
+        // the content code (see media-store's favorite_follows_content_code_across_a_move).
+        assertTrue(items[0].id != originalId, "rename produces a new row")
+    }
+
+    @Test
+    fun scanning_a_subfolder_directly_keeps_its_parent() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/rock/b.flac", 1) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last() // full scan: rock's parent = music
+
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        val rockBefore = assertNotNull(store.findBucketByUri(uri("file:///music/rock")))
+        assertEquals(music.id, rockBefore.parentId)
+
+        // Scan the sub-folder directly — its parent must NOT be reset to null.
+        s.scan(uri("file:///music/rock")).last()
+
+        val rockAfter = assertNotNull(store.findBucketByUri(uri("file:///music/rock")))
+        assertEquals(music.id, rockAfter.parentId, "parent preserved when scanned as a root")
+    }
+
+    // ---- single-file scan ----
+
+    @Test
+    fun scan_single_file_indexes_it_as_orphan() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/a.mp3", 10) }
+        val progress = scanner(fs).scan(uri("file:///music/a.mp3")).last()
+
+        assertEquals(1, progress.added)
+        val item = assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+        assertNull(item.bucketId, "orphan until a folder scan adopts it")
+    }
+
+    @Test
+    fun scan_single_non_media_file_does_nothing() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/notes.txt", 5) }
+        val progress = scanner(fs).scan(uri("file:///music/notes.txt")).last()
+
+        assertEquals(0, progress.added)
+        assertNull(store.findItemByUri(uri("file:///music/notes.txt")))
+    }
+
+    @Test
+    fun folder_scan_adopts_a_previously_orphaned_file() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/a.mp3", 10) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music/a.mp3")).last()
+        val orphanId = assertNotNull(store.findItemByUri(uri("file:///music/a.mp3"))).id
+
+        s.scan(uri("file:///music")).last() // now scan the folder
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        val item = assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+        assertEquals(orphanId, item.id, "adopted, not duplicated")
+        assertEquals(music.id, item.bucketId, "parent assigned by the folder scan")
+        assertTrue(store.itemsInBucket(null).isEmpty(), "no longer an orphan")
+    }
+
+    @Test
+    fun single_file_scan_of_a_changed_file_keeps_its_parent() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/a.mp3", 10) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last() // a.mp3 filed under music
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        val id = assertNotNull(store.findItemByUri(uri("file:///music/a.mp3"))).id
+
+        fs.file("/music/a.mp3", 20) // change it so the single-file scan goes through the update path
+        s.scan(uri("file:///music/a.mp3")).last()
+
+        val after = assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+        assertEquals(id, after.id, "not duplicated")
+        assertEquals(music.id, after.bucketId, "null bucket did not re-orphan the adopted item")
+    }
+
+    @Test
+    fun rescan_soft_deletes_deep_subtree() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/rock/live/a.mp3", 1)
+            file("/music/rock/live/b.mp3", 2)
+        }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+        val live = assertNotNull(store.findBucketByUri(uri("file:///music/rock/live")))
+        assertEquals(2, store.itemsInBucket(live.id).size)
+
+        fs.deleteRecursively("/music/rock".toPath()) // remove the whole subtree
+        s.scan(uri("file:///music")).last()
+
+        assertNull(store.findBucketByUri(uri("file:///music/rock")))
+        assertNull(store.findBucketByUri(uri("file:///music/rock/live")), "grandchild bucket gone")
+        assertNull(store.findItemByUri(uri("file:///music/rock/live/a.mp3")), "grandchild item gone")
+    }
+
+    @Test
+    fun scans_many_files_concurrently_without_loss() = runTest {
+        // 60 files across 6 folders, scanned by the default 4-worker pool. Before the store
+        // serialized DB access this raced the single JDBC connection and dropped writes.
+        val fs = FakeFileSystem()
+        var size = 0
+        for (b in 0 until 6) for (f in 0 until 10) fs.file("/music/b$b/f$f.mp3", ++size)
+
+        val progress = scanner(fs).scan(uri("file:///music")).last()
+
+        assertEquals(60, progress.added)
+        assertTrue(progress.errors.isEmpty())
+        for (b in 0 until 6) {
+            val bucket = assertNotNull(store.findBucketByUri(uri("file:///music/b$b")))
+            assertEquals(10, store.itemsInBucket(bucket.id).size, "bucket b$b indexed all 10 files")
+        }
+    }
+
+    @Test
+    fun per_file_error_is_counted_not_fatal() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/good.mp3", 100)
+            file("/music/bad.mp3", 100)
+        }
+        val progress = scanner(fs, failOn = setOf("bad.mp3")).scan(uri("file:///music")).last()
+
+        assertEquals(1, progress.added)
+        assertEquals(1, progress.errors.size)
+        assertEquals("file:///music/bad.mp3", progress.errors.single().uri.toString())
+        val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
+        assertEquals(listOf("good.mp3"), store.itemsInBucket(music.id).map { leaf(it.uri) })
+    }
+
+    @Test
+    fun noop_provider_emits_empty_and_completes() = runTest {
+        val scanner = MediaScanner.create(store, NoopDocumentsProvider, NoopMetadataExtractor)
+        val progress = scanner.scan(uri("file:///anything")).last()
+
+        assertEquals(Progress(), progress)
+        assertTrue(store.allBuckets().isEmpty())
+    }
+
+    @Test
+    fun scan_is_cancelable() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val blockForever = CompletableDeferred<List<DocumentInfo>>()
+        val provider = object : DocumentsProvider {
+            override suspend fun queryDocument(uri: Uri) = DocumentInfo.Folder(uri, "root")
+            override suspend fun listChildren(folderUri: Uri): List<DocumentInfo> {
+                entered.complete(Unit)
+                return blockForever.await() // never completes → the worker parks here
+            }
+        }
+        val scanner = MediaScanner.create(store, provider, FakeMetadataExtractor())
+
+        val job = launch { scanner.scan(uri("file:///x")).collect() }
+        entered.await()        // wait until a worker is suspended inside the scan
+        job.cancelAndJoin()    // must return promptly
+        assertTrue(job.isCancelled)
+    }
+}
