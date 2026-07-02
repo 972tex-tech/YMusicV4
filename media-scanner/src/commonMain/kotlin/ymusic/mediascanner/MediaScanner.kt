@@ -20,8 +20,12 @@ interface MediaScanner {
         val added: Int = 0,
         val updated: Int = 0,
         val deleted: Int = 0,
-        val errors: Int = 0,
+        /** Per-node failures that didn't stop the scan — each keeps the uri that failed and its cause. */
+        val errors: List<ScanError> = emptyList(),
     )
+
+    /** A recoverable failure while scanning [uri]; [cause] is the exception that was caught, not dropped. */
+    data class ScanError(val uri: Uri, val cause: Throwable)
 
     /**
      * Scan [rootUri] into the store, emitting running [Progress]:
@@ -30,8 +34,8 @@ interface MediaScanner {
      *    scan adopts it — re-scanning it never duplicates it or re-orphans an already-filed item;
      *  - anything else (unreadable / not media / a no-op provider) emits one empty [Progress].
      *
-     * Per-file/folder failures are counted in [Progress.errors] and don't stop the scan; a fatal
-     * failure and cancellation propagate to the collector.
+     * Per-file/folder failures are collected in [Progress.errors] (each with its uri and cause) and
+     * don't stop the scan; a fatal failure and cancellation propagate to the collector.
      */
     fun scan(rootUri: Uri): Flow<Progress>
 

@@ -19,6 +19,7 @@ import ymusic.mediascanner.DocumentsProvider
 import ymusic.mediascanner.MediaMetadataExtractor
 import ymusic.mediascanner.MediaScanner
 import ymusic.mediascanner.MediaScanner.Progress
+import ymusic.mediascanner.MediaScanner.ScanError
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.BucketDraft
 
@@ -101,7 +102,7 @@ internal class MediaScannerEngine(
             throw e
         } catch (e: Throwable) {
             currentCoroutineContext().ensureActive()
-            progress.update { it.copy(errors = it.errors + 1) }
+            progress.update { it.copy(errors = it.errors + ScanError(file.uri, e)) }
         }
     }
 
@@ -139,7 +140,7 @@ internal class MediaScannerEngine(
                 throw e
             } catch (e: Throwable) {
                 ensureActive() // don't swallow cancellation; other Throwables are recoverable
-                progress.update { it.copy(errors = it.errors + 1) }
+                progress.update { it.copy(errors = it.errors + ScanError(folder.uri, e)) }
             }
         }
     }
@@ -188,7 +189,7 @@ internal class MediaScannerEngine(
                     throw e
                 } catch (e: Throwable) {
                     ensureActive()
-                    progress.update { it.copy(errors = it.errors + 1) }
+                    progress.update { it.copy(errors = it.errors + ScanError(file.uri, e)) }
                 }
             }
         }

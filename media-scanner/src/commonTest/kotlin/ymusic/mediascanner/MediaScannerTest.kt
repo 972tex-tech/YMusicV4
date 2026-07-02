@@ -57,7 +57,7 @@ class MediaScannerTest {
         val progress = scanner(fs).scan(uri("file:///music")).last()
 
         assertEquals(2, progress.added)
-        assertEquals(0, progress.errors)
+        assertTrue(progress.errors.isEmpty())
         val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
         val rock = assertNotNull(store.findBucketByUri(uri("file:///music/rock")))
         assertEquals(music.id, rock.parentId, "rock is a child of music")
@@ -226,7 +226,7 @@ class MediaScannerTest {
         val progress = scanner(fs).scan(uri("file:///music")).last()
 
         assertEquals(60, progress.added)
-        assertEquals(0, progress.errors)
+        assertTrue(progress.errors.isEmpty())
         for (b in 0 until 6) {
             val bucket = assertNotNull(store.findBucketByUri(uri("file:///music/b$b")))
             assertEquals(10, store.itemsInBucket(bucket.id).size, "bucket b$b indexed all 10 files")
@@ -242,7 +242,8 @@ class MediaScannerTest {
         val progress = scanner(fs, failOn = setOf("bad.mp3")).scan(uri("file:///music")).last()
 
         assertEquals(1, progress.added)
-        assertEquals(1, progress.errors)
+        assertEquals(1, progress.errors.size)
+        assertEquals("file:///music/bad.mp3", progress.errors.single().uri.toString())
         val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
         assertEquals(listOf("good.mp3"), store.itemsInBucket(music.id).map { leaf(it.uri) })
     }
