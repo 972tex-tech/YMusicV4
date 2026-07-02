@@ -24,10 +24,14 @@ interface MediaScanner {
     )
 
     /**
-     * Recursively scan the tree rooted at [rootUri] into the store, emitting running [Progress].
+     * Scan [rootUri] into the store, emitting running [Progress]:
+     *  - a **folder** is reconciled recursively (new/changed files upserted, vanished ones soft-deleted);
+     *  - a single **media file** is indexed on its own as an orphan (no bucket) until a later folder
+     *    scan adopts it — re-scanning it never duplicates it or re-orphans an already-filed item;
+     *  - anything else (unreadable / not media / a no-op provider) emits one empty [Progress].
+     *
      * Per-file/folder failures are counted in [Progress.errors] and don't stop the scan; a fatal
-     * failure and cancellation propagate to the collector. If [rootUri] isn't a readable folder
-     * (e.g. on a no-op provider), the flow emits a single empty [Progress] and completes.
+     * failure and cancellation propagate to the collector.
      */
     fun scan(rootUri: Uri): Flow<Progress>
 

@@ -41,9 +41,11 @@ internal fun MediaFileMetadata.toMediaItemDraft(file: DocumentInfo.File): MediaI
         }
     }.maxOrNull()
 
-    val videoId = firstTag { it.composer }
-        ?.let { videoIdFromComposer.find(it)?.groupValues?.get(1) }
-        ?: videoIdFromFileName.find(file.name)?.groupValues?.get(1)
+    // Scan every tag bag's composer for the first that actually carries a YouTube id — not merely
+    // the first non-blank composer (a later bag may hold the id when an earlier one doesn't).
+    val videoId = tagBags.firstNotNullOfOrNull { bag ->
+        bag.composer?.let { videoIdFromComposer.find(it)?.groupValues?.get(1) }
+    } ?: videoIdFromFileName.find(file.name)?.groupValues?.get(1)
 
     val mimeType = getMimeType().takeIf { it.isNotBlank() }
         ?: file.mimeType.takeIf { it.isNotBlank() }

@@ -1,10 +1,12 @@
 package ymusic.mediascanner
 
 import kmpcommon.uri.Uri
+import kmpcommon.uri.UriBuilder
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.FileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import ymusic.mediascanner.internal.guessMimeType
 
@@ -19,6 +21,7 @@ class FileSystemDocumentsProvider(
 ) : DocumentsProvider {
 
     override suspend fun queryDocument(uri: Uri): DocumentInfo = withContext(io) {
+        if (!uri.scheme.contentEquals("file")) return@withContext DocumentInfo.Missing(uri)
         val path = uri.path.toString().toPath()
         val md = fileSystem.metadataOrNull(path) ?: return@withContext DocumentInfo.Missing(uri)
         when {
@@ -33,11 +36,18 @@ class FileSystemDocumentsProvider(
         }
     }
 
+    // Canonical file uri for a path: file:///<path>, matching Android's Uri.fromFile — an EMPTY
+    // authority (rendered as the // in file://) rather than a null one (which yields file:/<path>).
+    // Segments are percent-encoded (spaces, '#', '%', …).
+    private fun fileUri(path: Path): Uri =
+        UriBuilder().scheme("file").authority("").path(path.toString()).build()
+
     override suspend fun listChildren(folderUri: Uri): List<DocumentInfo> = withContext(io) {
+        if (!folderUri.scheme.contentEquals("file")) return@withContext emptyList()
         val dir = folderUri.path.toString().toPath()
         val children = runCatching { fileSystem.list(dir) }.getOrNull() ?: return@withContext emptyList()
         children.map { child ->
-            val childUri = Uri.parse("file://$child")
+            val childUri = fileUri(child)
             val md = fileSystem.metadataOrNull(child)
             when {
                 md == null -> DocumentInfo.Missing(childUri)
