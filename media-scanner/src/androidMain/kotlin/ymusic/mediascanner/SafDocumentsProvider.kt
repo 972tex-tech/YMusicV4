@@ -85,7 +85,8 @@ class SafDocumentsProvider(
     }.getOrNull() == PackageManager.PERMISSION_GRANTED
 
     private fun fileDocument(uri: Uri, file: File): DocumentInfo = when {
-        !file.canRead() -> DocumentInfo.Missing(uri)
+        // Unreadable: it's a permission problem only if the file is actually there; otherwise it's gone.
+        !file.canRead() -> DocumentInfo.Missing(uri, permissionDenied = file.exists())
         file.isDirectory -> DocumentInfo.Folder(uri, name = file.name)
         else -> DocumentInfo.File(
             uri = uri,
