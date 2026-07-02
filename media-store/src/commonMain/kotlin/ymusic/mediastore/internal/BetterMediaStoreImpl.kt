@@ -109,23 +109,12 @@ internal class BetterMediaStoreImpl(
                 val uri = draft.uri.toString()
                 val ts = now()
                 val existingByUri = itemQ.findItemByUriIncludingDeleted(uri).executeAsOneOrNull()
-                val id = when {
-                    existingByUri != null -> {
-                        updateItem(bucketId, draft, ts, existingByUri.id)
-                        existingByUri.id
-                    }
-                    else -> {
-                        // Move detection: a soft-deleted twin in the same bucket by fileSize.
-                        val moved = itemQ.findDeletedByFingerprint(bucketId, draft.fileSize)
-                            .executeAsList().firstOrNull()
-                        if (moved != null) {
-                            updateItem(bucketId, draft, ts, moved.id)
-                            moved.id
-                        } else {
-                            insertItem(bucketId, draft, ts)
-                            itemQ.lastInsertRowId().executeAsOne()
-                        }
-                    }
+                val id = if (existingByUri != null) {
+                    updateItem(bucketId, draft, ts, existingByUri.id)
+                    existingByUri.id
+                } else {
+                    insertItem(bucketId, draft, ts)
+                    itemQ.lastInsertRowId().executeAsOne()
                 }
                 itemQ.findItemById(id).executeAsOne().toModel()
             }
@@ -234,39 +223,32 @@ internal class BetterMediaStoreImpl(
         playlistQ.allPlaylists().executeAsList().map { it.toModel() }
     }
 
-    override suspend fun addToPlaylist(playlistId: Long, itemIds: List<Long>): Unit = withContext(io) {
-        if (itemIds.isEmpty()) return@withContext
-        db.transaction {
-            val existing = plItemQ.playlistMediaItemIds(playlistId).executeAsList().toHashSet()
-            var pos = plItemQ.maxPosition(playlistId).executeAsOne() // COALESCE(MAX(position), -1)
-            val ts = now()
-            for (itemId in itemIds) {
-                if (!existing.add(itemId)) continue // already a member (also de-dups the input list)
-                pos += 1
-                plItemQ.insertPlaylistItem(playlistId, itemId, pos, ts)
+    // Monotonic sortKey source for appends: seeded from the wall clock (so it exceeds any persisted
+    // key after a restart) and strictly increasing within the process. Safe without a lock because
+    // all store operations run on the single confinement thread (storeDispatcher).
+    private var lastSortKey = 0L
+
+    override suspend fun addToPlaylist(playlistId: Long, items: List<MediaStoreItem>): Unit =
+        withContext(io) {
+            if (items.isEmpty()) return@withContext
+            db.transaction {
+                val ts = now()
+                for (item in items) {
+                    lastSortKey = maxOf(now(), lastSortKey + 1)
+                    plItemQ.addPlaylistItem(playlistId, item.playlistCode, lastSortKey, ts)
+                }
             }
         }
+
+    override suspend fun removeFromPlaylist(playlistId: Long, code: String): Unit = withContext(io) {
+        plItemQ.removePlaylistItem(playlistId, code)
     }
 
-    override suspend fun removeFromPlaylist(playlistItemId: Long): Unit = withContext(io) {
-        plItemQ.deletePlaylistItem(playlistItemId)
-    }
-
-    override suspend fun movePlaylistItem(playlistItemId: Long, toPosition: Int): Unit =
+    override suspend fun reorderPlaylist(playlistId: Long, orderedCodes: List<String>): Unit =
         withContext(io) {
             db.transaction {
-                val row = plItemQ.findPlaylistItem(playlistItemId).executeAsOneOrNull()
-                    ?: return@transaction
-                // Reorder within the item's playlist, then rewrite contiguous positions 0..n-1.
-                val ordered = plItemQ.playlistItemsOrdered(row.playlistId).executeAsList()
-                val moving = ordered.first { it.id == playlistItemId }
-                val without = ordered.filter { it.id != playlistItemId }
-                val target = toPosition.coerceIn(0, without.size)
-                val reordered = without.toMutableList().apply { add(target, moving) }
-                reordered.forEachIndexed { index, item ->
-                    if (item.position != index.toLong()) {
-                        plItemQ.updatePlaylistItemPosition(index.toLong(), item.id)
-                    }
+                orderedCodes.forEachIndexed { index, code ->
+                    plItemQ.setSortKey(index.toLong(), playlistId, code)
                 }
             }
         }
@@ -277,24 +259,32 @@ internal class BetterMediaStoreImpl(
 
     override suspend fun playlistItemDetails(playlistId: Long): List<PlaylistItemDetail> =
         withContext(io) {
-            val rows = plItemQ.playlistItemsOrdered(playlistId).executeAsList()
-            if (rows.isEmpty()) return@withContext emptyList()
-            val itemsById = itemQ.itemsByIds(rows.map { it.mediaItemId })
-                .executeAsList().associateBy { it.id }
-            rows.mapNotNull { row ->
-                val item = itemsById[row.mediaItemId] ?: return@mapNotNull null
+            plItemQ.playlistItemsOrdered(playlistId).executeAsList().mapNotNull { row ->
+                val item = resolveCode(row.code) ?: return@mapNotNull null
                 PlaylistItemDetail(
-                    playlistItemId = row.id,
                     playlistId = row.playlistId,
-                    position = row.position.toInt(),
+                    code = row.code,
                     addedAt = row.addedAt,
-                    mediaItem = item.toModel(),
+                    mediaItem = item,
                 )
             }
         }
 
-    override suspend fun isFavorite(itemId: Long): Boolean = withContext(io) {
-        plItemQ.isFavorite(itemId).executeAsOne()
+    // Resolve a playlist code to the item it points at — inverse of MediaStoreItem.playlistCode.
+    // A videoId code → findItemByVideoId; a "@fileSize:durationSec" code → findItemByFingerprint.
+    private fun resolveCode(code: String): MediaStoreItem? {
+        if (code.startsWith("@")) {
+            val sep = code.indexOf(':')
+            if (sep < 0) return null
+            val fileSize = code.substring(1, sep).toLongOrNull() ?: return null
+            val durationSec = code.substring(sep + 1).toLongOrNull() ?: return null
+            return itemQ.findItemByFingerprint(fileSize, durationSec).executeAsList().firstOrNull()?.toModel()
+        }
+        return itemQ.findItemByVideoId(code).executeAsList().firstOrNull()?.toModel()
+    }
+
+    override suspend fun isFavorite(item: MediaStoreItem): Boolean = withContext(io) {
+        plItemQ.isFavorite(item.playlistCode).executeAsOne()
     }
 
     // ---- reactive ----

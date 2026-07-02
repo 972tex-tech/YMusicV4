@@ -81,19 +81,19 @@ interface BetterMediaStore {
     suspend fun deletePlaylist(playlistId: Long)
     suspend fun playlists(): List<Playlist>
 
-    /** Append the given items to the end of the playlist (existing memberships are ignored). */
-    suspend fun addToPlaylist(playlistId: Long, itemIds: List<Long>)
-    suspend fun removeFromPlaylist(playlistItemId: Long)
+    /** Append items to the end of the playlist by their [MediaStoreItem.playlistCode] (existing members ignored). */
+    suspend fun addToPlaylist(playlistId: Long, items: List<MediaStoreItem>)
+    suspend fun removeFromPlaylist(playlistId: Long, code: String)
 
-    /** Move a membership row to [toPosition], shifting the others to keep positions contiguous. */
-    suspend fun movePlaylistItem(playlistItemId: Long, toPosition: Int)
+    /** Replace the playlist's order with [orderedCodes] (the codes already in it, in the new order). */
+    suspend fun reorderPlaylist(playlistId: Long, orderedCodes: List<String>)
 
     suspend fun playlistItems(playlistId: Long): List<PlaylistItem>
 
-    /** Playlist rows joined with their (non-deleted) media items, in playlist order. */
+    /** Playlist rows joined with the (non-deleted) media item each [PlaylistItem.code] resolves to, in order. */
     suspend fun playlistItemDetails(playlistId: Long): List<PlaylistItemDetail>
 
-    suspend fun isFavorite(itemId: Long): Boolean
+    suspend fun isFavorite(item: MediaStoreItem): Boolean
 
     // ---- reactive ----
 

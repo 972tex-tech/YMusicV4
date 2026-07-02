@@ -153,19 +153,6 @@ class MediaStoreTest {
     }
 
     @Test
-    fun upsertItem_detects_move_by_fileSize() = runTest {
-        val b = bucket("file:///music")
-        val original = item(b.id, "file:///music/a.mp3", fileSize = 4242, title = "Song")
-        store.deleteItem(original.id) // scanner marks the old path missing
-
-        // Same file reappears under a new name/uri, same size, same bucket.
-        val moved = item(b.id, "file:///music/renamed.mp3", fileSize = 4242, title = "Song")
-        assertEquals(original.id, moved.id, "moved file reuses the row id")
-        assertEquals("file:///music/renamed.mp3", moved.uri.toString())
-        assertNull(store.findItemByUri(Uri.parse("file:///music/a.mp3")))
-    }
-
-    @Test
     fun upsertItem_inserts_new_when_no_fingerprint_match() = runTest {
         val b = bucket("file:///music")
         val a = item(b.id, "file:///music/a.mp3", fileSize = 1)
@@ -250,53 +237,52 @@ class MediaStoreTest {
         val i2 = item(b.id, "file:///music/2.mp3", fileSize = 2)
         val p = store.createPlaylist("P")
 
-        store.addToPlaylist(p.id, listOf(i1.id, i2.id, i1.id)) // duplicate i1 ignored
-        val items = store.playlistItems(p.id)
-        assertEquals(listOf(i1.id, i2.id), items.map { it.mediaItemId })
-        assertEquals(listOf(0, 1), items.map { it.position })
+        store.addToPlaylist(p.id, listOf(i1, i2, i1)) // duplicate i1 ignored
+        assertEquals(listOf(i1.playlistCode, i2.playlistCode), store.playlistItems(p.id).map { it.code })
 
-        store.addToPlaylist(p.id, listOf(i2.id)) // already present -> no change
+        store.addToPlaylist(p.id, listOf(i2)) // already present -> no change
         assertEquals(2, store.playlistItems(p.id).size)
     }
 
     @Test
-    fun movePlaylistItem_reorders_contiguously() = runTest {
+    fun reorderPlaylist_sets_the_new_order() = runTest {
         val b = bucket("file:///music")
-        val ids = (1..3).map { item(b.id, "file:///music/$it.mp3", fileSize = it.toLong()).id }
+        val items = (1..3).map { item(b.id, "file:///music/$it.mp3", fileSize = it.toLong()) }
         val p = store.createPlaylist("P")
-        store.addToPlaylist(p.id, ids)
+        store.addToPlaylist(p.id, items)
 
-        val third = store.playlistItems(p.id).first { it.mediaItemId == ids[2] }
-        store.movePlaylistItem(third.id, toPosition = 0)
+        val codes = items.map { it.playlistCode }
+        store.reorderPlaylist(p.id, listOf(codes[2], codes[0], codes[1]))
 
-        val ordered = store.playlistItems(p.id)
-        assertEquals(listOf(ids[2], ids[0], ids[1]), ordered.map { it.mediaItemId })
-        assertEquals(listOf(0, 1, 2), ordered.map { it.position })
+        assertEquals(listOf(codes[2], codes[0], codes[1]), store.playlistItems(p.id).map { it.code })
     }
 
     @Test
-    fun playlistItemDetails_joins_media() = runTest {
+    fun playlistItemDetails_resolves_code_to_media() = runTest {
         val b = bucket("file:///music")
         val i = item(b.id, "file:///music/a.mp3", fileSize = 1, title = "A")
         val p = store.createPlaylist("P")
-        store.addToPlaylist(p.id, listOf(i.id))
+        store.addToPlaylist(p.id, listOf(i))
 
         val details = store.playlistItemDetails(p.id)
         assertEquals(1, details.size)
         assertEquals("A", details[0].mediaItem.title)
-        assertEquals(i.id, details[0].mediaItem.id)
+        assertEquals(i.playlistCode, details[0].code)
     }
 
     @Test
-    fun favorite_and_cascade_on_item_hard_delete() = runTest {
+    fun favorite_follows_content_code_across_a_move() = runTest {
         val b = bucket("file:///music")
-        val i = item(b.id, "file:///music/a.mp3", fileSize = 1)
-        store.addToPlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID, listOf(i.id))
-        assertTrue(store.isFavorite(i.id))
+        val a = item(b.id, "file:///music/a.mp3", fileSize = 100)
+        store.addToPlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID, listOf(a))
+        assertTrue(store.isFavorite(a))
 
-        store.deleteItem(i.id, hard = true)
-        assertTrue(store.playlistItems(BetterMediaStore.FAVORITE_PLAYLIST_ID).isEmpty())
-        assertTrue(!store.isFavorite(i.id))
+        // The same file re-appears at a new uri (a fresh row, same fileSize+duration → same code).
+        val moved = item(b.id, "file:///music/renamed.mp3", fileSize = 100)
+        assertTrue(store.isFavorite(moved), "favorite follows the content code, not the row")
+
+        store.removeFromPlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID, moved.playlistCode)
+        assertTrue(!store.isFavorite(a))
     }
 
     // ---- reactive ----
@@ -306,9 +292,9 @@ class MediaStoreTest {
         val b = bucket("file:///music")
         val i = item(b.id, "file:///music/a.mp3", fileSize = 1)
         val p = store.createPlaylist("P")
-        store.addToPlaylist(p.id, listOf(i.id))
+        store.addToPlaylist(p.id, listOf(i))
 
         val emitted = store.playlistChanges(p.id).first()
-        assertEquals(listOf(i.id), emitted.map { it.mediaItemId })
+        assertEquals(listOf(i.playlistCode), emitted.map { it.code })
     }
 }

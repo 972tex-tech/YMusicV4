@@ -80,12 +80,12 @@ SELECT * FROM mediaItem WHERE uri = ? AND deleted = 0;
 findItemByUriIncludingDeleted:
 SELECT * FROM mediaItem WHERE uri = ?;
 
--- Move detection: a soft-deleted row in the same bucket with a matching fingerprint is the same
--- file re-appearing under a new uri. Reuse its id so playlist links survive.
-findDeletedByFingerprint:
+-- Resolve a "@fileSize:durationSec" playlist code back to an item — duration compared in whole
+-- seconds (matches the code's (durationMs ?: 0) / 1000, absorbing sub-second wobble). May match
+-- more than one item on a collision; callers take the first.
+findItemByFingerprint:
 SELECT * FROM mediaItem
-WHERE bucketId = ? AND fileSize = ? AND deleted = 1
-ORDER BY updatedAt DESC;
+WHERE fileSize = ? AND COALESCE(durationMs, 0) / 1000 = ? AND deleted = 0;
 
 itemsInBucket:
 SELECT * FROM mediaItem WHERE bucketId = ? AND deleted = 0 ORDER BY title;

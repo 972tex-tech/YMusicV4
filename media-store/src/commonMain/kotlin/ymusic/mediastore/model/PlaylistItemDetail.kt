@@ -1,10 +1,9 @@
 package ymusic.mediastore.model
 
-/** A playlist membership row joined with the media item it points at. */
+/** A playlist membership row joined with the media item its [code] currently resolves to. */
 data class PlaylistItemDetail(
-    val playlistItemId: Long,
     val playlistId: Long,
-    val position: Int,
+    val code: String,
     val addedAt: Long,
     val mediaItem: MediaStoreItem,
 )

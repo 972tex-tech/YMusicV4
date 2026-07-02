@@ -108,22 +108,23 @@ class MediaScannerTest {
     }
 
     @Test
-    fun detects_move_by_filesize() = runTest {
+    fun folder_rescan_of_a_rename_replaces_the_row() = runTest {
         val fs = FakeFileSystem().apply { file("/music/song.mp3", 100) }
         val s = scanner(fs)
         s.scan(uri("file:///music")).last()
         val originalId = assertNotNull(store.findItemByUri(uri("file:///music/song.mp3"))).id
 
-        // Same content (same size) reappears under a new name → move, not a new row.
         fs.delete("/music/song.mp3".toPath())
         fs.file("/music/renamed.mp3", 100)
         s.scan(uri("file:///music")).last()
 
         val music = assertNotNull(store.findBucketByUri(uri("file:///music")))
         val items = store.itemsInBucket(music.id)
-        assertEquals(1, items.size, "moved file is not duplicated")
-        assertEquals(originalId, items[0].id, "row id preserved across the move")
-        assertEquals("renamed.mp3", leaf(items[0].uri))
+        assertEquals(listOf("renamed.mp3"), items.map { leaf(it.uri) }, "one live item")
+        assertNull(store.findItemByUri(uri("file:///music/song.mp3")), "old uri gone")
+        // No move-in-place any more: a rename is just a fresh row. Playlist continuity is handled by
+        // the content code (see media-store's favorite_follows_content_code_across_a_move).
+        assertTrue(items[0].id != originalId, "rename produces a new row")
     }
 
     @Test

@@ -35,4 +35,11 @@ data class MediaStoreItem(
     val youtubeItags: String?,
     val fileSize: Long,
     val lastModified: Long,
-)
+) {
+    /**
+     * Stable content fingerprint used for playlist membership (see PlaylistItem): the YouTube video
+     * id if present, else "@fileSize:durationSec". Derived from content, so it survives moves,
+     * renames and rescans — a playlist keyed by this code never orphans.
+     */
+    val playlistCode: String get() = youtubeVid ?: "@$fileSize:${(durationMs ?: 0) / 1000}"
+}

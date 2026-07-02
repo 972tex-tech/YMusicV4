@@ -46,9 +46,8 @@ internal fun DbMediaItem.toModel() = MediaStoreItem(
 internal fun DbPlaylist.toModel() = Playlist(id = id, name = name)
 
 internal fun DbPlaylistItem.toModel() = PlaylistItem(
-    id = id,
     playlistId = playlistId,
-    mediaItemId = mediaItemId,
-    position = position.toInt(),
+    code = code,
+    sortKey = sortKey,
     addedAt = addedAt,
 )
