@@ -13,7 +13,9 @@ import kmpcommon.uri.Uri
  */
 data class MediaStoreItem(
     val id: Long,
-    val bucketId: Long,
+    /** Enclosing bucket, or null for an orphan item — no containing bucket yet (e.g. added by a
+     *  single-file scan, before its folder is scanned and adopts it). */
+    val bucketId: Long?,
     val uri: Uri,
     val title: String,
     val mimeType: String,

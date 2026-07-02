@@ -117,6 +117,24 @@ class MediaStoreTest {
         assertNull(store.findItem(i.id))
     }
 
+    @Test
+    fun softDeleteBucket_tombstones_the_whole_subtree() = runTest {
+        // music > rock > live, an item in each of rock and live.
+        val music = bucket("file:///music")
+        val rock = bucket("file:///music/rock", parentId = music.id)
+        val live = bucket("file:///music/rock/live", parentId = rock.id)
+        val rockItem = item(rock.id, "file:///music/rock/a.mp3", fileSize = 1)
+        val liveItem = item(live.id, "file:///music/rock/live/b.mp3", fileSize = 2)
+
+        store.deleteBucket(rock.id) // soft
+
+        assertNull(store.findBucket(rock.id))
+        assertNull(store.findBucket(live.id), "grandchild bucket tombstoned too")
+        assertNull(store.findItem(rockItem.id))
+        assertNull(store.findItem(liveItem.id), "grandchild item tombstoned too")
+        assertNotNull(store.findBucket(music.id), "ancestor untouched")
+    }
+
     // ---- items ----
 
     @Test
@@ -154,6 +172,29 @@ class MediaStoreTest {
         val c = item(b.id, "file:///music/c.mp3", fileSize = 2)
         assertTrue(a.id != c.id)
         assertEquals(2, store.itemsInBucket(b.id).size)
+    }
+
+    @Test
+    fun upsertItem_null_bucket_orphans_new_and_preserves_existing() = runTest {
+        // New item with null bucket → orphan (no bucket).
+        val orphan = store.upsertItem(
+            null,
+            MediaItemDraft(Uri.parse("file:///x.mp3"), title = "x", mimeType = "audio/mpeg",
+                fileSize = 1, lastModified = 1),
+        )
+        assertNull(orphan.bucketId)
+        assertEquals(listOf(orphan.id), store.itemsInBucket(null).map { it.id })
+
+        // A filed item re-upserted with null bucket keeps its bucket (COALESCE), not reset to root.
+        val b = bucket("file:///music")
+        val filed = item(b.id, "file:///music/a.mp3", fileSize = 2)
+        val again = store.upsertItem(
+            null,
+            MediaItemDraft(Uri.parse("file:///music/a.mp3"), title = "a2", mimeType = "audio/mpeg",
+                fileSize = 3, lastModified = 3),
+        )
+        assertEquals(filed.id, again.id)
+        assertEquals(b.id, again.bucketId, "null bucket did not reset the existing parent")
     }
 
     @Test

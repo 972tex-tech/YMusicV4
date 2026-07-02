@@ -25,6 +25,10 @@ import ymusic.mediastore.model.PlaylistItemDetail
 
 internal class BetterMediaStoreImpl(
     private val driver: SqlDriver,
+    // storeDispatcher() confines all DB access to a single dedicated thread, so the store uses one
+    // connection to one database instance no matter how concurrently it's driven (the scanner uses a
+    // worker pool). Required by JdbcSqliteDriver's thread-local connection, and the simplest correct
+    // model on every platform — SQLite serializes writers anyway.
     private val io: CoroutineDispatcher = storeDispatcher(),
 ) : BetterMediaStore {
 
@@ -82,16 +86,24 @@ internal class BetterMediaStoreImpl(
                 // FK ON DELETE CASCADE removes child buckets, items, and their playlist links.
                 bucketQ.hardDeleteBucket(bucketId)
             } else {
-                val ts = now()
-                bucketQ.setBucketDeleted(1, ts, bucketId)
-                itemQ.setItemsInBucketDeleted(ts, bucketId)
+                // Soft delete mirrors the hard-delete cascade: tombstone the whole subtree, so a
+                // removed folder never leaves orphaned descendant buckets/items live in queries.
+                softDeleteSubtree(bucketId, now())
             }
         }
     }
 
+    private fun softDeleteSubtree(bucketId: Long, ts: Long) {
+        bucketQ.childBuckets(bucketId).executeAsList().forEach { child ->
+            softDeleteSubtree(child.id, ts)
+        }
+        itemQ.setItemsInBucketDeleted(ts, bucketId)
+        bucketQ.setBucketDeleted(1, ts, bucketId)
+    }
+
     // ---- items ----
 
-    override suspend fun upsertItem(bucketId: Long, draft: MediaItemDraft): MediaStoreItem =
+    override suspend fun upsertItem(bucketId: Long?, draft: MediaItemDraft): MediaStoreItem =
         withContext(io) {
             db.transactionWithResult {
                 val uri = draft.uri.toString()
@@ -119,7 +131,7 @@ internal class BetterMediaStoreImpl(
             }
         }
 
-    private fun insertItem(bucketId: Long, d: MediaItemDraft, ts: Long) = itemQ.insertItem(
+    private fun insertItem(bucketId: Long?, d: MediaItemDraft, ts: Long) = itemQ.insertItem(
         bucketId = bucketId,
         uri = d.uri.toString(),
         title = d.title,
@@ -144,7 +156,7 @@ internal class BetterMediaStoreImpl(
         updatedAt = ts,
     )
 
-    private fun updateItem(bucketId: Long, d: MediaItemDraft, ts: Long, id: Long) = itemQ.updateItem(
+    private fun updateItem(bucketId: Long?, d: MediaItemDraft, ts: Long, id: Long) = itemQ.updateItem(
         bucketId = bucketId,
         uri = d.uri.toString(),
         title = d.title,
@@ -181,8 +193,9 @@ internal class BetterMediaStoreImpl(
         itemQ.findItemByVideoId(videoId).executeAsList().map { it.toModel() }
     }
 
-    override suspend fun itemsInBucket(bucketId: Long): List<MediaStoreItem> = withContext(io) {
-        itemQ.itemsInBucket(bucketId).executeAsList().map { it.toModel() }
+    override suspend fun itemsInBucket(bucketId: Long?): List<MediaStoreItem> = withContext(io) {
+        val rows = if (bucketId == null) itemQ.orphanItems() else itemQ.itemsInBucket(bucketId)
+        rows.executeAsList().map { it.toModel() }
     }
 
     override suspend fun deleteItem(itemId: Long, hard: Boolean): Unit = withContext(io) {

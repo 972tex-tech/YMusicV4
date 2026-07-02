@@ -3,7 +3,9 @@
 -- fileSize + lastModified are the cheap change/move fingerprint (see findDeletedByFingerprint).
 CREATE TABLE mediaItem (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    bucketId             INTEGER NOT NULL REFERENCES bucket(id) ON DELETE CASCADE,
+    -- Nullable: a NULL bucketId is an orphan item (no containing bucket yet). A single-file scan
+    -- inserts an orphan; a later folder scan adopts it (sets bucketId).
+    bucketId             INTEGER REFERENCES bucket(id) ON DELETE CASCADE,
     uri                  TEXT    NOT NULL UNIQUE,
     title                TEXT    NOT NULL,
     mimeType             TEXT    NOT NULL,
@@ -43,11 +45,13 @@ lastInsertRowId:
 SELECT last_insert_rowid();
 
 -- Full metadata update by id, also un-deletes. Used for the plain "changed in place" path AND
--- the move-in-place path (the row id is preserved, so playlist FKs survive) — the only difference
--- is that a move also rewrites uri/bucketId, which this statement already covers.
+-- the move-in-place path (the row id is preserved, so playlist FKs survive).
+-- bucketId uses COALESCE(?, bucketId): a non-null value adopts the item into that bucket (a folder
+-- scan claiming an orphan), while NULL preserves the current bucket — so a single-file scan can never
+-- un-adopt (re-orphan) an already-filed item.
 updateItem:
 UPDATE mediaItem SET
-    bucketId = ?, uri = ?, title = ?, mimeType = ?, artist = ?, album = ?, trackNumber = ?,
+    bucketId = COALESCE(:bucketId, bucketId), uri = ?, title = ?, mimeType = ?, artist = ?, album = ?, trackNumber = ?,
     year = ?, durationMs = ?, audioCodec = ?, videoCodec = ?, subtitleCodec = ?, bitrate = ?,
     width = ?, height = ?, thumbnailStreamIndex = ?, youtubeVid = ?, youtubeItags = ?,
     fileSize = ?, lastModified = ?, deleted = 0, updatedAt = ?
@@ -85,6 +89,10 @@ ORDER BY updatedAt DESC;
 
 itemsInBucket:
 SELECT * FROM mediaItem WHERE bucketId = ? AND deleted = 0 ORDER BY title;
+
+-- Orphan items (no bucket yet) — not under any folder.
+orphanItems:
+SELECT * FROM mediaItem WHERE bucketId IS NULL AND deleted = 0 ORDER BY title;
 
 itemsByIds:
 SELECT * FROM mediaItem WHERE id IN ? AND deleted = 0;

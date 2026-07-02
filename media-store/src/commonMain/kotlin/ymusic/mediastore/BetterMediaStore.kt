@@ -55,13 +55,18 @@ interface BetterMediaStore {
      *  2. else a soft-deleted row in the same bucket with the same [MediaItemDraft.fileSize] → the
      *     file was moved/renamed: rewrite its uri + metadata, revive it, keep the id;
      *  3. else insert a new row.
+     *
+     * [bucketId] = null means orphan: a new item is inserted as an orphan (no bucket), and an
+     * *existing* item keeps its current bucket (null never re-orphans a filed item). A non-null value
+     * adopts the item into that bucket — e.g. a folder scan claiming an orphan a single-file scan created.
      */
-    suspend fun upsertItem(bucketId: Long, draft: MediaItemDraft): MediaStoreItem
+    suspend fun upsertItem(bucketId: Long?, draft: MediaItemDraft): MediaStoreItem
 
     suspend fun findItem(itemId: Long): MediaStoreItem?
     suspend fun findItemByUri(uri: Uri): MediaStoreItem?
     suspend fun findItemsByVideoId(videoId: String): List<MediaStoreItem>
-    suspend fun itemsInBucket(bucketId: Long): List<MediaStoreItem>
+    /** Items in [bucketId], or the orphan items (no bucket) when [bucketId] is null. */
+    suspend fun itemsInBucket(bucketId: Long?): List<MediaStoreItem>
 
     /** Remove an item: soft-delete (tombstone) by default, or [hard] to purge it and its links now. */
     suspend fun deleteItem(itemId: Long, hard: Boolean = false)
