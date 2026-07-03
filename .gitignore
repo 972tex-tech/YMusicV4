@@ -21,3 +21,8 @@ kmpHttp/test-server/server.log
 kmpHttp/test-server/server.pid
 kmpHttp/test-server/server-info.json
 plans
+
+# quickjs: staged Android JNI libs (built by :quickjs:stageAndroidJni)
+quickjs/src/androidMain/jniLibs/
+quickjs/src/androidDeviceTest/jniLibs/
+# quickjs: vendored QuickJS build commit marker is kept; build dirs are ignored via build/

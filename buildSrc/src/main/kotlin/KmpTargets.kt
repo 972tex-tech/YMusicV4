@@ -51,6 +51,22 @@ fun KotlinMultiplatformExtension.withLinuxTargets(
 }
 
 /**
+ * iOS-only native targets (host-gated): device + simulator, no tvOS/watchOS. For modules whose
+ * native dependency publishes iOS but not tvOS/watchOS (e.g. :dynamic-engine over quickjs-kt).
+ * Compose with [withMacosTargets] / [withLinuxTargets] to cover the rest of that dependency's matrix.
+ */
+fun KotlinMultiplatformExtension.withIosTargets(
+    configure: KotlinNativeTarget.() -> Unit = {}
+) {
+    if (hostOs.isMacOsX && hostIsArm64 || !isHostCompatibleMode) {
+        listOf(iosArm64(), iosSimulatorArm64()).forEach(configure)
+    }
+    if (hostOs.isMacOsX && !hostIsArm64 || !isHostCompatibleMode) {
+        iosX64().configure()
+    }
+}
+
+/**
  * macOS-only native targets (host-gated). For modules that only need to run/build on macOS, e.g.
  * the benchmark module. Keeps the configured targets in sync with the host-gated library modules
  * they depend on.

@@ -1,0 +1,3 @@
+package = ymusic.quickjs.cinterop
+headers = quickjs_native.h
+headerFilter = quickjs_native.h
