@@ -398,8 +398,8 @@ class QuickJsRuntimeTest {
         }
     }
 
-    /** The sink accumulates many writes and sends them on close() — all content arrives intact,
-     *  and (with the buffer growing past its initial size) it need not fit the initial 4 KB. */
+    /** The sink coalesces many small writes and auto-flushes when its fixed segment fills; across
+     *  those flush boundaries the peer still sees one intact, in-order byte stream. */
     @Test
     fun buffered_sink_buffers_until_flush() = runTest {
         val rt = QuickJsRuntime.create()
@@ -419,9 +419,9 @@ class QuickJsRuntimeTest {
             """
             ymix.onAccept("run", async (pipe) => {
               const io = ymix.buffered(ymix.open("sink"));
-              // 1000 lines "ABCDE\n" = 6000 bytes — well past the 4 KB initial sink buffer, so this
-              // exercises the buffer growing while nothing is flushed until close().
-              for (let i = 0; i < 1000; i++) io.writeUtf8Line("ABCDE");
+              // 2000 lines "ABCDE\n" = 12000 bytes > the 8 KB segment, so the sink auto-flushes at
+              // least once mid-write; the reassembled stream must still be identical.
+              for (let i = 0; i < 2000; i++) io.writeUtf8Line("ABCDE");
               io.close();
               pipe.send(ymix.utf8Encode(await io.readUtf8()));
               pipe.close();
@@ -429,7 +429,56 @@ class QuickJsRuntimeTest {
             """.trimIndent(),
         )
         try {
-            assertEquals("ABCDE\n".repeat(1000), rt.openPipe("run").readText())
+            assertEquals("ABCDE\n".repeat(2000), rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** Large writes: writeUtf8 stream-encodes straight into the segment and writeBytes bypasses it
+     *  entirely — content crosses many 8 KB flush boundaries and must arrive intact and in order.
+     *  Verified by an independent length + additive checksum rather than by holding the whole body. */
+    @Test
+    fun buffered_sink_streams_large_writes() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe ->
+            val buf = ByteArray(8192)
+            var len = 0L
+            var sum = 0L
+            while (true) {
+                val n = pipe.receive(buf, 0, buf.size)
+                if (n < 0) break
+                len += n
+                for (i in 0 until n) sum += (buf[i].toInt() and 0xFF)
+            }
+            pipe.send("$len:$sum".encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (pipe) => {
+              const io = ymix.buffered(ymix.open("sink"));
+              // A multibyte+astral string repeated so codepoints land across many segment boundaries,
+              // then a >segment byte array that bypasses the buffer and is streamed in slices.
+              const s = "héllo🎵\n".repeat(30000);   // stream-encoded into the segment
+              const b = new Uint8Array(400000);        // >= segment -> bypass, sliced to the pipe
+              for (let i = 0; i < b.length; i++) b[i] = i & 0xFF;
+              // Expected length + additive checksum, computed independently from the same source.
+              const sbytes = ymix.utf8Encode(s);
+              let len = sbytes.length + b.length, sum = 0;
+              for (let i = 0; i < sbytes.length; i++) sum += sbytes[i];
+              for (let i = 0; i < b.length; i++) sum += b[i];
+              io.writeUtf8(s);
+              io.writeBytes(b);
+              io.close();
+              const got = await io.readUtf8(), want = len + ":" + sum;
+              pipe.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH want=" + want + " got=" + got)));
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
         } finally {
             rt.close()
         }

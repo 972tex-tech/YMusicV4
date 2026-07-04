@@ -149,8 +149,11 @@ internal const val BOOTSTRAP_JS = """
     buffered: function (pipe) {
       // source window: valid bytes are rbuf[rbeg, rend)
       var rbuf = new Uint8Array(4096), rbeg = 0, rend = 0, reof = false;
-      // sink buffer: writes accumulate in wbuf[0, wlen) until flush()/close() sends them
-      var wbuf = new Uint8Array(4096), wlen = 0;
+      // sink segment: a FIXED-capacity buffer (never grows) that coalesces small writes. It
+      // auto-flushes when full and is bypassed for large writes, so sink memory stays ~one segment
+      // no matter how many bytes are written. Flush boundaries are invisible to the peer — the pipe
+      // is a byte stream and Kotlin's buffered source reassembles across them.
+      var wbuf = new Uint8Array(8192), wlen = 0;
 
       async function fill() {
         if (reof) return 0;
@@ -159,12 +162,6 @@ internal const val BOOTSTRAP_JS = """
         var n = await pipe.receive(rbuf, rend, rbuf.length - rend);
         if (n < 0) { reof = true; return 0; }
         rend += n; return n;
-      }
-      function ensureW(n) {
-        if (wlen + n > wbuf.length) {
-          var cap = wbuf.length * 2; while (cap < wlen + n) cap *= 2;
-          var nb = new Uint8Array(cap); nb.set(wbuf.subarray(0, wlen)); wbuf = nb;
-        }
       }
 
       return {
@@ -235,11 +232,54 @@ internal const val BOOTSTRAP_JS = """
           return all;
         },
 
-        // ---- BufferedSink: writes accumulate until an explicit flush()/close() sends them ----
-        writeBytes(b) { ensureW(b.length); wbuf.set(b, wlen); wlen += b.length; return this; },
-        writeUtf8(str) { return this.writeBytes(ymix.utf8Encode(str)); },
-        // encode str + '\n' in one pass (no string concat, one append)
-        writeUtf8Line(str) { return this.writeBytes(ymix.utf8Encode(str, "\n")); },
+        // ---- BufferedSink: a fixed segment; small writes coalesce, large writes bypass it ----
+        // Append b. A large input (>= a segment) skips the buffer entirely: flush what's pending,
+        // then stream b straight to the pipe in segment-sized slices (send is copy-first). So a
+        // few-MB Uint8Array is never copied into wbuf, and Kotlin allocates one segment per slice
+        // instead of one few-MB ByteArray.
+        writeBytes(b) {
+          var n = b.length;
+          if (n >= wbuf.length) {
+            this.flush();
+            for (var off = 0; off < n; off += wbuf.length) pipe.send(b, off, Math.min(wbuf.length, n - off));
+            return this;
+          }
+          if (wlen + n > wbuf.length) this.flush();
+          wbuf.set(b, wlen); wlen += n;
+          return this;
+        },
+        // Stream-encode UTF-8 straight into the segment, flushing when it fills — never materializes
+        // the whole encoded array. A few-MB string stays ~one segment of memory, not the giant
+        // per-byte JS array + several full-size copies that utf8Encode()+writeBytes would build.
+        writeUtf8(str) {
+          for (var i = 0; i < str.length; i++) {
+            var cp = str.codePointAt(i);
+            if (cp > 0xFFFF) i++;
+            // Flush only when this codepoint's own bytes don't fit — reserving the worst-case 4
+            // would flush up to 3 bytes early and underpack the segment.
+            if (cp < 0x80) {
+              if (wlen + 1 > wbuf.length) this.flush();
+              wbuf[wlen++] = cp;
+            } else if (cp < 0x800) {
+              if (wlen + 2 > wbuf.length) this.flush();
+              wbuf[wlen++] = 0xC0 | (cp >> 6); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+            } else if (cp < 0x10000) {
+              if (wlen + 3 > wbuf.length) this.flush();
+              wbuf[wlen++] = 0xE0 | (cp >> 12); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+            } else {
+              if (wlen + 4 > wbuf.length) this.flush();
+              wbuf[wlen++] = 0xF0 | (cp >> 18); wbuf[wlen++] = 0x80 | ((cp >> 12) & 0x3F); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+            }
+          }
+          return this;
+        },
+        // writeUtf8 then a single '\n' — no string concat, no separate encode pass.
+        writeUtf8Line(str) {
+          this.writeUtf8(str);
+          if (wlen + 1 > wbuf.length) this.flush();
+          wbuf[wlen++] = 10;
+          return this;
+        },
         // sync: pipe.send is synchronous (copy-first), so flush/close have nothing to await
         flush() { if (wlen > 0) { pipe.send(wbuf, 0, wlen); wlen = 0; } },
         close() { this.flush(); pipe.close(); }
