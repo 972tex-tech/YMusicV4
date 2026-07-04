@@ -50,6 +50,68 @@ internal const val BOOTSTRAP_JS = """
     return out;
   }
 
+  // ---- Streaming JSON serialize: walk a value and write its tokens straight into a sink, so
+  // neither the whole JSON string nor a Uint8Array is ever materialized (unlike __stringifyJson).
+  // Matches JSON.stringify: honors toJSON(); NaN/Infinity -> null; a member whose value is
+  // undefined/function/symbol is omitted in objects and becomes null in arrays. (Lone surrogates go
+  // out as WTF-8, not \uXXXX — consistent with utf8Encode across the stack.)
+  function jsonResolve(v) {
+    return (v !== null && (typeof v === "object" || typeof v === "bigint") && typeof v.toJSON === "function") ? v.toJSON() : v;
+  }
+  function jsonWriteString(sink, s) {
+    sink.writeUtf8("\"");
+    var runStart = 0, n = s.length;
+    for (var i = 0; i < n; i++) {
+      var c = s.charCodeAt(i), esc = null;
+      if (c === 0x22) esc = "\\\"";
+      else if (c === 0x5C) esc = "\\\\";
+      else if (c === 0x0A) esc = "\\n";
+      else if (c === 0x0D) esc = "\\r";
+      else if (c === 0x09) esc = "\\t";
+      else if (c === 0x08) esc = "\\b";
+      else if (c === 0x0C) esc = "\\f";
+      else if (c < 0x20) esc = "\\u" + ("000" + c.toString(16)).slice(-4);
+      if (esc !== null) {
+        if (i > runStart) sink.writeUtf8(s.slice(runStart, i)); // flush the run of safe chars so far
+        sink.writeUtf8(esc);
+        runStart = i + 1;
+      }
+    }
+    if (n > runStart) sink.writeUtf8(s.slice(runStart, n));
+    sink.writeUtf8("\"");
+  }
+  function jsonWriteValue(sink, v) {
+    var t = typeof v;
+    if (v === null) sink.writeUtf8("null");
+    else if (t === "boolean") sink.writeUtf8(v ? "true" : "false");
+    else if (t === "number") sink.writeUtf8(isFinite(v) ? ("" + v) : "null");
+    else if (t === "string") jsonWriteString(sink, v);
+    else if (t === "bigint") throw new TypeError("Do not know how to serialize a BigInt");
+    else if (Array.isArray(v)) {
+      sink.writeUtf8("[");
+      for (var i = 0; i < v.length; i++) {
+        if (i > 0) sink.writeUtf8(",");
+        var e = jsonResolve(v[i]), et = typeof e;
+        if (e === undefined || et === "function" || et === "symbol") sink.writeUtf8("null");
+        else jsonWriteValue(sink, e);
+      }
+      sink.writeUtf8("]");
+    } else {
+      sink.writeUtf8("{");
+      var keys = Object.keys(v), first = true;
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k], mv = jsonResolve(v[key]), vt = typeof mv;
+        if (mv === undefined || vt === "function" || vt === "symbol") continue; // omit the key
+        if (!first) sink.writeUtf8(",");
+        first = false;
+        jsonWriteString(sink, key);
+        sink.writeUtf8(":");
+        jsonWriteValue(sink, mv);
+      }
+      sink.writeUtf8("}");
+    }
+  }
+
   var pipes = {};
   var accepts = {};
   var nextId = 2; // JS opens even ids; Kotlin opens odd.
@@ -278,6 +340,15 @@ internal const val BOOTSTRAP_JS = """
           this.writeUtf8(str);
           if (wlen + 1 > wbuf.length) this.flush();
           wbuf[wlen++] = 10;
+          return this;
+        },
+        // Serialize value to JSON by walking it (jsonWriteValue) — streams tokens into the segment,
+        // never building the whole JSON string or a Uint8Array. For big outbound data prefer JSONL
+        // (one writeObjectAsJson per line) so peak memory stays ~one item.
+        writeObjectAsJson(value) {
+          var v = jsonResolve(value), t = typeof v;
+          if (v === undefined || t === "function" || t === "symbol") this.writeUtf8("null");
+          else jsonWriteValue(this, v);
           return this;
         },
         // sync: pipe.send is synchronous (copy-first), so flush/close have nothing to await

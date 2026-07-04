@@ -484,6 +484,60 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** writeObjectAsJson streams a value to the pipe token-by-token (no whole string / Uint8Array).
+     *  Its output must match JSON.stringify exactly — escapes, NaN/Infinity->null, undefined omitted
+     *  in objects / null in arrays, nesting, astral chars — and stay correct across flush boundaries
+     *  (the big array pushes the output past the 8 KB segment). */
+    @Test
+    fun write_object_as_json_matches_stringify() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe -> // reassemble the streamed bytes and echo the text back
+            val buf = ByteArray(8192)
+            val sb = StringBuilder()
+            while (true) {
+                val n = pipe.receive(buf, 0, buf.size)
+                if (n < 0) break
+                sb.append(buf.decodeToString(0, n))
+            }
+            pipe.send(sb.toString().encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (pipe) => {
+              var big = []; for (var i = 0; i < 5000; i++) big.push(i); // pushes output past a segment
+              var value = {
+                s: "q\"uote back\\slash nl\n cr\r tab\t bell slash/ emoji🎵 unicodé",
+                n: 42, f: 3.5, neg: -7, exp: 1e21, nan: NaN, inf: Infinity, neginf: -Infinity,
+                t: true, f2: false, nil: null,
+                arr: [1, "two", null, [3, 4], { x: 5 }, undefined, function(){}, Symbol("s")], // -> null
+                obj: { a: 1, skip: undefined, fn: function(){}, sym: Symbol("k"), c: 3 }, // omitted
+                empty: {}, emptyArr: [], date: new Date(0),           // toJSON honored
+                big: big
+              };
+              const io = ymix.buffered(ymix.open("sink"));
+              io.writeObjectAsJson(value);
+              io.close();
+              const got = await io.readUtf8(), want = JSON.stringify(value);
+              let msg;
+              if (got === want) msg = "OK";
+              else {
+                let k = 0; while (k < got.length && k < want.length && got[k] === want[k]) k++;
+                msg = "MISMATCH@" + k + " want[..." + want.slice(Math.max(0,k-15), k+15) +
+                      "...] got[..." + got.slice(Math.max(0,k-15), k+15) + "...]";
+              }
+              pipe.send(ymix.utf8Encode(msg));
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** Only one receive() may be outstanding per pipe; a concurrent second call rejects. */
     @Test
     fun concurrent_receive_rejects() = runTest {
