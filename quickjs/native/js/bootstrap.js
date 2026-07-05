@@ -1,21 +1,14 @@
-package ymusic.quickjs
+// The engine bootstrap: the whole pipe protocol + streaming JSON + host-scheduled timers, built on
+// the six transport entry points (__jsOpen/__jsData/__jsClose in; __hostOpen/__hostData/__hostClose
+// out) and the native JSON helpers. Compiled to QuickJS bytecode at build time (see qjs_compile.c /
+// build.gradle.kts) and embedded — this file is never shipped as source.
+//
+//  - ymix.open(command) -> a pipe to Kotlin (this side is the client).
+//  - ymix.onAccept(command, async (pipe) => ...) -> handle pipes Kotlin opens to us (server side).
+//  - a pipe has send(buf,off,len), await receive(buf,off,len) (-> count or -1), close(), .command.
+//  - ymix.utf8Encode/utf8Decode for text<->bytes (QuickJS has no TextEncoder/TextDecoder).
+// Kotlin opens odd pipe ids, JS opens even ones, so the two id spaces never collide.
 
-/**
- * JS injected once at engine start. It builds the whole pipe protocol on top of six transport
- * entry points — three the host calls into JS (`__jsOpen/__jsData/__jsClose`) and three JS calls
- * into the host (`__hostOpen/__hostData/__hostClose`). No framing/header: id is an argument,
- * command/reason are native strings, payloads are passed directly.
- *
- *  - `ymix.open(command)` -> a [pipe] to Kotlin (this side is the client).
- *  - `ymix.onAccept(command, async (pipe) => ...)` -> handle pipes Kotlin opens to us (server side).
- *    Routed by the exact command name; arguments are read from the pipe's frames in the handler.
- *  - a pipe has `send(buf,off,len)`, `await receive(buf,off,len)` (-> count or -1), `close()`, `.command`.
- *  - `ymix.utf8Encode/utf8Decode` for text<->bytes (QuickJS has no TextEncoder/TextDecoder).
- *
- * Kotlin opens odd pipe ids, JS opens even ones, so the two id spaces never collide. Close carries
- * a reason: null = normal half-close (END), a string = error (RESET). Uses no Kotlin `$` interp.
- */
-internal const val BOOTSTRAP_JS = """
 (function () {
   // Encode one or more strings to UTF-8, concatenated. Multi-arg (utf8Encode(str, "\n")) avoids a
   // JS string concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
@@ -358,4 +351,35 @@ internal const val BOOTSTRAP_JS = """
     }
   };
 })();
-"""
+
+// ---- Host-scheduled timers: setTimeout/setInterval over the pipe protocol (see Timers.kt). A
+// cleared timer's async loop ends when the host closes the pipe (receive -> EOF). A callback that
+// throws rejects this async task and, for setInterval, stops the interval.
+(function () {
+  function startTimer(cb, ms, command, repeat, args) {
+    var pipe = ymix.open(command);
+    pipe.send(ymix.utf8Encode(String(Math.max(0, Math.floor(Number(ms) || 0)))));
+    var buf = new Uint8Array(1);
+    (async function () {
+      try {
+        for (;;) {
+          var n = await pipe.receive(buf, 0, 1);
+          if (n < 1) break;                 // cleared: host closed the pipe
+          cb.apply(null, args);
+          if (!repeat) break;
+        }
+      } finally {
+        pipe.close();
+      }
+    })();
+    return pipe;                            // handle; clear*() closes it
+  }
+  globalThis.setTimeout = function (cb, ms) {
+    return startTimer(cb, ms, "setTimeout", false, Array.prototype.slice.call(arguments, 2));
+  };
+  globalThis.setInterval = function (cb, ms) {
+    return startTimer(cb, ms, "setInterval", true, Array.prototype.slice.call(arguments, 2));
+  };
+  globalThis.clearTimeout = function (handle) { if (handle && handle.close) handle.close(); };
+  globalThis.clearInterval = globalThis.clearTimeout;
+})();

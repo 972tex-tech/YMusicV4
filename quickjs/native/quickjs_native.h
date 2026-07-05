@@ -22,8 +22,8 @@ typedef struct QjsEngine QjsEngine;
  * (NUL-terminated UTF-8) or NULL for a normal half-close (END); len = reason length or 0. */
 typedef void (*QjsInboundCb)(void *user, int op, uint32_t id, const uint8_t *data, size_t len);
 
-/* Create an engine, install the JS transport, and eval [bootstrap]. Returns NULL on failure with
- * *err set to a malloc'd message (free via qjs_free). */
+/* Create an engine, install the JS transport, and eval [bootstrap] (comment-stripped JS source).
+ * Returns NULL on failure with *err set to a malloc'd message (free via qjs_free). */
 QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char **err);
 
 /* Evaluate [script]; returns a malloc'd UTF-8 string (the result's string form, or the error

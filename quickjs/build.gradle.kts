@@ -1,8 +1,19 @@
 @file:Suppress("UnstableApiUsage")
 
+import com.google.javascript.jscomp.CompilationLevel
+import com.google.javascript.jscomp.Compiler
+import com.google.javascript.jscomp.CompilerOptions
+import com.google.javascript.jscomp.SourceFile
+import com.google.javascript.jscomp.WarningLevel
 import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
+
+// Closure Compiler (pure-JVM JS minifier) on the build classpath, only for this module — used to
+// minify the engine bootstrap at build time (see generateBootstrapJs). No Node/npm toolchain.
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath("com.google.javascript:closure-compiler:v20231112") }
+}
 
 plugins {
     kotlin("multiplatform")
@@ -97,16 +108,25 @@ kotlin {
         }
     }
 
-    // Same QuickJS cinterop + per-target static lib for every native target (host-gated).
+    // Same QuickJS cinterop for every native target (host-gated). The per-target static lib is
+    // embedded INTO the cinterop klib (konan `included/…`), so it propagates to consumers
+    // automatically — a downstream module links it with no linkerOpts of its own. (This is how
+    // quickjs-kt ships: its klib carries `default/targets/<t>/included/libquickjs_<t>.a`.)
     val configureQuickJs: org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.() -> Unit = {
-        val targetName = name // capture: inside binaries.all, `name` is the binary, not the target
-        registerNativeLib(targetName)
+        val targetName = name
+        val libTask = registerNativeLib(targetName)
+        val libDir = nativeLibDir(targetName)
         compilations.getByName("main").cinterops.create("qjs") {
             defFile(project.file("native/cinterop/qjs.def"))
             includeDirs(project.file("native"))
+            // qjs.def names libqjscore.a in `staticLibraries`; give konan the per-target dir to find
+            // it in, so it gets embedded in the klib's `included/` (portable, not a path reference).
+            extraOpts("-libraryPath", libDir.absolutePath)
         }
-        binaries.all {
-            linkerOpts(nativeLibDir(targetName).resolve("libqjscore.a").absolutePath)
+        // cinterop reads libqjscore.a to embed it: build it first, and re-embed when it changes.
+        tasks.named("cinteropQjs${targetName.replaceFirstChar { it.uppercase() }}").configure {
+            dependsOn(libTask)
+            inputs.file(libDir.resolve("libqjscore.a"))
         }
     }
     withMacosTargets(configureQuickJs)
@@ -143,16 +163,11 @@ kotlin {
     }
 }
 
-// Native binaries (incl. the test executable) link the per-target static lib. The lib must also be
-// a tracked *input*: linkerOpts is just a string, so without this a rebuilt .a leaves the binary
-// UP-TO-DATE and stale.
-tasks.withType<KotlinNativeLink>().configureEach {
-    dependsOn(nativeLibTasks)
-    inputs.files(nativeLibTasks)
-}
+// (The static lib now rides inside the cinterop klib — see configureQuickJs — so the final link
+// picks it up automatically, and cinterop's inputs.file tracks it for rebuilds. No per-link wiring.)
 
 // ---------------------------------------------------------------------------------------------
-// JVM JNI library (CMake): builds libquickjsjni for the host so jvmTest can load it.
+// JVM JNI library (CMake): builds libquickjsjni for the host, bundled into the jar for consumers.
 // ---------------------------------------------------------------------------------------------
 val quickJsJniDir = layout.buildDirectory.dir("quickjs-jni")
 val javaHomeForJni: String = run {
@@ -184,10 +199,40 @@ val cmakeBuild by tasks.registering(Exec::class) {
     commandLine("cmake", "--build", quickJsJniDir.get().asFile.absolutePath, "-j", "4")
 }
 
+// Our own tests load straight from the CMake output dir (fast, no extraction). Consumers instead
+// get the lib bundled in the jar (below) and extract it.
 tasks.withType<Test>().configureEach {
     dependsOn(cmakeBuild)
     systemProperty("quickjs.native.dir", quickJsJniDir.get().asFile.absolutePath)
 }
+
+// Bundle the built lib into the jvm jar as a resource under jni/<os>_<arch>/, so any consumer that
+// `implementation(project(":quickjs"))`s it gets the lib on their classpath and the loader extracts
+// it (see Loader.jvm.kt). CMake builds only the *current* host, so only the host folder is filled —
+// shipping every desktop arch would need cross-compilation (as quickjs-kt/Zipline do with Zig).
+val hostJniFolder: String = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    val osPrefix = when {
+        os.contains("mac") || os.contains("osx") -> "macos"
+        os.contains("linux") -> "linux"
+        os.contains("win") -> "windows"
+        else -> error("Unsupported OS: $os")
+    }
+    val archSuffix = when (arch) {
+        "aarch64" -> "aarch64"
+        "amd64", "x86_64" -> "x64"
+        else -> error("Unsupported arch: $arch")
+    }
+    "${osPrefix}_$archSuffix"
+}
+val jvmJniResourcesDir = layout.buildDirectory.dir("generated/jvmJniResources")
+val bundleJvmJniLib by tasks.registering(Copy::class) {
+    dependsOn(cmakeBuild)
+    from(quickJsJniDir) { include(System.mapLibraryName("quickjsjni")) }
+    into(jvmJniResourcesDir.map { it.dir("jni/$hostJniFolder") })
+}
+kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(jvmJniResourcesDir).builtBy(bundleJvmJniLib))
 
 // ---------------------------------------------------------------------------------------------
 // Android JNI: build libquickjsjni.so per ABI with the NDK and stage into androidMain/jniLibs.
@@ -237,3 +282,48 @@ val stageAndroidJni by tasks.registering {
 tasks.matching {
     it.name == "compileAndroidDeviceTest" || it.name.matches(Regex("merge.*JniLibFolders"))
 }.configureEach { dependsOn(stageAndroidJni) }
+
+// ---------------------------------------------------------------------------------------------
+// Bootstrap JS: authored (with comments) in native/js/bootstrap.js, minified at build time with
+// Closure Compiler (SIMPLE, no transpile) and emitted as a generated Kotlin const the engine evals.
+// Comments/whitespace are stripped and locals renamed; globals (ymix/__jsOpen/setTimeout/…) and
+// property names are preserved, so the host contract is intact.
+// ---------------------------------------------------------------------------------------------
+val bootstrapJs = nativeSrc.resolve("js/bootstrap.js")
+val bootstrapKtDir = layout.buildDirectory.dir("generated/bootstrapJs")
+
+val generateBootstrapJs by tasks.registering {
+    inputs.file(bootstrapJs)
+    outputs.dir(bootstrapKtDir)
+    doLast {
+        val options = CompilerOptions().apply {
+            setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_NEXT)
+            setLanguageOut(CompilerOptions.LanguageMode.NO_TRANSPILE) // keep async/await, classes
+        }
+        CompilationLevel.SIMPLE_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
+        WarningLevel.QUIET.setOptionsForWarningLevel(options)
+        val compiler = Compiler()
+        val result = compiler.compile(
+            emptyList<SourceFile>(), // externs (none) — undeclared globals are preserved, not renamed
+            listOf(SourceFile.fromCode("bootstrap.js", bootstrapJs.readText())),
+            options,
+        )
+        if (!result.success) throw GradleException("bootstrap minify failed:\n" + compiler.errors.joinToString("\n"))
+        val minified = compiler.toSource()
+        check(minified.isNotBlank()) { "closure produced empty output" }
+        val escaped = minified
+            .replace("\\", "\\\\").replace("\"", "\\\"")
+            .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
+        val dir = bootstrapKtDir.get().asFile.resolve("ymusic/quickjs").apply { mkdirs() }
+        dir.resolve("Bootstrap.kt").writeText(
+            """
+            |package ymusic.quickjs
+            |
+            |// GENERATED — do not edit. Minified from native/js/bootstrap.js (Closure Compiler) at build time.
+            |internal const val BOOTSTRAP_JS: String = "$escaped"
+            |""".trimMargin(),
+        )
+    }
+}
+
+kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(bootstrapKtDir).builtBy(generateBootstrapJs))
