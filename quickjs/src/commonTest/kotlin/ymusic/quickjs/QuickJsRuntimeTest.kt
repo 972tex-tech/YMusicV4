@@ -538,6 +538,80 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** setTimeout fires its callback after the delay, and doubles as an awaitable sleep. */
+    @Test
+    fun set_timeout_fires_after_delay() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (pipe) => {
+              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+              let fired = false;
+              setTimeout(() => { fired = true; }, 30);
+              await sleep(90);                 // outlast the 30ms timer
+              pipe.send(ymix.utf8Encode(fired ? "FIRED" : "NOT"));
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("FIRED", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** clearTimeout before the delay elapses prevents the callback. */
+    @Test
+    fun clear_timeout_prevents_callback() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (pipe) => {
+              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+              let fired = false;
+              const t = setTimeout(() => { fired = true; }, 30);
+              clearTimeout(t);
+              await sleep(90);
+              pipe.send(ymix.utf8Encode(fired ? "FIRED" : "CLEARED"));
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("CLEARED", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** setInterval ticks repeatedly and clearInterval stops it (count frozen after clear). */
+    @Test
+    fun set_interval_ticks_until_cleared() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (pipe) => {
+              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+              let n = 0;
+              const t = setInterval(() => { n++; }, 20);
+              await sleep(110);                 // ~5 ticks
+              clearInterval(t);
+              const after = n;
+              await sleep(70);                  // stays frozen (allow at most one in-flight tick)
+              const ok = after >= 3 && (n - after) <= 1;
+              pipe.send(ymix.utf8Encode(ok ? "OK" : ("BAD:" + after + "/" + n)));
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** Only one receive() may be outstanding per pipe; a concurrent second call rejects. */
     @Test
     fun concurrent_receive_rejects() = runTest {

@@ -155,6 +155,7 @@ class QuickJsRuntime private constructor(
             val engine = withContext(dispatcher) { NativeEngine.create(BOOTSTRAP_JS, callbacks) }
             val rt = QuickJsRuntime(engine, dispatcher)
             rtRef = rt
+            rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
             return rt
         }
     }
