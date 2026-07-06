@@ -277,6 +277,12 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
         if (msg) JS_FreeCString(e->ctx, msg);
         JS_FreeValue(e->ctx, exc);
         JS_FreeValue(e->ctx, bret);
+        /* full teardown — a failed create must not leak the engine (Kotlin may retry) */
+        (*env)->DeleteGlobalRef(env, e->bridgeClass);
+        JS_FreeContext(e->ctx);
+        JS_FreeRuntime(e->rt);
+        qjs_pool_free(e->pool);
+        free(e);
         return 0;
     }
     JS_FreeValue(e->ctx, bret);

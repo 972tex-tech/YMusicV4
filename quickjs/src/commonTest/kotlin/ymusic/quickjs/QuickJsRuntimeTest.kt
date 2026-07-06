@@ -1,10 +1,15 @@
 package ymusic.quickjs
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class QuickJsRuntimeTest {
 
@@ -1034,6 +1039,24 @@ class QuickJsRuntimeTest {
         } finally {
             rt.close()
         }
+    }
+
+    /** Closing the runtime while a caller is parked in receive() must FAIL that call — not leave
+     *  the coroutine suspended forever once the engine thread is gone (a permanent leak + hang). */
+    @Test
+    fun runtime_close_fails_parked_receive() = runTest {
+        val rt = QuickJsRuntime.create()
+        // The handler sends one byte (a handshake proving it ran), then keeps the pipe open forever.
+        rt.load("""ymix.onAccept("silent", async (pipe) => { pipe.send(Uint8Array.of(1)); });""")
+        val pipe = rt.openPipe("silent")
+        assertEquals(1, pipe.receive(ByteArray(4), 0, 4)) // handshake consumed; nothing more will come
+        val parked = async(Dispatchers.Default) {
+            runCatching { pipe.receive(ByteArray(4), 0, 4) }
+        }
+        withContext(Dispatchers.Default) { delay(200) } // real time: let the receive park on the engine thread
+        rt.close()
+        val result = parked.await()
+        assertTrue(result.isFailure, "parked receive must fail when the runtime closes, got $result")
     }
 
     /** Sink writes are plain functions: on the uncontended path they complete synchronously and

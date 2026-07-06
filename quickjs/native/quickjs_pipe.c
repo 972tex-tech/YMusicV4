@@ -326,8 +326,15 @@ JSValue qjs_view_wrap(JSContext *ctx, const uint8_t *ptr, size_t len, JSValue *o
     *out_ab = JS_UNDEFINED;
     JSValue ab = JS_NewArrayBuffer(ctx, (uint8_t *)ptr, len, noop_free, NULL, 0);
     if (JS_IsException(ab)) return ab;
-    *out_ab = JS_DupValue(ctx, ab);
-    return new_u8_view(ctx, ab);
+    JSValue u8 = new_u8_view(ctx, JS_DupValue(ctx, ab));
+    if (JS_IsException(u8)) {
+        /* never leave a live (non-detached) buffer over the caller's memory, and don't leak ab */
+        JS_DetachArrayBuffer(ctx, ab);
+        JS_FreeValue(ctx, ab);
+        return u8;
+    }
+    *out_ab = ab;
+    return u8;
 }
 
 void qjs_view_detach(JSContext *ctx, JSValue view, JSValue ab) {

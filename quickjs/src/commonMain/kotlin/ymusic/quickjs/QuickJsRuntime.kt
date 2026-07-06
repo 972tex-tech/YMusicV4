@@ -8,6 +8,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import okio.Buffer
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -269,6 +270,20 @@ class QuickJsRuntime private constructor(
         private fun maybeReap() {
             if (weEnded && (writeEnded || readClosed)) pipes.remove(id)
         }
+
+        /** Runtime teardown: poison the pipe (later sends get EPIPE, later receives get the reset)
+         *  and fail anything parked — a continuation left suspended when the engine thread dies
+         *  would never resume (a permanently leaked, hung coroutine). */
+        fun failPending(cause: Throwable) {
+            writeEnded = true
+            peerReadClosed = true
+            if (resetReason == null) resetReason = cause.message ?: "runtime closed"
+            inbound.clear()
+            val r = reader
+            if (r != null) { reader = null; r.cont.resumeWith(Result.failure(cause)) }
+            val w = writer
+            if (w != null) { writer = null; w.resumeWith(Result.failure(cause)) }
+        }
     }
 
     private class ParkedReader(
@@ -278,10 +293,19 @@ class QuickJsRuntime private constructor(
         val cont: CancellableContinuation<Int>,
     )
 
-    /** Cancel handlers, free the engine (on its thread), and release the engine thread. */
+    /** Cancel handlers, fail anything still parked in [Pipe.send]/[Pipe.receive] (a caller outside
+     *  [scope] would otherwise stay suspended forever once the engine thread is gone), free the
+     *  engine (on its thread), and release the engine thread. */
     suspend fun close() {
         scope.cancel()
-        withContext(engineDispatcher) { engine.destroy() }
+        withContext(engineDispatcher) {
+            val cause = QuickJsException("runtime closed")
+            val open = pipes.values.toList()
+            pipes.clear()
+            for (p in open) p.failPending(cause)
+            yield() // let the failed continuations unwind while the engine is still alive
+            engine.destroy()
+        }
         engineDispatcher.close()
     }
 
