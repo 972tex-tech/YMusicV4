@@ -8,10 +8,11 @@
  *                                            into a pooled segment, wrapped zero-copy;
  *   __segRelease(u8)                          eager return of a fully-consumed segment (detach);
  *   __utf8Decode(u8, off, len) -> string      native UTF-8 decode (JS_NewStringLen);
- *   __utf8Into(str, from, to, dst, dstOff)    encode a string range into the sink segment in ONE
- *                                             native call (-> written, or -(needed) if it doesn't
- *                                             fit — nothing written; the caller flushes/retries);
- *   __utf8Bytes(str, from, to) -> Uint8Array  one-shot native encode of a range (oversized tokens).
+ *   __utf8Into(str, from, to, dst, dstOff)    encodeInto: fill dst from flat string storage,
+ *                                             stopping on the last whole codepoint that fits;
+ *                                             returns (unitsRead << 16) | bytesWritten, so the
+ *                                             caller fills, flushes, and advances `from` — one
+ *                                             encode pass, nothing materialized, any string size.
  * (JSON serialization goes through the resumable native encoder — quickjs_json.c __jsonEnc*.)
  * A segment's ArrayBuffer free_func returns it to the pool, so GC is the release backstop.
  *

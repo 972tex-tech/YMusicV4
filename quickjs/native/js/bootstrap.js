@@ -413,20 +413,26 @@
         wbuf.set(b, wlen); wlen += n;
       }
 
-      // Encode str[from, to) via ONE native call (__utf8Into) straight into the segment — no
-      // per-codepoint interpreted loop. Doesn't fit: flush and retry; bigger than a whole empty
-      // segment (an oversized string token): encode it natively ONCE (__utf8Bytes) and stream the
-      // bytes through the writeBytes bypass — memory is one encoded copy of that single token.
+      // Encode str[from, to) straight into the segment: one native call per segment-full
+      // (__utf8Into encodes directly from flat string storage and packs unitsRead/bytesWritten),
+      // then fill -> flush -> advance `from`. ONE encode pass total with memory bounded by the
+      // segment no matter how big the string — nothing is ever materialized per call.
       function writeUtf8Native(str, from, to) {
-        var r = __utf8Into(str, from, to, wbuf, wlen);
-        if (r >= 0) { wlen += r; return; }
-        if (-r <= wbuf.length) {
+        for (;;) {
+          var rw = __utf8Into(str, from, to, wbuf, wlen);
+          from += rw >>> 16;
+          wlen += rw & 0xFFFF;
+          if (from >= to) return;
+          // more to encode: the segment is (nearly) full. A whole EMPTY segment always fits at
+          // least one codepoint, so a zero-progress round on an empty buffer can only mean a
+          // broken native — guard it (same invariant rule as the feed loops).
+          if (rw === 0 && wlen === 0) throw new Error("__utf8Into made no progress");
           var p = flushSink();
-          if (p) return p.then(function () { wlen += __utf8Into(str, from, to, wbuf, wlen); });
-          wlen += __utf8Into(str, from, to, wbuf, wlen);
-          return;
+          if (p) {
+            var at = from;
+            return p.then(function () { return writeUtf8Native(str, at, to); });
+          }
         }
-        return writeBytesFn(__utf8Bytes(str, from, to));
       }
 
       return {

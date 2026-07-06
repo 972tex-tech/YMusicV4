@@ -96,11 +96,10 @@ body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
-- `writeUtf8`/`writeUtf8Range` encode via **one native call per string** (`__utf8Into`,
-  `JS_ToCStringLen` straight into the segment — no per-codepoint interpreted loop; ~30× faster).
-  Variadic: `writeUtf8(a, b)` avoids the string concat. A string token bigger than a whole segment
-  is encoded natively once (`__utf8Bytes`) and streamed through the `writeBytes` bypass — memory =
-  one encoded copy of that single token, never of the document.
+- `writeUtf8`/`writeUtf8Range` encode via `__utf8Into` — an `encodeInto`: fill the segment
+  straight from flat string storage (the vendored patch), flush, advance. One native call per
+  segment-full, ONE encode pass, zero per-call materialization — for a string of any size, memory
+  stays bounded by the segment. Variadic: `writeUtf8(a, b)` avoids the string concat.
 - `writeObjectAsJson` runs the **resumable native JSON encoder** (`__jsonEncNew`/`Fill`/`Done`,
   §2): one native call fills the whole segment, the pump flushes between fills.
 - `writeBytes` **bypasses the segment for large inputs** (`>=` one segment): it flushes what's
