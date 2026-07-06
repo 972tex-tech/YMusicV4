@@ -10,13 +10,20 @@ Bidirectional byte stream between Kotlin and JS. One side `openPipe(name)`, the 
 ```kotlin
 interface Pipe {
     val command: String
-    suspend fun send(buffer: ByteArray, offset: Int, len: Int)     // suspends on backpressure
-    suspend fun send(bytes: ByteArray)                              // convenience
-    suspend fun receive(buffer: ByteArray, offset: Int, len: Int): Int  // -1 at EOF; throws on RESET
-    suspend fun close(reason: String? = null)                      // half-close: END, or RESET(reason)
-    suspend fun closeRead()                                        // abandon reading: peer sends EPIPE
+    suspend fun send(source: Buffer, byteCount: Long)       // okio Sink.write shape; suspends on backpressure
+    suspend fun receive(sink: Buffer, byteCount: Long): Long // okio Source.read shape; -1 at EOF; throws on RESET
+    suspend fun close(reason: String? = null)               // half-close: END, or RESET(reason)
+    suspend fun closeRead()                                 // abandon reading: peer sends EPIPE
 }
 ```
+The Kotlin surface speaks **okio `Buffer`** end to end: `receive` moves already-buffered bytes into
+the sink as whole segments (no copy) and, when parked, hands deliver() the sink itself — the
+writer's bytes are copied straight into its segments, sized at delivery time so a full chunk can
+rendezvous; `send` walks the source's segments, pinning each across the FFI (zero-copy)
+and consuming it only after the peer fully accepted it. `Pipe.asAsyncSource()`/`asAsyncSink()`
+(pure delegation) adapt a pipe to `kmpcommon.io.AsyncSource`/`AsyncSink`, so `BufferedAsyncSource`'s
+`readUtf8LineStrict`/`indexOf`/`readDecimalLong` work over a pipe directly — the adapters are views
+and do not own the pipe (their `close()` is a no-op; lifecycle stays with `Pipe.close`/`closeRead`).
 ```js
 await pipe.send(u8, offset, len)      // undefined when fully accepted; a Promise under backpressure
 await pipe.receive(u8, offset, len)   // -> bytes read (<= len), or -1 at EOF; throws the RESET reason

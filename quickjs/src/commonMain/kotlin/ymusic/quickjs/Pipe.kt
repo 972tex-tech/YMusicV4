@@ -1,5 +1,7 @@
 package ymusic.quickjs
 
+import okio.Buffer
+
 /**
  * A bidirectional **byte stream** between Kotlin and JS, modeled on a pair of Linux pipes (a
  * socketpair): each direction is an independent, **flow-controlled** byte channel with a bounded
@@ -8,12 +10,17 @@ package ymusic.quickjs
  *
  * Backpressure is intrinsic, exactly like `write(2)`/`read(2)` on a kernel pipe:
  *  - [send] **suspends** while the peer's receive buffer is full, and resumes as the peer drains it.
- *    The bytes cross the boundary with at most one buffered copy (see PIPE_STREAMING.md); the buffer
- *    must stay unmodified until the call returns, after which it is free to reuse. It throws
- *    [BrokenPipeException] (EPIPE) once the peer has closed its read end ([closeRead]).
- *  - [receive] **suspends** while the buffer is empty. It returns `-1` at EOF (the peer [close]d its
- *    write end cleanly and you drained what it sent) and throws [PipeResetException] if the peer
- *    closed with a RESET reason.
+ *    Each okio segment crosses the FFI as-is (the segment array is pinned for the call, zero-copy)
+ *    and is consumed only after the peer fully accepted it, so nothing is lost while parked. It
+ *    throws [BrokenPipeException] (EPIPE) once the peer has closed its read end ([closeRead]).
+ *  - [receive] **suspends** while the buffer is empty. Already-buffered bytes move into the sink as
+ *    whole okio segments (no copy); when parked, the writer's bytes are copied straight into the
+ *    sink's segments at delivery time (one copy, no scratch array). It returns `-1` at EOF (the
+ *    peer [close]d its write end cleanly and you drained what it sent) and throws
+ *    [PipeResetException] if the peer closed with a RESET reason.
+ *
+ * For the buffered reading/writing APIs (`readUtf8LineStrict`, `readDecimalLong`, …) adapt with
+ * [asAsyncSource]/[asAsyncSink] — those are views: closing them does not close the pipe.
  *
  * Two closes, mirroring `shutdown(SHUT_WR)` vs closing the read end:
  *  - [close] is a write-side half-close. With `reason == null` it is a clean END: the peer's
@@ -29,18 +36,22 @@ interface Pipe {
     val command: String
 
     /**
-     * Deliver `buffer[offset, offset+len)` to the other side, suspending while its buffer is full.
-     * The range must stay unmodified until this returns (partial writes hold a window into it).
-     * Throws [BrokenPipeException] if the peer closed its read end.
+     * Send exactly [byteCount] bytes of [source], consuming them (okio `Sink.write` semantics),
+     * suspending while the peer's buffer is full. Each okio segment crosses the FFI as-is (the
+     * segment array is pinned for the call, zero-copy) and is consumed only after the peer fully
+     * accepted it, so backpressure suspends here with nothing lost. [source] must not be touched
+     * until this returns. Throws [BrokenPipeException] if the peer closed its read end.
      */
-    suspend fun send(buffer: ByteArray, offset: Int, len: Int)
+    suspend fun send(source: Buffer, byteCount: Long)
 
-    /** Convenience: send a whole array. */
-    suspend fun send(bytes: ByteArray) = send(bytes, 0, bytes.size)
-
-    /** Read up to [len] bytes into [buffer] at [offset]; returns bytes read (≤ len), or -1 at EOF.
-     *  Throws [PipeResetException] if the peer RESET the pipe. */
-    suspend fun receive(buffer: ByteArray, offset: Int, len: Int): Int
+    /**
+     * Read up to [byteCount] bytes into [sink]; returns bytes read, or -1 at EOF (okio `Source.read`
+     * semantics). Already-buffered bytes move into [sink] as whole okio segments (no copy); when the
+     * pipe is empty this parks with [sink] itself, and the writer's bytes are copied straight into
+     * its segments at delivery time (one copy, no scratch array). [sink] must not be touched until
+     * this returns. Throws [PipeResetException] if the peer RESET the pipe.
+     */
+    suspend fun receive(sink: Buffer, byteCount: Long): Long
 
     /**
      * Write-side half-close: END when [reason] is null (the peer's [receive] returns -1 once

@@ -4,6 +4,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
+import okio.Buffer
 
 /**
  * `setTimeout` / `setInterval` (+ their `clear*`), **scheduled on the host**. QuickJS core ships no
@@ -23,7 +24,7 @@ internal fun QuickJsRuntime.installTimers() {
     // The JS globals (setTimeout/setInterval/clear*) live in the bootstrap bytecode blob.
 }
 
-private val TICK = byteArrayOf(1)
+private const val TICK = 1
 
 /**
  * Read the delay, then fire after it — racing each wait against the pipe's close so a cleared timer
@@ -41,7 +42,7 @@ private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
                     onTimeout(ms) { false }    // elapsed → fire
                 }
                 if (stopped) break
-                pipe.send(TICK)
+                pipe.send(Buffer().writeByte(TICK), 1L)
             } while (repeat)
         } finally {
             cleared.cancel()
@@ -52,14 +53,13 @@ private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
 
 /** First frame carries the delay as decimal text. */
 private suspend fun readMillis(pipe: Pipe): Long {
-    val buf = ByteArray(32)
-    val n = pipe.receive(buf, 0, buf.size)
-    if (n <= 0) return 0
-    return buf.decodeToString(0, n).trim().toLongOrNull()?.coerceAtLeast(0) ?: 0
+    val buf = Buffer()
+    if (pipe.receive(buf, 32L) <= 0L) return 0
+    return buf.readUtf8().trim().toLongOrNull()?.coerceAtLeast(0) ?: 0
 }
 
 /** Suspend until the peer closes the pipe (JS sends nothing after the delay). */
 private suspend fun Pipe.awaitClose() {
-    val b = ByteArray(1)
-    while (receive(b, 0, b.size) >= 0) { /* wait for EOF */ }
+    val b = Buffer()
+    while (receive(b, 1L) >= 0L) b.clear() // wait for EOF
 }

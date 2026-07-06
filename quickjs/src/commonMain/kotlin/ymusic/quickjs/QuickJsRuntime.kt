@@ -10,6 +10,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import okio.Buffer
+import okio.use
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Per-direction pipe buffer bound (bytes) — like a Linux pipe's fixed capacity. A writer whose
@@ -18,7 +19,7 @@ import kotlin.coroutines.cancellation.CancellationException
 private const val PIPE_CAP = 64 * 1024
 private const val PIPE_LOW = PIPE_CAP / 2
 
-private const val EOF = -1
+private const val EOF = -1L
 
 /**
  * A QuickJS engine reached over an in-process pipe protocol, on every KMP target. JS execution is
@@ -126,34 +127,35 @@ class QuickJsRuntime private constructor(
 
         // ---- inbound plumbing (all on the engine thread) ----
 
-        /** JS wrote [chunk] (valid only during this call). Rendezvous-first: fill a parked reader's
-         *  buffer directly, then the okio buffer up to [PIPE_CAP]. Returns accepted, or -1 (EPIPE). */
+        /** JS wrote [chunk] (valid only during this call). Rendezvous-first: copy straight into a
+         *  parked reader's sink (up to its byteCount — sized at delivery time, so a full chunk can
+         *  rendezvous), then the okio buffer up to [PIPE_CAP]. Returns accepted, or -1 (EPIPE). */
         fun deliver(chunk: NativeChunk): Int {
             if (readClosed) return -1
             var pos = 0
             val r = reader
             if (r != null) {
                 reader = null
-                val n = minOf(chunk.size, r.len)
-                chunk.copyInto(r.dst, r.offset, 0, n)
+                val n = minOf(chunk.size.toLong(), r.byteCount).toInt()
+                copyChunk(r.sink, chunk, 0, n)
                 pos = n
-                r.cont.resumeWith(Result.success(n))
+                r.cont.resumeWith(Result.success(n.toLong()))
             }
             val room = (PIPE_CAP.toLong() - inbound.size).toInt()
             val toBuffer = minOf(chunk.size - pos, room)
             if (toBuffer > 0) {
-                bufferChunk(chunk, pos, toBuffer)
+                copyChunk(inbound, chunk, pos, toBuffer)
                 pos += toBuffer
             }
             if (pos < chunk.size) peerBlocked = true
             return pos
         }
 
-        /** Copy `[srcOffset, srcOffset+count)` of [chunk] straight into okio segment arrays. */
-        private fun bufferChunk(chunk: NativeChunk, srcOffset: Int, count: Int) {
-            val c = inbound.readAndWriteUnsafe(cursor)
+        /** Copy `[srcOffset, srcOffset+count)` of [chunk] straight into [dst]'s okio segment arrays. */
+        private fun copyChunk(dst: Buffer, chunk: NativeChunk, srcOffset: Int, count: Int) {
+            val c = dst.readAndWriteUnsafe(cursor)
             try {
-                val oldSize = inbound.size
+                val oldSize = dst.size
                 c.resizeBuffer(oldSize + count)
                 var copied = 0
                 while (copied < count) {
@@ -195,26 +197,23 @@ class QuickJsRuntime private constructor(
             else drainCredit = true
         }
 
-        override suspend fun receive(buffer: ByteArray, offset: Int, len: Int): Int =
+        override suspend fun receive(sink: Buffer, byteCount: Long): Long =
             withContext(engineDispatcher) {
-                if (len == 0) return@withContext 0
-                check(!readClosed) { "receive() after closeRead()" }
-                check(!receiving) { "concurrent receive() on the same pipe" }
-                receiving = true
+                require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
+                if (byteCount == 0L) return@withContext 0L
+                beginReceive()
                 try {
                     resetReason?.let { throw PipeResetException(it) }
                     if (inbound.size > 0L) {
-                        val n = inbound.read(buffer, offset, len)
-                        if (peerBlocked && inbound.size <= PIPE_LOW) {
-                            peerBlocked = false
-                            engine.drain(id)
-                        }
+                        val n = inbound.read(sink, byteCount) // whole-segment moves, no copy
+                        maybeDrain()
                         return@withContext n
                     }
-                    if (writeEnded) return@withContext EOF
-                    // Park; deliver()/onPeerCloseWrite complete us with the count, EOF, or a reset.
+                    if (writeEnded) return@withContext -1L
+                    // Park with the sink itself; deliver() copies straight into it (sized at
+                    // delivery time) and resumes us with the count — or EOF / a reset / a failure.
                     suspendCancellableCoroutine { cont ->
-                        reader = ParkedReader(buffer, offset, len, cont)
+                        reader = ParkedReader(sink, byteCount, cont)
                         cont.invokeOnCancellation { reader = null }
                     }
                 } finally {
@@ -222,37 +221,72 @@ class QuickJsRuntime private constructor(
                 }
             }
 
+        private fun beginReceive() {
+            check(!readClosed) { "receive() after closeRead()" }
+            check(!receiving) { "concurrent receive() on the same pipe" }
+            receiving = true
+        }
+
+        private fun maybeDrain() {
+            if (peerBlocked && inbound.size <= PIPE_LOW) {
+                peerBlocked = false
+                engine.drain(id)
+            }
+        }
+
         // ---- outbound plumbing ----
 
-        override suspend fun send(buffer: ByteArray, offset: Int, len: Int): Unit =
+        override suspend fun send(source: Buffer, byteCount: Long): Unit =
             withContext(engineDispatcher) {
-                if (len == 0) return@withContext
+                require(byteCount in 0..source.size) {
+                    "byteCount $byteCount out of range (buffer size ${source.size})"
+                }
+                if (byteCount == 0L) return@withContext
                 check(!sending) { "concurrent send() on the same pipe" }
                 check(!weEnded) { "send() after close()" } // writing past our own half-close is a misuse
                 sending = true
                 drainCredit = false
                 try {
-                    var pos = offset
-                    val end = offset + len
-                    while (pos < end) {
-                        if (peerReadClosed) throw BrokenPipeException()
-                        val written = engine.write(id, buffer, pos, end - pos)
-                        if (written < 0) { peerReadClosed = true; throw BrokenPipeException() }
-                        pos += written
-                        if (pos < end) {
-                            // Partial: the peer's buffer is full. engine.write's trailing microtask
-                            // pump may already have drained it and fired DRAIN (credit) — else park.
-                            if (drainCredit) { drainCredit = false; continue }
-                            suspendCancellableCoroutine { cont ->
-                                writer = cont
-                                cont.invokeOnCancellation { writer = null }
-                            }
+                    var remaining = byteCount
+                    while (remaining > 0L) {
+                        // Snapshot the head segment's range (cursor detached again before any suspend).
+                        var data: ByteArray? = null
+                        var start = 0
+                        var n = 0
+                        source.readUnsafe(cursor).use { c ->
+                            c.seek(0L)
+                            data = c.data
+                            start = c.start
+                            n = minOf(remaining, (c.end - c.start).toLong()).toInt()
                         }
+                        sendRange(data!!, start, n) // the segment array crosses the FFI pinned, zero-copy
+                        source.skip(n.toLong()) // consume only once the peer fully accepted it
+                        remaining -= n
                     }
                 } finally {
                     sending = false
                 }
             }
+
+        private suspend fun sendRange(buffer: ByteArray, offset: Int, len: Int) {
+            var pos = offset
+            val end = offset + len
+            while (pos < end) {
+                if (peerReadClosed) throw BrokenPipeException()
+                val written = engine.write(id, buffer, pos, end - pos)
+                if (written < 0) { peerReadClosed = true; throw BrokenPipeException() }
+                pos += written
+                if (pos < end) {
+                    // Partial: the peer's buffer is full. engine.write's trailing microtask
+                    // pump may already have drained it and fired DRAIN (credit) — else park.
+                    if (drainCredit) { drainCredit = false; continue }
+                    suspendCancellableCoroutine { cont ->
+                        writer = cont
+                        cont.invokeOnCancellation { writer = null }
+                    }
+                }
+            }
+        }
 
         override suspend fun close(reason: String?): Unit = withContext(engineDispatcher) {
             if (!weEnded) {
@@ -295,11 +329,11 @@ class QuickJsRuntime private constructor(
         }
     }
 
+    /** A parked receive: deliver() copies straight into [sink] (up to [byteCount]) and resumes. */
     private class ParkedReader(
-        val dst: ByteArray,
-        val offset: Int,
-        val len: Int,
-        val cont: CancellableContinuation<Int>,
+        val sink: Buffer,
+        val byteCount: Long,
+        val cont: CancellableContinuation<Long>,
     )
 
     /** Cancel handlers, fail anything still parked in [Pipe.send]/[Pipe.receive] (a caller outside

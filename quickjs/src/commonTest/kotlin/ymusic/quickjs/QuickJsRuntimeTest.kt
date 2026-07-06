@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import okio.Buffer
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -13,21 +14,19 @@ import kotlin.test.assertTrue
 
 class QuickJsRuntimeTest {
 
-    private suspend fun Pipe.sendText(s: String) = send(s.encodeToByteArray())
+    private suspend fun Pipe.sendText(s: String) {
+        val b = Buffer().writeUtf8(s)
+        send(b, b.size)
+    }
+
+    private suspend fun Pipe.sendBytes(bytes: ByteArray, offset: Int = 0, count: Int = bytes.size) =
+        send(Buffer().write(bytes, offset, count), count.toLong())
 
     /** Read the whole pipe stream (until the peer closes) into one array. */
     private suspend fun Pipe.readAll(): ByteArray {
-        val chunks = ArrayList<ByteArray>()
-        val buf = ByteArray(256)
-        while (true) {
-            val n = receive(buf, 0, buf.size)
-            if (n < 0) break
-            if (n > 0) chunks.add(buf.copyOfRange(0, n))
-        }
-        val out = ByteArray(chunks.sumOf { it.size })
-        var p = 0
-        for (c in chunks) { c.copyInto(out, p); p += c.size }
-        return out
+        val all = Buffer()
+        while (receive(all, 256L) != -1L) { /* accumulate until EOF */ }
+        return all.readByteArray()
     }
 
     private suspend fun Pipe.readText(): String = readAll().decodeToString()
@@ -101,7 +100,7 @@ class QuickJsRuntimeTest {
             var i = 0
             while (i < bytes.size) {
                 val n = minOf(7, bytes.size - i)
-                pipe.send(bytes, i, n)
+                pipe.sendBytes(bytes, i, n)
                 i += n
             }
             pipe.close()
@@ -144,7 +143,7 @@ class QuickJsRuntimeTest {
         )
         suspend fun run(kind: String, json: String): String {
             val p = rt.openPipe("parse")
-            p.send("$kind\n$json".encodeToByteArray())
+            p.sendText("$kind\n$json")
             p.close()
             return p.readText()
         }
@@ -169,8 +168,8 @@ class QuickJsRuntimeTest {
         val rt = QuickJsRuntime.create()
         // Body = a JSON object immediately followed by unrelated tail bytes, split across frames.
         rt.onAccept("feed") { pipe ->
-            pipe.send("""{"a":1,"b":[2,3]}TA""".encodeToByteArray())
-            pipe.send("IL-🎵-DATA".encodeToByteArray())
+            pipe.sendText("""{"a":1,"b":[2,3]}TA""")
+            pipe.sendText("IL-🎵-DATA")
             pipe.close()
         }
         rt.load(
@@ -324,7 +323,7 @@ class QuickJsRuntimeTest {
         try {
             val pipe = rt.openPipe("echo")
             val payload = byteArrayOf(0, 127, -128, -1, -2, 1, 0)
-            pipe.send(payload, 0, payload.size)
+            pipe.sendBytes(payload, 0, payload.size)
             pipe.close()
             assertContentEquals(payload, pipe.readAll())
         } finally {
@@ -340,7 +339,7 @@ class QuickJsRuntimeTest {
         try {
             val pipe = rt.openPipe("echo")
             val buf = "XXXhelloYYY".encodeToByteArray()
-            pipe.send(buf, 3, 5) // "hello"
+            pipe.sendBytes(buf, 3, 5) // "hello"
             pipe.close()
             assertEquals("hello", pipe.readText())
         } finally {
@@ -377,7 +376,7 @@ class QuickJsRuntimeTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("upper") { p ->
             val text = p.readText()
-            p.send(text.uppercase().encodeToByteArray())
+            p.sendText(text.uppercase())
             p.close()
         }
         rt.load(
@@ -410,14 +409,9 @@ class QuickJsRuntimeTest {
         val rt = QuickJsRuntime.create()
         // Drain to EOF, then reply with the reassembled content on the same pipe.
         rt.onAccept("sink") { pipe ->
-            val buf = ByteArray(8192)
-            val all = StringBuilder()
-            while (true) {
-                val n = pipe.receive(buf, 0, buf.size)
-                if (n < 0) break
-                all.append(buf.decodeToString(0, n))
-            }
-            pipe.send(all.toString().encodeToByteArray())
+            val all = Buffer()
+            while (pipe.receive(all, 8192L) != -1L) { /* accumulate until EOF */ }
+            pipe.sendText(all.readUtf8())
             pipe.close()
         }
         rt.load(
@@ -447,16 +441,15 @@ class QuickJsRuntimeTest {
     fun buffered_sink_streams_large_writes() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe ->
-            val buf = ByteArray(8192)
+            val b = Buffer()
             var len = 0L
             var sum = 0L
-            while (true) {
-                val n = pipe.receive(buf, 0, buf.size)
-                if (n < 0) break
-                len += n
-                for (i in 0 until n) sum += (buf[i].toInt() and 0xFF)
+            while (pipe.receive(b, 8192L) != -1L) { // consume as we go — keeps the writer draining
+                val chunk = b.readByteArray()
+                len += chunk.size
+                for (byte in chunk) sum += (byte.toInt() and 0xFF)
             }
-            pipe.send("$len:$sum".encodeToByteArray())
+            pipe.sendText("$len:$sum")
             pipe.close()
         }
         rt.load(
@@ -497,14 +490,9 @@ class QuickJsRuntimeTest {
     fun write_object_as_json_matches_stringify() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe -> // reassemble the streamed bytes and echo the text back
-            val buf = ByteArray(8192)
-            val sb = StringBuilder()
-            while (true) {
-                val n = pipe.receive(buf, 0, buf.size)
-                if (n < 0) break
-                sb.append(buf.decodeToString(0, n))
-            }
-            pipe.send(sb.toString().encodeToByteArray())
+            val all = Buffer()
+            while (pipe.receive(all, 8192L) != -1L) { /* accumulate until EOF */ }
+            pipe.sendText(all.readUtf8())
             pipe.close()
         }
         rt.load(
@@ -647,7 +635,7 @@ class QuickJsRuntimeTest {
     @Test
     fun read_utf8_line_strict() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.onAccept("feed") { pipe -> pipe.send("a\nbc".encodeToByteArray()); pipe.close() } // "bc" unterminated
+        rt.onAccept("feed") { pipe -> pipe.sendText("a\nbc"); pipe.close() } // "bc" unterminated
         rt.load(
             """
             ymix.onAccept("run", async (pipe) => {
@@ -665,7 +653,7 @@ class QuickJsRuntimeTest {
         )
         suspend fun run(strict: Boolean): String {
             val p = rt.openPipe("run")
-            p.send((if (strict) "1" else "0").encodeToByteArray())
+            p.sendText((if (strict) "1" else "0"))
             p.close()
             return p.readText()
         }
@@ -683,12 +671,8 @@ class QuickJsRuntimeTest {
         val rt = QuickJsRuntime.create()
         // Kotlin echo server (JS opens toward Kotlin).
         rt.onAccept("echo") { pipe ->
-            val buf = ByteArray(64)
-            while (true) {
-                val n = pipe.receive(buf, 0, buf.size)
-                if (n < 0) break
-                pipe.send(buf, 0, n)
-            }
+            val b = Buffer()
+            while (pipe.receive(b, 64L) != -1L) pipe.send(b, b.size)
             pipe.close()
         }
         rt.load(
@@ -719,9 +703,9 @@ class QuickJsRuntimeTest {
     fun buffered_line_split_across_frames() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("lines") { pipe ->
-            pipe.send("hel".encodeToByteArray())
-            pipe.send("lo🎵\r".encodeToByteArray())
-            pipe.send("\nsecond\n".encodeToByteArray())
+            pipe.sendText("hel")
+            pipe.sendText("lo🎵\r")
+            pipe.sendText("\nsecond\n")
             pipe.close()
         }
         rt.load(
@@ -749,7 +733,7 @@ class QuickJsRuntimeTest {
     fun json_body_over_pipe_parsed_natively() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("fetch") { pipe ->
-            pipe.send("""{"title":"hi🎵","items":[1,2,3]}""".encodeToByteArray())
+            pipe.sendText("""{"title":"hi🎵","items":[1,2,3]}""")
             pipe.close()
         }
         rt.load(
@@ -809,7 +793,7 @@ class QuickJsRuntimeTest {
         rt.load("""ymix.onAccept("sink", async (pipe) => { pipe.closeRead(); });""")
         try {
             val pipe = rt.openPipe("sink") // openPipe pumps the handler, so closeRead has already run
-            assertFailsWith<BrokenPipeException> { pipe.send(byteArrayOf(1, 2, 3)) }
+            assertFailsWith<BrokenPipeException> { pipe.sendBytes(byteArrayOf(1, 2, 3)) }
         } finally {
             rt.close()
         }
@@ -824,7 +808,7 @@ class QuickJsRuntimeTest {
         try {
             val pipe = rt.openPipe("echo")
             pipe.close()
-            assertFailsWith<IllegalStateException> { pipe.send(byteArrayOf(1, 2, 3)) }
+            assertFailsWith<IllegalStateException> { pipe.sendBytes(byteArrayOf(1, 2, 3)) }
         } finally {
             rt.close()
         }
@@ -931,7 +915,7 @@ class QuickJsRuntimeTest {
             var sum = 0L
             while (sent < total) {
                 val n = minOf(chunk.size, total - sent)
-                pipe.send(chunk, 0, n)
+                pipe.sendBytes(chunk, 0, n)
                 for (i in 0 until n) sum += (chunk[i].toInt() and 0xFF)
                 sent += n
             }
@@ -949,16 +933,15 @@ class QuickJsRuntimeTest {
     fun js_to_kotlin_large_transfer_is_backpressured_and_intact() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("up-big") { pipe ->
-            val buf = ByteArray(4096)
+            val b = Buffer()
             var len = 0L
             var sum = 0L
-            while (true) {
-                val n = pipe.receive(buf, 0, buf.size)
-                if (n < 0) break
-                len += n
-                for (i in 0 until n) sum += (buf[i].toInt() and 0xFF)
+            while (pipe.receive(b, 4096L) != -1L) { // consume as we go — keeps the writer draining
+                val chunk = b.readByteArray()
+                len += chunk.size
+                for (byte in chunk) sum += (byte.toInt() and 0xFF)
             }
-            pipe.send("$len:$sum".encodeToByteArray())
+            pipe.sendText("$len:$sum")
             pipe.close()
         }
         rt.load(
@@ -1039,7 +1022,7 @@ class QuickJsRuntimeTest {
         )
         try {
             val pipe = rt.openPipe("reset-down")
-            pipe.send(byteArrayOf(42))
+            pipe.sendBytes(byteArrayOf(42))
             pipe.close("boom: connection lost")
             assertEquals("1|boom: connection lost", pipe.readText())
         } finally {
@@ -1055,7 +1038,7 @@ class QuickJsRuntimeTest {
         rt.load("""ymix.onAccept("reset-up", async (pipe) => { pipe.close("kaboom mid-stream"); });""")
         try {
             val pipe = rt.openPipe("reset-up")
-            val e = assertFailsWith<PipeResetException> { pipe.receive(ByteArray(8), 0, 8) }
+            val e = assertFailsWith<PipeResetException> { pipe.receive(Buffer(), 8L) }
             assertEquals("kaboom mid-stream", e.reason)
         } finally {
             rt.close()
@@ -1094,9 +1077,9 @@ class QuickJsRuntimeTest {
         // The handler sends one byte (a handshake proving it ran), then keeps the pipe open forever.
         rt.load("""ymix.onAccept("silent", async (pipe) => { pipe.send(Uint8Array.of(1)); });""")
         val pipe = rt.openPipe("silent")
-        assertEquals(1, pipe.receive(ByteArray(4), 0, 4)) // handshake consumed; nothing more will come
+        assertEquals(1L, pipe.receive(Buffer(), 4L)) // handshake consumed; nothing more will come
         val parked = async(Dispatchers.Default) {
-            runCatching { pipe.receive(ByteArray(4), 0, 4) }
+            runCatching { pipe.receive(Buffer(), 4L) }
         }
         withContext(Dispatchers.Default) { delay(200) } // real time: let the receive park on the engine thread
         rt.close()
@@ -1110,7 +1093,7 @@ class QuickJsRuntimeTest {
     fun sink_writes_complete_synchronously_when_uncontended() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe ->
-            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.sendText(pipe.readText())
             pipe.close()
         }
         rt.load(
@@ -1146,7 +1129,7 @@ class QuickJsRuntimeTest {
     fun write_object_as_json_has_no_depth_limit() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe ->
-            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.sendText(pipe.readText())
             pipe.close()
         }
         rt.load(
@@ -1178,7 +1161,7 @@ class QuickJsRuntimeTest {
     fun write_object_as_json_handles_ropes_and_string_widths() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe ->
-            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.sendText(pipe.readText())
             pipe.close()
         }
         rt.load(
@@ -1212,7 +1195,7 @@ class QuickJsRuntimeTest {
     fun write_object_as_json_rejects_cycles() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe ->
-            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.sendText(pipe.readText())
             pipe.close()
         }
         rt.load(
@@ -1268,7 +1251,7 @@ class QuickJsRuntimeTest {
         val big = buildString { repeat(25_000) { append("abcdefé🎵") } } // ~275 KB of UTF-8
         val tail = "T".repeat(100_000)                                    // over-cap, no trailing '\n'
         rt.onAccept("lines") { pipe ->
-            pipe.send("$big\r\nsecond🎵\n$tail".encodeToByteArray())
+            pipe.sendText("$big\r\nsecond🎵\n$tail")
             pipe.close()
         }
         rt.load(
@@ -1302,7 +1285,7 @@ class QuickJsRuntimeTest {
         val rt = QuickJsRuntime.create()
         val long = buildString { repeat(20_000) { append(('a' + (it % 26))) } }
         rt.onAccept("lines") { pipe ->
-            pipe.send("$long\nsecond🎵\n".encodeToByteArray()) // one send -> several pool segments
+            pipe.sendText("$long\nsecond🎵\n") // one send -> several pool segments
             pipe.close()
         }
         rt.load(
@@ -1332,7 +1315,7 @@ class QuickJsRuntimeTest {
     fun write_utf8_range_is_slice_free() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("sink") { pipe ->
-            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.sendText(pipe.readText())
             pipe.close()
         }
         rt.load(
@@ -1361,7 +1344,7 @@ class QuickJsRuntimeTest {
         rt.load("""ymix.onAccept("jsboom", async (pipe) => { throw new Error("js blew up"); });""")
         try {
             val pipe = rt.openPipe("jsboom")
-            val e = assertFailsWith<PipeResetException> { pipe.receive(ByteArray(8), 0, 8) }
+            val e = assertFailsWith<PipeResetException> { pipe.receive(Buffer(), 8L) }
             assertEquals("js blew up", e.reason)
         } finally {
             rt.close()
