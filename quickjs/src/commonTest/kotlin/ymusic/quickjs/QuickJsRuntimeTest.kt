@@ -1036,6 +1036,64 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** A line longer than one 8 KB pool segment: the newline scan resumes across arrivals without
+     *  rescanning, and the decode assembles the spanning range once — content must be exact. */
+    @Test
+    fun long_line_spanning_segments_reads_intact() = runTest {
+        val rt = QuickJsRuntime.create()
+        val long = buildString { repeat(20_000) { append(('a' + (it % 26))) } }
+        rt.onAccept("lines") { pipe ->
+            pipe.send("$long\nsecond🎵\n".encodeToByteArray()) // one send -> several pool segments
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.buffered(ymix.open("lines"));
+              const l1 = await io.readUtf8Line();
+              const l2 = await io.readUtf8Line();
+              const l3 = await io.readUtf8Line();
+              // report a checksum of l1 rather than echoing 20 KB back
+              let sum = 0; for (let i = 0; i < l1.length; i++) sum += l1.charCodeAt(i);
+              p.send(ymix.utf8Encode(l1.length + ":" + sum + "|" + l2 + "|" + (l3 === null ? "EOF" : l3)));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val sum = long.sumOf { it.code }
+            assertEquals("${long.length}:$sum|second🎵|EOF", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** writeUtf8Range encodes a substring straight from the source string — no .slice() copy. */
+    @Test
+    fun write_utf8_range_is_slice_free() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe ->
+            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.buffered(ymix.open("sink"));
+              await io.writeUtf8Range("XXhello🎵YY", 2, 9);   // "hello🎵" (surrogate pair = 2 units)
+              await io.close();
+              p.send(ymix.utf8Encode(await io.readUtf8()));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("hello🎵", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** The mirror: a JS handler that throws RESETs the pipe with the error message, surfacing in
      *  Kotlin as [PipeResetException]. */
     @Test

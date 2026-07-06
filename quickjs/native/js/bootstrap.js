@@ -13,16 +13,17 @@
 // MEMORY MODEL (see PIPE_STREAMING.md): inbound bytes live in C pool segments — __jsData hands us a
 // one-shot zero-copy view of the host's bytes (DETACHED when the call returns); we copy straight
 // into a parked reader's buffer (rendezvous, one copy) and stash only the remainder into pooled
-// segments via __segTake (never a JS-heap copy of the payload). CRITICAL-REGION RULE: the
-// synchronous _data path must never call a host-crossing native (__host*) — only pure-C ones
-// (__segTake); promise resolutions merely schedule microtasks. DRAIN notifies are emitted from read
-// paths only, which honors that by construction.
+// segments via __segTake (never a JS-heap copy of the payload). The buffered source scans those
+// queued segments IN PLACE — lines are decoded and JSON is parsed straight out of C memory.
+// CRITICAL-REGION RULE: the synchronous _data path must never call a host-crossing native
+// (__host*) — only pure-C ones (__segTake); promise resolutions merely schedule microtasks. DRAIN
+// notifies are emitted from read paths only, which honors that by construction.
 
 (function () {
   // Encode one or more strings to UTF-8, concatenated. Multi-arg (utf8Encode(str, "\n")) avoids a
   // JS string concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
-  // (Small inputs only — pipes carry raw bytes; big text goes through the buffered sink's
-  // stream-encode, and decoding is native __utf8Decode.)
+  // (Small inputs only — big text goes through the buffered sink's stream-encode, and decoding is
+  // native __utf8Decode.)
   function utf8Encode() {
     var out = [];
     for (var a = 0; a < arguments.length; a++) {
@@ -64,14 +65,14 @@
       else if (c === 0x0C) esc = "\\f";
       else if (c < 0x20) esc = "\\u" + ("000" + c.toString(16)).slice(-4);
       if (esc !== null) {
-        // write the safe run so far + the escape in one call (variadic, no string concat)
-        if (i > runStart) await sink.writeUtf8(s.slice(runStart, i), esc);
-        else await sink.writeUtf8(esc);
+        // write the safe run so far + the escape in one call (range write, no slice/concat)
+        if (i > runStart) { await sink.writeUtf8Range(s, runStart, i); }
+        await sink.writeUtf8(esc);
         runStart = i + 1;
       }
     }
-    if (n > runStart) await sink.writeUtf8(s.slice(runStart, n), "\"");
-    else await sink.writeUtf8("\"");
+    if (n > runStart) { await sink.writeUtf8Range(s, runStart, n); }
+    await sink.writeUtf8("\"");
   }
   async function jsonWriteValue(sink, v) {
     var t = typeof v;
@@ -132,30 +133,103 @@
       queue.length = 0; qpos = 0; headPos = 0; buffered = 0;
     }
 
+    // Advance head to the next unread segment; false when nothing is buffered.
+    function ensureHead() {
+      if (head && headPos < head.length) return true;
+      if (head) { __segRelease(head); head = null; headPos = 0; }
+      if (qpos >= queue.length) return false;
+      head = queue[qpos++]; headPos = 0;
+      if (qpos === queue.length) { queue.length = 0; qpos = 0; }
+      return true;
+    }
+
+    // Emit the DRAIN notify the host writer is owed. Only ever called from read paths, never
+    // inside _data (the critical-region rule).
+    function drainCheck() {
+      if (hostBlocked && buffered <= PIPE_LOW) { hostBlocked = false; __hostNotify(id, DRAIN); }
+    }
+
     // Pop up to len bytes across segments: count, EOF, or WOULD_BLOCK (caller parks). Fully-drained
-    // segments return to the C pool eagerly. Emits the DRAIN notify the host writer is owed — this
-    // only ever runs from read paths, never inside _data (the critical-region rule).
+    // segments return to the C pool eagerly.
     function take(buffer, offset, len) {
       var total = 0;
-      while (total < len) {
-        if (!head || headPos >= head.length) {
-          if (head) { __segRelease(head); head = null; headPos = 0; }
-          if (qpos < queue.length) {
-            head = queue[qpos++];
-            if (qpos === queue.length) { queue.length = 0; qpos = 0; }
-          } else break;
-        }
+      while (total < len && ensureHead()) {
         var n = Math.min(len - total, head.length - headPos);
         if (headPos === 0 && n === head.length) buffer.set(head, offset + total);
         else buffer.set(head.subarray(headPos, headPos + n), offset + total);
         headPos += n; total += n; buffered -= n;
       }
       if (head && headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-      if (total > 0) {
-        if (hostBlocked && buffered <= PIPE_LOW) { hostBlocked = false; __hostNotify(id, DRAIN); }
-        return total;
-      }
+      if (total > 0) { drainCheck(); return total; }
       return writeEnded ? EOF : WOULD_BLOCK;
+    }
+
+    // Drop n buffered bytes (consumed by an in-place scanner).
+    function discard(n) {
+      var left = n;
+      while (left > 0 && ensureHead()) {
+        var m = Math.min(left, head.length - headPos);
+        headPos += m; left -= m; buffered -= m;
+      }
+      if (head && headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
+      drainCheck();
+    }
+
+    // Byte at logical offset k (0 = first unread byte), or -1 past the end. No consumption.
+    function byteAt(k) {
+      if (head) {
+        var avail = head.length - headPos;
+        if (k < avail) return head[headPos + k];
+        k -= avail;
+      }
+      for (var q = qpos; q < queue.length; q++) {
+        if (k < queue[q].length) return queue[q][k];
+        k -= queue[q].length;
+      }
+      return -1;
+    }
+
+    // Logical index of the next '\n' at/after `from`, or -1. No consumption.
+    function scanNewline(from) {
+      var base = 0;
+      if (head) {
+        var avail = head.length - headPos;
+        if (from < avail) {
+          for (var i = headPos + from; i < head.length; i++) if (head[i] === 10) return i - headPos;
+          from = 0;
+        } else from -= avail;
+        base += avail;
+      }
+      for (var q = qpos; q < queue.length; q++) {
+        var seg = queue[q], slen = seg.length;
+        if (from < slen) {
+          for (var j = from; j < slen; j++) if (seg[j] === 10) return base + j;
+          from = 0;
+        } else from -= slen;
+        base += slen;
+      }
+      return -1;
+    }
+
+    // Decode the first `e` buffered bytes as UTF-8 without consuming them. Fast path: the range
+    // lives in one segment -> native decode straight out of C memory; a range spanning segments is
+    // assembled once into a scratch array (rare — lines are small).
+    function decodeRange(e) {
+      if (e === 0) return "";
+      if (head && e <= head.length - headPos) return __utf8Decode(head, headPos, e);
+      if (!head && qpos < queue.length && e <= queue[qpos].length) return __utf8Decode(queue[qpos], 0, e);
+      var scratch = new Uint8Array(e), copied = 0;
+      if (head) {
+        var n = Math.min(e, head.length - headPos);
+        scratch.set(head.subarray(headPos, headPos + n), 0);
+        copied = n;
+      }
+      for (var q = qpos; copied < e && q < queue.length; q++) {
+        var seg = queue[q], m = Math.min(e - copied, seg.length);
+        scratch.set(m === seg.length ? seg : seg.subarray(0, m), copied);
+        copied += m;
+      }
+      return __utf8Decode(scratch, 0, e);
     }
 
     // No more data either way — drop routing.
@@ -199,17 +273,72 @@
         });
       },
 
-      // Park until the inbound queue is actionable (data buffered / EOF / RESET) WITHOUT a
-      // destination buffer — incoming bytes stay queued for in-place scanning (buffered source).
-      // Returns undefined when already actionable, else a Promise.
+      // Park until MORE input (or EOF/RESET) arrives, WITHOUT a destination buffer — incoming
+      // bytes stay queued for in-place scanning. Scanners always scan first, then park: nothing
+      // can arrive between the scan and the park (single thread), so no wakeup is lost. Returns
+      // undefined when already ended (rescan handles the final bytes), else a Promise.
       awaitReadable: function () {
         if (readClosed) throw new Error("receive() after closeRead()");
         if (waiter) throw new Error("concurrent receive() on the same pipe");
         if (resetReason !== null) throw new Error(resetReason);
-        if (buffered > 0 || writeEnded) return;
+        if (writeEnded) return;
         return new Promise(function (resolve, reject) {
           waiter = { buffer: null, resolve: resolve, reject: reject };
         });
+      },
+
+      // ---- in-place scanners (the buffered source drives these; no copy out of C memory) ----
+
+      // One line: returns the decoded string (consumed through its '\n', '\r' stripped), null at a
+      // clean empty EOF, or a NUMBER = "no newline in the `buffered` bytes scanned so far" — the
+      // caller awaits more input and rescans from there. strict: throw at EOF instead of returning
+      // the final unterminated line.
+      _lineSync: function (scanFrom, strict) {
+        if (resetReason !== null) throw new Error(resetReason);
+        var nl = scanNewline(scanFrom);
+        if (nl >= 0) {
+          var e = (nl > 0 && byteAt(nl - 1) === 13) ? nl - 1 : nl;
+          var line = decodeRange(e);
+          discard(nl + 1);
+          return line;
+        }
+        if (!writeEnded) return buffered;
+        if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
+        if (buffered === 0) return null;
+        var last = decodeRange(buffered);
+        discard(buffered);
+        return last;
+      },
+
+      // Feed all buffered bytes to a streaming JSON parser, segment by segment, consuming exactly
+      // what it takes (a completed value leaves its tail queued). Returns 1 when the value is
+      // complete, 0 when more input is needed, -1 at EOF (caller finalizes -> value or throw).
+      _jsonFeed: function (p) {
+        if (resetReason !== null) throw new Error(resetReason);
+        while (ensureHead()) {
+          var consumed = __jsonPush(p, head, headPos, head.length - headPos);
+          headPos += consumed; buffered -= consumed;
+          if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
+          if (__jsonDone(p)) { drainCheck(); return 1; }
+        }
+        drainCheck();
+        return writeEnded ? -1 : 0;
+      },
+
+      // Transfer ALL buffered segments to the caller as views trimmed to their unread range —
+      // no copy. The caller assembles/consumes them and MUST __segRelease each when done.
+      _takeChunks: function () {
+        if (resetReason !== null) throw new Error(resetReason);
+        var out = [];
+        if (head) {
+          if (headPos < head.length) out.push(headPos === 0 ? head : head.subarray(headPos));
+          else __segRelease(head);
+          head = null; headPos = 0;
+        }
+        for (var q = qpos; q < queue.length; q++) out.push(queue[q]);
+        queue.length = 0; qpos = 0; buffered = 0;
+        drainCheck();
+        return out;
       },
 
       // Write-side half-close: END (no reason) or RESET (string reason — the peer's receive throws).
@@ -343,158 +472,151 @@
       var f = from === undefined ? 0 : from;
       return __utf8Decode(bytes, f, (to === undefined ? bytes.length : to) - f);
     },
-    // Read a whole pipe stream (until EOF) into one Uint8Array.
-    readAll: async function (pipe) {
-      var chunks = [], total = 0, buf = new Uint8Array(4096);
-      for (;;) {
-        var n = await pipe.receive(buf, 0, buf.length);
-        if (n < 0) break;
-        if (n > 0) { chunks.push(buf.slice(0, n)); total += n; }
-      }
-      var out = new Uint8Array(total), p = 0;
-      for (var i = 0; i < chunks.length; i++) { out.set(chunks[i], p); p += chunks[i].length; }
-      return out;
+    // Read a whole pipe stream (until EOF) into one Uint8Array (single copy: segments -> result).
+    readAll: function (pipe) {
+      return ymix.buffered(pipe).readByteArray();
     },
 
-    // A buffered source+sink over a pipe (okio BufferedSource/BufferedSink style).
+    // A buffered source+sink over a pipe (okio BufferedSource/BufferedSink style). The source has
+    // NO window of its own: the pipe's inbound queue of segment views IS the buffer, and the
+    // scanners (readUtf8Line / readJson*) work on it in place — which also makes head + JSON body +
+    // tail share one stream position for free.
     buffered: function (pipe) {
-      // source window: valid bytes are rbuf[rbeg, rend)
-      var rbuf = new Uint8Array(4096), rbeg = 0, rend = 0, reof = false;
       // sink segment: a FIXED-capacity buffer (never grows) that coalesces small writes. It
       // auto-flushes when full and is bypassed for large writes, so sink memory stays ~one segment
       // no matter how many bytes are written. Flush boundaries are invisible to the peer — the pipe
-      // is a byte stream and Kotlin's buffered source reassembles across them.
+      // is a byte stream and the reader reassembles across them.
       var wbuf = new Uint8Array(8192), wlen = 0;
 
-      async function fill() {
-        if (reof) return 0;
-        if (rbeg > 0) { rbuf.copyWithin(0, rbeg, rend); rend -= rbeg; rbeg = 0; }
-        if (rend >= rbuf.length) { var nb = new Uint8Array(rbuf.length * 2); nb.set(rbuf); rbuf = nb; } // full: rend === length
-        var n = await pipe.receive(rbuf, rend, rbuf.length - rend);
-        if (n < 0) { reof = true; return 0; }
-        rend += n; return n;
+      // Push the staged segment to the pipe. Returns undefined (nothing staged, or fully accepted)
+      // or a Promise that resolves once the pipe accepts the rest (backpressure). The segment must
+      // not be refilled until that promise resolves — every caller here awaits it first.
+      function flushSink() {
+        if (wlen === 0) return;
+        var p = pipe.send(wbuf, 0, wlen);
+        wlen = 0;
+        return p;
+      }
+
+      // Stream-encode str[from, to) as UTF-8 straight into the segment, flushing when it fills —
+      // never materializes the whole encoded array. Flush only when this codepoint's own bytes
+      // don't fit — reserving the worst-case 4 would flush up to 3 bytes early and underpack.
+      async function encodeRange(str, from, to) {
+        var p;
+        for (var i = from; i < to; i++) {
+          var cp = str.codePointAt(i);
+          if (cp > 0xFFFF) i++;
+          if (cp < 0x80) {
+            if (wlen + 1 > wbuf.length) { p = flushSink(); if (p) await p; }
+            wbuf[wlen++] = cp;
+          } else if (cp < 0x800) {
+            if (wlen + 2 > wbuf.length) { p = flushSink(); if (p) await p; }
+            wbuf[wlen++] = 0xC0 | (cp >> 6); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+          } else if (cp < 0x10000) {
+            if (wlen + 3 > wbuf.length) { p = flushSink(); if (p) await p; }
+            wbuf[wlen++] = 0xE0 | (cp >> 12); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+          } else {
+            if (wlen + 4 > wbuf.length) { p = flushSink(); if (p) await p; }
+            wbuf[wlen++] = 0xF0 | (cp >> 18); wbuf[wlen++] = 0x80 | ((cp >> 12) & 0x3F); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+          }
+        }
       }
 
       return {
-        // ---- BufferedSource ----
-        // Read up to len bytes into buffer at offset; returns count, or -1 at EOF.
-        async read(buffer, offset, len) {
-          var o = offset || 0;
-          var l = (len === undefined ? buffer.length - o : len);
-          if (l === 0) return 0;
-          if (rend - rbeg === 0 && (await fill()) === 0) return -1;
-          var n = Math.min(l, rend - rbeg);
-          buffer.set(rbuf.subarray(rbeg, rbeg + n), o);
-          rbeg += n;
-          return n;
+        // ---- BufferedSource (in-place over the pipe's segment queue) ----
+        // Read up to len bytes into buffer at offset; count, or -1 at EOF (pipe.receive semantics —
+        // synchronous when bytes are buffered, direct-delivery rendezvous when parked).
+        read(buffer, offset, len) {
+          return pipe.receive(buffer, offset, len);
         },
-        // One line up to '\n' (trailing '\r' stripped). Non-strict (default): a final line without
-        // a '\n' is returned, and a clean EOF returns null. strict=true (okio readUtf8LineStrict):
-        // requires a '\n' — throws if EOF is reached first.
+        // One line up to '\n' (trailing '\r' stripped), decoded natively straight from the queued
+        // segments. Non-strict (default): a final line without a '\n' is returned, and a clean EOF
+        // returns null. strict=true (okio readUtf8LineStrict): requires a '\n' — throws at EOF.
         async readUtf8Line(strict) {
-          var scanned = 0; // bytes past rbeg already known to hold no '\n'; relative to rbeg, so it survives fill()'s compaction
+          var scanned = 0; // bytes already known to hold no '\n' (nothing is consumed while scanning)
           for (;;) {
-            for (var i = rbeg + scanned; i < rend; i++) {
-              if (rbuf[i] === 10) {
-                var e = (i > rbeg && rbuf[i - 1] === 13) ? i - 1 : i;
-                var line = ymix.utf8Decode(rbuf, rbeg, e);
-                rbeg = i + 1;
-                return line;
-              }
-            }
-            scanned = rend - rbeg;
-            if ((await fill()) === 0) {
-              if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
-              if (rend > rbeg) { var l = ymix.utf8Decode(rbuf, rbeg, rend); rbeg = rend; return l; }
-              return null;
-            }
+            var r = pipe._lineSync(scanned, strict);
+            if (typeof r !== "number") return r; // the line (string) or null at clean EOF
+            scanned = r;
+            var w = pipe.awaitReadable(); if (w) await w;
           }
         },
-        // Parse ONE top-level JSON object / array from the stream via the native streaming parser.
-        // Bytes are fed from the window as they arrive — the whole body is never buffered. The root
-        // type is checked on its FIRST byte (fail fast if the body is a scalar, the wrong container,
-        // or e.g. an HTML error page). Stops at the value's end: trailing bytes stay in the buffer,
-        // so you can read the JSON then keep reading (e.g. "{json}tail" on one pipe).
+        // Parse ONE top-level JSON object / array via the native streaming parser, fed segment by
+        // segment straight from C memory — the body bytes never enter the JS heap and the whole
+        // body is never buffered. The root type is checked on its FIRST byte (fail fast if the body
+        // is a scalar, the wrong container, or e.g. an HTML error page). Stops at the value's end:
+        // trailing bytes stay queued, so you can read the JSON then keep reading ("{json}tail").
         async readJsonObject() { return this._readJson(1); },
         async readJsonArray() { return this._readJson(2); },
         async _readJson(expect) {
           var p = __jsonNew(expect);
           for (;;) {
-            if (rend > rbeg) {
-              rbeg += __jsonPush(p, rbuf, rbeg, rend - rbeg);
-              if (__jsonDone(p)) return __jsonEnd(p);   // value complete; tail (if any) left in [rbeg,rend)
-            }
-            if ((await fill()) === 0) return __jsonEnd(p); // EOF: finalize (or throw if incomplete)
+            var s = pipe._jsonFeed(p);
+            if (s !== 0) return __jsonEnd(p); // 1 = complete; -1 = EOF (finalize, or throw if incomplete)
+            var w = pipe.awaitReadable(); if (w) await w;
           }
         },
-        // All remaining bytes, decoded as UTF-8 (one native decode over the whole array).
+        // All remaining bytes, decoded as UTF-8 (one native decode over the assembled array).
         async readUtf8() {
           var all = await this.readByteArray();
-          return ymix.utf8Decode(all, 0, all.length);
+          return __utf8Decode(all, 0, all.length);
         },
-        // All remaining bytes to EOF (raw) — e.g. to hand to __parseJson.
+        // All remaining bytes to EOF (raw) — segments transfer as views and are assembled with a
+        // single copy into the result, then returned to the pool.
         async readByteArray() {
           var chunks = [], total = 0;
           for (;;) {
-            if (rend > rbeg) { var c = rbuf.slice(rbeg, rend); chunks.push(c); total += c.length; rbeg = rend; }
-            if ((await fill()) === 0) break;
+            var got = pipe._takeChunks();
+            for (var i = 0; i < got.length; i++) { chunks.push(got[i]); total += got[i].length; }
+            var w = pipe.awaitReadable();
+            if (!w) { // ended: nothing more can arrive (anything present was taken above)
+              var last = pipe._takeChunks();
+              for (var j = 0; j < last.length; j++) { chunks.push(last[j]); total += last[j].length; }
+              break;
+            }
+            await w;
           }
-          var all = new Uint8Array(total), p = 0;
-          for (var k = 0; k < chunks.length; k++) { all.set(chunks[k], p); p += chunks[k].length; }
+          var all = new Uint8Array(total), pos = 0;
+          for (var k = 0; k < chunks.length; k++) {
+            all.set(chunks[k], pos);
+            pos += chunks[k].length;
+            __segRelease(chunks[k]);
+          }
           return all;
         },
 
         // ---- BufferedSink: a fixed segment; small writes coalesce, large writes bypass it ----
-        // Every write is async and applies backpressure: it stays synchronous while it only fills the
-        // 8 KB segment (or flushes with room), and suspends only when a flush hits a full pipe. Writes
-        // must be sequential — `await` one before the next (a second overlapping send throws). Internal
-        // flushes use `if (p) await p`, so the fast path costs no microtask.
+        // Every write is async and applies backpressure: it stays synchronous while it only fills
+        // the 8 KB segment, and suspends only when a flush hits a full pipe. Writes must be
+        // sequential — `await` one before the next (a second overlapping send throws).
         // Append b. A large input (>= a segment) bypasses the buffer: each segment-sized slice is
         // awaited, so a few-MB array is paced by the reader and never held whole.
         async writeBytes(b) {
           var n = b.length, p;
           if (n >= wbuf.length) {
-            p = this.flush(); if (p) await p;
+            p = flushSink(); if (p) await p;
             for (var off = 0; off < n; off += wbuf.length) {
               p = pipe.send(b, off, Math.min(wbuf.length, n - off));
               if (p) await p;
             }
             return;
           }
-          if (wlen + n > wbuf.length) { p = this.flush(); if (p) await p; }
+          if (wlen + n > wbuf.length) { p = flushSink(); if (p) await p; }
           wbuf.set(b, wlen); wlen += n;
         },
-        // Stream-encode UTF-8 straight into the segment, flushing when it fills — never materializes
-        // the whole encoded array. Variadic: writeUtf8(a, b, c) encodes the parts back-to-back with no
-        // `a + b + c` first (QuickJS strings are immutable, so + would allocate and copy).
+        // Variadic: writeUtf8(a, b, c) stream-encodes the parts back-to-back with no `a + b + c`
+        // first (QuickJS strings are immutable, so + would allocate and copy).
         async writeUtf8() {
-          for (var a = 0; a < arguments.length; a++) {
-            var str = arguments[a], p;
-            for (var i = 0; i < str.length; i++) {
-              var cp = str.codePointAt(i);
-              if (cp > 0xFFFF) i++;
-              // Flush only when this codepoint's own bytes don't fit — reserving the worst-case 4
-              // would flush up to 3 bytes early and underpack the segment.
-              if (cp < 0x80) {
-                if (wlen + 1 > wbuf.length) { p = this.flush(); if (p) await p; }
-                wbuf[wlen++] = cp;
-              } else if (cp < 0x800) {
-                if (wlen + 2 > wbuf.length) { p = this.flush(); if (p) await p; }
-                wbuf[wlen++] = 0xC0 | (cp >> 6); wbuf[wlen++] = 0x80 | (cp & 0x3F);
-              } else if (cp < 0x10000) {
-                if (wlen + 3 > wbuf.length) { p = this.flush(); if (p) await p; }
-                wbuf[wlen++] = 0xE0 | (cp >> 12); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
-              } else {
-                if (wlen + 4 > wbuf.length) { p = this.flush(); if (p) await p; }
-                wbuf[wlen++] = 0xF0 | (cp >> 18); wbuf[wlen++] = 0x80 | ((cp >> 12) & 0x3F); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
-              }
-            }
-          }
+          for (var a = 0; a < arguments.length; a++) await encodeRange(arguments[a], 0, arguments[a].length);
+        },
+        // Range form: encode str[from, to) with no .slice() (a slice copies the whole substring).
+        async writeUtf8Range(str, from, to) {
+          await encodeRange(str, from, to);
         },
         // writeUtf8(...args) then a single '\n' — no concat, no separate encode pass.
         async writeUtf8Line() {
           await this.writeUtf8.apply(this, arguments);
-          if (wlen + 1 > wbuf.length) { var p = this.flush(); if (p) await p; }
+          if (wlen + 1 > wbuf.length) { var p = flushSink(); if (p) await p; }
           wbuf[wlen++] = 10;
         },
         // Serialize value to JSON by walking it (jsonWriteValue) — streams tokens into the segment,
@@ -505,11 +627,8 @@
           if (v === undefined || t === "function" || t === "symbol") await this.writeUtf8("null");
           else await jsonWriteValue(this, v);
         },
-        // Push the staged segment to the pipe. Returns undefined (nothing staged, or fully accepted)
-        // or a Promise that resolves once the pipe accepts the rest (backpressure). The segment must
-        // not be refilled until that promise resolves — every caller here awaits it first.
-        flush() { if (wlen === 0) return; var p = pipe.send(wbuf, 0, wlen); wlen = 0; return p; },
-        async close(reason) { var p = this.flush(); if (p) await p; pipe.close(reason); }
+        flush() { return flushSink(); },
+        async close(reason) { var p = flushSink(); if (p) await p; pipe.close(reason); }
       };
     }
   };

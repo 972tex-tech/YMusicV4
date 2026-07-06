@@ -75,9 +75,17 @@ never needs one.
 
 Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
 inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop),
-`readAll(pipe)` (drain a stream to one `Uint8Array`), and `buffered(pipe)` — an okio-style wrapper
-with a buffered source (`read`/`readUtf8Line`/`readUtf8`, plus `readJsonObject`/`readJsonArray`,
-§2) and a buffered sink (`writeBytes`/`writeUtf8`/`writeUtf8Line`, `flush`, `close`).
+`readAll(pipe)` (drain a stream to one `Uint8Array`, single copy), and `buffered(pipe)` — an
+okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`/`readByteArray`, plus
+`readJsonObject`/`readJsonArray`, §2) and a buffered sink (`writeBytes`/`writeUtf8`/
+`writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`, `close(reason?)`).
+
+The buffered **source has no window of its own**: the pipe's inbound queue of segment views *is*
+the buffer, and the scanners work on it **in place** — `readUtf8Line` finds the newline and decodes
+the range natively straight out of C memory (a rare segment-spanning line is assembled once);
+`readJson*` feeds the streaming parser segment by segment, so body bytes never enter the JS heap;
+`readByteArray` transfers the segment views and assembles the result with a single copy. This also
+makes a head line + JSON body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
@@ -137,7 +145,7 @@ the value without ever holding the whole byte buffer (nor the double-copy a `rea
 **Tail data (`{json}tail`).** `__jsonPush` parses at most ONE top-level value: it stops the instant
 the value completes and returns how many bytes it consumed. A return < `len` means the value is
 done and the rest of the chunk is unrelated trailing data — the reader advances the buffer by
-exactly `consumed`, so the tail stays in the window for the next `readUtf8Line`/`read`/etc. (This
+exactly `consumed`, so the tail stays queued for the next `readUtf8Line`/`read`/etc. (This
 is why the parser reports a consumed count instead of demanding it swallow the whole input.)
 
 `__parseJson(uint8array)` is a one-shot for when you already have all the bytes — QuickJS's own
