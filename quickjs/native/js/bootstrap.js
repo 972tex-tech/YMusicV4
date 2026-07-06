@@ -248,26 +248,33 @@
       _data: function (u8) {
         if (readClosed) return -1;
         var len = u8.length, pos = 0;
-        var w = waiter;
-        if (w) {
+        var w = waiter, delivered = 0;
+        if (w !== null) {
           waiter = null;
           if (w.buffer) { // destination park: direct delivery (the queue is empty by construction)
-            var n = Math.min(len, w.len);
-            if (n === len) w.buffer.set(u8, w.offset);
-            else w.buffer.set(u8.subarray(0, n), w.offset);
-            pos = n;
-            w.resolve(n);
-          } else {
-            w.resolve(); // readable park: wake the scanner; the bytes land in the queue below
+            delivered = Math.min(len, w.len);
+            if (delivered === len) w.buffer.set(u8, w.offset);
+            else w.buffer.set(u8.subarray(0, delivered), w.offset);
+            pos = delivered;
           }
         }
-        while (pos < len && buffered < PIPE_CAP) {
-          var seg = __segTake(u8, pos, Math.min(len - pos, PIPE_CAP - buffered));
-          queue.push(seg);
-          buffered += seg.length;
-          pos += seg.length;
+        // Wake-LAST, and in a finally: the waiter is resolved only once the queue is fully
+        // consistent (so nothing depends on promise resolution being deferred to a microtask),
+        // and an OOM mid-buffering can't strand a nulled-but-unresolved waiter.
+        try {
+          while (pos < len && buffered < PIPE_CAP) {
+            var seg = __segTake(u8, pos, Math.min(len - pos, PIPE_CAP - buffered));
+            queue.push(seg);
+            buffered += seg.length;
+            pos += seg.length;
+          }
+          if (pos < len) hostBlocked = true; // we owe the host a DRAIN once we read back below LOW
+        } finally {
+          if (w !== null) {
+            if (w.buffer) w.resolve(delivered);
+            else w.resolve(); // readable park: the bytes are queued now; the scanner rescans
+          }
         }
-        if (pos < len) hostBlocked = true; // we owe the host a DRAIN once we read back below LOW
         return pos;
       },
 
