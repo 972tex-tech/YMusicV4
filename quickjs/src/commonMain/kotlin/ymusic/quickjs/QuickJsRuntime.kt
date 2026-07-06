@@ -3,6 +3,7 @@ package ymusic.quickjs
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -364,7 +365,10 @@ class QuickJsRuntime private constructor(
      *  engine (on its thread), and release the engine thread. */
     suspend fun close() {
         scope.cancel()
-        withContext(engineDispatcher) {
+        // Cleanup must complete even when the caller is already cancelled — the standard
+        // `finally { rt.close() }` on a cancelled job — so the teardown hop is NonCancellable
+        // (a plain withContext would skip the whole block, silently leaking the engine).
+        withContext(engineDispatcher + NonCancellable) {
             val cause = QuickJsException("runtime closed")
             val open = pipes.values.toList()
             pipes.clear()

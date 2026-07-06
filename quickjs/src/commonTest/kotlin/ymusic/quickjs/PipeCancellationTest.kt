@@ -2,6 +2,9 @@ package ymusic.quickjs
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,6 +73,32 @@ class PipeCancellationTest {
         } finally {
             rt.close()
         }
+    }
+
+    /** `finally { rt.close() }` on an already-cancelled job is the standard cleanup pattern — the
+     *  teardown must still run (fail parked calls, destroy the engine), not get skipped by the
+     *  caller's own cancellation. Observable: the parked receive below resumes with the runtime-
+     *  closed failure instead of hanging forever. */
+    @Test
+    fun close_completes_from_an_already_cancelled_caller() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load("""ymix.onAccept("silent", (pipe) => { globalThis.__keep = pipe; });""")
+        val pipe = rt.openPipe("silent")
+        val parked = async(Dispatchers.Default) { runCatching { pipe.receive(Buffer(), 4L) } }
+        withContext(Dispatchers.Default) { delay(200) } // real time: let the receive park
+
+        val closer = launch(Dispatchers.Default) {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) { rt.close() } // cleanup path: caller is cancelled here
+            }
+        }
+        withContext(Dispatchers.Default) { delay(100) }
+        closer.cancelAndJoin()
+
+        val result = parked.await()
+        assertTrue(result.isFailure, "teardown must fail the parked receive, got $result")
     }
 
     @Test
