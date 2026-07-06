@@ -170,6 +170,9 @@
         if (resetReason !== null) throw new Error(resetReason);
         while (ensureHead()) {
           var consumed = __linePush(l, head, headPos, head.length - headPos);
+          // __linePush consumes all of len (no '\n') or j+1 >= 1 (found one) — guard the invariant:
+          // a 0 here would otherwise spin this loop forever on the engine thread
+          if (consumed <= 0) throw new Error("__linePush made no progress");
           headPos += consumed; buffered -= consumed;
           if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
           if (__lineDone(l)) { drainCheck(); return 1; }
@@ -185,9 +188,17 @@
         if (resetReason !== null) throw new Error(resetReason);
         while (ensureHead()) {
           var consumed = __jsonPush(p, head, headPos, head.length - headPos);
+          if (__jsonDone(p)) { // may legitimately consume 0 here (value ended at the previous push)
+            headPos += consumed; buffered -= consumed;
+            if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
+            drainCheck();
+            return 1;
+          }
+          // ensureHead guarantees len >= 1, and an undone parser must consume everything fed —
+          // guard the invariant: a 0 here would otherwise spin this loop forever on the engine thread
+          if (consumed <= 0) throw new Error("__jsonPush made no progress");
           headPos += consumed; buffered -= consumed;
           if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-          if (__jsonDone(p)) { drainCheck(); return 1; }
         }
         drainCheck();
         return writeEnded ? -1 : 0;
