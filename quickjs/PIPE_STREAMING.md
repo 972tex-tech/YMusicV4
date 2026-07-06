@@ -111,12 +111,14 @@ allocation per `async` call — per-token awaits made `writeObjectAsJson` ~70× 
 one-shot. `await` still works on every write (awaiting `undefined` is legal), but hot loops can
 skip the hop: `var p = io.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through
 the **resumable native encoder** (§2): the walk lives in C as explicit state, `__jsonEncFill` fills
-the segment per call, and the ~10-line JS pump only carries backpressure. Measured on a 305 KB
-value: 431 ms (async JS walker) → 14 ms (native encoder) vs ~6 ms for the whole-document
-`__stringifyJson` + `writeBytes` — near-native while never materializing the JSON text (which the
-one-shot does, twice). A plain `writeUtf8` of the same 305 KB string: 82 ms → 3 ms (`__utf8Into`/
-`__utf8Bytes`). The backpressure story is unchanged: bounded buffer + parked writer, so a stalled
-consumer stops the producer instead of queueing unbounded bytes anywhere.
+the segment per call, and the ~10-line JS pump only carries backpressure. Measured (min of 3) on a
+305 KB value: 431 ms (the old async JS walker) → **4 ms**, vs 6 ms for the whole-document
+`__stringifyJson` + `writeBytes`; at 1.2 MB: 10 ms vs 15 ms — the streaming encoder now **beats the
+one-shot at every size** (the one-shot materializes the document three times: the JSON JSString,
+its UTF-8 conversion, and the Uint8Array copy; the encoder materializes nothing). A plain
+`writeUtf8` of the same 305 KB string: 82 ms → 3 ms (`__utf8Into`/`__utf8Bytes`). The backpressure
+story is unchanged: bounded buffer + parked writer, so a stalled consumer stops the producer
+instead of queueing unbounded bytes anywhere.
 
 ## 2. Native JSON <-> bytes: streaming parse + resumable encode
 
@@ -179,6 +181,12 @@ value). Matches `JSON.stringify` (toJSON, key order, escapes, NaN/undefined rule
 deliberate divergences: a root `undefined` emits `null`, and a **cycle throws TypeError** (the
 explicit stack makes the ancestry check cheap). Because the walk resumes across fills, `toJSON()`/
 getters run *during* serialization — a value mutated under backpressure serializes as visited.
+
+String tokens escape + UTF-8-encode in one pass **straight out of JSString storage** (Latin-1 or
+UTF-16, ropes linearized first) via `JS_ToFlatString`/`JS_GetFlatStringStorage` — a ~25-line patch
+appended to the vendored `quickjs.c` (marked "YMusic patch"; **re-apply when upgrading QuickJS**).
+No per-token cstring materialization; hot atoms (`toJSON`, `length`) are interned once per encoder;
+int32 numbers format directly. Net: faster than the native one-shot with one-segment memory.
 
 ### `__stringifyJson(value) -> Uint8Array` — the one-shot encode
 

@@ -61422,3 +61422,31 @@ int JS_AddIntrinsicWeakRef(JSContext *ctx)
     JS_FreeValue(ctx, obj);
     return 0;
 }
+
+/* ---------------- YMusic patch (re-apply when upgrading QuickJS) ----------------
+ * Direct flat-string storage access for the streaming JSON encoder (../quickjs_json.c __jsonEnc*):
+ * lets string tokens escape+encode straight out of JSString memory instead of materializing a
+ * UTF-8 cstring per token (JS_ToCStringLen). Narrow JSStrings are Latin-1; wide are UTF-16. */
+
+/* An owned flat string for any string value (linearizes ropes). */
+JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v)
+{
+    if (JS_VALUE_GET_TAG(v) == JS_TAG_STRING)
+        return JS_DupValue(ctx, v);
+    if (JS_VALUE_GET_TAG(v) == JS_TAG_STRING_ROPE)
+        return js_linearize_string_rope(ctx, JS_DupValue(ctx, v));
+    return JS_ThrowTypeError(ctx, "not a string");
+}
+
+/* Storage of a flat string: returns 0 (Latin-1 bytes) / 1 (UTF-16 code units) and points *pdata
+ * at the characters (valid while the string is alive), or -1 if v is not a flat string. */
+int JS_GetFlatStringStorage(JSValueConst v, const void **pdata, uint32_t *plen)
+{
+    JSString *p;
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_STRING)
+        return -1;
+    p = JS_VALUE_GET_STRING(v);
+    *pdata = p->u.str8;
+    *plen = p->len;
+    return p->is_wide_char;
+}

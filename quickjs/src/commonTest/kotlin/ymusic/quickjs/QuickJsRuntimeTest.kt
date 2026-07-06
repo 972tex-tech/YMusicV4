@@ -1104,6 +1104,40 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** Rope strings (built by repeated concat) and Latin-1/UTF-16 storage widths all serialize
+     *  byte-exactly — the encoder reads JSString storage directly and must linearize ropes. */
+    @Test
+    fun write_object_as_json_handles_ropes_and_string_widths() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe ->
+            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              let rope = "";                                    // repeated concat -> a rope string
+              for (let i = 0; i < 400; i++) rope += "seg" + i + "-héllo🎵|";  // wide + Latin-1 mix
+              let latin = "";                                   // Latin-1-only rope (narrow storage)
+              for (let i = 0; i < 300; i++) latin += "café-æß" + i; // all < U+0100 -> narrow storage
+              const value = { rope: rope, latin: latin, esc: rope + "\n\t\"" };
+              const io = ymix.buffered(ymix.open("sink"));
+              const w = io.writeObjectAsJson(value); if (w) await w;
+              const c = io.close(); if (c) await c;
+              const got = await io.readUtf8();
+              const want = JSON.stringify(value);
+              p.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH len=" + got.length + " want=" + want.length)));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A circular value throws TypeError (like JSON.stringify) instead of emitting forever — the
      *  encoder's explicit stack makes the ancestry check cheap. */
     @Test

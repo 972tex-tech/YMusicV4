@@ -585,11 +585,20 @@ typedef struct {
     JSValue pending;      /* the next VALUE to emit */
     int has_pending;
     int root_raw;         /* pending is the raw root: apply toJSON on first produce */
+    JSAtom atom_tojson;   /* interned once — JS_GetPropertyStr would re-hash "toJSON" per value */
+    JSAtom atom_length;   /* likewise, "length" per array */
     DynBuf tok;           /* current token bytes, drained across fills */
     size_t tok_pos;
     int done;
     int failed;
 } JEnc;
+
+/* From the YMusic patch at the end of the vendored quickjs.c: direct flat-string storage access,
+ * so string tokens escape+encode straight out of JSString memory (Latin-1 / UTF-16) with no
+ * per-token UTF-8 cstring materialization (that one malloc + extra pass was most of the remaining
+ * gap to the internal JSON.stringify). */
+JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
+int JS_GetFlatStringStorage(JSValueConst v, const void **pdata, uint32_t *plen);
 
 static void jenc_free(JEnc *e) {
     if (e == NULL) return;
@@ -600,6 +609,8 @@ static void jenc_free(JEnc *e) {
     }
     free(e->stack);
     if (e->has_pending) JS_FreeValue(ctx, e->pending);
+    JS_FreeAtom(ctx, e->atom_tojson);
+    JS_FreeAtom(ctx, e->atom_length);
     dbuf_free(&e->tok);
     free(e);
 }
@@ -616,47 +627,98 @@ static int jenc_putc(JEnc *e, char c) {
     return 0;
 }
 
-/* Append the JSON string literal for UTF-8 [s, s+len) — quotes + JSON.stringify's exact escapes.
- * Escapes only hit ASCII, so a byte-wise scan with run batching is safe and fast. */
-static int jenc_escape(JEnc *e, const uint8_t *s, size_t len) {
-    static const char HEX[] = "0123456789abcdef";
+/* HEX + the escape for one char < 0x80 needing one (writes 2 or 6 bytes at q, returns new q).
+ * JSON.stringify's exact escape set. */
+static const char JENC_HEX[] = "0123456789abcdef";
+
+static inline uint8_t *jenc_esc_char(uint8_t *q, uint8_t c) {
+    *q++ = '\\';
+    switch (c) {
+    case '"': *q++ = '"'; break;
+    case '\\': *q++ = '\\'; break;
+    case '\n': *q++ = 'n'; break;
+    case '\r': *q++ = 'r'; break;
+    case '\t': *q++ = 't'; break;
+    case '\b': *q++ = 'b'; break;
+    case '\f': *q++ = 'f'; break;
+    default:
+        *q++ = 'u'; *q++ = '0'; *q++ = '0';
+        *q++ = JENC_HEX[c >> 4]; *q++ = JENC_HEX[c & 15];
+    }
+    return q;
+}
+
+/* JSON string literal straight from a narrow JSString's storage (Latin-1 bytes) — escape + UTF-8
+ * encode in one pass, written raw into the reserved DynBuf tail (worst case 6 bytes per char),
+ * chunked so a huge string never over-reserves. */
+static int jenc_escape_latin1(JEnc *e, const uint8_t *s, uint32_t len) {
+    DynBuf *d = &e->tok;
     if (jenc_putc(e, '"')) return -1;
-    size_t i = 0;
+    uint32_t i = 0;
     while (i < len) {
-        size_t run = i;
-        while (i < len) {
+        uint32_t todo = len - i;
+        if (todo > 1024) todo = 1024;
+        if (dbuf_claim(d, (size_t)todo * 6)) { JS_ThrowOutOfMemory(e->ctx); return jenc_fail(e); }
+        uint8_t *q = d->buf + d->size;
+        for (uint32_t end = i + todo; i < end; i++) {
             uint8_t c = s[i];
-            if (c < 0x20 || c == '"' || c == '\\') break;
-            i++;
+            if (c >= 0x20 && c < 0x80 && c != '"' && c != '\\') *q++ = c;
+            else if (c >= 0x80) { *q++ = 0xC0 | (c >> 6); *q++ = 0x80 | (c & 0x3F); }
+            else q = jenc_esc_char(q, c);
         }
-        if (i > run && jenc_put(e, s + run, i - run)) return -1;
-        if (i >= len) break;
-        uint8_t c = s[i++];
-        char esc[6] = { '\\', 0, 0, 0, 0, 0 };
-        size_t elen = 2;
-        switch (c) {
-        case '"': esc[1] = '"'; break;
-        case '\\': esc[1] = '\\'; break;
-        case '\n': esc[1] = 'n'; break;
-        case '\r': esc[1] = 'r'; break;
-        case '\t': esc[1] = 't'; break;
-        case '\b': esc[1] = 'b'; break;
-        case '\f': esc[1] = 'f'; break;
-        default:
-            esc[1] = 'u'; esc[2] = '0'; esc[3] = '0';
-            esc[4] = HEX[c >> 4]; esc[5] = HEX[c & 15];
-            elen = 6;
-        }
-        if (jenc_put(e, esc, elen)) return -1;
+        d->size = q - d->buf;
     }
     return jenc_putc(e, '"');
 }
 
+/* The same for a wide JSString (UTF-16 code units). Astral pairs -> 4-byte UTF-8; a lone surrogate
+ * goes out as WTF-8 (3 bytes), consistent with utf8Encode/JS_ToCStringLen across the stack. */
+static int jenc_escape_utf16(JEnc *e, const uint16_t *s, uint32_t len) {
+    DynBuf *d = &e->tok;
+    if (jenc_putc(e, '"')) return -1;
+    uint32_t i = 0;
+    while (i < len) {
+        uint32_t todo = len - i;
+        if (todo > 1024) todo = 1024;
+        if (dbuf_claim(d, (size_t)todo * 6)) { JS_ThrowOutOfMemory(e->ctx); return jenc_fail(e); }
+        uint8_t *q = d->buf + d->size;
+        uint32_t end = i + todo;
+        while (i < end) {
+            uint32_t c = s[i++];
+            if (c < 0x80) {
+                if (c >= 0x20 && c != '"' && c != '\\') *q++ = c;
+                else q = jenc_esc_char(q, (uint8_t)c);
+            } else if (c < 0x800) {
+                *q++ = 0xC0 | (c >> 6); *q++ = 0x80 | (c & 0x3F);
+            } else if (c >= 0xD800 && c < 0xDC00 && i < len && s[i] >= 0xDC00 && s[i] < 0xE000) {
+                uint32_t cp = 0x10000 + ((c - 0xD800) << 10) + (s[i++] - 0xDC00);
+                *q++ = 0xF0 | (cp >> 18); *q++ = 0x80 | ((cp >> 12) & 0x3F);
+                *q++ = 0x80 | ((cp >> 6) & 0x3F); *q++ = 0x80 | (cp & 0x3F);
+            } else {
+                *q++ = 0xE0 | (c >> 12); *q++ = 0x80 | ((c >> 6) & 0x3F); *q++ = 0x80 | (c & 0x3F);
+            }
+        }
+        d->size = q - d->buf;
+    }
+    return jenc_putc(e, '"');
+}
+
+/* Emit the JSON string literal for a FLAT string value, dispatching on its storage width. */
+static int jenc_escape_flat(JEnc *e, JSValueConst flat) {
+    const void *data = NULL;
+    uint32_t len = 0;
+    int wide = JS_GetFlatStringStorage(flat, &data, &len);
+    if (wide < 0) { JS_ThrowTypeError(e->ctx, "not a flat string"); return jenc_fail(e); }
+    return wide ? jenc_escape_utf16(e, (const uint16_t *)data, len)
+                : jenc_escape_latin1(e, (const uint8_t *)data, len);
+}
+
 /* JSON.stringify's toJSON hook (no key argument — matches the JS pump this replaces). Takes
  * ownership of v; returns a new value or an exception. */
-static JSValue jenc_resolve(JSContext *ctx, JSValue v) {
+static JSValue jenc_resolve(JEnc *e, JSValue v) {
+    JSContext *ctx = e->ctx;
     if (!JS_IsObject(v) && !JS_IsBigInt(ctx, v)) return v;
-    JSValue fn = JS_GetPropertyStr(ctx, v, "toJSON");
+    JSValue fn = JS_GetProperty(ctx, v, e->atom_tojson);
     if (JS_IsException(fn)) { JS_FreeValue(ctx, v); return JS_EXCEPTION; }
     if (JS_IsFunction(ctx, fn)) {
         JSValue r = JS_Call(ctx, fn, v, 0, NULL);
@@ -685,6 +747,11 @@ static int jenc_emit_value(JEnc *e, JSValue v) {
         return b ? jenc_put(e, "true", 4) : jenc_put(e, "false", 5);
     }
     if (JS_IsNumber(v)) {
+        if (JS_VALUE_GET_TAG(v) == JS_TAG_INT) { /* the common case: no JSString + cstring churn */
+            char nbuf[16];
+            int n = snprintf(nbuf, sizeof(nbuf), "%d", JS_VALUE_GET_INT(v)); /* == ECMA ToString for int32 */
+            return jenc_put(e, nbuf, (size_t)n);
+        }
         double d = 0;
         JS_ToFloat64(ctx, &d, v);
         if (!isfinite(d)) { JS_FreeValue(ctx, v); return jenc_put(e, "null", 4); }
@@ -697,12 +764,11 @@ static int jenc_emit_value(JEnc *e, JSValue v) {
         return r;
     }
     if (JS_IsString(v)) {
-        size_t len = 0;
-        const char *cs = JS_ToCStringLen(ctx, &len, v);
-        if (cs == NULL) { JS_FreeValue(ctx, v); return jenc_fail(e); }
-        int r = jenc_escape(e, (const uint8_t *)cs, len);
-        JS_FreeCString(ctx, cs);
+        JSValue flat = JS_ToFlatString(ctx, v); /* linearizes a rope; usually a cheap dup */
         JS_FreeValue(ctx, v);
+        if (JS_IsException(flat)) return jenc_fail(e);
+        int r = jenc_escape_flat(e, flat);
+        JS_FreeValue(ctx, flat);
         return r;
     }
     if (JS_IsBigInt(ctx, v)) {
@@ -724,7 +790,7 @@ static int jenc_emit_value(JEnc *e, JSValue v) {
     JSPropertyEnum *tab = NULL;
     uint32_t tab_len = 0;
     if (isarr) {
-        JSValue lv = JS_GetPropertyStr(ctx, v, "length");
+        JSValue lv = JS_GetProperty(ctx, v, e->atom_length);
         if (JS_IsException(lv) || JS_ToUint32(ctx, &arr_len, lv)) {
             JS_FreeValue(ctx, lv);
             JS_FreeValue(ctx, v);
@@ -774,7 +840,7 @@ static int jenc_produce(JEnc *e) {
         e->has_pending = 0;
         if (e->root_raw) {
             e->root_raw = 0;
-            v = jenc_resolve(ctx, v);
+            v = jenc_resolve(e, v);
             if (JS_IsException(v)) return jenc_fail(e);
         }
         return jenc_emit_value(e, v);
@@ -790,7 +856,7 @@ static int jenc_produce(JEnc *e) {
         JSValue el = JS_GetPropertyUint32(ctx, f->container, f->idx);
         f->idx++;
         if (JS_IsException(el)) return jenc_fail(e);
-        el = jenc_resolve(ctx, el);
+        el = jenc_resolve(e, el);
         if (JS_IsException(el)) return jenc_fail(e);
         if (jenc_not_serializable(ctx, el)) { JS_FreeValue(ctx, el); el = JS_NULL; }
         e->pending = el;
@@ -811,16 +877,15 @@ static int jenc_produce(JEnc *e) {
         f->idx++;
         JSValue mv = JS_GetProperty(ctx, f->container, key);
         if (JS_IsException(mv)) return jenc_fail(e);
-        mv = jenc_resolve(ctx, mv);
+        mv = jenc_resolve(e, mv);
         if (JS_IsException(mv)) return jenc_fail(e);
         if (jenc_not_serializable(ctx, mv)) { JS_FreeValue(ctx, mv); continue; } /* omit the key */
         if (f->emitted && jenc_putc(e, ',')) { JS_FreeValue(ctx, mv); return -1; }
         f->emitted = 1;
-        size_t klen = 0;
-        const char *ks = JS_AtomToCStringLen(ctx, &klen, key);
-        if (ks == NULL) { JS_FreeValue(ctx, mv); return jenc_fail(e); }
-        int r = jenc_escape(e, (const uint8_t *)ks, klen);
-        JS_FreeCString(ctx, ks);
+        JSValue kv = JS_AtomToValue(ctx, key); /* string atoms are always flat strings */
+        if (JS_IsException(kv)) { JS_FreeValue(ctx, mv); return jenc_fail(e); }
+        int r = jenc_escape_flat(e, kv);
+        JS_FreeValue(ctx, kv);
         if (r || jenc_putc(e, ':')) { JS_FreeValue(ctx, mv); return -1; }
         e->pending = mv;
         e->has_pending = 1;
@@ -857,6 +922,8 @@ static JSValue js_json_enc_new(JSContext *ctx, JSValueConst this_val, int argc, 
     e->pending = JS_DupValue(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED);
     e->has_pending = 1;
     e->root_raw = 1;
+    e->atom_tojson = JS_NewAtom(ctx, "toJSON");
+    e->atom_length = JS_NewAtom(ctx, "length");
     dbuf_init(&e->tok);
     JSValue obj = JS_NewObjectClass(ctx, jenc_class_id);
     if (JS_IsException(obj)) { jenc_free(e); return obj; }
