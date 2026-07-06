@@ -89,8 +89,13 @@ makes a head line + JSON body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
-- `writeUtf8` **stream-encodes UTF-8 directly into the segment**, flushing when it fills — it never
-  builds the whole encoded array. Variadic: `writeUtf8(a, b)` avoids the string concat.
+- `writeUtf8`/`writeUtf8Range` encode via **one native call per string** (`__utf8Into`,
+  `JS_ToCStringLen` straight into the segment — no per-codepoint interpreted loop; ~30× faster).
+  Variadic: `writeUtf8(a, b)` avoids the string concat. A string token bigger than a whole segment
+  is encoded natively once (`__utf8Bytes`) and streamed through the `writeBytes` bypass — memory =
+  one encoded copy of that single token, never of the document.
+- JSON string literals go through `__jsonStrInto` — quotes + JSON.stringify-exact escapes in one
+  native call (escape scan + encode both native).
 - `writeBytes` **bypasses the segment for large inputs** (`>=` one segment): it flushes what's
   pending, then streams the input straight to the pipe in segment-sized slices — no copy into the
   sink buffer.
@@ -106,10 +111,13 @@ allocation per `async` call — per-token awaits made `writeObjectAsJson` ~70× 
 one-shot. `await` still works on every write (awaiting `undefined` is legal), but hot loops can
 skip the hop: `var p = io.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through an
 **explicit-stack token pump** (no recursion — no depth limit — and no suspension points except a
-blocking flush). The backpressure story is unchanged: bounded buffer + parked writer, so a stalled
-consumer stops the producer instead of queueing unbounded bytes anywhere. (For a value that fits in
-memory comfortably, native `__stringifyJson` + `writeBytes` is still the fastest path; the pump's
-value is bounded memory on huge values.)
+blocking flush), with string/number tokens emitted by the native `__jsonStrInto`/`__utf8Into`
+helpers. Measured on a 305 KB value: 431 ms (async walker) → 83 ms (pump + native tokens); a plain
+`writeUtf8` of the same 305 KB string: 82 ms → 3 ms. The backpressure story is unchanged: bounded
+buffer + parked writer, so a stalled consumer stops the producer instead of queueing unbounded
+bytes anywhere. (For a whole value that fits in memory comfortably, native `__stringifyJson` +
+`writeBytes` is still the fastest path — ~6 ms on that benchmark; the pump's value is bounded
+memory on huge values and JSONL streams.)
 
 ## 2. Native JSON <-> bytes: streaming parse + `__stringifyJson`
 

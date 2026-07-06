@@ -114,6 +114,127 @@ static JSValue js_utf8_decode(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NewStringLen(ctx, (const char *)(src + off), (size_t)len);
 }
 
+/* Advance over UTF-8 (WTF-8) by `units` UTF-16 code units (astral = 2 units), clamped to end. */
+static const uint8_t *utf8_advance(const uint8_t *p, const uint8_t *end, int64_t units) {
+    while (units > 0 && p < end) {
+        uint8_t c = *p;
+        int adv = (c < 0x80) ? 1 : ((c & 0xE0) == 0xC0) ? 2 : ((c & 0xF0) == 0xE0) ? 3
+                 : ((c & 0xF8) == 0xF0) ? 4 : 1;
+        if (p + adv > end) break;
+        units -= (adv == 4) ? 2 : 1;
+        p += adv;
+    }
+    return p;
+}
+
+/* __utf8Into(str, from, to, dst, dstOff) -> bytes written, or -(bytes needed) when the encoding of
+ * str[from, to) (UTF-16 unit indices) does not fit in dst[dstOff..] — nothing written then; the
+ * caller flushes and retries (or falls back to the JS stream encoder for a segment-sized range).
+ * One native call replaces the per-codepoint interpreted encode loop. */
+static JSValue js_utf8_into(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    int64_t from = 0, to = 0, dst_off = 0;
+    JS_ToInt64(ctx, &from, argv[1]);
+    JS_ToInt64(ctx, &to, argv[2]);
+    JS_ToInt64(ctx, &dst_off, argv[4]);
+    size_t dlen = 0;
+    uint8_t *dst = view_bytes(ctx, argv[3], &dlen);
+    if (!dst) return JS_EXCEPTION;
+    if (from < 0 || to < from || dst_off < 0 || (uint64_t)dst_off > dlen)
+        return JS_ThrowRangeError(ctx, "__utf8Into range out of bounds");
+    size_t slen = 0;
+    const char *cs = JS_ToCStringLen(ctx, &slen, argv[0]);
+    if (!cs) return JS_EXCEPTION;
+    const uint8_t *s = (const uint8_t *)cs, *end = s + slen;
+    const uint8_t *p0 = utf8_advance(s, end, from);
+    const uint8_t *p1 = utf8_advance(p0, end, to - from);
+    int64_t need = (int64_t)(p1 - p0);
+    JSValue ret;
+    if (need > (int64_t)(dlen - (size_t)dst_off)) {
+        ret = JS_NewInt64(ctx, -need);
+    } else {
+        memcpy(dst + dst_off, p0, (size_t)need);
+        ret = JS_NewInt64(ctx, need);
+    }
+    JS_FreeCString(ctx, cs);
+    return ret;
+}
+
+/* __utf8Bytes(str, from, to) -> Uint8Array: the UTF-8 encoding of str[from, to) (UTF-16 unit
+ * indices) as one native encode + copy. Used for a string bigger than the sink segment, where the
+ * fits-into-segment path (__utf8Into) can't apply: one materialization of that single token beats
+ * the per-codepoint interpreted loop by ~30x, and the result streams through the writeBytes
+ * bypass. */
+static JSValue js_utf8_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    int64_t from = 0, to = 0;
+    JS_ToInt64(ctx, &from, argv[1]);
+    JS_ToInt64(ctx, &to, argv[2]);
+    if (from < 0 || to < from) return JS_ThrowRangeError(ctx, "__utf8Bytes range out of bounds");
+    size_t slen = 0;
+    const char *cs = JS_ToCStringLen(ctx, &slen, argv[0]);
+    if (!cs) return JS_EXCEPTION;
+    const uint8_t *s = (const uint8_t *)cs, *end = s + slen;
+    const uint8_t *p0 = utf8_advance(s, end, from);
+    const uint8_t *p1 = utf8_advance(p0, end, to - from);
+    JSValue ab = JS_NewArrayBufferCopy(ctx, p0, (size_t)(p1 - p0));
+    JS_FreeCString(ctx, cs);
+    if (JS_IsException(ab)) return ab;
+    return new_u8_view(ctx, ab);
+}
+
+/* __jsonStrInto(str, dst, dstOff) -> bytes written, or -(bytes needed) when the JSON string
+ * literal for str (quotes + escapes, exactly JSON.stringify's escaping) does not fit — nothing
+ * written then. One native call replaces the interpreted escape scan AND the encode loop. */
+static JSValue js_json_str_into(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    static const char HEX[] = "0123456789abcdef";
+    int64_t dst_off = 0;
+    JS_ToInt64(ctx, &dst_off, argv[2]);
+    size_t dlen = 0;
+    uint8_t *dst = view_bytes(ctx, argv[1], &dlen);
+    if (!dst) return JS_EXCEPTION;
+    if (dst_off < 0 || (uint64_t)dst_off > dlen)
+        return JS_ThrowRangeError(ctx, "__jsonStrInto range out of bounds");
+    size_t slen = 0;
+    const char *cs = JS_ToCStringLen(ctx, &slen, argv[0]);
+    if (!cs) return JS_EXCEPTION;
+    const uint8_t *s = (const uint8_t *)cs;
+    /* pass 1: exact escaped length (byte-wise is safe: escapes only hit ASCII < 0x80) */
+    int64_t need = 2;
+    for (size_t i = 0; i < slen; i++) {
+        uint8_t c = s[i];
+        if (c == '"' || c == '\\') need += 2;
+        else if (c < 0x20)
+            need += (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') ? 2 : 6;
+        else need += 1;
+    }
+    JSValue ret;
+    if (need > (int64_t)(dlen - (size_t)dst_off)) {
+        ret = JS_NewInt64(ctx, -need);
+    } else {
+        uint8_t *q = dst + dst_off;
+        *q++ = '"';
+        for (size_t i = 0; i < slen; i++) {
+            uint8_t c = s[i];
+            if (c == '"') { *q++ = '\\'; *q++ = '"'; }
+            else if (c == '\\') { *q++ = '\\'; *q++ = '\\'; }
+            else if (c >= 0x20) *q++ = c;
+            else switch (c) {
+                case '\n': *q++ = '\\'; *q++ = 'n'; break;
+                case '\r': *q++ = '\\'; *q++ = 'r'; break;
+                case '\t': *q++ = '\\'; *q++ = 't'; break;
+                case '\b': *q++ = '\\'; *q++ = 'b'; break;
+                case '\f': *q++ = '\\'; *q++ = 'f'; break;
+                default:
+                    *q++ = '\\'; *q++ = 'u'; *q++ = '0'; *q++ = '0';
+                    *q++ = (uint8_t)HEX[c >> 4]; *q++ = (uint8_t)HEX[c & 15];
+            }
+        }
+        *q++ = '"';
+        ret = JS_NewInt64(ctx, (int64_t)(q - (dst + dst_off)));
+    }
+    JS_FreeCString(ctx, cs);
+    return ret;
+}
+
 QjsPool *qjs_register_pipe(JSContext *ctx) {
     QjsPool *pool = (QjsPool *)calloc(1, sizeof(QjsPool));
     JS_SetRuntimeOpaque(JS_GetRuntime(ctx), pool);
@@ -121,6 +242,9 @@ QjsPool *qjs_register_pipe(JSContext *ctx) {
     JS_SetPropertyStr(ctx, g, "__segTake", JS_NewCFunction(ctx, js_seg_take, "__segTake", 3));
     JS_SetPropertyStr(ctx, g, "__segRelease", JS_NewCFunction(ctx, js_seg_release, "__segRelease", 1));
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
+    JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
+    JS_SetPropertyStr(ctx, g, "__utf8Bytes", JS_NewCFunction(ctx, js_utf8_bytes, "__utf8Bytes", 3));
+    JS_SetPropertyStr(ctx, g, "__jsonStrInto", JS_NewCFunction(ctx, js_json_str_into, "__jsonStrInto", 3));
     JS_FreeValue(ctx, g);
     return pool;
 }

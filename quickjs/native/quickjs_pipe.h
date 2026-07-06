@@ -7,7 +7,12 @@
  *   __segTake(src, off, len) -> Uint8Array   copy <= 8 KB out of a (still-attached) source view
  *                                            into a pooled segment, wrapped zero-copy;
  *   __segRelease(u8)                          eager return of a fully-consumed segment (detach);
- *   __utf8Decode(u8, off, len) -> string      native UTF-8 decode (JS_NewStringLen).
+ *   __utf8Decode(u8, off, len) -> string      native UTF-8 decode (JS_NewStringLen);
+ *   __utf8Into(str, from, to, dst, dstOff)    encode a string range into the sink segment in ONE
+ *                                             native call (-> written, or -(needed) if it doesn't
+ *                                             fit — nothing written; the caller flushes/retries);
+ *   __jsonStrInto(str, dst, dstOff)           the same for a whole JSON string literal (quotes +
+ *                                             JSON.stringify-exact escapes).
  * A segment's ArrayBuffer free_func returns it to the pool, so GC is the release backstop.
  *
  * qjs_view_wrap/qjs_view_detach carry a host write across the boundary with no copy: the shim pins

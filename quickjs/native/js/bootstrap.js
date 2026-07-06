@@ -451,34 +451,65 @@
         wbuf[wlen++] = b;
       }
 
-      // Stream-encode str[from, to) as UTF-8 straight into the segment, flushing when it fills —
-      // never materializes the whole encoded array. Flush only when this codepoint's own bytes
-      // don't fit — reserving the worst-case 4 would flush up to 3 bytes early and underpack.
-      // A pending flush suspends and resumes at the current codepoint.
-      function encodeRange(str, from, to) {
-        var i = from;
-        while (i < to) {
-          var cp = str.codePointAt(i);
-          var bytes = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
-          if (wlen + bytes > wbuf.length) {
-            var p = flushSink();
-            if (p) {
-              var at = i;
-              return p.then(function () { return encodeRange(str, at, to); });
+      // Append b to the sink: coalesce into the segment; a large input (>= a segment) bypasses the
+      // buffer and streams to the pipe in segment-sized slices, paced by the reader.
+      function writeBytesFn(b) {
+        var n = b.length;
+        if (n >= wbuf.length) {
+          var off = 0;
+          function pump() {
+            while (off < n) {
+              var m = Math.min(wbuf.length, n - off);
+              var q = pipe.send(b, off, m);
+              off += m;
+              if (q) return q.then(pump);
             }
           }
-          if (bytes === 1) wbuf[wlen++] = cp;
-          else if (bytes === 2) { wbuf[wlen++] = 0xC0 | (cp >> 6); wbuf[wlen++] = 0x80 | (cp & 0x3F); }
-          else if (bytes === 3) { wbuf[wlen++] = 0xE0 | (cp >> 12); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F); }
-          else { wbuf[wlen++] = 0xF0 | (cp >> 18); wbuf[wlen++] = 0x80 | ((cp >> 12) & 0x3F); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F); }
-          i += (cp > 0xFFFF ? 2 : 1);
+          var pf = flushSink();
+          return pf ? pf.then(pump) : pump();
         }
+        if (wlen + n > wbuf.length) {
+          var p = flushSink();
+          if (p) return p.then(function () { wbuf.set(b, wlen); wlen += n; });
+        }
+        wbuf.set(b, wlen); wlen += n;
       }
 
-      // Emit a JSON string literal (quotes, safe runs, escapes) for s. Runs are written straight
-      // from the source string (range encode, no slice). State lives outside step(), so a rare
-      // suspension resumes exactly where it stopped.
+      // Encode str[from, to) via ONE native call (__utf8Into) straight into the segment — no
+      // per-codepoint interpreted loop. Doesn't fit: flush and retry; bigger than a whole empty
+      // segment (an oversized string token): encode it natively ONCE (__utf8Bytes) and stream the
+      // bytes through the writeBytes bypass — memory is one encoded copy of that single token.
+      function writeUtf8Native(str, from, to) {
+        var r = __utf8Into(str, from, to, wbuf, wlen);
+        if (r >= 0) { wlen += r; return; }
+        if (-r <= wbuf.length) {
+          var p = flushSink();
+          if (p) return p.then(function () { wlen += __utf8Into(str, from, to, wbuf, wlen); });
+          wlen += __utf8Into(str, from, to, wbuf, wlen);
+          return;
+        }
+        return writeBytesFn(__utf8Bytes(str, from, to));
+      }
+
+      // Emit a JSON string literal (quotes + escapes) for s via ONE native call (__jsonStrInto) —
+      // replaces both the interpreted escape scan and the encode loop. Same fits/flush/fallback
+      // ladder as writeUtf8Native; only a segment-plus-sized string takes the streaming path.
       function writeJsonString(s) {
+        var r = __jsonStrInto(s, wbuf, wlen);
+        if (r >= 0) { wlen += r; return; }
+        if (-r <= wbuf.length) {
+          var p = flushSink();
+          if (p) return p.then(function () { wlen += __jsonStrInto(s, wbuf, wlen); });
+          wlen += __jsonStrInto(s, wbuf, wlen);
+          return;
+        }
+        return writeJsonStringStream(s);
+      }
+
+      // Streaming fallback for a JSON string literal bigger than a whole segment (quotes, safe
+      // runs, escapes). Runs are written straight from the source string (range encode, no slice).
+      // State lives outside step(), so a rare suspension resumes exactly where it stopped.
+      function writeJsonStringStream(s) {
         var n = s.length, i = 0, phase = 0, pendingEsc = null; // phase: 0=open quote, 1=scan, 2=close quote, 3=done
         function step() {
           for (;;) {
@@ -489,7 +520,7 @@
             if (pendingEsc !== null) {
               var e = pendingEsc;
               pendingEsc = null;
-              p = encodeRange(e, 0, e.length);
+              p = writeUtf8Native(e, 0, e.length);
               if (p) return p.then(step);
               continue;
             }
@@ -511,7 +542,7 @@
             var from = i;
             if (j >= n) { phase = 2; i = j; }         // no more escapes: run, then close quote
             else { pendingEsc = esc; i = j + 1; }     // run, then this escape
-            if (j > from) { p = encodeRange(s, from, j); if (p) return p.then(step); }
+            if (j > from) { p = writeUtf8Native(s, from, j); if (p) return p.then(step); }
           }
         }
         return step();
@@ -529,9 +560,9 @@
 
         function emitValue(v) { // scalar -> write it; container -> write its opener + push a frame
           var t = typeof v;
-          if (v === null) return encodeRange("null", 0, 4);
-          if (t === "boolean") return v ? encodeRange("true", 0, 4) : encodeRange("false", 0, 5);
-          if (t === "number") { var s = isFinite(v) ? ("" + v) : "null"; return encodeRange(s, 0, s.length); }
+          if (v === null) return writeUtf8Native("null", 0, 4);
+          if (t === "boolean") return v ? writeUtf8Native("true", 0, 4) : writeUtf8Native("false", 0, 5);
+          if (t === "number") { var s = isFinite(v) ? ("" + v) : "null"; return writeUtf8Native(s, 0, s.length); }
           if (t === "string") return writeJsonString(v);
           if (t === "bigint") throw new TypeError("Do not know how to serialize a BigInt");
           if (Array.isArray(v)) { stack.push({ v: v, keys: null, i: 0, emitted: false }); return putByte(91); } // '['
@@ -656,36 +687,16 @@
         // finish one (await it, or see undefined) before the next.
         // Append b. A large input (>= a segment) bypasses the buffer: it streams to the pipe in
         // segment-sized slices, paced by the reader — a few-MB array is never held whole.
-        writeBytes(b) {
-          var n = b.length;
-          if (n >= wbuf.length) {
-            var off = 0;
-            function pump() {
-              while (off < n) {
-                var m = Math.min(wbuf.length, n - off);
-                var q = pipe.send(b, off, m);
-                off += m;
-                if (q) return q.then(pump);
-              }
-            }
-            var pf = flushSink();
-            return pf ? pf.then(pump) : pump();
-          }
-          if (wlen + n > wbuf.length) {
-            var p = flushSink();
-            if (p) return p.then(function () { wbuf.set(b, wlen); wlen += n; });
-          }
-          wbuf.set(b, wlen); wlen += n;
-        },
+        writeBytes(b) { return writeBytesFn(b); },
         // Variadic: writeUtf8(a, b, c) stream-encodes the parts back-to-back with no `a + b + c`
         // first (QuickJS strings are immutable, so + would allocate and copy).
         writeUtf8() {
-          if (arguments.length === 1) { var s = arguments[0]; return encodeRange(s, 0, s.length); }
+          if (arguments.length === 1) { var s = arguments[0]; return writeUtf8Native(s, 0, s.length); }
           var args = arguments, k = 0;
           function next() {
             while (k < args.length) {
               var str = args[k++];
-              var p = encodeRange(str, 0, str.length);
+              var p = writeUtf8Native(str, 0, str.length);
               if (p) return p.then(next);
             }
           }
@@ -693,7 +704,7 @@
         },
         // Range form: encode str[from, to) with no .slice() (a slice copies the whole substring).
         writeUtf8Range(str, from, to) {
-          return encodeRange(str, from, to);
+          return writeUtf8Native(str, from, to);
         },
         // writeUtf8(...args) then a single '\n' — no concat, no separate encode pass.
         writeUtf8Line() {
