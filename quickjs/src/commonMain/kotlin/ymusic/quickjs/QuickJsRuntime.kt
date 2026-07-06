@@ -157,10 +157,12 @@ class QuickJsRuntime private constructor(
                 c.resizeBuffer(oldSize + count)
                 var copied = 0
                 while (copied < count) {
-                    c.seek(oldSize + copied)
                     val n = minOf(count - copied, c.end - c.start)
                     chunk.copyInto(c.data!!, c.start, srcOffset + copied, n)
                     copied += n
+                    if (copied < count) {
+                        check(c.next() != -1)
+                    }
                 }
             } finally {
                 c.close()
