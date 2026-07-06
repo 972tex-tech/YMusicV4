@@ -68,12 +68,18 @@
     }
 
     // Advance head to the next unread segment; false when nothing is buffered.
+    // Dequeue via cursor, not shift() (memmoves the tail on every pop) or delete (punches a hole,
+    // which permanently de-optimizes the array to hash storage in QuickJS). Fully drained ->
+    // truncate: drops all stale references in one shot and keeps the array's capacity. A long
+    // stream read in small chunks may never fully drain, so also compact the dead prefix
+    // occasionally — the live tail is bounded by the 64 KB cap (<= 9 entries), so it's trivial.
     function ensureHead() {
       if (head && headPos < head.length) return true;
       if (head) { __segRelease(head); head = null; headPos = 0; }
       if (qpos >= queue.length) return false;
       head = queue[qpos++]; headPos = 0;
       if (qpos === queue.length) { queue.length = 0; qpos = 0; }
+      else if (qpos >= 64) { queue.splice(0, qpos); qpos = 0; }
       return true;
     }
 
