@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -543,9 +544,373 @@ static JSValue js_stringify_json(JSContext *ctx, JSValueConst this_val, int argc
     return u8;
 }
 
+/* ============================================================================================
+ * Resumable native JSON ENCODER — the stringify mirror of the streaming parser above.
+ *
+ * The point: serialize a value into FIXED-SIZE output chunks without ever materializing the whole
+ * JSON text (which JS_JSONStringify does), at C speed (the interpreted token pump paid ~1µs per
+ * token in call overhead alone). A depth-first walk kept as explicit state:
+ *
+ *   __jsonEncNew(value)             -> encoder object (opaque; freed on GC — abandonment-safe)
+ *   __jsonEncFill(enc, dst, off)    -> bytes written into dst[off..]; call repeatedly, flushing
+ *                                      between calls; 0 once done (or when off is at the end)
+ *   __jsonEncDone(enc)              -> bool: the value is fully emitted
+ *
+ * Matches JSON.stringify: toJSON() honored (no key argument), own enumerable string keys in spec
+ * order, NaN/Infinity -> null, undefined/function/symbol omitted in objects / null in arrays,
+ * exact escape set, and a cycle throws TypeError. Divergences (deliberate, matching the old JS
+ * pump): a root undefined/function/symbol emits "null" (stringify returns undefined), and lone
+ * surrogates go out as WTF-8 rather than \uXXXX.
+ *
+ * Memory held at any instant = the frame stack (bounded by nesting depth) + ONE in-flight token
+ * (a string/key token is escaped whole into a reusable DynBuf, then drained across fills). Because
+ * the walk resumes across fills, toJSON()/getters run *during* serialization — a value mutated
+ * under backpressure serializes as visited (also true of the JS pump this replaces).
+ * ============================================================================================ */
+
+typedef struct {
+    JSValue container;    /* dup'd array or object being walked */
+    JSPropertyEnum *tab;  /* object: own enumerable string keys (spec order); NULL for arrays */
+    uint32_t tab_len;
+    uint32_t idx;         /* next key / element index */
+    uint32_t arr_len;     /* array: length snapshot (LengthOfArrayLike, read once) */
+    int emitted;          /* at least one member written (comma logic) */
+    int is_array;
+} EncFrame;
+
+typedef struct {
+    JSContext *ctx;
+    EncFrame *stack;
+    int sp, scap;
+    JSValue pending;      /* the next VALUE to emit */
+    int has_pending;
+    int root_raw;         /* pending is the raw root: apply toJSON on first produce */
+    DynBuf tok;           /* current token bytes, drained across fills */
+    size_t tok_pos;
+    int done;
+    int failed;
+} JEnc;
+
+static void jenc_free(JEnc *e) {
+    if (e == NULL) return;
+    JSContext *ctx = e->ctx;
+    for (int i = 0; i < e->sp; i++) {
+        JS_FreeValue(ctx, e->stack[i].container);
+        if (e->stack[i].tab) JS_FreePropertyEnum(ctx, e->stack[i].tab, e->stack[i].tab_len);
+    }
+    free(e->stack);
+    if (e->has_pending) JS_FreeValue(ctx, e->pending);
+    dbuf_free(&e->tok);
+    free(e);
+}
+
+static int jenc_fail(JEnc *e) { e->failed = 1; return -1; } /* exception already pending */
+
+static int jenc_put(JEnc *e, const void *p, size_t n) {
+    if (dbuf_put(&e->tok, (const uint8_t *)p, n)) { JS_ThrowOutOfMemory(e->ctx); return jenc_fail(e); }
+    return 0;
+}
+
+static int jenc_putc(JEnc *e, char c) {
+    if (dbuf_putc(&e->tok, (uint8_t)c)) { JS_ThrowOutOfMemory(e->ctx); return jenc_fail(e); }
+    return 0;
+}
+
+/* Append the JSON string literal for UTF-8 [s, s+len) — quotes + JSON.stringify's exact escapes.
+ * Escapes only hit ASCII, so a byte-wise scan with run batching is safe and fast. */
+static int jenc_escape(JEnc *e, const uint8_t *s, size_t len) {
+    static const char HEX[] = "0123456789abcdef";
+    if (jenc_putc(e, '"')) return -1;
+    size_t i = 0;
+    while (i < len) {
+        size_t run = i;
+        while (i < len) {
+            uint8_t c = s[i];
+            if (c < 0x20 || c == '"' || c == '\\') break;
+            i++;
+        }
+        if (i > run && jenc_put(e, s + run, i - run)) return -1;
+        if (i >= len) break;
+        uint8_t c = s[i++];
+        char esc[6] = { '\\', 0, 0, 0, 0, 0 };
+        size_t elen = 2;
+        switch (c) {
+        case '"': esc[1] = '"'; break;
+        case '\\': esc[1] = '\\'; break;
+        case '\n': esc[1] = 'n'; break;
+        case '\r': esc[1] = 'r'; break;
+        case '\t': esc[1] = 't'; break;
+        case '\b': esc[1] = 'b'; break;
+        case '\f': esc[1] = 'f'; break;
+        default:
+            esc[1] = 'u'; esc[2] = '0'; esc[3] = '0';
+            esc[4] = HEX[c >> 4]; esc[5] = HEX[c & 15];
+            elen = 6;
+        }
+        if (jenc_put(e, esc, elen)) return -1;
+    }
+    return jenc_putc(e, '"');
+}
+
+/* JSON.stringify's toJSON hook (no key argument — matches the JS pump this replaces). Takes
+ * ownership of v; returns a new value or an exception. */
+static JSValue jenc_resolve(JSContext *ctx, JSValue v) {
+    if (!JS_IsObject(v) && !JS_IsBigInt(ctx, v)) return v;
+    JSValue fn = JS_GetPropertyStr(ctx, v, "toJSON");
+    if (JS_IsException(fn)) { JS_FreeValue(ctx, v); return JS_EXCEPTION; }
+    if (JS_IsFunction(ctx, fn)) {
+        JSValue r = JS_Call(ctx, fn, v, 0, NULL);
+        JS_FreeValue(ctx, fn);
+        JS_FreeValue(ctx, v);
+        return r;
+    }
+    JS_FreeValue(ctx, fn);
+    return v;
+}
+
+static int jenc_not_serializable(JSContext *ctx, JSValueConst v) {
+    return JS_IsUndefined(v) || JS_IsFunction(ctx, v) || JS_IsSymbol(v);
+}
+
+/* Emit one value (takes ownership): a scalar's token, or a container's opener + a new frame. */
+static int jenc_emit_value(JEnc *e, JSValue v) {
+    JSContext *ctx = e->ctx;
+    if (JS_IsNull(v) || jenc_not_serializable(ctx, v)) {
+        JS_FreeValue(ctx, v);
+        return jenc_put(e, "null", 4);
+    }
+    if (JS_IsBool(v)) {
+        int b = JS_ToBool(ctx, v);
+        JS_FreeValue(ctx, v);
+        return b ? jenc_put(e, "true", 4) : jenc_put(e, "false", 5);
+    }
+    if (JS_IsNumber(v)) {
+        double d = 0;
+        JS_ToFloat64(ctx, &d, v);
+        if (!isfinite(d)) { JS_FreeValue(ctx, v); return jenc_put(e, "null", 4); }
+        size_t len = 0;
+        const char *cs = JS_ToCStringLen(ctx, &len, v); /* exact ECMA ToString formatting */
+        JS_FreeValue(ctx, v);
+        if (cs == NULL) return jenc_fail(e);
+        int r = jenc_put(e, cs, len);
+        JS_FreeCString(ctx, cs);
+        return r;
+    }
+    if (JS_IsString(v)) {
+        size_t len = 0;
+        const char *cs = JS_ToCStringLen(ctx, &len, v);
+        if (cs == NULL) { JS_FreeValue(ctx, v); return jenc_fail(e); }
+        int r = jenc_escape(e, (const uint8_t *)cs, len);
+        JS_FreeCString(ctx, cs);
+        JS_FreeValue(ctx, v);
+        return r;
+    }
+    if (JS_IsBigInt(ctx, v)) {
+        JS_FreeValue(ctx, v);
+        JS_ThrowTypeError(ctx, "Do not know how to serialize a BigInt");
+        return jenc_fail(e);
+    }
+    int isarr = JS_IsArray(ctx, v);
+    if (isarr < 0) { JS_FreeValue(ctx, v); return jenc_fail(e); }
+    /* cycle check: is v already on the walk stack? (the explicit stack makes this cheap) */
+    for (int i = 0; i < e->sp; i++) {
+        if (JS_VALUE_GET_PTR(e->stack[i].container) == JS_VALUE_GET_PTR(v)) {
+            JS_FreeValue(ctx, v);
+            JS_ThrowTypeError(ctx, "Converting circular structure to JSON");
+            return jenc_fail(e);
+        }
+    }
+    uint32_t arr_len = 0;
+    JSPropertyEnum *tab = NULL;
+    uint32_t tab_len = 0;
+    if (isarr) {
+        JSValue lv = JS_GetPropertyStr(ctx, v, "length");
+        if (JS_IsException(lv) || JS_ToUint32(ctx, &arr_len, lv)) {
+            JS_FreeValue(ctx, lv);
+            JS_FreeValue(ctx, v);
+            return jenc_fail(e);
+        }
+        JS_FreeValue(ctx, lv);
+    } else {
+        if (JS_GetOwnPropertyNames(ctx, &tab, &tab_len, v, JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY)) {
+            JS_FreeValue(ctx, v);
+            return jenc_fail(e);
+        }
+    }
+    if (e->sp == e->scap) {
+        int ncap = e->scap ? e->scap * 2 : 16;
+        EncFrame *ns = (EncFrame *)realloc(e->stack, sizeof(EncFrame) * ncap);
+        if (ns == NULL) {
+            if (tab) JS_FreePropertyEnum(ctx, tab, tab_len);
+            JS_FreeValue(ctx, v);
+            JS_ThrowOutOfMemory(ctx);
+            return jenc_fail(e);
+        }
+        e->stack = ns;
+        e->scap = ncap;
+    }
+    EncFrame *f = &e->stack[e->sp++];
+    f->container = v;
+    f->tab = tab;
+    f->tab_len = tab_len;
+    f->idx = 0;
+    f->arr_len = arr_len;
+    f->emitted = 0;
+    f->is_array = isarr;
+    return jenc_putc(e, isarr ? '[' : '{');
+}
+
+/* Produce the next token into e->tok (possibly empty — the fill loop just produces again; every
+ * call advances the walk state, so progress is guaranteed). Sets done; -1 on exception. */
+static int jenc_produce(JEnc *e) {
+    JSContext *ctx = e->ctx;
+    e->tok.size = 0;
+    e->tok_pos = 0;
+    if (e->tok.allocated_size > 65536) { dbuf_free(&e->tok); dbuf_init(&e->tok); } /* don't retain a huge token buffer */
+
+    if (e->has_pending) {
+        JSValue v = e->pending;
+        e->pending = JS_UNDEFINED;
+        e->has_pending = 0;
+        if (e->root_raw) {
+            e->root_raw = 0;
+            v = jenc_resolve(ctx, v);
+            if (JS_IsException(v)) return jenc_fail(e);
+        }
+        return jenc_emit_value(e, v);
+    }
+    if (e->sp == 0) { e->done = 1; return 0; }
+    EncFrame *f = &e->stack[e->sp - 1];
+    if (f->is_array) {
+        if (f->idx >= f->arr_len) {
+            JS_FreeValue(ctx, f->container);
+            e->sp--;
+            return jenc_putc(e, ']');
+        }
+        JSValue el = JS_GetPropertyUint32(ctx, f->container, f->idx);
+        f->idx++;
+        if (JS_IsException(el)) return jenc_fail(e);
+        el = jenc_resolve(ctx, el);
+        if (JS_IsException(el)) return jenc_fail(e);
+        if (jenc_not_serializable(ctx, el)) { JS_FreeValue(ctx, el); el = JS_NULL; }
+        e->pending = el;
+        e->has_pending = 1;
+        if (f->emitted) { f->emitted = 1; return jenc_putc(e, ','); }
+        f->emitted = 1;
+        return 0;
+    }
+    /* object: advance to the next includable member; token = [,]"key": */
+    for (;;) {
+        if (f->idx >= f->tab_len) {
+            JS_FreePropertyEnum(ctx, f->tab, f->tab_len);
+            JS_FreeValue(ctx, f->container);
+            e->sp--;
+            return jenc_putc(e, '}');
+        }
+        JSAtom key = f->tab[f->idx].atom;
+        f->idx++;
+        JSValue mv = JS_GetProperty(ctx, f->container, key);
+        if (JS_IsException(mv)) return jenc_fail(e);
+        mv = jenc_resolve(ctx, mv);
+        if (JS_IsException(mv)) return jenc_fail(e);
+        if (jenc_not_serializable(ctx, mv)) { JS_FreeValue(ctx, mv); continue; } /* omit the key */
+        if (f->emitted && jenc_putc(e, ',')) { JS_FreeValue(ctx, mv); return -1; }
+        f->emitted = 1;
+        size_t klen = 0;
+        const char *ks = JS_AtomToCStringLen(ctx, &klen, key);
+        if (ks == NULL) { JS_FreeValue(ctx, mv); return jenc_fail(e); }
+        int r = jenc_escape(e, (const uint8_t *)ks, klen);
+        JS_FreeCString(ctx, ks);
+        if (r || jenc_putc(e, ':')) { JS_FreeValue(ctx, mv); return -1; }
+        e->pending = mv;
+        e->has_pending = 1;
+        return 0;
+    }
+}
+
+/* ---- JS class wrapping a JEnc (opaque; finalizer frees it — abandonment-safe) ---- */
+
+static JSClassID jenc_class_id;
+
+static void jenc_class_finalizer(JSRuntime *rt, JSValue val) {
+    JEnc *e = JS_GetOpaque(val, jenc_class_id);
+    if (e) jenc_free(e);
+}
+
+/* Same rule as the parser: held JSValues invisible to the object graph MUST be marked. */
+static void jenc_class_gc_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func) {
+    JEnc *e = JS_GetOpaque(val, jenc_class_id);
+    if (e == NULL) return;
+    for (int i = 0; i < e->sp; i++) JS_MarkValue(rt, e->stack[i].container, mark_func);
+    if (e->has_pending) JS_MarkValue(rt, e->pending, mark_func);
+}
+
+static JSClassDef jenc_class_def = {
+    "JsonEncoder", .finalizer = jenc_class_finalizer, .gc_mark = jenc_class_gc_mark
+};
+
+/* __jsonEncNew(value) -> encoder object. */
+static JSValue js_json_enc_new(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    JEnc *e = (JEnc *)calloc(1, sizeof(JEnc));
+    if (e == NULL) return JS_ThrowOutOfMemory(ctx);
+    e->ctx = ctx;
+    e->pending = JS_DupValue(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED);
+    e->has_pending = 1;
+    e->root_raw = 1;
+    dbuf_init(&e->tok);
+    JSValue obj = JS_NewObjectClass(ctx, jenc_class_id);
+    if (JS_IsException(obj)) { jenc_free(e); return obj; }
+    JS_SetOpaque(obj, e);
+    return obj;
+}
+
+/* __jsonEncFill(enc, dst, off) -> bytes written into dst[off..]. */
+static JSValue js_json_enc_fill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    if (argc < 3) return JS_ThrowTypeError(ctx, "__jsonEncFill(enc, dst, off)");
+    JEnc *e = (JEnc *)JS_GetOpaque2(ctx, argv[0], jenc_class_id);
+    if (e == NULL) return JS_EXCEPTION;
+    if (e->failed) return JS_ThrowInternalError(ctx, "__jsonEncFill: encoder already failed");
+    int64_t off = 0;
+    if (JS_ToInt64(ctx, &off, argv[2])) return JS_EXCEPTION;
+    size_t ta_off = 0, ta_len = 0, bpe = 0;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
+    if (JS_IsException(ab)) return ab;
+    size_t sz = 0;
+    uint8_t *base = JS_GetArrayBuffer(ctx, &sz, ab);
+    JS_FreeValue(ctx, ab); /* argv keeps the buffer alive; QuickJS heap data never moves */
+    if (base == NULL || off < 0 || (uint64_t)off > ta_len)
+        return JS_ThrowRangeError(ctx, "__jsonEncFill: bad destination range");
+    uint8_t *dst = base + ta_off + off;
+    size_t cap = ta_len - (size_t)off;
+    size_t w = 0;
+    for (;;) {
+        size_t avail = e->tok.size - e->tok_pos;
+        if (avail > 0) {
+            size_t n = avail < cap - w ? avail : cap - w;
+            memcpy(dst + w, e->tok.buf + e->tok_pos, n);
+            w += n;
+            e->tok_pos += n;
+            if (w == cap) break;
+        }
+        if (e->done) break;
+        if (jenc_produce(e)) return JS_EXCEPTION;
+    }
+    return JS_NewInt64(ctx, (int64_t)w);
+}
+
+/* __jsonEncDone(enc) -> bool (all output produced AND drained). */
+static JSValue js_json_enc_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "__jsonEncDone(enc)");
+    JEnc *e = (JEnc *)JS_GetOpaque2(ctx, argv[0], jenc_class_id);
+    if (e == NULL) return JS_EXCEPTION;
+    return JS_NewBool(ctx, e->done && e->tok_pos >= e->tok.size);
+}
+
 void qjs_register_json(JSContext *ctx) {
     JS_NewClassID(&jstream_class_id);
     JS_NewClass(JS_GetRuntime(ctx), jstream_class_id, &jstream_class_def);
+    JS_NewClassID(&jenc_class_id);
+    JS_NewClass(JS_GetRuntime(ctx), jenc_class_id, &jenc_class_def);
 
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, global, "__parseJson", JS_NewCFunction(ctx, js_parse_json, "__parseJson", 1));
@@ -554,5 +919,8 @@ void qjs_register_json(JSContext *ctx) {
     JS_SetPropertyStr(ctx, global, "__jsonPush", JS_NewCFunction(ctx, js_json_push, "__jsonPush", 4));
     JS_SetPropertyStr(ctx, global, "__jsonDone", JS_NewCFunction(ctx, js_json_done, "__jsonDone", 1));
     JS_SetPropertyStr(ctx, global, "__jsonEnd", JS_NewCFunction(ctx, js_json_end, "__jsonEnd", 1));
+    JS_SetPropertyStr(ctx, global, "__jsonEncNew", JS_NewCFunction(ctx, js_json_enc_new, "__jsonEncNew", 1));
+    JS_SetPropertyStr(ctx, global, "__jsonEncFill", JS_NewCFunction(ctx, js_json_enc_fill, "__jsonEncFill", 3));
+    JS_SetPropertyStr(ctx, global, "__jsonEncDone", JS_NewCFunction(ctx, js_json_enc_done, "__jsonEncDone", 1));
     JS_FreeValue(ctx, global);
 }

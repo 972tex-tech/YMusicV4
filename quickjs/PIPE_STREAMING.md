@@ -94,8 +94,8 @@ matter how much is written:
   Variadic: `writeUtf8(a, b)` avoids the string concat. A string token bigger than a whole segment
   is encoded natively once (`__utf8Bytes`) and streamed through the `writeBytes` bypass — memory =
   one encoded copy of that single token, never of the document.
-- JSON string literals go through `__jsonStrInto` — quotes + JSON.stringify-exact escapes in one
-  native call (escape scan + encode both native).
+- `writeObjectAsJson` runs the **resumable native JSON encoder** (`__jsonEncNew`/`Fill`/`Done`,
+  §2): one native call fills the whole segment, the pump flushes between fills.
 - `writeBytes` **bypasses the segment for large inputs** (`>=` one segment): it flushes what's
   pending, then streams the input straight to the pipe in segment-sized slices — no copy into the
   sink buffer.
@@ -109,17 +109,16 @@ backpressure (a flush hit a full pipe), resuming via an internal continuation. R
 charges a full microtask round-trip (~0.4 µs) for `await` even on a non-thenable, plus a promise
 allocation per `async` call — per-token awaits made `writeObjectAsJson` ~70× slower than the native
 one-shot. `await` still works on every write (awaiting `undefined` is legal), but hot loops can
-skip the hop: `var p = io.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through an
-**explicit-stack token pump** (no recursion — no depth limit — and no suspension points except a
-blocking flush), with string/number tokens emitted by the native `__jsonStrInto`/`__utf8Into`
-helpers. Measured on a 305 KB value: 431 ms (async walker) → 83 ms (pump + native tokens); a plain
-`writeUtf8` of the same 305 KB string: 82 ms → 3 ms. The backpressure story is unchanged: bounded
-buffer + parked writer, so a stalled consumer stops the producer instead of queueing unbounded
-bytes anywhere. (For a whole value that fits in memory comfortably, native `__stringifyJson` +
-`writeBytes` is still the fastest path — ~6 ms on that benchmark; the pump's value is bounded
-memory on huge values and JSONL streams.)
+skip the hop: `var p = io.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through
+the **resumable native encoder** (§2): the walk lives in C as explicit state, `__jsonEncFill` fills
+the segment per call, and the ~10-line JS pump only carries backpressure. Measured on a 305 KB
+value: 431 ms (async JS walker) → 14 ms (native encoder) vs ~6 ms for the whole-document
+`__stringifyJson` + `writeBytes` — near-native while never materializing the JSON text (which the
+one-shot does, twice). A plain `writeUtf8` of the same 305 KB string: 82 ms → 3 ms (`__utf8Into`/
+`__utf8Bytes`). The backpressure story is unchanged: bounded buffer + parked writer, so a stalled
+consumer stops the producer instead of queueing unbounded bytes anywhere.
 
-## 2. Native JSON <-> bytes: streaming parse + `__stringifyJson`
+## 2. Native JSON <-> bytes: streaming parse + resumable encode
 
 `quickjs_json.c` (shared by the JNI and cinterop shims). The core is a **streaming JSON parser**
 written as a resumable state machine — its whole reason to exist is to parse a body arriving in
@@ -168,7 +167,20 @@ is why the parser reports a consumed count instead of demanding it swallow the w
 `__parseJson(uint8array)` is a one-shot for when you already have all the bytes — QuickJS's own
 `JS_ParseJSON` (fast, strict, any top-level value).
 
-### `__stringifyJson(value) -> Uint8Array` — the encode mirror
+### Resumable encode — `__jsonEncNew(value)` / `__jsonEncFill(enc, dst, off)` / `__jsonEncDone(enc)`
+
+The stringify mirror of the streaming parser: a depth-first walk kept as explicit C state (frame
+stack + one in-flight token), so a value serializes into **fixed-size output chunks** without ever
+materializing the whole JSON text. `bufferedPipe.writeObjectAsJson(value)` drives it: each
+`__jsonEncFill` fills the sink's 8 KB segment at C speed, and the JS pump flushes between fills
+(backpressure). The encoder object is a JS class — GC frees it, so abandoning one mid-emit is safe
+(same finalizer + `gc_mark` rules as the parser; it holds the frame containers and the pending
+value). Matches `JSON.stringify` (toJSON, key order, escapes, NaN/undefined rules) with two
+deliberate divergences: a root `undefined` emits `null`, and a **cycle throws TypeError** (the
+explicit stack makes the ancestry check cheap). Because the walk resumes across fills, `toJSON()`/
+getters run *during* serialization — a value mutated under backpressure serializes as visited.
+
+### `__stringifyJson(value) -> Uint8Array` — the one-shot encode
 
 Native `JS_JSONStringify` + native UTF-16->UTF-8 (`JS_ToCStringLen`). Never route a big payload
 through the interpreted `ymix.utf8Encode` (per-codepoint JS loop). Throws `TypeError` if the value

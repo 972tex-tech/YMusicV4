@@ -181,60 +181,6 @@ static JSValue js_utf8_bytes(JSContext *ctx, JSValueConst this_val, int argc, JS
     return new_u8_view(ctx, ab);
 }
 
-/* __jsonStrInto(str, dst, dstOff) -> bytes written, or -(bytes needed) when the JSON string
- * literal for str (quotes + escapes, exactly JSON.stringify's escaping) does not fit — nothing
- * written then. One native call replaces the interpreted escape scan AND the encode loop. */
-static JSValue js_json_str_into(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    static const char HEX[] = "0123456789abcdef";
-    int64_t dst_off = 0;
-    JS_ToInt64(ctx, &dst_off, argv[2]);
-    size_t dlen = 0;
-    uint8_t *dst = view_bytes(ctx, argv[1], &dlen);
-    if (!dst) return JS_EXCEPTION;
-    if (dst_off < 0 || (uint64_t)dst_off > dlen)
-        return JS_ThrowRangeError(ctx, "__jsonStrInto range out of bounds");
-    size_t slen = 0;
-    const char *cs = JS_ToCStringLen(ctx, &slen, argv[0]);
-    if (!cs) return JS_EXCEPTION;
-    const uint8_t *s = (const uint8_t *)cs;
-    /* pass 1: exact escaped length (byte-wise is safe: escapes only hit ASCII < 0x80) */
-    int64_t need = 2;
-    for (size_t i = 0; i < slen; i++) {
-        uint8_t c = s[i];
-        if (c == '"' || c == '\\') need += 2;
-        else if (c < 0x20)
-            need += (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') ? 2 : 6;
-        else need += 1;
-    }
-    JSValue ret;
-    if (need > (int64_t)(dlen - (size_t)dst_off)) {
-        ret = JS_NewInt64(ctx, -need);
-    } else {
-        uint8_t *q = dst + dst_off;
-        *q++ = '"';
-        for (size_t i = 0; i < slen; i++) {
-            uint8_t c = s[i];
-            if (c == '"') { *q++ = '\\'; *q++ = '"'; }
-            else if (c == '\\') { *q++ = '\\'; *q++ = '\\'; }
-            else if (c >= 0x20) *q++ = c;
-            else switch (c) {
-                case '\n': *q++ = '\\'; *q++ = 'n'; break;
-                case '\r': *q++ = '\\'; *q++ = 'r'; break;
-                case '\t': *q++ = '\\'; *q++ = 't'; break;
-                case '\b': *q++ = '\\'; *q++ = 'b'; break;
-                case '\f': *q++ = '\\'; *q++ = 'f'; break;
-                default:
-                    *q++ = '\\'; *q++ = 'u'; *q++ = '0'; *q++ = '0';
-                    *q++ = (uint8_t)HEX[c >> 4]; *q++ = (uint8_t)HEX[c & 15];
-            }
-        }
-        *q++ = '"';
-        ret = JS_NewInt64(ctx, (int64_t)(q - (dst + dst_off)));
-    }
-    JS_FreeCString(ctx, cs);
-    return ret;
-}
-
 QjsPool *qjs_register_pipe(JSContext *ctx) {
     QjsPool *pool = (QjsPool *)calloc(1, sizeof(QjsPool));
     JS_SetRuntimeOpaque(JS_GetRuntime(ctx), pool);
@@ -244,7 +190,6 @@ QjsPool *qjs_register_pipe(JSContext *ctx) {
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
     JS_SetPropertyStr(ctx, g, "__utf8Bytes", JS_NewCFunction(ctx, js_utf8_bytes, "__utf8Bytes", 3));
-    JS_SetPropertyStr(ctx, g, "__jsonStrInto", JS_NewCFunction(ctx, js_json_str_into, "__jsonStrInto", 3));
     JS_FreeValue(ctx, g);
     return pool;
 }

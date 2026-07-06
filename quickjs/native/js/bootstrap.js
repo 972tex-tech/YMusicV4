@@ -40,11 +40,6 @@
     return new Uint8Array(out);
   }
 
-  // toJSON hook (JSON.stringify semantics) — used by the sink's writeObjectAsJson token pump.
-  function jsonResolve(v) {
-    return (v !== null && (typeof v === "object" || typeof v === "bigint") && typeof v.toJSON === "function") ? v.toJSON() : v;
-  }
-
   var pipes = {};
   var accepts = {};
   var nextId = 2; // JS opens even ids; Kotlin opens odd.
@@ -491,130 +486,6 @@
         return writeBytesFn(__utf8Bytes(str, from, to));
       }
 
-      // Emit a JSON string literal (quotes + escapes) for s via ONE native call (__jsonStrInto) —
-      // replaces both the interpreted escape scan and the encode loop. Same fits/flush/fallback
-      // ladder as writeUtf8Native; only a segment-plus-sized string takes the streaming path.
-      function writeJsonString(s) {
-        var r = __jsonStrInto(s, wbuf, wlen);
-        if (r >= 0) { wlen += r; return; }
-        if (-r <= wbuf.length) {
-          var p = flushSink();
-          if (p) return p.then(function () { wlen += __jsonStrInto(s, wbuf, wlen); });
-          wlen += __jsonStrInto(s, wbuf, wlen);
-          return;
-        }
-        return writeJsonStringStream(s);
-      }
-
-      // Streaming fallback for a JSON string literal bigger than a whole segment (quotes, safe
-      // runs, escapes). Runs are written straight from the source string (range encode, no slice).
-      // State lives outside step(), so a rare suspension resumes exactly where it stopped.
-      function writeJsonStringStream(s) {
-        var n = s.length, i = 0, phase = 0, pendingEsc = null; // phase: 0=open quote, 1=scan, 2=close quote, 3=done
-        function step() {
-          for (;;) {
-            var p;
-            if (phase === 0) { phase = 1; p = putByte(34); if (p) return p.then(step); continue; }
-            if (phase === 2) { phase = 3; p = putByte(34); if (p) return p.then(step); continue; }
-            if (phase === 3) return;
-            if (pendingEsc !== null) {
-              var e = pendingEsc;
-              pendingEsc = null;
-              p = writeUtf8Native(e, 0, e.length);
-              if (p) return p.then(step);
-              continue;
-            }
-            // scan the next run of safe chars [i, j)
-            var esc = null, j = i;
-            for (; j < n; j++) {
-              var c = s.charCodeAt(j);
-              if (c === 0x22) esc = "\\\"";
-              else if (c === 0x5C) esc = "\\\\";
-              else if (c === 0x0A) esc = "\\n";
-              else if (c === 0x0D) esc = "\\r";
-              else if (c === 0x09) esc = "\\t";
-              else if (c === 0x08) esc = "\\b";
-              else if (c === 0x0C) esc = "\\f";
-              else if (c < 0x20) esc = "\\u" + ("000" + c.toString(16)).slice(-4);
-              else continue;
-              break;
-            }
-            var from = i;
-            if (j >= n) { phase = 2; i = j; }         // no more escapes: run, then close quote
-            else { pendingEsc = esc; i = j + 1; }     // run, then this escape
-            if (j > from) { p = writeUtf8Native(s, from, j); if (p) return p.then(step); }
-          }
-        }
-        return step();
-      }
-
-      // Serialize a value as JSON via an explicit-stack token pump — no recursion (no depth limit)
-      // and no per-token suspension points: tokens stream into the segment synchronously and the
-      // pump chains .then(step) only when a flush actually blocks. Matches JSON.stringify: honors
-      // toJSON(); NaN/Infinity -> null; undefined/function/symbol members are omitted in objects
-      // and become null in arrays. (Lone surrogates go out as WTF-8, not \uXXXX — consistent with
-      // utf8Encode across the stack.)
-      function writeJsonValue(root) {
-        var stack = [];   // container frames: {v, keys (null = array), i, phase, emitted, pk, pv}
-        var pending = root, hasPending = true; // next VALUE to emit (already jsonResolve'd)
-
-        function emitValue(v) { // scalar -> write it; container -> write its opener + push a frame
-          var t = typeof v;
-          if (v === null) return writeUtf8Native("null", 0, 4);
-          if (t === "boolean") return v ? writeUtf8Native("true", 0, 4) : writeUtf8Native("false", 0, 5);
-          if (t === "number") { var s = isFinite(v) ? ("" + v) : "null"; return writeUtf8Native(s, 0, s.length); }
-          if (t === "string") return writeJsonString(v);
-          if (t === "bigint") throw new TypeError("Do not know how to serialize a BigInt");
-          if (Array.isArray(v)) { stack.push({ v: v, keys: null, i: 0, emitted: false }); return putByte(91); } // '['
-          stack.push({ v: v, keys: Object.keys(v), i: 0, phase: 0, emitted: false, pk: null, pv: null });
-          return putByte(123); // '{'
-        }
-
-        function step() {
-          for (;;) {
-            var p;
-            if (hasPending) {
-              var val = pending;
-              pending = null; hasPending = false;
-              p = emitValue(val);
-              if (p) return p.then(step);
-              continue;
-            }
-            if (stack.length === 0) return; // done
-            var f = stack[stack.length - 1];
-            if (f.keys === null) {
-              // array frame: closer, or comma? + next element
-              if (f.i >= f.v.length) { stack.pop(); p = putByte(93); if (p) return p.then(step); continue; } // ']'
-              var e = jsonResolve(f.v[f.i]); f.i++;
-              var et = typeof e;
-              if (e === undefined || et === "function" || et === "symbol") e = null;
-              pending = e; hasPending = true; // staged BEFORE the comma so a suspension resumes in order
-              if (f.emitted) { p = putByte(44); if (p) return p.then(step); continue; } // ','
-              f.emitted = true;
-              continue;
-            }
-            // object frame phases: 0 = find member (+comma), 3 = key, 1 = colon, 2 = value
-            if (f.phase === 3) { f.phase = 1; p = writeJsonString(f.pk); if (p) return p.then(step); continue; }
-            if (f.phase === 1) { f.phase = 2; p = putByte(58); if (p) return p.then(step); continue; } // ':'
-            if (f.phase === 2) { f.phase = 0; pending = f.pv; f.pv = null; hasPending = true; continue; }
-            var found = false;
-            while (f.i < f.keys.length) {
-              var key = f.keys[f.i]; f.i++;
-              var mv = jsonResolve(f.v[key]);
-              var mt = typeof mv;
-              if (mv === undefined || mt === "function" || mt === "symbol") continue; // omit the key
-              f.pk = key; f.pv = mv; found = true;
-              break;
-            }
-            if (!found) { stack.pop(); p = putByte(125); if (p) return p.then(step); continue; } // '}'
-            f.phase = 3;
-            if (f.emitted) { p = putByte(44); if (p) return p.then(step); continue; } // ','
-            f.emitted = true;
-          }
-        }
-        return step();
-      }
-
       return {
         // ---- BufferedSource (in-place over the pipe's segment queue) ----
         // Read up to len bytes into buffer at offset; count, or -1 at EOF (pipe.receive semantics —
@@ -711,14 +582,24 @@
           var p = this.writeUtf8.apply(this, arguments);
           return p ? p.then(function () { return putByte(10); }) : putByte(10);
         },
-        // Serialize value to JSON via the token pump (writeJsonValue) — streams tokens into the
-        // segment, never building the whole JSON string or a Uint8Array, with no recursion and no
-        // per-token suspension points. For big outbound data prefer JSONL (one writeObjectAsJson
-        // per line) so peak memory stays ~one item.
+        // Serialize value to JSON via the resumable NATIVE encoder: __jsonEncFill fills the sink
+        // segment at C speed — one native call per ~8 KB of output, not per token — and flushSink
+        // carries backpressure between fills. Never builds the whole JSON string or a Uint8Array
+        // (unlike __stringifyJson); memory = one segment + the encoder's walk stack + one in-flight
+        // token. The encoder object is freed by GC (abandonment-safe). Matches JSON.stringify
+        // (toJSON, key order, escapes, NaN/undefined rules; a cycle throws TypeError). For big
+        // outbound data prefer JSONL (one writeObjectAsJson per line) so peak memory stays ~one item.
         writeObjectAsJson(value) {
-          var v = jsonResolve(value), t = typeof v;
-          if (v === undefined || t === "function" || t === "symbol") return encodeRange("null", 0, 4);
-          return writeJsonValue(v);
+          var enc = __jsonEncNew(value);
+          function pump() {
+            for (;;) {
+              wlen += __jsonEncFill(enc, wbuf, wlen);   // fill the segment at C speed
+              if (__jsonEncDone(enc)) return;           // fully emitted
+              var p = flushSink();                      // segment full -> existing backpressure
+              if (p) return p.then(pump);
+            }
+          }
+          return pump();
         },
         flush() { return flushSink(); },
         close(reason) {

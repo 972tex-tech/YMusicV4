@@ -1104,6 +1104,57 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** A circular value throws TypeError (like JSON.stringify) instead of emitting forever — the
+     *  encoder's explicit stack makes the ancestry check cheap. */
+    @Test
+    fun write_object_as_json_rejects_cycles() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe ->
+            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const a = { name: "a" };
+              a.self = { deeper: [1, a] };  // cycle through two levels
+              const io = ymix.buffered(ymix.open("sink"));
+              let msg = "no-throw";
+              try { const w = io.writeObjectAsJson(a); if (w) await w; }
+              catch (e) { msg = (e instanceof TypeError) ? "TYPE_ERROR" : ("WRONG:" + e); }
+              io.close("abort");
+              p.send(ymix.utf8Encode(msg));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("TYPE_ERROR", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** An encoder abandoned mid-emit (frames holding containers + a pending value + key enums)
+     *  must be freed cleanly by the class finalizer at runtime teardown — the encoder analog of the
+     *  parser abandonment tests (native builds assert on a leaked gc object / bad gc_mark). */
+    @Test
+    fun json_encoder_abandoned_midway_frees_cleanly() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            globalThis.__encs = [];
+            const tiny = new Uint8Array(4); // force a partial fill: the walk stays suspended
+            for (let i = 0; i < 50; i++) {
+              const enc = __jsonEncNew({ a: [1, { b: "hello🎵", c: [2, 3] }], d: "tail" });
+              __jsonEncFill(enc, tiny, 0);
+              __encs.push(enc); // keep referenced: only the finalizer frees it, at rt.close()
+            }
+            """.trimIndent(),
+        )
+        rt.close() // finalizers must free the suspended encoders without error
+    }
+
     /** A line longer than one 8 KB pool segment: the newline scan resumes across arrivals without
      *  rescanning, and the decode assembles the spanning range once — content must be exact. */
     @Test

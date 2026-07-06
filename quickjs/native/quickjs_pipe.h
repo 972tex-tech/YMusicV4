@@ -11,8 +11,8 @@
  *   __utf8Into(str, from, to, dst, dstOff)    encode a string range into the sink segment in ONE
  *                                             native call (-> written, or -(needed) if it doesn't
  *                                             fit — nothing written; the caller flushes/retries);
- *   __jsonStrInto(str, dst, dstOff)           the same for a whole JSON string literal (quotes +
- *                                             JSON.stringify-exact escapes).
+ *   __utf8Bytes(str, from, to) -> Uint8Array  one-shot native encode of a range (oversized tokens).
+ * (JSON serialization goes through the resumable native encoder — quickjs_json.c __jsonEnc*.)
  * A segment's ArrayBuffer free_func returns it to the pool, so GC is the release backstop.
  *
  * qjs_view_wrap/qjs_view_detach carry a host write across the boundary with no copy: the shim pins
