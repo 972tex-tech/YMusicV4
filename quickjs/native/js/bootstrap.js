@@ -466,15 +466,12 @@
             var w = pipe.awaitReadable(); if (w) await w;
           }
         },
-        // All remaining bytes, decoded as UTF-8 (one native decode over the assembled array).
+        // All remaining bytes to EOF, decoded as UTF-8 in ONE pass at the end (multi-byte chars can
+        // straddle chunk boundaries, so the bytes must be complete before decoding). Plain
+        // consuming reads into one growing buffer — a parked read gets rendezvous delivery straight
+        // into it — decoded in place by range (no exact-size copy). This is the module's only
+        // whole-body materializer; prefer the streaming readers when the shape allows.
         async readUtf8() {
-          var all = await this.readByteArray();
-          return __utf8Decode(all, 0, all.length);
-        },
-        // All remaining bytes to EOF (raw), read into one growing buffer (amortized doubling) and
-        // returned exact-size. Plain consuming reads: a parked read gets rendezvous delivery
-        // straight into the buffer, buffered segments release as they drain, DRAIN fires normally.
-        async readByteArray() {
           var out = new Uint8Array(8192), size = 0;
           for (;;) {
             if (size === out.length) {
@@ -486,10 +483,7 @@
             if (n < 0) break;
             size += n;
           }
-          if (size === out.length) return out;
-          var exact = new Uint8Array(size);
-          exact.set(out.subarray(0, size));
-          return exact;
+          return __utf8Decode(out, 0, size);
         },
 
         // ---- BufferedSink: a fixed segment; small writes coalesce, large writes bypass it ----

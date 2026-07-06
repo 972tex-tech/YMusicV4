@@ -76,7 +76,7 @@ one.
 Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
 inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop), and
 `buffered(pipe)` — an
-okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`/`readByteArray`, plus
+okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`, plus
 `readJsonObject`/`readJsonArray`, §2) and a buffered sink (`writeBytes`/`writeUtf8`/
 `writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`, `close(reason?)`).
 
@@ -87,9 +87,10 @@ drives the native **line splitter** (`__lineNew/Push/Done/End` in `quickjs_pipe.
 push, a line completing within one segment decodes straight from C memory, a spanning line
 accumulates inside the splitter. Because bytes are *consumed as fed* (DRAIN always fires), a line
 longer than the pipe cap simply grows the splitter's accumulator — memory = the line itself — and
-can never deadlock the parked writer, by construction rather than by special case. `readByteArray`
-reads into one growing buffer (a parked read gets rendezvous delivery straight into it).
-Consumed-exactly semantics mean a head line + JSON body + tail share one stream position for free.
+can never deadlock the parked writer, by construction rather than by special case. `readUtf8` — the
+one whole-body materializer — reads into a growing buffer (a parked read gets rendezvous delivery
+straight into it) and decodes once, by range. Consumed-exactly semantics mean a head line + JSON
+body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:

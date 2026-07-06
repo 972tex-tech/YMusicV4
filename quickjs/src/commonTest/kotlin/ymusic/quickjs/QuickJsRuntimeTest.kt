@@ -383,13 +383,13 @@ class QuickJsRuntimeTest {
         rt.load(
             """
             ymix.onAccept("run", async (pipe) => {
-              const input = await ymix.buffered(pipe).readByteArray();
-              const inner = ymix.open("upper");
-              inner.send(input, 0, input.length);
-              inner.close();
-              const res = await ymix.buffered(inner).readByteArray();
-              pipe.send(res, 0, res.length);
-              pipe.close();
+              const io = ymix.buffered(pipe);
+              const input = await io.readUtf8();
+              const inner = ymix.buffered(ymix.open("upper"));
+              let p = inner.writeUtf8(input); if (p) await p;
+              p = inner.close(); if (p) await p;
+              p = io.writeUtf8(await inner.readUtf8()); if (p) await p;
+              p = io.close(); if (p) await p;
             });
             """.trimIndent(),
         )
@@ -651,7 +651,8 @@ class QuickJsRuntimeTest {
         rt.load(
             """
             ymix.onAccept("run", async (pipe) => {
-              const strict = (await ymix.buffered(pipe).readByteArray())[0] === 49; // '1' -> strict
+              const flag = new Uint8Array(1);
+              const strict = (await pipe.receive(flag, 0, 1)) === 1 && flag[0] === 49; // '1' -> strict
               const io = ymix.buffered(ymix.open("feed"));
               const l1 = await io.readUtf8Line(strict);            // "a" — terminated by '\n'
               let l2;
@@ -756,7 +757,15 @@ class QuickJsRuntimeTest {
             ymix.onAccept("run", async (pipe) => {
               const body = ymix.open("fetch");
               body.close();
-              const data = __parseJson(await ymix.buffered(body).readByteArray());   // native parse of the streamed bytes
+              // the one-shot __parseJson wants the raw bytes whole — accumulate them here
+              let buf = new Uint8Array(4096), size = 0;
+              for (;;) {
+                if (size === buf.length) { const g = new Uint8Array(buf.length * 2); g.set(buf); buf = g; }
+                const n = await body.receive(buf, size, buf.length - size);
+                if (n < 0) break;
+                size += n;
+              }
+              const data = __parseJson(buf.subarray(0, size));   // native parse of the streamed bytes
               pipe.send(ymix.utf8Encode(data.title + ":" + data.items.length));
               pipe.close();
             });
