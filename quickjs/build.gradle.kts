@@ -143,6 +143,7 @@ kotlin {
         androidMain.get().dependsOn(jvmCommonMain)
 
         commonMain.dependencies {
+            api(project(":kmpCommon")) // Pipe.asAsyncSource()/asAsyncSink() expose kmpcommon.io types
             implementation(Libs.Kotlinx.coroutinesCore)
             implementation(Libs.Okio.core) // inbound pipe buffer (segment pool via Buffer/UnsafeCursor)
         }
