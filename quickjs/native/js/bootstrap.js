@@ -486,7 +486,10 @@
               grown.set(out);
               out = grown;
             }
-            var n = await pipe.receive(out, size, out.length - size);
+            // receive is await-optional: a number when bytes were already buffered (skip the
+            // microtask hop), a Promise only when it actually parks
+            var r = pipe.receive(out, size, out.length - size);
+            var n = typeof r === "number" ? r : await r;
             if (n < 0) break;
             size += n;
           }

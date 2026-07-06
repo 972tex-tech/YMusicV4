@@ -22,6 +22,10 @@ await pipe.send(u8, offset, len)      // undefined when fully accepted; a Promis
 await pipe.receive(u8, offset, len)   // -> bytes read (<= len), or -1 at EOF; throws the RESET reason
 pipe.close(reason?); pipe.closeRead()
 ```
+Both are **await-optional**: the fast path returns synchronously (`send` -> undefined, `receive` ->
+a number when bytes are already buffered), a Promise only under real backpressure/parking — hot
+loops can check (`typeof r === "number" ? r : await r`) to skip the microtask hop QuickJS charges
+for awaiting a non-thenable.
 
 Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB pool segments,
 32 KB low-water), exactly like a kernel pipe:
