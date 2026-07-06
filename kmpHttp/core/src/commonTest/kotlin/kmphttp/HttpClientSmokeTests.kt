@@ -1,5 +1,6 @@
 package kmphttp
 
+import kmpcommon.io.AsyncSource
 import kmphttp.RequestBodyX.asOneshotRequestBody
 import kmphttp.RequestBodyX.toRequestBody
 import kotlinx.coroutines.Dispatchers

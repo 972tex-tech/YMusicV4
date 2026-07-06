@@ -1,5 +1,6 @@
 package kmphttp
 
+import kmpcommon.io.AsyncSource
 import kmpcommon.kilobytes
 import kmphttp.MediaTypeX.toMediaTypeOrNull
 import kmphttp.cache.CacheInterceptor

@@ -1,7 +1,7 @@
 package kmphttp.json.benchmark
 
-import kmphttp.AsyncSource
-import kmphttp.BufferedAsyncSource
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.BufferedAsyncSource
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonStructFilter
 import kotlinx.benchmark.Benchmark

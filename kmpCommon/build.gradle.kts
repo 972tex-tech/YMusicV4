@@ -29,11 +29,12 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // No external dependencies needed
+            api(Libs.Okio.core) // kmpcommon.io: AsyncSource/AsyncSink surface okio's Buffer
         }
 
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(Libs.Kotlinx.coroutinesTest)
         }
     }
 }

@@ -1,5 +1,6 @@
 package kmphttp.internal
 
+import kmpcommon.io.readByteArray
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf

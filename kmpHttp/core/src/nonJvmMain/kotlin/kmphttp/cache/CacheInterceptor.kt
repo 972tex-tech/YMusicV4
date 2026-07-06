@@ -1,8 +1,8 @@
 package kmphttp.cache
 
+import kmpcommon.io.AsyncSource
 import kmphttp.AsyncInterceptor
 import kmphttp.AsyncInterceptor.Chain
-import kmphttp.AsyncSource
 import kmphttp.HttpCache
 import kmphttp.HttpCache.CacheRequest
 import kmphttp.Headers

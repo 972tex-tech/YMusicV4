@@ -1,7 +1,7 @@
 package kmphttp.internal
 
+import kmpcommon.io.AsyncSource
 import kmpcommon.kilobytes
-import kmphttp.AsyncSource
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi

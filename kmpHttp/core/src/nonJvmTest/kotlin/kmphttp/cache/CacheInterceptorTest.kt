@@ -1,9 +1,9 @@
 package kmphttp.cache
 
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.BufferedAsyncSource
 import kmphttp.AsyncInterceptor
 import kmphttp.runTestSkipBrowser
-import kmphttp.AsyncSource
-import kmphttp.BufferedAsyncSource
 import kmphttp.CacheControl
 import kmphttp.HttpStatus.HTTP_GATEWAY_TIMEOUT
 import kmphttp.HttpStatus.HTTP_NOT_MODIFIED

@@ -1,12 +1,11 @@
-package kmphttp.cache
+package kmpcommon.io
 
 import okio.Buffer
 import okio.Closeable
-import okio.FileSystem
-import okio.Path
 
 /**
- * This class is intended to wrap nodejs fs async write.
+ * A coroutine-friendly counterpart of [okio.Sink]: wraps destinations whose writes suspend
+ * (async file APIs, pipes, network) instead of blocking.
  */
 interface AsyncSink : Closeable {
     /**
@@ -26,4 +25,3 @@ interface AsyncSink : Closeable {
         }
     }
 }
-

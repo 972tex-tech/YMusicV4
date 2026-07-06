@@ -1,6 +1,6 @@
 package kmphttp.cache
 
-import kmphttp.readUtf8String
+import kmpcommon.io.readUtf8String
 import kmphttp.runTestSkipBrowser
 import okio.Buffer
 import okio.Path

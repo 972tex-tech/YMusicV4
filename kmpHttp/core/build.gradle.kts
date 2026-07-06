@@ -136,6 +136,7 @@ kotlin {
         }
 
         commonMain.dependencies {
+            api(project(":kmpCommon")) // kmpcommon.io.AsyncSource/AsyncSink are part of the public API
             implementation(Libs.Kotlinx.coroutinesCore)
             implementation(Libs.Kotlinx.dateTime)
             implementation(Libs.Okio.core)

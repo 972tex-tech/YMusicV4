@@ -1,6 +1,6 @@
 package kmphttp.json
 
-import kmphttp.BufferedAsyncSource
+import kmpcommon.io.BufferedAsyncSource
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement

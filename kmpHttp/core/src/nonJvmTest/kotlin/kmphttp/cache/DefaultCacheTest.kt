@@ -1,6 +1,6 @@
 package kmphttp.cache
 
-import kmphttp.AsyncSource
+import kmpcommon.io.AsyncSource
 import kmphttp.runTestSkipBrowser
 import kmphttp.MediaType
 import kmphttp.Protocol

@@ -15,11 +15,12 @@
  */
 package kmphttp
 
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.readByteArray
 import kmpcommon.kilobytes
 import kmphttp.curl.CurlHttpVersion
 import kmphttp.curl.CurlMultiApi
 import kmphttp.curl.EasyHandle
-import kmphttp.AsyncSource
 import kmphttp.HttpCache
 import kmphttp.CookieJar
 import kmphttp.Headers

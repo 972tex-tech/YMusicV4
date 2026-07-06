@@ -1,6 +1,6 @@
 package kmphttp
 
-import kmphttp.cache.AsyncSink
+import kmpcommon.io.AsyncSink
 
 /**
  * Caches HTTP and HTTPS responses so they may be reused, saving time and

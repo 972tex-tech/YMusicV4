@@ -1,5 +1,7 @@
 package kmphttp
 
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.writeAll
 import kotlinx.coroutines.runBlocking
 import okio.BufferedSink
 import okio.ByteString

@@ -15,6 +15,7 @@
  */
 package kmphttp
 
+import kmpcommon.io.AsyncSource
 import kmphttp.MediaTypeX.toMediaType
 import kmphttp.RequestBodyX.toRequestBody
 import okio.Buffer

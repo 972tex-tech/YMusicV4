@@ -1,7 +1,7 @@
 package kmphttp.json
 
-import kmphttp.AsyncSource
-import kmphttp.BufferedAsyncSource
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.BufferedAsyncSource
 import okio.Buffer
 import okio.ByteString.Companion.encodeUtf8
 

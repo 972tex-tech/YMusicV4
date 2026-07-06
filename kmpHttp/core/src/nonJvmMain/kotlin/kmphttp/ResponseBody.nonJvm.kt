@@ -15,6 +15,9 @@
  */
 package kmphttp
 
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.writeAll
+import kmpcommon.io.readUtf8String
 import kmphttp.internal.DefaultIODispatcher
 import kmphttp.internal.closeQuietly
 import kotlinx.coroutines.withContext

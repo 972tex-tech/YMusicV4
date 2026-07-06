@@ -1,5 +1,6 @@
 package kmphttp
 
+import kmpcommon.io.AsyncSource
 import kmphttp.internal.runIoInterruptible
 import okio.Buffer
 import okio.ByteString

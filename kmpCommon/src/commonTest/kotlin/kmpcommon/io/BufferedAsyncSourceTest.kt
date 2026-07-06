@@ -1,4 +1,4 @@
-package kmphttp
+package kmpcommon.io
 
 import kotlinx.coroutines.test.runTest
 import okio.Buffer

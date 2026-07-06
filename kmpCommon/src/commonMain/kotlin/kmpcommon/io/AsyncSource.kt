@@ -1,4 +1,4 @@
-package kmphttp
+package kmpcommon.io
 
 import kmpcommon.kilobytes
 import okio.Buffer

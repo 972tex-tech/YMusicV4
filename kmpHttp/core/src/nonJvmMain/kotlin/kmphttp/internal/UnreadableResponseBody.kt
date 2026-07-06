@@ -1,6 +1,6 @@
 package kmphttp.internal
 
-import kmphttp.AsyncSource
+import kmpcommon.io.AsyncSource
 import kmphttp.MediaType
 import kmphttp.Response
 import kmphttp.ResponseBody

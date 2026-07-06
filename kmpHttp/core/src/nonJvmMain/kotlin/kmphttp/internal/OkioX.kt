@@ -1,7 +1,7 @@
 package kmphttp.internal
 
-import kmphttp.AsyncSource
-import kmphttp.cache.AsyncSink
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.AsyncSink
 import okio.Buffer
 import okio.FileSystem
 import okio.IOException

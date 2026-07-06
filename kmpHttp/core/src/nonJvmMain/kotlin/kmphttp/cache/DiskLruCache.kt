@@ -2,9 +2,10 @@
 
 package kmphttp.cache
 
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.AsyncSink
 import kmpcommon.nowMs
 import kmpcommon.removeAll
-import kmphttp.AsyncSource
 import kmphttp.internal.DefaultIODispatcher
 import kmphttp.internal.ForwardingAsyncSink
 import kmphttp.internal.closeQuietly
