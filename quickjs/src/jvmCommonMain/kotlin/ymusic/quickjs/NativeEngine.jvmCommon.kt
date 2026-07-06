@@ -20,7 +20,7 @@ internal actual class NativeEngine private constructor(private val handle: Long)
     actual fun evalSync(script: String, filename: String): String? =
         QuickJsNative.evalSync(handle, script, filename)
 
-    actual fun open(id: Int, command: String) = QuickJsNative.open(handle, id, command)
+    actual fun open(id: Int, command: String): Int = QuickJsNative.open(handle, id, command)
 
     actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int =
         QuickJsNative.write(handle, id, buffer, offset, len)

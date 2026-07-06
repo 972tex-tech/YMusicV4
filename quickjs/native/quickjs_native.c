@@ -21,16 +21,17 @@ static void pump(QjsEngine *e) {
 
 /* ---- inbound: JS -> host (JS calls these) ---- */
 
-/* __hostOpen(id, command) */
+/* __hostOpen(id, command) -> 0 accepted | -1 refused (no handler / host callback failed) */
 static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
     size_t len = 0;
     const char *cmd = JS_ToCStringLen(ctx, &len, argv[1]);
-    if (e->cb) e->cb(e->user, QJS_OP_OPEN, id, (const uint8_t *)(cmd ? cmd : ""), cmd ? len : 0);
+    int rc = -1;
+    if (e->cb) rc = e->cb(e->user, QJS_OP_OPEN, id, (const uint8_t *)(cmd ? cmd : ""), cmd ? len : 0);
     if (cmd) JS_FreeCString(ctx, cmd);
-    return JS_UNDEFINED;
+    return JS_NewInt32(ctx, rc);
 }
 
 /* __hostData(id, u8, off, len) -> accepted byte count (or -1 EPIPE). The payload pointer is only
@@ -172,9 +173,9 @@ static int call_js(QjsEngine *e, JSValue fn, int argc, JSValue *argv, int exc_rc
     return rc;
 }
 
-void qjs_open(QjsEngine *e, uint32_t id, const char *command) {
+int qjs_open(QjsEngine *e, uint32_t id, const char *command) {
     JSValue argv[2] = { JS_NewUint32(e->ctx, id), JS_NewString(e->ctx, command ? command : "") };
-    call_js(e, e->jsOpen, 2, argv, 0);
+    return call_js(e, e->jsOpen, 2, argv, -1);
 }
 
 int qjs_write(QjsEngine *e, uint32_t id, const uint8_t *data, size_t len) {

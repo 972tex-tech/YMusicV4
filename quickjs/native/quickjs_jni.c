@@ -40,7 +40,7 @@ typedef struct Engine {
     JavaVM *jvm;
     QjsPool *pool;
     jclass bridgeClass;   /* global ref to ymusic.quickjs.QuickJsNative */
-    jmethodID onOpen;     /* static void onOpen(long, int, String) */
+    jmethodID onOpen;     /* static int onOpen(long, int, String): 0 accepted / -1 refused */
     jmethodID onWrite;    /* static int  onWrite(long, int, ByteBuffer) */
     jmethodID onCloseWrite; /* static void onCloseWrite(long, int, String|null) */
     jmethodID onCloseRead;  /* static void onCloseRead(long, int) */
@@ -151,10 +151,12 @@ static int check_java_exception(Engine *e, JNIEnv *env, JSContext *ctx) {
 
 /* ---- inbound: JS -> host (JS calls these) ---- */
 
-/* __hostOpen(id, command) */
+/* __hostOpen(id, command) -> 0 accepted | -1 refused (no handler / host callback failed) |
+ * -2 called under a critical region (bootstrap bug). C-error-code style: the JS side checks the
+ * code and cleans up its registry — no exception crosses the boundary for the normal refusal. */
 static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
-    if (e->in_critical) return JS_ThrowInternalError(ctx, "__hostOpen during data delivery");
+    if (e->in_critical) return JS_NewInt32(ctx, -2);
     JNIEnv *env = engine_env(e);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
@@ -162,10 +164,14 @@ static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSV
     const char *cmd = JS_ToCStringLen(ctx, &len, argv[1]);
     jstring jcmd = utf8_to_jstring(env, cmd ? cmd : "", cmd ? len : 0);
     if (cmd) JS_FreeCString(ctx, cmd);
-    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onOpen, (jlong)(intptr_t)e, (jint)id, jcmd);
+    jint rc = (*env)->CallStaticIntMethod(env, e->bridgeClass, e->onOpen, (jlong)(intptr_t)e, (jint)id, jcmd);
     (*env)->DeleteLocalRef(env, jcmd);
-    if (check_java_exception(e, env, ctx)) return JS_EXCEPTION;
-    return JS_UNDEFINED;
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+        rc = -1;
+    }
+    return JS_NewInt32(ctx, rc);
 }
 
 /* __hostData(id, u8, off, len) -> accepted byte count (or -1 EPIPE). The JS bytes cross as a direct
@@ -263,7 +269,7 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
 
     jclass local = (*env)->FindClass(env, "ymusic/quickjs/QuickJsNative");
     e->bridgeClass = (jclass)(*env)->NewGlobalRef(env, local);
-    e->onOpen = (*env)->GetStaticMethodID(env, e->bridgeClass, "onOpen", "(JILjava/lang/String;)V");
+    e->onOpen = (*env)->GetStaticMethodID(env, e->bridgeClass, "onOpen", "(JILjava/lang/String;)I");
     e->onWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onWrite", "(JILjava/nio/ByteBuffer;)I");
     e->onCloseWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseWrite", "(JILjava/lang/String;)V");
     e->onCloseRead = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseRead", "(JI)V");
@@ -357,14 +363,14 @@ static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     return rc;
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
 Java_ymusic_quickjs_QuickJsNative_open(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jcommand) {
     Engine *e = (Engine *)(intptr_t)handle;
     size_t len = 0;
     char *cmd = jstring_to_utf8(env, jcommand, &len);
     JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), JS_NewStringLen(e->ctx, cmd, len) };
     free(cmd);
-    call_js(e, e->jsOpen, 2, argv, 0);
+    return (jint)call_js(e, e->jsOpen, 2, argv, -1);
 }
 
 /* write(id, bytes, off, len) -> accepted. The ByteArray is held with GetPrimitiveArrayCritical for

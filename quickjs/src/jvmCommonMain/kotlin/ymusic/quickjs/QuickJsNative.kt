@@ -28,9 +28,8 @@ internal object QuickJsNative {
     }
 
     @JvmStatic
-    fun onOpen(handle: Long, id: Int, command: String) {
-        sinks[handle]?.onOpen(id, command)
-    }
+    fun onOpen(handle: Long, id: Int, command: String): Int =
+        sinks[handle]?.onOpen(id, command) ?: -1
 
     @JvmStatic
     fun onWrite(handle: Long, id: Int, bytes: ByteBuffer): Int =
@@ -53,7 +52,7 @@ internal object QuickJsNative {
 
     external fun create(bootstrap: String): Long
     external fun evalSync(handle: Long, script: String, filename: String): String?
-    external fun open(handle: Long, id: Int, command: String)
+    external fun open(handle: Long, id: Int, command: String): Int
     external fun write(handle: Long, id: Int, bytes: ByteArray, off: Int, len: Int): Int
     external fun closeWrite(handle: Long, id: Int, reason: String?)
     external fun closeRead(handle: Long, id: Int)

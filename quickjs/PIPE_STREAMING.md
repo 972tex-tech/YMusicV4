@@ -54,16 +54,18 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
 
 **Transport (no framing).** The FFI boundary is a handful of operations per direction — nothing
 allocates a per-frame header; commands and reasons cross as native strings:
-- host → JS: `NativeEngine.open(id, cmd)` / `write(id, buf, off, len) -> accepted` /
+- host → JS: `NativeEngine.open(id, cmd) -> 0 | -1 refused` / `write(id, buf, off, len) -> accepted` /
   `closeWrite(id, reason?)` / `closeRead(id)` / `drain(id)`
   → JS globals `__jsOpen` / `__jsData(id, view) -> accepted` / `__jsClose(id, reason)` /
   `__jsCloseRead(id)` / `__jsDrain(id)`.
-- JS → host: `__hostOpen` / `__hostData(id, u8, off, len) -> accepted` / `__hostClose(id, reason)` /
+- JS → host: `__hostOpen -> 0 | -1 refused` / `__hostData(id, u8, off, len) -> accepted` / `__hostClose(id, reason)` /
   `__hostCloseRead(id)` / `__hostDrain(id)`
   → `EngineCallbacks.onOpen/onWrite/onCloseWrite/onCloseRead/onDrain` (JNI statics on jvm/android;
   one cinterop trampoline with an op arg on native).
-`id` is an argument (Kotlin opens odd ids, JS even). All routing lives in the Kotlin + JS mux —
-C only shuttles operations and owns the segment pool (`quickjs_pipe.c`).
+`id` is an argument (Kotlin opens odd ids, JS even). `open` is request/response, C-error-code
+style: opening a command nothing serves **fails at the open itself** (like `ECONNREFUSED` — Kotlin:
+`QuickJsException`, JS: throw), leaving no pipe on either side. All routing lives in the Kotlin +
+JS mux — C only shuttles operations and owns the segment pool (`quickjs_pipe.c`).
 
 **JNI critical-region discipline** (jvm/android): `write` holds the ByteArray with
 `GetPrimitiveArrayCritical` while `__jsData` runs, so that synchronous JS path must never re-enter

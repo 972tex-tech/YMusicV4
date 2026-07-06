@@ -57,43 +57,45 @@ class QuickJsRuntime private constructor(
         accepts[command] = handler
     }
 
-    /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards). */
+    /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards).
+     *  Fails AT THE OPEN — like ECONNREFUSED — when no JS handler serves [command]. */
     suspend fun openPipe(command: String): Pipe = withContext(engineDispatcher) {
         val id = nextId
         nextId += 2
         val pipe = PipeImpl(id, command)
-        // Registered before open() — JS's refusal path runs synchronously inside it. If open()
-        // itself ever throws, the caller never gets the pipe: drop the entry, don't dangle it.
+        // Registered before open() so anything crossing during the call finds the pipe; dropped
+        // again on refusal/throw so a failed open never dangles in the registry.
         pipes[id] = pipe
-        try {
+        val rc = try {
             engine.open(id, command)
         } catch (e: Throwable) {
             pipes.remove(id)
             throw e
         }
+        if (rc < 0) {
+            pipes.remove(id)
+            throw QuickJsException("open(\"$command\") refused: no JS handler")
+        }
         pipe
     }
 
-    /** JS opened a pipe to us — route to the registered handler (on the engine thread). */
-    internal fun onOpen(id: Int, command: String) {
-        val handler = accepts[command]
-        if (handler != null) {
-            val pipe = PipeImpl(id, command)
-            pipes[id] = pipe
-            scope.launch {
-                try {
-                    handler(pipe)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    pipe.closeRead()
-                    pipe.close(e.message ?: "handler failed") // RESET: surface the failure to JS
-                }
+    /** JS opened a pipe to us — route to the registered handler (on the engine thread).
+     *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
+    internal fun onOpen(id: Int, command: String): Int {
+        val handler = accepts[command] ?: return -1
+        val pipe = PipeImpl(id, command)
+        pipes[id] = pipe
+        scope.launch {
+            try {
+                handler(pipe)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                pipe.closeRead()
+                pipe.close(e.message ?: "handler failed") // RESET: surface the failure to JS
             }
-        } else {
-            engine.closeRead(id) // no handler: refuse — the JS writer gets EPIPE...
-            engine.closeWrite(id, null) // ...and its receive sees EOF
         }
+        return 0
     }
 
     internal fun onWrite(id: Int, chunk: NativeChunk): Int = pipes[id]?.deliver(chunk) ?: -1
@@ -319,7 +321,7 @@ class QuickJsRuntime private constructor(
             val dispatcher = newEngineDispatcher()
             var rtRef: QuickJsRuntime? = null
             val callbacks = object : EngineCallbacks {
-                override fun onOpen(id: Int, command: String) { rtRef?.onOpen(id, command) }
+                override fun onOpen(id: Int, command: String): Int = rtRef?.onOpen(id, command) ?: -1
                 override fun onWrite(id: Int, chunk: NativeChunk): Int = rtRef?.onWrite(id, chunk) ?: -1
                 override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
                 override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }

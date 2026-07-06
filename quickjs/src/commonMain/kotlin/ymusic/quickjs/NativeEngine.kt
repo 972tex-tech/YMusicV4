@@ -20,7 +20,9 @@ internal expect class NativeChunk {
  * ([QuickJsRuntime]) implements these; the transport never routes, it only shuttles operations.
  */
 internal interface EngineCallbacks {
-    fun onOpen(id: Int, command: String)
+    /** JS opened a pipe to us. Return 0 to accept, or -1 to refuse (no handler for [command]) —
+     *  a refusal fails the JS side's open() call itself, C-error-code style. */
+    fun onOpen(id: Int, command: String): Int
 
     /** JS wrote bytes to us. Consume [chunk] synchronously (parked reader first, then the inbound
      *  buffer up to its cap) and return the accepted byte count — less than `chunk.size` means the
@@ -48,8 +50,8 @@ internal expect class NativeEngine {
     /** Evaluate [script]; returns the completion value's string form (or null). Throws on JS error. */
     fun evalSync(script: String, filename: String): String?
 
-    /** Host -> JS. */
-    fun open(id: Int, command: String)
+    /** Host -> JS. Returns 0 when JS accepted the pipe, or -1 when it refused (no handler). */
+    fun open(id: Int, command: String): Int
 
     /** Deliver `buffer[offset, offset+len)` to the JS reader; returns the accepted byte count
      *  (< len = backpressure, wait for [EngineCallbacks.onDrain]), or -1 if it closed its read end. */

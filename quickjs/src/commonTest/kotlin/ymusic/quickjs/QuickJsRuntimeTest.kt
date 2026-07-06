@@ -834,6 +834,7 @@ class QuickJsRuntimeTest {
     @Test
     fun js_send_after_close_is_fatal() = runTest {
         val rt = QuickJsRuntime.create()
+        rt.onAccept("idle") { /* accepted, never used — the test only exercises the JS write end */ }
         rt.load(
             """
             ymix.onAccept("run", async (p) => {
@@ -858,10 +859,11 @@ class QuickJsRuntimeTest {
     @Test
     fun receive_after_close_read_is_fatal() = runTest {
         val rt = QuickJsRuntime.create()
+        rt.onAccept("idle") { /* accepted, never used — the test only exercises the JS read end */ }
         rt.load(
             """
             ymix.onAccept("run", async (p) => {
-              const io = ymix.open("idle");   // no handler serves "idle"; we never read it anyway
+              const io = ymix.open("idle");
               io.closeRead();
               let err = "none";
               try { await io.receive(new Uint8Array(4), 0, 4); } catch (e) { err = (e && e.message) || String(e); }
@@ -979,6 +981,40 @@ class QuickJsRuntimeTest {
         )
         try {
             assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** Opening a command nothing serves fails AT THE OPEN (ECONNREFUSED-style), instead of
+     *  handing back a half-dead pipe that EPIPEs later — and leaves no registry entry behind. */
+    @Test
+    fun js_open_unknown_command_fails_at_open() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              let msg = "no-throw";
+              try { ymix.open("no-such-command"); } catch (e) { msg = (e && e.message) || String(e); }
+              p.send(ymix.utf8Encode(msg));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("""open("no-such-command") refused by host""", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The mirror: Kotlin openPipe of a command no JS handler serves throws at the open. */
+    @Test
+    fun kotlin_open_unknown_command_fails_at_open() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            val e = assertFailsWith<QuickJsException> { rt.openPipe("no-such-js-command") }
+            assertEquals("""open("no-such-js-command") refused: no JS handler""", e.message)
         } finally {
             rt.close()
         }

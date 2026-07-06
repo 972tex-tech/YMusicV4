@@ -28,11 +28,12 @@ typedef struct QjsEngine QjsEngine;
 #define QJS_OP_DRAIN       4 /* flow control: the reader drained; resume the parked writer */
 
 
-/* Invoked when JS reaches the host. OPEN: data = command (NUL-terminated UTF-8), len = its length.
- * WRITE: data = payload bytes, len = length — consume synchronously (the pointer dies with the
- * call); the return value is the accepted byte count (or -1 EPIPE). CLOSE_WRITE: data = reason or
- * NULL, len = reason length. CLOSE_READ / DRAIN: data = NULL, len = 0.
- * The return value is only meaningful for WRITE (0 otherwise). */
+/* Invoked when JS reaches the host. OPEN: data = command (NUL-terminated UTF-8), len = its
+ * length — the return value is 0 (accepted) or -1 (refused: no handler / callback failed), so an
+ * open of an unserved command fails AT the open, C-error-code style. WRITE: data = payload bytes,
+ * len = length — consume synchronously (the pointer dies with the call); the return value is the
+ * accepted byte count (or -1 EPIPE). CLOSE_WRITE: data = reason or NULL, len = reason length.
+ * CLOSE_READ / DRAIN: data = NULL, len = 0. Return values of the other ops are ignored. */
 typedef int (*QjsInboundCb)(void *user, int op, uint32_t id, const uint8_t *data, size_t len);
 
 /* Create an engine, install the JS transport + pipe/JSON natives, and eval [bootstrap].
@@ -43,9 +44,10 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
  * message) or NULL. *isError is set to 1 when the returned string is an error message. */
 char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int *isError);
 
-/* Host -> JS. write() returns the accepted byte count (see header comment); reason semantics as in
+/* Host -> JS. open() returns 0 (accepted) or -1 (refused — no JS handler for the command);
+ * write() returns the accepted byte count (see header comment); reason semantics as in
  * QJS_OP_CLOSE_WRITE; drain() resumes the JS side's parked partial send. */
-void qjs_open(QjsEngine *e, uint32_t id, const char *command);
+int qjs_open(QjsEngine *e, uint32_t id, const char *command);
 int qjs_write(QjsEngine *e, uint32_t id, const uint8_t *data, size_t len);
 void qjs_close_write(QjsEngine *e, uint32_t id, const char *reason);
 void qjs_close_read(QjsEngine *e, uint32_t id);

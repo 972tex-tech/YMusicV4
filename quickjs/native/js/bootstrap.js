@@ -298,15 +298,16 @@
     };
   }
 
-  // Kotlin opened a pipe to us.
+  // Kotlin opened a pipe to us. Returns 0 (accepted) or -1 (refused: no handler) — a refusal
+  // fails Kotlin's openPipe() itself; no pipe is created on either side.
   globalThis.__jsOpen = function (id, command) {
+    var handler = accepts[command];
+    if (!handler) return -1;
     var pipe = makePipe(id, command);
     pipes[id] = pipe;
-    var handler = accepts[command];
-    // closeRead()+close() refuse both directions; their maybeReap() drops pipes[id] — no explicit delete.
-    if (handler) Promise.resolve().then(function () { return handler(pipe); })
+    Promise.resolve().then(function () { return handler(pipe); })
       .catch(function (e) { pipe.closeRead(); pipe.close(String((e && e.message) || e)); }); // RESET: surface the failure
-    else { pipe.closeRead(); pipe.close(); }
+    return 0;
   };
   // Kotlin wrote bytes (one-shot zero-copy view; see _data). Returns the accepted count / -1 EPIPE.
   globalThis.__jsData = function (id, u8) {
@@ -326,19 +327,19 @@
   };
 
   globalThis.ymix = {
+    // Open a pipe to the host. Fails AT THE OPEN — like ECONNREFUSED — when nothing serves the
+    // command: __hostOpen returns a C-style code (0 accepted; -1 refused / host callback failed;
+    // -2 called under a critical region, a bootstrap bug), and a failed open leaves no registry
+    // entry behind on either side.
     open: function (command) {
       var id = nextId; nextId += 2;
       var pipe = makePipe(id, command);
-      // Registered BEFORE __hostOpen: the host's refusal path (closeRead+closeWrite) runs
-      // synchronously inside it and must find the pipe. If __hostOpen itself throws (the
-      // in_critical guard, or a host callback failure surfaced as a JS exception), the caller
-      // never receives the pipe — drop the registry entry instead of leaving it dangling forever.
-      pipes[id] = pipe;
-      try {
-        __hostOpen(id, command);
-      } catch (e) {
+      pipes[id] = pipe; // registered first so anything crossing during the call finds the pipe
+      var rc = __hostOpen(id, command);
+      if (rc < 0) {
         delete pipes[id];
-        throw e;
+        throw new Error(rc === -2 ? 'open("' + command + '") during data delivery'
+                                  : 'open("' + command + '") refused by host');
       }
       return pipe;
     },

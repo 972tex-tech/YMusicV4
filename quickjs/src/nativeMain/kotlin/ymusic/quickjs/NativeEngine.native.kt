@@ -68,7 +68,7 @@ internal actual class NativeEngine private constructor(
         out
     }
 
-    actual fun open(id: Int, command: String) = qjs_open(engine, id.toUInt(), command)
+    actual fun open(id: Int, command: String): Int = qjs_open(engine, id.toUInt(), command)
 
     actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int {
         if (len <= 0) return 0
@@ -105,24 +105,32 @@ internal actual class NativeEngine private constructor(
 }
 
 /** C -> Kotlin inbound callback. [user] is the StableRef to the engine's [EngineCallbacks].
- *  Ops per quickjs_native.h: OPEN (data = command), WRITE (data/len = payload, valid only during
- *  the call; return = accepted / -1 EPIPE), CLOSE_WRITE (data = RESET reason or NULL for END),
- *  CLOSE_READ, DRAIN. The return value is only meaningful for WRITE. */
+ *  Ops per quickjs_native.h: OPEN (data = command; return 0 accepted / -1 refused), WRITE
+ *  (data/len = payload, valid only during the call; return = accepted / -1 EPIPE), CLOSE_WRITE
+ *  (data = RESET reason or NULL for END), CLOSE_READ, DRAIN.
+ *
+ *  A Kotlin exception must NEVER unwind through this C boundary (that aborts the process on
+ *  Kotlin/Native) — catch, report, and fail the op with -1 (refused/EPIPE at the protocol level). */
 @OptIn(ExperimentalForeignApi::class)
 private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CPointer<UByteVar>?, len: size_t): Int {
     if (user == null) return -1
     val cb = user.asStableRef<EngineCallbacks>().get()
     val idInt = id.toInt()
-    return when (op) {
-        QJS_OP_OPEN -> { cb.onOpen(idInt, data?.reinterpret<ByteVar>()?.toKString() ?: ""); 0 }
-        QJS_OP_WRITE -> {
-            val n = len.toInt()
-            if (data == null || n <= 0) 0 else cb.onWrite(idInt, NativeChunk(data, n))
+    return try {
+        when (op) {
+            QJS_OP_OPEN -> cb.onOpen(idInt, data?.reinterpret<ByteVar>()?.toKString() ?: "")
+            QJS_OP_WRITE -> {
+                val n = len.toInt()
+                if (data == null || n <= 0) 0 else cb.onWrite(idInt, NativeChunk(data, n))
+            }
+            QJS_OP_CLOSE_WRITE -> { cb.onCloseWrite(idInt, data?.reinterpret<ByteVar>()?.toKString()); 0 }
+            QJS_OP_CLOSE_READ -> { cb.onCloseRead(idInt); 0 }
+            QJS_OP_DRAIN -> { cb.onDrain(idInt); 0 }
+            else -> 0
         }
-        QJS_OP_CLOSE_WRITE -> { cb.onCloseWrite(idInt, data?.reinterpret<ByteVar>()?.toKString()); 0 }
-        QJS_OP_CLOSE_READ -> { cb.onCloseRead(idInt); 0 }
-        QJS_OP_DRAIN -> { cb.onDrain(idInt); 0 }
-        else -> 0
+    } catch (e: Throwable) {
+        println("quickjs: host callback failed (op=$op id=$idInt): $e")
+        -1
     }
 }
 
