@@ -30,6 +30,12 @@ import okio.Buffer
  *    closes too.
  *  - [closeRead] abandons the read side: the peer's next [send] throws [BrokenPipeException]. Use it
  *    to tell a producer "stop, I'm not reading anymore."
+ *
+ * **Aborts close the pipe.** A [send] or [receive] that exits abnormally — cancellation included —
+ * leaves the stream at an unknowable position (bytes partially transferred, or delivered into an
+ * abandoned sink), so it closes that side on the way out: an aborted send RESETs (the peer's read
+ * throws `"send aborted mid-stream: …"`), an aborted receive closes the read end (the peer's send
+ * gets EPIPE). One predictable state — a pipe that threw is done on that side, never half-usable.
  */
 interface Pipe {
     /** The command name this pipe was opened with. */

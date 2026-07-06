@@ -12,6 +12,8 @@ import kotlinx.coroutines.yield
 import okio.Buffer
 import okio.use
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /** Per-direction pipe buffer bound (bytes) — like a Linux pipe's fixed capacity. A writer whose
  *  write is only partially accepted parks and resumes on the peer's DRAIN notify, which fires once
@@ -139,7 +141,11 @@ class QuickJsRuntime private constructor(
                 val n = minOf(chunk.size.toLong(), r.byteCount).toInt()
                 copyChunk(r.sink, chunk, 0, n)
                 pos = n
-                r.cont.resumeWith(Result.success(n.toLong()))
+                // If cancellation (from any thread) wins against this resume, the bytes are
+                // stranded in the abandoned sink while the peer counts them delivered — safe only
+                // because the cancelled receive() closes the read side on its way out, so the
+                // desynced stream can never be read past.
+                r.cont.resume(n.toLong())
             }
             val room = (PIPE_CAP.toLong() - inbound.size).toInt()
             val toBuffer = minOf(chunk.size - pos, room)
@@ -177,10 +183,10 @@ class QuickJsRuntime private constructor(
             if (reason != null) {
                 resetReason = reason
                 inbound.clear() // RESET: the stream is suspect — discard, fail fast
-                if (r != null) { reader = null; r.cont.resumeWith(Result.failure(PipeResetException(reason))) }
+                if (r != null) { reader = null; r.cont.resumeWithException(PipeResetException(reason)) }
             } else if (r != null) { // a parked reader implies an empty buffer -> EOF now
                 reader = null
-                r.cont.resumeWith(Result.success(EOF))
+                r.cont.resume(EOF)
             }
             maybeReap()
         }
@@ -188,12 +194,12 @@ class QuickJsRuntime private constructor(
         fun onPeerCloseRead() {
             peerReadClosed = true
             val w = writer
-            if (w != null) { writer = null; w.resumeWith(Result.failure(BrokenPipeException())) }
+            if (w != null) { writer = null; w.resumeWithException(BrokenPipeException()) }
         }
 
         fun onDrain() {
             val w = writer
-            if (w != null) { writer = null; w.resumeWith(Result.success(Unit)) }
+            if (w != null) { writer = null; w.resume(Unit) }
             else drainCredit = true
         }
 
@@ -201,12 +207,17 @@ class QuickJsRuntime private constructor(
             withContext(engineDispatcher) {
                 require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
                 if (byteCount == 0L) return@withContext 0L
-                beginReceive()
+                check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
+                check(!receiving) { "concurrent receive() on the same pipe" }
+                receiving = true
                 try {
                     resetReason?.let { throw PipeResetException(it) }
                     if (inbound.size > 0L) {
                         val n = inbound.read(sink, byteCount) // whole-segment moves, no copy
-                        maybeDrain()
+                        if (peerBlocked && inbound.size <= PIPE_LOW) {
+                            peerBlocked = false
+                            engine.drain(id)
+                        }
                         return@withContext n
                     }
                     if (writeEnded) return@withContext -1L
@@ -216,23 +227,17 @@ class QuickJsRuntime private constructor(
                         reader = ParkedReader(sink, byteCount, cont)
                         cont.invokeOnCancellation { reader = null }
                     }
+                } catch (t: Throwable) {
+                    // A receive that aborts (cancellation included) may have left bytes stranded in
+                    // a sink nobody will look at — the read position is unknowable. Close the read
+                    // side so the pipe lands in ONE predictable state: done reading, peer gets
+                    // EPIPE. Deliberate fire-and-forget: cleanup must not mask the abort cause.
+                    runCatching { closeReadNow(t) }
+                    throw t
                 } finally {
                     receiving = false
                 }
             }
-
-        private fun beginReceive() {
-            check(!readClosed) { "receive() after closeRead()" }
-            check(!receiving) { "concurrent receive() on the same pipe" }
-            receiving = true
-        }
-
-        private fun maybeDrain() {
-            if (peerBlocked && inbound.size <= PIPE_LOW) {
-                peerBlocked = false
-                engine.drain(id)
-            }
-        }
 
         // ---- outbound plumbing ----
 
@@ -263,6 +268,20 @@ class QuickJsRuntime private constructor(
                         source.skip(n.toLong()) // consume only once the peer fully accepted it
                         remaining -= n
                     }
+                } catch (t: Throwable) {
+                    // A send that aborts (cancellation included) strands the stream at an unknowable
+                    // position: the peer would wait forever for (or misparse) the rest, and a retry
+                    // would resend the unskipped tail it already consumed. RESET so the pipe lands
+                    // in ONE predictable state: done writing, the peer's read fails fast.
+                    // Deliberate fire-and-forget: cleanup must not mask the abort cause.
+                    if (!weEnded && !peerReadClosed) {
+                        weEnded = true
+                        runCatching {
+                            engine.closeWrite(id, "send aborted mid-stream: ${t.message ?: "cancelled"}")
+                        }
+                        maybeReap()
+                    }
+                    throw t
                 } finally {
                     sending = false
                 }
@@ -296,15 +315,19 @@ class QuickJsRuntime private constructor(
             }
         }
 
-        override suspend fun closeRead(): Unit = withContext(engineDispatcher) {
-            if (readClosed) return@withContext
+        override suspend fun closeRead(): Unit = withContext(engineDispatcher) { closeReadNow(null) }
+
+        /** [cause] is the aborted receive's failure when the abort path (not an explicit
+         *  [closeRead]) closes the read side. */
+        private fun closeReadNow(cause: Throwable?) {
+            if (readClosed) return
             readClosed = true
             inbound.clear()
             engine.closeRead(id) // tell the peer writer: EPIPE
             val r = reader // an in-flight receive is now a misuse — fail it, don't quietly EOF
             if (r != null) {
                 reader = null
-                r.cont.resumeWith(Result.failure(IllegalStateException("receive() after closeRead()")))
+                r.cont.resumeWithException(cause ?: IllegalStateException("receive() after closeRead()"))
             }
             maybeReap()
         }
@@ -323,9 +346,9 @@ class QuickJsRuntime private constructor(
             if (resetReason == null) resetReason = cause.message ?: "runtime closed"
             inbound.clear()
             val r = reader
-            if (r != null) { reader = null; r.cont.resumeWith(Result.failure(cause)) }
+            if (r != null) { reader = null; r.cont.resumeWithException(cause) }
             val w = writer
-            if (w != null) { writer = null; w.resumeWith(Result.failure(cause)) }
+            if (w != null) { writer = null; w.resumeWithException(cause) }
         }
     }
 

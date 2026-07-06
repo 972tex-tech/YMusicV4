@@ -62,6 +62,14 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
 - **One receiver / one sender**: only one `receive()` and one `send()` may be outstanding per pipe;
   a concurrent second call fails fast rather than queueing (overlapping calls would race the
   cursors, so that's always a bug).
+- **Aborts close the pipe (Kotlin).** A `send`/`receive` that exits abnormally — cancellation
+  included — leaves the stream at an unknowable position (a cancelled parked send has already
+  delivered a prefix; a cancelled receive can race a delivery into its abandoned sink), so it
+  closes that side on the way out: an aborted send RESETs (`"send aborted mid-stream: …"`), an
+  aborted receive closes the read end (peer gets EPIPE). Without this, a cancelled 200 KB send
+  measurably left the peer 64 KB of truncated stream with `error=none` and spliced the next
+  message into the middle of it. One rule, one predictable state — like NIO's interruptible
+  channels, an interrupted op kills the channel.
 
 **Transport (no framing).** The FFI boundary is a handful of operations per direction — nothing
 allocates a per-frame header; commands and reasons cross as native strings:
