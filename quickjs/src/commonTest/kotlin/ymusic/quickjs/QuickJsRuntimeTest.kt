@@ -1189,6 +1189,44 @@ class QuickJsRuntimeTest {
         rt.close() // finalizers must free the suspended encoders without error
     }
 
+    /** A line longer than the 64 KB pipe cap must NOT deadlock (reader parked for more data vs
+     *  writer parked for a DRAIN that requires consumption): the scanner spills scanned bytes into
+     *  a reader-owned buffer, unblocking the writer. Covers a ~275 KB CRLF line (multibyte chars
+     *  landing on spill boundaries), a normal line after it, and an over-cap unterminated final
+     *  line at EOF. */
+    @Test
+    fun line_longer_than_pipe_cap_does_not_deadlock() = runTest {
+        val rt = QuickJsRuntime.create()
+        val big = buildString { repeat(25_000) { append("abcdefé🎵") } } // ~275 KB of UTF-8
+        val tail = "T".repeat(100_000)                                    // over-cap, no trailing '\n'
+        rt.onAccept("lines") { pipe ->
+            pipe.send("$big\r\nsecond🎵\n$tail".encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.buffered(ymix.open("lines"));
+              const l1 = await io.readUtf8Line();
+              const l2 = await io.readUtf8Line();
+              const l3 = await io.readUtf8Line();
+              const l4 = await io.readUtf8Line();
+              let s1 = 0; for (let i = 0; i < l1.length; i++) s1 += l1.charCodeAt(i);
+              let s3 = 0; for (let i = 0; i < l3.length; i++) s3 += l3.charCodeAt(i);
+              p.send(ymix.utf8Encode(l1.length + ":" + s1 + "|" + l2 + "|" + l3.length + ":" + s3 + "|" + (l4 === null ? "EOF" : l4)));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val s1 = big.sumOf { it.code.toLong() }
+            val s3 = tail.sumOf { it.code.toLong() }
+            assertEquals("${big.length}:$s1|second🎵|${tail.length}:$s3|EOF", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A line longer than one 8 KB pool segment: the newline scan resumes across arrivals without
      *  rescanning, and the decode assembles the spanning range once — content must be exact. */
     @Test

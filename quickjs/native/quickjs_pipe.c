@@ -181,6 +181,133 @@ static JSValue js_utf8_bytes(JSContext *ctx, JSValueConst this_val, int argc, JS
     return new_u8_view(ctx, ab);
 }
 
+/* Iterate the unread byte spans of the JS-side inbound queue — head[headPos..] then
+ * queue[qpos..qlen) — resolving each segment's pointer on demand. Pointers are only used within
+ * the current native call (nothing here runs user JS between resolution and use). */
+typedef struct {
+    JSContext *ctx;
+    JSValueConst head; /* Uint8Array or null */
+    uint32_t head_pos;
+    JSValueConst queue; /* Array of Uint8Array segment views */
+    uint32_t qpos, qlen;
+    uint32_t next; /* 0 = head, else queue[qpos + next - 1] */
+} SpanIter;
+
+static int span_next(SpanIter *it, const uint8_t **pp, uint32_t *plen) {
+    for (;;) {
+        if (it->next == 0) {
+            it->next = 1;
+            if (!JS_IsNull(it->head) && !JS_IsUndefined(it->head)) {
+                size_t len = 0;
+                uint8_t *p = view_bytes(it->ctx, it->head, &len);
+                if (!p) return -1;
+                if (it->head_pos < len) {
+                    *pp = p + it->head_pos;
+                    *plen = (uint32_t)(len - it->head_pos);
+                    return 1;
+                }
+            }
+            continue;
+        }
+        uint32_t qi = it->qpos + it->next - 1;
+        if (qi >= it->qlen) return 0;
+        it->next++;
+        JSValue seg = JS_GetPropertyUint32(it->ctx, it->queue, qi);
+        if (JS_IsException(seg)) return -1;
+        size_t len = 0;
+        uint8_t *p = view_bytes(it->ctx, seg, &len);
+        JS_FreeValue(it->ctx, seg); /* the queue keeps it alive */
+        if (!p) return -1;
+        if (len == 0) continue;
+        *pp = p;
+        *plen = (uint32_t)len;
+        return 1;
+    }
+}
+
+/* __lineScan(head, headPos, queue, qpos, qlen, scanFrom, takeRestAtEof, outI32) ->
+ *   string : a complete line — trailing '\r' stripped, outI32[0] = bytes to consume (through the
+ *            '\n'); or, when takeRestAtEof, the final unterminated remainder (outI32[0] = all of it).
+ *   null   : no '\n' in the buffered bytes — outI32[0] = bytes scanned (the caller's resume point).
+ * The scan is memchr per segment (resumable via scanFrom, so bytes are scanned once); the decode is
+ * ONE JS_NewStringLen, with a segment-spanning line assembled once. Consumption (segment release,
+ * `buffered` accounting, the DRAIN notify) stays in JS — this only reads. */
+static JSValue js_line_scan(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    int64_t head_pos = 0, qpos = 0, qlen = 0, scan_from = 0;
+    JS_ToInt64(ctx, &head_pos, argv[1]);
+    JS_ToInt64(ctx, &qpos, argv[3]);
+    JS_ToInt64(ctx, &qlen, argv[4]);
+    JS_ToInt64(ctx, &scan_from, argv[5]);
+    int take_rest = JS_ToBool(ctx, argv[6]);
+    size_t out_len = 0;
+    uint8_t *out_raw = view_bytes(ctx, argv[7], &out_len);
+    if (!out_raw) return JS_EXCEPTION;
+    if (out_len < 8) return JS_ThrowTypeError(ctx, "__lineScan: out buffer too small");
+    int32_t *out = (int32_t *)out_raw; /* [0] = bytes to consume / resume point, [1] = content bytes */
+
+    SpanIter it = { ctx, argv[0], (uint32_t)head_pos, argv[2], (uint32_t)qpos, (uint32_t)qlen, 0 };
+    const uint8_t *p;
+    uint32_t len;
+    uint64_t base = 0, total = 0, skip = (uint64_t)scan_from;
+    int prev = -1;  /* the byte just before the scan position (for '\r' stripping across spans) */
+    int64_t nl = -1; /* logical index of the '\n' */
+    int r;
+    while ((r = span_next(&it, &p, &len)) > 0) {
+        total += len;
+        if (skip >= len) { skip -= len; prev = p[len - 1]; base += len; continue; }
+        uint32_t off = (uint32_t)skip;
+        if (off > 0) prev = p[off - 1];
+        skip = 0;
+        const uint8_t *hit = (const uint8_t *)memchr(p + off, '\n', len - off);
+        if (hit) {
+            nl = (int64_t)(base + (uint64_t)(hit - p));
+            if (hit > p) prev = hit[-1];
+            break;
+        }
+        prev = p[len - 1];
+        base += len;
+    }
+    if (r < 0) return JS_EXCEPTION;
+    if (nl < 0 && (!take_rest || total == 0)) {
+        out[0] = (int32_t)total;
+        out[1] = 0;
+        return JS_NULL;
+    }
+    uint64_t e = (nl >= 0) ? ((uint64_t)nl - ((nl > 0 && prev == '\r') ? 1 : 0)) : total;
+    uint64_t consume = (nl >= 0) ? (uint64_t)nl + 1 : total;
+    JSValue str;
+    if (e == 0) {
+        str = JS_NewStringLen(ctx, "", 0);
+    } else {
+        SpanIter it2 = { ctx, argv[0], (uint32_t)head_pos, argv[2], (uint32_t)qpos, (uint32_t)qlen, 0 };
+        r = span_next(&it2, &p, &len);
+        if (r <= 0) return r < 0 ? JS_EXCEPTION : JS_ThrowInternalError(ctx, "__lineScan: window changed");
+        if ((uint64_t)len >= e) {
+            str = JS_NewStringLen(ctx, (const char *)p, (size_t)e); /* single-segment fast path */
+        } else {
+            uint8_t *tmp = (uint8_t *)malloc((size_t)e);
+            if (!tmp) return JS_ThrowOutOfMemory(ctx);
+            memcpy(tmp, p, len);
+            uint64_t got = len;
+            while (got < e && (r = span_next(&it2, &p, &len)) > 0) {
+                uint32_t n = (uint32_t)((e - got < len) ? (e - got) : len);
+                memcpy(tmp + got, p, n);
+                got += n;
+            }
+            if (r < 0 || got < e) {
+                free(tmp);
+                return r < 0 ? JS_EXCEPTION : JS_ThrowInternalError(ctx, "__lineScan: window changed");
+            }
+            str = JS_NewStringLen(ctx, (const char *)tmp, (size_t)e);
+            free(tmp);
+        }
+    }
+    if (JS_IsException(str)) return str;
+    out[0] = (int32_t)consume;
+    out[1] = (int32_t)e;
+    return str;
+}
+
 QjsPool *qjs_register_pipe(JSContext *ctx) {
     QjsPool *pool = (QjsPool *)calloc(1, sizeof(QjsPool));
     JS_SetRuntimeOpaque(JS_GetRuntime(ctx), pool);
@@ -190,6 +317,7 @@ QjsPool *qjs_register_pipe(JSContext *ctx) {
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
     JS_SetPropertyStr(ctx, g, "__utf8Bytes", JS_NewCFunction(ctx, js_utf8_bytes, "__utf8Bytes", 3));
+    JS_SetPropertyStr(ctx, g, "__lineScan", JS_NewCFunction(ctx, js_line_scan, "__lineScan", 8));
     JS_FreeValue(ctx, g);
     return pool;
 }
