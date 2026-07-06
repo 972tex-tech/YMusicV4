@@ -355,7 +355,7 @@ class QuickJsRuntimeTest {
         rt.load(
             """
             ymix.onAccept("youtube_fetch_feed", async (pipe) => {
-              const args = ymix.utf8Decode(await ymix.readAll(pipe));   // "home 20"
+              const args = await ymix.buffered(pipe).readUtf8();   // "home 20"
               pipe.send(ymix.utf8Encode("feed:" + args));
               pipe.close();
             });
@@ -383,11 +383,11 @@ class QuickJsRuntimeTest {
         rt.load(
             """
             ymix.onAccept("run", async (pipe) => {
-              const input = await ymix.readAll(pipe);
+              const input = await ymix.buffered(pipe).readByteArray();
               const inner = ymix.open("upper");
               inner.send(input, 0, input.length);
               inner.close();
-              const res = await ymix.readAll(inner);
+              const res = await ymix.buffered(inner).readByteArray();
               pipe.send(res, 0, res.length);
               pipe.close();
             });
@@ -651,7 +651,7 @@ class QuickJsRuntimeTest {
         rt.load(
             """
             ymix.onAccept("run", async (pipe) => {
-              const strict = (await ymix.readAll(pipe))[0] === 49; // '1' -> strict
+              const strict = (await ymix.buffered(pipe).readByteArray())[0] === 49; // '1' -> strict
               const io = ymix.buffered(ymix.open("feed"));
               const l1 = await io.readUtf8Line(strict);            // "a" — terminated by '\n'
               let l2;
@@ -756,7 +756,7 @@ class QuickJsRuntimeTest {
             ymix.onAccept("run", async (pipe) => {
               const body = ymix.open("fetch");
               body.close();
-              const data = __parseJson(await ymix.readAll(body));   // native parse of the streamed bytes
+              const data = __parseJson(await ymix.buffered(body).readByteArray());   // native parse of the streamed bytes
               pipe.send(ymix.utf8Encode(data.title + ":" + data.items.length));
               pipe.close();
             });
@@ -961,7 +961,7 @@ class QuickJsRuntimeTest {
               const rounds = 125; // 500 KB, ~8x the 64 KB buffer -> many partial writes + parks
               for (let r = 0; r < rounds; r++) await io.send(chunk, 0, chunk.length);
               io.close();
-              const got = ymix.utf8Decode(await ymix.readAll(io));
+              const got = await ymix.buffered(io).readUtf8();
               const want = (rounds * chunk.length) + ":" + (rounds * sum);
               p.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH want=" + want + " got=" + got)));
               p.close();

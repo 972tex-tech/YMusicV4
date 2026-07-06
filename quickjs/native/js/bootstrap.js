@@ -203,22 +203,6 @@
         return writeEnded ? -1 : 0;
       },
 
-      // Transfer ALL buffered segments to the caller as views trimmed to their unread range —
-      // no copy. The caller assembles/consumes them and MUST __segRelease each when done.
-      _takeChunks: function () {
-        if (resetReason !== null) throw new Error(resetReason);
-        var out = [];
-        if (head) {
-          if (headPos < head.length) out.push(headPos === 0 ? head : head.subarray(headPos));
-          else __segRelease(head);
-          head = null; headPos = 0;
-        }
-        for (var q = qpos; q < queue.length; q++) out.push(queue[q]);
-        queue.length = 0; qpos = 0; buffered = 0;
-        drainCheck();
-        return out;
-      },
-
       // Write-side half-close: END (no reason) or RESET (string reason — the peer's receive throws).
       close: function (reason) {
         if (weEnded) return;
@@ -366,10 +350,6 @@
       var f = from === undefined ? 0 : from;
       return __utf8Decode(bytes, f, (to === undefined ? bytes.length : to) - f);
     },
-    // Read a whole pipe stream (until EOF) into one Uint8Array (single copy: segments -> result).
-    readAll: function (pipe) {
-      return ymix.buffered(pipe).readByteArray();
-    },
 
     // A buffered source+sink over a pipe (okio BufferedSource/BufferedSink style). The source has
     // NO window of its own: the pipe's inbound queue of segment views IS the buffer, and the
@@ -491,28 +471,25 @@
           var all = await this.readByteArray();
           return __utf8Decode(all, 0, all.length);
         },
-        // All remaining bytes to EOF (raw) — segments transfer as views and are assembled with a
-        // single copy into the result, then returned to the pool.
+        // All remaining bytes to EOF (raw), read into one growing buffer (amortized doubling) and
+        // returned exact-size. Plain consuming reads: a parked read gets rendezvous delivery
+        // straight into the buffer, buffered segments release as they drain, DRAIN fires normally.
         async readByteArray() {
-          var chunks = [], total = 0;
+          var out = new Uint8Array(8192), size = 0;
           for (;;) {
-            var got = pipe._takeChunks();
-            for (var i = 0; i < got.length; i++) { chunks.push(got[i]); total += got[i].length; }
-            var w = pipe.awaitReadable();
-            if (!w) { // ended: nothing more can arrive (anything present was taken above)
-              var last = pipe._takeChunks();
-              for (var j = 0; j < last.length; j++) { chunks.push(last[j]); total += last[j].length; }
-              break;
+            if (size === out.length) {
+              var grown = new Uint8Array(out.length * 2);
+              grown.set(out);
+              out = grown;
             }
-            await w;
+            var n = await pipe.receive(out, size, out.length - size);
+            if (n < 0) break;
+            size += n;
           }
-          var all = new Uint8Array(total), pos = 0;
-          for (var k = 0; k < chunks.length; k++) {
-            all.set(chunks[k], pos);
-            pos += chunks[k].length;
-            __segRelease(chunks[k]);
-          }
-          return all;
+          if (size === out.length) return out;
+          var exact = new Uint8Array(size);
+          exact.set(out.subarray(0, size));
+          return exact;
         },
 
         // ---- BufferedSink: a fixed segment; small writes coalesce, large writes bypass it ----

@@ -74,8 +74,8 @@ Drains are therefore emitted from *read* paths only — which is also why `_data
 one.
 
 Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
-inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop),
-`readAll(pipe)` (drain a stream to one `Uint8Array`, single copy), and `buffered(pipe)` — an
+inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop), and
+`buffered(pipe)` — an
 okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`/`readByteArray`, plus
 `readJsonObject`/`readJsonArray`, §2) and a buffered sink (`writeBytes`/`writeUtf8`/
 `writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`, `close(reason?)`).
@@ -88,8 +88,8 @@ push, a line completing within one segment decodes straight from C memory, a spa
 accumulates inside the splitter. Because bytes are *consumed as fed* (DRAIN always fires), a line
 longer than the pipe cap simply grows the splitter's accumulator — memory = the line itself — and
 can never deadlock the parked writer, by construction rather than by special case. `readByteArray`
-transfers the segment views and assembles the result with a single copy. Consumed-exactly semantics
-mean a head line + JSON body + tail share one stream position for free.
+reads into one growing buffer (a parked read gets rendezvous delivery straight into it).
+Consumed-exactly semantics mean a head line + JSON body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
@@ -162,7 +162,7 @@ block waiting for them, so a pull-parser deadlocks. `__jsonPush` feeds bytes to 
 that suspends mid-token at each chunk boundary. **Memory held at any instant** = the parse stack
 (bounded by nesting depth) + the current partial token + the output value tree — never the raw
 chunk bytes, which are consumed and discarded. That's the saver for multi-MB responses: we build
-the value without ever holding the whole byte buffer (nor the double-copy a `readAll` would do).
+the value without ever holding the whole byte buffer (nor the double-copy of materializing first).
 
 **Tail data (`{json}tail`).** `__jsonPush` parses at most ONE top-level value: it stops the instant
 the value completes and returns how many bytes it consumed. A return < `len` means the value is
