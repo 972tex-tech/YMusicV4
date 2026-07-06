@@ -11,7 +11,7 @@ struct QjsEngine {
     QjsInboundCb cb;
     void *user;
     QjsPool *pool;
-    JSValue jsOpen, jsData, jsClose, jsCloseRead, jsNotify; /* JS mux entry points (C -> JS) */
+    JSValue jsOpen, jsData, jsClose, jsCloseRead, jsDrain; /* JS mux entry points (C -> JS) */
 };
 
 static void pump(QjsEngine *e) {
@@ -78,14 +78,12 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
-/* __hostNotify(id, code)  — flow control (DRAIN) */
-static JSValue js_host_notify(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+/* __hostDrain(id) — flow control: our buffer drained; continue the host's parked partial send */
+static JSValue js_host_drain(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
-    int32_t code = 0;
     JS_ToUint32(ctx, &id, argv[0]);
-    JS_ToInt32(ctx, &code, argv[1]);
-    if (e->cb) e->cb(e->user, QJS_OP_NOTIFY, id, NULL, (size_t)code);
+    if (e->cb) e->cb(e->user, QJS_OP_DRAIN, id, NULL, 0);
     return JS_UNDEFINED;
 }
 
@@ -95,7 +93,7 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     e->ctx = JS_NewContext(e->rt);
     e->cb = cb;
     e->user = user;
-    e->jsOpen = e->jsData = e->jsClose = e->jsCloseRead = e->jsNotify = JS_UNDEFINED;
+    e->jsOpen = e->jsData = e->jsClose = e->jsCloseRead = e->jsDrain = JS_UNDEFINED;
     JS_SetContextOpaque(e->ctx, e);
 
     JSValue g = JS_GetGlobalObject(e->ctx);
@@ -103,7 +101,7 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     JS_SetPropertyStr(e->ctx, g, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, g, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
     JS_SetPropertyStr(e->ctx, g, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
-    JS_SetPropertyStr(e->ctx, g, "__hostNotify", JS_NewCFunction(e->ctx, js_host_notify, "__hostNotify", 2));
+    JS_SetPropertyStr(e->ctx, g, "__hostDrain", JS_NewCFunction(e->ctx, js_host_drain, "__hostDrain", 1));
     JS_FreeValue(e->ctx, g);
     qjs_register_json(e->ctx);
     e->pool = qjs_register_pipe(e->ctx);
@@ -129,7 +127,7 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     e->jsData = JS_GetPropertyStr(e->ctx, g2, "__jsData");
     e->jsClose = JS_GetPropertyStr(e->ctx, g2, "__jsClose");
     e->jsCloseRead = JS_GetPropertyStr(e->ctx, g2, "__jsCloseRead");
-    e->jsNotify = JS_GetPropertyStr(e->ctx, g2, "__jsNotify");
+    e->jsDrain = JS_GetPropertyStr(e->ctx, g2, "__jsDrain");
     JS_FreeValue(e->ctx, g2);
     return e;
 }
@@ -217,9 +215,9 @@ void qjs_close_read(QjsEngine *e, uint32_t id) {
     call_js(e, e->jsCloseRead, 1, argv, 0);
 }
 
-void qjs_notify(QjsEngine *e, uint32_t id, int code) {
-    JSValue argv[2] = { JS_NewUint32(e->ctx, id), JS_NewInt32(e->ctx, code) };
-    call_js(e, e->jsNotify, 2, argv, 0);
+void qjs_drain(QjsEngine *e, uint32_t id) {
+    JSValue argv[1] = { JS_NewUint32(e->ctx, id) };
+    call_js(e, e->jsDrain, 1, argv, 0);
 }
 
 void qjs_close(QjsEngine *e) {
@@ -228,7 +226,7 @@ void qjs_close(QjsEngine *e) {
     JS_FreeValue(e->ctx, e->jsData);
     JS_FreeValue(e->ctx, e->jsClose);
     JS_FreeValue(e->ctx, e->jsCloseRead);
-    JS_FreeValue(e->ctx, e->jsNotify);
+    JS_FreeValue(e->ctx, e->jsDrain);
     JS_FreeContext(e->ctx);
     JS_FreeRuntime(e->rt); /* segment free_funcs run here -> pool must still be alive */
     qjs_pool_free(e->pool);

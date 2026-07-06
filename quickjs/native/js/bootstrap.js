@@ -1,6 +1,6 @@
 // The engine bootstrap: the whole pipe protocol + streaming JSON + host-scheduled timers, built on
-// the transport entry points (__jsOpen/__jsData/__jsClose/__jsCloseRead/__jsNotify in;
-// __hostOpen/__hostData/__hostClose/__hostCloseRead/__hostNotify out) and the native pipe/JSON
+// the transport entry points (__jsOpen/__jsData/__jsClose/__jsCloseRead/__jsDrain in;
+// __hostOpen/__hostData/__hostClose/__hostCloseRead/__hostDrain out) and the native pipe/JSON
 // helpers (__segTake/__segRelease/__utf8Decode, __json*). Compiled to bytecode at build time and
 // embedded — this file is never shipped as source.
 //
@@ -44,14 +44,13 @@
   var accepts = {};
   var nextId = 2; // JS opens even ids; Kotlin opens odd.
   var PIPE_CAP = 65536, PIPE_LOW = 32768; // per-direction buffer bound (must match QuickJsRuntime.kt)
-  var DRAIN = 1;                          // notify code (must match NOTIFY_DRAIN)
   var EOF = -1, WOULD_BLOCK = -2;         // take(): EOF is the public receive() value; WOULD_BLOCK is internal
   function brokenPipe() { return new Error("EPIPE: broken pipe"); }
 
   // Each pipe direction is a bounded, flow-controlled byte stream. Inbound bytes queue here as
   // Uint8Array views over pooled C segments (we're the reader — the queue is just views+counters,
   // the bytes stay in C memory); outbound writes are partial (__hostData returns the accepted
-  // count) and park for a DRAIN notify when the host's buffer is full. All on the engine thread.
+  // count) and park for a drain when the host's buffer is full. All on the engine thread.
   function makePipe(id, command) {
     // inbound: queue of segment views drained through (head, headPos); qpos is a cursor, not
     // shift() (which memmoves the tail). One outstanding receive at a time (waiter) — either a
@@ -83,10 +82,10 @@
       return true;
     }
 
-    // Emit the DRAIN notify the host writer is owed. Only ever called from read paths, never
-    // inside _data (the critical-region rule).
+    // Emit the drain the host writer is owed. Only ever called from read paths, never inside
+    // _data (the critical-region rule).
     function drainCheck() {
-      if (hostBlocked && buffered <= PIPE_LOW) { hostBlocked = false; __hostNotify(id, DRAIN); }
+      if (hostBlocked && buffered <= PIPE_LOW) { hostBlocked = false; __hostDrain(id); }
     }
 
     // Pop up to len bytes across segments: count, EOF, or WOULD_BLOCK (caller parks). Fully-drained
@@ -301,16 +300,16 @@
         if (w) { writer = null; w.reject(brokenPipe()); }
       },
 
-      // Flow control from the host: DRAIN — its buffer emptied to the low-water mark; continue the
-      // parked partial send from where it stopped.
-      _notify: function (code) {
+      // Flow control from the host: its buffer drained to the low-water mark; continue the parked
+      // partial send from where it stopped.
+      _drain: function () {
         var w = writer;
         if (!w) return;
         var written = __hostData(id, w.buffer, w.pos, w.end - w.pos);
         if (written < 0) { writer = null; peerReadClosed = true; w.reject(brokenPipe()); return; }
         w.pos += written;
         if (w.pos >= w.end) { writer = null; w.resolve(); }
-        // else stay parked for the next DRAIN
+        // else stay parked for the next drain
       }
     };
   }
@@ -337,17 +336,26 @@
   globalThis.__jsCloseRead = function (id) {
     var p = pipes[id]; if (p) p._peerCloseRead();
   };
-  // Kotlin flow-control signal: DRAIN (continue the parked partial send).
-  globalThis.__jsNotify = function (id, code) {
-    var p = pipes[id]; if (p) p._notify(code);
+  // Kotlin flow-control signal: its buffer drained (continue the parked partial send).
+  globalThis.__jsDrain = function (id) {
+    var p = pipes[id]; if (p) p._drain();
   };
 
   globalThis.ymix = {
     open: function (command) {
       var id = nextId; nextId += 2;
       var pipe = makePipe(id, command);
+      // Registered BEFORE __hostOpen: the host's refusal path (closeRead+closeWrite) runs
+      // synchronously inside it and must find the pipe. If __hostOpen itself throws (the
+      // in_critical guard, or a host callback failure surfaced as a JS exception), the caller
+      // never receives the pipe — drop the registry entry instead of leaving it dangling forever.
       pipes[id] = pipe;
-      __hostOpen(id, command);
+      try {
+        __hostOpen(id, command);
+      } catch (e) {
+        delete pipes[id];
+        throw e;
+      }
       return pipe;
     },
     onAccept: function (command, handler) { accepts[command] = handler; },

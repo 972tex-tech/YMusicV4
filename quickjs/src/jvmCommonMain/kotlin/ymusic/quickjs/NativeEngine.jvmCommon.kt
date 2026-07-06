@@ -29,7 +29,7 @@ internal actual class NativeEngine private constructor(private val handle: Long)
 
     actual fun closeRead(id: Int) = QuickJsNative.closeRead(handle, id)
 
-    actual fun notify(id: Int, code: Int) = QuickJsNative.notify(handle, id, code)
+    actual fun drain(id: Int) = QuickJsNative.drain(handle, id)
 
     actual fun destroy() {
         QuickJsNative.unregister(handle)

@@ -28,7 +28,7 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
 - **Partial writes + DRAIN.** The FFI `write` is synchronous and returns the **accepted** byte
   count: what a parked reader took plus what fit in the buffer. `accepted < len` parks the writer
   (Kotlin `send` suspends; the JS send promise stays pending) until the reader drains the buffer to
-  the low-water mark and the transport fires a **DRAIN** notify, which resumes the write from where
+  the low-water mark and the transport fires a **drain**, which resumes the write from where
   it stopped. `-1` = the reader closed its read end → `BrokenPipeException` / EPIPE rejection.
 - **Buffers live on the reader's side, in the reader's language.** Bytes JS writes land in an okio
   `Buffer` in Kotlin (its segment pool — no per-chunk allocation; Kotlin `receive` never crosses
@@ -55,12 +55,12 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
 **Transport (no framing).** The FFI boundary is a handful of operations per direction — nothing
 allocates a per-frame header; commands and reasons cross as native strings:
 - host → JS: `NativeEngine.open(id, cmd)` / `write(id, buf, off, len) -> accepted` /
-  `closeWrite(id, reason?)` / `closeRead(id)` / `notify(id, DRAIN)`
+  `closeWrite(id, reason?)` / `closeRead(id)` / `drain(id)`
   → JS globals `__jsOpen` / `__jsData(id, view) -> accepted` / `__jsClose(id, reason)` /
-  `__jsCloseRead(id)` / `__jsNotify(id, DRAIN)`.
+  `__jsCloseRead(id)` / `__jsDrain(id)`.
 - JS → host: `__hostOpen` / `__hostData(id, u8, off, len) -> accepted` / `__hostClose(id, reason)` /
-  `__hostCloseRead(id)` / `__hostNotify(id, DRAIN)`
-  → `EngineCallbacks.onOpen/onWrite/onCloseWrite/onCloseRead/onNotify` (JNI statics on jvm/android;
+  `__hostCloseRead(id)` / `__hostDrain(id)`
+  → `EngineCallbacks.onOpen/onWrite/onCloseWrite/onCloseRead/onDrain` (JNI statics on jvm/android;
   one cinterop trampoline with an op arg on native).
 `id` is an argument (Kotlin opens odd ids, JS even). All routing lives in the Kotlin + JS mux —
 C only shuttles operations and owns the segment pool (`quickjs_pipe.c`).
@@ -69,9 +69,9 @@ C only shuttles operations and owns the segment pool (`quickjs_pipe.c`).
 `GetPrimitiveArrayCritical` while `__jsData` runs, so that synchronous JS path must never re-enter
 JNI — the bootstrap's `_data` only calls pure-C natives (`__segTake`), promise resolutions merely
 *schedule* microtasks, and the pump runs after the release. The shim enforces it: under the
-critical flag `__hostNotify` is queued (flushed after release) and any other `__host*` call throws.
-DRAIN notifies are therefore emitted from *read* paths only — which is also why `_data` itself
-never needs one.
+critical flag `__hostDrain` is queued (flushed after release) and any other `__host*` call throws.
+Drains are therefore emitted from *read* paths only — which is also why `_data` itself never needs
+one.
 
 Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
 inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop),

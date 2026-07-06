@@ -2,10 +2,6 @@ package ymusic.quickjs
 
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 
-/** Flow-control notify code (both directions): the reader drained its buffer to the low-water
- *  mark — wake the parked writer. Must match `QJS_NOTIFY_DRAIN` / bootstrap.js. */
-internal const val NOTIFY_DRAIN = 1
-
 /**
  * A chunk of JS-owned bytes crossing JS -> host, valid ONLY during the [EngineCallbacks.onWrite]
  * call that delivers it (jvm: a direct ByteBuffer over the typed array's memory; native: a raw
@@ -28,7 +24,7 @@ internal interface EngineCallbacks {
 
     /** JS wrote bytes to us. Consume [chunk] synchronously (parked reader first, then the inbound
      *  buffer up to its cap) and return the accepted byte count — less than `chunk.size` means the
-     *  JS writer parks until we [NativeEngine.notify] a DRAIN — or -1 if our read end is closed. */
+     *  JS writer parks until we [NativeEngine.drain] — or -1 if our read end is closed. */
     fun onWrite(id: Int, chunk: NativeChunk): Int
 
     /** JS closed its write end: [reason] `null` = END (receive returns -1 once drained); non-null =
@@ -38,8 +34,8 @@ internal interface EngineCallbacks {
     /** JS abandoned its read end: our next send throws [BrokenPipeException]. */
     fun onCloseRead(id: Int)
 
-    /** Flow control: [NOTIFY_DRAIN] — JS drained its buffer, wake our parked writer. */
-    fun onNotify(id: Int, code: Int)
+    /** Flow control: JS drained its buffer to the low-water mark — wake our parked writer. */
+    fun onDrain(id: Int)
 }
 
 /**
@@ -56,7 +52,7 @@ internal expect class NativeEngine {
     fun open(id: Int, command: String)
 
     /** Deliver `buffer[offset, offset+len)` to the JS reader; returns the accepted byte count
-     *  (< len = backpressure, wait for a DRAIN notify), or -1 if it closed its read end. */
+     *  (< len = backpressure, wait for [EngineCallbacks.onDrain]), or -1 if it closed its read end. */
     fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int
 
     /** Write-side half-close: [reason] `null` = END, non-null = RESET. */
@@ -65,8 +61,8 @@ internal expect class NativeEngine {
     /** Abandon our read end: the JS writer's next send gets EPIPE. */
     fun closeRead(id: Int)
 
-    /** Send a flow-control signal ([NOTIFY_DRAIN]) to JS. */
-    fun notify(id: Int, code: Int)
+    /** Flow control: we drained our buffer to the low-water mark — wake JS's parked writer. */
+    fun drain(id: Int)
 
     /** Tear down the engine and release native resources. */
     fun destroy()

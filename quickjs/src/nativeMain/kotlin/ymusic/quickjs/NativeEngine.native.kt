@@ -27,7 +27,7 @@ import platform.posix.memcpy
 import platform.posix.size_t
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_READ
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_WRITE
-import ymusic.quickjs.cinterop.QJS_OP_NOTIFY
+import ymusic.quickjs.cinterop.QJS_OP_DRAIN
 import ymusic.quickjs.cinterop.QJS_OP_OPEN
 import ymusic.quickjs.cinterop.QJS_OP_WRITE
 import ymusic.quickjs.cinterop.qjs_close
@@ -36,7 +36,7 @@ import ymusic.quickjs.cinterop.qjs_close_write
 import ymusic.quickjs.cinterop.qjs_create
 import ymusic.quickjs.cinterop.qjs_eval_sync
 import ymusic.quickjs.cinterop.qjs_free
-import ymusic.quickjs.cinterop.qjs_notify
+import ymusic.quickjs.cinterop.qjs_drain
 import ymusic.quickjs.cinterop.qjs_open
 import ymusic.quickjs.cinterop.qjs_write
 
@@ -81,7 +81,7 @@ internal actual class NativeEngine private constructor(
 
     actual fun closeRead(id: Int) = qjs_close_read(engine, id.toUInt())
 
-    actual fun notify(id: Int, code: Int) = qjs_notify(engine, id.toUInt(), code)
+    actual fun drain(id: Int) = qjs_drain(engine, id.toUInt())
 
     actual fun destroy() {
         qjs_close(engine)
@@ -107,7 +107,7 @@ internal actual class NativeEngine private constructor(
 /** C -> Kotlin inbound callback. [user] is the StableRef to the engine's [EngineCallbacks].
  *  Ops per quickjs_native.h: OPEN (data = command), WRITE (data/len = payload, valid only during
  *  the call; return = accepted / -1 EPIPE), CLOSE_WRITE (data = RESET reason or NULL for END),
- *  CLOSE_READ, NOTIFY (code in [len]). The return value is only meaningful for WRITE. */
+ *  CLOSE_READ, DRAIN. The return value is only meaningful for WRITE. */
 @OptIn(ExperimentalForeignApi::class)
 private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CPointer<UByteVar>?, len: size_t): Int {
     if (user == null) return -1
@@ -121,7 +121,7 @@ private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CP
         }
         QJS_OP_CLOSE_WRITE -> { cb.onCloseWrite(idInt, data?.reinterpret<ByteVar>()?.toKString()); 0 }
         QJS_OP_CLOSE_READ -> { cb.onCloseRead(idInt); 0 }
-        QJS_OP_NOTIFY -> { cb.onNotify(idInt, len.toInt()); 0 }
+        QJS_OP_DRAIN -> { cb.onDrain(idInt); 0 }
         else -> 0
     }
 }

@@ -62,8 +62,15 @@ class QuickJsRuntime private constructor(
         val id = nextId
         nextId += 2
         val pipe = PipeImpl(id, command)
+        // Registered before open() — JS's refusal path runs synchronously inside it. If open()
+        // itself ever throws, the caller never gets the pipe: drop the entry, don't dangle it.
         pipes[id] = pipe
-        engine.open(id, command)
+        try {
+            engine.open(id, command)
+        } catch (e: Throwable) {
+            pipes.remove(id)
+            throw e
+        }
         pipe
     }
 
@@ -95,9 +102,7 @@ class QuickJsRuntime private constructor(
 
     internal fun onCloseRead(id: Int) { pipes[id]?.onPeerCloseRead() }
 
-    internal fun onNotify(id: Int, code: Int) {
-        if (code == NOTIFY_DRAIN) pipes[id]?.onDrain()
-    }
+    internal fun onDrain(id: Int) { pipes[id]?.onDrain() }
 
     private inner class PipeImpl(val id: Int, override val command: String) : Pipe {
         // ---- inbound: JS writes, we buffer (okio segment pool) & read ----
@@ -198,7 +203,7 @@ class QuickJsRuntime private constructor(
                         val n = inbound.read(buffer, offset, len)
                         if (peerBlocked && inbound.size <= PIPE_LOW) {
                             peerBlocked = false
-                            engine.notify(id, NOTIFY_DRAIN)
+                            engine.drain(id)
                         }
                         return@withContext n
                     }
@@ -318,7 +323,7 @@ class QuickJsRuntime private constructor(
                 override fun onWrite(id: Int, chunk: NativeChunk): Int = rtRef?.onWrite(id, chunk) ?: -1
                 override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
                 override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
-                override fun onNotify(id: Int, code: Int) { rtRef?.onNotify(id, code) }
+                override fun onDrain(id: Int) { rtRef?.onDrain(id) }
             }
             val engine = withContext(dispatcher) { NativeEngine.create(BOOTSTRAP_JS, callbacks) }
             val rt = QuickJsRuntime(engine, dispatcher)

@@ -47,8 +47,8 @@ internal object QuickJsNative {
     }
 
     @JvmStatic
-    fun onNotify(handle: Long, id: Int, code: Int) {
-        sinks[handle]?.onNotify(id, code)
+    fun onDrain(handle: Long, id: Int) {
+        sinks[handle]?.onDrain(id)
     }
 
     external fun create(bootstrap: String): Long
@@ -57,6 +57,6 @@ internal object QuickJsNative {
     external fun write(handle: Long, id: Int, bytes: ByteArray, off: Int, len: Int): Int
     external fun closeWrite(handle: Long, id: Int, reason: String?)
     external fun closeRead(handle: Long, id: Int)
-    external fun notify(handle: Long, id: Int, code: Int)
+    external fun drain(handle: Long, id: Int)
     external fun close(handle: Long)
 }
