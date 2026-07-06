@@ -46,7 +46,6 @@
   var PIPE_CAP = 65536, PIPE_LOW = 32768; // per-direction buffer bound (must match QuickJsRuntime.kt)
   var DRAIN = 1;                          // notify code (must match NOTIFY_DRAIN)
   var EOF = -1, WOULD_BLOCK = -2;         // take(): EOF is the public receive() value; WOULD_BLOCK is internal
-  var LINE_OUT = new Int32Array(2);       // __lineScan out-params ([0]=consume, [1]=content bytes); single-threaded, reused
   function brokenPipe() { return new Error("EPIPE: broken pipe"); }
 
   // Each pipe direction is a bounded, flow-controlled byte stream. Inbound bytes queue here as
@@ -66,7 +65,6 @@
       if (head) { __segRelease(head); head = null; }
       for (var i = qpos; i < queue.length; i++) __segRelease(queue[i]);
       queue.length = 0; qpos = 0; headPos = 0; buffered = 0;
-      lineSpill = null; lineSpillLen = 0;
     }
 
     // Advance head to the next unread segment; false when nothing is buffered.
@@ -104,40 +102,6 @@
       if (head && headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
       if (total > 0) { drainCheck(); return total; }
       return writeEnded ? EOF : WOULD_BLOCK;
-    }
-
-    // Drop n buffered bytes (consumed by an in-place scanner).
-    function discard(n) {
-      var left = n;
-      while (left > 0 && ensureHead()) {
-        var m = Math.min(left, head.length - headPos);
-        headPos += m; left -= m; buffered -= m;
-      }
-      if (head && headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-      drainCheck();
-    }
-
-    // Line-reader spill: a line LONGER than the 64 KB pipe cap can't complete in place — the
-    // reader would park for more data while the writer parks for a DRAIN that never comes
-    // (nothing is consumed without a newline) = deadlock. So when the scan exhausts a FULL buffer
-    // without a '\n', the scanned bytes move into this reader-owned growing buffer (consuming
-    // them fires DRAIN, unblocking the writer) and the scan continues. Memory = the line itself,
-    // which is inherent; normal lines never touch it. One outstanding line read at a time (the
-    // one-receiver rule), so per-pipe state is safe.
-    var lineSpill = null, lineSpillLen = 0;
-
-    function spillAppend() { // move ALL buffered bytes into the spill (fires DRAIN via take)
-      var n = buffered;
-      var need = lineSpillLen + n;
-      if (lineSpill === null || lineSpill.length < need) {
-        var cap = lineSpill === null ? 16384 : lineSpill.length * 2;
-        while (cap < need) cap *= 2;
-        var ns = new Uint8Array(cap);
-        if (lineSpill !== null) ns.set(lineSpill.subarray(0, lineSpillLen));
-        lineSpill = ns;
-      }
-      take(lineSpill, lineSpillLen, n);
-      lineSpillLen = need;
     }
 
     // No more data either way — drop routing.
@@ -197,48 +161,21 @@
 
       // ---- in-place scanners (the buffered source drives these; no copy out of C memory) ----
 
-      // One line: returns the decoded string (consumed through its '\n', '\r' stripped), null at a
-      // clean empty EOF, or a NUMBER = "no newline in the bytes scanned so far" — the caller awaits
-      // more input and rescans from there. Scan + decode are native (__lineScan: memchr per
-      // segment, one JS_NewStringLen, spanning lines assembled once in C); consumption stays here
-      // (discard -> segment release + DRAIN). strict: throw at EOF instead of returning the final
-      // unterminated line. A line longer than the pipe cap moves into lineSpill instead of
-      // deadlocking against the parked writer.
-      _lineSync: function (scanFrom, strict) {
+      // Feed all buffered bytes to a line splitter (__lineNew), segment by segment, consuming
+      // exactly what it takes — a completed line leaves its tail queued, and because bytes are
+      // consumed as fed (drainCheck fires), an over-cap line can never deadlock the writer: a
+      // spanning line simply accumulates inside the splitter. Returns 1 when a line is complete,
+      // 0 when more input is needed, -1 at EOF (caller finalizes via __lineEnd -> string | null).
+      _lineFeed: function (l) {
         if (resetReason !== null) throw new Error(resetReason);
-        var r = __lineScan(head, headPos, queue, qpos, queue.length, scanFrom,
-                           writeEnded && !strict && lineSpill === null, LINE_OUT);
-        if (r !== null) {
-          var consume = LINE_OUT[0], e = LINE_OUT[1];
-          if (lineSpill === null) { discard(consume); return r; }
-          // an over-cap line finished: assemble spill + the window part and decode ONCE — the
-          // spill boundary may split a multi-byte char, so the parts must not decode separately
-          // (the C-decoded window string is discarded; this path is rare and copy-dominated)
-          var all = new Uint8Array(lineSpillLen + e);
-          all.set(lineSpill.subarray(0, lineSpillLen), 0);
-          if (e > 0) take(all, lineSpillLen, e);
-          discard(consume - e); // the '\n' (and '\r')
-          var lineLen = lineSpillLen + e;
-          // a CRLF split by the spill boundary: the '\r' was spilled where C couldn't see it
-          if (consume - e === 1 && lineLen > 0 && all[lineLen - 1] === 13) lineLen--;
-          lineSpill = null; lineSpillLen = 0;
-          return __utf8Decode(all, 0, lineLen);
+        while (ensureHead()) {
+          var consumed = __linePush(l, head, headPos, head.length - headPos);
+          headPos += consumed; buffered -= consumed;
+          if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
+          if (__lineDone(l)) { drainCheck(); return 1; }
         }
-        // no '\n' anywhere in the buffer
-        if (!writeEnded) {
-          if (buffered >= PIPE_CAP) { spillAppend(); return 0; } // full: consume so the writer can continue
-          return LINE_OUT[0];                                    // resume the scan from here
-        }
-        if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
-        if (lineSpill === null) return null; // buffered > 0 was already returned by takeRestAtEof
-        // EOF with a spilled partial line: spill + whatever is still buffered is the final line
-        var rest = buffered;
-        var out = new Uint8Array(lineSpillLen + rest);
-        out.set(lineSpill.subarray(0, lineSpillLen), 0);
-        if (rest > 0) take(out, lineSpillLen, rest);
-        var outLen = lineSpillLen + rest;
-        lineSpill = null; lineSpillLen = 0;
-        return __utf8Decode(out, 0, outLen);
+        drainCheck();
+        return writeEnded ? -1 : 0;
       },
 
       // Feed all buffered bytes to a streaming JSON parser, segment by segment, consuming exactly
@@ -418,6 +355,8 @@
       // no matter how many bytes are written. Flush boundaries are invisible to the peer — the pipe
       // is a byte stream and the reader reassembles across them.
       var wbuf = new Uint8Array(8192), wlen = 0;
+      // line splitter (native, __lineNew) — one per wrapper, reused across readUtf8Line calls
+      var lineSplit = null;
 
       // ---- sink internals: PLAIN functions, never async. undefined = completed synchronously
       // (the common case), a Promise = real backpressure (a flush hit a full pipe), resumed via
@@ -494,11 +433,15 @@
         // segments. Non-strict (default): a final line without a '\n' is returned, and a clean EOF
         // returns null. strict=true (okio readUtf8LineStrict): requires a '\n' — throws at EOF.
         async readUtf8Line(strict) {
-          var scanned = 0; // bytes already known to hold no '\n' (nothing is consumed while scanning)
+          if (lineSplit === null) lineSplit = __lineNew(); // lazily created, reused across lines
           for (;;) {
-            var r = pipe._lineSync(scanned, strict);
-            if (typeof r !== "number") return r; // the line (string) or null at clean EOF
-            scanned = r;
+            var s = pipe._lineFeed(lineSplit);
+            if (s === 1) return __lineEnd(lineSplit); // complete line ('\n' consumed, '\r' stripped)
+            if (s === -1) {
+              var last = __lineEnd(lineSplit); // the partial remainder (string) or null; also resets
+              if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
+              return last;
+            }
             var w = pipe.awaitReadable(); if (w) await w;
           }
         },

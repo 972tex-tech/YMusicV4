@@ -81,15 +81,15 @@ okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`/`rea
 `writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`, `close(reason?)`).
 
 The buffered **source has no window of its own**: the pipe's inbound queue of segment views *is*
-the buffer, and the scanners work on it **in place** — `readUtf8Line` scans and decodes natively
-(`__lineScan`: memchr per segment, resumable, one `JS_NewStringLen`; a segment-spanning line is
-assembled once in C — consumption/DRAIN stay in the JS mux); `readJson*` feeds the streaming
-parser segment by segment, so body bytes never enter the JS heap; `readByteArray` transfers the
-segment views and assembles the result with a single copy. This also makes a head line + JSON body
-+ tail share one stream position for free. A line **longer than the pipe cap** can't complete in
-place (the reader would park for data while the writer parks for DRAIN — deadlock), so the scanned
-bytes spill into a reader-owned growing buffer, which consumes them (firing DRAIN) and bounds
-memory by the line itself; normal lines never touch it.
+the buffer, and both scanners are **consuming push-parsers fed segment by segment** (the same
+`New/Push/Done/End` shape): `readJson*` drives the streaming JSON parser (§2), and `readUtf8Line`
+drives the native **line splitter** (`__lineNew/Push/Done/End` in `quickjs_pipe.c`) — memchr per
+push, a line completing within one segment decodes straight from C memory, a spanning line
+accumulates inside the splitter. Because bytes are *consumed as fed* (DRAIN always fires), a line
+longer than the pipe cap simply grows the splitter's accumulator — memory = the line itself — and
+can never deadlock the parked writer, by construction rather than by special case. `readByteArray`
+transfers the segment views and assembles the result with a single copy. Consumed-exactly semantics
+mean a head line + JSON body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
