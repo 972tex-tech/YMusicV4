@@ -98,9 +98,18 @@ matter how much is written:
   Flush boundaries are invisible to the peer — the pipe is a byte stream and the reader reassembles
   across them — so auto-flush is a memory bound, never a framing change.
 
-Sink writes are async but stay synchronous while they only fill the segment; they suspend only when
-a flush hits a full pipe — that is the **true backpressure** path (bounded buffer + parked writer),
-so a stalled consumer stops the producer instead of queueing unbounded bytes anywhere.
+Sink writes are **plain functions, never `async`**: they return `undefined` when completed
+synchronously (the common case — the write only filled the segment) and a Promise only under real
+backpressure (a flush hit a full pipe), resuming via an internal continuation. Rationale: QuickJS
+charges a full microtask round-trip (~0.4 µs) for `await` even on a non-thenable, plus a promise
+allocation per `async` call — per-token awaits made `writeObjectAsJson` ~70× slower than the native
+one-shot. `await` still works on every write (awaiting `undefined` is legal), but hot loops can
+skip the hop: `var p = io.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through an
+**explicit-stack token pump** (no recursion — no depth limit — and no suspension points except a
+blocking flush). The backpressure story is unchanged: bounded buffer + parked writer, so a stalled
+consumer stops the producer instead of queueing unbounded bytes anywhere. (For a value that fits in
+memory comfortably, native `__stringifyJson` + `writeBytes` is still the fastest path; the pump's
+value is bounded memory on huge values.)
 
 ## 2. Native JSON <-> bytes: streaming parse + `__stringifyJson`
 

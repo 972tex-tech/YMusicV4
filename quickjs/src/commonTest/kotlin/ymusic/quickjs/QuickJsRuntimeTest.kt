@@ -1036,6 +1036,74 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** Sink writes are plain functions: on the uncontended path they complete synchronously and
+     *  return undefined (no promise, no microtask hop) — awaiting stays optional. */
+    @Test
+    fun sink_writes_complete_synchronously_when_uncontended() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe ->
+            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.buffered(ymix.open("sink"));
+              const value = { a: [1, "two🎵"], b: null };
+              const rs = [
+                io.writeUtf8("hello"),
+                io.writeUtf8Line("x", "y"),
+                io.writeObjectAsJson(value),
+                io.flush(),
+              ];
+              const allSync = rs.every((r) => r === undefined);
+              const c = io.close(); if (c) await c;
+              const got = await io.readUtf8();
+              const want = "hello" + "xy\n" + JSON.stringify(value);
+              p.send(ymix.utf8Encode(!allSync ? "NOT-SYNC" : got === want ? "OK" : ("MISMATCH got=" + got)));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The JSON token pump is iterative (explicit stack): a value nested thousands deep serializes
+     *  without hitting a recursion limit, and its bytes are exact. */
+    @Test
+    fun write_object_as_json_has_no_depth_limit() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("sink") { pipe ->
+            pipe.send(pipe.readText().encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const depth = 5000; // deep enough to blow a recursive walker's stack
+              let v = 1;
+              for (let i = 0; i < depth; i++) v = [v];
+              const io = ymix.buffered(ymix.open("sink"));
+              const w = io.writeObjectAsJson(v); if (w) await w;
+              const c = io.close(); if (c) await c;
+              const got = await io.readUtf8();
+              const want = "[".repeat(depth) + "1" + "]".repeat(depth);
+              p.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH len=" + got.length + " want=" + want.length)));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A line longer than one 8 KB pool segment: the newline scan resumes across arrivals without
      *  rescanning, and the decode assembles the spanning range once — content must be exact. */
     @Test

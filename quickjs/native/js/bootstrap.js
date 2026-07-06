@@ -40,70 +40,9 @@
     return new Uint8Array(out);
   }
 
-  // ---- Streaming JSON serialize: walk a value and write its tokens straight into a sink, so
-  // neither the whole JSON string nor a Uint8Array is ever materialized (unlike __stringifyJson).
-  // Matches JSON.stringify: honors toJSON(); NaN/Infinity -> null; a member whose value is
-  // undefined/function/symbol is omitted in objects and becomes null in arrays. (Lone surrogates go
-  // out as WTF-8, not \uXXXX — consistent with utf8Encode across the stack.)
+  // toJSON hook (JSON.stringify semantics) — used by the sink's writeObjectAsJson token pump.
   function jsonResolve(v) {
     return (v !== null && (typeof v === "object" || typeof v === "bigint") && typeof v.toJSON === "function") ? v.toJSON() : v;
-  }
-  // async: the sink's writeUtf8 may suspend for backpressure, so the walk awaits it. Tokens are small
-  // and usually just fill the segment (synchronous), so awaits mostly resolve on the same tick.
-  async function jsonWriteString(sink, s) {
-    var runStart = 0, n = s.length, esc;
-    await sink.writeUtf8("\"");
-    for (var i = 0; i < n; i++) {
-      var c = s.charCodeAt(i);
-      esc = null;
-      if (c === 0x22) esc = "\\\"";
-      else if (c === 0x5C) esc = "\\\\";
-      else if (c === 0x0A) esc = "\\n";
-      else if (c === 0x0D) esc = "\\r";
-      else if (c === 0x09) esc = "\\t";
-      else if (c === 0x08) esc = "\\b";
-      else if (c === 0x0C) esc = "\\f";
-      else if (c < 0x20) esc = "\\u" + ("000" + c.toString(16)).slice(-4);
-      if (esc !== null) {
-        // write the safe run so far + the escape in one call (range write, no slice/concat)
-        if (i > runStart) { await sink.writeUtf8Range(s, runStart, i); }
-        await sink.writeUtf8(esc);
-        runStart = i + 1;
-      }
-    }
-    if (n > runStart) { await sink.writeUtf8Range(s, runStart, n); }
-    await sink.writeUtf8("\"");
-  }
-  async function jsonWriteValue(sink, v) {
-    var t = typeof v;
-    if (v === null) await sink.writeUtf8("null");
-    else if (t === "boolean") await sink.writeUtf8(v ? "true" : "false");
-    else if (t === "number") await sink.writeUtf8(isFinite(v) ? ("" + v) : "null");
-    else if (t === "string") await jsonWriteString(sink, v);
-    else if (t === "bigint") throw new TypeError("Do not know how to serialize a BigInt");
-    else if (Array.isArray(v)) {
-      await sink.writeUtf8("[");
-      for (var i = 0; i < v.length; i++) {
-        if (i > 0) await sink.writeUtf8(",");
-        var e = jsonResolve(v[i]), et = typeof e;
-        if (e === undefined || et === "function" || et === "symbol") await sink.writeUtf8("null");
-        else await jsonWriteValue(sink, e);
-      }
-      await sink.writeUtf8("]");
-    } else {
-      await sink.writeUtf8("{");
-      var keys = Object.keys(v), first = true;
-      for (var k = 0; k < keys.length; k++) {
-        var key = keys[k], mv = jsonResolve(v[key]), vt = typeof mv;
-        if (mv === undefined || vt === "function" || vt === "symbol") continue; // omit the key
-        if (!first) await sink.writeUtf8(",");
-        first = false;
-        await jsonWriteString(sink, key);
-        await sink.writeUtf8(":");
-        await jsonWriteValue(sink, mv);
-      }
-      await sink.writeUtf8("}");
-    }
   }
 
   var pipes = {};
@@ -488,9 +427,14 @@
       // is a byte stream and the reader reassembles across them.
       var wbuf = new Uint8Array(8192), wlen = 0;
 
-      // Push the staged segment to the pipe. Returns undefined (nothing staged, or fully accepted)
-      // or a Promise that resolves once the pipe accepts the rest (backpressure). The segment must
-      // not be refilled until that promise resolves — every caller here awaits it first.
+      // ---- sink internals: PLAIN functions, never async. undefined = completed synchronously
+      // (the common case), a Promise = real backpressure (a flush hit a full pipe), resumed via
+      // .then(continue). QuickJS charges a full microtask round-trip (~0.4µs) for `await` even on
+      // non-thenables and a promise allocation per async call, so the hot path must never touch
+      // the microtask queue — suspension machinery is only paid when a write actually blocks.
+
+      // Push the staged segment to the pipe. The segment must not be refilled until the returned
+      // promise (if any) resolves — every continuation here honors that.
       function flushSink() {
         if (wlen === 0) return;
         var p = pipe.send(wbuf, 0, wlen);
@@ -498,28 +442,146 @@
         return p;
       }
 
+      // Stage one ASCII byte (structural JSON chars, '\n').
+      function putByte(b) {
+        if (wlen + 1 > wbuf.length) {
+          var p = flushSink();
+          if (p) return p.then(function () { wbuf[wlen++] = b; });
+        }
+        wbuf[wlen++] = b;
+      }
+
       // Stream-encode str[from, to) as UTF-8 straight into the segment, flushing when it fills —
       // never materializes the whole encoded array. Flush only when this codepoint's own bytes
       // don't fit — reserving the worst-case 4 would flush up to 3 bytes early and underpack.
-      async function encodeRange(str, from, to) {
-        var p;
-        for (var i = from; i < to; i++) {
+      // A pending flush suspends and resumes at the current codepoint.
+      function encodeRange(str, from, to) {
+        var i = from;
+        while (i < to) {
           var cp = str.codePointAt(i);
-          if (cp > 0xFFFF) i++;
-          if (cp < 0x80) {
-            if (wlen + 1 > wbuf.length) { p = flushSink(); if (p) await p; }
-            wbuf[wlen++] = cp;
-          } else if (cp < 0x800) {
-            if (wlen + 2 > wbuf.length) { p = flushSink(); if (p) await p; }
-            wbuf[wlen++] = 0xC0 | (cp >> 6); wbuf[wlen++] = 0x80 | (cp & 0x3F);
-          } else if (cp < 0x10000) {
-            if (wlen + 3 > wbuf.length) { p = flushSink(); if (p) await p; }
-            wbuf[wlen++] = 0xE0 | (cp >> 12); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
-          } else {
-            if (wlen + 4 > wbuf.length) { p = flushSink(); if (p) await p; }
-            wbuf[wlen++] = 0xF0 | (cp >> 18); wbuf[wlen++] = 0x80 | ((cp >> 12) & 0x3F); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F);
+          var bytes = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+          if (wlen + bytes > wbuf.length) {
+            var p = flushSink();
+            if (p) {
+              var at = i;
+              return p.then(function () { return encodeRange(str, at, to); });
+            }
+          }
+          if (bytes === 1) wbuf[wlen++] = cp;
+          else if (bytes === 2) { wbuf[wlen++] = 0xC0 | (cp >> 6); wbuf[wlen++] = 0x80 | (cp & 0x3F); }
+          else if (bytes === 3) { wbuf[wlen++] = 0xE0 | (cp >> 12); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F); }
+          else { wbuf[wlen++] = 0xF0 | (cp >> 18); wbuf[wlen++] = 0x80 | ((cp >> 12) & 0x3F); wbuf[wlen++] = 0x80 | ((cp >> 6) & 0x3F); wbuf[wlen++] = 0x80 | (cp & 0x3F); }
+          i += (cp > 0xFFFF ? 2 : 1);
+        }
+      }
+
+      // Emit a JSON string literal (quotes, safe runs, escapes) for s. Runs are written straight
+      // from the source string (range encode, no slice). State lives outside step(), so a rare
+      // suspension resumes exactly where it stopped.
+      function writeJsonString(s) {
+        var n = s.length, i = 0, phase = 0, pendingEsc = null; // phase: 0=open quote, 1=scan, 2=close quote, 3=done
+        function step() {
+          for (;;) {
+            var p;
+            if (phase === 0) { phase = 1; p = putByte(34); if (p) return p.then(step); continue; }
+            if (phase === 2) { phase = 3; p = putByte(34); if (p) return p.then(step); continue; }
+            if (phase === 3) return;
+            if (pendingEsc !== null) {
+              var e = pendingEsc;
+              pendingEsc = null;
+              p = encodeRange(e, 0, e.length);
+              if (p) return p.then(step);
+              continue;
+            }
+            // scan the next run of safe chars [i, j)
+            var esc = null, j = i;
+            for (; j < n; j++) {
+              var c = s.charCodeAt(j);
+              if (c === 0x22) esc = "\\\"";
+              else if (c === 0x5C) esc = "\\\\";
+              else if (c === 0x0A) esc = "\\n";
+              else if (c === 0x0D) esc = "\\r";
+              else if (c === 0x09) esc = "\\t";
+              else if (c === 0x08) esc = "\\b";
+              else if (c === 0x0C) esc = "\\f";
+              else if (c < 0x20) esc = "\\u" + ("000" + c.toString(16)).slice(-4);
+              else continue;
+              break;
+            }
+            var from = i;
+            if (j >= n) { phase = 2; i = j; }         // no more escapes: run, then close quote
+            else { pendingEsc = esc; i = j + 1; }     // run, then this escape
+            if (j > from) { p = encodeRange(s, from, j); if (p) return p.then(step); }
           }
         }
+        return step();
+      }
+
+      // Serialize a value as JSON via an explicit-stack token pump — no recursion (no depth limit)
+      // and no per-token suspension points: tokens stream into the segment synchronously and the
+      // pump chains .then(step) only when a flush actually blocks. Matches JSON.stringify: honors
+      // toJSON(); NaN/Infinity -> null; undefined/function/symbol members are omitted in objects
+      // and become null in arrays. (Lone surrogates go out as WTF-8, not \uXXXX — consistent with
+      // utf8Encode across the stack.)
+      function writeJsonValue(root) {
+        var stack = [];   // container frames: {v, keys (null = array), i, phase, emitted, pk, pv}
+        var pending = root, hasPending = true; // next VALUE to emit (already jsonResolve'd)
+
+        function emitValue(v) { // scalar -> write it; container -> write its opener + push a frame
+          var t = typeof v;
+          if (v === null) return encodeRange("null", 0, 4);
+          if (t === "boolean") return v ? encodeRange("true", 0, 4) : encodeRange("false", 0, 5);
+          if (t === "number") { var s = isFinite(v) ? ("" + v) : "null"; return encodeRange(s, 0, s.length); }
+          if (t === "string") return writeJsonString(v);
+          if (t === "bigint") throw new TypeError("Do not know how to serialize a BigInt");
+          if (Array.isArray(v)) { stack.push({ v: v, keys: null, i: 0, emitted: false }); return putByte(91); } // '['
+          stack.push({ v: v, keys: Object.keys(v), i: 0, phase: 0, emitted: false, pk: null, pv: null });
+          return putByte(123); // '{'
+        }
+
+        function step() {
+          for (;;) {
+            var p;
+            if (hasPending) {
+              var val = pending;
+              pending = null; hasPending = false;
+              p = emitValue(val);
+              if (p) return p.then(step);
+              continue;
+            }
+            if (stack.length === 0) return; // done
+            var f = stack[stack.length - 1];
+            if (f.keys === null) {
+              // array frame: closer, or comma? + next element
+              if (f.i >= f.v.length) { stack.pop(); p = putByte(93); if (p) return p.then(step); continue; } // ']'
+              var e = jsonResolve(f.v[f.i]); f.i++;
+              var et = typeof e;
+              if (e === undefined || et === "function" || et === "symbol") e = null;
+              pending = e; hasPending = true; // staged BEFORE the comma so a suspension resumes in order
+              if (f.emitted) { p = putByte(44); if (p) return p.then(step); continue; } // ','
+              f.emitted = true;
+              continue;
+            }
+            // object frame phases: 0 = find member (+comma), 3 = key, 1 = colon, 2 = value
+            if (f.phase === 3) { f.phase = 1; p = writeJsonString(f.pk); if (p) return p.then(step); continue; }
+            if (f.phase === 1) { f.phase = 2; p = putByte(58); if (p) return p.then(step); continue; } // ':'
+            if (f.phase === 2) { f.phase = 0; pending = f.pv; f.pv = null; hasPending = true; continue; }
+            var found = false;
+            while (f.i < f.keys.length) {
+              var key = f.keys[f.i]; f.i++;
+              var mv = jsonResolve(f.v[key]);
+              var mt = typeof mv;
+              if (mv === undefined || mt === "function" || mt === "symbol") continue; // omit the key
+              f.pk = key; f.pv = mv; found = true;
+              break;
+            }
+            if (!found) { stack.pop(); p = putByte(125); if (p) return p.then(step); continue; } // '}'
+            f.phase = 3;
+            if (f.emitted) { p = putByte(44); if (p) return p.then(step); continue; } // ','
+            f.emitted = true;
+          }
+        }
+        return step();
       }
 
       return {
@@ -586,49 +648,73 @@
         },
 
         // ---- BufferedSink: a fixed segment; small writes coalesce, large writes bypass it ----
-        // Every write is async and applies backpressure: it stays synchronous while it only fills
-        // the 8 KB segment, and suspends only when a flush hits a full pipe. Writes must be
-        // sequential — `await` one before the next (a second overlapping send throws).
-        // Append b. A large input (>= a segment) bypasses the buffer: each segment-sized slice is
-        // awaited, so a few-MB array is paced by the reader and never held whole.
-        async writeBytes(b) {
-          var n = b.length, p;
+        // Sink writes are PLAIN functions: they return undefined when completed synchronously (the
+        // common case — the write only filled the segment) or a Promise under real backpressure (a
+        // flush hit a full pipe; buffers involved must stay unmodified until it resolves). `await`
+        // works on either, but hot loops can skip the microtask hop QuickJS charges for awaiting a
+        // non-thenable: `var p = io.writeUtf8(s); if (p) await p;`. Writes must be sequential —
+        // finish one (await it, or see undefined) before the next.
+        // Append b. A large input (>= a segment) bypasses the buffer: it streams to the pipe in
+        // segment-sized slices, paced by the reader — a few-MB array is never held whole.
+        writeBytes(b) {
+          var n = b.length;
           if (n >= wbuf.length) {
-            p = flushSink(); if (p) await p;
-            for (var off = 0; off < n; off += wbuf.length) {
-              p = pipe.send(b, off, Math.min(wbuf.length, n - off));
-              if (p) await p;
+            var off = 0;
+            function pump() {
+              while (off < n) {
+                var m = Math.min(wbuf.length, n - off);
+                var q = pipe.send(b, off, m);
+                off += m;
+                if (q) return q.then(pump);
+              }
             }
-            return;
+            var pf = flushSink();
+            return pf ? pf.then(pump) : pump();
           }
-          if (wlen + n > wbuf.length) { p = flushSink(); if (p) await p; }
+          if (wlen + n > wbuf.length) {
+            var p = flushSink();
+            if (p) return p.then(function () { wbuf.set(b, wlen); wlen += n; });
+          }
           wbuf.set(b, wlen); wlen += n;
         },
         // Variadic: writeUtf8(a, b, c) stream-encodes the parts back-to-back with no `a + b + c`
         // first (QuickJS strings are immutable, so + would allocate and copy).
-        async writeUtf8() {
-          for (var a = 0; a < arguments.length; a++) await encodeRange(arguments[a], 0, arguments[a].length);
+        writeUtf8() {
+          if (arguments.length === 1) { var s = arguments[0]; return encodeRange(s, 0, s.length); }
+          var args = arguments, k = 0;
+          function next() {
+            while (k < args.length) {
+              var str = args[k++];
+              var p = encodeRange(str, 0, str.length);
+              if (p) return p.then(next);
+            }
+          }
+          return next();
         },
         // Range form: encode str[from, to) with no .slice() (a slice copies the whole substring).
-        async writeUtf8Range(str, from, to) {
-          await encodeRange(str, from, to);
+        writeUtf8Range(str, from, to) {
+          return encodeRange(str, from, to);
         },
         // writeUtf8(...args) then a single '\n' — no concat, no separate encode pass.
-        async writeUtf8Line() {
-          await this.writeUtf8.apply(this, arguments);
-          if (wlen + 1 > wbuf.length) { var p = flushSink(); if (p) await p; }
-          wbuf[wlen++] = 10;
+        writeUtf8Line() {
+          var p = this.writeUtf8.apply(this, arguments);
+          return p ? p.then(function () { return putByte(10); }) : putByte(10);
         },
-        // Serialize value to JSON by walking it (jsonWriteValue) — streams tokens into the segment,
-        // never building the whole JSON string or a Uint8Array. For big outbound data prefer JSONL
-        // (one writeObjectAsJson per line) so peak memory stays ~one item.
-        async writeObjectAsJson(value) {
+        // Serialize value to JSON via the token pump (writeJsonValue) — streams tokens into the
+        // segment, never building the whole JSON string or a Uint8Array, with no recursion and no
+        // per-token suspension points. For big outbound data prefer JSONL (one writeObjectAsJson
+        // per line) so peak memory stays ~one item.
+        writeObjectAsJson(value) {
           var v = jsonResolve(value), t = typeof v;
-          if (v === undefined || t === "function" || t === "symbol") await this.writeUtf8("null");
-          else await jsonWriteValue(this, v);
+          if (v === undefined || t === "function" || t === "symbol") return encodeRange("null", 0, 4);
+          return writeJsonValue(v);
         },
         flush() { return flushSink(); },
-        async close(reason) { var p = flushSink(); if (p) await p; pipe.close(reason); }
+        close(reason) {
+          var p = flushSink();
+          if (p) return p.then(function () { pipe.close(reason); });
+          pipe.close(reason);
+        }
       };
     }
   };
