@@ -1,16 +1,28 @@
 /*
- * Minimal JNI transport for QuickJS (jvm/android). The pipe multiplexer speaks three operations
- * per direction instead of one framed byte blob:
- *   host -> JS : open(handle,id,command) / data(handle,id,bytes,off,len) / closePipe(handle,id,reason)
- *                -> JS globals  __jsOpen(id,cmd) / __jsData(id,ab) / __jsClose(id,reason)
- *   JS -> host : JS globals  __hostOpen(id,cmd) / __hostData(id,u8,off,len) / __hostClose(id,reason)
- *                -> static  QuickJsNative.onOpen/onData/onClose(handle, ...)
- * plus create/evalSync/close and the microtask pump. ALL routing (which pipe, streaming) lives in
- * Kotlin and JS; C only shuttles (id, command|bytes|reason). No per-frame header is built.
+ * Minimal JNI transport for QuickJS (jvm/android). The pipe multiplexer speaks a few operations per
+ * direction instead of one framed byte blob:
+ *   host -> JS : open(id,cmd) / write(id,bytes,off,len)->accepted / closeWrite(id,reason) /
+ *                closeRead(id) / notify(id,code)
+ *                -> JS globals  __jsOpen / __jsData / __jsClose / __jsCloseRead / __jsNotify
+ *   JS -> host : JS globals  __hostOpen / __hostData / __hostClose / __hostCloseRead / __hostNotify
+ *                -> statics  QuickJsNative.onOpen/onWrite/onCloseWrite/onCloseRead/onNotify
+ * Each pipe direction is a bounded (64 KB), flow-controlled byte stream. Payloads cross ZERO-COPY:
+ *   host -> JS : the ByteArray is held with GetPrimitiveArrayCritical and exposed to __jsData as a
+ *                one-shot ArrayBuffer view (detached before return — see quickjs_pipe.h);
+ *   JS -> host : the Uint8Array's bytes are exposed to onWrite as a direct ByteBuffer (valid only
+ *                during the call).
+ * write()'s return is the accepted byte count (backpressure: wait for a DRAIN notify); -1 = EPIPE.
+ * closeWrite(reason=null) = END; non-null = RESET. ALL routing lives in Kotlin and JS.
+ *
+ * CRITICAL-REGION DISCIPLINE: while the host ByteArray is held critically, __jsData executes JS —
+ * that synchronous path must never re-enter JNI. The bootstrap honors this (its _data path only
+ * calls pure-C natives like __segTake; promise resolutions merely SCHEDULE jobs), the microtask
+ * pump runs only after the critical release, and this file enforces it: under in_critical,
+ * __hostNotify is queued (flushed after release) and any other __host* call throws.
  *
  * Strings that cross (commands, reasons, eval source/result, errors) use standard UTF-8 <-> UTF-16
- * (NewString/GetStringChars), never NewStringUTF, so astral characters survive. Payloads are raw
- * bytes. Single-thread confinement: every JNI entry point runs on the one Kotlin engine thread.
+ * (NewString/GetStringChars), never NewStringUTF, so astral characters survive. Single-thread
+ * confinement: every JNI entry point runs on the one Kotlin engine thread.
  */
 #include <jni.h>
 #include <stdlib.h>
@@ -18,16 +30,25 @@
 #include <stdint.h>
 #include "quickjs.h"
 #include "quickjs_json.h"
+#include "quickjs_pipe.h"
+
+#define PENDING_NOTIFY_MAX 16
 
 typedef struct Engine {
     JSRuntime *rt;
     JSContext *ctx;
     JavaVM *jvm;
-    jclass bridgeClass;  /* global ref to ymusic.quickjs.QuickJsNative */
-    jmethodID onOpen;    /* static void onOpen(long, int, String) */
-    jmethodID onData;    /* static void onData(long, int, byte[]) */
-    jmethodID onClose;   /* static void onClose(long, int, String) */
-    JSValue jsOpen, jsData, jsClose; /* JS mux entry points (C -> JS) */
+    QjsPool *pool;
+    jclass bridgeClass;   /* global ref to ymusic.quickjs.QuickJsNative */
+    jmethodID onOpen;     /* static void onOpen(long, int, String) */
+    jmethodID onWrite;    /* static int  onWrite(long, int, ByteBuffer) */
+    jmethodID onCloseWrite; /* static void onCloseWrite(long, int, String|null) */
+    jmethodID onCloseRead;  /* static void onCloseRead(long, int) */
+    jmethodID onNotify;   /* static void onNotify(long, int, int) */
+    JSValue jsOpen, jsData, jsClose, jsCloseRead, jsNotify; /* JS mux entry points (C -> JS) */
+    int in_critical;      /* a host ByteArray is held critically: JNI re-entry is forbidden */
+    struct { uint32_t id; int code; } pending[PENDING_NOTIFY_MAX];
+    int pending_count;
 } Engine;
 
 /* ---- UTF-8 (standard) <-> UTF-16 (astral-correct) ---- */
@@ -109,11 +130,20 @@ static JNIEnv *engine_env(Engine *e) {
     return env;
 }
 
+/* Notifies queued while a critical region was held (see file comment) — flush once JNI is legal. */
+static void flush_pending(Engine *e, JNIEnv *env) {
+    for (int i = 0; i < e->pending_count; i++)
+        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onNotify,
+                                     (jlong)(intptr_t)e, (jint)e->pending[i].id, (jint)e->pending[i].code);
+    e->pending_count = 0;
+}
+
 /* ---- inbound: JS -> host (JS calls these) ---- */
 
 /* __hostOpen(id, command) */
 static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    if (e->in_critical) return JS_ThrowInternalError(ctx, "__hostOpen during data delivery");
     JNIEnv *env = engine_env(e);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
@@ -126,46 +156,84 @@ static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSV
     return JS_UNDEFINED;
 }
 
-/* __hostData(id, u8, off, len) */
+/* __hostData(id, u8, off, len) -> accepted byte count (or -1 EPIPE). The JS bytes cross as a direct
+ * ByteBuffer over the typed array's memory — valid only during the call; the Kotlin mux consumes it
+ * synchronously (parked reader's ByteArray and/or its okio buffer). */
 static JSValue js_host_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    if (e->in_critical) return JS_ThrowInternalError(ctx, "__hostData during data delivery");
     JNIEnv *env = engine_env(e);
     uint32_t id = 0;
     int64_t off = 0, len = 0;
     JS_ToUint32(ctx, &id, argv[0]);
     JS_ToInt64(ctx, &off, argv[2]);
     JS_ToInt64(ctx, &len, argv[3]);
+    jint rc = -1;
     size_t ta_off = 0, ta_len = 0, bpe = 0;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
     if (!JS_IsException(ab)) {
         size_t sz = 0;
         uint8_t *ptr = JS_GetArrayBuffer(ctx, &sz, ab);
         if (ptr && len > 0) {
-            jbyteArray arr = (*env)->NewByteArray(env, (jsize)len);
-            (*env)->SetByteArrayRegion(env, arr, 0, (jsize)len, (const jbyte *)(ptr + ta_off + off));
-            (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onData, (jlong)(intptr_t)e, (jint)id, arr);
-            (*env)->DeleteLocalRef(env, arr);
+            jobject bb = (*env)->NewDirectByteBuffer(env, ptr + ta_off + off, (jlong)len);
+            rc = (*env)->CallStaticIntMethod(env, e->bridgeClass, e->onWrite, (jlong)(intptr_t)e, (jint)id, bb);
+            (*env)->DeleteLocalRef(env, bb);
+        } else {
+            rc = 0;
         }
     }
     JS_FreeValue(ctx, ab);
-    return JS_UNDEFINED;
+    return JS_NewInt32(ctx, rc);
 }
 
-/* __hostClose(id, reason)  — reason null/undefined = END, string = RESET */
+/* __hostClose(id, reason)  — write-side half-close: reason null/undefined = END, string = RESET */
 static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    if (e->in_critical) return JS_ThrowInternalError(ctx, "__hostClose during data delivery");
     JNIEnv *env = engine_env(e);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
-    jstring jr = NULL;
-    if (!JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1])) {
-        size_t len = 0;
-        const char *reason = JS_ToCStringLen(ctx, &len, argv[1]);
-        jr = utf8_to_jstring(env, reason ? reason : "", reason ? len : 0);
+    jstring jreason = NULL;
+    if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1])) {
+        size_t rlen = 0;
+        const char *reason = JS_ToCStringLen(ctx, &rlen, argv[1]);
+        jreason = utf8_to_jstring(env, reason ? reason : "", reason ? rlen : 0);
         if (reason) JS_FreeCString(ctx, reason);
     }
-    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onClose, (jlong)(intptr_t)e, (jint)id, jr);
-    if (jr) (*env)->DeleteLocalRef(env, jr);
+    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onCloseWrite, (jlong)(intptr_t)e, (jint)id, jreason);
+    if (jreason) (*env)->DeleteLocalRef(env, jreason);
+    return JS_UNDEFINED;
+}
+
+/* __hostCloseRead(id) — abandon the read end: the host's next write gets EPIPE */
+static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    if (e->in_critical) return JS_ThrowInternalError(ctx, "__hostCloseRead during data delivery");
+    JNIEnv *env = engine_env(e);
+    uint32_t id = 0;
+    JS_ToUint32(ctx, &id, argv[0]);
+    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onCloseRead, (jlong)(intptr_t)e, (jint)id);
+    return JS_UNDEFINED;
+}
+
+/* __hostNotify(id, code)  — flow control (DRAIN). Queued when fired under a critical region. */
+static JSValue js_host_notify(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    uint32_t id = 0;
+    int32_t code = 0;
+    JS_ToUint32(ctx, &id, argv[0]);
+    JS_ToInt32(ctx, &code, argv[1]);
+    if (e->in_critical) {
+        if (e->pending_count < PENDING_NOTIFY_MAX) {
+            e->pending[e->pending_count].id = id;
+            e->pending[e->pending_count].code = code;
+            e->pending_count++;
+            return JS_UNDEFINED;
+        }
+        return JS_ThrowInternalError(ctx, "__hostNotify overflow during data delivery");
+    }
+    JNIEnv *env = engine_env(e);
+    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onNotify, (jlong)(intptr_t)e, (jint)id, (jint)code);
     return JS_UNDEFINED;
 }
 
@@ -176,22 +244,27 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
     Engine *e = (Engine *)calloc(1, sizeof(Engine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
-    e->jsOpen = e->jsData = e->jsClose = JS_UNDEFINED;
+    e->jsOpen = e->jsData = e->jsClose = e->jsCloseRead = e->jsNotify = JS_UNDEFINED;
     JS_SetContextOpaque(e->ctx, e);
     (*env)->GetJavaVM(env, &e->jvm);
 
     jclass local = (*env)->FindClass(env, "ymusic/quickjs/QuickJsNative");
     e->bridgeClass = (jclass)(*env)->NewGlobalRef(env, local);
     e->onOpen = (*env)->GetStaticMethodID(env, e->bridgeClass, "onOpen", "(JILjava/lang/String;)V");
-    e->onData = (*env)->GetStaticMethodID(env, e->bridgeClass, "onData", "(JI[B)V");
-    e->onClose = (*env)->GetStaticMethodID(env, e->bridgeClass, "onClose", "(JILjava/lang/String;)V");
+    e->onWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onWrite", "(JILjava/nio/ByteBuffer;)I");
+    e->onCloseWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseWrite", "(JILjava/lang/String;)V");
+    e->onCloseRead = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseRead", "(JI)V");
+    e->onNotify = (*env)->GetStaticMethodID(env, e->bridgeClass, "onNotify", "(JII)V");
 
     JSValue global = JS_GetGlobalObject(e->ctx);
     JS_SetPropertyStr(e->ctx, global, "__hostOpen", JS_NewCFunction(e->ctx, js_host_open, "__hostOpen", 2));
     JS_SetPropertyStr(e->ctx, global, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, global, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
+    JS_SetPropertyStr(e->ctx, global, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
+    JS_SetPropertyStr(e->ctx, global, "__hostNotify", JS_NewCFunction(e->ctx, js_host_notify, "__hostNotify", 2));
     JS_FreeValue(e->ctx, global);
     qjs_register_json(e->ctx);
+    e->pool = qjs_register_pipe(e->ctx);
 
     size_t blen = 0;
     char *bootstrap = jstring_to_utf8(env, jbootstrap, &blen);
@@ -212,6 +285,8 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
     e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
     e->jsData = JS_GetPropertyStr(e->ctx, g, "__jsData");
     e->jsClose = JS_GetPropertyStr(e->ctx, g, "__jsClose");
+    e->jsCloseRead = JS_GetPropertyStr(e->ctx, g, "__jsCloseRead");
+    e->jsNotify = JS_GetPropertyStr(e->ctx, g, "__jsNotify");
     JS_FreeValue(e->ctx, g);
     return (jlong)(intptr_t)e;
 }
@@ -248,14 +323,19 @@ Java_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong hand
     return result;
 }
 
-/* Host -> JS: call one of the JS mux entry points. */
-static void call_js(Engine *e, JSValue fn, int argc, JSValue *argv) {
+/* Host -> JS: call one of the JS mux entry points; return its int result (or exc_rc on a JS
+ * exception). Frees argv, then runs the microtask pump. */
+static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     JSValue g = JS_GetGlobalObject(e->ctx);
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
+    int rc = exc_rc;
+    if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* bootstrap bug; don't leave it pending */
     JS_FreeValue(e->ctx, r);
     JS_FreeValue(e->ctx, g);
     for (int i = 0; i < argc; i++) JS_FreeValue(e->ctx, argv[i]);
     pump_jobs(e);
+    return rc;
 }
 
 JNIEXPORT void JNICALL
@@ -265,34 +345,71 @@ Java_ymusic_quickjs_QuickJsNative_open(JNIEnv *env, jobject thiz, jlong handle, 
     char *cmd = jstring_to_utf8(env, jcommand, &len);
     JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), JS_NewStringLen(e->ctx, cmd, len) };
     free(cmd);
-    call_js(e, e->jsOpen, 2, argv);
+    call_js(e, e->jsOpen, 2, argv, 0);
 }
 
-JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_data(JNIEnv *env, jobject thiz, jlong handle, jint id,
-                                       jbyteArray bytes, jint off, jint len) {
+/* write(id, bytes, off, len) -> accepted. The ByteArray is held with GetPrimitiveArrayCritical for
+ * the duration of the (synchronous) __jsData call — see the file comment for the discipline. */
+JNIEXPORT jint JNICALL
+Java_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong handle, jint id,
+                                        jbyteArray bytes, jint off, jint len) {
     Engine *e = (Engine *)(intptr_t)handle;
-    jbyte *elems = (*env)->GetByteArrayElements(env, bytes, NULL);
-    JSValue ab = JS_NewArrayBufferCopy(e->ctx, (const uint8_t *)elems + off, (size_t)len);
-    (*env)->ReleaseByteArrayElements(env, bytes, elems, JNI_ABORT);
-    JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), ab };
-    call_js(e, e->jsData, 2, argv);
-}
-
-JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_closePipe(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jreason) {
-    Engine *e = (Engine *)(intptr_t)handle;
-    JSValue rv;
-    if (jreason == NULL) {
-        rv = JS_NULL;
+    if (len <= 0) return 0;
+    jbyte *base = (*env)->GetPrimitiveArrayCritical(env, bytes, NULL);
+    if (!base) return -1;
+    e->in_critical = 1;
+    JSValue ab = JS_UNDEFINED;
+    JSValue view = qjs_view_wrap(e->ctx, (const uint8_t *)base + off, (size_t)len, &ab);
+    int rc = -1;
+    if (!JS_IsException(view)) {
+        JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), JS_DupValue(e->ctx, view) };
+        JSValue g = JS_GetGlobalObject(e->ctx);
+        JSValue r = JS_Call(e->ctx, e->jsData, g, 2, argv);
+        /* An exception is a bootstrap bug; report EPIPE so the writer fails loudly, never hangs. */
+        if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
+        else JS_FreeValue(e->ctx, JS_GetException(e->ctx));
+        JS_FreeValue(e->ctx, r);
+        JS_FreeValue(e->ctx, g);
+        JS_FreeValue(e->ctx, argv[0]);
+        JS_FreeValue(e->ctx, argv[1]);
+        /* The array's memory stops being valid at release: detach BEFORE microtasks can run. */
+        qjs_view_detach(e->ctx, view, ab);
     } else {
-        size_t len = 0;
-        char *reason = jstring_to_utf8(env, jreason, &len);
-        rv = JS_NewStringLen(e->ctx, reason, len);
-        free(reason);
+        JS_FreeValue(e->ctx, JS_GetException(e->ctx));
     }
-    JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), rv };
-    call_js(e, e->jsClose, 2, argv);
+    e->in_critical = 0;
+    (*env)->ReleasePrimitiveArrayCritical(env, bytes, base, JNI_ABORT);
+    flush_pending(e, env); /* notifies queued while critical — JNI is legal again */
+    pump_jobs(e);
+    return (jint)rc;
+}
+
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_closeWrite(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jreason) {
+    Engine *e = (Engine *)(intptr_t)handle;
+    JSValue reason = JS_NULL;
+    if (jreason != NULL) {
+        size_t len = 0;
+        char *r = jstring_to_utf8(env, jreason, &len);
+        reason = JS_NewStringLen(e->ctx, r, len);
+        free(r);
+    }
+    JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), reason };
+    call_js(e, e->jsClose, 2, argv, 0);
+}
+
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_closeRead(JNIEnv *env, jobject thiz, jlong handle, jint id) {
+    Engine *e = (Engine *)(intptr_t)handle;
+    JSValue argv[1] = { JS_NewUint32(e->ctx, (uint32_t)id) };
+    call_js(e, e->jsCloseRead, 1, argv, 0);
+}
+
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_notify(JNIEnv *env, jobject thiz, jlong handle, jint id, jint code) {
+    Engine *e = (Engine *)(intptr_t)handle;
+    JSValue argv[2] = { JS_NewUint32(e->ctx, (uint32_t)id), JS_NewInt32(e->ctx, (int)code) };
+    call_js(e, e->jsNotify, 2, argv, 0);
 }
 
 JNIEXPORT void JNICALL
@@ -302,8 +419,11 @@ Java_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong handle)
     JS_FreeValue(e->ctx, e->jsOpen);
     JS_FreeValue(e->ctx, e->jsData);
     JS_FreeValue(e->ctx, e->jsClose);
+    JS_FreeValue(e->ctx, e->jsCloseRead);
+    JS_FreeValue(e->ctx, e->jsNotify);
     (*env)->DeleteGlobalRef(env, e->bridgeClass);
     JS_FreeContext(e->ctx);
-    JS_FreeRuntime(e->rt);
+    JS_FreeRuntime(e->rt); /* segment free_funcs run here -> pool must still be alive */
+    qjs_pool_free(e->pool);
     free(e);
 }

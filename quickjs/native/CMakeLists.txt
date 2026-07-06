@@ -12,6 +12,7 @@ set(QJS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/quickjs)
 add_library(quickjsjni SHARED
   quickjs_jni.c
   quickjs_json.c
+  quickjs_pipe.c
   ${QJS_DIR}/quickjs.c
   ${QJS_DIR}/cutils.c
   ${QJS_DIR}/libregexp.c

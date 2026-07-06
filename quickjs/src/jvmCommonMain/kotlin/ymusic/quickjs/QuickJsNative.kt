@@ -1,5 +1,6 @@
 package ymusic.quickjs
 
+import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 
 /** Load the `quickjsjni` shared library (from a dir on the JVM, from the APK on Android). */
@@ -8,6 +9,8 @@ internal expect fun loadQuickJsLibrary()
 /**
  * The JNI boundary (jvm + android) — maps to `quickjs_jni.c`. C invokes the `on*` statics when JS
  * reaches the host; they route to the per-engine [EngineCallbacks] registered in [register].
+ * [onWrite]'s ByteBuffer is a direct view over the JS typed array's memory, valid only during the
+ * call — the mux consumes it synchronously.
  */
 internal object QuickJsNative {
     private val sinks = ConcurrentHashMap<Long, EngineCallbacks>()
@@ -30,19 +33,30 @@ internal object QuickJsNative {
     }
 
     @JvmStatic
-    fun onData(handle: Long, id: Int, bytes: ByteArray) {
-        sinks[handle]?.onData(id, bytes)
+    fun onWrite(handle: Long, id: Int, bytes: ByteBuffer): Int =
+        sinks[handle]?.onWrite(id, NativeChunk(bytes)) ?: -1
+
+    @JvmStatic
+    fun onCloseWrite(handle: Long, id: Int, reason: String?) {
+        sinks[handle]?.onCloseWrite(id, reason)
     }
 
     @JvmStatic
-    fun onClose(handle: Long, id: Int, reason: String?) {
-        sinks[handle]?.onClose(id, reason)
+    fun onCloseRead(handle: Long, id: Int) {
+        sinks[handle]?.onCloseRead(id)
+    }
+
+    @JvmStatic
+    fun onNotify(handle: Long, id: Int, code: Int) {
+        sinks[handle]?.onNotify(id, code)
     }
 
     external fun create(bootstrap: String): Long
     external fun evalSync(handle: Long, script: String, filename: String): String?
     external fun open(handle: Long, id: Int, command: String)
-    external fun data(handle: Long, id: Int, bytes: ByteArray, off: Int, len: Int)
-    external fun closePipe(handle: Long, id: Int, reason: String?)
+    external fun write(handle: Long, id: Int, bytes: ByteArray, off: Int, len: Int): Int
+    external fun closeWrite(handle: Long, id: Int, reason: String?)
+    external fun closeRead(handle: Long, id: Int)
+    external fun notify(handle: Long, id: Int, code: Int)
     external fun close(handle: Long)
 }

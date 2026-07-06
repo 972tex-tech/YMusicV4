@@ -55,6 +55,7 @@ fun registerNativeLib(targetName: String): TaskProvider<Exec> {
         val srcs = listOf(
             "quickjs/quickjs.c", "quickjs/cutils.c", "quickjs/libregexp.c",
             "quickjs/libunicode.c", "quickjs/dtoa.c", "quickjs_native.c", "quickjs_json.c",
+            "quickjs_pipe.c",
         ).joinToString(" ") { "'${nativeSrc.resolve(it)}'" }
         // `cc` = clang on macOS (accepts the -arch flags), gcc on Linux (no -arch; native x86_64).
         val arch = clangArch(targetName).joinToString(" ")
@@ -143,6 +144,7 @@ kotlin {
 
         commonMain.dependencies {
             implementation(Libs.Kotlinx.coroutinesCore)
+            implementation(Libs.Okio.core) // inbound pipe buffer (segment pool via Buffer/UnsafeCursor)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

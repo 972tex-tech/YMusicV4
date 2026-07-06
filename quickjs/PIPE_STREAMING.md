@@ -10,47 +10,89 @@ Bidirectional byte stream between Kotlin and JS. One side `openPipe(name)`, the 
 ```kotlin
 interface Pipe {
     val command: String
-    suspend fun send(buffer: ByteArray, offset: Int, len: Int)     // copy-first
+    suspend fun send(buffer: ByteArray, offset: Int, len: Int)     // suspends on backpressure
     suspend fun send(bytes: ByteArray)                              // convenience
-    suspend fun receive(buffer: ByteArray, offset: Int, len: Int): Int  // inbox -> buffer; -1 at EOF
-    suspend fun close()                                            // half-close: done sending
+    suspend fun receive(buffer: ByteArray, offset: Int, len: Int): Int  // -1 at EOF; throws on RESET
+    suspend fun close(reason: String? = null)                      // half-close: END, or RESET(reason)
+    suspend fun closeRead()                                        // abandon reading: peer sends EPIPE
 }
 ```
 ```js
-pipe.send(u8, offset, len)
-await pipe.receive(u8, offset, len)   // -> bytes read (<= len), or -1 at EOF
-pipe.close()
+await pipe.send(u8, offset, len)      // undefined when fully accepted; a Promise under backpressure
+await pipe.receive(u8, offset, len)   // -> bytes read (<= len), or -1 at EOF; throws the RESET reason
+pipe.close(reason?); pipe.closeRead()
 ```
 
-- **Ownership**: `send` is copy-first (the transport copies `buffer[offset,+len)` synchronously
-  before returning) → reuse the buffer after you await it. `receive` copies inbox → your buffer.
-- **Cross-side is safe**: JS and Kotlin have separate heaps; the FFI copies at the boundary.
-- **Half-close**: `close` signals "done sending" (peer's `receive` returns -1 once drained); you can
-  still receive, so request/response over one pipe works.
-- **Inbox**: arrived payloads queue and drain through `(head, headPos)` — no per-`receive` alloc.
-- **One receiver**: only one `receive()` may be outstanding per pipe. A concurrent second call
-  fails fast (Kotlin: `IllegalStateException`; JS: the promise rejects) rather than queueing —
-  overlapping receives would race `(head, headPos)`, so that's always a bug.
+Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB pool segments,
+32 KB low-water), exactly like a kernel pipe:
+- **Partial writes + DRAIN.** The FFI `write` is synchronous and returns the **accepted** byte
+  count: what a parked reader took plus what fit in the buffer. `accepted < len` parks the writer
+  (Kotlin `send` suspends; the JS send promise stays pending) until the reader drains the buffer to
+  the low-water mark and the transport fires a **DRAIN** notify, which resumes the write from where
+  it stopped. `-1` = the reader closed its read end → `BrokenPipeException` / EPIPE rejection.
+- **Buffers live on the reader's side, in the reader's language.** Bytes JS writes land in an okio
+  `Buffer` in Kotlin (its segment pool — no per-chunk allocation; Kotlin `receive` never crosses
+  the FFI). Bytes Kotlin writes land in the JS mux's queue of `Uint8Array` views over **pooled 8 KB
+  C segments** (`__segTake`/`__segRelease`) — the queue is views + counters; the bytes stay in C
+  memory, never copied into the JS heap.
+- **Zero-copy crossing, rendezvous-first.** A write crosses as a one-shot view of the writer's own
+  bytes (host → JS: an ArrayBuffer wrapping the pinned ByteArray, **detached** when the call
+  returns; JS → host: a direct ByteBuffer / raw pointer over the typed array, valid only during the
+  call). If a reader is parked, the bytes are copied **straight into its buffer** — one copy, the
+  unavoidable heap-to-heap transfer. Only the remainder is copied once into pool segments (buffered
+  path = 2 copies total, 0 allocations at steady state). Consequence: **the send buffer must stay
+  unmodified until the send completes** (a partial write holds a window into it).
+- **Half-close, two flavors**: `close(null)` = END — the peer's `receive` returns -1 once drained.
+  `close(reason)` = **RESET** — the peer's pending data is discarded and its parked/next `receive`
+  **throws** the reason (Kotlin: `PipeResetException`; JS: rejection), so a mid-stream failure or
+  cancellation is never mistaken for a clean EOF. A handler that throws RESETs its pipe with the
+  failure message automatically. `closeRead()` abandons the read side: the peer's next send gets
+  EPIPE.
+- **One receiver / one sender**: only one `receive()` and one `send()` may be outstanding per pipe;
+  a concurrent second call fails fast rather than queueing (overlapping calls would race the
+  cursors, so that's always a bug).
 
-**Transport (no framing).** The FFI boundary is *not* one framed byte blob; it is three operations
-per direction, so nothing allocates a per-frame header and command/reason cross as native strings:
-- host → JS: `NativeEngine.open(id, command)` / `data(id, buf, off, len)` / `closePipe(id, reason)`
-  → JS globals `__jsOpen(id, cmd)` / `__jsData(id, arraybuffer)` / `__jsClose(id, reason)`.
-- JS → host: `__hostOpen(id, cmd)` / `__hostData(id, u8, off, len)` / `__hostClose(id, reason)`
-  → `EngineCallbacks.onOpen/onData/onClose` (JNI statics on jvm/android; one cinterop trampoline
-  with an op arg on native).
-`id` is an argument (Kotlin opens odd ids, JS even). `close`'s `reason` is `null` for a normal
-half-close (END) or a string for an error (RESET); the receiving side ends inbound either way. All
-routing (which pipe, streaming) lives in the Kotlin + JS mux — C only shuttles the operation.
+**Transport (no framing).** The FFI boundary is a handful of operations per direction — nothing
+allocates a per-frame header; commands and reasons cross as native strings:
+- host → JS: `NativeEngine.open(id, cmd)` / `write(id, buf, off, len) -> accepted` /
+  `closeWrite(id, reason?)` / `closeRead(id)` / `notify(id, DRAIN)`
+  → JS globals `__jsOpen` / `__jsData(id, view) -> accepted` / `__jsClose(id, reason)` /
+  `__jsCloseRead(id)` / `__jsNotify(id, DRAIN)`.
+- JS → host: `__hostOpen` / `__hostData(id, u8, off, len) -> accepted` / `__hostClose(id, reason)` /
+  `__hostCloseRead(id)` / `__hostNotify(id, DRAIN)`
+  → `EngineCallbacks.onOpen/onWrite/onCloseWrite/onCloseRead/onNotify` (JNI statics on jvm/android;
+  one cinterop trampoline with an op arg on native).
+`id` is an argument (Kotlin opens odd ids, JS even). All routing lives in the Kotlin + JS mux —
+C only shuttles operations and owns the segment pool (`quickjs_pipe.c`).
 
-Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode`/`utf8Decode` (QuickJS has no
-TextEncoder), `readAll(pipe)` (drain a stream to one `Uint8Array`), and `buffered(pipe, sinkFlush?)`
-— an okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`, plus
-`readJsonObject`/`readJsonArray`, §2) and a buffered sink (`writeUtf8`/`writeUtf8Line`, `flush`,
-`close`). Sink writes just accumulate in a buffer until an explicit `flush()` (or `close()`) sends
-them — the caller decides when to flush. The whole sink is **synchronous** (`send` is copy-first,
-so there's nothing to await): `writeUtf8`/`writeUtf8Line`/`flush`/`close` are all sync. Only the
-source `read*` methods are async (they can suspend on `receive`).
+**JNI critical-region discipline** (jvm/android): `write` holds the ByteArray with
+`GetPrimitiveArrayCritical` while `__jsData` runs, so that synchronous JS path must never re-enter
+JNI — the bootstrap's `_data` only calls pure-C natives (`__segTake`), promise resolutions merely
+*schedule* microtasks, and the pump runs after the release. The shim enforces it: under the
+critical flag `__hostNotify` is queued (flushed after release) and any other `__host*` call throws.
+DRAIN notifies are therefore emitted from *read* paths only — which is also why `_data` itself
+never needs one.
+
+Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
+inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop),
+`readAll(pipe)` (drain a stream to one `Uint8Array`), and `buffered(pipe)` — an okio-style wrapper
+with a buffered source (`read`/`readUtf8Line`/`readUtf8`, plus `readJsonObject`/`readJsonArray`,
+§2) and a buffered sink (`writeBytes`/`writeUtf8`/`writeUtf8Line`, `flush`, `close`).
+
+The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
+matter how much is written:
+- `writeUtf8` **stream-encodes UTF-8 directly into the segment**, flushing when it fills — it never
+  builds the whole encoded array. Variadic: `writeUtf8(a, b)` avoids the string concat.
+- `writeBytes` **bypasses the segment for large inputs** (`>=` one segment): it flushes what's
+  pending, then streams the input straight to the pipe in segment-sized slices — no copy into the
+  sink buffer.
+- Small writes coalesce in the segment and flush when it fills or on an explicit `flush()`/`close()`.
+  Flush boundaries are invisible to the peer — the pipe is a byte stream and the reader reassembles
+  across them — so auto-flush is a memory bound, never a framing change.
+
+Sink writes are async but stay synchronous while they only fill the segment; they suspend only when
+a flush hits a full pipe — that is the **true backpressure** path (bounded buffer + parked writer),
+so a stalled consumer stops the producer instead of queueing unbounded bytes anywhere.
 
 ## 2. Native JSON <-> bytes: streaming parse + `__stringifyJson`
 

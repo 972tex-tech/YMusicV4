@@ -1,8 +1,20 @@
 package ymusic.quickjs
 
+import java.nio.ByteBuffer
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
-import java.util.concurrent.Executors
+
+/** JS bytes as a direct ByteBuffer over the typed array's memory (valid only during onWrite).
+ *  position/get instead of the absolute bulk get, which Android only got in API 34. */
+internal actual class NativeChunk(private val bb: ByteBuffer) {
+    actual val size: Int = bb.remaining()
+
+    actual fun copyInto(dst: ByteArray, dstOffset: Int, srcOffset: Int, count: Int) {
+        bb.position(srcOffset)
+        bb.get(dst, dstOffset, count)
+    }
+}
 
 internal actual class NativeEngine private constructor(private val handle: Long) {
     actual fun evalSync(script: String, filename: String): String? =
@@ -10,10 +22,14 @@ internal actual class NativeEngine private constructor(private val handle: Long)
 
     actual fun open(id: Int, command: String) = QuickJsNative.open(handle, id, command)
 
-    actual fun data(id: Int, buffer: ByteArray, offset: Int, len: Int) =
-        QuickJsNative.data(handle, id, buffer, offset, len)
+    actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int =
+        QuickJsNative.write(handle, id, buffer, offset, len)
 
-    actual fun closePipe(id: Int, reason: String?) = QuickJsNative.closePipe(handle, id, reason)
+    actual fun closeWrite(id: Int, reason: String?) = QuickJsNative.closeWrite(handle, id, reason)
+
+    actual fun closeRead(id: Int) = QuickJsNative.closeRead(handle, id)
+
+    actual fun notify(id: Int, code: Int) = QuickJsNative.notify(handle, id, code)
 
     actual fun destroy() {
         QuickJsNative.unregister(handle)

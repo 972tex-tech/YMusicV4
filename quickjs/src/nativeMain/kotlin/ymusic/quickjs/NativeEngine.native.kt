@@ -1,36 +1,58 @@
 package ymusic.quickjs
 
+import cnames.structs.QjsEngine
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
-import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
+import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.asStableRef
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.plus
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import kotlinx.cinterop.StableRef
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.newSingleThreadContext
+import platform.posix.memcpy
 import platform.posix.size_t
-import cnames.structs.QjsEngine
+import ymusic.quickjs.cinterop.QJS_OP_CLOSE_READ
+import ymusic.quickjs.cinterop.QJS_OP_CLOSE_WRITE
+import ymusic.quickjs.cinterop.QJS_OP_NOTIFY
+import ymusic.quickjs.cinterop.QJS_OP_OPEN
+import ymusic.quickjs.cinterop.QJS_OP_WRITE
 import ymusic.quickjs.cinterop.qjs_close
-import ymusic.quickjs.cinterop.qjs_close_pipe
+import ymusic.quickjs.cinterop.qjs_close_read
+import ymusic.quickjs.cinterop.qjs_close_write
 import ymusic.quickjs.cinterop.qjs_create
-import ymusic.quickjs.cinterop.qjs_data
 import ymusic.quickjs.cinterop.qjs_eval_sync
 import ymusic.quickjs.cinterop.qjs_free
+import ymusic.quickjs.cinterop.qjs_notify
 import ymusic.quickjs.cinterop.qjs_open
+import ymusic.quickjs.cinterop.qjs_write
+
+/** JS bytes as a raw pointer (valid only during onWrite; the mux consumes it synchronously). */
+@OptIn(ExperimentalForeignApi::class)
+internal actual class NativeChunk(
+    private val ptr: CPointer<UByteVar>,
+    actual val size: Int,
+) {
+    actual fun copyInto(dst: ByteArray, dstOffset: Int, srcOffset: Int, count: Int) {
+        if (count == 0) return
+        dst.usePinned { pinned ->
+            memcpy(pinned.addressOf(dstOffset), ptr + srcOffset, count.convert())
+        }
+    }
+}
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual class NativeEngine private constructor(
@@ -48,14 +70,18 @@ internal actual class NativeEngine private constructor(
 
     actual fun open(id: Int, command: String) = qjs_open(engine, id.toUInt(), command)
 
-    actual fun data(id: Int, buffer: ByteArray, offset: Int, len: Int) {
-        if (len <= 0) return
-        buffer.usePinned { pinned ->
-            qjs_data(engine, id.toUInt(), pinned.addressOf(offset).reinterpret(), len.convert())
+    actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int {
+        if (len <= 0) return 0
+        return buffer.usePinned { pinned ->
+            qjs_write(engine, id.toUInt(), pinned.addressOf(offset).reinterpret(), len.convert())
         }
     }
 
-    actual fun closePipe(id: Int, reason: String?) = qjs_close_pipe(engine, id.toUInt(), reason)
+    actual fun closeWrite(id: Int, reason: String?) = qjs_close_write(engine, id.toUInt(), reason)
+
+    actual fun closeRead(id: Int) = qjs_close_read(engine, id.toUInt())
+
+    actual fun notify(id: Int, code: Int) = qjs_notify(engine, id.toUInt(), code)
 
     actual fun destroy() {
         qjs_close(engine)
@@ -79,20 +105,24 @@ internal actual class NativeEngine private constructor(
 }
 
 /** C -> Kotlin inbound callback. [user] is the StableRef to the engine's [EngineCallbacks].
- *  op 0=open, 1=data, 2=close. For open/close, [data] is a NUL-terminated UTF-8 cstring
- *  (NULL reason on close = END); for data it is [len] raw bytes. */
+ *  Ops per quickjs_native.h: OPEN (data = command), WRITE (data/len = payload, valid only during
+ *  the call; return = accepted / -1 EPIPE), CLOSE_WRITE (data = RESET reason or NULL for END),
+ *  CLOSE_READ, NOTIFY (code in [len]). The return value is only meaningful for WRITE. */
 @OptIn(ExperimentalForeignApi::class)
-private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CPointer<UByteVar>?, len: size_t) {
-    if (user == null) return
+private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CPointer<UByteVar>?, len: size_t): Int {
+    if (user == null) return -1
     val cb = user.asStableRef<EngineCallbacks>().get()
     val idInt = id.toInt()
-    when (op) {
-        0 -> cb.onOpen(idInt, data?.reinterpret<ByteVar>()?.toKString() ?: "")
-        1 -> {
+    return when (op) {
+        QJS_OP_OPEN -> { cb.onOpen(idInt, data?.reinterpret<ByteVar>()?.toKString() ?: ""); 0 }
+        QJS_OP_WRITE -> {
             val n = len.toInt()
-            cb.onData(idInt, if (data != null && n > 0) data.readBytes(n) else ByteArray(0))
+            if (data == null || n <= 0) 0 else cb.onWrite(idInt, NativeChunk(data, n))
         }
-        else -> cb.onClose(idInt, data?.reinterpret<ByteVar>()?.toKString())
+        QJS_OP_CLOSE_WRITE -> { cb.onCloseWrite(idInt, data?.reinterpret<ByteVar>()?.toKString()); 0 }
+        QJS_OP_CLOSE_READ -> { cb.onCloseRead(idInt); 0 }
+        QJS_OP_NOTIFY -> { cb.onNotify(idInt, len.toInt()); 0 }
+        else -> 0
     }
 }
 

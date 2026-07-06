@@ -421,8 +421,8 @@ class QuickJsRuntimeTest {
               const io = ymix.buffered(ymix.open("sink"));
               // 2000 lines "ABCDE\n" = 12000 bytes > the 8 KB segment, so the sink auto-flushes at
               // least once mid-write; the reassembled stream must still be identical.
-              for (let i = 0; i < 2000; i++) io.writeUtf8Line("ABCDE");
-              io.close();
+              for (let i = 0; i < 2000; i++) await io.writeUtf8Line("ABCDE");
+              await io.close();
               pipe.send(ymix.utf8Encode(await io.readUtf8()));
               pipe.close();
             });
@@ -468,9 +468,9 @@ class QuickJsRuntimeTest {
               let len = sbytes.length + b.length, sum = 0;
               for (let i = 0; i < sbytes.length; i++) sum += sbytes[i];
               for (let i = 0; i < b.length; i++) sum += b[i];
-              io.writeUtf8(s);
-              io.writeBytes(b);
-              io.close();
+              await io.writeUtf8(s);
+              await io.writeBytes(b);
+              await io.close();
               const got = await io.readUtf8(), want = len + ":" + sum;
               pipe.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH want=" + want + " got=" + got)));
               pipe.close();
@@ -516,8 +516,8 @@ class QuickJsRuntimeTest {
                 big: big
               };
               const io = ymix.buffered(ymix.open("sink"));
-              io.writeObjectAsJson(value);
-              io.close();
+              await io.writeObjectAsJson(value);
+              await io.close();
               const got = await io.readUtf8(), want = JSON.stringify(value);
               let msg;
               if (got === want) msg = "OK";
@@ -689,10 +689,9 @@ class QuickJsRuntimeTest {
             """
             ymix.onAccept("run", async (pipe) => {
               const io = ymix.buffered(ymix.open("echo"));
-              io.writeUtf8Line("hello🎵");
-              io.writeUtf8Line("world");
-              io.flush();
-              io.close();                                // done sending → echo returns the rest and ends
+              await io.writeUtf8Line("hello🎵");
+              await io.writeUtf8Line("world");
+              await io.close();                          // done sending → echo returns the rest and ends
               const l1 = await io.readUtf8Line();
               const l2 = await io.readUtf8Line();
               const l3 = await io.readUtf8Line();        // null at EOF
@@ -783,6 +782,270 @@ class QuickJsRuntimeTest {
         try {
             val pipe = rt.openPipe("stream")
             assertContentEquals(byteArrayOf(1, 2, 3, 4, 5, 6), pipe.readAll())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** Reader-side cancel (Linux EPIPE): the JS handler closes its read end, so the Kotlin writer's
+     *  next send throws [BrokenPipeException] — it can tell a producer "stop, I'm not reading". */
+    @Test
+    fun send_throws_broken_pipe_after_peer_closes_read() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load("""ymix.onAccept("sink", async (pipe) => { pipe.closeRead(); });""")
+        try {
+            val pipe = rt.openPipe("sink") // openPipe pumps the handler, so closeRead has already run
+            assertFailsWith<BrokenPipeException> { pipe.send(byteArrayOf(1, 2, 3)) }
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** After close() you've declared yourself done writing — a later send() is a misuse and throws
+     *  IllegalStateException (distinct from EPIPE, which is the peer closing its read end). */
+    @Test
+    fun send_after_close_is_fatal() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(echoJs)
+        try {
+            val pipe = rt.openPipe("echo")
+            pipe.close()
+            assertFailsWith<IllegalStateException> { pipe.send(byteArrayOf(1, 2, 3)) }
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The JS mirror: after io.close(), an await-ed send rejects with "send() after close()". */
+    @Test
+    fun js_send_after_close_is_fatal() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.open("idle");
+              io.close();
+              let err = "none";
+              try { await io.send(ymix.utf8Encode("x")); } catch (e) { err = (e && e.message) || String(e); }
+              p.send(ymix.utf8Encode(err));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("send() after close()", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** After closeRead() you've declared yourself done reading — a later receive() is a misuse and
+     *  throws (not a quiet EOF that would mask the bug). */
+    @Test
+    fun receive_after_close_read_is_fatal() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.open("idle");   // no handler serves "idle"; we never read it anyway
+              io.closeRead();
+              let err = "none";
+              try { await io.receive(new Uint8Array(4), 0, 4); } catch (e) { err = (e && e.message) || String(e); }
+              p.send(ymix.utf8Encode(err));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("receive() after closeRead()", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The mirror: a Kotlin reader closes its read end, so the JS writer's await-ed send rejects with
+     *  EPIPE. The JS loop stops and reports the error. */
+    @Test
+    fun js_send_rejects_with_epipe_after_kotlin_closes_read() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("up") { pipe -> pipe.closeRead() } // refuse to read anything
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.open("up");
+              let err = "none";
+              try { for (let i = 0; i < 1000000; i++) await io.send(ymix.utf8Encode("x")); }
+              catch (e) { err = (e && e.message) || String(e); }
+              p.send(ymix.utf8Encode(err));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val out = rt.openPipe("run").readText()
+            assertEquals("EPIPE: broken pipe", out)
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** Backpressured large transfer Kotlin -> JS: an awaited [Pipe.send] is paced by the JS reader
+     *  (buffer bounded to ~64 KB, WRITABLE wakes the writer). The point is it neither deadlocks nor
+     *  loses/reorders bytes — verified by an independent length + additive checksum. */
+    @Test
+    fun kotlin_to_js_large_transfer_is_backpressured_and_intact() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("down", async (pipe) => {
+              const buf = new Uint8Array(4096);
+              let len = 0, sum = 0;
+              for (;;) { const n = await pipe.receive(buf, 0, buf.length); if (n < 0) break;
+                         len += n; for (let i = 0; i < n; i++) sum += buf[i]; }
+              pipe.send(ymix.utf8Encode(len + ":" + sum));
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val pipe = rt.openPipe("down")
+            val total = 500_000 // ~8x the 64 KB buffer, so the writer parks and resumes many times
+            val chunk = ByteArray(4096) { (it and 0xFF).toByte() }
+            var sent = 0
+            var sum = 0L
+            while (sent < total) {
+                val n = minOf(chunk.size, total - sent)
+                pipe.send(chunk, 0, n)
+                for (i in 0 until n) sum += (chunk[i].toInt() and 0xFF)
+                sent += n
+            }
+            pipe.close()
+            assertEquals("$total:$sum", pipe.readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The mirror: a backpressured large transfer JS -> Kotlin. Each awaited JS send is accepted
+     *  only partially once the 64 KB Kotlin buffer fills; the writer parks and DRAIN notifies (fired
+     *  as Kotlin reads) resume it. Verified by an independent length + additive checksum. */
+    @Test
+    fun js_to_kotlin_large_transfer_is_backpressured_and_intact() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("up-big") { pipe ->
+            val buf = ByteArray(4096)
+            var len = 0L
+            var sum = 0L
+            while (true) {
+                val n = pipe.receive(buf, 0, buf.size)
+                if (n < 0) break
+                len += n
+                for (i in 0 until n) sum += (buf[i].toInt() and 0xFF)
+            }
+            pipe.send("$len:$sum".encodeToByteArray())
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.open("up-big");
+              const chunk = new Uint8Array(4096);
+              for (let i = 0; i < chunk.length; i++) chunk[i] = i & 0xFF;
+              let sum = 0;
+              for (let i = 0; i < chunk.length; i++) sum += chunk[i];
+              const rounds = 125; // 500 KB, ~8x the 64 KB buffer -> many partial writes + parks
+              for (let r = 0; r < rounds; r++) await io.send(chunk, 0, chunk.length);
+              io.close();
+              const got = ymix.utf8Decode(await ymix.readAll(io));
+              const want = (rounds * chunk.length) + ":" + (rounds * sum);
+              p.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH want=" + want + " got=" + got)));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("OK", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** A Kotlin RESET (close with a reason) surfaces in JS as a receive rejection carrying the
+     *  reason — after any already-rendezvoused bytes; pending buffered data is discarded. */
+    @Test
+    fun kotlin_reset_surfaces_in_js_receive() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("reset-down", async (pipe) => {
+              const buf = new Uint8Array(16);
+              const n = await pipe.receive(buf, 0, buf.length);   // the byte sent before the reset
+              let err = "none";
+              try { await pipe.receive(buf, 0, buf.length); } catch (e) { err = (e && e.message) || String(e); }
+              pipe.send(ymix.utf8Encode(n + "|" + err));          // our write end is still open
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val pipe = rt.openPipe("reset-down")
+            pipe.send(byteArrayOf(42))
+            pipe.close("boom: connection lost")
+            assertEquals("1|boom: connection lost", pipe.readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** A JS RESET (close with a reason) surfaces in Kotlin as [PipeResetException] with the reason —
+     *  not as a clean EOF. */
+    @Test
+    fun js_reset_surfaces_as_pipe_reset_exception() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load("""ymix.onAccept("reset-up", async (pipe) => { pipe.close("kaboom mid-stream"); });""")
+        try {
+            val pipe = rt.openPipe("reset-up")
+            val e = assertFailsWith<PipeResetException> { pipe.receive(ByteArray(8), 0, 8) }
+            assertEquals("kaboom mid-stream", e.reason)
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** A Kotlin handler that throws RESETs the pipe with the failure message, so the JS client's
+     *  read throws instead of hanging or seeing a clean EOF. */
+    @Test
+    fun kotlin_handler_failure_resets_js_pipe() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAccept("boom") { throw RuntimeException("handler blew up") }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              const io = ymix.open("boom");
+              let err = "none";
+              try { await io.receive(new Uint8Array(8), 0, 8); } catch (e) { err = (e && e.message) || String(e); }
+              p.send(ymix.utf8Encode(err));
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("handler blew up", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The mirror: a JS handler that throws RESETs the pipe with the error message, surfacing in
+     *  Kotlin as [PipeResetException]. */
+    @Test
+    fun js_handler_failure_resets_kotlin_pipe() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load("""ymix.onAccept("jsboom", async (pipe) => { throw new Error("js blew up"); });""")
+        try {
+            val pipe = rt.openPipe("jsboom")
+            val e = assertFailsWith<PipeResetException> { pipe.receive(ByteArray(8), 0, 8) }
+            assertEquals("js blew up", e.reason)
         } finally {
             rt.close()
         }

@@ -1,6 +1,7 @@
 #include "quickjs_native.h"
 #include "quickjs.h"
 #include "quickjs_json.h"
+#include "quickjs_pipe.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,7 +10,8 @@ struct QjsEngine {
     JSContext *ctx;
     QjsInboundCb cb;
     void *user;
-    JSValue jsOpen, jsData, jsClose; /* JS mux entry points (C -> JS) */
+    QjsPool *pool;
+    JSValue jsOpen, jsData, jsClose, jsCloseRead, jsNotify; /* JS mux entry points (C -> JS) */
 };
 
 static void pump(QjsEngine *e) {
@@ -31,7 +33,8 @@ static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSV
     return JS_UNDEFINED;
 }
 
-/* __hostData(id, u8, off, len) */
+/* __hostData(id, u8, off, len) -> accepted byte count (or -1 EPIPE). The payload pointer is only
+ * valid during this call; the Kotlin mux consumes it synchronously (parked reader / okio buffer). */
 static JSValue js_host_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
@@ -39,30 +42,50 @@ static JSValue js_host_data(JSContext *ctx, JSValueConst this_val, int argc, JSV
     JS_ToUint32(ctx, &id, argv[0]);
     JS_ToInt64(ctx, &off, argv[2]);
     JS_ToInt64(ctx, &len, argv[3]);
+    int rc = -1;
     size_t ta_off = 0, ta_len = 0, bpe = 0;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
     if (!JS_IsException(ab)) {
         size_t sz = 0;
         uint8_t *ptr = JS_GetArrayBuffer(ctx, &sz, ab);
-        if (ptr && e->cb && len > 0) e->cb(e->user, QJS_OP_DATA, id, ptr + ta_off + off, (size_t)len);
+        if (ptr && e->cb && len > 0) rc = e->cb(e->user, QJS_OP_WRITE, id, ptr + ta_off + off, (size_t)len);
+        else rc = 0;
     }
     JS_FreeValue(ctx, ab);
-    return JS_UNDEFINED;
+    return JS_NewInt32(ctx, rc);
 }
 
-/* __hostClose(id, reason)  — reason null/undefined = END, string = RESET */
+/* __hostClose(id, reason)  — write-side half-close: reason null/undefined = END, string = RESET */
 static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
-    if (JS_IsNull(argv[1]) || JS_IsUndefined(argv[1])) {
-        if (e->cb) e->cb(e->user, QJS_OP_CLOSE, id, NULL, 0);
-    } else {
-        size_t len = 0;
-        const char *reason = JS_ToCStringLen(ctx, &len, argv[1]);
-        if (e->cb) e->cb(e->user, QJS_OP_CLOSE, id, (const uint8_t *)(reason ? reason : ""), reason ? len : 0);
-        if (reason) JS_FreeCString(ctx, reason);
-    }
+    const char *reason = NULL;
+    size_t rlen = 0;
+    if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]))
+        reason = JS_ToCStringLen(ctx, &rlen, argv[1]);
+    if (e->cb) e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)reason, rlen);
+    if (reason) JS_FreeCString(ctx, reason);
+    return JS_UNDEFINED;
+}
+
+/* __hostCloseRead(id) — abandon the read end: the host's next write gets EPIPE */
+static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
+    uint32_t id = 0;
+    JS_ToUint32(ctx, &id, argv[0]);
+    if (e->cb) e->cb(e->user, QJS_OP_CLOSE_READ, id, NULL, 0);
+    return JS_UNDEFINED;
+}
+
+/* __hostNotify(id, code)  — flow control (DRAIN) */
+static JSValue js_host_notify(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
+    uint32_t id = 0;
+    int32_t code = 0;
+    JS_ToUint32(ctx, &id, argv[0]);
+    JS_ToInt32(ctx, &code, argv[1]);
+    if (e->cb) e->cb(e->user, QJS_OP_NOTIFY, id, NULL, (size_t)code);
     return JS_UNDEFINED;
 }
 
@@ -72,15 +95,18 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     e->ctx = JS_NewContext(e->rt);
     e->cb = cb;
     e->user = user;
-    e->jsOpen = e->jsData = e->jsClose = JS_UNDEFINED;
+    e->jsOpen = e->jsData = e->jsClose = e->jsCloseRead = e->jsNotify = JS_UNDEFINED;
     JS_SetContextOpaque(e->ctx, e);
 
     JSValue g = JS_GetGlobalObject(e->ctx);
     JS_SetPropertyStr(e->ctx, g, "__hostOpen", JS_NewCFunction(e->ctx, js_host_open, "__hostOpen", 2));
     JS_SetPropertyStr(e->ctx, g, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, g, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
+    JS_SetPropertyStr(e->ctx, g, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
+    JS_SetPropertyStr(e->ctx, g, "__hostNotify", JS_NewCFunction(e->ctx, js_host_notify, "__hostNotify", 2));
     JS_FreeValue(e->ctx, g);
     qjs_register_json(e->ctx);
+    e->pool = qjs_register_pipe(e->ctx);
 
     JSValue r = JS_Eval(e->ctx, bootstrap, strlen(bootstrap), "<bootstrap>", JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(r)) {
@@ -92,6 +118,7 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
         JS_FreeValue(e->ctx, r);
         JS_FreeContext(e->ctx);
         JS_FreeRuntime(e->rt);
+        qjs_pool_free(e->pool);
         free(e);
         return NULL;
     }
@@ -101,6 +128,8 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     e->jsOpen = JS_GetPropertyStr(e->ctx, g2, "__jsOpen");
     e->jsData = JS_GetPropertyStr(e->ctx, g2, "__jsData");
     e->jsClose = JS_GetPropertyStr(e->ctx, g2, "__jsClose");
+    e->jsCloseRead = JS_GetPropertyStr(e->ctx, g2, "__jsCloseRead");
+    e->jsNotify = JS_GetPropertyStr(e->ctx, g2, "__jsNotify");
     JS_FreeValue(e->ctx, g2);
     return e;
 }
@@ -130,28 +159,67 @@ char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int 
 
 /* ---- outbound: host -> JS (call the JS mux entry points) ---- */
 
-static void call_js(QjsEngine *e, JSValue fn, int argc, JSValue *argv) {
+/* Call [fn]; return its result as an int (or the given default on exception). Frees argv. Runs the
+ * microtask pump afterward. */
+static int call_js(QjsEngine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     JSValue g = JS_GetGlobalObject(e->ctx);
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
+    int rc = exc_rc;
+    if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* bootstrap bug; don't leave it pending */
     JS_FreeValue(e->ctx, r);
     JS_FreeValue(e->ctx, g);
     for (int i = 0; i < argc; i++) JS_FreeValue(e->ctx, argv[i]);
     pump(e);
+    return rc;
 }
 
 void qjs_open(QjsEngine *e, uint32_t id, const char *command) {
     JSValue argv[2] = { JS_NewUint32(e->ctx, id), JS_NewString(e->ctx, command ? command : "") };
-    call_js(e, e->jsOpen, 2, argv);
+    call_js(e, e->jsOpen, 2, argv, 0);
 }
 
-void qjs_data(QjsEngine *e, uint32_t id, const uint8_t *data, size_t len) {
-    JSValue argv[2] = { JS_NewUint32(e->ctx, id), JS_NewArrayBufferCopy(e->ctx, data, len) };
-    call_js(e, e->jsData, 2, argv);
+int qjs_write(QjsEngine *e, uint32_t id, const uint8_t *data, size_t len) {
+    if (len == 0) return 0;
+    JSValue ab = JS_UNDEFINED;
+    JSValue view = qjs_view_wrap(e->ctx, data, len, &ab);
+    if (JS_IsException(view)) {
+        JS_FreeValue(e->ctx, JS_GetException(e->ctx));
+        return -1;
+    }
+    JSValue argv[2] = { JS_NewUint32(e->ctx, id), JS_DupValue(e->ctx, view) };
+    JSValue g = JS_GetGlobalObject(e->ctx);
+    JSValue r = JS_Call(e->ctx, e->jsData, g, 2, argv);
+    /* An exception here is a bootstrap bug; report EPIPE so the writer fails loudly, never hangs. */
+    int rc = -1;
+    if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx));
+    JS_FreeValue(e->ctx, r);
+    JS_FreeValue(e->ctx, g);
+    JS_FreeValue(e->ctx, argv[0]);
+    JS_FreeValue(e->ctx, argv[1]);
+    /* The caller's memory stops being valid when we return: detach BEFORE microtasks can run. */
+    qjs_view_detach(e->ctx, view, ab);
+    pump(e);
+    return rc;
 }
 
-void qjs_close_pipe(QjsEngine *e, uint32_t id, const char *reason) {
-    JSValue argv[2] = { JS_NewUint32(e->ctx, id), reason ? JS_NewString(e->ctx, reason) : JS_NULL };
-    call_js(e, e->jsClose, 2, argv);
+void qjs_close_write(QjsEngine *e, uint32_t id, const char *reason) {
+    JSValue argv[2] = {
+        JS_NewUint32(e->ctx, id),
+        reason ? JS_NewString(e->ctx, reason) : JS_NULL,
+    };
+    call_js(e, e->jsClose, 2, argv, 0);
+}
+
+void qjs_close_read(QjsEngine *e, uint32_t id) {
+    JSValue argv[1] = { JS_NewUint32(e->ctx, id) };
+    call_js(e, e->jsCloseRead, 1, argv, 0);
+}
+
+void qjs_notify(QjsEngine *e, uint32_t id, int code) {
+    JSValue argv[2] = { JS_NewUint32(e->ctx, id), JS_NewInt32(e->ctx, code) };
+    call_js(e, e->jsNotify, 2, argv, 0);
 }
 
 void qjs_close(QjsEngine *e) {
@@ -159,8 +227,11 @@ void qjs_close(QjsEngine *e) {
     JS_FreeValue(e->ctx, e->jsOpen);
     JS_FreeValue(e->ctx, e->jsData);
     JS_FreeValue(e->ctx, e->jsClose);
+    JS_FreeValue(e->ctx, e->jsCloseRead);
+    JS_FreeValue(e->ctx, e->jsNotify);
     JS_FreeContext(e->ctx);
-    JS_FreeRuntime(e->rt);
+    JS_FreeRuntime(e->rt); /* segment free_funcs run here -> pool must still be alive */
+    qjs_pool_free(e->pool);
     free(e);
 }
 
