@@ -3,6 +3,7 @@ package kmphttp
 import kmphttp.internal.AsyncChain
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -157,12 +158,23 @@ class OkKmpHttpClient : KmpHttpClient {
                 request.tag(RedirectOptions::class) ?: return chain.proceed(request)
             if (okKmp.networkInterceptors.isEmpty()) return chain.proceed(request)
             val parent = request.tag(Job::class) ?: return chain.proceed(request)
-            return runBlocking(parent) {
-                AsyncChain(
-                    okKmp.networkInterceptors, 0,
-                    { finalRequest -> chain.proceed(finalRequest) },
-                    request, redirectOptions
-                ).proceed(request)
+            // One-way linkage to the caller: SupervisorJob(parent) lets the caller's cancellation
+            // reach the interceptors, but an ordinary network failure in here must NOT cancel the
+            // caller's job tree. With runBlocking(parent) directly, every IOException from
+            // chain.proceed first cancelled the caller (a failed child cancels a regular parent) —
+            // taking down unrelated sibling work — and then arrived at an already-cancelled
+            // continuation, where it was swallowed instead of surfacing from execute().
+            val bridgeJob = SupervisorJob(parent)
+            try {
+                return runBlocking(bridgeJob) {
+                    AsyncChain(
+                        okKmp.networkInterceptors, 0,
+                        { finalRequest -> chain.proceed(finalRequest) },
+                        request, redirectOptions
+                    ).proceed(request)
+                }
+            } finally {
+                bridgeJob.complete() // don't linger as a child of the caller's job
             }
         }
     }
