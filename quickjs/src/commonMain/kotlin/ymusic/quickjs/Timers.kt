@@ -55,11 +55,14 @@ private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
     pipe.close()
 }
 
-/** First frame carries the delay as decimal text. */
+/** First frame is the delay as a big-endian 8-byte long (okio `readLong`); the fixed width
+ *  self-frames it, so a split write can't be misread as a shorter value. */
 private suspend fun readMillis(pipe: Pipe): Long {
     val buf = Buffer()
-    if (pipe.receive(buf, 32L) <= 0L) return 0
-    return buf.readUtf8().trim().toLongOrNull()?.coerceAtLeast(0) ?: 0
+    while (buf.size < 8L) {
+        if (pipe.receive(buf, 8L - buf.size) < 0L) return 0L // closed before a full frame
+    }
+    return buf.readLong().coerceAtLeast(0L)
 }
 
 /** Suspend until the peer closes the pipe (JS sends nothing after the delay). */

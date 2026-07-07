@@ -46,6 +46,11 @@
   var PIPE_CAP = 65536, PIPE_LOW = 32768; // per-direction buffer bound (must match QuickJsRuntime.kt)
   var EOF = -1, WOULD_BLOCK = -2;         // take(): EOF is the public receive() value; WOULD_BLOCK is internal
   function brokenPipe() { return new Error("EPIPE: broken pipe"); }
+  // One shared scratch for every fixed-width int read, across all pipes. Safe despite the pipe
+  // multiplexing: the buffered source's readInt/readLong await request(n) FIRST, then copy out and
+  // decode in a synchronous tail — nothing yields while holding intBuf, and single-threaded
+  // microtasks never interleave two such tails.
+  var intBuf = new Uint8Array(8), intView = new DataView(intBuf.buffer);
 
   // Each pipe direction is a bounded, flow-controlled byte stream. Inbound bytes queue here as
   // Uint8Array views over pooled C segments (we're the reader — the queue is just views+counters,
@@ -109,6 +114,9 @@
     return {
       id: id,
       command: command,
+      // Bytes currently buffered (not yet read) — the buffered source's request(n) polls this before
+      // a synchronous fixed-width copy-out.
+      available: function () { return buffered; },
 
       // Deliver buffer[offset, offset+len) to the host. __hostData consumes synchronously (parked
       // Kotlin reader and/or its okio buffer) and returns the accepted count. Fully accepted ->
@@ -371,6 +379,7 @@
       // no matter how many bytes are written. Flush boundaries are invisible to the peer — the pipe
       // is a byte stream and the reader reassembles across them.
       var wbuf = new Uint8Array(8192), wlen = 0;
+      var wView = new DataView(wbuf.buffer); // fixed-width int writes land straight in the staging buffer
       // line splitter (native, __lineNew) — one per wrapper, reused across readUtf8Line calls
       var lineSplit = null;
 
@@ -444,12 +453,37 @@
         }
       }
 
+      // Park (without consuming) until at least n bytes are buffered; false if the stream ends first.
+      // Backs the fixed-width reads: they await this, then copy out synchronously (see intBuf).
+      async function requestN(n) {
+        while (pipe.available() < n) {
+          var w = pipe.awaitReadable();
+          if (!w) return pipe.available() >= n; // stream ended
+          await w;
+        }
+        return true;
+      }
+
       return {
         // ---- BufferedSource (in-place over the pipe's segment queue) ----
         // Read up to len bytes into buffer at offset; count, or -1 at EOF (pipe.receive semantics —
         // synchronous when bytes are buffered, direct-delivery rendezvous when parked).
         read(buffer, offset, len) {
           return pipe.receive(buffer, offset, len);
+        },
+        // Fixed-width big-endian integers, the read mirror of writeInt/writeLong: block until the full
+        // 4/8 bytes arrive (throw on a short stream), then copy out + decode synchronously (the shared
+        // intBuf is safe only because nothing yields between here and the return). readLong returns a
+        // JS number (safe-integer range — the timer delay and typical length fields).
+        async readInt() {
+          if (!(await requestN(4))) throw new Error("readInt: stream ended before 4 bytes");
+          pipe.receive(intBuf, 0, 4); // synchronous: >= 4 buffered, nothing consumed since requestN
+          return intView.getInt32(0);
+        },
+        async readLong() {
+          if (!(await requestN(8))) throw new Error("readLong: stream ended before 8 bytes");
+          pipe.receive(intBuf, 0, 8);
+          return Number(intView.getBigInt64(0));
         },
         // One line up to '\n' (trailing '\r' stripped), decoded natively straight from the queued
         // segments. Non-strict (default): a final line without a '\n' is returned, and a clean EOF
@@ -515,6 +549,30 @@
         // Append b. A large input (>= a segment) bypasses the buffer: it streams to the pipe in
         // segment-sized slices, paced by the reader — a few-MB array is never held whole.
         writeBytes(b) { return writeBytesFn(b); },
+        // Fixed-width big-endian integers (okio Buffer.writeInt/writeLong byte order), for length
+        // prefixes and self-framing headers. writeLong takes a JS number (safe-integer range) or a
+        // BigInt. Out-of-range values throw rather than silently wrap (DataView truncates mod 2^n),
+        // so a too-big long is caught at the call, not shipped as garbage. Coalesced like any small
+        // write — the sequential-write rule still applies.
+        writeInt(v) {
+          if (!Number.isInteger(v) || v < -2147483648 || v > 2147483647)
+            throw new RangeError("writeInt: " + v + " is not a signed 32-bit integer");
+          if (wlen + 4 > wbuf.length) {
+            var p = flushSink();
+            if (p) return p.then(function () { wView.setInt32(wlen, v); wlen += 4; });
+          }
+          wView.setInt32(wlen, v); wlen += 4;
+        },
+        writeLong(v) {
+          var b = typeof v === "bigint" ? v : BigInt(Math.trunc(v));
+          if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn)
+            throw new RangeError("writeLong: " + b + " does not fit in a signed 64-bit long");
+          if (wlen + 8 > wbuf.length) {
+            var p = flushSink();
+            if (p) return p.then(function () { wView.setBigInt64(wlen, b); wlen += 8; });
+          }
+          wView.setBigInt64(wlen, b); wlen += 8;
+        },
         // Variadic: writeUtf8(a, b, c) stream-encodes the parts back-to-back with no `a + b + c`
         // first (QuickJS strings are immutable, so + would allocate and copy).
         writeUtf8() {
@@ -574,7 +632,11 @@
 (function () {
   function startTimer(cb, ms, command, repeat, args) {
     var pipe = ymix.open(command);
-    pipe.send(ymix.utf8Encode(String(Math.max(0, Math.floor(Number(ms) || 0)))));
+    // Delay as a big-endian 8-byte long — fixed width self-frames it (Kotlin reads it with okio
+    // readLong); io is discarded right after, its 8 bytes copied out by flush().
+    var io = ymix.buffered(pipe);
+    io.writeLong(Math.max(0, Math.floor(Number(ms) || 0)));
+    io.flush();
     var buf = new Uint8Array(1);
     (async function () {
       try {

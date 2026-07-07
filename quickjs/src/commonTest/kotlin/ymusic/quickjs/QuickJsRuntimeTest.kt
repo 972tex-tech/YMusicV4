@@ -1045,6 +1045,91 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** okio-style fixed-width integers cross the pipe both ways: Kotlin writes an int + long with
+     *  okio, JS reads them via the buffered source's readInt/readLong and echoes them back through
+     *  writeInt/writeLong, and okio reads them out unchanged. */
+    @Test
+    fun buffered_fixed_width_ints_round_trip() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("intecho", async (pipe) => {
+              const io = ymix.buffered(pipe);
+              const i = await io.readInt();
+              const l = await io.readLong();
+              io.writeInt(i);
+              io.writeLong(l);
+              await io.flush();
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val pipe = rt.openPipe("intecho")
+            val out = Buffer().apply { writeInt(-42); writeLong(1234567890123L) }
+            pipe.send(out, out.size)
+            val inb = Buffer()
+            while (inb.size < 12L) { if (pipe.receive(inb, 12L) < 0L) break }
+            assertEquals(-42, inb.readInt())
+            assertEquals(1234567890123L, inb.readLong())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** readLong reassembles a frame that arrives fragmented — one byte per write, so request(8) must
+     *  park and resume on each byte rather than taking the all-buffered fast path. */
+    @Test
+    fun buffered_readLong_reassembles_a_fragmented_frame() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("longin", async (pipe) => {
+              const io = ymix.buffered(pipe);
+              const v = await io.readLong();
+              io.writeLong(v);
+              await io.flush();
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            val pipe = rt.openPipe("longin")
+            val value = 1234567890123L // within readLong's documented safe-integer (<2^53) range
+            val bytes = Buffer().apply { writeLong(value) }.readByteArray()
+            for (b in bytes) pipe.send(Buffer().apply { writeByte(b.toInt()) }, 1L) // one byte per write
+            val inb = Buffer()
+            while (inb.size < 8L) { if (pipe.receive(inb, 8L) < 0L) break }
+            assertEquals(value, inb.readLong())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** writeLong throws on a BigInt that doesn't fit a signed 64-bit long, rather than silently
+     *  wrapping it (DataView.setBigInt64 truncates mod 2^64). */
+    @Test
+    fun writeLong_rejects_out_of_range_bigint() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("bigcheck", async (pipe) => {
+              const io = ymix.buffered(pipe);
+              let msg = "no throw";
+              try { io.writeLong(0x8000000000000000n); } catch (e) { msg = "threw: " + e.constructor.name; }
+              io.writeUtf8(msg);
+              await io.flush();
+              pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("threw: RangeError", rt.openPipe("bigcheck").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A RESET is terminal for the read side: every receive() after the first re-throws
      *  [PipeResetException] (the KDoc contract), not a read-closed IllegalStateException. */
     @Test
