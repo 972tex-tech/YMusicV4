@@ -107,7 +107,7 @@ fun String.toHttpDateOrNull(): Instant? {
     if (isEmpty()) return null
 
     return httpDateFormats.firstNotNullOfOrNull { format ->
-        format.parseOrNull(this)?.apply {
+        val components = format.parseOrNull(this)?.apply {
             // Handle 2-digit years parsed with base 1900:
             // 1970-1999 are correct (from input 70-99)
             // 1900-1969 need +100 to become 2000-2069 (from input 00-69)
@@ -115,7 +115,16 @@ fun String.toHttpDateOrNull(): Instant? {
             if (y != null && y in 1900..1969) {
                 year = y + 100
             }
-        }?.toInstantUsingOffset()
+        } ?: return@firstNotNullOfOrNull null
+        // parseOrNull is lenient (accepts Feb 31, second=70); range validation lives in
+        // toInstantUsingOffset, which THROWS IllegalArgumentException. Swallow it so a function
+        // named ...OrNull returns null (OkHttp's behavior) instead of throwing IAE out of the
+        // cache path on one semantically-invalid Date/Expires header.
+        try {
+            components.toInstantUsingOffset()
+        } catch (e: IllegalArgumentException) {
+            null
+        }
     }
 }
 
