@@ -152,11 +152,13 @@
         });
       },
 
-      // Park until MORE input (or EOF/RESET) arrives, WITHOUT a destination buffer — incoming
-      // bytes stay queued for in-place scanning. Scanners always scan first, then park: nothing
-      // can arrive between the scan and the park (single thread), so no wakeup is lost. Returns
-      // undefined when already ended (rescan handles the final bytes), else a Promise.
-      awaitReadable: function () {
+      // Park for the NEXT delivery beyond what's already queued (NOT "is data readable"): always
+      // async when the stream is live, regardless of buffered bytes. Callers must have already
+      // consumed/counted the current buffer — scanners consume it first, requestN guards with
+      // available() < n — otherwise a "resolve if any data" variant would spin them. No wakeup is
+      // lost: single-threaded, so nothing arrives between a caller's scan and its park. Returns
+      // undefined once the write end has ended (the caller rescans the final bytes), else a Promise.
+      awaitMore: function () {
         if (readClosed) throw new Error("receive() after closeRead()");
         if (waiter) throw new Error("concurrent receive() on the same pipe");
         if (resetReason !== null) throw new Error(resetReason);
@@ -457,7 +459,7 @@
       // Backs the fixed-width reads: they await this, then copy out synchronously (see intBuf).
       async function requestN(n) {
         while (pipe.available() < n) {
-          var w = pipe.awaitReadable();
+          var w = pipe.awaitMore();
           if (!w) return pipe.available() >= n; // stream ended
           await w;
         }
@@ -498,7 +500,7 @@
               if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
               return last;
             }
-            var w = pipe.awaitReadable(); if (w) await w;
+            var w = pipe.awaitMore(); if (w) await w;
           }
         },
         // Parse ONE top-level JSON object / array via the native streaming parser, fed segment by
@@ -513,7 +515,7 @@
           for (;;) {
             var s = pipe._jsonFeed(p);
             if (s !== 0) return __jsonEnd(p); // 1 = complete; -1 = EOF (finalize, or throw if incomplete)
-            var w = pipe.awaitReadable(); if (w) await w;
+            var w = pipe.awaitMore(); if (w) await w;
           }
         },
         // All remaining bytes to EOF, decoded as UTF-8 in ONE pass at the end (multi-byte chars can
