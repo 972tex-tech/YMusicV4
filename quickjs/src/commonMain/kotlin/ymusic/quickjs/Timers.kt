@@ -26,13 +26,17 @@ internal fun QuickJsRuntime.installTimers() {
 
 private const val TICK = 1
 
+/** HTML5's minimum for `setInterval`; also the floor that keeps a 0 ms interval — a NaN/garbage
+ *  delay coerces to 0 upstream — from hot-looping the single engine thread with back-to-back ticks. */
+private const val MIN_INTERVAL_MS = 4L
+
 /**
  * Read the delay, then fire after it — racing each wait against the pipe's close so a cleared timer
  * stops promptly and its `delay` is cancelled (no coroutine left sleeping). `setInterval` loops;
  * `setTimeout` fires once.
  */
 private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
-    val ms = readMillis(pipe)
+    val ms = readMillis(pipe).let { if (repeat) it.coerceAtLeast(MIN_INTERVAL_MS) else it }
     coroutineScope {
         val cleared = async { pipe.awaitClose() } // completes when JS closes the pipe (clear*)
         try {
