@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ymusic.mediascanner.internal.guessMimeType
 import java.io.File
+import java.io.IOException
 
 /**
  * A [DocumentsProvider] over Android's Storage Access Framework — the counterpart to the desktop
@@ -58,8 +59,12 @@ class SafDocumentsProvider(
         val android = AndroidUri.parse(folderUri.toString())
         if (android.scheme == "file") {
             val dir = File(requireNotNull(android.path))
-            if (!dir.canRead() || !dir.isDirectory) return@withContext emptyList()
-            return@withContext dir.listFiles().orEmpty().map { child ->
+            // Unreadable/unenumerable is an ERROR, never an empty listing — the scanner turns
+            // absences into deletions, so swallowing this would tombstone the folder's library.
+            if (!dir.isDirectory) throw IOException("not a folder: $dir")
+            if (!dir.canRead()) throw IOException("folder not readable: $dir")
+            val children = dir.listFiles() ?: throw IOException("could not list: $dir")
+            return@withContext children.map { child ->
                 fileDocument(Uri.parse(AndroidUri.fromFile(child).toString()), child)
             }
         }
@@ -77,7 +82,7 @@ class SafDocumentsProvider(
                 result += c.toDocumentInfo(Uri.parse(childAndroidUri.toString()))
             } while (c.moveToNext())
             result
-        } ?: emptyList()
+        } ?: throw IOException("provider query failed for $childrenUri") // null cursor is an error, not an empty folder
     }
 
     private fun hasReadPermission(android: AndroidUri): Boolean = runCatching {

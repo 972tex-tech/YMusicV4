@@ -45,7 +45,8 @@ class FileSystemDocumentsProvider(
     override suspend fun listChildren(folderUri: Uri): List<DocumentInfo> = withContext(io) {
         if (!folderUri.scheme.contentEquals("file")) return@withContext emptyList()
         val dir = folderUri.path.toString().toPath()
-        val children = runCatching { fileSystem.list(dir) }.getOrNull() ?: return@withContext emptyList()
+        val children = fileSystem.list(dir) // throws on unreadable: NEVER report it as empty
+
         children.map { child ->
             val childUri = fileUri(child)
             val md = fileSystem.metadataOrNull(child)
