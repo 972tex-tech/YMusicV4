@@ -139,8 +139,6 @@ internal class CurlExecutor(
 
             val curl = EasyHandle.create()
             easyHandle = curl
-            curl.setVerbose(true)
-
 
             curl.setMethod(request.method)
             curl.setUrl(request.url.toString())
