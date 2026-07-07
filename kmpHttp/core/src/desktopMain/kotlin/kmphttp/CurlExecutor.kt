@@ -18,7 +18,6 @@ package kmphttp
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.readByteArray
 import kmpcommon.kilobytes
-import kmphttp.curl.CurlHttpVersion
 import kmphttp.curl.CurlMultiApi
 import kmphttp.curl.EasyHandle
 import kmphttp.HttpCache
@@ -102,14 +101,6 @@ private val RECOVERABLE_CURL_ERRORS: Set<UInt> = setOf(
     CURLE_SEND_ERROR,
     CURLE_RECV_ERROR,
 )
-
-private fun CurlHttpVersion.toProtocol(): Protocol = when (this) {
-    CurlHttpVersion.HTTP_1_0 -> Protocol.HTTP_1_0
-    CurlHttpVersion.HTTP_1_1 -> Protocol.HTTP_1_1
-    CurlHttpVersion.HTTP_2 -> Protocol.HTTP_2
-    CurlHttpVersion.HTTP_3 -> Protocol.HTTP_3
-    CurlHttpVersion.UNKNOWN -> Protocol.HTTP_1_1
-}
 
 /**
  * Executes a single request, managing the curl easy-handle lifecycle. Driven by
@@ -195,15 +186,16 @@ internal class CurlExecutor(
             }
 
 
-            // Wait for headers to be received
-            val headers = responseHeaderHandler.await()
+            // Code/version come from the status line (parsed on the event-loop thread), not
+            // curl_easy_getinfo — the caller must not touch the handle while the multi loop drives it.
+            val headerResult = responseHeaderHandler.await()
             val receivedResponseAtMillis = Clock.System.now().toEpochMilliseconds()
 
             return buildResponse(
                 request = request,
-                code = curl.getResponseCode().toInt(),
-                protocol = curl.getHttpVersion().toProtocol(),
-                headers = headers,
+                code = headerResult.code,
+                protocol = headerResult.protocol,
+                headers = headerResult.headers,
                 streamingHandler = streamingHandler,
                 sentRequestAtMillis = sentRequestAtMillis,
                 receivedResponseAtMillis = receivedResponseAtMillis
@@ -603,7 +595,11 @@ private class StreamingResponseHandler(
  * Collects response headers from curl HEADERFUNCTION callback.
  */
 private class ResponseHeaderHandler {
-    private val finalHeader = CompletableDeferred<Headers>()
+    /** Headers plus the status code and HTTP version, all derived on the event-loop thread from
+     *  the status line — so the caller never reads them off the shared easy handle. */
+    class HeaderResult(val headers: Headers, val code: Int, val protocol: Protocol)
+
+    private val finalHeader = CompletableDeferred<HeaderResult>()
     private var statusLine: String? = null
     private val headerLines = mutableListOf<String>()
     private val lock = SynchronizedObject()
@@ -620,13 +616,16 @@ private class ResponseHeaderHandler {
                 val statusLine = statusLine
                 check(statusLine != null) { "Receive header terminator but missing status line" }
                 val spaceIndex = statusLine.indexOf(' ')
+                var code = 0
                 if (spaceIndex > -1 && spaceIndex + 3 < statusLine.length) {
-                    val code = statusLine.substring(spaceIndex + 1, spaceIndex + 4).toIntOrNull()
-                    if (code == 100) {
-                        // if receive 100-continue, reset status line and continue
+                    val parsed = statusLine.substring(spaceIndex + 1, spaceIndex + 4).toIntOrNull()
+                    if (parsed == 100) {
+                        // 100-continue: reset the status line and drop any 1xx headers.
                         this.statusLine = null
+                        headerLines.clear()
                         return
                     }
+                    if (parsed != null) code = parsed
                 }
 
                 val builder = HeadersBuilder()
@@ -638,12 +637,23 @@ private class ResponseHeaderHandler {
                         builder.addUnsafeNonAscii(name, value)
                     }
                 }
-                finalHeader.complete(builder.build())
+                finalHeader.complete(
+                    HeaderResult(builder.build(), code, protocolFromStatusLine(statusLine)),
+                )
                 return
             }
             headerLines.add(line)
         }
     }
+
+    private fun protocolFromStatusLine(statusLine: String): Protocol =
+        when (statusLine.substringBefore(' ')) {
+            "HTTP/1.0" -> Protocol.HTTP_1_0
+            "HTTP/1.1" -> Protocol.HTTP_1_1
+            "HTTP/2", "HTTP/2.0" -> Protocol.HTTP_2
+            "HTTP/3", "HTTP/3.0" -> Protocol.HTTP_3
+            else -> Protocol.HTTP_1_1
+        }
 
     suspend fun await() = finalHeader.await()
     fun cancel(e: Throwable?) {
