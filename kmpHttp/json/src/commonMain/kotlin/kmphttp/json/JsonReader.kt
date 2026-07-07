@@ -230,23 +230,41 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                                 bytesNeeded = 6 + 1
                                 return null
                             }
-                            if (!skipping) {
-                                var codePoint = 0
-                                for (i in 0L until 4) {
-                                    codePoint = codePoint shl 4
-                                    codePoint +=
-                                        when (val c = buffer[i + 2].toInt().toChar()) {
-                                            in '0'..'9' -> c - '0'
-                                            in 'a'..'f' -> c - 'a' + 10
-                                            in 'A'..'F' -> c - 'A' + 10
-                                            else -> throw JsonSyntaxException(
-                                                buffer.readUtf8(6)
-                                            )
+                            if (skipping) {
+                                buffer.skip(6)
+                            } else {
+                                val codePoint = hex4OrNull(buffer, 2)
+                                    ?: throw JsonSyntaxException(buffer.readUtf8(6))
+                                var toWrite = codePoint
+                                var consumed = 6L
+                                if (codePoint in 0xD800..0xDBFF) {
+                                    // A high surrogate: JSON transmits astral characters as an
+                                    // escaped surrogate PAIR (\uD83D\uDE00). The halves must be
+                                    // combined before writing — writeUtf8CodePoint replaces any
+                                    // lone surrogate with '?', so writing them independently
+                                    // corrupts every escaped emoji into "??".
+                                    if (buffer.size < 12 && !sourceEof) {
+                                        bytesNeeded = 12 + 1 // need the (potential) low half too
+                                        return null
+                                    }
+                                    if (buffer.size >= 12 &&
+                                        buffer[6] == '\\'.code.toByte() &&
+                                        buffer[7] == 'u'.code.toByte()
+                                    ) {
+                                        val lo = hex4OrNull(buffer, 8)
+                                        if (lo != null && lo in 0xDC00..0xDFFF) {
+                                            toWrite = 0x10000 +
+                                                ((codePoint - 0xD800) shl 10) + (lo - 0xDC00)
+                                            consumed = 12L
                                         }
+                                        // Not a low surrogate: fall through — the lone high half
+                                        // becomes '?' (as before) and the next escape is
+                                        // processed, and validated, on its own.
+                                    }
                                 }
-                                state.buffer.writeUtf8CodePoint(codePoint)
+                                state.buffer.writeUtf8CodePoint(toWrite)
+                                buffer.skip(consumed)
                             }
-                            buffer.skip(6)
                         }
 
                         else -> {
@@ -259,6 +277,21 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                 else -> throw IllegalStateException("???")
             }
         }
+    }
+
+    /** The 4 hex digits at [at]..[at]+3 of [buffer], or null if any is not a hex digit. */
+    private fun hex4OrNull(buffer: Buffer, at: Long): Int? {
+        var value = 0
+        for (i in 0L until 4) {
+            value = value shl 4
+            value += when (val c = buffer[at + i].toInt().toChar()) {
+                in '0'..'9' -> c - '0'
+                in 'a'..'f' -> c - 'a' + 10
+                in 'A'..'F' -> c - 'A' + 10
+                else -> return null
+            }
+        }
+        return value
     }
 
     private fun peekTokenTypeInternal(): JsonTokenType? {

@@ -108,6 +108,42 @@ class JsonReaderTest {
     }
 
     @Test
+    fun testReadSurrogatePairEscapes() = runTest {
+        // Astral characters escape as surrogate PAIRS; each half written alone becomes '?'.
+        val json = "{\"emoji\": \"\\uD83D\\uDE00 ok \\uD83C\\uDF89\"}"
+        val reader = json.toJsonReader()
+
+        reader.beginObject()
+        assertEquals("emoji", reader.nextKey())
+        assertEquals("\uD83D\uDE00 ok \uD83C\uDF89", reader.nextValue().jsonPrimitive.content)
+        reader.endObject()
+    }
+
+    @Test
+    fun testReadSurrogatePairEscapesAcrossChunks() = runTest {
+        // One byte per read: the pair straddles every possible refill boundary, exercising the
+        // needs-more-bytes resume path between the high and low halves.
+        val json = "{\"emoji\": \"x\\uD83D\\uDE00y\"}"
+        val reader = json.toJsonReaderChunked(1)
+
+        reader.beginObject()
+        assertEquals("emoji", reader.nextKey())
+        assertEquals("x\uD83D\uDE00y", reader.nextValue().jsonPrimitive.content)
+        reader.endObject()
+    }
+
+    @Test
+    fun testLoneSurrogateEscapeDoesNotCorruptWhatFollows() = runTest {
+        val json = "{\"s\": \"\\uD83Dab\"}"
+        val reader = json.toJsonReader()
+
+        reader.beginObject()
+        assertEquals("s", reader.nextKey())
+        assertEquals("?ab", reader.nextValue().jsonPrimitive.content)
+        reader.endObject()
+    }
+
+    @Test
     fun testReadUtf8Unicode() = runTest {
         val json = """{"emoji": "👍🎉", "chinese": "你好世界", "mixed": "Hello 世界 🌍"}"""
         val reader = json.toJsonReader()
