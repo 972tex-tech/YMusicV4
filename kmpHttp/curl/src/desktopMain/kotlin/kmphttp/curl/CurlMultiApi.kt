@@ -245,32 +245,41 @@ class CurlMultiApi(
      * Process pending add/cancel/unpause operations.
      */
     private fun processPendingOperations() {
-        synchronized(lock) {
-            pendingEventLoopActions.forEach { action ->
-                when (action) {
-                    is EventLoopAction.Add -> {
-                        val result = action.easyHandle.addTo(multiHandle)
-                        if (result != CURLM_OK) {
-                            activeJobs[action.easyHandle]?.completeExceptionally(
-                                IOException("Failed to add handle: ${curl_easy_strerror(result.convert())}")
-                            )
-                        }
+        // Drain under the lock, execute OUTSIDE it: unpause() is curl_easy_pause(CONT), which
+        // synchronously reenters the handle's write callback — and those callbacks take the
+        // per-transfer buffer locks whose holders call back into this class (taking `lock`).
+        // Executing curl calls while holding `lock` is a lock-order inversion that deadlocks the
+        // event loop under backpressure. The curl calls themselves need no lock: the multi handle
+        // and EasyHandle.cleanUp are only ever driven from this thread while RUNNING.
+        val actions = synchronized(lock) {
+            val drained = pendingEventLoopActions.toList()
+            pendingEventLoopActions.clear()
+            suspendCondition.pause()
+            drained
+        }
+        actions.forEach { action ->
+            when (action) {
+                is EventLoopAction.Add -> {
+                    val result = action.easyHandle.addTo(multiHandle)
+                    if (result != CURLM_OK) {
+                        val completion = synchronized(lock) { activeJobs[action.easyHandle] }
+                        completion?.completeExceptionally(
+                            IOException("Failed to add handle: ${curl_easy_strerror(result.convert())}")
+                        )
                     }
+                }
 
-                    is EventLoopAction.Remove -> {
-                        action.easyHandle.cleanUp()
-                    }
+                is EventLoopAction.Remove -> {
+                    action.easyHandle.cleanUp()
+                }
 
-                    is EventLoopAction.Unpause -> {
-                        if (activeJobs.containsKey(action.easyHandle)) {
-                            action.easyHandle.unpause()
-                        }
+                is EventLoopAction.Unpause -> {
+                    val active = synchronized(lock) { activeJobs.containsKey(action.easyHandle) }
+                    if (active && !action.easyHandle.isCleanedUp()) {
+                        action.easyHandle.unpause()
                     }
                 }
             }
-            pendingEventLoopActions.clear()
-
-            suspendCondition.pause()
         }
     }
 
