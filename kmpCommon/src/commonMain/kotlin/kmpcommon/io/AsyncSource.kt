@@ -167,6 +167,11 @@ suspend fun BufferedSink.writeAll(source: AsyncSource): Long {
         val readCount = source.read(this.buffer, 8192)
         if (readCount == -1L) break
         totalRead += readCount
+        // Push complete segments downstream as we go (okio's RealBufferedSink.writeAll does the
+        // same). Without this the whole source accumulates in the sink's buffer until the caller
+        // flushes — streaming a large upload holds the entire payload in RAM (OOM on mobile),
+        // despite the streaming name.
+        emitCompleteSegments()
     }
     return totalRead
 }
