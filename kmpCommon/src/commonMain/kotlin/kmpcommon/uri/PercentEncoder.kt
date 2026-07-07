@@ -220,7 +220,11 @@ object PercentEncoder {
                 }
 
                 var j = i
-                while (!isCodePointAllowed(input, i, codePoint, allowed, alreadyEncoded)) {
+                // Index tracks j, not i: codePoint is read at j, so the allowed-check (and its
+                // isPercentEncoded probe for alreadyEncoded) must look at j. Passing the frozen i
+                // made a valid %XX sitting after a disallowed char get swept into the encode run
+                // and double-encoded (%20 -> %2520) on any newBuilder().build() round trip.
+                while (!isCodePointAllowed(input, j, codePoint, allowed, alreadyEncoded)) {
                     j += codePoint.utfCodePointSize()
                     if (j >= input.length) break
                     else codePoint = input.getCodePointAt(j)
