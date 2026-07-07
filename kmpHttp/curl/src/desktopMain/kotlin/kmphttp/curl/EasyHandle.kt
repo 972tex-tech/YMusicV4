@@ -340,7 +340,6 @@ class EasyHandle private constructor(
 
         fun create(): EasyHandle {
             val pointer = curl_easy_init() ?: throw IOException("curl easy init failed")
-            println("easy handle create $pointer")
             return EasyHandle(pointer)
         }
 
