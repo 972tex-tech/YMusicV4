@@ -14,6 +14,7 @@ import kotlinx.coroutines.yield
 import okio.Buffer
 import okio.use
 import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
@@ -50,7 +51,13 @@ class QuickJsRuntime private constructor(
     private val scope = CoroutineScope(engineDispatcher + SupervisorJob())
     private val closed = AtomicBoolean(false)
     private val pipes = HashMap<Int, PipeImpl>()
-    private val accepts = HashMap<String, suspend (Pipe) -> Unit>()
+
+    // The one piece of state NOT confined to the engine thread: onAccept is a plain function the
+    // app calls from anywhere (main thread, after startup), while onOpen reads on the engine
+    // thread whenever JS opens a pipe. Copy-on-write behind an atomic — registration is rare,
+    // lookup is a volatile read; a plain HashMap here is a data race (a get during resize can
+    // miss a registered handler entirely).
+    private val accepts = AtomicReference(mapOf<String, suspend (Pipe) -> Unit>())
     private var nextId = 1 // Kotlin opens odd ids; JS opens even.
 
     /**
@@ -63,7 +70,10 @@ class QuickJsRuntime private constructor(
     /** Handle pipes JS opens with the exact [command] name. Any arguments are read inside [handler]
      *  from the pipe's bytes — the command is a routing name only, never carries args. */
     fun onAccept(command: String, handler: suspend (Pipe) -> Unit) {
-        accepts[command] = handler
+        while (true) {
+            val current = accepts.load()
+            if (accepts.compareAndSet(current, current + (command to handler))) return
+        }
     }
 
     /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards).
@@ -91,7 +101,7 @@ class QuickJsRuntime private constructor(
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
     internal fun onOpen(id: Int, command: String): Int {
-        val handler = accepts[command] ?: return -1
+        val handler = accepts.load()[command] ?: return -1
         val pipe = PipeImpl(id, command)
         pipes[id] = pipe
         scope.launch {
