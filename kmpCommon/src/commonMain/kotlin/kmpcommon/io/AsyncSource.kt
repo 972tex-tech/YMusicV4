@@ -150,6 +150,23 @@ class BufferedAsyncSource(private val delegate: AsyncSource) : AsyncSource {
         return buffer.readDecimalLong()
     }
 
+    /** Fixed-width big-endian reads (okio `BufferedSource.readByte/readInt/readLong`), blocking until
+     *  the full 1/4/8 bytes arrive. Throws [EOFException] if the source ends first. */
+    suspend fun readByte(): Byte {
+        require(1)
+        return buffer.readByte()
+    }
+
+    suspend fun readInt(): Int {
+        require(4)
+        return buffer.readInt()
+    }
+
+    suspend fun readLong(): Long {
+        require(8)
+        return buffer.readLong()
+    }
+
     override fun close() {
         if (closed) return
         closed = true
