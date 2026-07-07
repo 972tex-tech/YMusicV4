@@ -2,6 +2,7 @@ package ymusic.quickjs
 
 import kmpcommon.io.AsyncSink
 import kmpcommon.io.AsyncSource
+import kmpcommon.io.BufferedAsyncSource
 import okio.Buffer
 
 /**
@@ -14,6 +15,13 @@ import okio.Buffer
  * [PipeResetException]).
  */
 fun Pipe.asAsyncSource(): AsyncSource = PipeAsyncSource(this)
+
+/**
+ * Read this pipe through a [BufferedAsyncSource] — okio `BufferedSource`-style buffered reads
+ * (`readLong`, `readInt`, `readUtf8LineStrict`, `readDecimalLong`, …) over [receive]. A view built
+ * on [asAsyncSource]; same lifecycle (does not own the pipe — end it with [Pipe.closeRead]).
+ */
+fun Pipe.asBufferedSource(): BufferedAsyncSource = BufferedAsyncSource(asAsyncSource())
 
 /**
  * Write to this pipe through the [AsyncSink] API. Pure delegation — [Pipe.send] already speaks okio

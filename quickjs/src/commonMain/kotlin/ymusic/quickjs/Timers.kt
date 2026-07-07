@@ -1,10 +1,12 @@
 package ymusic.quickjs
 
+import kmpcommon.io.BufferedAsyncSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import okio.Buffer
+import okio.EOFException
 
 /**
  * `setTimeout` / `setInterval` (+ their `clear*`), **scheduled on the host**. QuickJS core ships no
@@ -36,9 +38,10 @@ private const val MIN_INTERVAL_MS = 4L
  * `setTimeout` fires once.
  */
 private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
-    val ms = readMillis(pipe).let { if (repeat) it.coerceAtLeast(MIN_INTERVAL_MS) else it }
+    val source = pipe.asBufferedSource()
+    val ms = readMillis(source).let { if (repeat) it.coerceAtLeast(MIN_INTERVAL_MS) else it }
     coroutineScope {
-        val cleared = async { pipe.awaitClose() } // completes when JS closes the pipe (clear*)
+        val cleared = async { source.awaitEof() } // completes when JS closes the pipe (clear*)
         try {
             do {
                 val stopped = select {
@@ -56,17 +59,16 @@ private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
 }
 
 /** First frame is the delay as a big-endian 8-byte long (okio `readLong`); the fixed width
- *  self-frames it, so a split write can't be misread as a shorter value. */
-private suspend fun readMillis(pipe: Pipe): Long {
-    val buf = Buffer()
-    while (buf.size < 8L) {
-        if (pipe.receive(buf, 8L - buf.size) < 0L) return 0L // closed before a full frame
+ *  self-frames it, so a split write can't be misread as a shorter value. A clear before the frame
+ *  fully arrives reads as 0 (fire immediately / no interval). */
+private suspend fun readMillis(source: BufferedAsyncSource): Long =
+    try {
+        source.readLong().coerceAtLeast(0L)
+    } catch (e: EOFException) {
+        0L
     }
-    return buf.readLong().coerceAtLeast(0L)
-}
 
 /** Suspend until the peer closes the pipe (JS sends nothing after the delay). */
-private suspend fun Pipe.awaitClose() {
-    val b = Buffer()
-    while (receive(b, 1L) >= 0L) b.clear() // wait for EOF
+private suspend fun BufferedAsyncSource.awaitEof() {
+    while (!exhausted()) buffer.clear() // discard anything unexpected; wait for EOF
 }
