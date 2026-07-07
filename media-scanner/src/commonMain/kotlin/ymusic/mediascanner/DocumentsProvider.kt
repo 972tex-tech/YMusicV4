@@ -15,7 +15,14 @@ interface DocumentsProvider {
     /** Stat a single document uri; returns [DocumentInfo.Missing] if it is absent or unreadable. */
     suspend fun queryDocument(uri: Uri): DocumentInfo
 
-    /** Direct children of a folder uri; empty if the uri is not a readable folder. */
+    /**
+     * Direct children of a folder uri; empty only when the folder genuinely has none.
+     *
+     * MUST throw (not return empty) when the folder cannot be enumerated — permission denied,
+     * unmounted volume, transient I/O failure. The scanner reconciles absences into deletions, so
+     * an unreadable folder reported as empty tombstones the folder's entire library; a throw is
+     * recorded as that folder's [ScanError] and its contents are left untouched.
+     */
     suspend fun listChildren(folderUri: Uri): List<DocumentInfo>
 }
 

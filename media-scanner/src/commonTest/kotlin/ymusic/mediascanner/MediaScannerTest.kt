@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import okio.ForwardingFileSystem
+import okio.IOException
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import ymusic.mediascanner.MediaScanner.Progress
@@ -92,6 +95,35 @@ class MediaScannerTest {
         assertEquals(0, second.added)
         assertEquals(0, second.updated)
         assertEquals(2, second.scanned)
+    }
+
+    @Test
+    fun unreadable_folder_is_an_error_not_a_mass_delete() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/a.mp3", 100)
+            file("/music/rock/b.flac", 200)
+        }
+        scanner(fs).scan(uri("file:///music")).last()
+        assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+
+        // The volume "disconnects": enumerating /music now fails. That must surface as this
+        // folder's ScanError and leave the library untouched — reported as an empty folder it
+        // would tombstone every item and child bucket under /music in one scan.
+        val failing = object : ForwardingFileSystem(fs) {
+            override fun list(dir: Path): List<Path> {
+                if (dir == "/music".toPath()) throw IOException("Input/output error")
+                return super.list(dir)
+            }
+        }
+        val second = MediaScanner.create(
+            store, FileSystemDocumentsProvider(failing), FakeMetadataExtractor(emptySet()),
+        ).scan(uri("file:///music")).last()
+
+        assertEquals(0, second.deleted, "an unreadable folder must not delete anything")
+        assertEquals(1, second.errors.size, "the failure must be surfaced, got ${'$'}{second.errors}")
+        assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+        assertNotNull(store.findItemByUri(uri("file:///music/rock/b.flac")))
+        assertNotNull(store.findBucketByUri(uri("file:///music/rock")))
     }
 
     @Test
