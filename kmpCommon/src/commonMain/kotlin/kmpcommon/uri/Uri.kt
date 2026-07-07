@@ -319,13 +319,6 @@ class Uri private constructor(
                     authorityPart = start until length
                 }
                 if (encodedPath.isNotEmpty()) {
-                    // RFC 3986 §3.3: with an authority present, the path must be empty or begin
-                    // with '/'. Without this separator, authority "example.com" + path "api"
-                    // concatenates to "//example.comapi" — reparsed, the authority becomes
-                    // "example.comapi" (a different host than the builder's accessors report).
-                    if (authority != null && encodedPath[0] != '/') {
-                        append('/')
-                    }
                     val start = length
                     append(encodedPath)
                     pathPart = start until length
@@ -343,7 +336,10 @@ class Uri private constructor(
                     fragmentPart = start until length
                 }
             }
-            return Uri(str, schemePart, authorityPart, pathPart, queryPart, fragmentPart)
+            // Validate through create() rather than constructing directly, so recomposition
+            // enforces the same RFC 3986 invariants as parse() (e.g. an authority requires the
+            // path to be empty or absolute).
+            return create(str, schemePart, authorityPart, pathPart, queryPart, fragmentPart)
         }
 
         fun parseEncodedQuery(encodedQuery: CharSequence): List<Pair<CharSequence, CharSequence?>> {
@@ -515,11 +511,9 @@ class Uri private constructor(
             var endsWithDotOrSlash = false
             var first = true
             encodedPath.splitSequence('/').forEach { segment ->
-                // The leading empty segment (before the leading '/') is an artifact of the split,
-                // captured by startsWithSlash — drop it. All OTHER empty segments are meaningful
-                // path segments (consecutive slashes) that RFC 3986 §5.2.4 preserves; only "."
-                // and ".." are removed. Collapsing them (the old `else -> skip`) rewrote "/a//b"
-                // to "/a/b", changing which resource resolve() targets.
+                // RFC 3986 §5.2.4 removes only "." and ".."; empty segments (consecutive slashes)
+                // are preserved. Only the leading empty split artifact (already covered by
+                // startsWithSlash) is dropped.
                 val leadingArtifact = first && startsWithSlash && segment.isEmpty()
                 first = false
                 when {

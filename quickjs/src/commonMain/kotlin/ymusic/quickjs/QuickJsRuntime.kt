@@ -1,5 +1,7 @@
 package ymusic.quickjs
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -14,7 +16,6 @@ import kotlinx.coroutines.yield
 import okio.Buffer
 import okio.use
 import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
@@ -52,12 +53,11 @@ class QuickJsRuntime private constructor(
     private val closed = AtomicBoolean(false)
     private val pipes = HashMap<Int, PipeImpl>()
 
-    // The one piece of state NOT confined to the engine thread: onAccept is a plain function the
-    // app calls from anywhere (main thread, after startup), while onOpen reads on the engine
-    // thread whenever JS opens a pipe. Copy-on-write behind an atomic — registration is rare,
-    // lookup is a volatile read; a plain HashMap here is a data race (a get during resize can
-    // miss a registered handler entirely).
-    private val accepts = AtomicReference(mapOf<String, suspend (Pipe) -> Unit>())
+    // onAccept is called from any thread (the app registers handlers off the engine thread), while
+    // onOpen reads on the engine thread — the one piece of state not engine-confined. Guard both
+    // ends with a lock.
+    private val accepts = HashMap<String, suspend (Pipe) -> Unit>()
+    private val acceptsLock = SynchronizedObject()
     private var nextId = 1 // Kotlin opens odd ids; JS opens even.
 
     /**
@@ -70,10 +70,7 @@ class QuickJsRuntime private constructor(
     /** Handle pipes JS opens with the exact [command] name. Any arguments are read inside [handler]
      *  from the pipe's bytes — the command is a routing name only, never carries args. */
     fun onAccept(command: String, handler: suspend (Pipe) -> Unit) {
-        while (true) {
-            val current = accepts.load()
-            if (accepts.compareAndSet(current, current + (command to handler))) return
-        }
+        synchronized(acceptsLock) { accepts[command] = handler }
     }
 
     /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards).
@@ -101,18 +98,15 @@ class QuickJsRuntime private constructor(
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
     internal fun onOpen(id: Int, command: String): Int {
-        val handler = accepts.load()[command] ?: return -1
+        val handler = synchronized(acceptsLock) { accepts[command] } ?: return -1
         val pipe = PipeImpl(id, command)
         pipes[id] = pipe
         scope.launch {
             try {
                 handler(pipe)
             } catch (e: CancellationException) {
-                // Only rethrow for REAL cancellation (runtime teardown fails the pipes anyway).
-                // A CancellationException with the job still alive is a failure wearing
-                // cancellation's type — withTimeout inside the handler is the classic case —
-                // and must close the pipe like any other failure, or the JS peer parks forever
-                // on a pipe nobody owns.
+                // Real cancellation propagates; a CancellationException on a still-active job (e.g.
+                // withTimeout inside the handler) is a failure and RESETs the pipe like any other.
                 if (!isActive) throw e
                 pipe.closeRead()
                 pipe.close(e.message ?: "handler failed")
@@ -341,11 +335,8 @@ class QuickJsRuntime private constructor(
             }
         }
 
-        // Both closes are cleanup calls that callers put in `finally` blocks — precisely where
-        // the job is often already cancelled. A plain withContext would throw WITHOUT running the
-        // block there, silently leaking the pipe (a JS peer parked on it waits forever). Same
-        // NonCancellable rule as the runtime's own close(). The closed latch short-circuits after
-        // runtime teardown already closed every pipe.
+        // NonCancellable: these are cleanup calls invoked from `finally`, so they must run even
+        // when the caller's job is already cancelled. The closed latch skips them after teardown.
         override suspend fun close(reason: String?) {
             if (closed.load()) return
             withContext(engineDispatcher + NonCancellable) {

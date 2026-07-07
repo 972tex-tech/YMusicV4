@@ -145,6 +145,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":kmpCommon")) // Pipe.asAsyncSource()/asAsyncSink() expose kmpcommon.io types
             implementation(Libs.Kotlinx.coroutinesCore)
+            implementation(Libs.Kotlinx.atomicfu) // SynchronizedObject for the onAccept registry
             implementation(Libs.Okio.core) // inbound pipe buffer (segment pool via Buffer/UnsafeCursor)
         }
         commonTest.dependencies {
