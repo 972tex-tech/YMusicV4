@@ -34,6 +34,7 @@ import okio.Sink
 import okio.Source
 import okio.Timeout
 import platform.posix.EINTR
+import platform.posix.SIGKILL
 import platform.posix.SIGTERM
 import platform.posix.WNOHANG
 import platform.posix._exit
@@ -53,6 +54,9 @@ import platform.posix.read
 import platform.posix.strerror
 import platform.posix.waitpid
 import platform.posix.write
+import kotlin.concurrent.Volatile
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -128,7 +132,7 @@ private fun spawn(builder: KmpProcessBuilder): KmpProcess = memScoped {
     )
 }
 
-@OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
+@OptIn(ExperimentalForeignApi::class, UnsafeNumber::class, ExperimentalAtomicApi::class)
 private class PosixKmpProcess(
     private val processId: Int,
     override val stdin: Sink,
@@ -136,41 +140,59 @@ private class PosixKmpProcess(
     override val stderr: Source,
 ) : KmpProcess {
     override val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    // Its own scope, not `scope`: close() cancels `scope` (the reads), but the reaper must
+    // survive to waitpid the killed child. Self-cancels once reaped.
+    private val reaperScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     override val pid: Long = processId.toLong()
 
     override val exitCode = CompletableDeferred<Int>()
 
+    private val killRequested = AtomicBoolean(false)
+
     init {
-        scope.launch {
+        reaperScope.launch {
             // Non-blocking reap so we never tie up a worker thread waiting on the child.
+            var sentKill = false
+            var pollsSinceKill = 0
             while (true) {
                 val (reaped, status) = memScoped {
                     val s = alloc<IntVar>()
                     waitpid(processId, s.ptr, WNOHANG) to s.value
                 }
                 if (reaped == processId) {
-                    exitCode.complete(exitCodeOf(status))
-                    return@launch
+                    exitCode.complete(exitCodeOf(status)) // no-op if close() already completed it
+                    break
                 }
                 if (reaped < 0) {
                     if (errno == EINTR) continue
                     exitCode.complete(-1)
-                    return@launch
+                    break
+                }
+                // Still running: if a kill was requested and SIGTERM hasn't taken within the
+                // grace window, escalate to SIGKILL so we can't poll forever.
+                if (killRequested.load() && !sentKill) {
+                    if (pollsSinceKill >= SIGKILL_GRACE_POLLS) {
+                        kill(processId, SIGKILL)
+                        sentKill = true
+                    } else {
+                        pollsSinceKill++
+                    }
                 }
                 delay(50.milliseconds)
             }
+            reaperScope.cancel()
         }
     }
 
-    private var closed = false
+    private val closed = AtomicBoolean(false)
     override fun close(error: Throwable?) {
-        if (closed) return
-        closed = true
+        if (!closed.compareAndSet(false, true)) return
 
-        // Kill if still running (guarded against a reaped, possibly-reused pid); also makes a blocked
-        // read on the child's stdout/stderr return. Then drop everything, fire-and-forget.
+        // SIGTERM the child (also unblocks reads on its pipes); the reaper (in reaperScope, not
+        // cancelled here) harvests it, escalating to SIGKILL if SIGTERM is ignored.
         if (!exitCode.isCompleted) {
             exitCode.completeExceptionally(error ?: CancellationException("process canceled"))
+            killRequested.store(true)
             kill(processId, SIGTERM)
         }
 
@@ -183,6 +205,11 @@ private class PosixKmpProcess(
         runCatching { stdout.close() }
         runCatching { stderr.close() }
     }
+
+    private companion object {
+        // ~1s (20 * 50ms) after SIGTERM before escalating to SIGKILL.
+        const val SIGKILL_GRACE_POLLS = 20
+    }
 }
 
 /**
@@ -193,10 +220,12 @@ private class PosixKmpProcess(
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 private class FdSource(private val fd: Int) : Source {
     private var eof = false
-    private var closed = false
+    @Volatile private var closed = false
     override fun read(sink: Buffer, byteCount: Long): Long {
         if (byteCount == 0L) return 0L
         if (eof) return -1L
+        // close() may have closed the fd from another thread; don't read a since-reused descriptor.
+        if (closed) return -1L
         val oldSize = sink.size
         val cursor = Buffer.UnsafeCursor()
         sink.readAndWriteUnsafe(cursor)
