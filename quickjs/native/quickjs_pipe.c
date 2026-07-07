@@ -62,7 +62,8 @@ static uint8_t *view_bytes(JSContext *ctx, JSValueConst v, size_t *plen) {
         JS_ThrowTypeError(ctx, "detached buffer");
         return NULL;
     }
-    *plen = ta_len * (bpe ? bpe : 1);
+    (void)bpe; /* ta_len is already the view's BYTE length (JS_GetTypedArrayBuffer's pbyte_length) */
+    *plen = ta_len;
     return ptr + ta_off;
 }
 
