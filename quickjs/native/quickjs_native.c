@@ -71,8 +71,13 @@ static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JS
     size_t rlen = 0;
     if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]))
         reason = JS_ToCStringLen(ctx, &rlen, argv[1]);
-    if (e->cb) e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)reason, rlen);
+    /* The trampoline returns 0 on success, -1 when the host callback threw. Unlike open/data the
+     * return here isn't a protocol value, so a failure would vanish — raise it as a JS exception so
+     * the bootstrap's failure paths engage (mirrors the JNI check_java_exception path). */
+    int rc = 0;
+    if (e->cb) rc = e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)reason, rlen);
     if (reason) JS_FreeCString(ctx, reason);
+    if (rc < 0) return JS_ThrowInternalError(ctx, "host callback failed (closeWrite)");
     return JS_UNDEFINED;
 }
 
@@ -81,7 +86,9 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
-    if (e->cb) e->cb(e->user, QJS_OP_CLOSE_READ, id, NULL, 0);
+    int rc = 0;
+    if (e->cb) rc = e->cb(e->user, QJS_OP_CLOSE_READ, id, NULL, 0);
+    if (rc < 0) return JS_ThrowInternalError(ctx, "host callback failed (closeRead)");
     return JS_UNDEFINED;
 }
 
@@ -90,7 +97,9 @@ static JSValue js_host_drain(JSContext *ctx, JSValueConst this_val, int argc, JS
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
-    if (e->cb) e->cb(e->user, QJS_OP_DRAIN, id, NULL, 0);
+    int rc = 0;
+    if (e->cb) rc = e->cb(e->user, QJS_OP_DRAIN, id, NULL, 0);
+    if (rc < 0) return JS_ThrowInternalError(ctx, "host callback failed (drain)");
     return JS_UNDEFINED;
 }
 
