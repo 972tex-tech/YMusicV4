@@ -65,9 +65,7 @@ val httpDateFormats: Array<DateTimeFormat<DateTimeComponents>> = arrayOf(
         dateSeparator()
         alternativeParsing({ monthName(MonthNames.ENGLISH_ABBREVIATED) }) { monthNumber(Padding.ZERO) }
         dateSeparator()
-        // yearTwoDigits(1970) resolves a 2-digit year into the 1970-2069 window directly
-        // (70->1970 .. 99->1999, 00->2000 .. 69->2069). The 4-digit alternative is untouched, so
-        // a literal past year like 1969 stays 1969 instead of being bumped to 2069.
+        // 2-digit year resolves into the 1970-2069 window; the 4-digit form is used verbatim.
         alternativeParsing({ yearTwoDigits(1970) }) { year() }
         char(' ')
         timeWithAlternativeSeparators()
@@ -110,13 +108,9 @@ fun String.toHttpDateOrNull(): Instant? {
     if (isEmpty()) return null
 
     return httpDateFormats.firstNotNullOfOrNull { format ->
-        // The 2-digit-year century is handled in the format (yearTwoDigits(1970)); no manual
-        // +100 fixup, so literal 4-digit years pass through unchanged.
         val components = format.parseOrNull(this) ?: return@firstNotNullOfOrNull null
-        // parseOrNull is lenient (accepts Feb 31, second=70); range validation lives in
-        // toInstantUsingOffset, which THROWS IllegalArgumentException. Swallow it so a function
-        // named ...OrNull returns null (OkHttp's behavior) instead of throwing IAE out of the
-        // cache path on one semantically-invalid Date/Expires header.
+        // parseOrNull is lenient (Feb 31, second=70); toInstantUsingOffset does the range check and
+        // throws on an invalid value — map that to null so this stays an ...OrNull.
         try {
             components.toInstantUsingOffset()
         } catch (e: IllegalArgumentException) {

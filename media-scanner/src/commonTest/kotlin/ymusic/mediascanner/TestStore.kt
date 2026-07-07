@@ -13,8 +13,7 @@ internal class FakeMetadataExtractor(
 ) : MediaMetadataExtractor {
     override suspend fun extract(file: DocumentInfo.File): MediaItemDraft {
         if (file.name in failOn) throw IllegalStateException("boom: ${file.name}")
-        // Simulate FfmpegMetadataGetter's post-fix behavior: a probe timeout surfaces as a plain
-        // IOException, NOT a CancellationException (which the scanner would silently swallow).
+        // A probe timeout surfaces as IOException (see FfmpegMetadataGetter), not a CE.
         if (file.name in timeoutOn) throw okio.IOException("ffmpeg probe timed out: ${file.name}")
         return MediaItemDraft(
             uri = file.uri,

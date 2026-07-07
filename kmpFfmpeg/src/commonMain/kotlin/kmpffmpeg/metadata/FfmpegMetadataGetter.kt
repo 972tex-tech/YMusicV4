@@ -57,11 +57,8 @@ open class FfmpegMetadataGetter(
                         // on timeout we let process.close() kill the child — that makes the read hit EOF, and
                         // close() then joins this job before freeing the fd. (exit is expected non-zero.)
                         val readStderr = process.scope.async { process.stderr.buffer().readUtf8() }
-                        // withTimeout throws TimeoutCancellationException — a CancellationException
-                        // subtype. Rethrow it as a plain IOException so callers (e.g. the media
-                        // scanner) record it as a real failure; a bare CE reads as cooperative
-                        // cancellation and gets silently swallowed, dropping the file from the scan
-                        // with no error.
+                        // Surface a probe timeout as IOException, not the TimeoutCancellationException
+                        // withTimeout throws — callers must see a failure, not cooperative cancellation.
                         val stderr = try {
                             withTimeout(timeoutMs.milliseconds) { readStderr.await() }
                         } catch (e: TimeoutCancellationException) {

@@ -220,10 +220,6 @@ object PercentEncoder {
                 }
 
                 var j = i
-                // Index tracks j, not i: codePoint is read at j, so the allowed-check (and its
-                // isPercentEncoded probe for alreadyEncoded) must look at j. Passing the frozen i
-                // made a valid %XX sitting after a disallowed char get swept into the encode run
-                // and double-encoded (%20 -> %2520) on any newBuilder().build() round trip.
                 while (!isCodePointAllowed(input, j, codePoint, allowed, alreadyEncoded)) {
                     j += codePoint.utfCodePointSize()
                     if (j >= input.length) break
@@ -276,9 +272,7 @@ object PercentEncoder {
      * Invalid percent-encodings are left as-is.
      */
     fun decode(encoded: CharSequence, plusIsSpace: Boolean = false): CharSequence {
-        // Fast path only when there is genuinely nothing to do: no escapes AND (if plusIsSpace)
-        // no '+' to translate. Returning early on '+' made the flag's effect depend on whether an
-        // unrelated '%' happened to be present ("a+b" unchanged, "a+b%20c" -> "a b c").
+        // Nothing to decode: no escapes, and no '+' to translate when plusIsSpace.
         if (!encoded.contains('%') && !(plusIsSpace && encoded.contains('+'))) {
             return encoded
         }
@@ -356,8 +350,7 @@ object PercentEncoder {
                     i += 4
                 }
                 else -> {
-                    // Invalid lead byte \u2014 or a multibyte lead whose continuation bytes were
-                    // truncated (e.g. decode("%C3")): garbage in, U+FFFD out, never a throw.
+                    // Invalid or truncated lead byte: emit U+FFFD rather than throw.
                     append('\uFFFD')
                     i += 1
                 }

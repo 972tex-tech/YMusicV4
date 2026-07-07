@@ -120,9 +120,7 @@ actual class CacheControl(
                           // Quoted string.
                           pos++ // Consume '"' open quote.
                           val parameterStart = pos
-                          // A missing close quote yields -1 -> substring(start, -1) crashes on a
-                          // header like `max-age="60`; treat an unterminated quote as running to
-                          // the end of the value.
+                          // An unterminated quote runs to the end of the value.
                           val closeQuote = value.indexOf('"', pos)
                           pos = if (closeQuote == -1) value.length else closeQuote
                           parameter = value.substring(parameterStart, pos)
@@ -299,8 +297,7 @@ private fun String.indexOfNonWhitespace(startIndex: Int): Int {
   for (i in startIndex until length) {
     if (!this[i].isWhitespace()) return i
   }
-  // Return length (like OkHttp), NOT -1: callers guard with `pos < length`, and a -1 slips past
-  // that guard into value[-1] — a crash on a header like `max-age=`.
+  // No non-whitespace found: return length (callers guard with `pos < length`), not -1.
   return length
 }
 

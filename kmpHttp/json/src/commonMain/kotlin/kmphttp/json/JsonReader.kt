@@ -238,11 +238,8 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                                 var toWrite = codePoint
                                 var consumed = 6L
                                 if (codePoint in 0xD800..0xDBFF) {
-                                    // A high surrogate: JSON transmits astral characters as an
-                                    // escaped surrogate PAIR (\uD83D\uDE00). The halves must be
-                                    // combined before writing — writeUtf8CodePoint replaces any
-                                    // lone surrogate with '?', so writing them independently
-                                    // corrupts every escaped emoji into "??".
+                                    // Astral chars arrive as a surrogate PAIR; combine the halves,
+                                    // since writeUtf8CodePoint rejects a lone surrogate (writes '?').
                                     if (buffer.size < 12 && !sourceEof) {
                                         bytesNeeded = 12 + 1 // need the (potential) low half too
                                         return null
