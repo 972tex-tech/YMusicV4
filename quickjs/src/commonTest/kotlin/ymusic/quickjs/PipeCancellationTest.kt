@@ -179,6 +179,47 @@ class PipeCancellationTest {
         }
     }
 
+    /** withTimeout inside a handler throws a CancellationException whose job is NOT cancelled —
+     *  a failure wearing cancellation's type. It must RESET the pipe like any other handler
+     *  failure; rethrowing it just kills the handler coroutine and leaves the JS peer parked
+     *  forever on a pipe nobody owns. */
+    @Test
+    fun handler_timeout_resets_the_pipe_instead_of_leaking_it() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            rt.onAccept("slow") { _ ->
+                withTimeout(50) { awaitCancellation() } // handler dies via TimeoutCancellationException
+            }
+            val report = CompletableDeferred<String>()
+            rt.onAccept("report") { p ->
+                val b = Buffer()
+                while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+                report.complete(b.readUtf8())
+            }
+            rt.load(
+                """
+                (async function () {
+                  var pipe = ymix.open("slow");
+                  var out = ymix.open("report");
+                  try {
+                    var buf = new Uint8Array(64);
+                    var r = pipe.receive(buf, 0, buf.length);
+                    var n = typeof r === "number" ? r : await r;
+                    out.send(ymix.utf8Encode("read:" + n));
+                  } catch (e) {
+                    out.send(ymix.utf8Encode("error:" + e.message));
+                  }
+                  out.close();
+                })()
+                """.trimIndent(),
+            )
+            val outcome = withContext(Dispatchers.Default) { withTimeout(10_000) { report.await() } }
+            assertTrue(outcome.startsWith("error:"), "peer must see the RESET, got: $outcome")
+        } finally {
+            rt.close()
+        }
+    }
+
     @Test
     fun cancelled_parked_receive_closes_the_read_side() = runTest {
         val rt = QuickJsRuntime.create()

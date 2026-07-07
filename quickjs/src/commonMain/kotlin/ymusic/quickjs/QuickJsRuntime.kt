@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -97,7 +98,14 @@ class QuickJsRuntime private constructor(
             try {
                 handler(pipe)
             } catch (e: CancellationException) {
-                throw e
+                // Only rethrow for REAL cancellation (runtime teardown fails the pipes anyway).
+                // A CancellationException with the job still alive is a failure wearing
+                // cancellation's type — withTimeout inside the handler is the classic case —
+                // and must close the pipe like any other failure, or the JS peer parks forever
+                // on a pipe nobody owns.
+                if (!isActive) throw e
+                pipe.closeRead()
+                pipe.close(e.message ?: "handler failed")
             } catch (e: Throwable) {
                 pipe.closeRead()
                 pipe.close(e.message ?: "handler failed") // RESET: surface the failure to JS
