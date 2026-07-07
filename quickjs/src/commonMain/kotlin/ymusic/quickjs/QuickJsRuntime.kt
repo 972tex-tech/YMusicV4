@@ -323,9 +323,14 @@ class QuickJsRuntime private constructor(
             }
         }
 
+        // Both closes are cleanup calls that callers put in `finally` blocks — precisely where
+        // the job is often already cancelled. A plain withContext would throw WITHOUT running the
+        // block there, silently leaking the pipe (a JS peer parked on it waits forever). Same
+        // NonCancellable rule as the runtime's own close(). The closed latch short-circuits after
+        // runtime teardown already closed every pipe.
         override suspend fun close(reason: String?) {
-            if (closed.load()) return // runtime teardown already closed every pipe
-            withContext(engineDispatcher) {
+            if (closed.load()) return
+            withContext(engineDispatcher + NonCancellable) {
                 if (!weEnded) {
                     weEnded = true
                     engine.closeWrite(id, reason)
@@ -335,8 +340,8 @@ class QuickJsRuntime private constructor(
         }
 
         override suspend fun closeRead() {
-            if (closed.load()) return // runtime teardown already closed every pipe
-            withContext(engineDispatcher) { closeReadNow(null) }
+            if (closed.load()) return
+            withContext(engineDispatcher + NonCancellable) { closeReadNow(null) }
         }
 
         /** [cause] is the aborted receive's failure when the abort path (not an explicit

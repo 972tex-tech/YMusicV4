@@ -133,6 +133,52 @@ class PipeCancellationTest {
         }
     }
 
+    /** `finally { pipe.close() }` on an already-cancelled job must still half-close the pipe:
+     *  the JS peer's read must see the END/RESET instead of waiting forever on a pipe whose
+     *  Kotlin side silently skipped its own cleanup. */
+    @Test
+    fun pipe_close_still_runs_when_the_caller_is_already_cancelled() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            val report = CompletableDeferred<String>()
+            rt.onAccept("report") { p ->
+                val b = Buffer()
+                while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+                report.complete(b.readUtf8())
+            }
+            rt.load(
+                """
+                ymix.onAccept("held", async (pipe) => {
+                  var out = ymix.open("report");
+                  try {
+                    var buf = new Uint8Array(64);
+                    var r = pipe.receive(buf, 0, buf.length);
+                    var n = typeof r === "number" ? r : await r;
+                    out.send(ymix.utf8Encode("read:" + n));
+                  } catch (e) {
+                    out.send(ymix.utf8Encode("error:" + e.message));
+                  }
+                  out.close();
+                });
+                """.trimIndent(),
+            )
+            val pipe = rt.openPipe("held")
+            val worker = launch(Dispatchers.Default) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    pipe.close("caller cancelled") // job is cancelled HERE — must still RESET
+                }
+            }
+            withContext(Dispatchers.Default) { delay(200) } // real time: let JS park its receive
+            worker.cancelAndJoin()
+
+            assertEquals("error:caller cancelled", report.await())
+        } finally {
+            rt.close()
+        }
+    }
+
     @Test
     fun cancelled_parked_receive_closes_the_read_side() = runTest {
         val rt = QuickJsRuntime.create()
