@@ -220,7 +220,7 @@ object PercentEncoder {
                 }
 
                 var j = i
-                while (!isCodePointAllowed(input, i, codePoint, allowed, alreadyEncoded)) {
+                while (!isCodePointAllowed(input, j, codePoint, allowed, alreadyEncoded)) {
                     j += codePoint.utfCodePointSize()
                     if (j >= input.length) break
                     else codePoint = input.getCodePointAt(j)
@@ -272,7 +272,8 @@ object PercentEncoder {
      * Invalid percent-encodings are left as-is.
      */
     fun decode(encoded: CharSequence, plusIsSpace: Boolean = false): CharSequence {
-        if (!encoded.contains('%')) {
+        // Nothing to decode: no escapes, and no '+' to translate when plusIsSpace.
+        if (!encoded.contains('%') && !(plusIsSpace && encoded.contains('+'))) {
             return encoded
         }
 
@@ -324,14 +325,14 @@ object PercentEncoder {
                     i += 1
                 }
                 // Two bytes (110xxxxx 10xxxxxx)
-                byte1 and 0xE0 == 0xC0 -> {
+                byte1 and 0xE0 == 0xC0 && i + 1 < buffer.size -> {
                     val byte2 = buffer[i + 1].toInt() and 0x3F
                     val codePoint = ((byte1 and 0x1F) shl 6) or byte2
                     append(codePoint.toChar())
                     i += 2
                 }
                 // Three bytes (1110xxxx 10xxxxxx 10xxxxxx)
-                byte1 and 0xF0 == 0xE0 -> {
+                byte1 and 0xF0 == 0xE0 && i + 2 < buffer.size -> {
                     val byte2 = buffer[i + 1].toInt() and 0x3F
                     val byte3 = buffer[i + 2].toInt() and 0x3F
                     val codePoint = ((byte1 and 0x0F) shl 12) or (byte2 shl 6) or byte3
@@ -339,7 +340,7 @@ object PercentEncoder {
                     i += 3
                 }
                 // Four bytes (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
-                byte1 and 0xF8 == 0xF0 -> {
+                byte1 and 0xF8 == 0xF0 && i + 3 < buffer.size -> {
                     val byte2 = buffer[i + 1].toInt() and 0x3F
                     val byte3 = buffer[i + 2].toInt() and 0x3F
                     val byte4 = buffer[i + 3].toInt() and 0x3F
@@ -349,7 +350,8 @@ object PercentEncoder {
                     i += 4
                 }
                 else -> {
-                    append('\uFFFD') // Replacement character for invalid bytes
+                    // Invalid or truncated lead byte: emit U+FFFD rather than throw.
+                    append('\uFFFD')
                     i += 1
                 }
             }

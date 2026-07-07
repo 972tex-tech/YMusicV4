@@ -65,7 +65,8 @@ val httpDateFormats: Array<DateTimeFormat<DateTimeComponents>> = arrayOf(
         dateSeparator()
         alternativeParsing({ monthName(MonthNames.ENGLISH_ABBREVIATED) }) { monthNumber(Padding.ZERO) }
         dateSeparator()
-        alternativeParsing({ yearTwoDigits(1900) }) { year() }
+        // 2-digit year resolves into the 1970-2069 window; the 4-digit form is used verbatim.
+        alternativeParsing({ yearTwoDigits(1970) }) { year() }
         char(' ')
         timeWithAlternativeSeparators()
         char(' ')
@@ -107,15 +108,14 @@ fun String.toHttpDateOrNull(): Instant? {
     if (isEmpty()) return null
 
     return httpDateFormats.firstNotNullOfOrNull { format ->
-        format.parseOrNull(this)?.apply {
-            // Handle 2-digit years parsed with base 1900:
-            // 1970-1999 are correct (from input 70-99)
-            // 1900-1969 need +100 to become 2000-2069 (from input 00-69)
-            val y = year
-            if (y != null && y in 1900..1969) {
-                year = y + 100
-            }
-        }?.toInstantUsingOffset()
+        val components = format.parseOrNull(this) ?: return@firstNotNullOfOrNull null
+        // parseOrNull is lenient (Feb 31, second=70); toInstantUsingOffset does the range check and
+        // throws on an invalid value — map that to null so this stays an ...OrNull.
+        try {
+            components.toInstantUsingOffset()
+        } catch (e: IllegalArgumentException) {
+            null
+        }
     }
 }
 

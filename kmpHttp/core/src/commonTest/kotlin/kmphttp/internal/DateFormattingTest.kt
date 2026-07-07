@@ -29,6 +29,29 @@ import kotlin.time.ExperimentalTime
 class DateFormattingTest {
 
     @Test
+    fun invalidDatesReturnNullNotThrow() {
+        // parseOrNull is lenient; range validation throws IAE in toInstantUsingOffset. A function
+        // named ...OrNull must return null, not throw — these run on cached response headers.
+        assertNull("Tue, 31 Feb 2025 10:00:00 GMT".toHttpDateOrNull(), "Feb 31")
+        assertNull("Sun, 06 Nov 1994 08:49:70 GMT".toHttpDateOrNull(), "second=70")
+        assertNull("Mon, 32 Jan 2025 00:00:00 GMT".toHttpDateOrNull(), "day 32")
+        assertNull("Wed, 01 Jan 2025 25:00:00 GMT".toHttpDateOrNull(), "hour 25")
+        // A valid date next to the invalid ones still parses.
+        assertEquals(0L, "Thu, 01 Jan 1970 00:00:00 GMT".toHttpDateOrNull()?.toEpochMilliseconds())
+    }
+
+    @Test
+    fun fourDigitPastYearIsNotBumpedToTheFuture() {
+        // A literal 4-digit 1969 (servers use far-past dates to mean "expired") must stay 1969,
+        // not become 2069. Epoch for 1969-01-01T00:00:00Z is negative.
+        val instant = "Wed, 01 Jan 1969 00:00:00 GMT".toHttpDateOrNull()
+        assertNotNull(instant)
+        assertEquals(-31536000000L, instant.toEpochMilliseconds()) // 1969-01-01 UTC
+        // 2-digit-year window still resolves as before.
+        assertEquals(0L, "Thursday, 01-Jan-70 00:00:00 GMT".toHttpDateOrNull()?.toEpochMilliseconds())
+    }
+
+    @Test
     fun parseRfc1123Format() {
         // RFC 822, updated by RFC 1123 with GMT
         assertEquals(0L, "Thu, 01 Jan 1970 00:00:00 GMT".toHttpDateOrNull()?.toEpochMilliseconds())

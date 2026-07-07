@@ -336,7 +336,10 @@ class Uri private constructor(
                     fragmentPart = start until length
                 }
             }
-            return Uri(str, schemePart, authorityPart, pathPart, queryPart, fragmentPart)
+            // Validate through create() rather than constructing directly, so recomposition
+            // enforces the same RFC 3986 invariants as parse() (e.g. an authority requires the
+            // path to be empty or absolute).
+            return create(str, schemePart, authorityPart, pathPart, queryPart, fragmentPart)
         }
 
         fun parseEncodedQuery(encodedQuery: CharSequence): List<Pair<CharSequence, CharSequence?>> {
@@ -506,8 +509,18 @@ class Uri private constructor(
             val startsWithSlash = encodedPath[0] == '/'
 
             var endsWithDotOrSlash = false
+            var first = true
             encodedPath.splitSequence('/').forEach { segment ->
+                // RFC 3986 §5.2.4 removes only "." and ".."; empty segments (consecutive slashes)
+                // are preserved. Only the leading empty split artifact (already covered by
+                // startsWithSlash) is dropped.
+                val leadingArtifact = first && startsWithSlash && segment.isEmpty()
+                first = false
                 when {
+                    leadingArtifact -> {
+                        endsWithDotOrSlash = true
+                    }
+
                     isDot(segment) -> {
                         /* skip single dot */
                         endsWithDotOrSlash = true
@@ -521,13 +534,9 @@ class Uri private constructor(
                         endsWithDotOrSlash = true
                     }
 
-                    segment.isNotEmpty() -> {
-                        output.add(segment)
-                        endsWithDotOrSlash = false
-                    }
-
                     else -> {
-                        endsWithDotOrSlash = true
+                        output.add(segment)
+                        endsWithDotOrSlash = segment.isEmpty()
                     }
                 }
             }

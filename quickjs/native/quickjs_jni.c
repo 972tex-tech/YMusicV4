@@ -190,6 +190,12 @@ static JSValue js_host_data(JSContext *ctx, JSValueConst this_val, int argc, JSV
     size_t ta_off = 0, ta_len = 0, bpe = 0;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
     if (!JS_IsException(ab)) {
+        /* ta_len is the view's BYTE length. off/len come from (remotely updatable) JS — an
+         * unchecked range hands the host a DirectByteBuffer past the array: out-of-bounds read. */
+        if (off < 0 || len < 0 || (uint64_t)off + (uint64_t)len > (uint64_t)ta_len) {
+            JS_FreeValue(ctx, ab);
+            return JS_ThrowRangeError(ctx, "__hostData range out of bounds");
+        }
         size_t sz = 0;
         uint8_t *ptr = JS_GetArrayBuffer(ctx, &sz, ab);
         if (ptr && len > 0) {

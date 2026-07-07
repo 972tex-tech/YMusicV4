@@ -1,17 +1,22 @@
 package ymusic.quickjs
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import okio.Buffer
 import okio.use
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -38,14 +43,21 @@ private const val EOF = -1L
  * those bytes, never a throwaway allocation). A partially accepted write parks the writer until the
  * reader drains to the low-water mark (DRAIN). All state lives on the engine thread — no locking.
  */
+@OptIn(ExperimentalAtomicApi::class)
 class QuickJsRuntime private constructor(
     private val engine: NativeEngine,
     private val engineDispatcher: CloseableCoroutineDispatcher,
 ) {
 
     private val scope = CoroutineScope(engineDispatcher + SupervisorJob())
+    private val closed = AtomicBoolean(false)
     private val pipes = HashMap<Int, PipeImpl>()
+
+    // onAccept is called from any thread (the app registers handlers off the engine thread), while
+    // onOpen reads on the engine thread — the one piece of state not engine-confined. Guard both
+    // ends with a lock.
     private val accepts = HashMap<String, suspend (Pipe) -> Unit>()
+    private val acceptsLock = SynchronizedObject()
     private var nextId = 1 // Kotlin opens odd ids; JS opens even.
 
     /**
@@ -58,7 +70,7 @@ class QuickJsRuntime private constructor(
     /** Handle pipes JS opens with the exact [command] name. Any arguments are read inside [handler]
      *  from the pipe's bytes — the command is a routing name only, never carries args. */
     fun onAccept(command: String, handler: suspend (Pipe) -> Unit) {
-        accepts[command] = handler
+        synchronized(acceptsLock) { accepts[command] = handler }
     }
 
     /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards).
@@ -86,14 +98,18 @@ class QuickJsRuntime private constructor(
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
     internal fun onOpen(id: Int, command: String): Int {
-        val handler = accepts[command] ?: return -1
+        val handler = synchronized(acceptsLock) { accepts[command] } ?: return -1
         val pipe = PipeImpl(id, command)
         pipes[id] = pipe
         scope.launch {
             try {
                 handler(pipe)
             } catch (e: CancellationException) {
-                throw e
+                // Real cancellation propagates; a CancellationException on a still-active job (e.g.
+                // withTimeout inside the handler) is a failure and RESETs the pipe like any other.
+                if (!isActive) throw e
+                pipe.closeRead()
+                pipe.close(e.message ?: "handler failed")
             } catch (e: Throwable) {
                 pipe.closeRead()
                 pipe.close(e.message ?: "handler failed") // RESET: surface the failure to JS
@@ -204,8 +220,11 @@ class QuickJsRuntime private constructor(
             else drainCredit = true
         }
 
-        override suspend fun receive(sink: Buffer, byteCount: Long): Long =
-            withContext(engineDispatcher) {
+        override suspend fun receive(sink: Buffer, byteCount: Long): Long {
+            // Checked before the dispatcher hop: after runtime close() the engine thread is gone
+            // (dispatching there is at best a fallback thread, at worst an error).
+            if (closed.load()) throw QuickJsException("runtime closed")
+            return withContext(engineDispatcher) {
                 require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
                 if (byteCount == 0L) return@withContext 0L
                 check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
@@ -239,10 +258,12 @@ class QuickJsRuntime private constructor(
                     receiving = false
                 }
             }
+        }
 
         // ---- outbound plumbing ----
 
-        override suspend fun send(source: Buffer, byteCount: Long): Unit =
+        override suspend fun send(source: Buffer, byteCount: Long) {
+            if (closed.load()) throw QuickJsException("runtime closed")
             withContext(engineDispatcher) {
                 require(byteCount in 0..source.size) {
                     "byteCount $byteCount out of range (buffer size ${source.size})"
@@ -287,6 +308,7 @@ class QuickJsRuntime private constructor(
                     sending = false
                 }
             }
+        }
 
         private suspend fun sendRange(buffer: ByteArray, offset: Int, len: Int) {
             var pos = offset
@@ -313,15 +335,23 @@ class QuickJsRuntime private constructor(
             }
         }
 
-        override suspend fun close(reason: String?): Unit = withContext(engineDispatcher) {
-            if (!weEnded) {
-                weEnded = true
-                engine.closeWrite(id, reason)
-                maybeReap()
+        // NonCancellable: these are cleanup calls invoked from `finally`, so they must run even
+        // when the caller's job is already cancelled. The closed latch skips them after teardown.
+        override suspend fun close(reason: String?) {
+            if (closed.load()) return
+            withContext(engineDispatcher + NonCancellable) {
+                if (!weEnded) {
+                    weEnded = true
+                    engine.closeWrite(id, reason)
+                    maybeReap()
+                }
             }
         }
 
-        override suspend fun closeRead(): Unit = withContext(engineDispatcher) { closeReadNow(null) }
+        override suspend fun closeRead() {
+            if (closed.load()) return
+            withContext(engineDispatcher + NonCancellable) { closeReadNow(null) }
+        }
 
         /** [cause] is the aborted receive's failure when the abort path (not an explicit
          *  [closeRead]) closes the read side. */
@@ -343,12 +373,17 @@ class QuickJsRuntime private constructor(
             if (weEnded && (writeEnded || readClosed)) pipes.remove(id)
         }
 
-        /** Runtime teardown: poison the pipe (later sends get EPIPE, later receives get the reset)
-         *  and fail anything parked — a continuation left suspended when the engine thread dies
-         *  would never resume (a permanently leaked, hung coroutine). */
+        /** Runtime teardown: poison the pipe on BOTH sides and fail anything parked — a
+         *  continuation left suspended when the engine thread dies would never resume (a
+         *  permanently leaked, hung coroutine). The own-side flags ([weEnded], [readClosed])
+         *  matter as much as the peer-side ones: an op that still lands on the engine queue
+         *  behind [close]'s `engine.destroy()` (e.g. `finally { pipe.close() }` racing runtime
+         *  close) must bail on the flags instead of calling into the freed engine. */
         fun failPending(cause: Throwable) {
             writeEnded = true
             peerReadClosed = true
+            weEnded = true
+            readClosed = true
             if (resetReason == null) resetReason = cause.message ?: "runtime closed"
             inbound.clear()
             val r = reader
@@ -367,8 +402,11 @@ class QuickJsRuntime private constructor(
 
     /** Cancel handlers, fail anything still parked in [Pipe.send]/[Pipe.receive] (a caller outside
      *  [scope] would otherwise stay suspended forever once the engine thread is gone), free the
-     *  engine (on its thread), and release the engine thread. */
+     *  engine (on its thread), and release the engine thread. Idempotent: only the first call
+     *  tears down; later calls return immediately (the engine must never be destroyed twice, and
+     *  the closed dispatcher must never be dispatched to again). */
     suspend fun close() {
+        if (!closed.compareAndSet(expectedValue = false, newValue = true)) return
         scope.cancel()
         // Cleanup must complete even when the caller is already cancelled — the standard
         // `finally { rt.close() }` on a cancelled job — so the teardown hop is NonCancellable

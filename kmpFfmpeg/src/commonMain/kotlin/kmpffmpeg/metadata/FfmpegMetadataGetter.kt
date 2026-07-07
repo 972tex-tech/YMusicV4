@@ -8,9 +8,11 @@ import kmpffmpeg.KmpProcessBuilder
 import kmpffmpeg.autoClose
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import okio.IOException
 import okio.Source
 import okio.buffer
 import okio.use
@@ -55,7 +57,13 @@ open class FfmpegMetadataGetter(
                         // on timeout we let process.close() kill the child — that makes the read hit EOF, and
                         // close() then joins this job before freeing the fd. (exit is expected non-zero.)
                         val readStderr = process.scope.async { process.stderr.buffer().readUtf8() }
-                        val stderr = withTimeout(timeoutMs.milliseconds) { readStderr.await() }
+                        // Surface a probe timeout as IOException, not the TimeoutCancellationException
+                        // withTimeout throws — callers must see a failure, not cooperative cancellation.
+                        val stderr = try {
+                            withTimeout(timeoutMs.milliseconds) { readStderr.await() }
+                        } catch (e: TimeoutCancellationException) {
+                            throw IOException("ffmpeg probe timed out after ${timeoutMs}ms: $uri", e)
+                        }
                         process.exitCode.await() // reap on the normal path (close() below won't wait)
                         FfmpegInfoParser.parse(uri, stderr)
                     }

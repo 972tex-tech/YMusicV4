@@ -7,6 +7,7 @@ object Versions {
 
     // KMP
     const val coroutines = "1.11.0"
+    const val atomicfu = "0.23.1" // aligned with coroutines 1.11.0
     const val kotlinxSerialization = "1.9.0"
     const val kotlinxDateTime = "0.8.0"
     const val composeMultiplatform = "1.7.1"
@@ -33,6 +34,7 @@ object Versions {
 object Libs {
     object Kotlinx {
         const val coroutinesCore = "org.jetbrains.kotlinx:kotlinx-coroutines-core:${Versions.coroutines}"
+        const val atomicfu = "org.jetbrains.kotlinx:atomicfu:${Versions.atomicfu}"
         const val coroutinesAndroid = "org.jetbrains.kotlinx:kotlinx-coroutines-android:${Versions.coroutines}"
         const val coroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:${Versions.coroutines}"
         const val serializationJson = "org.jetbrains.kotlinx:kotlinx-serialization-json:${Versions.kotlinxSerialization}"

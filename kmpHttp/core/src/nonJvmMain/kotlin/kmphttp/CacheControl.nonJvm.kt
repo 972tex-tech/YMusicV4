@@ -120,7 +120,9 @@ actual class CacheControl(
                           // Quoted string.
                           pos++ // Consume '"' open quote.
                           val parameterStart = pos
-                          pos = value.indexOf('"', pos)
+                          // An unterminated quote runs to the end of the value.
+                          val closeQuote = value.indexOf('"', pos)
+                          pos = if (closeQuote == -1) value.length else closeQuote
                           parameter = value.substring(parameterStart, pos)
                           pos++ // Consume '"' close quote (if necessary).
                       } else {
@@ -295,7 +297,8 @@ private fun String.indexOfNonWhitespace(startIndex: Int): Int {
   for (i in startIndex until length) {
     if (!this[i].isWhitespace()) return i
   }
-  return -1
+  // No non-whitespace found: return length (callers guard with `pos < length`), not -1.
+  return length
 }
 
 /**

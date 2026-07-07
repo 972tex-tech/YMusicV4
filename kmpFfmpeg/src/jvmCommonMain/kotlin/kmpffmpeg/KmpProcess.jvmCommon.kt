@@ -24,7 +24,13 @@ import java.io.InputStream
 /** JVM / Android backend over [ProcessBuilder], exposed as a streaming [KmpProcess]. */
 internal actual fun startProcess(builder: KmpProcessBuilder): KmpProcess {
     val process = ProcessBuilder(buildList { add(builder.binaryPath); addAll(builder.arguments) })
-        .apply { environment().putAll(builder.environment) }
+        .apply {
+            // ProcessBuilder.environment() starts as a COPY of the parent environment. The
+            // KmpProcessBuilder contract (and the posix backend) is "the child runs with exactly
+            // these — no inheritance", so clear it before applying ours.
+            environment().clear()
+            environment().putAll(builder.environment)
+        }
         .start()
     return JvmKmpProcess(process, builder.isStdoutDiscarded, builder.isStderrDiscarded)
 }
