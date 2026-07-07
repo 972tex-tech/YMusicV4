@@ -127,6 +127,25 @@ class MediaScannerTest {
     }
 
     @Test
+    fun probe_timeout_is_surfaced_as_an_error_not_silently_dropped() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/ok.mp3", 100)
+            file("/music/slow.mp3", 200)
+        }
+        val scanner = MediaScanner.create(
+            store,
+            FileSystemDocumentsProvider(fs),
+            FakeMetadataExtractor(timeoutOn = setOf("slow.mp3")),
+        )
+        val progress = scanner.scan(uri("file:///music")).last()
+
+        assertEquals(1, progress.added, "the good file is indexed")
+        assertEquals(1, progress.errors.size, "the timed-out probe is a ScanError, got ${'$'}{progress.errors}")
+        assertNotNull(store.findItemByUri(uri("file:///music/ok.mp3")))
+        assertNull(store.findItemByUri(uri("file:///music/slow.mp3")))
+    }
+
+    @Test
     fun rescan_soft_deletes_vanished() = runTest {
         val fs = FakeFileSystem().apply { file("/music/a.mp3", 100) }
         val s = scanner(fs)
