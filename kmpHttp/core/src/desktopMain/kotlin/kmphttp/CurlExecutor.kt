@@ -372,6 +372,11 @@ private class RequestBodyTransfer(
                     }
                 }
                 if (!isActive) return@launch
+                // multiApi calls must stay OUTSIDE `lock`: the event loop invokes this handle's
+                // callbacks (which take `lock`) while holding the multi lock, so taking the multi
+                // lock while holding `lock` is a lock-order inversion — a hard deadlock of the
+                // whole event loop under backpressure.
+                var unpauseNeeded = false
                 val done = synchronized(lock) {
                     if (tempBuffer.size > 0) {
                         buffer.write(tempBuffer, tempBuffer.size)
@@ -380,9 +385,7 @@ private class RequestBodyTransfer(
                     if (sourceExhausted) {
                         eof.store(true)
                     }
-                    if (paused.compareAndSet(true, false)) {
-                        multiApi.unpause(easyHandle)
-                    }
+                    unpauseNeeded = paused.compareAndSet(true, false)
                     if (buffer.size > 0) {
                         suspendCondition.pause()
                         return@synchronized false
@@ -391,6 +394,7 @@ private class RequestBodyTransfer(
                         return@synchronized true
                     }
                 }
+                if (unpauseNeeded) multiApi.unpause(easyHandle)
                 if (done) break
                 else suspendCondition.await()
             }
@@ -399,8 +403,8 @@ private class RequestBodyTransfer(
             synchronized(lock) {
                 sourceError = e
                 buffer.clear()
-                multiApi.removeAndCleanUpJob(easyHandle, e)
             }
+            multiApi.removeAndCleanUpJob(easyHandle, e)
         } finally {
             tempBuffer.clear()
         }
@@ -499,6 +503,11 @@ private class StreamingResponseHandler(
      */
     suspend fun read(sink: Buffer, byteCount: Long): Long {
         while (true) {
+            // unpause() must run OUTSIDE hotBufferGuard: the event loop's curl_easy_pause(CONT)
+            // synchronously reenters write() (which takes hotBufferGuard) while holding the multi
+            // lock — calling into the multi lock from under hotBufferGuard is the opposite order,
+            // a lock-order inversion that deadlocks the whole event loop.
+            var unpauseNeeded = false
             val result = synchronized(hotBufferGuard) {
                 completeError?.let { throw it }
                 if (closed.load()) return@synchronized ReadResult.Closed
@@ -509,7 +518,7 @@ private class StreamingResponseHandler(
 
                     // Resume curl if it was paused and buffer has space
                     if (hotBuffer.size < preBufferedSize && paused.compareAndSet(true, false)) {
-                        multiApi.unpause(easyHandle)
+                        unpauseNeeded = true
                     }
 
                     return@synchronized ReadResult.Success(toRead)
@@ -521,12 +530,13 @@ private class StreamingResponseHandler(
 
                 // Resume curl if paused (buffer is empty now)
                 if (paused.compareAndSet(true, false)) {
-                    multiApi.unpause(easyHandle)
+                    unpauseNeeded = true
                 }
 
                 suspendCondition.pause()
                 ReadResult.Wait
             }
+            if (unpauseNeeded) multiApi.unpause(easyHandle)
 
             when (result) {
                 is ReadResult.Success -> return result.bytes
