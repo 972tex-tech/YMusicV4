@@ -30,9 +30,13 @@ CREATE TABLE mediaItem (
     updatedAt            INTEGER NOT NULL
 );
 
-CREATE INDEX mediaItem_bucketId  ON mediaItem(bucketId);
-CREATE INDEX mediaItem_fileSize  ON mediaItem(fileSize);
-CREATE INDEX mediaItem_updatedAt ON mediaItem(updatedAt);
+CREATE INDEX mediaItem_bucketId   ON mediaItem(bucketId);
+CREATE INDEX mediaItem_fileSize   ON mediaItem(fileSize);
+CREATE INDEX mediaItem_updatedAt  ON mediaItem(updatedAt);
+-- findItemByVideoId is per-playlist-entry (playlistItemDetails resolves each membership code) and
+-- via public findItemsByVideoId; without this index every lookup is a full table scan, making
+-- playlistItemDetails O(playlist x table).
+CREATE INDEX mediaItem_youtubeVid ON mediaItem(youtubeVid);
 
 insertItem:
 INSERT INTO mediaItem(
