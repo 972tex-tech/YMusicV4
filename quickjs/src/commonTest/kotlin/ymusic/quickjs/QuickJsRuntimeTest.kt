@@ -1045,6 +1045,22 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** A RESET is terminal for the read side: every receive() after the first re-throws
+     *  [PipeResetException] (the KDoc contract), not a read-closed IllegalStateException. */
+    @Test
+    fun receive_after_reset_keeps_throwing_pipe_reset() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load("""ymix.onAccept("reset-up", async (pipe) => { pipe.close("kaboom mid-stream"); });""")
+        try {
+            val pipe = rt.openPipe("reset-up")
+            assertFailsWith<PipeResetException> { pipe.receive(Buffer(), 8L) }
+            val again = assertFailsWith<PipeResetException> { pipe.receive(Buffer(), 8L) }
+            assertEquals("kaboom mid-stream", again.reason)
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A Kotlin handler that throws RESETs the pipe with the failure message, so the JS client's
      *  read throws instead of hanging or seeing a clean EOF. */
     @Test
