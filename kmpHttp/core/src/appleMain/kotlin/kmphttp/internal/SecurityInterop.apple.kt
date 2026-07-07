@@ -47,6 +47,7 @@ import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFNumberSInt32Type
 import platform.CoreFoundation.kCFStringEncodingUTF8
+import platform.CoreFoundation.kCFTypeArrayCallBacks
 import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLCredentialPersistence
 import platform.Foundation.credentialWithIdentity
@@ -94,7 +95,13 @@ internal fun applyCustomAnchors(
         memScoped {
             val values = allocArray<COpaquePointerVar>(anchors.size)
             anchors.forEachIndexed { i, c -> values[i] = c }
-            val cfArray = CFArrayCreate(kCFAllocatorDefault, values, anchors.size.convert(), null)
+            // kCFTypeArrayCallBacks is load-bearing: the array must retain the certs, because the
+            // finally below releases OUR retain and trust evaluation dereferences them later
+            // through this array. With null callbacks the SecTrust would evaluate against freed
+            // SecCertificateRefs (use-after-free).
+            val cfArray = CFArrayCreate(
+                kCFAllocatorDefault, values, anchors.size.convert(), kCFTypeArrayCallBacks.ptr,
+            )
             try {
                 SecTrustSetAnchorCertificates(trust, cfArray)
                 SecTrustSetAnchorCertificatesOnly(trust, anchorsOnly)
