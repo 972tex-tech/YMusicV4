@@ -65,6 +65,7 @@ static jstring utf8_to_jstring(JNIEnv *env, const char *s, size_t len) {
         i += adv;
     }
     jchar *buf = (jchar *)malloc(sizeof(jchar) * (u16len > 0 ? u16len : 1));
+    if (!buf) return NULL; /* OOM: a null jstring, same as NewString's own OOM return — callers tolerate it */
     jsize k = 0;
     i = 0;
     while (i < len) {
@@ -94,6 +95,11 @@ static char *jstring_to_utf8(JNIEnv *env, jstring s, size_t *outLen) {
     jsize n = (*env)->GetStringLength(env, s);
     const jchar *u = (*env)->GetStringChars(env, s, NULL);
     char *buf = (char *)malloc((size_t)n * 4 + 1);
+    if (!buf) { /* OOM: release the pinned chars and report empty; callers guard the null (see create/evalSync) */
+        (*env)->ReleaseStringChars(env, s, u);
+        if (outLen) *outLen = 0;
+        return NULL;
+    }
     size_t k = 0;
     for (jsize i = 0; i < n; i++) {
         uint32_t cp = u[i];
@@ -293,6 +299,15 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
 
     size_t blen = 0;
     char *bootstrap = jstring_to_utf8(env, jbootstrap, &blen);
+    if (!bootstrap) { /* OOM converting the bootstrap source — tear down and report, don't feed JS_Eval a null */
+        (*env)->DeleteGlobalRef(env, e->bridgeClass);
+        JS_FreeContext(e->ctx);
+        JS_FreeRuntime(e->rt);
+        qjs_pool_free(e->pool);
+        free(e);
+        throw_qjs(env, utf8_to_jstring(env, "out of memory (bootstrap)", 25));
+        return 0;
+    }
     JSValue bret = JS_Eval(e->ctx, bootstrap, blen, "<bootstrap>", JS_EVAL_TYPE_GLOBAL);
     free(bootstrap);
     if (JS_IsException(bret)) {
@@ -329,6 +344,12 @@ Java_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong hand
     size_t slen = 0;
     char *script = jstring_to_utf8(env, jscript, &slen);
     char *filename = jstring_to_utf8(env, jfilename, NULL);
+    if (!script || !filename) { /* OOM: don't hand JS_Eval a null source/name */
+        free(script);
+        free(filename);
+        throw_qjs(env, utf8_to_jstring(env, "out of memory", 13));
+        return NULL;
+    }
     JSValue val = JS_Eval(e->ctx, script, slen, filename, JS_EVAL_TYPE_GLOBAL);
     free(script);
     free(filename);
