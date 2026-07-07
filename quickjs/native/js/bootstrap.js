@@ -241,9 +241,6 @@
             pos = delivered;
           }
         }
-        // Wake-LAST, and in a finally: the waiter is resolved only once the queue is fully
-        // consistent (so nothing depends on promise resolution being deferred to a microtask),
-        // and an OOM mid-buffering can't strand a nulled-but-unresolved waiter.
         try {
           while (pos < len && buffered < PIPE_CAP) {
             var seg = __segTake(u8, pos, Math.min(len - pos, PIPE_CAP - buffered));
@@ -251,12 +248,24 @@
             buffered += seg.length;
             pos += seg.length;
           }
-          if (pos < len) hostBlocked = true; // we owe the host a DRAIN once we read back below LOW
-        } finally {
-          if (w !== null) {
-            if (w.buffer) w.resolve(delivered);
-            else w.resolve(); // readable park: the bytes are queued now; the scanner rescans
-          }
+        } catch (e) {
+          // Buffering failed — a segment-pool malloc OOM is the expected cause (we're below the 64 KB
+          // cap, so __segTake is allocating), but surface whatever actually threw rather than presume.
+          // Not recoverable mid-stream: don't swallow it or fake backpressure. Poison the read side so
+          // this and every later receive() throws, fail the parked reader, and report EPIPE to the
+          // host writer, so both ends fail consistently. Under a JNI critical region here — local
+          // state + a promise reject only, never a __host* call.
+          resetReason = "pipe buffering failed: " + ((e && e.message) || e);
+          releaseInbound();
+          if (w !== null) w.reject(new Error(resetReason));
+          return -1;
+        }
+        // Wake the reader LAST, once the queue is fully consistent (nothing depends on the resolution
+        // being deferred to a microtask).
+        if (pos < len) hostBlocked = true; // buffer full: owe the host a DRAIN once we read below LOW
+        if (w !== null) {
+          if (w.buffer) w.resolve(delivered);
+          else w.resolve(); // readable park: the bytes are queued now; the scanner rescans
         }
         return pos;
       },
