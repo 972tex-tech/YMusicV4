@@ -18,6 +18,8 @@ import kotlinx.cinterop.set
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +62,11 @@ import kotlin.time.Duration.Companion.milliseconds
  * bind `posix_spawn`). The child's stdin/stdout/stderr are wired to pipes and exposed as okio
  * streams on the returned [KmpProcess]; the exit code is harvested by a background `waitpid` poll.
  */
-internal actual fun startProcess(builder: KmpProcessBuilder): KmpProcess = spawn(builder)
+// Serialize fork+exec so a concurrent spawn can't inherit this spawn's pipe fds (macOS has no
+// pipe2(O_CLOEXEC)). The child only makes async-signal-safe calls then exec/_exit, never this lock.
+private val spawnLock = SynchronizedObject()
+
+internal actual fun startProcess(builder: KmpProcessBuilder): KmpProcess = synchronized(spawnLock) { spawn(builder) }
 
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 private fun spawn(builder: KmpProcessBuilder): KmpProcess = memScoped {
@@ -109,6 +115,8 @@ private fun spawn(builder: KmpProcessBuilder): KmpProcess = memScoped {
         if (outPipe != null) { close(outPipe[0]); close(outPipe[1]) }
         if (errPipe != null) { close(errPipe[0]); close(errPipe[1]) }
         if (devNull >= 0) close(devNull)
+        // execve's binding takes a Kotlin String, so this allocates in the forked child;
+        // avoiding it would need a custom cinterop of execve.
         execve(builder.binaryPath, argv, envp)
         _exit(127) // exec failed
     }
