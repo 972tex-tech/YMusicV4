@@ -506,8 +506,20 @@ class Uri private constructor(
             val startsWithSlash = encodedPath[0] == '/'
 
             var endsWithDotOrSlash = false
+            var first = true
             encodedPath.splitSequence('/').forEach { segment ->
+                // The leading empty segment (before the leading '/') is an artifact of the split,
+                // captured by startsWithSlash — drop it. All OTHER empty segments are meaningful
+                // path segments (consecutive slashes) that RFC 3986 §5.2.4 preserves; only "."
+                // and ".." are removed. Collapsing them (the old `else -> skip`) rewrote "/a//b"
+                // to "/a/b", changing which resource resolve() targets.
+                val leadingArtifact = first && startsWithSlash && segment.isEmpty()
+                first = false
                 when {
+                    leadingArtifact -> {
+                        endsWithDotOrSlash = true
+                    }
+
                     isDot(segment) -> {
                         /* skip single dot */
                         endsWithDotOrSlash = true
@@ -521,13 +533,9 @@ class Uri private constructor(
                         endsWithDotOrSlash = true
                     }
 
-                    segment.isNotEmpty() -> {
-                        output.add(segment)
-                        endsWithDotOrSlash = false
-                    }
-
                     else -> {
-                        endsWithDotOrSlash = true
+                        output.add(segment)
+                        endsWithDotOrSlash = segment.isEmpty()
                     }
                 }
             }
