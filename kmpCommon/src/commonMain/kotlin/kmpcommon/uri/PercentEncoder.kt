@@ -276,7 +276,10 @@ object PercentEncoder {
      * Invalid percent-encodings are left as-is.
      */
     fun decode(encoded: CharSequence, plusIsSpace: Boolean = false): CharSequence {
-        if (!encoded.contains('%')) {
+        // Fast path only when there is genuinely nothing to do: no escapes AND (if plusIsSpace)
+        // no '+' to translate. Returning early on '+' made the flag's effect depend on whether an
+        // unrelated '%' happened to be present ("a+b" unchanged, "a+b%20c" -> "a b c").
+        if (!encoded.contains('%') && !(plusIsSpace && encoded.contains('+'))) {
             return encoded
         }
 
