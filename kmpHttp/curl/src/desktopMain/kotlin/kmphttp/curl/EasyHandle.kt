@@ -282,6 +282,13 @@ class EasyHandle private constructor(
                     this.multiInterface = null
                 }
                 curl_easy_cleanup(pointer)
+                // curl does not own the header slist — free it here (only setHeaders freed a
+                // PREVIOUS list, so without this every executed request leaked its full header
+                // list in native memory). Safe after curl_easy_cleanup: the transfer is done.
+                headersPointer?.let {
+                    curl_slist_free_all(it)
+                    headersPointer = null
+                }
                 extraCaCertsRef?.dispose()
                 extraCaCertsRef = null
                 thisRef.dispose()
