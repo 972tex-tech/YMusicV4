@@ -46,10 +46,14 @@ class SafDocumentsProvider(
             "file" -> fileDocument(uri, File(requireNotNull(android.path)))
             "content" -> {
                 if (!hasReadPermission(android)) return@withContext DocumentInfo.Missing(uri, permissionDenied = true)
-                context.contentResolver.query(android, projection, null, null, null)?.use { c ->
-                    if (!c.moveToFirst()) return@withContext DocumentInfo.Missing(uri)
-                    c.toDocumentInfo(uri)
-                } ?: DocumentInfo.Missing(uri)
+                // A bare tree uri (content://auth/tree/X — what the app grants and the docs tell it
+                // to pass) is NOT itself queryable; resolve it to the tree's root document uri.
+                val docUri = asDocumentUri(android)
+                val docKmpUri = if (docUri == android) uri else Uri.parse(docUri.toString())
+                context.contentResolver.query(docUri, projection, null, null, null)?.use { c ->
+                    if (!c.moveToFirst()) return@withContext DocumentInfo.Missing(docKmpUri)
+                    c.toDocumentInfo(docKmpUri)
+                } ?: DocumentInfo.Missing(docKmpUri)
             }
             else -> DocumentInfo.Missing(uri)
         }
@@ -70,7 +74,7 @@ class SafDocumentsProvider(
         }
 
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            android, DocumentsContract.getDocumentId(android),
+            android, documentIdOf(android), // getDocumentId throws on a bare tree uri
         )
         context.contentResolver.query(childrenUri, projection, null, null, null)?.use { c ->
             if (!c.moveToFirst()) return@withContext emptyList()
@@ -84,6 +88,16 @@ class SafDocumentsProvider(
             result
         } ?: throw IOException("provider query failed for $childrenUri") // null cursor is an error, not an empty folder
     }
+
+    // A bare tree uri (…/tree/X) has no document segment: getDocumentId throws and query()
+    // rejects it. Map it to the tree's root document uri; a real document uri is returned as-is.
+    private fun asDocumentUri(android: AndroidUri): AndroidUri =
+        if (DocumentsContract.isDocumentUri(context, android)) android
+        else DocumentsContract.buildDocumentUriUsingTree(android, DocumentsContract.getTreeDocumentId(android))
+
+    private fun documentIdOf(android: AndroidUri): String =
+        if (DocumentsContract.isDocumentUri(context, android)) DocumentsContract.getDocumentId(android)
+        else DocumentsContract.getTreeDocumentId(android)
 
     private fun hasReadPermission(android: AndroidUri): Boolean = runCatching {
         context.checkCallingOrSelfUriPermission(android, Intent.FLAG_GRANT_READ_URI_PERMISSION)
