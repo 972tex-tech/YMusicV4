@@ -173,10 +173,11 @@ class CacheInterceptor(
                     val bytesRead: Long
                     try {
                         bytesRead = source.read(tempBuffer, byteCount)
-                    } catch (e: IOException) {
+                    } catch (e: Throwable) {
+                        // Abort the edit on ANY failure incl. cancellation, not just IOException.
                         if (!cacheRequestClosed) {
                             cacheRequestClosed = true
-                            cacheRequest.abort() // Failed to write a complete cache response.
+                            cacheRequest.abort() // launches into the cache's own commitScope
                             tempBuffer.clear()
                         }
                         throw e
@@ -185,13 +186,27 @@ class CacheInterceptor(
                     if (bytesRead == -1L) {
                         if (!cacheRequestClosed) {
                             cacheRequestClosed = true
-                            cacheBody.close() // The cache response is complete!
+                            // Fault-hiding: a cache-disk failure must not fail the network stream.
+                            try {
+                                cacheBody.close() // The cache response is complete!
+                            } catch (_: IOException) {
+                                cacheRequest.abort()
+                            }
                         }
                         return -1
                     }
                     tempBuffer.copyTo(sink)
-                    cacheBody.write(tempBuffer, bytesRead)
-                    check(tempBuffer.size == 0L)
+                    // Fault-hiding (cf. OkHttp): a cache-write failure stops caching but must not
+                    // fail the network stream.
+                    if (!cacheRequestClosed) {
+                        try {
+                            cacheBody.write(tempBuffer, bytesRead)
+                        } catch (_: IOException) {
+                            cacheRequestClosed = true
+                            cacheRequest.abort()
+                        }
+                    }
+                    tempBuffer.clear()
                     return bytesRead
                 }
 

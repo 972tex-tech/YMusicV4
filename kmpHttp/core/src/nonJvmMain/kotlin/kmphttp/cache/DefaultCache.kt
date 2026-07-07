@@ -26,8 +26,10 @@ import kmphttp.toHttpUrlOrNull
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
@@ -147,9 +149,12 @@ class DefaultCache(
             editor = cache.edit(key(response.request.url)) ?: return null
             entry.writeTo(editor)
             return RealCacheRequest.create(editor, commitScope)
-        } catch (_: IOException) {
-            abortQuietly(editor)
-            return null
+        } catch (e: Throwable) {
+            // NonCancellable so the abort still runs when the caller is cancelled (abortQuietly
+            // suspends). IOException -> null (uncacheable); anything else rethrows.
+            withContext(NonCancellable) { abortQuietly(editor) }
+            if (e is IOException) return null
+            throw e
         }
     }
 
