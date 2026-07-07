@@ -300,6 +300,11 @@ class QuickJsRuntime private constructor(
                     // Partial: the peer's buffer is full. engine.write's trailing microtask
                     // pump may already have drained it and fired DRAIN (credit) — else park.
                     if (drainCredit) { drainCredit = false; continue }
+                    // Same lost-wakeup window for closeRead: the pump can run the peer's
+                    // closeRead() during THIS engine.write call (onPeerCloseRead finds no parked
+                    // writer, only sets the flag). Parking after that would hang forever — no
+                    // DRAIN or close event is ever coming from a peer that stopped reading.
+                    if (peerReadClosed) throw BrokenPipeException()
                     suspendCancellableCoroutine { cont ->
                         writer = cont
                         cont.invokeOnCancellation { writer = null }

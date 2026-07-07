@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okio.Buffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -99,6 +100,37 @@ class PipeCancellationTest {
 
         val result = parked.await()
         assertTrue(result.isFailure, "teardown must fail the parked receive, got $result")
+    }
+
+    /** A peer that closeRead()s mid-stream (from the data path, inside engine.write's microtask
+     *  pump) must fail the in-flight send with EPIPE promptly on every interleave — including the
+     *  narrow one where the flag lands between a partial accept and the writer's park (that park
+     *  now rechecks peerReadClosed; the window needs a pump/cap coincidence that segment-sized
+     *  writes make impractical to pin down deterministically, so this covers the family). */
+    @Test
+    fun peer_closeRead_during_the_write_pump_fails_the_send_instead_of_hanging() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            rt.load(
+                """
+                ymix.onAccept("sink", async (pipe) => {
+                  var buf = new Uint8Array(4096);
+                  var r = pipe.receive(buf, 0, buf.length);
+                  if (typeof r !== "number") await r;
+                  pipe.closeRead(); // resolves in the pump of the host's first big write
+                });
+                """.trimIndent(),
+            )
+            val pipe = rt.openPipe("sink")
+            val payload = Buffer()
+            repeat(200 * 1024) { payload.writeByte(it and 0xFF) }
+            val result = withContext(Dispatchers.Default) {
+                withTimeout(10_000) { runCatching { pipe.send(payload, payload.size) } }
+            }
+            assertTrue(result.exceptionOrNull() is BrokenPipeException, "expected EPIPE, got $result")
+        } finally {
+            rt.close()
+        }
     }
 
     @Test
