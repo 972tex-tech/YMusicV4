@@ -216,24 +216,36 @@ internal class CurlExecutor(
 
     private fun cleanUpThis(error: Throwable?) {
         if (cleanedUp.compareAndSet(false, true)) {
-            requestBodyTransferRef?.get()?.cancel()
-            requestBodyTransferRef?.dispose()
+            val bodyRef = requestBodyTransferRef
+            val headerRef = responseHeaderHandlerRef
+            val streamRef = streamingResponseHandlerRef
             requestBodyTransferRef = null
-
-            responseHeaderHandlerRef?.get()?.cancel(error)
-            responseHeaderHandlerRef?.dispose()
             responseHeaderHandlerRef = null
+            streamingResponseHandlerRef = null
 
-            streamingResponseHandlerRef?.get()?.let {
+            bodyRef?.get()?.cancel()
+            headerRef?.get()?.cancel(error)
+            streamRef?.get()?.let {
                 if (error != null) it.onPerformError(error)
                 else it.close()
             }
-            streamingResponseHandlerRef?.dispose()
-            streamingResponseHandlerRef = null
 
-            easyHandle?.let {
-                easyHandle = null
-                curlMultiApi.removeAndCleanUpJob(it, error)
+            // The StableRefs are the callbacks' userdata. removeAndCleanUpJob only QUEUES the
+            // removal; until the event loop actually takes the handle off the multi,
+            // curl_multi_perform can still fire read/write/header callbacks for it — so the refs
+            // must stay alive until onRemoved runs on the event-loop thread (disposing them here
+            // was a use-after-free under cancellation/early-close).
+            val disposeRefs: () -> Unit = {
+                bodyRef?.dispose()
+                headerRef?.dispose()
+                streamRef?.dispose()
+            }
+            val handle = easyHandle
+            easyHandle = null
+            if (handle != null) {
+                curlMultiApi.removeAndCleanUpJob(handle, error, onRemoved = disposeRefs)
+            } else {
+                disposeRefs()
             }
         }
     }

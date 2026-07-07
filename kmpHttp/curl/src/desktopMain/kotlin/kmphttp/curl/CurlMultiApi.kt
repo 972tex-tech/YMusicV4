@@ -57,7 +57,7 @@ typealias MultiHandle = CPointer<*>
 
 private sealed interface EventLoopAction {
     class Add(val easyHandle: EasyHandle) : EventLoopAction
-    class Remove(val easyHandle: EasyHandle) : EventLoopAction
+    class Remove(val easyHandle: EasyHandle, val onRemoved: (() -> Unit)?) : EventLoopAction
     class Unpause(val easyHandle: EasyHandle) : EventLoopAction
 }
 
@@ -152,9 +152,16 @@ class CurlMultiApi(
      * @param easyHandle The easy handle to cancel
      * @param cause The cancellation reason
      */
+    /**
+     * @param onRemoved Runs once the handle is actually cleaned up (off the multi handle). Until
+     * then the event loop can still fire this handle's callbacks, so anything their userdata
+     * points at (StableRefs!) must only be disposed from here — disposing before queueing the
+     * removal is a use-after-free on the event-loop thread.
+     */
     fun removeAndCleanUpJob(
         easyHandle: EasyHandle,
-        cause: Throwable? = null
+        cause: Throwable? = null,
+        onRemoved: (() -> Unit)? = null
     ) {
         synchronized(lock) {
             val removed = activeJobs.remove(easyHandle)
@@ -163,13 +170,17 @@ class CurlMultiApi(
                 else removed.cancel()
             }
 
-            if (easyHandle.isCleanedUp()) return
+            if (easyHandle.isCleanedUp()) {
+                onRemoved?.invoke()
+                return
+            }
 
             if (state.load() == State.CLOSED) {
                 easyHandle.cleanUp()
+                onRemoved?.invoke()
                 return
             }
-            pendingEventLoopActions.add(EventLoopAction.Remove(easyHandle))
+            pendingEventLoopActions.add(EventLoopAction.Remove(easyHandle, onRemoved))
         }
         wakeup()
     }
@@ -271,6 +282,7 @@ class CurlMultiApi(
 
                 is EventLoopAction.Remove -> {
                     action.easyHandle.cleanUp()
+                    action.onRemoved?.invoke()
                 }
 
                 is EventLoopAction.Unpause -> {
@@ -321,6 +333,7 @@ class CurlMultiApi(
                     is EventLoopAction.Add -> Unit // no op
                     is EventLoopAction.Remove -> {
                         action.easyHandle.cleanUp()
+                        action.onRemoved?.invoke()
                     }
 
                     is EventLoopAction.Unpause -> {
