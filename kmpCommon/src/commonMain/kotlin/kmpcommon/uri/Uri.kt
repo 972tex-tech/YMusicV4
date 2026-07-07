@@ -319,6 +319,13 @@ class Uri private constructor(
                     authorityPart = start until length
                 }
                 if (encodedPath.isNotEmpty()) {
+                    // RFC 3986 §3.3: with an authority present, the path must be empty or begin
+                    // with '/'. Without this separator, authority "example.com" + path "api"
+                    // concatenates to "//example.comapi" — reparsed, the authority becomes
+                    // "example.comapi" (a different host than the builder's accessors report).
+                    if (authority != null && encodedPath[0] != '/') {
+                        append('/')
+                    }
                     val start = length
                     append(encodedPath)
                     pathPart = start until length
