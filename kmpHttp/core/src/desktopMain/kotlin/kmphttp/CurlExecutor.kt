@@ -56,6 +56,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -151,7 +152,10 @@ internal class CurlExecutor(
 
                 val handler = RequestBodyTransfer(
                     curl, curlMultiApi, body.openRead(),
-                    CoroutineScope(Dispatchers.Unconfined)
+                    // IO, not Unconfined: this loop is resumed from the READFUNCTION on the
+                    // event-loop thread; Unconfined would run the body's blocking source.read
+                    // inline in the curl callback, stalling the multi loop.
+                    CoroutineScope(Dispatchers.IO)
                 )
                 StableRef.create(handler).let { ref ->
                     requestBodyTransferRef = ref
