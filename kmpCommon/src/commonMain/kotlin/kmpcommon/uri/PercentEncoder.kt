@@ -324,14 +324,14 @@ object PercentEncoder {
                     i += 1
                 }
                 // Two bytes (110xxxxx 10xxxxxx)
-                byte1 and 0xE0 == 0xC0 -> {
+                byte1 and 0xE0 == 0xC0 && i + 1 < buffer.size -> {
                     val byte2 = buffer[i + 1].toInt() and 0x3F
                     val codePoint = ((byte1 and 0x1F) shl 6) or byte2
                     append(codePoint.toChar())
                     i += 2
                 }
                 // Three bytes (1110xxxx 10xxxxxx 10xxxxxx)
-                byte1 and 0xF0 == 0xE0 -> {
+                byte1 and 0xF0 == 0xE0 && i + 2 < buffer.size -> {
                     val byte2 = buffer[i + 1].toInt() and 0x3F
                     val byte3 = buffer[i + 2].toInt() and 0x3F
                     val codePoint = ((byte1 and 0x0F) shl 12) or (byte2 shl 6) or byte3
@@ -339,7 +339,7 @@ object PercentEncoder {
                     i += 3
                 }
                 // Four bytes (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
-                byte1 and 0xF8 == 0xF0 -> {
+                byte1 and 0xF8 == 0xF0 && i + 3 < buffer.size -> {
                     val byte2 = buffer[i + 1].toInt() and 0x3F
                     val byte3 = buffer[i + 2].toInt() and 0x3F
                     val byte4 = buffer[i + 3].toInt() and 0x3F
@@ -349,7 +349,9 @@ object PercentEncoder {
                     i += 4
                 }
                 else -> {
-                    append('\uFFFD') // Replacement character for invalid bytes
+                    // Invalid lead byte \u2014 or a multibyte lead whose continuation bytes were
+                    // truncated (e.g. decode("%C3")): garbage in, U+FFFD out, never a throw.
+                    append('\uFFFD')
                     i += 1
                 }
             }
