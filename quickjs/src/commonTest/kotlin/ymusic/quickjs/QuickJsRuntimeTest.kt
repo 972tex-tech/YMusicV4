@@ -483,6 +483,31 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** A writeUtf8 too big to stage flushes the segment and streams a one-shot C-encoded buffer —
+     *  past the 64 KB pipe cap here, so the direct send itself parks and drains. Bytes must land
+     *  strictly in call order around staged neighbors. */
+    @Test
+    fun write_utf8_direct_path_keeps_order_with_staged_writes() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("run", async (pipe) => {
+              const big = "x🎵".repeat(30000); // 90000 units -> 150000 bytes: direct + backpressure
+              let p;
+              p = pipe.writeUtf8("head|"); if (p) await p;
+              p = pipe.writeUtf8(big); if (p) await p;
+              p = pipe.writeUtf8("|tail"); if (p) await p;
+              await pipe.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("head|" + "x🎵".repeat(30000) + "|tail", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** writeObjectAsJson streams a value to the pipe token-by-token (no whole string / Uint8Array).
      *  Its output must match JSON.stringify exactly — escapes, NaN/Infinity->null, undefined omitted
      *  in objects / null in arrays, nesting, astral chars — and stay correct across flush boundaries

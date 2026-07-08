@@ -695,13 +695,71 @@ static JSValue js_utf8_decode(JSContext *ctx, JSValueConst this_val, int argc, J
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
 int JS_GetFlatStringStorage(JSValueConst v, const void **pdata, uint32_t *plen);
 
-/* __utf8Into(str, from, to, dst, dstOff) -> (unitsRead << 16) | bytesWritten.
- * Encode str[from, to) (UTF-16 unit indices) straight from flat string storage into dst[dstOff..],
- * stopping on the last whole codepoint that fits (a surrogate pair is never split; a lone
- * surrogate goes out as WTF-8, consistent with the rest of the stack). Chunk-loop friendly: the
- * caller advances from/dstOff and flushes between calls — ONE encode pass total, indexed O(1) per
- * call, no whole-string materialization ever. The per-call encode window is capped at 65535 bytes
- * so both halves fit the packed return (the sink segment is 8 KB anyway). */
+/* Encode UTF-16 units [i, end) of flat storage into q, which the caller has sized for the worst
+ * case (3 bytes/unit; a pair's 4 bytes span 2 units). A lone surrogate goes out as WTF-8,
+ * consistent with the rest of the stack. Returns one past the last byte written. */
+static uint8_t *utf8_encode_units(const void *data, int wide, uint32_t i, uint32_t end, uint8_t *q) {
+    if (!wide) {
+        const uint8_t *sp = (const uint8_t *)data;
+        for (; i < end; i++) {
+            uint8_t c = sp[i];
+            if (c < 0x80) {
+                *q++ = c;
+            } else {
+                *q++ = 0xC0 | (c >> 6);
+                *q++ = 0x80 | (c & 0x3F);
+            }
+        }
+        return q;
+    }
+    const uint16_t *sp = (const uint16_t *)data;
+    while (i < end) {
+        uint32_t c = sp[i];
+        if (c < 0x80) {
+            *q++ = c;
+            i++;
+        } else if (c < 0x800) {
+            *q++ = 0xC0 | (c >> 6);
+            *q++ = 0x80 | (c & 0x3F);
+            i++;
+        } else if (c >= 0xD800 && c < 0xDC00 && i + 1 < end && sp[i + 1] >= 0xDC00 && sp[i + 1] < 0xE000) {
+            uint32_t cp = 0x10000 + ((c - 0xD800) << 10) + (sp[i + 1] - 0xDC00);
+            *q++ = 0xF0 | (cp >> 18);
+            *q++ = 0x80 | ((cp >> 12) & 0x3F);
+            *q++ = 0x80 | ((cp >> 6) & 0x3F);
+            *q++ = 0x80 | (cp & 0x3F);
+            i += 2;
+        } else {
+            *q++ = 0xE0 | (c >> 12);
+            *q++ = 0x80 | ((c >> 6) & 0x3F);
+            *q++ = 0x80 | (c & 0x3F);
+            i++;
+        }
+    }
+    return q;
+}
+
+static size_t utf8_measure_units(const void *data, int wide, uint32_t i, uint32_t end) {
+    size_t n = 0;
+    if (!wide) {
+        const uint8_t *sp = (const uint8_t *)data;
+        for (; i < end; i++) n += (sp[i] < 0x80) ? 1 : 2;
+        return n;
+    }
+    const uint16_t *sp = (const uint16_t *)data;
+    while (i < end) {
+        uint32_t c = sp[i];
+        if (c < 0x80) { n += 1; i++; }
+        else if (c < 0x800) { n += 2; i++; }
+        else if (c >= 0xD800 && c < 0xDC00 && i + 1 < end && sp[i + 1] >= 0xDC00 && sp[i + 1] < 0xE000) { n += 4; i += 2; }
+        else { n += 3; i++; }
+    }
+    return n;
+}
+
+/* __utf8Into(str, from, to, dst, dstOff) -> bytes written. One-shot encode of str[from, to)
+ * (UTF-16 unit indices) straight from flat string storage into dst[dstOff..]. The caller
+ * guarantees fit via the (to - from) * 3 worst case; a range that could overflow throws. */
 static JSValue js_utf8_into(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     int64_t from = 0, to = 0, dst_off = 0;
     JS_ToInt64(ctx, &from, argv[1]);
@@ -721,62 +779,64 @@ static JSValue js_utf8_into(JSContext *ctx, JSValueConst this_val, int argc, JSV
         JS_FreeValue(ctx, flat);
         return JS_ThrowTypeError(ctx, "__utf8Into: not a string");
     }
+    uint32_t i = (from > (int64_t)slen) ? slen : (uint32_t)from;
     uint32_t end = (to > (int64_t)slen) ? slen : (uint32_t)to;
-    size_t cap = dlen - (size_t)dst_off;
-    if (cap > 65535) cap = 65535;
-    uint8_t *q = dst + dst_off;
-    const uint8_t *qend = q + cap;
-    uint32_t i = (uint32_t)from;
     if (i > end) i = end;
-    uint32_t start = i;
-    if (!wide) {
-        const uint8_t *sp = (const uint8_t *)data;
-        while (i < end) {
-            uint8_t c = sp[i];
-            if (c < 0x80) {
-                if (q + 1 > qend) break;
-                *q++ = c;
-            } else {
-                if (q + 2 > qend) break;
-                *q++ = 0xC0 | (c >> 6);
-                *q++ = 0x80 | (c & 0x3F);
-            }
-            i++;
+    if ((uint64_t)(end - i) * 3 > dlen - (size_t)dst_off) {
+        JS_FreeValue(ctx, flat);
+        return JS_ThrowRangeError(ctx, "__utf8Into: dst too small");
+    }
+    uint8_t *q = utf8_encode_units(data, wide, i, end, dst + dst_off);
+    JS_FreeValue(ctx, flat);
+    return JS_NewInt32(ctx, (int32_t)(q - (dst + dst_off)));
+}
+
+static void utf8_encode_buf_free(JSRuntime *rt, void *opaque, void *ptr) {
+    js_free_rt(rt, ptr);
+}
+
+/* __utf8Encode(str, from, to) -> Uint8Array. One-shot encode of str[from, to) into an exact-size
+ * C buffer wrapped zero-copy (freed with the array). For strings too big to stage: the sink
+ * flushes, then streams the returned array through send() under the normal backpressure. */
+static JSValue js_utf8_encode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    int64_t from = 0, to = 0;
+    JS_ToInt64(ctx, &from, argv[1]);
+    JS_ToInt64(ctx, &to, argv[2]);
+    if (from < 0 || to < from)
+        return JS_ThrowRangeError(ctx, "__utf8Encode range out of bounds");
+    JSValue flat = JS_ToFlatString(ctx, argv[0]);
+    if (JS_IsException(flat)) return flat;
+    const void *data = NULL;
+    uint32_t slen = 0;
+    int wide = JS_GetFlatStringStorage(flat, &data, &slen);
+    if (wide < 0) {
+        JS_FreeValue(ctx, flat);
+        return JS_ThrowTypeError(ctx, "__utf8Encode: not a string");
+    }
+    uint32_t i = (from > (int64_t)slen) ? slen : (uint32_t)from;
+    uint32_t end = (to > (int64_t)slen) ? slen : (uint32_t)to;
+    if (i > end) i = end;
+    size_t n = utf8_measure_units(data, wide, i, end);
+    uint8_t *buf = NULL;
+    if (n > 0) {
+        buf = (uint8_t *)js_malloc(ctx, n);
+        if (!buf) {
+            JS_FreeValue(ctx, flat);
+            return JS_EXCEPTION;
         }
-    } else {
-        const uint16_t *sp = (const uint16_t *)data;
-        while (i < end) {
-            uint32_t c = sp[i];
-            if (c < 0x80) {
-                if (q + 1 > qend) break;
-                *q++ = c;
-                i++;
-            } else if (c < 0x800) {
-                if (q + 2 > qend) break;
-                *q++ = 0xC0 | (c >> 6);
-                *q++ = 0x80 | (c & 0x3F);
-                i++;
-            } else if (c >= 0xD800 && c < 0xDC00 && i + 1 < end && sp[i + 1] >= 0xDC00 && sp[i + 1] < 0xE000) {
-                if (q + 4 > qend) break;
-                uint32_t cp = 0x10000 + ((c - 0xD800) << 10) + (sp[i + 1] - 0xDC00);
-                *q++ = 0xF0 | (cp >> 18);
-                *q++ = 0x80 | ((cp >> 12) & 0x3F);
-                *q++ = 0x80 | ((cp >> 6) & 0x3F);
-                *q++ = 0x80 | (cp & 0x3F);
-                i += 2;
-            } else {
-                if (q + 3 > qend) break;
-                *q++ = 0xE0 | (c >> 12);
-                *q++ = 0x80 | ((c >> 6) & 0x3F);
-                *q++ = 0x80 | (c & 0x3F);
-                i++;
-            }
-        }
+        utf8_encode_units(data, wide, i, end, buf);
     }
     JS_FreeValue(ctx, flat);
-    uint32_t read = i - start;
-    uint32_t written = (uint32_t)(q - (dst + dst_off));
-    return JS_NewInt32(ctx, (int32_t)((read << 16) | written));
+    JSValue ab = JS_NewArrayBuffer(ctx, buf, n, buf ? utf8_encode_buf_free : NULL, NULL, 0);
+    if (JS_IsException(ab)) {
+        js_free(ctx, buf);
+        return ab;
+    }
+    /* the constructor reads argv[1] (offset) and argv[2] (length) even when argc is smaller */
+    JSValue args[3] = { ab, JS_UNDEFINED, JS_UNDEFINED };
+    JSValue u8 = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+    JS_FreeValue(ctx, ab);
+    return u8;
 }
 
 /* ---- class + registration ---- */
@@ -832,6 +892,7 @@ QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user) 
     JS_SetPropertyStr(ctx, g, "__pbCloseRead", JS_NewCFunction(ctx, js_pb_close_read, "__pbCloseRead", 1));
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
+    JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 3));
     JS_FreeValue(ctx, g);
     return pc;
 }

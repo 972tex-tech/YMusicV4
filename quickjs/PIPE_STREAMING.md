@@ -100,8 +100,9 @@ release — so JNI re-entry is impossible by construction. The DRAIN hook fires 
 JS-initiated read paths (during a write the host writer is mid-write, not parked, so the accepted
 count itself is the flow control); the shim keeps its in-critical guards as cheap defense.
 
-Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
-inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
+Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; a single
+string delegates to native `__utf8Encode`, the multi-arg concat form stays a small-input JS loop),
+`utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
 **no separate `buffered(pipe)` wrapper**: the pipe itself is the okio-`Buffer`-style object (source
 and sink in one). Alongside the raw `send`/`receive`/`close`/`closeRead` it carries buffered reads
 (`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2) and buffered
@@ -124,10 +125,12 @@ stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
-- `writeUtf8`/`writeUtf8Range` encode via `__utf8Into` — an `encodeInto`: fill the segment
-  straight from flat string storage (the vendored patch), flush, advance. One native call per
-  segment-full, ONE encode pass, zero per-call materialization — for a string of any size, memory
-  stays bounded by the segment. Variadic: `writeUtf8(a, b)` avoids the string concat.
+- `writeUtf8`/`writeUtf8Range` decide fit up front from the `(to - from) * 3` UTF-16 worst case:
+  a string that fits coalesces into the segment via `__utf8Into` (an `encodeInto` straight from
+  flat string storage — the vendored patch — no allocation), one too big for a whole segment is
+  encoded ONCE into an exact-size C buffer (`__utf8Encode`, a zero-copy `Uint8Array`) and streamed
+  through `send()` — one crossing per drain round instead of one flush per segment-full. Variadic:
+  `writeUtf8(a, b)` avoids the string concat.
 - `writeObjectAsJson` runs the **resumable native JSON encoder** (`__jsonEncNew`/`Fill`/`Done`,
   §2): one native call fills the whole segment, the pump flushes between fills.
 - `writeBytes` **bypasses the segment for large inputs** (`>=` one segment): it flushes what's
@@ -150,7 +153,7 @@ the segment per call, and the ~10-line JS pump only carries backpressure. Measur
 `__stringifyJson` + `writeBytes`; at 1.2 MB: 10 ms vs 15 ms — the streaming encoder now **beats the
 one-shot at every size** (the one-shot materializes the document three times: the JSON JSString,
 its UTF-8 conversion, and the Uint8Array copy; the encoder materializes nothing). A plain
-`writeUtf8` of the same 305 KB string: 82 ms → 3 ms (`__utf8Into`/`__utf8Bytes`). The backpressure
+`writeUtf8` of the same 305 KB string: 82 ms → 3 ms (`__utf8Into`/`__utf8Encode`). The backpressure
 story is unchanged: bounded buffer + parked writer, so a stalled consumer stops the producer
 instead of queueing unbounded bytes anywhere.
 
@@ -226,9 +229,8 @@ int32 numbers format directly. Net: faster than the native one-shot with one-seg
 
 ### `__stringifyJson(value) -> Uint8Array` — the one-shot encode
 
-Native `JS_JSONStringify` + native UTF-16->UTF-8 (`JS_ToCStringLen`). Never route a big payload
-through the interpreted `ymix.utf8Encode` (per-codepoint JS loop). Throws `TypeError` if the value
-has no JSON form.
+Native `JS_JSONStringify` + native UTF-16->UTF-8 (`JS_ToCStringLen`). Throws `TypeError` if the
+value has no JSON form.
 
 ```js
 pipe.send(__stringifyJson(payload));  // value -> bytes

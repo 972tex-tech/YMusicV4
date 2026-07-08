@@ -20,11 +20,11 @@
 // staging segment, the partial-send park, and the DRAIN/EPIPE bookkeeping below.
 
 (function () {
-  // Encode one or more strings to UTF-8, concatenated. Multi-arg (utf8Encode(str, "\n")) avoids a
-  // JS string concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
-  // (Small inputs only — big text goes through the buffered sink's stream-encode, and decoding is
-  // native __utf8Decode.)
+  // Encode one or more strings to UTF-8, concatenated. A single string delegates to the native
+  // one-shot; the multi-arg form (utf8Encode(str, "\n")) stream-encodes here to avoid a JS string
+  // concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
   function utf8Encode() {
+    if (arguments.length === 1) { var s = arguments[0]; return __utf8Encode(s, 0, s.length); }
     var out = [];
     for (var a = 0; a < arguments.length; a++) {
       var str = arguments[a];
@@ -149,21 +149,18 @@
       wbuf.set(b, wlen); wlen += n;
     }
 
-    // __utf8Into encodes str[from,to) from flat storage, packing unitsRead|bytesWritten; fill ->
-    // flush -> advance, one pass, memory bounded by the segment.
+    // (to - from) * 3 bounds the encoded size (the UTF-16 worst case), deciding fit up front:
+    // a string that fits coalesces into the staging segment (__utf8Into, no allocation); one too
+    // big for a whole segment is encoded once in C (__utf8Encode, exact-size zero-copy buffer)
+    // and streamed by send() under the normal backpressure.
     function writeUtf8Native(str, from, to) {
-      for (;;) {
-        var rw = __utf8Into(str, from, to, wbuf, wlen);
-        from += rw >>> 16;
-        wlen += rw & 0xFFFF;
-        if (from >= to) return;
-        if (rw === 0 && wlen === 0) throw new Error("__utf8Into made no progress"); // guard on an empty segment
+      var max = (to - from) * 3;
+      if (max > wbuf.length - wlen) {
         var p = flushSink();
-        if (p) {
-          var at = from;
-          return p.then(function () { return writeUtf8Native(str, at, to); });
-        }
+        if (p) return p.then(function () { return writeUtf8Native(str, from, to); });
       }
+      if (max <= wbuf.length - wlen) { wlen += __utf8Into(str, from, to, wbuf, wlen); return; }
+      return send(__utf8Encode(str, from, to));
     }
 
     // stream-encode the parts back-to-back (no `a + b + c` concat first)
