@@ -315,6 +315,61 @@ static JSValue js_line_end(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     return r;
 }
 
+/* ---- Byte accumulator for readUtf8: collect the whole body across pushes (a DynBuf), decode to a
+ * JS string once at the end — no growing JS array. New/Push/End; JS drives the loop and parks
+ * between pushes (C can't await), C only accumulates the bytes already delivered. */
+
+typedef struct {
+    JSContext *ctx;
+    DynBuf buf;
+} JUtf8Acc;
+
+static JSClassID jutf8acc_class_id;
+
+static void jutf8acc_finalizer(JSRuntime *rt, JSValue val) {
+    JUtf8Acc *a = JS_GetOpaque(val, jutf8acc_class_id);
+    if (a) { dbuf_free(&a->buf); free(a); }
+}
+
+static JSClassDef jutf8acc_class_def = { "Utf8Acc", .finalizer = jutf8acc_finalizer };
+
+static JSValue js_utf8acc_new(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    JUtf8Acc *a = (JUtf8Acc *)calloc(1, sizeof(JUtf8Acc));
+    if (a == NULL) return JS_ThrowOutOfMemory(ctx);
+    a->ctx = ctx;
+    dbuf_init(&a->buf);
+    JSValue obj = JS_NewObjectClass(ctx, jutf8acc_class_id);
+    if (JS_IsException(obj)) { dbuf_free(&a->buf); free(a); return obj; }
+    JS_SetOpaque(obj, a);
+    return obj;
+}
+
+/* __utf8AccPush(acc, u8, off, len) — append src[off, off+len). */
+static JSValue js_utf8acc_push(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    JUtf8Acc *a = (JUtf8Acc *)JS_GetOpaque2(ctx, argv[0], jutf8acc_class_id);
+    if (a == NULL) return JS_EXCEPTION;
+    int64_t off = 0, len = 0;
+    JS_ToInt64(ctx, &off, argv[2]);
+    JS_ToInt64(ctx, &len, argv[3]);
+    size_t src_len = 0;
+    uint8_t *src = view_bytes(ctx, argv[1], &src_len);
+    if (!src) return JS_EXCEPTION;
+    if (off < 0 || len < 0 || (uint64_t)off + (uint64_t)len > src_len)
+        return JS_ThrowRangeError(ctx, "__utf8AccPush range out of bounds");
+    if (dbuf_put(&a->buf, src + off, (size_t)len)) return JS_ThrowOutOfMemory(ctx);
+    return JS_UNDEFINED;
+}
+
+/* __utf8AccEnd(acc) -> string. Decode everything accumulated (astral-correct) and reset. */
+static JSValue js_utf8acc_end(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    JUtf8Acc *a = (JUtf8Acc *)JS_GetOpaque2(ctx, argv[0], jutf8acc_class_id);
+    if (a == NULL) return JS_EXCEPTION;
+    JSValue s = JS_NewStringLen(ctx, a->buf.size ? (const char *)a->buf.buf : "", a->buf.size);
+    a->buf.size = 0;
+    if (a->buf.allocated_size > 65536) { dbuf_free(&a->buf); dbuf_init(&a->buf); } /* don't retain a huge body buffer */
+    return s;
+}
+
 QjsPool *qjs_register_pipe(JSContext *ctx) {
     QjsPool *pool = (QjsPool *)calloc(1, sizeof(QjsPool));
     JS_SetRuntimeOpaque(JS_GetRuntime(ctx), pool);
@@ -329,6 +384,11 @@ QjsPool *qjs_register_pipe(JSContext *ctx) {
     JS_SetPropertyStr(ctx, g, "__linePush", JS_NewCFunction(ctx, js_line_push, "__linePush", 4));
     JS_SetPropertyStr(ctx, g, "__lineDone", JS_NewCFunction(ctx, js_line_done, "__lineDone", 1));
     JS_SetPropertyStr(ctx, g, "__lineEnd", JS_NewCFunction(ctx, js_line_end, "__lineEnd", 1));
+    JS_NewClassID(&jutf8acc_class_id);
+    JS_NewClass(JS_GetRuntime(ctx), jutf8acc_class_id, &jutf8acc_class_def);
+    JS_SetPropertyStr(ctx, g, "__utf8AccNew", JS_NewCFunction(ctx, js_utf8acc_new, "__utf8AccNew", 0));
+    JS_SetPropertyStr(ctx, g, "__utf8AccPush", JS_NewCFunction(ctx, js_utf8acc_push, "__utf8AccPush", 4));
+    JS_SetPropertyStr(ctx, g, "__utf8AccEnd", JS_NewCFunction(ctx, js_utf8acc_end, "__utf8AccEnd", 1));
     JS_FreeValue(ctx, g);
     return pool;
 }

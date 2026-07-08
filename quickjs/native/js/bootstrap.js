@@ -218,24 +218,47 @@
       return writeEnded ? -1 : 0;
     }
 
-    // Fill dst[0..n) exactly, draining as it reads (so any n works — no cap deadlock); throws at EOF.
-    async function readFully(dst, n) {
-      var got = 0;
-      while (got < n) {
-        var r = receive(dst, got, n - got);
-        var c = typeof r === "number" ? r : await r;
-        if (c < 0) throw new Error("stream ended before " + n + " bytes");
-        got += c;
+    // Drain every queued segment into a native byte accumulator (readUtf8). -1 = EOF, 0 = need more.
+    function utf8Feed(acc) {
+      if (resetReason !== null) throw new Error(resetReason);
+      while (ensureHead()) {
+        var n = head.length - headPos;
+        __utf8AccPush(acc, head, headPos, n);
+        buffered -= n;
+        __segRelease(head); head = null; headPos = 0;
       }
+      drainCheck();
+      return writeEnded ? -1 : 0;
     }
 
-    async function readJsonValue(expect) {
-      var p = __jsonNew(expect);
-      for (;;) {
-        var s = jsonFeed(p);
-        if (s !== 0) return __jsonEnd(p); // 1 = complete; -1 = EOF (finalize, or throw if incomplete)
-        var w = awaitMore(); if (w) await w;
+    // Fill dst[0..n) exactly, draining as it reads (so any n works — no cap deadlock). Await-optional:
+    // undefined when it finished without parking, else a Promise; throws/rejects at EOF.
+    function readFully(dst, n) {
+      var got = 0;
+      function pump() { // undefined once filled, else a Promise that fills the rest
+        while (got < n) {
+          var r = receive(dst, got, n - got);
+          if (typeof r !== "number") return r.then(take);
+          if (r < 0) throw new Error("stream ended before " + n + " bytes");
+          got += r;
+        }
       }
+      function take(c) { if (c < 0) throw new Error("stream ended before " + n + " bytes"); got += c; return pump(); }
+      return pump();
+    }
+
+    // Await-optional: the value when the whole thing was already buffered, else a Promise.
+    function readJsonValue(expect) {
+      var p = __jsonNew(expect);
+      function pump() {
+        for (;;) {
+          var s = jsonFeed(p);
+          if (s !== 0) return __jsonEnd(p); // 1 = complete; -1 = EOF (finalize, or throw if incomplete)
+          var w = awaitMore();
+          if (w) return w.then(pump);
+        }
+      }
+      return pump();
     }
 
     // ---- buffered-write internals (into wbuf; undefined = sync, Promise = backpressure — leave the
@@ -325,36 +348,50 @@
       },
       flush: flushSink,
 
-      // ---- buffered reads, in place over the inbound queue (no second buffer) ----
-      async readInt() { await readFully(numBuf, 4); return numView.getInt32(0); },
-      async readLong() { await readFully(numBuf, 8); return Number(numView.getBigInt64(0)); }, // number: loses precision above 2^53
+      // ---- buffered reads, in place over the inbound queue (no second buffer). Await-optional:
+      // a value when it was already buffered, else a Promise — hot callers can skip the microtask
+      // hop with `var r = pipe.readX(); typeof r === "number" ? r : await r`. ----
+      readInt: function () {
+        var p = readFully(numBuf, 4);
+        return p ? p.then(function () { return numView.getInt32(0); }) : numView.getInt32(0);
+      },
+      readLong: function () { // number: loses precision above 2^53
+        var p = readFully(numBuf, 8);
+        return p ? p.then(function () { return Number(numView.getBigInt64(0)); }) : Number(numView.getBigInt64(0));
+      },
       // strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF
-      async readUtf8Line(strict) {
+      readUtf8Line: function (strict) {
         if (lineSplit === null) lineSplit = __lineNew();
-        for (;;) {
-          var s = lineFeed(lineSplit);
-          if (s === 1) return __lineEnd(lineSplit);
-          if (s === -1) {
-            var last = __lineEnd(lineSplit);
-            if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
-            return last;
+        function pump() {
+          for (;;) {
+            var s = lineFeed(lineSplit);
+            if (s === 1) return __lineEnd(lineSplit);
+            if (s === -1) {
+              var last = __lineEnd(lineSplit);
+              if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
+              return last;
+            }
+            var w = awaitMore();
+            if (w) return w.then(pump);
           }
-          var w = awaitMore(); if (w) await w;
         }
+        return pump();
       },
       // stops at the value's end, leaving trailing bytes queued; root type checked on the first byte
       readJsonObject: function () { return readJsonValue(1); },
       readJsonArray: function () { return readJsonValue(2); },
-      async readUtf8() {
-        var out = new Uint8Array(8192), size = 0;
-        for (;;) {
-          if (size === out.length) { var grown = new Uint8Array(out.length * 2); grown.set(out); out = grown; }
-          var r = receive(out, size, out.length - size);
-          var n = typeof r === "number" ? r : await r;
-          if (n < 0) break;
-          size += n;
+      // drains into a native byte accumulator (no growing JS array), decoded once at EOF
+      readUtf8: function () {
+        var acc = __utf8AccNew();
+        function pump() {
+          for (;;) {
+            var s = utf8Feed(acc);
+            if (s === -1) return __utf8AccEnd(acc);
+            var w = awaitMore();
+            if (w) return w.then(pump);
+          }
         }
-        return __utf8Decode(out, 0, size);
+        return pump();
       },
 
       // ---- buffered writes: undefined = done synchronously, a Promise = backpressure; sequential ----
