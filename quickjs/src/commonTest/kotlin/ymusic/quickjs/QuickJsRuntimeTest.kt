@@ -1179,6 +1179,48 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** close(reason) is an ABORT: it works mid-write (no concurrent-write throw), fails the parked
+     *  send instead of leaving it hanging, and the peer sees the RESET reason. */
+    @Test
+    fun reset_close_aborts_a_parked_write() = runTest {
+        val rt = QuickJsRuntime.create()
+        val gate = CompletableDeferred<Unit>()
+        val resetSeen = CompletableDeferred<String>()
+        val report = CompletableDeferred<String>()
+        rt.onAccept("stuck") { p ->
+            gate.await()
+            val r = runCatching { while (p.receive(Buffer(), 8192L) != -1L) { /* to RESET */ } }
+            resetSeen.complete((r.exceptionOrNull() as? PipeResetException)?.reason ?: "no-reset")
+        }
+        rt.onAccept("report") { p ->
+            val b = Buffer()
+            while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+            report.complete(b.readUtf8())
+        }
+        try {
+            rt.load(
+                """
+                (async function () {
+                  const out = ymix.open("report");
+                  const pipe = ymix.open("stuck");
+                  const first = pipe.writeBytes(new Uint8Array(200000)); // parks: the host isn't reading
+                  let closeErr = "none";
+                  try { pipe.close("deliberate abort"); } catch (e) { closeErr = e.message; }
+                  let firstErr = "none";
+                  try { await first; } catch (e) { firstErr = e.message; }
+                  out.send(ymix.utf8Encode(closeErr + "|" + firstErr));
+                  out.close();
+                })()
+                """.trimIndent(),
+            )
+            gate.complete(Unit)
+            assertEquals("none|send aborted: deliberate abort", report.await())
+            assertEquals("deliberate abort", resetSeen.await())
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A RESET is terminal for the read side: every receive() after the first re-throws
      *  [PipeResetException] (the KDoc contract), not a read-closed IllegalStateException. */
     @Test

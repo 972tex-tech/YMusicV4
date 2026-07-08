@@ -185,8 +185,17 @@
       command: command,
       send: function (buffer, offset, len) { checkWriteBusy(); return writeLock(send(buffer, offset, len)); },
       closeRead: closeRead,
-      // flush staged writes, then write-side half-close (END, or RESET with a reason)
+      // No reason: flush staged writes, then half-close (END). With a reason: RESET = ABORT — no
+      // flush (the peer discards buffered data on reset anyway), allowed mid-write, and a parked
+      // send is failed rather than left hanging.
       close: function (reason) {
+        if (reason !== undefined) {
+          wlen = 0;
+          var w = writer;
+          if (w) { writer = null; w.reject(new Error("send aborted: " + reason)); }
+          closeWrite(reason);
+          return;
+        }
         checkWriteBusy();
         var p = flushSink();
         if (p) return writeLock(p.then(function () { closeWrite(reason); }));

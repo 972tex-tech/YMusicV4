@@ -62,7 +62,10 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
   concurrent second call fails fast rather than queueing (overlapping calls would race the
   cursors, so that's always a bug). On the JS sink this is enforced, not a convention: while an
   async write/flush/close is in flight the pipe is claimed, and any other sink op throws
-  `concurrent write on the same pipe` instead of interleaving into the staging segment.
+  `concurrent write on the same pipe` instead of interleaving into the staging segment. The one
+  exception is `close(reason)` — a RESET is an **abort** and always wins: no flush (the peer
+  discards buffered data on reset anyway), allowed mid-write, and a parked send is failed
+  (`send aborted: <reason>`) rather than left hanging.
 - **Aborts close the pipe (Kotlin).** A `send`/`receive` that exits abnormally — cancellation
   included — leaves the stream at an unknowable position (a cancelled parked send has already
   delivered a prefix; a cancelled receive can race a delivery into its abandoned sink), so it
