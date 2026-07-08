@@ -1,0 +1,37 @@
+#!/bin/sh
+# Format staged Kotlin with ktlint (rules from .editorconfig) before every commit.
+# Setup (once per clone): git config core.hooksPath .githooks
+#
+# A fully staged file is formatted in place and restaged. A PARTIALLY staged file (it also has
+# unstaged edits) is only checked, never restaged — restaging would sweep the unstaged hunks
+# into the commit.
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.kt' '*.kts' | grep -v 'publicsuffix/PslDafsa\.kt$')
+[ -z "$staged" ] && exit 0
+
+if ! command -v ktlint >/dev/null 2>&1; then
+    echo "pre-commit: ktlint not found (brew install ktlint) — skipping Kotlin style check" >&2
+    exit 0
+fi
+
+fail=0
+IFS='
+'
+for f in $staged; do
+    [ -f "$f" ] || continue
+    if git diff --quiet -- "$f"; then
+        ktlint -F "$f" >/dev/null 2>&1
+        ktlint "$f" >&2 || fail=1
+        git add -- "$f"
+    else
+        echo "pre-commit: $f is partially staged — checking only (not auto-formatting)" >&2
+        ktlint "$f" >&2 || fail=1
+    fi
+done
+
+if [ "$fail" -ne 0 ]; then
+    echo "" >&2
+    echo "pre-commit: style problems ktlint could not auto-fix." >&2
+    echo "Fix manually or run './gradlew spotlessApply', re-stage, and retry." >&2
+    exit 1
+fi
