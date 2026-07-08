@@ -1,0 +1,7 @@
+YMusicLegacy/
+temp/
+build/
+**/build/
+**/node_modules/
+ymusic-android/
+quickjs/native/quickjs/

@@ -1,37 +1,58 @@
 #!/bin/sh
-# Format staged Kotlin with ktlint (rules from .editorconfig) before every commit.
+# Format staged sources before every commit: Kotlin/Gradle via ktlint (rules in .editorconfig),
+# JS via prettier (.prettierrc / .prettierignore).
 # Setup (once per clone): git config core.hooksPath .githooks
 #
 # A fully staged file is formatted in place and restaged. A PARTIALLY staged file (it also has
 # unstaged edits) is only checked, never restaged — restaging would sweep the unstaged hunks
 # into the commit.
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.kt' '*.kts' | grep -v 'publicsuffix/PslDafsa\.kt$')
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.kt' '*.kts' '*.js' | grep -v 'publicsuffix/PslDafsa\.kt$')
 [ -z "$staged" ] && exit 0
 
-if ! command -v ktlint >/dev/null 2>&1; then
-    echo "pre-commit: ktlint not found (brew install ktlint) — skipping Kotlin style check" >&2
-    exit 0
-fi
+have_ktlint=1
+command -v ktlint >/dev/null 2>&1 || {
+    have_ktlint=0
+    echo "pre-commit: ktlint not found (brew install ktlint) — skipping Kotlin style" >&2
+}
+have_npx=1
+command -v npx >/dev/null 2>&1 || {
+    have_npx=0
+    echo "pre-commit: npx not found (install node) — skipping JS style" >&2
+}
 
 fail=0
 IFS='
 '
 for f in $staged; do
     [ -f "$f" ] || continue
-    if git diff --quiet -- "$f"; then
-        ktlint -F "$f" >/dev/null 2>&1
-        ktlint "$f" >&2 || fail=1
-        git add -- "$f"
-    else
-        echo "pre-commit: $f is partially staged — checking only (not auto-formatting)" >&2
-        ktlint "$f" >&2 || fail=1
-    fi
+    fully=1
+    git diff --quiet -- "$f" || fully=0
+    [ "$fully" -eq 0 ] && echo "pre-commit: $f is partially staged — checking only (not auto-formatting)" >&2
+    case "$f" in
+        *.kt | *.kts)
+            [ "$have_ktlint" -eq 1 ] || continue
+            if [ "$fully" -eq 1 ]; then
+                ktlint -F "$f" >/dev/null 2>&1
+                git add -- "$f"
+            fi
+            ktlint "$f" >&2 || fail=1
+            ;;
+        *.js)
+            [ "$have_npx" -eq 1 ] || continue
+            if [ "$fully" -eq 1 ]; then
+                npx --yes prettier@3 --log-level warn --write "$f" >&2 || fail=1
+                git add -- "$f"
+            else
+                npx --yes prettier@3 --check "$f" >&2 || fail=1
+            fi
+            ;;
+    esac
 done
 
 if [ "$fail" -ne 0 ]; then
     echo "" >&2
-    echo "pre-commit: style problems ktlint could not auto-fix." >&2
-    echo "Fix manually or run './gradlew spotlessApply', re-stage, and retry." >&2
+    echo "pre-commit: style problems the formatters could not fix." >&2
+    echo "Kotlin: './gradlew spotlessApply'; JS: 'npx prettier@3 --write <file>'. Re-stage and retry." >&2
     exit 1
 fi
