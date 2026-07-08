@@ -58,9 +58,11 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
   cancellation is never mistaken for a clean EOF. A handler that throws RESETs its pipe with the
   failure message automatically. `closeRead()` abandons the read side: the peer's next send gets
   EPIPE.
-- **One receiver / one sender**: only one `receive()` and one `send()` may be outstanding per pipe;
-  a concurrent second call fails fast rather than queueing (overlapping calls would race the
-  cursors, so that's always a bug).
+- **One receiver / one sender**: only one read and one write may be outstanding per pipe; a
+  concurrent second call fails fast rather than queueing (overlapping calls would race the
+  cursors, so that's always a bug). On the JS sink this is enforced, not a convention: while an
+  async write/flush/close is in flight the pipe is claimed, and any other sink op throws
+  `concurrent write on the same pipe` instead of interleaving into the staging segment.
 - **Aborts close the pipe (Kotlin).** A `send`/`receive` that exits abnormally — cancellation
   included — leaves the stream at an unknowable position (a cancelled parked send has already
   delivered a prefix; a cancelled receive can race a delivery into its abandoned sink), so it

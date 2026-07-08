@@ -1,5 +1,6 @@
 package ymusic.quickjs
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -1125,6 +1126,54 @@ class QuickJsRuntimeTest {
         )
         try {
             assertEquals("threw: RangeError", rt.openPipe("bigcheck").readText())
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The sink allows ONE outstanding async write: while a write is parked on backpressure, any
+     *  other write/flush throws instead of silently interleaving into the staging segment, and the
+     *  sink is usable again once the parked write settles. */
+    @Test
+    fun concurrent_buffered_write_fails_fast() = runTest {
+        val rt = QuickJsRuntime.create()
+        val gate = CompletableDeferred<Unit>()
+        val report = CompletableDeferred<String>()
+        rt.onAccept("slowsink") { p ->
+            gate.await()
+            val b = Buffer()
+            while (p.receive(b, 8192L) != -1L) { /* drain to EOF */ }
+        }
+        rt.onAccept("report") { p ->
+            val b = Buffer()
+            while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+            report.complete(b.readUtf8())
+        }
+        try {
+            rt.load(
+                """
+                (async function () {
+                  const out = ymix.open("report");
+                  const pipe = ymix.open("slowsink");
+                  const first = pipe.writeBytes(new Uint8Array(200000)); // parks: the host isn't reading yet
+                  const kind = first && first.then ? "parked" : "sync";
+                  let e1 = "none", e2 = "none";
+                  try { pipe.writeInt(1); } catch (e) { e1 = e.message; }
+                  try { pipe.flush(); } catch (e) { e2 = e.message; }
+                  await first;
+                  pipe.writeUtf8("after");
+                  await pipe.flush();
+                  await pipe.close();
+                  out.send(ymix.utf8Encode(kind + "|" + e1 + "|" + e2));
+                  out.close();
+                })()
+                """.trimIndent(),
+            )
+            gate.complete(Unit)
+            assertEquals(
+                "parked|concurrent write on the same pipe|concurrent write on the same pipe",
+                report.await(),
+            )
         } finally {
             rt.close()
         }

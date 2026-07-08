@@ -54,6 +54,19 @@
     // raw/read-only pipe pays nothing; wView writes fixed-width ints straight into it.
     var wbuf = null, wlen = 0, wView = null;
     function ensureWbuf() { if (wbuf === null) { wbuf = new Uint8Array(8192); wView = new DataView(wbuf.buffer); } }
+    // One outstanding write/flush/close at a time, ENFORCED at the public boundary (mirrors the
+    // read side's concurrent-receive throw): every sink op passes its result through writeLock(), which
+    // claims the pipe while an async op is in flight; a second op then throws instead of silently
+    // interleaving mutations of the staging segment. Internal continuations call the closure
+    // functions directly and are not re-guarded.
+    var wbusy = false;
+    function checkWriteBusy() { if (wbusy) throw new Error("concurrent write on the same pipe"); }
+    function writeLock(r) {
+      if (r === undefined) return;
+      wbusy = true;
+      return r.then(function (v) { wbusy = false; return v; },
+                    function (e) { wbusy = false; throw e; });
+    }
 
     // No more data either way — drop routing.
     function maybeReap() { if (weEnded && (writeEnded || readClosed)) delete pipes[id]; }
@@ -170,15 +183,16 @@
     return {
       id: id,
       command: command,
-      send: send,
+      send: function (buffer, offset, len) { checkWriteBusy(); return writeLock(send(buffer, offset, len)); },
       closeRead: closeRead,
       // flush staged writes, then write-side half-close (END, or RESET with a reason)
       close: function (reason) {
+        checkWriteBusy();
         var p = flushSink();
-        if (p) return p.then(function () { closeWrite(reason); });
+        if (p) return writeLock(p.then(function () { closeWrite(reason); }));
         closeWrite(reason);
       },
-      flush: flushSink,
+      flush: function () { checkWriteBusy(); return writeLock(flushSink()); },
 
       // ---- reads (C-owned buffer; value when already buffered, else a Promise C settles) ----
       receive: function (buffer, offset, len) {
@@ -194,40 +208,44 @@
       readJsonArray: function () { return __pbJson(pb, 2); },
       readUtf8: function () { return __pbUtf8(pb); },
 
-      // ---- buffered writes: undefined = done synchronously, a Promise = backpressure; sequential ----
-      writeBytes: function (b) { ensureWbuf(); return writeBytesFn(b); },
+      // ---- buffered writes: undefined = done synchronously, a Promise = backpressure ----
+      writeBytes: function (b) { checkWriteBusy(); ensureWbuf(); return writeLock(writeBytesFn(b)); },
       // out-of-range throws rather than silently wrapping (DataView truncates mod 2^n)
       writeInt: function (v) {
+        checkWriteBusy();
         if (!Number.isInteger(v) || v < -2147483648 || v > 2147483647)
           throw new RangeError("writeInt: " + v + " is not a signed 32-bit integer");
         ensureWbuf();
         if (wlen + 4 > wbuf.length) {
           var p = flushSink();
-          if (p) return p.then(function () { wView.setInt32(wlen, v); wlen += 4; });
+          if (p) return writeLock(p.then(function () { wView.setInt32(wlen, v); wlen += 4; }));
         }
         wView.setInt32(wlen, v); wlen += 4;
       },
       writeLong: function (v) {
+        checkWriteBusy();
         var b = typeof v === "bigint" ? v : BigInt(Math.trunc(v));
         if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn)
           throw new RangeError("writeLong: " + b + " does not fit in a signed 64-bit long");
         ensureWbuf();
         if (wlen + 8 > wbuf.length) {
           var p = flushSink();
-          if (p) return p.then(function () { wView.setBigInt64(wlen, b); wlen += 8; });
+          if (p) return writeLock(p.then(function () { wView.setBigInt64(wlen, b); wlen += 8; }));
         }
         wView.setBigInt64(wlen, b); wlen += 8;
       },
-      writeUtf8: function () { ensureWbuf(); return writeUtf8Parts(arguments); },
-      writeUtf8Range: function (str, from, to) { ensureWbuf(); return writeUtf8Native(str, from, to); },
+      writeUtf8: function () { checkWriteBusy(); ensureWbuf(); return writeLock(writeUtf8Parts(arguments)); },
+      writeUtf8Range: function (str, from, to) { checkWriteBusy(); ensureWbuf(); return writeLock(writeUtf8Native(str, from, to)); },
       writeUtf8Line: function () {
+        checkWriteBusy();
         ensureWbuf();
         var p = writeUtf8Parts(arguments);
-        return p ? p.then(function () { return putByte(10); }) : putByte(10);
+        return writeLock(p ? p.then(function () { return putByte(10); }) : putByte(10));
       },
       // matches JSON.stringify (a cycle throws TypeError); streams via the native encoder, never
       // materializing the whole JSON string
       writeObjectAsJson: function (value) {
+        checkWriteBusy();
         ensureWbuf();
         var enc = __jsonEncNew(value);
         function pump() {
@@ -238,7 +256,7 @@
             if (p) return p.then(pump);
           }
         }
-        return pump();
+        return writeLock(pump());
       },
 
       // ---- transport entry points (host -> us; the data path never comes through JS) ----
