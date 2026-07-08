@@ -24,17 +24,27 @@
   // one-shot; the multi-arg form (utf8Encode(str, "\n")) stream-encodes here to avoid a JS string
   // concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
   function utf8Encode() {
-    if (arguments.length === 1) { var s = arguments[0]; return __utf8Encode(s, 0, s.length); }
+    if (arguments.length === 1) {
+      var s = arguments[0];
+      return __utf8Encode(s, 0, s.length);
+    }
     var out = [];
     for (var a = 0; a < arguments.length; a++) {
       var str = arguments[a];
       for (var i = 0; i < str.length; i++) {
         var cp = str.codePointAt(i);
-        if (cp > 0xFFFF) i++;
+        if (cp > 0xffff) i++;
         if (cp < 0x80) out.push(cp);
-        else if (cp < 0x800) out.push(0xC0 | (cp >> 6), 0x80 | (cp & 0x3F));
-        else if (cp < 0x10000) out.push(0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F));
-        else out.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3F), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F));
+        else if (cp < 0x800) out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+        else if (cp < 0x10000)
+          out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+        else
+          out.push(
+            0xf0 | (cp >> 18),
+            0x80 | ((cp >> 12) & 0x3f),
+            0x80 | ((cp >> 6) & 0x3f),
+            0x80 | (cp & 0x3f),
+          );
       }
     }
     return new Uint8Array(out);
@@ -43,46 +53,74 @@
   var pipes = {};
   var accepts = {};
   var nextId = 2; // JS opens even ids; Kotlin opens odd.
-  function brokenPipe() { return new Error("EPIPE: broken pipe"); }
+  function brokenPipe() {
+    return new Error("EPIPE: broken pipe");
+  }
 
   function makePipe(id, command) {
     var pb = __pbNew(id); // the C-owned inbound buffer; reads delegate to it
-    var writeEnded = false, readClosed = false; // routing bookkeeping only — buffer state is C's
+    var writeEnded = false,
+      readClosed = false; // routing bookkeeping only — buffer state is C's
     // outbound: writer = the parked partial send {buffer, pos, end, resolve, reject}.
-    var peerReadClosed = false, weEnded = false, writer = null;
+    var peerReadClosed = false,
+      weEnded = false,
+      writer = null;
     // buffered-WRITE staging: a fixed 8 KB segment coalescing small writes, allocated LAZILY so a
     // raw/read-only pipe pays nothing; wView writes fixed-width ints straight into it.
-    var wbuf = null, wlen = 0, wView = null;
-    function ensureWbuf() { if (wbuf === null) { wbuf = new Uint8Array(8192); wView = new DataView(wbuf.buffer); } }
+    var wbuf = null,
+      wlen = 0,
+      wView = null;
+    function ensureWbuf() {
+      if (wbuf === null) {
+        wbuf = new Uint8Array(8192);
+        wView = new DataView(wbuf.buffer);
+      }
+    }
     // One outstanding write/flush/close at a time, ENFORCED at the public boundary (mirrors the
     // read side's concurrent-receive throw): every sink op passes its result through writeLock(), which
     // claims the pipe while an async op is in flight; a second op then throws instead of silently
     // interleaving mutations of the staging segment. Internal continuations call the closure
     // functions directly and are not re-guarded.
     var wbusy = false;
-    function checkWriteBusy() { if (wbusy) throw new Error("concurrent write on the same pipe"); }
+    function checkWriteBusy() {
+      if (wbusy) throw new Error("concurrent write on the same pipe");
+    }
     function writeLock(r) {
       if (r === undefined) return;
       wbusy = true;
-      return r.then(function (v) { wbusy = false; return v; },
-                    function (e) { wbusy = false; throw e; });
+      return r.then(
+        function (v) {
+          wbusy = false;
+          return v;
+        },
+        function (e) {
+          wbusy = false;
+          throw e;
+        },
+      );
     }
 
     // No more data either way — drop routing.
-    function maybeReap() { if (weEnded && (writeEnded || readClosed)) delete pipes[id]; }
+    function maybeReap() {
+      if (weEnded && (writeEnded || readClosed)) delete pipes[id];
+    }
 
     // ---- core byte channel ----
 
     // undefined = fully accepted; a Promise = backpressure, resolved on DRAIN (buffer must stay
     // unmodified until then); -1 from the host (read closed) -> EPIPE.
     function send(buffer, offset, len) {
-      var o = offset || 0, l = (len === undefined ? buffer.length - o : len);
+      var o = offset || 0,
+        l = len === undefined ? buffer.length - o : len;
       if (l === 0) return;
       if (weEnded) return Promise.reject(new Error("send() after close()")); // our own half-close is a misuse
       if (peerReadClosed) return Promise.reject(brokenPipe());
-      if (writer) throw new Error("concurrent send() on the same pipe");     // sequential: await one send first
+      if (writer) throw new Error("concurrent send() on the same pipe"); // sequential: await one send first
       var written = __hostData(id, buffer, o, l);
-      if (written < 0) { peerReadClosed = true; return Promise.reject(brokenPipe()); }
+      if (written < 0) {
+        peerReadClosed = true;
+        return Promise.reject(brokenPipe());
+      }
       if (written >= l) return;
       return new Promise(function (res, rej) {
         writer = { buffer: buffer, pos: o + written, end: o + l, resolve: res, reject: rej };
@@ -114,14 +152,22 @@
     function flushSink() {
       if (wlen === 0) return;
       var p = send(wbuf, 0, wlen);
-      if (!p) { wlen = 0; return; }
-      return p.then(function () { wlen = 0; });
+      if (!p) {
+        wlen = 0;
+        return;
+      }
+      return p.then(function () {
+        wlen = 0;
+      });
     }
 
     function putByte(b) {
       if (wlen + 1 > wbuf.length) {
         var p = flushSink();
-        if (p) return p.then(function () { wbuf[wlen++] = b; });
+        if (p)
+          return p.then(function () {
+            wbuf[wlen++] = b;
+          });
       }
       wbuf[wlen++] = b;
     }
@@ -144,9 +190,14 @@
       }
       if (wlen + n > wbuf.length) {
         var p = flushSink();
-        if (p) return p.then(function () { wbuf.set(b, wlen); wlen += n; });
+        if (p)
+          return p.then(function () {
+            wbuf.set(b, wlen);
+            wlen += n;
+          });
       }
-      wbuf.set(b, wlen); wlen += n;
+      wbuf.set(b, wlen);
+      wlen += n;
     }
 
     // (to - from) * 3 bounds the encoded size (the UTF-16 worst case), deciding fit up front:
@@ -155,9 +206,13 @@
     // and streamed by send() under the normal backpressure.
     function writeUtf8Native(str, from, to) {
       var max = (to - from) * 3;
-      if (max > wbuf.length - wlen) { // no room in the remainder: flush (sync flush leaves wlen 0)
+      if (max > wbuf.length - wlen) {
+        // no room in the remainder: flush (sync flush leaves wlen 0)
         var p = flushSink();
-        if (p) return p.then(function () { return writeUtf8Native(str, from, to); });
+        if (p)
+          return p.then(function () {
+            return writeUtf8Native(str, from, to);
+          });
       }
       if (max > wbuf.length) return send(__utf8Encode(str, from, to)); // too big even for an empty segment
       wlen += __utf8Into(str, from, to, wbuf, wlen);
@@ -165,7 +220,10 @@
 
     // stream-encode the parts back-to-back (no `a + b + c` concat first)
     function writeUtf8Parts(args) {
-      if (args.length === 1) { var s = args[0]; return writeUtf8Native(s, 0, s.length); }
+      if (args.length === 1) {
+        var s = args[0];
+        return writeUtf8Native(s, 0, s.length);
+      }
       var k = 0;
       function next() {
         while (k < args.length) {
@@ -180,7 +238,10 @@
     return {
       id: id,
       command: command,
-      send: function (buffer, offset, len) { checkWriteBusy(); return writeLock(send(buffer, offset, len)); },
+      send: function (buffer, offset, len) {
+        checkWriteBusy();
+        return writeLock(send(buffer, offset, len));
+      },
       closeRead: closeRead,
       // No reason: flush staged writes, then half-close (END). With a reason: RESET = ABORT — no
       // flush (the peer discards buffered data on reset anyway), allowed mid-write, and a parked
@@ -189,33 +250,60 @@
         if (reason !== undefined) {
           wlen = 0;
           var w = writer;
-          if (w) { writer = null; w.reject(new Error("send aborted: " + reason)); }
+          if (w) {
+            writer = null;
+            w.reject(new Error("send aborted: " + reason));
+          }
           closeWrite(reason);
           return;
         }
         checkWriteBusy();
         var p = flushSink();
-        if (p) return writeLock(p.then(function () { closeWrite(reason); }));
+        if (p)
+          return writeLock(
+            p.then(function () {
+              closeWrite(reason);
+            }),
+          );
         closeWrite(reason);
       },
-      flush: function () { checkWriteBusy(); return writeLock(flushSink()); },
+      flush: function () {
+        checkWriteBusy();
+        return writeLock(flushSink());
+      },
 
       // ---- reads (C-owned buffer; value when already buffered, else a Promise C settles) ----
       receive: function (buffer, offset, len) {
         var o = offset || 0;
         return __pbRecv(pb, buffer, o, len === undefined ? buffer.length - o : len);
       },
-      readInt: function () { return __pbInt(pb); },
-      readLong: function () { return __pbLong(pb); }, // number: loses precision above 2^53
+      readInt: function () {
+        return __pbInt(pb);
+      },
+      readLong: function () {
+        return __pbLong(pb);
+      }, // number: loses precision above 2^53
       // strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF
-      readUtf8Line: function (strict) { return __pbLine(pb, !!strict); },
+      readUtf8Line: function (strict) {
+        return __pbLine(pb, !!strict);
+      },
       // stops at the value's end, leaving trailing bytes queued; root type checked on the first byte
-      readJsonObject: function () { return __pbJson(pb, 1); },
-      readJsonArray: function () { return __pbJson(pb, 2); },
-      readUtf8: function () { return __pbUtf8(pb); },
+      readJsonObject: function () {
+        return __pbJson(pb, 1);
+      },
+      readJsonArray: function () {
+        return __pbJson(pb, 2);
+      },
+      readUtf8: function () {
+        return __pbUtf8(pb);
+      },
 
       // ---- buffered writes: undefined = done synchronously, a Promise = backpressure ----
-      writeBytes: function (b) { checkWriteBusy(); ensureWbuf(); return writeLock(writeBytesFn(b)); },
+      writeBytes: function (b) {
+        checkWriteBusy();
+        ensureWbuf();
+        return writeLock(writeBytesFn(b));
+      },
       // out-of-range throws rather than silently wrapping (DataView truncates mod 2^n)
       writeInt: function (v) {
         checkWriteBusy();
@@ -224,9 +312,16 @@
         ensureWbuf();
         if (wlen + 4 > wbuf.length) {
           var p = flushSink();
-          if (p) return writeLock(p.then(function () { wView.setInt32(wlen, v); wlen += 4; }));
+          if (p)
+            return writeLock(
+              p.then(function () {
+                wView.setInt32(wlen, v);
+                wlen += 4;
+              }),
+            );
         }
-        wView.setInt32(wlen, v); wlen += 4;
+        wView.setInt32(wlen, v);
+        wlen += 4;
       },
       writeLong: function (v) {
         checkWriteBusy();
@@ -236,17 +331,38 @@
         ensureWbuf();
         if (wlen + 8 > wbuf.length) {
           var p = flushSink();
-          if (p) return writeLock(p.then(function () { wView.setBigInt64(wlen, b); wlen += 8; }));
+          if (p)
+            return writeLock(
+              p.then(function () {
+                wView.setBigInt64(wlen, b);
+                wlen += 8;
+              }),
+            );
         }
-        wView.setBigInt64(wlen, b); wlen += 8;
+        wView.setBigInt64(wlen, b);
+        wlen += 8;
       },
-      writeUtf8: function () { checkWriteBusy(); ensureWbuf(); return writeLock(writeUtf8Parts(arguments)); },
-      writeUtf8Range: function (str, from, to) { checkWriteBusy(); ensureWbuf(); return writeLock(writeUtf8Native(str, from, to)); },
+      writeUtf8: function () {
+        checkWriteBusy();
+        ensureWbuf();
+        return writeLock(writeUtf8Parts(arguments));
+      },
+      writeUtf8Range: function (str, from, to) {
+        checkWriteBusy();
+        ensureWbuf();
+        return writeLock(writeUtf8Native(str, from, to));
+      },
       writeUtf8Line: function () {
         checkWriteBusy();
         ensureWbuf();
         var p = writeUtf8Parts(arguments);
-        return writeLock(p ? p.then(function () { return putByte(10); }) : putByte(10));
+        return writeLock(
+          p
+            ? p.then(function () {
+                return putByte(10);
+              })
+            : putByte(10),
+        );
       },
       // matches JSON.stringify (a cycle throws TypeError); streams via the native encoder, never
       // materializing the whole JSON string
@@ -283,7 +399,10 @@
       _peerCloseRead: function () {
         peerReadClosed = true;
         var w = writer;
-        if (w) { writer = null; w.reject(brokenPipe()); }
+        if (w) {
+          writer = null;
+          w.reject(brokenPipe());
+        }
       },
 
       // Flow control from the host: its buffer drained to the low-water mark; continue the parked
@@ -292,11 +411,19 @@
         var w = writer;
         if (!w) return;
         var written = __hostData(id, w.buffer, w.pos, w.end - w.pos);
-        if (written < 0) { writer = null; peerReadClosed = true; w.reject(brokenPipe()); return; }
+        if (written < 0) {
+          writer = null;
+          peerReadClosed = true;
+          w.reject(brokenPipe());
+          return;
+        }
         w.pos += written;
-        if (w.pos >= w.end) { writer = null; w.resolve(); }
+        if (w.pos >= w.end) {
+          writer = null;
+          w.resolve();
+        }
         // else stay parked for the next drain
-      }
+      },
     };
   }
 
@@ -307,21 +434,30 @@
     if (!handler) return -1;
     var pipe = makePipe(id, command);
     pipes[id] = pipe;
-    Promise.resolve().then(function () { return handler(pipe); })
-      .catch(function (e) { pipe.closeRead(); pipe.close(String((e && e.message) || e)); }); // RESET: surface the failure
+    Promise.resolve()
+      .then(function () {
+        return handler(pipe);
+      })
+      .catch(function (e) {
+        pipe.closeRead();
+        pipe.close(String((e && e.message) || e));
+      }); // RESET: surface the failure
     return 0;
   };
   // Kotlin closed its write end (END or RESET — the C buffer already knows which).
   globalThis.__jsClose = function (id) {
-    var p = pipes[id]; if (p) p._end();
+    var p = pipes[id];
+    if (p) p._end();
   };
   // Kotlin abandoned its read end — our sends get EPIPE.
   globalThis.__jsCloseRead = function (id) {
-    var p = pipes[id]; if (p) p._peerCloseRead();
+    var p = pipes[id];
+    if (p) p._peerCloseRead();
   };
   // Kotlin flow-control signal: its buffer drained (continue the parked partial send).
   globalThis.__jsDrain = function (id) {
-    var p = pipes[id]; if (p) p._drain();
+    var p = pipes[id];
+    if (p) p._drain();
   };
 
   globalThis.ymix = {
@@ -330,19 +466,25 @@
     // -2 called under a critical region, a bootstrap bug), and a failed open leaves no registry
     // entry behind on either side.
     open: function (command) {
-      var id = nextId; nextId += 2;
+      var id = nextId;
+      nextId += 2;
       var pipe = makePipe(id, command);
       pipes[id] = pipe; // registered first so anything crossing during the call finds the pipe
       var rc = __hostOpen(id, command);
       if (rc < 0) {
         delete pipes[id];
         pipe._abandon();
-        throw new Error(rc === -2 ? 'open("' + command + '") during data delivery'
-                                  : 'open("' + command + '") refused by host');
+        throw new Error(
+          rc === -2
+            ? 'open("' + command + '") during data delivery'
+            : 'open("' + command + '") refused by host',
+        );
       }
       return pipe;
     },
-    onAccept: function (command, handler) { accepts[command] = handler; },
+    onAccept: function (command, handler) {
+      accepts[command] = handler;
+    },
     utf8Encode: utf8Encode,
     // Native decode (JS_NewStringLen) — astral-correct, no per-codepoint JS loop. Range args avoid
     // a subarray view: utf8Decode(bytes, from, to).
@@ -368,7 +510,7 @@
       try {
         for (;;) {
           var n = await pipe.receive(buf, 0, 1);
-          if (n < 1) break;                 // cleared: host closed the pipe
+          if (n < 1) break; // cleared: host closed the pipe
           cb.apply(null, args);
           if (!repeat) break;
         }
@@ -376,7 +518,7 @@
         pipe.close();
       }
     })();
-    return pipe;                            // handle; clear*() closes it
+    return pipe; // handle; clear*() closes it
   }
   globalThis.setTimeout = function (cb, ms) {
     return startTimer(cb, ms, "setTimeout", false, Array.prototype.slice.call(arguments, 2));
@@ -384,6 +526,8 @@
   globalThis.setInterval = function (cb, ms) {
     return startTimer(cb, ms, "setInterval", true, Array.prototype.slice.call(arguments, 2));
   };
-  globalThis.clearTimeout = function (handle) { if (handle && handle.close) handle.close(); };
+  globalThis.clearTimeout = function (handle) {
+    if (handle && handle.close) handle.close();
+  };
   globalThis.clearInterval = globalThis.clearTimeout;
 })();
