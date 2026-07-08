@@ -26,3 +26,4 @@ plans
 quickjs/src/androidMain/jniLibs/
 quickjs/src/androidDeviceTest/jniLibs/
 # quickjs: vendored QuickJS build commit marker is kept; build dirs are ignored via build/
+build-asan
