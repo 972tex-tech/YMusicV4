@@ -10,8 +10,27 @@
 #ifndef QUICKJS_JSON_H
 #define QUICKJS_JSON_H
 
+#include <stddef.h>
+#include <stdint.h>
 #include "quickjs.h"
 
 void qjs_register_json(JSContext *ctx);
+
+/* C-level streaming-parser API (the same push parser behind __jsonPush/Done/End) for callers that
+ * live in C and don't need the JSValue wrapper. */
+#define QJS_JSON_EXPECT_ANY    0
+#define QJS_JSON_EXPECT_OBJECT 1
+#define QJS_JSON_EXPECT_ARRAY  2
+
+typedef struct QjsJStream QjsJStream;
+
+QjsJStream *qjs_jstream_new(JSContext *ctx, int expect); /* NULL: JS exception pending */
+/* -> bytes consumed (stops at the end of the top-level value), or -1: JS exception pending. */
+int qjs_jstream_push(QjsJStream *s, const uint8_t *data, size_t len);
+int qjs_jstream_done(QjsJStream *s);
+JSValue qjs_jstream_end(QjsJStream *s); /* the value, or JS_EXCEPTION on incomplete/malformed */
+void qjs_jstream_free(QjsJStream *s);   /* always required (end() does not free); NULL-safe */
+/* The parser holds half-built containers + the result — a holder's gc_mark must forward here. */
+void qjs_jstream_mark(JSRuntime *rt, QjsJStream *s, JS_MarkFunc *mark_func);
 
 #endif

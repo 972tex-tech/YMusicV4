@@ -23,7 +23,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Per-direction pipe buffer bound (bytes) — like a Linux pipe's fixed capacity. A writer whose
  *  write is only partially accepted parks and resumes on the peer's DRAIN notify, which fires once
- *  the buffer drains to [PIPE_LOW]. Must match bootstrap.js. */
+ *  the buffer drains to [PIPE_LOW]. Must match quickjs_pipe.c (PB_CAP/PB_LOW). */
 private const val PIPE_CAP = 64 * 1024
 private const val PIPE_LOW = PIPE_CAP / 2
 
@@ -243,16 +243,20 @@ class QuickJsRuntime private constructor(
                     if (writeEnded) return@withContext -1L
                     // Park with the sink itself; deliver() copies straight into it (sized at
                     // delivery time) and resumes us with the count — or EOF / a reset / a failure.
+                    // No invokeOnCancellation: [reader] is engine-confined, and the catch below
+                    // clears it on the engine thread; a cancellation cleanup would run on the
+                    // canceller's thread and race deliver().
                     suspendCancellableCoroutine { cont ->
                         reader = ParkedReader(sink, byteCount, cont)
-                        cont.invokeOnCancellation { reader = null }
                     }
                 } catch (t: Throwable) {
-                    // A receive that aborts (cancellation included) may have left bytes stranded in
-                    // a sink nobody will look at — the read position is unknowable. Close the read
-                    // side so the pipe lands in ONE predictable state: done reading, peer gets
-                    // EPIPE. Deliberate fire-and-forget: cleanup must not mask the abort cause.
-                    runCatching { closeReadNow(t) }
+                    // A PipeResetException is the peer's terminal signal, not a stranded read: leave
+                    // the read side open so every later receive() re-throws it (the KDoc contract),
+                    // rather than a read-closed IllegalStateException. Any other abort (cancellation
+                    // included) may have stranded bytes in a sink nobody will read — close the read
+                    // side so the pipe lands in ONE predictable state: done reading, peer gets EPIPE.
+                    // Deliberate fire-and-forget: cleanup must not mask the abort cause.
+                    if (t !is PipeResetException) runCatching { closeReadNow(t) }
                     throw t
                 } finally {
                     receiving = false
@@ -327,9 +331,13 @@ class QuickJsRuntime private constructor(
                     // writer, only sets the flag). Parking after that would hang forever — no
                     // DRAIN or close event is ever coming from a peer that stopped reading.
                     if (peerReadClosed) throw BrokenPipeException()
-                    suspendCancellableCoroutine { cont ->
-                        writer = cont
-                        cont.invokeOnCancellation { writer = null }
+                    // [writer] is engine-confined and set/cleared in this one spot: onDrain /
+                    // onPeerCloseRead null it on a normal wake, this finally covers an abort. No
+                    // invokeOnCancellation — it would run on the canceller's thread and race onDrain.
+                    try {
+                        suspendCancellableCoroutine { cont -> writer = cont }
+                    } finally {
+                        writer = null
                     }
                 }
             }
@@ -425,19 +433,28 @@ class QuickJsRuntime private constructor(
     companion object {
         suspend fun create(): QuickJsRuntime {
             val dispatcher = newEngineDispatcher()
-            var rtRef: QuickJsRuntime? = null
-            val callbacks = object : EngineCallbacks {
-                override fun onOpen(id: Int, command: String): Int = rtRef?.onOpen(id, command) ?: -1
-                override fun onWrite(id: Int, chunk: NativeChunk): Int = rtRef?.onWrite(id, chunk) ?: -1
-                override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
-                override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
-                override fun onDrain(id: Int) { rtRef?.onDrain(id) }
+            var engine: NativeEngine? = null
+            try {
+                var rtRef: QuickJsRuntime? = null
+                val callbacks = object : EngineCallbacks {
+                    override fun onOpen(id: Int, command: String): Int = rtRef?.onOpen(id, command) ?: -1
+                    override fun onWrite(id: Int, chunk: NativeChunk): Int = rtRef?.onWrite(id, chunk) ?: -1
+                    override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
+                    override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
+                    override fun onDrain(id: Int) { rtRef?.onDrain(id) }
+                }
+                engine = withContext(dispatcher) { NativeEngine.create(BOOTSTRAP_JS, callbacks) }
+                val rt = QuickJsRuntime(engine, dispatcher)
+                rtRef = rt
+                rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
+                return rt
+            } catch (t: Throwable) {
+                // A partial create must free the engine thread (and the native engine, if it got
+                // that far) — otherwise each failed/retried create() leaks a dispatcher thread.
+                engine?.let { e -> runCatching { withContext(dispatcher + NonCancellable) { e.destroy() } } }
+                dispatcher.close()
+                throw t
             }
-            val engine = withContext(dispatcher) { NativeEngine.create(BOOTSTRAP_JS, callbacks) }
-            val rt = QuickJsRuntime(engine, dispatcher)
-            rtRef = rt
-            rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
-            return rt
         }
     }
 }

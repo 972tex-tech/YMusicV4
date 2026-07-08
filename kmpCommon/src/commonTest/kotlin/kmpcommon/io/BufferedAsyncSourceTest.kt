@@ -2,8 +2,10 @@ package kmpcommon.io
 
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
+import okio.EOFException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -363,6 +365,27 @@ class BufferedAsyncSourceTest {
         val result = source.readByteArray()
 
         assertTrue(data.contentEquals(result))
+    }
+
+    // endregion
+
+    // region fixed-width integers
+
+    @Test
+    fun testReadIntAndLongAcrossChunks() = runTest {
+        // big-endian int then long, delivered one byte per read so the reads span chunks
+        val data = Buffer().apply { writeInt(-42); writeLong(1234567890123L) }.readByteArray()
+        val source = BufferedAsyncSource(data.toChunkedAsyncSource(1))
+
+        assertEquals(-42, source.readInt())
+        assertEquals(1234567890123L, source.readLong())
+    }
+
+    @Test
+    fun testReadLongThrowsOnShortStream() = runTest {
+        val source = BufferedAsyncSource(byteArrayOf(1, 2, 3).toChunkedAsyncSource(1))
+
+        assertFailsWith<EOFException> { source.readLong() }
     }
 
     // endregion

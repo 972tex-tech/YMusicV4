@@ -40,3 +40,26 @@ endif()
 target_compile_definitions(quickjsjni PRIVATE _GNU_SOURCE CONFIG_VERSION="2026-06-04")
 # QuickJS emits many warnings by design; silence them and optimize.
 target_compile_options(quickjsjni PRIVATE -w -O2 -funsigned-char)
+
+# ASan/UBSan harness for the C pipe layer — dev-only, never part of the normal build
+# (see pipe_stress.c for build/run instructions). It #includes quickjs_native.c itself.
+add_executable(pipe_stress EXCLUDE_FROM_ALL
+  pipe_stress.c
+  quickjs_json.c
+  quickjs_pipe.c
+  ${QJS_DIR}/quickjs.c
+  ${QJS_DIR}/cutils.c
+  ${QJS_DIR}/libregexp.c
+  ${QJS_DIR}/libunicode.c
+  ${QJS_DIR}/dtoa.c
+)
+target_include_directories(pipe_stress PRIVATE ${QJS_DIR})
+target_compile_definitions(pipe_stress PRIVATE _GNU_SOURCE CONFIG_VERSION="2026-06-04")
+# -UNDEBUG re-arms QuickJS asserts over the Release flags; keep frame pointers for ASan traces.
+target_compile_options(pipe_stress PRIVATE -w -g -O1 -UNDEBUG -funsigned-char
+  -fsanitize=address,undefined -fno-omit-frame-pointer)
+target_link_options(pipe_stress PRIVATE -fsanitize=address,undefined)
+# The vendored core has benign int-shift UB patterns; UBSan covers OUR files only, ASan everything.
+set_source_files_properties(
+  ${QJS_DIR}/quickjs.c ${QJS_DIR}/cutils.c ${QJS_DIR}/libregexp.c ${QJS_DIR}/libunicode.c ${QJS_DIR}/dtoa.c
+  PROPERTIES COMPILE_OPTIONS "-fno-sanitize=undefined")

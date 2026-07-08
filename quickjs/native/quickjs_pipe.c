@@ -1,53 +1,121 @@
 #include "quickjs_pipe.h"
-#include "cutils.h" /* DynBuf (the line splitter's accumulator) */
+#include "quickjs_json.h"
+#include "cutils.h"
 #include <stdlib.h>
 #include <string.h>
 
-/* Keep at most this many idle segments (32 * 8 KB = 256 KB); beyond that, free(). */
+#define PB_CAP 65536 /* per-direction buffer bound (must match QuickJsRuntime.kt) */
+#define PB_LOW 32768
+
+/* Keep at most this many idle blocks (32 * 8 KB = 256 KB); beyond that, free(). */
 #define POOL_MAX_FREE 32
 
-struct QjsPool {
-    void *free_list; /* singly linked through each idle segment's first word */
+typedef struct {
+    void *free_list; /* singly linked through each idle block's first word */
     int free_count;
-};
+} QjsPool;
 
 static uint8_t *pool_take(QjsPool *p) {
     if (p->free_list) {
-        uint8_t *seg = (uint8_t *)p->free_list;
-        p->free_list = *(void **)seg;
+        uint8_t *blk = (uint8_t *)p->free_list;
+        p->free_list = *(void **)blk;
         p->free_count--;
-        return seg;
+        return blk;
     }
     return (uint8_t *)malloc(QJS_SEG_SIZE);
 }
 
-static void pool_put(QjsPool *p, uint8_t *seg) {
+static void pool_put(QjsPool *p, uint8_t *blk) {
     if (p->free_count >= POOL_MAX_FREE) {
-        free(seg);
+        free(blk);
         return;
     }
-    *(void **)seg = p->free_list;
-    p->free_list = seg;
+    *(void **)blk = p->free_list;
+    p->free_list = blk;
     p->free_count++;
 }
 
-/* free_func of pooled segments — runs on GC finalize and on JS_DetachArrayBuffer (__segRelease).
- * After a detach the finalizer fires again with ptr == NULL; ignore that. */
-static void seg_free(JSRuntime *rt, void *opaque, void *ptr) {
-    if (ptr) pool_put((QjsPool *)opaque, (uint8_t *)ptr);
+/* An inbound segment: header + payload carved from one pool block. Payload bytes are [start, end). */
+typedef struct PbSeg {
+    struct PbSeg *next;
+    uint32_t start, end;
+} PbSeg;
+
+#define PB_SEG_CAP ((uint32_t)(QJS_SEG_SIZE - sizeof(PbSeg)))
+#define PB_SEG_DATA(s) ((uint8_t *)((s) + 1))
+
+enum { PB_JOB_NONE, PB_JOB_RECV, PB_JOB_INT, PB_JOB_LONG, PB_JOB_LINE, PB_JOB_JSON, PB_JOB_UTF8 };
+
+typedef struct PipeBuf PipeBuf;
+
+struct QjsPipeCtx {
+    JSContext *ctx;
+    QjsPool pool;
+    QjsPipeDrainFn drain;
+    void *user;
+    struct {
+        uint32_t id;
+        PipeBuf *pb;
+        JSValue ref; /* keeps a registered PipeBuf alive: registered => never dangles */
+    } *ents;
+    int n, cap;
+};
+
+struct PipeBuf {
+    JSContext *ctx;
+    QjsPipeCtx *pc;
+    uint32_t id;
+    PbSeg *head, *tail;
+    uint32_t buffered;
+    uint8_t write_ended, read_closed, host_blocked, strict;
+    char *reset_reason; /* non-NULL => every read throws it */
+    int job;
+    JSValue dst; /* RECV destination view (re-resolved at completion: it may have been detached) */
+    uint32_t dst_off, dst_len;
+    QjsJStream *jstream;    /* JSON */
+    DynBuf acc;             /* LINE span / UTF8 body */
+    JSValue resolve, reject; /* the parked promise capability */
+};
+
+static JSClassID pipebuf_class_id;
+
+/* ---- registry (id -> PipeBuf; tiny linear array — an engine has a handful of live pipes) ---- */
+
+static PipeBuf *reg_find(QjsPipeCtx *pc, uint32_t id) {
+    for (int i = 0; i < pc->n; i++)
+        if (pc->ents[i].id == id) return pc->ents[i].pb;
+    return NULL;
 }
 
-/* free_func of one-shot host views — the memory is the host's (pinned only for the call). */
-static void noop_free(JSRuntime *rt, void *opaque, void *ptr) {}
-
-/* new Uint8Array(ab), consuming ab. The constructor reads argv[1]/argv[2] unconditionally
- * (interpreter undefined-padding), so pad them explicitly. View, no copy. */
-static JSValue new_u8_view(JSContext *ctx, JSValue ab) {
-    JSValueConst args[3] = { ab, JS_UNDEFINED, JS_UNDEFINED };
-    JSValue u8 = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
-    JS_FreeValue(ctx, ab);
-    return u8;
+static int reg_add(QjsPipeCtx *pc, uint32_t id, PipeBuf *pb, JSValueConst obj) {
+    if (pc->n == pc->cap) {
+        int ncap = pc->cap ? pc->cap * 2 : 8;
+        void *ne = realloc(pc->ents, (size_t)ncap * sizeof(*pc->ents));
+        if (!ne) return -1;
+        pc->ents = ne;
+        pc->cap = ncap;
+    }
+    pc->ents[pc->n].id = id;
+    pc->ents[pc->n].pb = pb;
+    pc->ents[pc->n].ref = JS_DupValue(pc->ctx, obj);
+    pc->n++;
+    return 0;
 }
+
+/* Dropping the ref may finalize the PipeBuf — callers must not touch it afterwards. */
+static void reg_remove(QjsPipeCtx *pc, uint32_t id) {
+    for (int i = 0; i < pc->n; i++) {
+        if (pc->ents[i].id == id) {
+            JSValue ref = pc->ents[i].ref;
+            pc->ents[i] = pc->ents[pc->n - 1];
+            pc->n--;
+            JS_FreeValue(pc->ctx, ref);
+            return;
+        }
+    }
+}
+
+/* ---- shared helpers ---- */
 
 /* Resolve a Uint8Array argument to its byte pointer + byte length. Returns NULL and throws on a
  * non-view or detached argument. */
@@ -62,47 +130,554 @@ static uint8_t *view_bytes(JSContext *ctx, JSValueConst v, size_t *plen) {
         JS_ThrowTypeError(ctx, "detached buffer");
         return NULL;
     }
-    *plen = ta_len * (bpe ? bpe : 1);
+    (void)bpe; /* ta_len is already the view's BYTE length (JS_GetTypedArrayBuffer's pbyte_length) */
+    *plen = ta_len;
     return ptr + ta_off;
 }
 
-/* __segTake(src, off, len) -> Uint8Array over a pooled segment holding min(len, 8192) bytes copied
- * from src[off..]. JS loops for larger ranges. */
-static JSValue js_seg_take(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    QjsPool *pool = (QjsPool *)JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
-    int64_t off = 0, len = 0;
-    JS_ToInt64(ctx, &off, argv[1]);
-    JS_ToInt64(ctx, &len, argv[2]);
-    size_t src_len = 0;
-    uint8_t *src = view_bytes(ctx, argv[0], &src_len);
-    if (!src) return JS_EXCEPTION;
-    if (off < 0 || len <= 0 || (uint64_t)off + (uint64_t)len > src_len)
-        return JS_ThrowRangeError(ctx, "__segTake range out of bounds");
-    size_t n = (size_t)len > QJS_SEG_SIZE ? QJS_SEG_SIZE : (size_t)len;
-    uint8_t *seg = pool_take(pool);
-    if (!seg) return JS_ThrowOutOfMemory(ctx);
-    memcpy(seg, src + off, n);
-    JSValue ab = JS_NewArrayBuffer(ctx, seg, n, seg_free, pool, 0);
-    if (JS_IsException(ab)) {
-        pool_put(pool, seg);
-        return ab;
+/* A plain Error with the given message (reads throw/reject Error, not InternalError — the reset
+ * reason and stream errors are protocol data, not engine bugs). JS_NULL on allocation failure. */
+static JSValue pb_error(JSContext *ctx, const char *msg) {
+    JSValue e = JS_NewError(ctx);
+    if (JS_IsException(e)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return JS_NULL;
     }
-    return new_u8_view(ctx, ab);
+    JSValue m = JS_NewString(ctx, msg);
+    if (JS_IsException(m)) JS_FreeValue(ctx, JS_GetException(ctx));
+    else JS_DefinePropertyValueStr(ctx, e, "message", m, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    return e;
 }
 
-/* __segRelease(u8) — eagerly return a fully-consumed pool segment. Detach calls seg_free once;
- * the later GC finalizer sees ptr == NULL. Only ever called on __segTake results. */
-static JSValue js_seg_release(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    size_t ta_off = 0, ta_len = 0, bpe = 0;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &ta_off, &ta_len, &bpe);
-    if (JS_IsException(ab)) return ab;
-    JS_DetachArrayBuffer(ctx, ab);
-    JS_FreeValue(ctx, ab);
+static JSValue pb_throw(JSContext *ctx, const char *msg) {
+    return JS_Throw(ctx, pb_error(ctx, msg));
+}
+
+static JSValue pb_throw_ended(JSContext *ctx, uint32_t need) {
+    char msg[48];
+    snprintf(msg, sizeof(msg), "stream ended before %u bytes", (unsigned)need);
+    return pb_throw(ctx, msg);
+}
+
+/* ---- segment chain ---- */
+
+static void pb_release_head(PipeBuf *pb) {
+    PbSeg *s = pb->head;
+    pb->head = s->next;
+    if (!pb->head) pb->tail = NULL;
+    pool_put(&pb->pc->pool, (uint8_t *)s);
+}
+
+/* Consume n bytes from the head segment (n <= its remaining payload). */
+static void pb_consume(PipeBuf *pb, uint32_t n) {
+    PbSeg *s = pb->head;
+    s->start += n;
+    pb->buffered -= n;
+    if (s->start == s->end) pb_release_head(pb);
+}
+
+static uint32_t pb_consume_copy(PipeBuf *pb, uint8_t *dst, uint32_t max) {
+    uint32_t total = 0;
+    while (total < max && pb->head) {
+        PbSeg *s = pb->head;
+        uint32_t n = s->end - s->start;
+        if (n > max - total) n = max - total;
+        memcpy(dst + total, PB_SEG_DATA(s) + s->start, n);
+        pb_consume(pb, n);
+        total += n;
+    }
+    return total;
+}
+
+static void pb_free_all(PipeBuf *pb) {
+    while (pb->head) pb_release_head(pb);
+    pb->buffered = 0;
+}
+
+/* Copy into segments up to the cap, packing the tail. Returns accepted, or -1 on block OOM. */
+static int pb_fill(PipeBuf *pb, const uint8_t *data, size_t len) {
+    size_t pos = 0;
+    while (pos < len && pb->buffered < PB_CAP) {
+        PbSeg *t = pb->tail;
+        if (!t || t->end == PB_SEG_CAP) {
+            uint8_t *blk = pool_take(&pb->pc->pool);
+            if (!blk) return -1;
+            t = (PbSeg *)blk;
+            t->next = NULL;
+            t->start = t->end = 0;
+            if (pb->tail) pb->tail->next = t;
+            else pb->head = t;
+            pb->tail = t;
+        }
+        uint32_t n = PB_SEG_CAP - t->end;
+        if (n > len - pos) n = (uint32_t)(len - pos);
+        if (n > PB_CAP - pb->buffered) n = PB_CAP - pb->buffered;
+        memcpy(PB_SEG_DATA(t) + t->end, data + pos, n);
+        t->end += n;
+        pb->buffered += n;
+        pos += n;
+    }
+    return (int)pos;
+}
+
+static void pb_acc_reset(PipeBuf *pb) {
+    pb->acc.size = 0;
+    if (pb->acc.allocated_size > 65536) { /* don't retain a huge line/body buffer */
+        dbuf_free(&pb->acc);
+        dbuf_init(&pb->acc);
+    }
+}
+
+static JSValue pb_acc_take_string(PipeBuf *pb) {
+    JSValue s = JS_NewStringLen(pb->ctx, pb->acc.size ? (const char *)pb->acc.buf : "", pb->acc.size);
+    pb_acc_reset(pb);
+    return s;
+}
+
+/* ---- scanners (consume as they feed, so an over-cap line/body never deadlocks the writer) ---- */
+
+/* 1 = line complete (*out owned), 0 = all buffered consumed into acc, -1 = exception. */
+static int pb_line_scan(PipeBuf *pb, JSValue *out) {
+    JSContext *ctx = pb->ctx;
+    while (pb->head) {
+        PbSeg *s = pb->head;
+        uint8_t *p = PB_SEG_DATA(s) + s->start;
+        uint32_t avail = s->end - s->start;
+        uint8_t *hit = (uint8_t *)memchr(p, '\n', avail);
+        if (!hit) {
+            if (dbuf_put(&pb->acc, p, avail)) {
+                JS_ThrowOutOfMemory(ctx);
+                return -1;
+            }
+            pb_consume(pb, avail);
+            continue;
+        }
+        uint32_t j = (uint32_t)(hit - p);
+        JSValue str;
+        if (pb->acc.size == 0) {
+            /* fast path: the whole line lives in this segment — decode in place */
+            uint32_t e = (j > 0 && p[j - 1] == '\r') ? j - 1 : j;
+            str = JS_NewStringLen(ctx, (const char *)p, e);
+        } else {
+            if (dbuf_put(&pb->acc, p, j)) {
+                JS_ThrowOutOfMemory(ctx);
+                return -1;
+            }
+            size_t e = pb->acc.size;
+            if (e > 0 && pb->acc.buf[e - 1] == '\r') e--;
+            str = JS_NewStringLen(ctx, (const char *)pb->acc.buf, e);
+        }
+        pb_consume(pb, j + 1);
+        pb_acc_reset(pb);
+        if (JS_IsException(str)) return -1;
+        *out = str;
+        return 1;
+    }
+    return 0;
+}
+
+/* 1 = value complete (its tail stays queued), 0 = need more, -1 = exception. */
+static int pb_json_feed(PipeBuf *pb) {
+    while (pb->head && !qjs_jstream_done(pb->jstream)) {
+        PbSeg *s = pb->head;
+        uint32_t avail = s->end - s->start;
+        int consumed = qjs_jstream_push(pb->jstream, PB_SEG_DATA(s) + s->start, avail);
+        if (consumed < 0) return -1;
+        if (consumed == 0 && !qjs_jstream_done(pb->jstream)) {
+            JS_ThrowInternalError(pb->ctx, "json parser made no progress"); /* guard: a 0 spins the loop */
+            return -1;
+        }
+        pb_consume(pb, (uint32_t)consumed);
+    }
+    return qjs_jstream_done(pb->jstream) ? 1 : 0;
+}
+
+/* 0 = all buffered consumed into acc, -1 = exception. */
+static int pb_utf8_feed(PipeBuf *pb) {
+    while (pb->head) {
+        PbSeg *s = pb->head;
+        uint32_t avail = s->end - s->start;
+        if (dbuf_put(&pb->acc, PB_SEG_DATA(s) + s->start, avail)) {
+            JS_ThrowOutOfMemory(pb->ctx);
+            return -1;
+        }
+        pb_consume(pb, avail);
+    }
+    return 0;
+}
+
+/* ---- the pending job ---- */
+
+static JSValue pb_read_be(PipeBuf *pb, uint32_t n) {
+    uint8_t b[8];
+    pb_consume_copy(pb, b, n);
+    if (n == 4) {
+        int32_t v = (int32_t)(((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) | ((uint32_t)b[2] << 8) | b[3]);
+        return JS_NewInt32(pb->ctx, v);
+    }
+    int64_t v = 0;
+    for (uint32_t i = 0; i < 8; i++) v = (v << 8) | b[i];
+    return JS_NewInt64(pb->ctx, v); /* a Number: loses precision above 2^53, like the JS reader did */
+}
+
+/* Try to finish the current job from buffered bytes (+ EOF state).
+ * 1 = done (*out owned), 0 = still pending, -1 = failed (JS exception pending). */
+static int pb_try(PipeBuf *pb, JSValue *out) {
+    JSContext *ctx = pb->ctx;
+    int eof = pb->write_ended;
+    switch (pb->job) {
+    case PB_JOB_RECV:
+        if (pb->buffered > 0) {
+            size_t dlen = 0;
+            uint8_t *d = view_bytes(ctx, pb->dst, &dlen);
+            if (!d) return -1;
+            if ((uint64_t)pb->dst_off + pb->dst_len > dlen) {
+                JS_ThrowRangeError(ctx, "receive destination out of bounds");
+                return -1;
+            }
+            *out = JS_NewInt32(ctx, (int32_t)pb_consume_copy(pb, d + pb->dst_off, pb->dst_len));
+            return 1;
+        }
+        if (eof) { *out = JS_NewInt32(ctx, -1); return 1; }
+        return 0;
+    case PB_JOB_INT:
+    case PB_JOB_LONG: {
+        uint32_t need = pb->job == PB_JOB_INT ? 4 : 8;
+        if (pb->buffered >= need) {
+            *out = pb_read_be(pb, need);
+            return JS_IsException(*out) ? -1 : 1;
+        }
+        if (eof) { pb_throw_ended(ctx, need); return -1; }
+        return 0;
+    }
+    case PB_JOB_LINE: {
+        int r = pb_line_scan(pb, out);
+        if (r != 0 || !eof) return r;
+        if (pb->strict) {
+            pb_acc_reset(pb);
+            pb_throw(ctx, "readUtf8Line(strict): stream exhausted before a newline");
+            return -1;
+        }
+        if (pb->acc.size > 0) { /* final unterminated line, raw */
+            *out = pb_acc_take_string(pb);
+            return JS_IsException(*out) ? -1 : 1;
+        }
+        *out = JS_NULL;
+        return 1;
+    }
+    case PB_JOB_JSON: {
+        int r = pb_json_feed(pb);
+        if (r == 0 && !eof) return 0;
+        if (r >= 0) {
+            *out = qjs_jstream_end(pb->jstream); /* at EOF-incomplete this throws */
+            r = JS_IsException(*out) ? -1 : 1;
+        }
+        qjs_jstream_free(pb->jstream);
+        pb->jstream = NULL;
+        return r;
+    }
+    case PB_JOB_UTF8:
+        if (pb_utf8_feed(pb)) return -1;
+        if (!eof) return 0;
+        *out = pb_acc_take_string(pb);
+        return JS_IsException(*out) ? -1 : 1;
+    }
+    return 0;
+}
+
+/* Drop per-job state (a job that never parked, or one being settled). */
+static void pb_job_reset(PipeBuf *pb) {
+    pb->job = PB_JOB_NONE;
+    if (!JS_IsUndefined(pb->dst)) {
+        JS_FreeValue(pb->ctx, pb->dst);
+        pb->dst = JS_UNDEFINED;
+    }
+    if (pb->jstream) {
+        qjs_jstream_free(pb->jstream);
+        pb->jstream = NULL;
+    }
+}
+
+/* Settle the parked promise. `result` is consumed. Returns -1 when the capability call itself
+ * threw (a bootstrap bug — the caller poisons the pipe so the host writer fails loudly). */
+static int pb_settle(PipeBuf *pb, int ok, JSValue result) {
+    JSContext *ctx = pb->ctx;
+    JSValue fn = ok ? pb->resolve : pb->reject;
+    JSValue other = ok ? pb->reject : pb->resolve;
+    pb->resolve = pb->reject = JS_UNDEFINED;
+    pb_job_reset(pb);
+    /* resolving a promise only schedules reaction jobs — legal under a JNI critical region */
+    JSValue r = JS_Call(ctx, fn, JS_UNDEFINED, 1, &result);
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, fn);
+    JS_FreeValue(ctx, other);
+    if (JS_IsException(r)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return -1;
+    }
+    JS_FreeValue(ctx, r);
+    return 0;
+}
+
+/* Advance the pending job after new bytes / EOF / RESET. 0 = ok, -1 = settle failure (poison).
+ * Acts only on an ARMED job: between a read setting pb->job and pb_read_finish storing the
+ * capability, the DRAIN hook runs host code that could re-enter here — a half-armed job must be
+ * left alone (pb_read_finish re-runs this once armed, so nothing is missed). */
+static int pb_progress(PipeBuf *pb) {
+    if (pb->job == PB_JOB_NONE || JS_IsUndefined(pb->resolve)) return 0;
+    if (pb->reset_reason) return pb_settle(pb, 0, pb_error(pb->ctx, pb->reset_reason));
+    JSValue out = JS_UNDEFINED;
+    int r = pb_try(pb, &out);
+    if (r == 0) return 0;
+    if (r == 1) return pb_settle(pb, 1, out);
+    return pb_settle(pb, 0, JS_GetException(pb->ctx));
+}
+
+/* The pipe is unusable mid-stream (segment OOM, settle failure): poison the read side so this and
+ * every later read throws, fail the parked reader, and report EPIPE to the host writer. */
+static int pb_fail(PipeBuf *pb) {
+    JSContext *ctx = pb->ctx;
+    JSValue exc = JS_UNDEFINED;
+    const char *m = NULL;
+    if (JS_HasException(ctx)) {
+        exc = JS_GetException(ctx);
+        m = JS_ToCString(ctx, exc);
+    }
+    static const char prefix[] = "pipe buffering failed: ";
+    const char *msg = m ? m : "internal error";
+    size_t ml = strlen(msg);
+    char *r = (char *)malloc(sizeof(prefix) + ml);
+    if (r) {
+        memcpy(r, prefix, sizeof(prefix) - 1);
+        memcpy(r + sizeof(prefix) - 1, msg, ml + 1);
+    }
+    if (m) JS_FreeCString(ctx, m);
+    JS_FreeValue(ctx, exc);
+    free(pb->reset_reason);
+    pb->reset_reason = r;
+    pb->write_ended = 1; /* even if the reason string failed to allocate, reads terminate */
+    pb_free_all(pb);
+    if (pb->job != PB_JOB_NONE && !JS_IsUndefined(pb->resolve))
+        pb_settle(pb, 0, pb_error(ctx, r ? r : "pipe buffering failed"));
+    return -1;
+}
+
+/* ---- host entry points ---- */
+
+int qjs_pipe_write(QjsPipeCtx *pc, uint32_t id, const uint8_t *data, size_t len) {
+    PipeBuf *pb = reg_find(pc, id);
+    if (!pb || pb->reset_reason) return -1;
+    size_t pos = 0;
+    for (;;) {
+        int f = pb_fill(pb, data + pos, len - pos);
+        if (f < 0) {
+            JS_ThrowOutOfMemory(pb->ctx);
+            return pb_fail(pb);
+        }
+        pos += (size_t)f;
+        if (pos >= len) {
+            if (pb_progress(pb) < 0) return pb_fail(pb);
+            break;
+        }
+        /* cap full, input remains: only a consuming job can make room */
+        if (pb->job == PB_JOB_NONE) break;
+        uint32_t before = pb->buffered;
+        if (pb_progress(pb) < 0) return pb_fail(pb);
+        if (pb->buffered >= before) break;
+    }
+    if (pos < len) pb->host_blocked = 1; /* the writer parks; reads below LOW owe it a DRAIN */
+    return (int)pos;
+}
+
+void qjs_pipe_close_write(QjsPipeCtx *pc, uint32_t id, const char *reason, size_t reason_len) {
+    PipeBuf *pb = reg_find(pc, id);
+    if (!pb) return;
+    pb->write_ended = 1;
+    if (reason) { /* RESET: discard buffered data; the parked/next read throws the reason */
+        pb_free_all(pb);
+        char *r = (char *)malloc(reason_len + 1);
+        if (r) {
+            memcpy(r, reason, reason_len);
+            r[reason_len] = 0;
+        }
+        free(pb->reset_reason);
+        pb->reset_reason = r ? r : strdup("pipe reset"); /* NULL only under double OOM: reads then EOF */
+        pb_acc_reset(pb);
+        pb_progress(pb); /* rejects an armed job with the reason */
+    } else { /* END: EOF once drained; terminal-complete the parked job */
+        pb_progress(pb);
+    }
+    reg_remove(pc, id); /* may finalize pb — last touch */
+}
+
+/* ---- JS natives ---- */
+
+static PipeBuf *pb_get(JSContext *ctx, JSValueConst v) {
+    return (PipeBuf *)JS_GetOpaque2(ctx, v, pipebuf_class_id);
+}
+
+static JSValue pb_guard(JSContext *ctx, PipeBuf *pb) {
+    if (pb->read_closed) return pb_throw(ctx, "receive() after closeRead()");
+    if (pb->job != PB_JOB_NONE) return pb_throw(ctx, "concurrent receive() on the same pipe");
+    if (pb->reset_reason) return pb_throw(ctx, pb->reset_reason);
     return JS_UNDEFINED;
 }
 
-/* __utf8Decode(u8, off, len) -> string. Native UTF-8 -> JS string (astral-correct); replaces the
- * interpreted per-codepoint decode loop. */
+/* Reads below the low-water mark owe the parked host writer a DRAIN. Read paths only — never
+ * reached from qjs_pipe_write (the host writer is mid-write there, not parked), which keeps the
+ * critical-region rule by construction. */
+static JSValue pb_drain_check(PipeBuf *pb) {
+    QjsPipeCtx *pc = pb->pc;
+    if (pb->host_blocked && pb->buffered <= PB_LOW) {
+        pb->host_blocked = 0;
+        if (pc->drain && pc->drain(pc->user, pb->id) < 0)
+            return JS_ThrowInternalError(pb->ctx, "host callback failed (drain)");
+    }
+    return JS_UNDEFINED;
+}
+
+/* Shared tail of every read native: finish synchronously when possible, else park and return the
+ * Promise that qjs_pipe_write / close_write settles. Callers set the job params first. */
+static JSValue pb_read_finish(JSContext *ctx, PipeBuf *pb) {
+    JSValue out = JS_UNDEFINED;
+    int r = pb_try(pb, &out);
+    if (JS_IsException(pb_drain_check(pb))) {
+        if (r == 1) JS_FreeValue(ctx, out);
+        pb_job_reset(pb);
+        return JS_EXCEPTION;
+    }
+    if (r < 0) {
+        pb_job_reset(pb);
+        return JS_EXCEPTION;
+    }
+    if (r == 1) {
+        pb_job_reset(pb);
+        return out;
+    }
+    JSValue funcs[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, funcs);
+    if (JS_IsException(promise)) {
+        pb_job_reset(pb);
+        return promise;
+    }
+    pb->resolve = funcs[0];
+    pb->reject = funcs[1];
+    /* the drain hook above ran host code while the job was half-armed — catch anything it did */
+    if (pb_progress(pb) < 0) pb_fail(pb);
+    return promise;
+}
+
+/* __pbNew(id) -> PipeBuf handle, registered for host writes. */
+static JSValue js_pb_new(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    QjsPipeCtx *pc = (QjsPipeCtx *)JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
+    uint32_t id = 0;
+    JS_ToUint32(ctx, &id, argv[0]);
+    if (reg_find(pc, id)) return JS_ThrowInternalError(ctx, "pipe id already registered");
+    PipeBuf *pb = (PipeBuf *)calloc(1, sizeof(PipeBuf));
+    if (!pb) return JS_ThrowOutOfMemory(ctx);
+    pb->ctx = ctx;
+    pb->pc = pc;
+    pb->id = id;
+    pb->dst = pb->resolve = pb->reject = JS_UNDEFINED;
+    dbuf_init(&pb->acc);
+    JSValue obj = JS_NewObjectClass(ctx, pipebuf_class_id);
+    if (JS_IsException(obj)) {
+        free(pb);
+        return obj;
+    }
+    JS_SetOpaque(obj, pb);
+    if (reg_add(pc, id, pb, obj)) {
+        JS_FreeValue(ctx, obj); /* finalizer frees pb */
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    return obj;
+}
+
+/* __pbRecv(pb, dst, off, len) -> count | -1 EOF | Promise. */
+static JSValue js_pb_recv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    int64_t off = 0, len = 0;
+    JS_ToInt64(ctx, &off, argv[2]);
+    JS_ToInt64(ctx, &len, argv[3]);
+    size_t dlen = 0;
+    if (!view_bytes(ctx, argv[1], &dlen)) return JS_EXCEPTION;
+    if (off < 0 || len < 0 || (uint64_t)off + (uint64_t)len > dlen)
+        return JS_ThrowRangeError(ctx, "receive destination out of bounds");
+    if (len == 0) return JS_NewInt32(ctx, 0);
+    pb->job = PB_JOB_RECV;
+    pb->dst = JS_DupValue(ctx, argv[1]);
+    pb->dst_off = (uint32_t)off;
+    pb->dst_len = (uint32_t)len;
+    return pb_read_finish(ctx, pb);
+}
+
+/* __pbInt(pb) / __pbLong(pb) -> number | Promise (big-endian fixed width). */
+static JSValue js_pb_int(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    pb->job = PB_JOB_INT;
+    return pb_read_finish(ctx, pb);
+}
+
+static JSValue js_pb_long(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    pb->job = PB_JOB_LONG;
+    return pb_read_finish(ctx, pb);
+}
+
+/* __pbLine(pb, strict) -> string | null | Promise. */
+static JSValue js_pb_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    pb->job = PB_JOB_LINE;
+    pb->strict = (uint8_t)JS_ToBool(ctx, argv[1]);
+    return pb_read_finish(ctx, pb);
+}
+
+/* __pbJson(pb, expect) -> value | Promise (stops at the value's end; the tail stays queued). */
+static JSValue js_pb_json(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    int32_t expect = QJS_JSON_EXPECT_ANY;
+    JS_ToInt32(ctx, &expect, argv[1]);
+    pb->jstream = qjs_jstream_new(ctx, expect);
+    if (!pb->jstream) return JS_EXCEPTION;
+    pb->job = PB_JOB_JSON;
+    return pb_read_finish(ctx, pb);
+}
+
+/* __pbUtf8(pb) -> string | Promise (the whole remaining body, decoded once at EOF). */
+static JSValue js_pb_utf8(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    pb->job = PB_JOB_UTF8;
+    return pb_read_finish(ctx, pb);
+}
+
+/* __pbCloseRead(pb) — abandon the read side; the host's next write returns -1. */
+static JSValue js_pb_close_read(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (pb->read_closed) return JS_UNDEFINED;
+    pb->read_closed = 1;
+    pb_free_all(pb);
+    if (pb->job != PB_JOB_NONE) {
+        pb_acc_reset(pb);
+        pb_settle(pb, 0, pb_error(ctx, "receive() after closeRead()")); /* in-flight read is a misuse */
+    }
+    reg_remove(pb->pc, pb->id); /* argv[0] keeps the object alive */
+    return JS_UNDEFINED;
+}
+
+/* __utf8Decode(u8, off, len) -> string. Native UTF-8 -> JS string (astral-correct). */
 static JSValue js_utf8_decode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     int64_t off = 0, len = 0;
     JS_ToInt64(ctx, &off, argv[1]);
@@ -204,162 +779,77 @@ static JSValue js_utf8_into(JSContext *ctx, JSValueConst this_val, int argc, JSV
     return JS_NewInt32(ctx, (int32_t)((read << 16) | written));
 }
 
-/* ---- Native line splitter — the '\n' mirror of the streaming JSON parser (the __jsonNew/Push/
- * Done/End pattern). Bytes are CONSUMED as they are fed, so the reader always drains the pipe
- * buffer: DRAIN fires, and an over-cap line can never deadlock the parked writer. A line that
- * completes within one push decodes straight from the segment (no accumulation copy); a line
- * spanning pushes accumulates here (memory = the line itself, which is inherent). __linePush stops
- * just past the '\n', so trailing bytes stay queued (same tail rule as the JSON parser).
- *
- *   __lineNew()                 -> splitter (opaque; freed on GC; reusable across lines)
- *   __linePush(l, u8, off, len) -> bytes consumed (stops after a '\n')
- *   __lineDone(l)               -> bool: a complete line is ready
- *   __lineEnd(l)                -> the line (trailing '\r' stripped), or at EOF the partial
- *                                  remainder (raw), or null when nothing accumulated; RESETS the
- *                                  splitter for the next line.
- * (Holds only a JSString result — strings never participate in GC cycles, so a finalizer without
- * gc_mark is sufficient, unlike the parser/encoder which hold containers.) */
+/* ---- class + registration ---- */
 
-typedef struct {
-    JSContext *ctx;
-    DynBuf acc;     /* bytes of a line spanning pushes */
-    JSValue result; /* the completed decoded line */
-    int done;
-} JLine;
-
-static JSClassID jline_class_id;
-
-static void jline_free(JLine *l) {
-    if (l == NULL) return;
-    JS_FreeValue(l->ctx, l->result);
-    dbuf_free(&l->acc);
-    free(l);
-}
-
-static void jline_class_finalizer(JSRuntime *rt, JSValue val) {
-    JLine *l = JS_GetOpaque(val, jline_class_id);
-    if (l) jline_free(l);
-}
-
-static JSClassDef jline_class_def = { "LineSplitter", .finalizer = jline_class_finalizer };
-
-static JSValue js_line_new(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    JLine *l = (JLine *)calloc(1, sizeof(JLine));
-    if (l == NULL) return JS_ThrowOutOfMemory(ctx);
-    l->ctx = ctx;
-    l->result = JS_UNDEFINED;
-    dbuf_init(&l->acc);
-    JSValue obj = JS_NewObjectClass(ctx, jline_class_id);
-    if (JS_IsException(obj)) { jline_free(l); return obj; }
-    JS_SetOpaque(obj, l);
-    return obj;
-}
-
-static JSValue js_line_push(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    JLine *l = (JLine *)JS_GetOpaque2(ctx, argv[0], jline_class_id);
-    if (l == NULL) return JS_EXCEPTION;
-    if (l->done) return JS_ThrowInternalError(ctx, "__linePush: line already complete");
-    int64_t off = 0, len = 0;
-    JS_ToInt64(ctx, &off, argv[2]);
-    JS_ToInt64(ctx, &len, argv[3]);
-    size_t src_len = 0;
-    uint8_t *src = view_bytes(ctx, argv[1], &src_len);
-    if (!src) return JS_EXCEPTION;
-    if (off < 0 || len < 0 || (uint64_t)off + (uint64_t)len > src_len)
-        return JS_ThrowRangeError(ctx, "__linePush range out of bounds");
-    const uint8_t *p = src + off;
-    const uint8_t *hit = (const uint8_t *)memchr(p, '\n', (size_t)len);
-    if (hit == NULL) {
-        if (dbuf_put(&l->acc, p, (size_t)len)) return JS_ThrowOutOfMemory(ctx);
-        return JS_NewInt64(ctx, len);
+static void pipebuf_finalizer(JSRuntime *rt, JSValue val) {
+    PipeBuf *pb = (PipeBuf *)JS_GetOpaque(val, pipebuf_class_id);
+    if (!pb) return;
+    while (pb->head) { /* pc (and its pool) outlives the runtime — see teardown order */
+        PbSeg *s = pb->head;
+        pb->head = s->next;
+        pool_put(&pb->pc->pool, (uint8_t *)s);
     }
-    size_t j = (size_t)(hit - p);
-    JSValue s;
-    if (l->acc.size == 0) {
-        /* fast path: the whole line lives in this push — decode straight from the segment */
-        size_t e = (j > 0 && p[j - 1] == '\r') ? j - 1 : j;
-        s = JS_NewStringLen(ctx, (const char *)p, e);
-    } else {
-        if (dbuf_put(&l->acc, p, j)) return JS_ThrowOutOfMemory(ctx);
-        size_t e = (l->acc.size > 0 && l->acc.buf[l->acc.size - 1] == '\r') ? l->acc.size - 1 : l->acc.size;
-        s = JS_NewStringLen(ctx, (const char *)l->acc.buf, e);
-    }
-    if (JS_IsException(s)) return s;
-    l->result = s;
-    l->done = 1;
-    return JS_NewInt64(ctx, (int64_t)(j + 1));
+    JS_FreeValueRT(rt, pb->dst);
+    JS_FreeValueRT(rt, pb->resolve);
+    JS_FreeValueRT(rt, pb->reject);
+    if (pb->jstream) qjs_jstream_free(pb->jstream);
+    dbuf_free(&pb->acc);
+    free(pb->reset_reason);
+    free(pb);
 }
 
-static JSValue js_line_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    JLine *l = (JLine *)JS_GetOpaque2(ctx, argv[0], jline_class_id);
-    if (l == NULL) return JS_EXCEPTION;
-    return JS_NewBool(ctx, l->done);
+/* A parked job holds refcounted JSValues (dst, the capability functions, half-built JSON
+ * containers) that aren't reachable through the normal object graph — the GC must be told. */
+static void pipebuf_gc_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func) {
+    PipeBuf *pb = (PipeBuf *)JS_GetOpaque(val, pipebuf_class_id);
+    if (!pb) return;
+    JS_MarkValue(rt, pb->dst, mark_func);
+    JS_MarkValue(rt, pb->resolve, mark_func);
+    JS_MarkValue(rt, pb->reject, mark_func);
+    qjs_jstream_mark(rt, pb->jstream, mark_func);
 }
 
-static JSValue js_line_end(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-    JLine *l = (JLine *)JS_GetOpaque2(ctx, argv[0], jline_class_id);
-    if (l == NULL) return JS_EXCEPTION;
-    JSValue r;
-    if (l->done) {
-        r = l->result;
-        l->result = JS_UNDEFINED;
-        l->done = 0;
-    } else if (l->acc.size > 0) {
-        r = JS_NewStringLen(ctx, (const char *)l->acc.buf, l->acc.size); /* EOF remainder, raw */
-    } else {
-        r = JS_NULL;
-    }
-    l->acc.size = 0;
-    if (l->acc.allocated_size > 65536) { dbuf_free(&l->acc); dbuf_init(&l->acc); } /* don't retain a huge line buffer */
-    return r;
-}
+static JSClassDef pipebuf_class_def = {
+    "PipeBuf", .finalizer = pipebuf_finalizer, .gc_mark = pipebuf_gc_mark
+};
 
-QjsPool *qjs_register_pipe(JSContext *ctx) {
-    QjsPool *pool = (QjsPool *)calloc(1, sizeof(QjsPool));
-    JS_SetRuntimeOpaque(JS_GetRuntime(ctx), pool);
+QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user) {
+    QjsPipeCtx *pc = (QjsPipeCtx *)calloc(1, sizeof(QjsPipeCtx));
+    pc->ctx = ctx;
+    pc->drain = drain;
+    pc->user = user;
+    JS_SetRuntimeOpaque(JS_GetRuntime(ctx), pc);
+    JS_NewClassID(&pipebuf_class_id);
+    JS_NewClass(JS_GetRuntime(ctx), pipebuf_class_id, &pipebuf_class_def);
     JSValue g = JS_GetGlobalObject(ctx);
-    JS_SetPropertyStr(ctx, g, "__segTake", JS_NewCFunction(ctx, js_seg_take, "__segTake", 3));
-    JS_SetPropertyStr(ctx, g, "__segRelease", JS_NewCFunction(ctx, js_seg_release, "__segRelease", 1));
+    JS_SetPropertyStr(ctx, g, "__pbNew", JS_NewCFunction(ctx, js_pb_new, "__pbNew", 1));
+    JS_SetPropertyStr(ctx, g, "__pbRecv", JS_NewCFunction(ctx, js_pb_recv, "__pbRecv", 4));
+    JS_SetPropertyStr(ctx, g, "__pbInt", JS_NewCFunction(ctx, js_pb_int, "__pbInt", 1));
+    JS_SetPropertyStr(ctx, g, "__pbLong", JS_NewCFunction(ctx, js_pb_long, "__pbLong", 1));
+    JS_SetPropertyStr(ctx, g, "__pbLine", JS_NewCFunction(ctx, js_pb_line, "__pbLine", 2));
+    JS_SetPropertyStr(ctx, g, "__pbJson", JS_NewCFunction(ctx, js_pb_json, "__pbJson", 2));
+    JS_SetPropertyStr(ctx, g, "__pbUtf8", JS_NewCFunction(ctx, js_pb_utf8, "__pbUtf8", 1));
+    JS_SetPropertyStr(ctx, g, "__pbCloseRead", JS_NewCFunction(ctx, js_pb_close_read, "__pbCloseRead", 1));
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
-    JS_NewClassID(&jline_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), jline_class_id, &jline_class_def);
-    JS_SetPropertyStr(ctx, g, "__lineNew", JS_NewCFunction(ctx, js_line_new, "__lineNew", 0));
-    JS_SetPropertyStr(ctx, g, "__linePush", JS_NewCFunction(ctx, js_line_push, "__linePush", 4));
-    JS_SetPropertyStr(ctx, g, "__lineDone", JS_NewCFunction(ctx, js_line_done, "__lineDone", 1));
-    JS_SetPropertyStr(ctx, g, "__lineEnd", JS_NewCFunction(ctx, js_line_end, "__lineEnd", 1));
     JS_FreeValue(ctx, g);
-    return pool;
+    return pc;
 }
 
-void qjs_pool_free(QjsPool *pool) {
-    if (!pool) return;
-    void *seg = pool->free_list;
-    while (seg) {
-        void *next = *(void **)seg;
-        free(seg);
-        seg = next;
+void qjs_pipe_ctx_release(QjsPipeCtx *pc, JSContext *ctx) {
+    if (!pc) return;
+    for (int i = 0; i < pc->n; i++) JS_FreeValue(ctx, pc->ents[i].ref);
+    pc->n = 0;
+}
+
+void qjs_pipe_ctx_free(QjsPipeCtx *pc) {
+    if (!pc) return;
+    void *blk = pc->pool.free_list;
+    while (blk) {
+        void *next = *(void **)blk;
+        free(blk);
+        blk = next;
     }
-    free(pool);
-}
-
-JSValue qjs_view_wrap(JSContext *ctx, const uint8_t *ptr, size_t len, JSValue *out_ab) {
-    *out_ab = JS_UNDEFINED;
-    JSValue ab = JS_NewArrayBuffer(ctx, (uint8_t *)ptr, len, noop_free, NULL, 0);
-    if (JS_IsException(ab)) return ab;
-    JSValue u8 = new_u8_view(ctx, JS_DupValue(ctx, ab));
-    if (JS_IsException(u8)) {
-        /* never leave a live (non-detached) buffer over the caller's memory, and don't leak ab */
-        JS_DetachArrayBuffer(ctx, ab);
-        JS_FreeValue(ctx, ab);
-        return u8;
-    }
-    *out_ab = ab;
-    return u8;
-}
-
-void qjs_view_detach(JSContext *ctx, JSValue view, JSValue ab) {
-    if (!JS_IsUndefined(ab)) JS_DetachArrayBuffer(ctx, ab);
-    JS_FreeValue(ctx, ab);
-    JS_FreeValue(ctx, view);
+    free(pc->ents);
+    free(pc);
 }
