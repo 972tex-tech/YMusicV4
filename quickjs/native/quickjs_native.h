@@ -3,12 +3,12 @@
  * quickjs_jni.c. The pipe multiplexer speaks a few operations per direction rather than one framed
  * byte blob, so no per-frame header is allocated and commands/reasons cross as native strings.
  *
- * Each pipe direction is a bounded (64 KB), flow-controlled byte stream: write() delivers its bytes
- * ZERO-COPY (a one-shot ArrayBuffer view over the caller's memory, valid only during the call — the
- * JS mux copies into a parked reader's buffer and/or pooled 8 KB segments, see quickjs_pipe.h) and
- * returns the accepted byte count. accepted < len is backpressure: the writer waits for a DRAIN
- * notify. -1 means the reader closed its read end (EPIPE). close_write(reason=NULL) is a clean END;
- * a non-NULL reason is a RESET (the peer's read throws instead of seeing EOF).
+ * Each pipe direction is a bounded (64 KB), flow-controlled byte stream: write() copies its bytes
+ * once into the C-owned pipe buffer (pooled 8 KB segments, see quickjs_pipe.h — no JS runs on the
+ * write path) and returns the accepted byte count. accepted < len is backpressure: the writer
+ * waits for a DRAIN notify. -1 means the reader closed its read end (EPIPE).
+ * close_write(reason=NULL) is a clean END; a non-NULL reason is a RESET (the peer's read throws
+ * instead of seeing EOF).
  *
  * Strings are UTF-8 (Kotlin/Native's toKString/cstr are UTF-8, astral-correct).
  */

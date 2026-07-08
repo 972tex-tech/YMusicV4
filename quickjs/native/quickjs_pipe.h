@@ -1,24 +1,32 @@
 /*
- * Segment-pool memory + zero-copy view helpers for the pipe transport (shared by the JNI and
- * cinterop shims, like quickjs_json).
+ * C-owned inbound pipe buffer ("PipeBuf"), shared by the JNI and cinterop shims.
  *
- * The host->JS direction's internal buffer is a queue of Uint8Array views managed by the JS mux
- * (bootstrap.js), but the BYTES live in C memory: 8 KB segments from a per-engine pool. JS calls
- *   __segTake(src, off, len) -> Uint8Array   copy <= 8 KB out of a (still-attached) source view
- *                                            into a pooled segment, wrapped zero-copy;
- *   __segRelease(u8)                          eager return of a fully-consumed segment (detach);
- *   __utf8Decode(u8, off, len) -> string      native UTF-8 decode (JS_NewStringLen);
- *   __utf8Into(str, from, to, dst, dstOff)    encodeInto: fill dst from flat string storage,
- *                                             stopping on the last whole codepoint that fits;
- *                                             returns (unitsRead << 16) | bytesWritten, so the
- *                                             caller fills, flushes, and advances `from` — one
- *                                             encode pass, nothing materialized, any string size.
- * (JSON serialization goes through the resumable native encoder — quickjs_json.c __jsonEnc*.)
- * A segment's ArrayBuffer free_func returns it to the pool, so GC is the release backstop.
+ * The host->JS direction of each pipe lives entirely in C: an 8 KB pooled segment chain (bounded
+ * at 64 KB, low-water 32 KB), the pending read job, and the scanners (line splitter, streaming
+ * JSON via quickjs_json.h, UTF-8 accumulate/decode). Host writes never enter JS
+ * (qjs_pipe_write -> memcpy into segments -> advance the pending job); JS reads are thin natives
+ * that return the result synchronously when it is already buffered, else park the job and return
+ * a Promise that C settles on a later write / EOF / RESET.
  *
- * qjs_view_wrap/qjs_view_detach carry a host write across the boundary with no copy: the shim pins
- * the host bytes, wraps them as a one-shot non-owning ArrayBuffer view, calls __jsData, then
- * detaches the view (an accidentally retained reference throws on access instead of dangling).
+ * JS natives registered on globalThis:
+ *   __pbNew(id) -> PipeBuf     handle held by the pipe closure; registers id -> buf for writes
+ *   __pbRecv(pb, dst, off, len) -> count | -1 EOF | Promise
+ *   __pbInt(pb) / __pbLong(pb) -> number | Promise            big-endian, fixed width
+ *   __pbLine(pb, strict)       -> string | null | Promise     '\n'-terminated, '\r' stripped
+ *   __pbJson(pb, expect)       -> value | Promise             stops at the value's end (tail stays)
+ *   __pbUtf8(pb)               -> string | Promise            whole remaining body, decoded once
+ *   __pbCloseRead(pb)          abandon the read side (free segments, unregister; next write -1)
+ *   __utf8Decode(u8, off, len) -> string
+ *   __utf8Into(str, from, to, dst, dstOff) -> (unitsRead << 16) | bytesWritten (sink encode)
+ *
+ * CRITICAL-REGION RULE (JVM): qjs_pipe_write runs while the host ByteArray is held with
+ * GetPrimitiveArrayCritical. This path never calls back into the host — the accepted-count return
+ * IS the flow control — and settling a parked promise only schedules reaction jobs. The drain
+ * hook fires exclusively from JS-initiated read paths (never under a critical region).
+ *
+ * Lifetime: the registry holds a reference to each registered PipeBuf object, so a registered id
+ * can never dangle; unregistration happens at close_write / closeRead (after which no host bytes
+ * can arrive). The class finalizer is the GC backstop returning segments to the pool.
  */
 #ifndef QUICKJS_PIPE_H
 #define QUICKJS_PIPE_H
@@ -27,21 +35,31 @@
 #include <stdint.h>
 #include "quickjs.h"
 
-/* Segment size — must match the JS mux's accounting (bootstrap.js). */
+/* Pool block size; PipeBuf segment payload is this minus a small header. */
 #define QJS_SEG_SIZE 8192
 
-typedef struct QjsPool QjsPool;
+typedef struct QjsPipeCtx QjsPipeCtx;
 
-/* Create the engine's segment pool (stored via JS_SetRuntimeOpaque) and register the JS natives.
- * Free the returned pool with qjs_pool_free AFTER JS_FreeRuntime: live segments are returned to
- * the pool by their free_func during runtime teardown. */
-QjsPool *qjs_register_pipe(JSContext *ctx);
-void qjs_pool_free(QjsPool *pool);
+/* Flow control toward the host: our buffer drained below low-water while its writer was parked.
+ * Return 0, or <0 if the host callback failed (surfaces as a JS exception on the reading side). */
+typedef int (*QjsPipeDrainFn)(void *user, uint32_t id);
 
-/* Wrap [ptr, ptr+len) as a one-shot zero-copy Uint8Array over a NON-owning ArrayBuffer. *out_ab
- * receives an owned ref to the ArrayBuffer; after the JS call that consumes the view returns, pass
- * both to qjs_view_detach (which detaches and frees them). len must be > 0. */
-JSValue qjs_view_wrap(JSContext *ctx, const uint8_t *ptr, size_t len, JSValue *out_ab);
-void qjs_view_detach(JSContext *ctx, JSValue view, JSValue ab);
+/* Create the per-engine pipe context (segment pool + id registry; stored via JS_SetRuntimeOpaque)
+ * and register the JS natives. Teardown order:
+ *   qjs_pipe_ctx_release(pc, ctx);  // drop registry refs — BEFORE JS_FreeContext
+ *   JS_FreeContext / JS_FreeRuntime;  // finalizers return live segments to the pool
+ *   qjs_pipe_ctx_free(pc); */
+QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user);
+void qjs_pipe_ctx_release(QjsPipeCtx *pc, JSContext *ctx);
+void qjs_pipe_ctx_free(QjsPipeCtx *pc);
+
+/* Host wrote bytes: copy into the pipe's segments (up to the cap) and advance the pending read
+ * job. Returns the accepted count (< len => the host writer parks until DRAIN), or -1 when the
+ * id is unknown / read-closed / the pipe failed. Safe under a JNI critical region. */
+int qjs_pipe_write(QjsPipeCtx *pc, uint32_t id, const uint8_t *data, size_t len);
+
+/* Host write-side half-close. reason NULL = END (EOF once drained), else RESET (discard buffered
+ * data; the parked/next read throws the reason). Unregisters the id. */
+void qjs_pipe_close_write(QjsPipeCtx *pc, uint32_t id, const char *reason, size_t reason_len);
 
 #endif

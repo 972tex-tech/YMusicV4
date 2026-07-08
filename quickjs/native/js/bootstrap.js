@@ -1,27 +1,23 @@
-// The engine bootstrap: the whole pipe protocol + streaming JSON + host-scheduled timers, built on
-// the transport entry points (__jsOpen/__jsData/__jsClose/__jsCloseRead/__jsDrain in;
-// __hostOpen/__hostData/__hostClose/__hostCloseRead/__hostDrain out) and the native pipe/JSON
-// helpers (__segTake/__segRelease/__utf8Decode, __json*). Compiled to bytecode at build time and
-// embedded — this file is never shipped as source.
+// The engine bootstrap: the pipe protocol's JS half + host-scheduled timers, built on the
+// transport entry points (__jsOpen/__jsClose/__jsCloseRead/__jsDrain in; __hostOpen/__hostData/
+// __hostClose/__hostCloseRead out) and the C pipe buffer (__pb*, see quickjs_pipe.h). Minified at
+// build time into a generated Kotlin const the engine evals (see build.gradle.kts).
 //
 //  - ymix.open(command) -> a pipe to Kotlin (this side is the client).
 //  - ymix.onAccept(command, async (pipe) => ...) -> handle pipes Kotlin opens to us (server side).
-//  - a pipe is the whole okio-Buffer-style object (source + sink in one — there is no separate
-//    "buffered" wrapper): the raw channel is send(buf,off,len) / await receive(buf,off,len) (-> count
-//    or -1); buffered reads work its own inbound queue IN PLACE (readInt/readLong, readUtf8,
-//    readUtf8Line, readJsonObject/readJsonArray, available()); buffered writes coalesce through a
+//  - a pipe is the whole okio-Buffer-style object: the raw channel is send(buf,off,len) /
+//    receive(buf,off,len) (-> count or -1); buffered reads (readInt/readLong, readUtf8,
+//    readUtf8Line, readJsonObject/readJsonArray); buffered writes coalescing through a
 //    lazily-allocated staging segment (writeInt/writeLong, writeBytes, writeUtf8[Range|Line],
 //    writeObjectAsJson, flush()); then close(reason?) (flushes first) / closeRead() / .command.
 // Kotlin opens odd pipe ids, JS opens even ones, so the two id spaces never collide.
 //
-// MEMORY MODEL (see PIPE_STREAMING.md): inbound bytes live in C pool segments — __jsData hands us a
-// one-shot zero-copy view of the host's bytes (DETACHED when the call returns); we copy straight
-// into a parked reader's buffer (rendezvous, one copy) and stash only the remainder into pooled
-// segments via __segTake (never a JS-heap copy of the payload). The buffered source scans those
-// queued segments IN PLACE — lines are decoded and JSON is parsed straight out of C memory.
-// CRITICAL-REGION RULE: the synchronous _data path must never call a host-crossing native
-// (__host*) — only pure-C ones (__segTake); promise resolutions merely schedule microtasks. DRAIN
-// notifies are emitted from read paths only, which honors that by construction.
+// MEMORY MODEL (see PIPE_STREAMING.md): the whole inbound direction lives in C — host writes go
+// straight into pooled C segments (never through JS), and every read is a thin native that
+// returns the result when it is already buffered or a Promise that C settles on a later write /
+// EOF / RESET. Hot callers can skip the microtask hop with
+// `var r = pipe.readX(); typeof r === "..." ? r : await r`. Only the OUTBOUND half is JS: the
+// staging segment, the partial-send park, and the DRAIN/EPIPE bookkeeping below.
 
 (function () {
   // Encode one or more strings to UTF-8, concatenated. Multi-arg (utf8Encode(str, "\n")) avoids a
@@ -47,74 +43,17 @@
   var pipes = {};
   var accepts = {};
   var nextId = 2; // JS opens even ids; Kotlin opens odd.
-  var PIPE_CAP = 65536, PIPE_LOW = 32768; // per-direction buffer bound (must match QuickJsRuntime.kt)
-  var EOF = -1, WOULD_BLOCK = -2;         // take(): EOF is the public receive() value; WOULD_BLOCK is internal
   function brokenPipe() { return new Error("EPIPE: broken pipe"); }
 
-  // Each pipe direction is a bounded, flow-controlled byte stream. Inbound bytes queue here as
-  // Uint8Array views over pooled C segments (we're the reader — the queue is just views+counters,
-  // the bytes stay in C memory); outbound writes are partial (__hostData returns the accepted
-  // count) and park for a drain when the host's buffer is full. All on the engine thread.
   function makePipe(id, command) {
-    // inbound: queue of segment views drained through (head, headPos); qpos is a cursor, not
-    // shift() (which memmoves the tail). One outstanding receive at a time (waiter) — either a
-    // {buffer,offset,len} destination park (direct delivery) or a bare "readable" park (scanners).
-    var queue = [], qpos = 0, head = null, headPos = 0, buffered = 0, waiter = null;
-    var writeEnded = false, resetReason = null, readClosed = false, hostBlocked = false;
+    var pb = __pbNew(id); // the C-owned inbound buffer; reads delegate to it
+    var writeEnded = false, readClosed = false; // routing bookkeeping only — buffer state is C's
     // outbound: writer = the parked partial send {buffer, pos, end, resolve, reject}.
     var peerReadClosed = false, weEnded = false, writer = null;
     // buffered-WRITE staging: a fixed 8 KB segment coalescing small writes, allocated LAZILY so a
-    // raw/read-only pipe pays nothing; wView writes fixed-width ints straight into it. lineSplit is
-    // the native line splitter (reused across readUtf8Line). Reads need no staging — the scanners
-    // work the inbound queue IN PLACE (it already IS the read buffer).
-    var wbuf = null, wlen = 0, wView = null, lineSplit = null;
+    // raw/read-only pipe pays nothing; wView writes fixed-width ints straight into it.
+    var wbuf = null, wlen = 0, wView = null;
     function ensureWbuf() { if (wbuf === null) { wbuf = new Uint8Array(8192); wView = new DataView(wbuf.buffer); } }
-    // 8-byte scratch for readInt/readLong (per-pipe: the receive loop holds it across an await, and a
-    // pipe has one outstanding read, so it never overlaps itself).
-    var numBuf = new Uint8Array(8), numView = new DataView(numBuf.buffer);
-
-    function releaseInbound() {
-      if (head) { __segRelease(head); head = null; }
-      for (var i = qpos; i < queue.length; i++) __segRelease(queue[i]);
-      queue.length = 0; qpos = 0; headPos = 0; buffered = 0;
-    }
-
-    // Advance head to the next unread segment; false when nothing is buffered.
-    // Dequeue via cursor, not shift() (memmoves the tail on every pop) or delete (punches a hole,
-    // which permanently de-optimizes the array to hash storage in QuickJS). Fully drained ->
-    // truncate: drops all stale references in one shot and keeps the array's capacity. A long
-    // stream read in small chunks may never fully drain, so also compact the dead prefix
-    // occasionally — the live tail is bounded by the 64 KB cap (<= 9 entries), so it's trivial.
-    function ensureHead() {
-      if (head && headPos < head.length) return true;
-      if (head) { __segRelease(head); head = null; headPos = 0; }
-      if (qpos >= queue.length) return false;
-      head = queue[qpos++]; headPos = 0;
-      if (qpos === queue.length) { queue.length = 0; qpos = 0; }
-      else if (qpos >= 64) { queue.splice(0, qpos); qpos = 0; }
-      return true;
-    }
-
-    // Emit the drain the host writer is owed. Only ever called from read paths, never inside
-    // _data (the critical-region rule).
-    function drainCheck() {
-      if (hostBlocked && buffered <= PIPE_LOW) { hostBlocked = false; __hostDrain(id); }
-    }
-
-    // Pop up to len bytes across segments: count, EOF, or WOULD_BLOCK (caller parks). Fully-drained
-    // segments return to the C pool eagerly.
-    function take(buffer, offset, len) {
-      var total = 0;
-      while (total < len && ensureHead()) {
-        var n = Math.min(len - total, head.length - headPos);
-        if (headPos === 0 && n === head.length) buffer.set(head, offset + total);
-        else buffer.set(head.subarray(headPos, headPos + n), offset + total);
-        headPos += n; total += n; buffered -= n;
-      }
-      if (head && headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-      if (total > 0) { drainCheck(); return total; }
-      return writeEnded ? EOF : WOULD_BLOCK;
-    }
 
     // No more data either way — drop routing.
     function maybeReap() { if (weEnded && (writeEnded || readClosed)) delete pipes[id]; }
@@ -137,138 +76,33 @@
       });
     }
 
-    // Sync (a count, or -1 at EOF) when bytes are buffered or ended; a Promise only when it parks.
-    // Throws the RESET reason.
-    function receive(buffer, offset, len) {
-      var o = offset || 0, l = (len === undefined ? buffer.length - o : len);
-      if (readClosed) throw new Error("receive() after closeRead()");
-      if (waiter) throw new Error("concurrent receive() on the same pipe");
-      if (resetReason !== null) throw new Error(resetReason);
-      if (l === 0) return 0;
-      var n = take(buffer, o, l);
-      if (n !== WOULD_BLOCK) return n;
-      return new Promise(function (resolve, reject) {
-        waiter = { buffer: buffer, offset: o, len: l, resolve: resolve, reject: reject };
-      });
-    }
-
-    // Parks for the NEXT delivery, not "is readable" — always async while the stream is live. The
-    // scanners consume the current buffer before parking here; a resolve-on-any-data variant would
-    // spin them. undefined once the write end has ended.
-    function awaitMore() {
-      if (readClosed) throw new Error("receive() after closeRead()");
-      if (waiter) throw new Error("concurrent receive() on the same pipe");
-      if (resetReason !== null) throw new Error(resetReason);
-      if (writeEnded) return;
-      return new Promise(function (resolve, reject) {
-        waiter = { buffer: null, resolve: resolve, reject: reject };
-      });
-    }
-
-    // Abandon the read side: release the segments and make the host's next send EPIPE.
+    // Abandon the read side: release the buffer and make the host's next send EPIPE.
     function closeRead() {
       if (readClosed) return;
       readClosed = true;
-      releaseInbound();
+      __pbCloseRead(pb);
       __hostCloseRead(id);
-      if (waiter) { var w = waiter; waiter = null; w.reject(new Error("receive() after closeRead()")); } // in-flight receive is a misuse
       maybeReap();
     }
 
     // Write-side half-close (END if no reason, else RESET). The public close() flushes staged writes first.
-    function halfClose(reason) {
+    function closeWrite(reason) {
       if (weEnded) return;
       weEnded = true;
       __hostClose(id, reason === undefined ? null : reason);
       maybeReap();
     }
 
-    // ---- in-place scanners (drive readUtf8Line / readJson*; no copy out of C memory) ----
-
-    // Consumes as it feeds, so an over-cap line can't deadlock the writer. 1 = complete, 0 = more, -1 = EOF.
-    function lineFeed(l) {
-      if (resetReason !== null) throw new Error(resetReason);
-      while (ensureHead()) {
-        var consumed = __linePush(l, head, headPos, head.length - headPos);
-        if (consumed <= 0) throw new Error("__linePush made no progress"); // guard: a 0 spins the loop
-        headPos += consumed; buffered -= consumed;
-        if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-        if (__lineDone(l)) { drainCheck(); return 1; }
-      }
-      drainCheck();
-      return writeEnded ? -1 : 0;
-    }
-
-    // 1 = complete (value's tail left queued), 0 = need more, -1 = EOF.
-    function jsonFeed(p) {
-      if (resetReason !== null) throw new Error(resetReason);
-      while (ensureHead()) {
-        var consumed = __jsonPush(p, head, headPos, head.length - headPos);
-        if (__jsonDone(p)) { // may legitimately consume 0 here (value ended at the previous push)
-          headPos += consumed; buffered -= consumed;
-          if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-          drainCheck();
-          return 1;
-        }
-        if (consumed <= 0) throw new Error("__jsonPush made no progress"); // guard: a 0 spins the loop
-        headPos += consumed; buffered -= consumed;
-        if (headPos >= head.length) { __segRelease(head); head = null; headPos = 0; }
-      }
-      drainCheck();
-      return writeEnded ? -1 : 0;
-    }
-
-    // Drain every queued segment into a native byte accumulator (readUtf8). -1 = EOF, 0 = need more.
-    function utf8Feed(acc) {
-      if (resetReason !== null) throw new Error(resetReason);
-      while (ensureHead()) {
-        var n = head.length - headPos;
-        __utf8AccPush(acc, head, headPos, n);
-        buffered -= n;
-        __segRelease(head); head = null; headPos = 0;
-      }
-      drainCheck();
-      return writeEnded ? -1 : 0;
-    }
-
-    // Fill dst[0..n) exactly, draining as it reads (so any n works — no cap deadlock). Await-optional:
-    // undefined when it finished without parking, else a Promise; throws/rejects at EOF.
-    function readFully(dst, n) {
-      var got = 0;
-      function pump() { // undefined once filled, else a Promise that fills the rest
-        while (got < n) {
-          var r = receive(dst, got, n - got);
-          if (typeof r !== "number") return r.then(take);
-          if (r < 0) throw new Error("stream ended before " + n + " bytes");
-          got += r;
-        }
-      }
-      function take(c) { if (c < 0) throw new Error("stream ended before " + n + " bytes"); got += c; return pump(); }
-      return pump();
-    }
-
-    // Await-optional: the value when the whole thing was already buffered, else a Promise.
-    function readJsonValue(expect) {
-      var p = __jsonNew(expect);
-      function pump() {
-        for (;;) {
-          var s = jsonFeed(p);
-          if (s !== 0) return __jsonEnd(p); // 1 = complete; -1 = EOF (finalize, or throw if incomplete)
-          var w = awaitMore();
-          if (w) return w.then(pump);
-        }
-      }
-      return pump();
-    }
-
     // ---- buffered-write internals (into wbuf; undefined = sync, Promise = backpressure — leave the
     // staged segment unmodified until it resolves) ----
 
+    // wlen stays claimed until a parked send completes: a non-awaiting caller then appends beyond
+    // the in-flight window (and fails on the concurrent-send guard) instead of corrupting it.
     function flushSink() {
       if (wlen === 0) return;
       var p = send(wbuf, 0, wlen);
-      wlen = 0;
-      return p;
+      if (!p) { wlen = 0; return; }
+      return p.then(function () { wlen = 0; });
     }
 
     function putByte(b) {
@@ -337,62 +171,28 @@
       id: id,
       command: command,
       send: send,
-      receive: receive,
-      awaitMore: awaitMore,
       closeRead: closeRead,
       // flush staged writes, then write-side half-close (END, or RESET with a reason)
       close: function (reason) {
         var p = flushSink();
-        if (p) return p.then(function () { halfClose(reason); });
-        halfClose(reason);
+        if (p) return p.then(function () { closeWrite(reason); });
+        closeWrite(reason);
       },
       flush: flushSink,
 
-      // ---- buffered reads, in place over the inbound queue (no second buffer). Await-optional:
-      // a value when it was already buffered, else a Promise — hot callers can skip the microtask
-      // hop with `var r = pipe.readX(); typeof r === "number" ? r : await r`. ----
-      readInt: function () {
-        var p = readFully(numBuf, 4);
-        return p ? p.then(function () { return numView.getInt32(0); }) : numView.getInt32(0);
+      // ---- reads (C-owned buffer; value when already buffered, else a Promise C settles) ----
+      receive: function (buffer, offset, len) {
+        var o = offset || 0;
+        return __pbRecv(pb, buffer, o, len === undefined ? buffer.length - o : len);
       },
-      readLong: function () { // number: loses precision above 2^53
-        var p = readFully(numBuf, 8);
-        return p ? p.then(function () { return Number(numView.getBigInt64(0)); }) : Number(numView.getBigInt64(0));
-      },
+      readInt: function () { return __pbInt(pb); },
+      readLong: function () { return __pbLong(pb); }, // number: loses precision above 2^53
       // strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF
-      readUtf8Line: function (strict) {
-        if (lineSplit === null) lineSplit = __lineNew();
-        function pump() {
-          for (;;) {
-            var s = lineFeed(lineSplit);
-            if (s === 1) return __lineEnd(lineSplit);
-            if (s === -1) {
-              var last = __lineEnd(lineSplit);
-              if (strict) throw new Error("readUtf8Line(strict): stream exhausted before a newline");
-              return last;
-            }
-            var w = awaitMore();
-            if (w) return w.then(pump);
-          }
-        }
-        return pump();
-      },
+      readUtf8Line: function (strict) { return __pbLine(pb, !!strict); },
       // stops at the value's end, leaving trailing bytes queued; root type checked on the first byte
-      readJsonObject: function () { return readJsonValue(1); },
-      readJsonArray: function () { return readJsonValue(2); },
-      // drains into a native byte accumulator (no growing JS array), decoded once at EOF
-      readUtf8: function () {
-        var acc = __utf8AccNew();
-        function pump() {
-          for (;;) {
-            var s = utf8Feed(acc);
-            if (s === -1) return __utf8AccEnd(acc);
-            var w = awaitMore();
-            if (w) return w.then(pump);
-          }
-        }
-        return pump();
-      },
+      readJsonObject: function () { return __pbJson(pb, 1); },
+      readJsonArray: function () { return __pbJson(pb, 2); },
+      readUtf8: function () { return __pbUtf8(pb); },
 
       // ---- buffered writes: undefined = done synchronously, a Promise = backpressure; sequential ----
       writeBytes: function (b) { ensureWbuf(); return writeBytesFn(b); },
@@ -441,69 +241,18 @@
         return pump();
       },
 
-      // ---- transport entry points (host -> us) ----
+      // ---- transport entry points (host -> us; the data path never comes through JS) ----
 
-      // Host wrote bytes. `u8` is a one-shot zero-copy view of the HOST's memory — it is detached
-      // the moment this returns, so consume it now: rendezvous straight into a parked reader's
-      // buffer, then __segTake the remainder into pooled segments up to the cap. Returns the
-      // accepted count (< len parks the host writer until DRAIN), or -1 after closeRead. This path
-      // may run under a JNI critical region: pure-C natives only, no __host* calls.
-      _data: function (u8) {
-        if (readClosed) return -1;
-        var len = u8.length, pos = 0;
-        var w = waiter, delivered = 0;
-        if (w !== null) {
-          waiter = null;
-          if (w.buffer) { // destination park: direct delivery (the queue is empty by construction)
-            delivered = Math.min(len, w.len);
-            if (delivered === len) w.buffer.set(u8, w.offset);
-            else w.buffer.set(u8.subarray(0, delivered), w.offset);
-            pos = delivered;
-          }
-        }
-        try {
-          while (pos < len && buffered < PIPE_CAP) {
-            var seg = __segTake(u8, pos, Math.min(len - pos, PIPE_CAP - buffered));
-            queue.push(seg);
-            buffered += seg.length;
-            pos += seg.length;
-          }
-        } catch (e) {
-          // Buffering failed — a segment-pool malloc OOM is the expected cause (we're below the 64 KB
-          // cap, so __segTake is allocating), but surface whatever actually threw rather than presume.
-          // Not recoverable mid-stream: don't swallow it or fake backpressure. Poison the read side so
-          // this and every later receive() throws, fail the parked reader, and report EPIPE to the
-          // host writer, so both ends fail consistently. Under a JNI critical region here — local
-          // state + a promise reject only, never a __host* call.
-          resetReason = "pipe buffering failed: " + ((e && e.message) || e);
-          releaseInbound();
-          if (w !== null) w.reject(new Error(resetReason));
-          return -1;
-        }
-        // Wake the reader LAST, once the queue is fully consistent (nothing depends on the resolution
-        // being deferred to a microtask).
-        if (pos < len) hostBlocked = true; // buffer full: owe the host a DRAIN once we read below LOW
-        if (w !== null) {
-          if (w.buffer) w.resolve(delivered);
-          else w.resolve(); // readable park: the bytes are queued now; the scanner rescans
-        }
-        return pos;
+      // Host closed its write end (C already delivered EOF/RESET to the buffer).
+      _end: function () {
+        writeEnded = true;
+        maybeReap();
       },
 
-      // Host closed its write end: reason null = END (EOF once drained), string = RESET (discard
-      // pending data; parked/next receive throws the reason).
-      _end: function (reason) {
-        writeEnded = true;
-        if (reason !== null && reason !== undefined) {
-          resetReason = String(reason);
-          releaseInbound();
-          if (waiter) { var w = waiter; waiter = null; w.reject(new Error(resetReason)); }
-        } else if (waiter) {
-          var w2 = waiter; waiter = null;
-          if (w2.buffer) w2.resolve(EOF); // a destination park implies an empty queue -> EOF now
-          else w2.resolve();              // scanner wakes and sees writeEnded
-        }
-        maybeReap();
+      // A refused ymix.open: drop the C registration without touching the host (no pipe exists there).
+      _abandon: function () {
+        readClosed = true;
+        __pbCloseRead(pb);
       },
 
       // Host abandoned its read end: our sends are EPIPE from now on.
@@ -538,13 +287,9 @@
       .catch(function (e) { pipe.closeRead(); pipe.close(String((e && e.message) || e)); }); // RESET: surface the failure
     return 0;
   };
-  // Kotlin wrote bytes (one-shot zero-copy view; see _data). Returns the accepted count / -1 EPIPE.
-  globalThis.__jsData = function (id, u8) {
-    var p = pipes[id]; return p ? p._data(u8) : -1;
-  };
-  // Kotlin closed its write end — END (reason null) or RESET (reason string).
-  globalThis.__jsClose = function (id, reason) {
-    var p = pipes[id]; if (p) p._end(reason);
+  // Kotlin closed its write end (END or RESET — the C buffer already knows which).
+  globalThis.__jsClose = function (id) {
+    var p = pipes[id]; if (p) p._end();
   };
   // Kotlin abandoned its read end — our sends get EPIPE.
   globalThis.__jsCloseRead = function (id) {
@@ -567,6 +312,7 @@
       var rc = __hostOpen(id, command);
       if (rc < 0) {
         delete pipes[id];
+        pipe._abandon();
         throw new Error(rc === -2 ? 'open("' + command + '") during data delivery'
                                   : 'open("' + command + '") refused by host');
       }

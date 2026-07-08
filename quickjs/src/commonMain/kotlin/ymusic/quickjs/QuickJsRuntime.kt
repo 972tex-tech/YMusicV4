@@ -23,7 +23,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Per-direction pipe buffer bound (bytes) — like a Linux pipe's fixed capacity. A writer whose
  *  write is only partially accepted parks and resumes on the peer's DRAIN notify, which fires once
- *  the buffer drains to [PIPE_LOW]. Must match bootstrap.js. */
+ *  the buffer drains to [PIPE_LOW]. Must match quickjs_pipe.c (PB_CAP/PB_LOW). */
 private const val PIPE_CAP = 64 * 1024
 private const val PIPE_LOW = PIPE_CAP / 2
 

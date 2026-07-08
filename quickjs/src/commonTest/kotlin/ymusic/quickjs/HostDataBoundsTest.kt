@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
  * __hostData is the one native that hands JS-supplied (off, len) to the HOST as a raw pointer —
  * this module runs remotely-updatable JS, so an unchecked range is an out-of-bounds read of host
  * memory shipped straight into a pipe. Both shims must reject it like every other range-taking
- * native (__segTake, __utf8Decode, …).
+ * native (__pbRecv, __utf8Decode, …).
  */
 class HostDataBoundsTest {
 

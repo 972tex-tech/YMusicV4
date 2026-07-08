@@ -41,18 +41,17 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
   (Kotlin `send` suspends; the JS send promise stays pending) until the reader drains the buffer to
   the low-water mark and the transport fires a **drain**, which resumes the write from where
   it stopped. `-1` = the reader closed its read end → `BrokenPipeException` / EPIPE rejection.
-- **Buffers live on the reader's side, in the reader's language.** Bytes JS writes land in an okio
-  `Buffer` in Kotlin (its segment pool — no per-chunk allocation; Kotlin `receive` never crosses
-  the FFI). Bytes Kotlin writes land in the JS mux's queue of `Uint8Array` views over **pooled 8 KB
-  C segments** (`__segTake`/`__segRelease`) — the queue is views + counters; the bytes stay in C
-  memory, never copied into the JS heap.
-- **Zero-copy crossing, rendezvous-first.** A write crosses as a one-shot view of the writer's own
-  bytes (host → JS: an ArrayBuffer wrapping the pinned ByteArray, **detached** when the call
-  returns; JS → host: a direct ByteBuffer / raw pointer over the typed array, valid only during the
-  call). If a reader is parked, the bytes are copied **straight into its buffer** — one copy, the
-  unavoidable heap-to-heap transfer. Only the remainder is copied once into pool segments (buffered
-  path = 2 copies total, 0 allocations at steady state). Consequence: **the send buffer must stay
-  unmodified until the send completes** (a partial write holds a window into it).
+- **Buffers live on the reader's side.** Bytes JS writes land in an okio `Buffer` in Kotlin (its
+  segment pool — no per-chunk allocation; Kotlin `receive` never crosses the FFI). Bytes Kotlin
+  writes land in a **C-owned `PipeBuf`** (`quickjs_pipe.c`): a chain of pooled 8 KB segments plus
+  the pending read job — host writes never enter JS at all (`qjs_pipe_write` memcpys into the
+  segments and advances the job in C), and no per-chunk JS object exists anywhere.
+- **One copy per chunk.** A write crosses as the writer's own bytes (host → JS: the ByteArray
+  pinned for the memcpy; JS → host: a direct ByteBuffer / raw pointer over the typed array, valid
+  only during the call) and is copied once into the reader-side buffer. String/JSON reads then
+  decode **straight out of the C segments** (still one copy total); only a raw `receive(dst)`
+  copies out a second time. Consequence: **the send buffer must stay unmodified until the send
+  completes** (a partial write holds a window into it).
 - **Half-close, two flavors**: `close(null)` = END — the peer's `receive` returns -1 once drained.
   `close(reason)` = **RESET** — the peer's pending data is discarded and its parked/next `receive`
   **throws** the reason (Kotlin: `PipeResetException`; JS: rejection), so a mid-stream failure or
@@ -73,47 +72,50 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
 
 **Transport (no framing).** The FFI boundary is a handful of operations per direction — nothing
 allocates a per-frame header; commands and reasons cross as native strings:
-- host → JS: `NativeEngine.open(id, cmd) -> 0 | -1 refused` / `write(id, buf, off, len) -> accepted` /
-  `closeWrite(id, reason?)` / `closeRead(id)` / `drain(id)`
-  → JS globals `__jsOpen` / `__jsData(id, view) -> accepted` / `__jsClose(id, reason)` /
-  `__jsCloseRead(id)` / `__jsDrain(id)`.
-- JS → host: `__hostOpen -> 0 | -1 refused` / `__hostData(id, u8, off, len) -> accepted` / `__hostClose(id, reason)` /
-  `__hostCloseRead(id)` / `__hostDrain(id)`
-  → `EngineCallbacks.onOpen/onWrite/onCloseWrite/onCloseRead/onDrain` (JNI statics on jvm/android;
-  one cinterop trampoline with an op arg on native).
+- host → JS: `NativeEngine.open(id, cmd) -> 0 | -1 refused` → `__jsOpen`;
+  `write(id, buf, off, len) -> accepted` → **C only** (`qjs_pipe_write`, no JS on the data path);
+  `closeWrite(id, reason?)` → `qjs_pipe_close_write` (delivers EOF/RESET to the C buffer) +
+  `__jsClose(id)` (JS-side reap bookkeeping); `closeRead(id)` → `__jsCloseRead(id)`;
+  `drain(id)` → `__jsDrain(id)`.
+- JS → host: `__hostOpen -> 0 | -1 refused` / `__hostData(id, u8, off, len) -> accepted` /
+  `__hostClose(id, reason)` / `__hostCloseRead(id)`
+  → `EngineCallbacks.onOpen/onWrite/onCloseWrite/onCloseRead` (JNI statics on jvm/android; one
+  cinterop trampoline with an op arg on native). The inbound DRAIN fires from the C pipe layer
+  through a shim-registered hook → `onDrain`.
 `id` is an argument (Kotlin opens odd ids, JS even). `open` is request/response, C-error-code
 style: opening a command nothing serves **fails at the open itself** (like `ECONNREFUSED` — Kotlin:
-`QuickJsException`, JS: throw), leaving no pipe on either side. All routing lives in the Kotlin +
-JS mux — C only shuttles operations and owns the segment pool (`quickjs_pipe.c`).
+`QuickJsException`, JS: throw), leaving no pipe on either side. Routing lives in the Kotlin mux and
+C's id → `PipeBuf` registry (which holds each registered buffer alive, so a host write can never
+touch a freed one); the JS mux routes only the outbound events.
 
 **JNI critical-region discipline** (jvm/android): `write` holds the ByteArray with
-`GetPrimitiveArrayCritical` while `__jsData` runs, so that synchronous JS path must never re-enter
-JNI — the bootstrap's `_data` only calls pure-C natives (`__segTake`), promise resolutions merely
-*schedule* microtasks, and the pump runs after the release. The shim enforces it: under the
-critical flag `__hostDrain` is queued (flushed after release) and any other `__host*` call throws.
-Drains are therefore emitted from *read* paths only — which is also why `_data` itself never needs
-one.
+`GetPrimitiveArrayCritical` while `qjs_pipe_write` copies it. No JS executes on that path —
+settling a parked read's promise only *schedules* reaction jobs, and the pump runs after the
+release — so JNI re-entry is impossible by construction. The DRAIN hook fires exclusively from
+JS-initiated read paths (during a write the host writer is mid-write, not parked, so the accepted
+count itself is the flow control); the shim keeps its in-critical guards as cheap defense.
 
 Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
 inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
 **no separate `buffered(pipe)` wrapper**: the pipe itself is the okio-`Buffer`-style object (source
 and sink in one). Alongside the raw `send`/`receive`/`close`/`closeRead` it carries buffered reads
-(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2, plus
-`available()`) and buffered writes (`writeInt`/`writeLong`/`writeBytes`/`writeUtf8`/`writeUtf8Range`/
+(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2) and buffered
+writes (`writeInt`/`writeLong`/`writeBytes`/`writeUtf8`/`writeUtf8Range`/
 `writeUtf8Line`/`writeObjectAsJson`, `flush`) — the write-staging segment is allocated lazily, so a
 raw or read-only pipe pays nothing.
 
-The **reads have no window of their own**: the pipe's inbound queue of segment views *is*
-the buffer, and both scanners are **consuming push-parsers fed segment by segment** (the same
-`New/Push/Done/End` shape): `readJson*` drives the streaming JSON parser (§2), and `readUtf8Line`
-drives the native **line splitter** (`__lineNew/Push/Done/End` in `quickjs_pipe.c`) — memchr per
-push, a line completing within one segment decodes straight from C memory, a spanning line
-accumulates inside the splitter. Because bytes are *consumed as fed* (DRAIN always fires), a line
-longer than the pipe cap simply grows the splitter's accumulator — memory = the line itself — and
-can never deadlock the parked writer, by construction rather than by special case. `readUtf8` — the
-one whole-body materializer — reads into a growing buffer (a parked read gets rendezvous delivery
-straight into it) and decodes once, by range. Consumed-exactly semantics mean a head line + JSON
-body + tail share one stream position for free.
+Every read is a **thin native over the C `PipeBuf`** (`__pbRecv`/`__pbInt`/`__pbLong`/`__pbLine`/
+`__pbJson`/`__pbUtf8`): it returns the result when it is already buffered, else it parks the job
+(a `JS_NewPromiseCapability` the write path settles) and returns the Promise — await-optional by
+construction, with zero JS between the host's bytes and the scanner. The scanners run **in C over
+the segment chain** and *consume as they feed* (DRAIN always fires): `readJson*` drives the
+streaming JSON parser (§2, via its C-level `qjs_jstream_*` API), `readUtf8Line` memchr-scans —
+a line completing within one segment decodes straight from it, a spanning line accumulates in the
+buffer's DynBuf — so a line or body longer than the pipe cap grows only its own accumulator
+(memory = the value itself) and can never deadlock the parked writer, by construction rather than
+by special case. `readUtf8` — the one whole-body materializer — accumulates the same way and
+decodes once at EOF. Consumed-exactly semantics mean a head line + JSON body + tail share one
+stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:
@@ -172,9 +174,12 @@ value first. A feed body is always one or the other, so there's no untyped reade
 `__jsonNew(expect)` with `expect` 1=object / 2=array; the check fires once, on the root's first
 non-ws byte.)
 
-Both drive four native primitives:
+Both drive the parser through its C-level API (`qjs_jstream_new/push/done/end` — the pipe's
+`PipeBuf` feeds segments to it without any JS in between). The same parser is also exposed to JS
+as `__jsonNew`/`__jsonPush`/`__jsonDone`/`__jsonEnd` (an opaque JS class; freed on GC or after
+end), used directly by tests:
 ```js
-const p = __jsonNew(expect);                   // opaque parser (a JS class; freed on GC or after end)
+const p = __jsonNew(expect);                   // opaque parser
 const consumed = __jsonPush(p, buf, off, len); // feed a chunk -> bytes consumed (see tail note)
 if (__jsonDone(p)) return __jsonEnd(p);        // value complete -> value; throws on malformed input
 ```
@@ -239,6 +244,5 @@ pipe.send(__stringifyJson(payload));  // value -> bytes
 
 ## Deferred (only if profiling demands)
 - Native frame header (avoid the send-side frame-build copy).
-- Body-bytes-bypass-JS fast path (Kotlin -> C buffer -> parser, never a JS Uint8Array per chunk).
 - Parse-before-download / pull+skip reader (parse a value before the rest of the body arrives),
   modeled on `:kmpHttp:json`'s `JsonReader`.
