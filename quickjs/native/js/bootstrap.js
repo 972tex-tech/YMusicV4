@@ -155,12 +155,12 @@
     // and streamed by send() under the normal backpressure.
     function writeUtf8Native(str, from, to) {
       var max = (to - from) * 3;
-      if (max > wbuf.length - wlen) {
+      if (max > wbuf.length - wlen) { // no room in the remainder: flush (sync flush leaves wlen 0)
         var p = flushSink();
         if (p) return p.then(function () { return writeUtf8Native(str, from, to); });
       }
-      if (max <= wbuf.length - wlen) { wlen += __utf8Into(str, from, to, wbuf, wlen); return; }
-      return send(__utf8Encode(str, from, to));
+      if (max > wbuf.length) return send(__utf8Encode(str, from, to)); // too big even for an empty segment
+      wlen += __utf8Into(str, from, to, wbuf, wlen);
     }
 
     // stream-encode the parts back-to-back (no `a + b + c` concat first)
