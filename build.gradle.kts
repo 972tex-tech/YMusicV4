@@ -11,6 +11,22 @@ plugins {
     kotlin("plugin.allopen") version Versions.kotlin apply false
     id("org.jetbrains.compose") version Versions.composeMultiplatform apply false
     id("org.jetbrains.kotlinx.benchmark") version Versions.kotlinxBenchmark apply false
+    id("com.diffplug.spotless") version "8.8.0"
+}
+
+spotless {
+    kotlin {
+        target("**/src/**/*.kt")
+        // vendored / generated / foreign trees stay untouched
+        targetExclude("**/build/**", "YMusicLegacy/**", "temp/**", "**/publicsuffix/PslDafsa.kt")
+        // Spotless does not discover .editorconfig on its own — without the explicit path ktlint
+        // runs on ktlint_official defaults and restructures code the config deliberately protects.
+        ktlint("1.5.0").setEditorConfigPath("$rootDir/.editorconfig")
+    }
+    kotlinGradle {
+        target("*.gradle.kts", "*/*.gradle.kts", "buildSrc/*.gradle.kts")
+        ktlint("1.5.0").setEditorConfigPath("$rootDir/.editorconfig")
+    }
 }
 
 tasks.register("cleanBuildDir", Delete::class) {
