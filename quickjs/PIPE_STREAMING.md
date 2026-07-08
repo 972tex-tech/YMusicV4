@@ -95,13 +95,15 @@ Drains are therefore emitted from *read* paths only — which is also why `_data
 one.
 
 Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; small
-inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop), and
-`buffered(pipe)` — an
-okio-style wrapper with a buffered source (`read`/`readUtf8Line`/`readUtf8`, plus
-`readJsonObject`/`readJsonArray`, §2) and a buffered sink (`writeBytes`/`writeUtf8`/
-`writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`, `close(reason?)`).
+inputs), `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
+**no separate `buffered(pipe)` wrapper**: the pipe itself is the okio-`Buffer`-style object (source
+and sink in one). Alongside the raw `send`/`receive`/`close`/`closeRead` it carries buffered reads
+(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2, plus
+`available()`) and buffered writes (`writeInt`/`writeLong`/`writeBytes`/`writeUtf8`/`writeUtf8Range`/
+`writeUtf8Line`/`writeObjectAsJson`, `flush`) — the write-staging segment is allocated lazily, so a
+raw or read-only pipe pays nothing.
 
-The buffered **source has no window of its own**: the pipe's inbound queue of segment views *is*
+The **reads have no window of their own**: the pipe's inbound queue of segment views *is*
 the buffer, and both scanners are **consuming push-parsers fed segment by segment** (the same
 `New/Push/Done/End` shape): `readJson*` drives the streaming JSON parser (§2), and `readUtf8Line`
 drives the native **line splitter** (`__lineNew/Push/Done/End` in `quickjs_pipe.c`) — memchr per
@@ -134,7 +136,7 @@ backpressure (a flush hit a full pipe), resuming via an internal continuation. R
 charges a full microtask round-trip (~0.4 µs) for `await` even on a non-thenable, plus a promise
 allocation per `async` call — per-token awaits made `writeObjectAsJson` ~70× slower than the native
 one-shot. `await` still works on every write (awaiting `undefined` is legal), but hot loops can
-skip the hop: `var p = io.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through
+skip the hop: `var p = pipe.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through
 the **resumable native encoder** (§2): the walk lives in C as explicit state, `__jsonEncFill` fills
 the segment per call, and the ~10-line JS pump only carries backpressure. Measured (min of 3) on a
 305 KB value: 431 ms (the old async JS walker) → **4 ms**, vs 6 ms for the whole-document
@@ -153,15 +155,14 @@ chunks **without ever holding the whole body in memory**. (There is deliberately
 it was a lot of machinery for a payload-tree saving that's marginal next to not buffering the raw
 bytes, which is what the streaming parser already gives us. Filter/reshape the parsed value in JS.)
 
-### Streaming parse (the primary path) — `bufferedPipe.readJsonObject/readJsonArray()`
+### Streaming parse (the primary path) — `pipe.readJsonObject/readJsonArray()`
 
-JSON reading lives on the buffered pipe wrapper (`ymix.buffered(pipe)`), so one wrapper reads a
-status line, headers, *and* the JSON body over the same pipe, sharing one buffer:
+JSON reading is a method on the pipe, so one pipe reads a status line, headers, *and* the JSON body
+over the same inbound queue, sharing one buffer:
 ```js
-const io = ymix.buffered(pipe);
-const status = await io.readUtf8Line();   // e.g. read some framing first...
-const data   = await io.readJsonObject(); // ...then parse the JSON body
-const tail   = await io.readUtf8();       // ...and keep reading whatever follows it
+const status = await pipe.readUtf8Line();   // e.g. read some framing first...
+const data   = await pipe.readJsonObject(); // ...then parse the JSON body
+const tail   = await pipe.readUtf8();       // ...and keep reading whatever follows it
 ```
 
 Two readers — `readJsonObject()` and `readJsonArray()`, one per container type. Each validates the
@@ -198,7 +199,7 @@ is why the parser reports a consumed count instead of demanding it swallow the w
 
 The stringify mirror of the streaming parser: a depth-first walk kept as explicit C state (frame
 stack + one in-flight token), so a value serializes into **fixed-size output chunks** without ever
-materializing the whole JSON text. `bufferedPipe.writeObjectAsJson(value)` drives it: each
+materializing the whole JSON text. `pipe.writeObjectAsJson(value)` drives it: each
 `__jsonEncFill` fills the sink's 8 KB segment at C speed, and the JS pump flushes between fills
 (backpressure). The encoder object is a JS class — GC frees it, so abandoning one mid-emit is safe
 (same finalizer + `gc_mark` rules as the parser; it holds the frame containers and the pending
