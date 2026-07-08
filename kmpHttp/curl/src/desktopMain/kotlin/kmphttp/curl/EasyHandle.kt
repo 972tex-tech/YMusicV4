@@ -21,13 +21,13 @@ import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
+import libcurl.CURLE_OK
 import libcurl.CURLINFO_CAINFO
 import libcurl.CURLINFO_HTTP_VERSION
 import libcurl.CURLINFO_PRIVATE
 import libcurl.CURLINFO_RESPONSE_CODE
 import libcurl.CURLM_OK
 import libcurl.CURLMcode
-import libcurl.CURLE_OK
 import libcurl.CURLOPT_ACCEPT_ENCODING
 import libcurl.CURLOPT_CAINFO_BLOB
 import libcurl.CURLOPT_CUSTOMREQUEST
@@ -54,11 +54,11 @@ import libcurl.CURLOPT_WRITEDATA
 import libcurl.CURLOPT_WRITEFUNCTION
 import libcurl.CURLPAUSE_CONT
 import libcurl.CURL_BLOB_COPY
-import libcurl.curl_blob
 import libcurl.CURL_HTTP_VERSION_1_0
 import libcurl.CURL_HTTP_VERSION_1_1
 import libcurl.CURL_HTTP_VERSION_2_0
 import libcurl.CURL_HTTP_VERSION_3
+import libcurl.curl_blob
 import libcurl.curl_easy_cleanup
 import libcurl.curl_easy_getinfo
 import libcurl.curl_easy_init
@@ -303,7 +303,6 @@ class EasyHandle private constructor(
     override fun toString(): String {
         return "EasyHandle(pointer=$pointer)"
     }
-
 
     companion object {
         /**

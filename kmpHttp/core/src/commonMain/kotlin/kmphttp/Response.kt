@@ -112,7 +112,6 @@ expect class Response : Closeable {
     override fun toString(): String
 }
 
-
 fun Response.headers(name: String): List<String> = headers.values(name)
 fun Response.header(name: String, defaultValue: String? = null): String? = headers[name] ?: defaultValue
 

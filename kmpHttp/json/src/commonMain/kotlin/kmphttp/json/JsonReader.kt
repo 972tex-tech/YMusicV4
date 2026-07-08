@@ -52,9 +52,9 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
 
         private fun isWhiteSpace(char: Byte): Boolean {
             return char == ' '.code.toByte()
-                    || char == '\n'.code.toByte()
-                    || char == '\r'.code.toByte()
-                    || char == '\t'.code.toByte()
+                || char == '\n'.code.toByte()
+                || char == '\r'.code.toByte()
+                || char == '\t'.code.toByte()
         }
     }
 
@@ -105,7 +105,6 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
         }
         bytesNeeded = 0
     }
-
 
     private suspend inline fun peekSuspend(): Int {
         while (!tryPeek()) {
@@ -644,7 +643,6 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
             }
         } while (true)
     }
-
 
     suspend fun readObject(filter: JsonStructFilter? = null): JsonObject {
         return nextValue(filter, JsonTokenType.OBJECT) as JsonObject

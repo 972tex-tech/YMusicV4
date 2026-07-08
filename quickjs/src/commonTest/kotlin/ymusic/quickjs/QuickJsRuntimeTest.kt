@@ -205,7 +205,7 @@ class QuickJsRuntimeTest {
               __jsonPush(p, ymix.utf8Encode('{"a":[1,2,'), 0, 10);
               __leak.push(p);
             }
-        """.trimIndent(),
+            """.trimIndent(),
         )
         rt.close() // finalizers must free the suspended parsers without error
     }
@@ -229,7 +229,7 @@ class QuickJsRuntimeTest {
               if (!threw) throw new Error("expected a parse error");
               __failed.push(p); // keep referenced: only the finalizer frees it, at rt.close()
             }
-        """.trimIndent(),
+            """.trimIndent(),
         )
         rt.close() // finalizers must free the failed parsers (partial stacks) without error
     }

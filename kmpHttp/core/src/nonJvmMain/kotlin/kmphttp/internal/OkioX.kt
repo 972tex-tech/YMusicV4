@@ -1,15 +1,11 @@
 package kmphttp.internal
 
-import kmpcommon.io.AsyncSource
 import kmpcommon.io.AsyncSink
+import kmpcommon.io.AsyncSource
 import okio.Buffer
 import okio.FileSystem
 import okio.IOException
 import okio.Path
-import okio.Sink
-import okio.Timeout
-
-
 
 /**
  * Close resource silently, ignoring exceptions.
@@ -55,7 +51,6 @@ open class ForwardingAsyncSource(
     override fun close() {
         delegate.close()
     }
-
 
     override suspend fun read(sink: Buffer, byteCount: Long): Long {
         return delegate.read(sink, byteCount)

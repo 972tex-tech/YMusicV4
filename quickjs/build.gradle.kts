@@ -45,7 +45,10 @@ fun nativeLibDir(targetName: String) =
 
 fun registerNativeLib(targetName: String): TaskProvider<Exec> {
     val taskName = "buildQjsCore${targetName.replaceFirstChar { it.uppercase() }}"
-    tasks.findByName(taskName)?.let { @Suppress("UNCHECKED_CAST") return tasks.named(taskName) as TaskProvider<Exec> }
+    tasks.findByName(taskName)?.let {
+        @Suppress("UNCHECKED_CAST")
+        return tasks.named(taskName) as TaskProvider<Exec>
+    }
     val out = nativeLibDir(targetName)
     val task = tasks.register<Exec>(taskName) {
         doFirst { out.mkdirs() }

@@ -647,7 +647,7 @@ actual class HttpUrlBuilder {
 
                 else -> throw IllegalArgumentException(
                     "Expected URL scheme 'http' or 'https' but was '" +
-                            input.substring(0, schemeDelimiterOffset) + "'",
+                        input.substring(0, schemeDelimiterOffset) + "'",
                 )
             }
         } else if (base != null) {
@@ -714,12 +714,12 @@ actual class HttpUrlBuilder {
                             hasUsername = true
                         } else {
                             this.encodedPassword = this.encodedPassword + "%40" +
-                                    input.canonicalize(
-                                        pos = pos,
-                                        limit = componentDelimiterOffset,
-                                        encodeSet = PASSWORD_ENCODE_SET,
-                                        alreadyEncoded = true,
-                                    )
+                                input.canonicalize(
+                                    pos = pos,
+                                    limit = componentDelimiterOffset,
+                                    encodeSet = PASSWORD_ENCODE_SET,
+                                    alreadyEncoded = true,
+                                )
                         }
                         pos = componentDelimiterOffset + 1
                     }
@@ -891,9 +891,9 @@ actual class HttpUrlBuilder {
 
     private fun isDotDot(input: String): Boolean =
         input == ".." ||
-                input.equals("%2e.", ignoreCase = true) ||
-                input.equals(".%2e", ignoreCase = true) ||
-                input.equals("%2e%2e", ignoreCase = true)
+            input.equals("%2e.", ignoreCase = true) ||
+            input.equals(".%2e", ignoreCase = true) ||
+            input.equals("%2e%2e", ignoreCase = true)
 
     /**
      * Cuts this string up into alternating parameter names and values. This divides a query string

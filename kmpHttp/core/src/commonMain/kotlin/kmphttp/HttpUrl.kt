@@ -1,6 +1,5 @@
 package kmphttp
 
-
 /**
  * A uniform resource locator (URL) with a scheme of either `http` or `https`. Use this class to
  * compose and decompose Internet addresses. For example, this code will compose and print a URL for
@@ -321,7 +320,6 @@ expect class HttpUrl {
      */
     val pathSegments: List<String>
 
-
     /**
      * This URL's fragment, like `"abc"` for `http://host/#abc`. This is null if the URL has no
      * fragment.
@@ -611,7 +609,6 @@ expect class HttpUrlBuilder {
      */
     fun addEncodedPathSegments(encodedPathSegments: String): HttpUrlBuilder
 
-
     fun setPathSegment(
         index: Int,
         pathSegment: String,
@@ -659,7 +656,6 @@ expect class HttpUrlBuilder {
     fun fragment(fragment: String?): HttpUrlBuilder
 
     fun encodedFragment(encodedFragment: String?): HttpUrlBuilder
-
 
     fun build(): HttpUrl
 

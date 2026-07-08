@@ -1,7 +1,6 @@
 package kmphttp.cache
 
 import kmpcommon.io.AsyncSource
-import kmphttp.runTestSkipBrowser
 import kmphttp.MediaType
 import kmphttp.Protocol
 import kmphttp.RequestBuilder
@@ -9,8 +8,8 @@ import kmphttp.Response
 import kmphttp.ResponseBody
 import kmphttp.ResponseBuilder
 import kmphttp.internal.stripBody
+import kmphttp.runTestSkipBrowser
 import kmphttp.toHttpUrl
-import kotlinx.coroutines.Dispatchers
 import okio.Buffer
 import okio.Path
 import okio.Path.Companion.toPath

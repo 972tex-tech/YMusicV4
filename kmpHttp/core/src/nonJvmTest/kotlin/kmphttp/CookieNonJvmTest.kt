@@ -16,12 +16,12 @@
 package kmphttp
 
 import kmphttp.internal.MAX_DATE
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * NonJvm-specific Cookie tests that use internal APIs like timestamp-based parsing

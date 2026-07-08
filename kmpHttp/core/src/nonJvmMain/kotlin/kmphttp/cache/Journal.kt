@@ -1,11 +1,9 @@
 package kmphttp.cache
 
+import kmpcommon.io.AsyncSink
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
-import kmpcommon.io.AsyncSink
-import kmpcommon.kilobytes
 import okio.Buffer
-import okio.Closeable
 import okio.EOFException
 import okio.IOException
 import okio.use

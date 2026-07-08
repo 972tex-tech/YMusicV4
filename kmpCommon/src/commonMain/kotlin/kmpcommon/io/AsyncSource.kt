@@ -173,7 +173,6 @@ class BufferedAsyncSource(private val delegate: AsyncSource) : AsyncSource {
         delegate.close()
         buffer.clear()
     }
-
 }
 
 suspend fun BufferedSink.writeAll(source: AsyncSource): Long {

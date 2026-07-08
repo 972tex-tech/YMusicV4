@@ -36,7 +36,6 @@ expect class MediaType {
      */
     fun parameter(name: String): String?
 
-
     /**
      * Returns the encoded media type, like "text/plain; charset=utf-8", appropriate for use in a
      * Content-Type header.
@@ -59,4 +58,3 @@ expect object MediaTypeX {
     /** Returns a media type for this, or null if this is not a well-formed media type. */
     fun String.toMediaTypeOrNull(): MediaType?
 }
-

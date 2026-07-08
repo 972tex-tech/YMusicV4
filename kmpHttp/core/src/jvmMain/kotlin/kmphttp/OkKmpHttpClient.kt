@@ -83,7 +83,6 @@ class OkKmpHttpClient : KmpHttpClient {
         }
     }
 
-
     override suspend fun execute(
         request: Request,
         options: RedirectOptions,

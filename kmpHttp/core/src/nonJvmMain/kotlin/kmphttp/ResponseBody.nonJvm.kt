@@ -16,8 +16,8 @@
 package kmphttp
 
 import kmpcommon.io.AsyncSource
-import kmpcommon.io.writeAll
 import kmpcommon.io.readUtf8String
+import kmpcommon.io.writeAll
 import kmphttp.internal.DefaultIODispatcher
 import kmphttp.internal.closeQuietly
 import kotlinx.coroutines.withContext
@@ -28,21 +28,21 @@ import okio.use
 
 actual abstract class ResponseBody : Closeable {
 
-  actual abstract fun contentType(): MediaType?
+    actual abstract fun contentType(): MediaType?
 
-  actual abstract fun contentLength(): Long
+    actual abstract fun contentLength(): Long
 
-  abstract fun asyncSource(): AsyncSource
+    abstract fun asyncSource(): AsyncSource
 
-  actual override fun close(): Unit = asyncSource().closeQuietly()
+    actual override fun close(): Unit = asyncSource().closeQuietly()
 
-  actual companion object {
-    actual val EMPTY: ResponseBody = object : ResponseBody() {
-      override fun contentType(): MediaType? = null
-      override fun contentLength(): Long = 0
-      override fun asyncSource() = AsyncSource.EMPTY
+    actual companion object {
+        actual val EMPTY: ResponseBody = object : ResponseBody() {
+            override fun contentType(): MediaType? = null
+            override fun contentLength(): Long = 0
+            override fun asyncSource() = AsyncSource.EMPTY
+        }
     }
-  }
 }
 
 actual fun ResponseBody.asyncSource(): AsyncSource {
@@ -60,4 +60,3 @@ actual suspend fun ResponseBody.byteString(): ByteString = withContext(DefaultIO
 actual suspend fun ResponseBody.utf8String() = withContext(DefaultIODispatcher) {
     this@utf8String.asyncSource().readUtf8String()
 }
-

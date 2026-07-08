@@ -1,8 +1,8 @@
 package kmphttp.internal
 
 import kmphttp.AsyncInterceptor
-import kmphttp.Request
 import kmphttp.RedirectOptions
+import kmphttp.Request
 import kmphttp.Response
 
 class AsyncChain(

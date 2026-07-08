@@ -106,154 +106,154 @@ import okio.BufferedSink
  * The mappings data contains non-ASCII characters.
  */
 internal class IdnaMappingTable internal constructor(
-  val sections: String,
-  val ranges: String,
-  val mappings: String,
+    val sections: String,
+    val ranges: String,
+    val mappings: String,
 ) {
-  /**
-   * Returns true if the [codePoint] was applied successfully. Returns false if it was disallowed.
-   */
-  fun map(
-    codePoint: Int,
-    sink: BufferedSink,
-  ): Boolean {
-    val sectionsIndex = findSectionsIndex(codePoint)
+    /**
+     * Returns true if the [codePoint] was applied successfully. Returns false if it was disallowed.
+     */
+    fun map(
+        codePoint: Int,
+        sink: BufferedSink,
+    ): Boolean {
+        val sectionsIndex = findSectionsIndex(codePoint)
 
-    val rangesPosition = sections.read14BitInt(sectionsIndex + 2)
+        val rangesPosition = sections.read14BitInt(sectionsIndex + 2)
 
-    val rangesLimit =
-      when {
-        sectionsIndex + 4 < sections.length -> sections.read14BitInt(sectionsIndex + 6)
-        else -> ranges.length / 4
-      }
+        val rangesLimit =
+            when {
+                sectionsIndex + 4 < sections.length -> sections.read14BitInt(sectionsIndex + 6)
+                else -> ranges.length / 4
+            }
 
-    val rangesIndex = findRangesOffset(codePoint, rangesPosition, rangesLimit)
+        val rangesIndex = findRangesOffset(codePoint, rangesPosition, rangesLimit)
 
-    when (val b1 = ranges[rangesIndex + 1].code) {
-      in 0..63 -> {
-        // Length of the UTF-16 sequence that this range maps to. The offset is b2b3.
-        val beginIndex = ranges.read14BitInt(rangesIndex + 2)
-        sink.writeUtf8(mappings, beginIndex, beginIndex + b1)
-      }
-      in 64..79 -> {
-        // Mapped inline as codePoint delta to subtract
-        val b2 = ranges[rangesIndex + 2].code
-        val b3 = ranges[rangesIndex + 3].code
+        when (val b1 = ranges[rangesIndex + 1].code) {
+            in 0..63 -> {
+                // Length of the UTF-16 sequence that this range maps to. The offset is b2b3.
+                val beginIndex = ranges.read14BitInt(rangesIndex + 2)
+                sink.writeUtf8(mappings, beginIndex, beginIndex + b1)
+            }
+            in 64..79 -> {
+                // Mapped inline as codePoint delta to subtract
+                val b2 = ranges[rangesIndex + 2].code
+                val b3 = ranges[rangesIndex + 3].code
 
-        val codepointDelta = (b1 and 0xF shl 14) or (b2 shl 7) or b3
-        sink.writeUtf8CodePoint(codePoint - codepointDelta)
-      }
-      in 80..95 -> {
-        // Mapped inline as codePoint delta to add
-        val b2 = ranges[rangesIndex + 2].code
-        val b3 = ranges[rangesIndex + 3].code
+                val codepointDelta = (b1 and 0xF shl 14) or (b2 shl 7) or b3
+                sink.writeUtf8CodePoint(codePoint - codepointDelta)
+            }
+            in 80..95 -> {
+                // Mapped inline as codePoint delta to add
+                val b2 = ranges[rangesIndex + 2].code
+                val b3 = ranges[rangesIndex + 3].code
 
-        val codepointDelta = (b1 and 0xF shl 14) or (b2 shl 7) or b3
-        sink.writeUtf8CodePoint(codePoint + codepointDelta)
-      }
-      119 -> {
-        // Ignored.
-      }
-      120 -> {
-        // Valid.
-        sink.writeUtf8CodePoint(codePoint)
-      }
-      121 -> {
-        // Disallowed.
-        sink.writeUtf8CodePoint(codePoint)
-        return false
-      }
-      122 -> {
-        // Mapped inline to the sequence: [b2].
-        sink.writeByte(ranges[rangesIndex + 2].code)
-      }
-      123 -> {
-        // Mapped inline to the sequence: [b2a].
-        sink.writeByte(ranges[rangesIndex + 2].code or 0x80)
-      }
-      124 -> {
-        // Mapped inline to the sequence: [b2, b3].
-        sink.writeByte(ranges[rangesIndex + 2].code)
-        sink.writeByte(ranges[rangesIndex + 3].code)
-      }
-      125 -> {
-        // Mapped inline to the sequence: [b2a, b3].
-        sink.writeByte(ranges[rangesIndex + 2].code or 0x80)
-        sink.writeByte(ranges[rangesIndex + 3].code)
-      }
-      126 -> {
-        // Mapped inline to the sequence: [b2, b3a].
-        sink.writeByte(ranges[rangesIndex + 2].code)
-        sink.writeByte(ranges[rangesIndex + 3].code or 0x80)
-      }
-      127 -> {
-        // Mapped inline to the sequence: [b2a, b3a].
-        sink.writeByte(ranges[rangesIndex + 2].code or 0x80)
-        sink.writeByte(ranges[rangesIndex + 3].code or 0x80)
-      }
-      else -> error("unexpected rangesIndex for $codePoint")
+                val codepointDelta = (b1 and 0xF shl 14) or (b2 shl 7) or b3
+                sink.writeUtf8CodePoint(codePoint + codepointDelta)
+            }
+            119 -> {
+                // Ignored.
+            }
+            120 -> {
+                // Valid.
+                sink.writeUtf8CodePoint(codePoint)
+            }
+            121 -> {
+                // Disallowed.
+                sink.writeUtf8CodePoint(codePoint)
+                return false
+            }
+            122 -> {
+                // Mapped inline to the sequence: [b2].
+                sink.writeByte(ranges[rangesIndex + 2].code)
+            }
+            123 -> {
+                // Mapped inline to the sequence: [b2a].
+                sink.writeByte(ranges[rangesIndex + 2].code or 0x80)
+            }
+            124 -> {
+                // Mapped inline to the sequence: [b2, b3].
+                sink.writeByte(ranges[rangesIndex + 2].code)
+                sink.writeByte(ranges[rangesIndex + 3].code)
+            }
+            125 -> {
+                // Mapped inline to the sequence: [b2a, b3].
+                sink.writeByte(ranges[rangesIndex + 2].code or 0x80)
+                sink.writeByte(ranges[rangesIndex + 3].code)
+            }
+            126 -> {
+                // Mapped inline to the sequence: [b2, b3a].
+                sink.writeByte(ranges[rangesIndex + 2].code)
+                sink.writeByte(ranges[rangesIndex + 3].code or 0x80)
+            }
+            127 -> {
+                // Mapped inline to the sequence: [b2a, b3a].
+                sink.writeByte(ranges[rangesIndex + 2].code or 0x80)
+                sink.writeByte(ranges[rangesIndex + 3].code or 0x80)
+            }
+            else -> error("unexpected rangesIndex for $codePoint")
+        }
+
+        return true
     }
 
-    return true
-  }
+    /**
+     * Binary search [sections] for [codePoint], looking at its top 14 bits.
+     *
+     * This binary searches over 4-byte entries, and so it needs to adjust binary search indices
+     * in (by dividing by 4) and out (by multiplying by 4).
+     */
+    private fun findSectionsIndex(codePoint: Int): Int {
+        val target = (codePoint and 0x1fff80) shr 7
+        val offset =
+            binarySearch(
+                position = 0,
+                limit = sections.length / 4,
+            ) { index ->
+                val entryIndex = index * 4
+                val b0b1 = sections.read14BitInt(entryIndex)
+                return@binarySearch target.compareTo(b0b1)
+            }
 
-  /**
-   * Binary search [sections] for [codePoint], looking at its top 14 bits.
-   *
-   * This binary searches over 4-byte entries, and so it needs to adjust binary search indices
-   * in (by dividing by 4) and out (by multiplying by 4).
-   */
-  private fun findSectionsIndex(codePoint: Int): Int {
-    val target = (codePoint and 0x1fff80) shr 7
-    val offset =
-      binarySearch(
-        position = 0,
-        limit = sections.length / 4,
-      ) { index ->
-        val entryIndex = index * 4
-        val b0b1 = sections.read14BitInt(entryIndex)
-        return@binarySearch target.compareTo(b0b1)
-      }
-
-    return when {
-      offset >= 0 -> offset * 4 // This section was found by binary search.
-      else -> (-offset - 2) * 4 // Not found? Use the preceding element.
+        return when {
+            offset >= 0 -> offset * 4 // This section was found by binary search.
+            else -> (-offset - 2) * 4 // Not found? Use the preceding element.
+        }
     }
-  }
 
-  /**
-   * Binary search [ranges] for [codePoint], looking at its bottom 7 bits.
-   *
-   * This binary searches over 4-byte entries, and so it needs to adjust binary search indices
-   * in (by dividing by 4) and out (by multiplying by 4).
-   */
-  private fun findRangesOffset(
-    codePoint: Int,
-    position: Int,
-    limit: Int,
-  ): Int {
-    val target = codePoint and 0x7f
-    val offset =
-      binarySearch(
-        position = position,
-        limit = limit,
-      ) { index ->
-        val entryIndex = index * 4
-        val b0 = ranges[entryIndex].code
-        return@binarySearch target.compareTo(b0)
-      }
+    /**
+     * Binary search [ranges] for [codePoint], looking at its bottom 7 bits.
+     *
+     * This binary searches over 4-byte entries, and so it needs to adjust binary search indices
+     * in (by dividing by 4) and out (by multiplying by 4).
+     */
+    private fun findRangesOffset(
+        codePoint: Int,
+        position: Int,
+        limit: Int,
+    ): Int {
+        val target = codePoint and 0x7f
+        val offset =
+            binarySearch(
+                position = position,
+                limit = limit,
+            ) { index ->
+                val entryIndex = index * 4
+                val b0 = ranges[entryIndex].code
+                return@binarySearch target.compareTo(b0)
+            }
 
-    return when {
-      offset >= 0 -> offset * 4 // This entry was found by binary search.
-      else -> (-offset - 2) * 4 // Not found? Use the preceding element.
+        return when {
+            offset >= 0 -> offset * 4 // This entry was found by binary search.
+            else -> (-offset - 2) * 4 // Not found? Use the preceding element.
+        }
     }
-  }
 }
 
 internal fun String.read14BitInt(index: Int): Int {
-  val b0 = this[index].code
-  val b1 = this[index + 1].code
-  return (b0 shl 7) + b1
+    val b0 = this[index].code
+    val b1 = this[index + 1].code
+    return (b0 shl 7) + b1
 }
 
 /**
@@ -264,22 +264,22 @@ internal fun String.read14BitInt(index: Int): Int {
  *     inserting the element at `insertionPoint` will retain sorted order.
  */
 inline fun binarySearch(
-  position: Int,
-  limit: Int,
-  compare: (Int) -> Int,
+    position: Int,
+    limit: Int,
+    compare: (Int) -> Int,
 ): Int {
-  // Do the binary searching bit.
-  var low = position
-  var high = limit - 1
-  while (low <= high) {
-    val mid = (low + high) / 2
-    val compareResult = compare(mid)
-    when {
-      compareResult < 0 -> high = mid - 1
-      compareResult > 0 -> low = mid + 1
-      else -> return mid // Match!
+    // Do the binary searching bit.
+    var low = position
+    var high = limit - 1
+    while (low <= high) {
+        val mid = (low + high) / 2
+        val compareResult = compare(mid)
+        when {
+            compareResult < 0 -> high = mid - 1
+            compareResult > 0 -> low = mid + 1
+            else -> return mid // Match!
+        }
     }
-  }
 
-  return -low - 1 // insertionPoint is before the first element.
+    return -low - 1 // insertionPoint is before the first element.
 }

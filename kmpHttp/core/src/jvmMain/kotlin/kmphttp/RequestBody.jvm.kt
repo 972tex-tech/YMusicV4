@@ -18,7 +18,6 @@ actual object RequestBodyX {
     actual fun String.toRequestBody(contentType: MediaType?) = this.okHttpToRequestBody(contentType)
     actual fun ByteString.toRequestBody(contentType: MediaType?) = this.okHttpToRequestBody(contentType)
 
-
     actual fun ByteArray.toRequestBody(
         contentType: MediaType?,
         offset: Int,

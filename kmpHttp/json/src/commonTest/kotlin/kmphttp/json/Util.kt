@@ -3,7 +3,6 @@ package kmphttp.json
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import okio.Buffer
-import okio.ByteString.Companion.encodeUtf8
 
 fun String.toJsonReader(): JsonReader {
     val bytes = encodeToByteArray()

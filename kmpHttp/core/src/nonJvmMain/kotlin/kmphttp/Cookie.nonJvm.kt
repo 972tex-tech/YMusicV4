@@ -15,7 +15,6 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-
 @OptIn(ExperimentalTime::class)
 actual class Cookie internal constructor(
     actual val name: String,
@@ -45,16 +44,16 @@ actual class Cookie internal constructor(
 
     actual override fun equals(other: Any?): Boolean =
         other is Cookie &&
-                other.name == name &&
-                other.value == value &&
-                other.expiresAt == expiresAt &&
-                other.domain == domain &&
-                other.path == path &&
-                other.secure == secure &&
-                other.httpOnly == httpOnly &&
-                other.persistent == persistent &&
-                other.hostOnly == hostOnly &&
-                other.sameSite == sameSite
+            other.name == name &&
+            other.value == value &&
+            other.expiresAt == expiresAt &&
+            other.domain == domain &&
+            other.path == path &&
+            other.secure == secure &&
+            other.httpOnly == httpOnly &&
+            other.persistent == persistent &&
+            other.hostOnly == hostOnly &&
+            other.sameSite == sameSite
 
     actual override fun hashCode(): Int {
         var result = 17
@@ -142,8 +141,8 @@ actual class Cookie internal constructor(
             }
 
             return urlHost.endsWith(domain) &&
-                    urlHost[urlHost.length - domain.length - 1] == '.' &&
-                    !urlHost.canParseAsIpAddress()
+                urlHost[urlHost.length - domain.length - 1] == '.' &&
+                !urlHost.canParseAsIpAddress()
         }
 
         private fun pathMatch(
@@ -398,14 +397,14 @@ actual class Cookie internal constructor(
             for (i in pos until limit) {
                 val c = input[i].code
                 val dateCharacter = (
-                        c < ' '.code &&
-                                c != '\t'.code ||
-                                c >= '\u007f'.code ||
-                                c in '0'.code..'9'.code ||
-                                c in 'a'.code..'z'.code ||
-                                c in 'A'.code..'Z'.code ||
-                                c == ':'.code
-                        )
+                    c < ' '.code &&
+                        c != '\t'.code ||
+                        c >= '\u007f'.code ||
+                        c in '0'.code..'9'.code ||
+                        c in 'a'.code..'z'.code ||
+                        c in 'A'.code..'Z'.code ||
+                        c == ':'.code
+                    )
                 if (dateCharacter == !invert) return i
             }
             return limit

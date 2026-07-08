@@ -18,25 +18,21 @@ package kmphttp
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.readByteArray
 import kmpcommon.kilobytes
-import kmphttp.curl.CurlMultiApi
-import kmphttp.curl.EasyHandle
-import kmphttp.HttpCache
 import kmphttp.CookieJar
 import kmphttp.Headers
 import kmphttp.HeadersBuilder
+import kmphttp.HttpCache
 import kmphttp.MediaType
 import kmphttp.MediaTypeX.toMediaTypeOrNull
 import kmphttp.Protocol
-import kmphttp.Request
 import kmphttp.RedirectOptions
+import kmphttp.Request
 import kmphttp.Response
 import kmphttp.ResponseBody
 import kmphttp.ResponseBuilder
-import kmphttp.cache.CacheInterceptor
-import kmphttp.internal.AsyncChain
+import kmphttp.curl.CurlMultiApi
+import kmphttp.curl.EasyHandle
 import kmphttp.internal.SuspendCondition
-import kmphttp.internal.http.BridgeInterceptor
-import kmphttp.internal.http.FollowUpInterceptor
 import kmphttp.internal.http.RecoverableIOException
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -56,8 +52,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -70,13 +66,11 @@ import libcurl.CURLE_OPERATION_TIMEDOUT
 import libcurl.CURLE_RECV_ERROR
 import libcurl.CURLE_SEND_ERROR
 import libcurl.CURLE_SSL_CONNECT_ERROR
-import libcurl.CURL_GLOBAL_DEFAULT
 import libcurl.CURL_READFUNC_ABORT
 import libcurl.CURL_READFUNC_PAUSE
 import libcurl.CURL_WRITEFUNC_ERROR
 import libcurl.CURL_WRITEFUNC_PAUSE
 import libcurl.curl_easy_strerror
-import libcurl.curl_global_init
 import okio.Buffer
 import okio.IOException
 import platform.posix.size_t
@@ -176,7 +170,6 @@ internal class CurlExecutor(
                 curl.setWriteFunction(writeCallback, ref.asCPointer())
             }
 
-
             val curlResult = curlMultiApi.addJob(curl)
             curlMultiApi.start()
             curlResult.invokeOnCompletion { error ->
@@ -186,7 +179,6 @@ internal class CurlExecutor(
                     streamingHandler.onPerformComplete(curlResult.getCompleted())
                 }
             }
-
 
             // Code/version come from the status line (parsed on the event-loop thread), not
             // curl_easy_getinfo — the caller must not touch the handle while the multi loop drives it.
@@ -694,7 +686,6 @@ private class StreamingResponseBody(
 
         override fun close() {
             handler.close()
-
         }
     }
 

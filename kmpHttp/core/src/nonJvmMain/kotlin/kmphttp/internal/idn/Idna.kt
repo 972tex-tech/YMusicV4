@@ -3,7 +3,6 @@ package kmphttp.internal.idn
 import doist.x.normalize.Form
 import doist.x.normalize.normalize
 
-
 /**
  * IDNA2008 implementation for Kotlin Multiplatform.
  *

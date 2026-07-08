@@ -121,10 +121,9 @@ internal fun StringBuilder.appendCodePoint(codePoint: Int) {
 /** Returns true if we should void putting this this header in an exception or toString(). */
 internal fun isSensitiveHeader(name: String): Boolean =
     name.equals("Authorization", ignoreCase = true) ||
-            name.equals("Cookie", ignoreCase = true) ||
-            name.equals("Proxy-Authorization", ignoreCase = true) ||
-            name.equals("Set-Cookie", ignoreCase = true)
-
+        name.equals("Cookie", ignoreCase = true) ||
+        name.equals("Proxy-Authorization", ignoreCase = true) ||
+        name.equals("Set-Cookie", ignoreCase = true)
 
 internal fun checkOffsetAndCount(
     arrayLength: Long,

@@ -55,7 +55,7 @@ actual object RequestBodyX {
         // Add charset=utf-8 if content type exists but no charset specified
         val finalContentType = when {
             contentType == null -> null
-            charset == null -> "${contentType}; charset=utf-8".toMediaType()
+            charset == null -> "$contentType; charset=utf-8".toMediaType()
             else -> contentType
         }
 
@@ -83,7 +83,6 @@ actual object RequestBodyX {
             }
         }
     }
-
 
     actual fun ByteArray.toRequestBody(
         contentType: MediaType?,

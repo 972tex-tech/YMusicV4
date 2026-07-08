@@ -56,8 +56,8 @@ class Uri private constructor(
      */
     val isOpaque: Boolean
         get() = schemePart != null
-                && authorityPart == null
-                && (encodedPathPart.isEmpty() || uriString[encodedPathPart.first] != '/')
+            && authorityPart == null
+            && (encodedPathPart.isEmpty() || uriString[encodedPathPart.first] != '/')
 
     val encodedQuery: CharSequence?
         get() = encodedQueryPart?.let { uriString.subSequence(it) }
@@ -66,10 +66,10 @@ class Uri private constructor(
      * Decoded query parameters
      */
     private val queryParameters: List<Pair<CharSequence, CharSequence?>>?
-            by lazy(LazyThreadSafetyMode.NONE) {
-                encodedQueryPart ?: return@lazy null
-                parseEncodedQuery(uriString.subSequence(encodedQueryPart))
-            }
+        by lazy(LazyThreadSafetyMode.NONE) {
+            encodedQueryPart ?: return@lazy null
+            parseEncodedQuery(uriString.subSequence(encodedQueryPart))
+        }
 
     fun queryNames(): Set<CharSequence>? = queryParameters?.mapTo(mutableSetOf()) { it.first }
 
@@ -98,7 +98,6 @@ class Uri private constructor(
 
     val fragment: CharSequence?
         get() = encodedFragment?.let { PercentEncoder.decode(it) }
-
 
     /**
      * Resolves a URI-reference against this URI as base, per RFC 3986 Section 5.2.2.
@@ -348,13 +347,12 @@ class Uri private constructor(
                 val equalsIndex = pair.indexOf('=')
                 if (equalsIndex > -1) {
                     PercentEncoder.decode(pair.subSequence(0, equalsIndex)) to
-                            PercentEncoder.decode(pair.subSequence(equalsIndex + 1))
+                        PercentEncoder.decode(pair.subSequence(equalsIndex + 1))
                 } else {
                     PercentEncoder.decode(pair) to null
                 }
             }
         }
-
 
         /**
          * Attempts to parse a URI string, returning null if invalid.
@@ -438,7 +436,7 @@ class Uri private constructor(
                 if (!encodedPath.isEmpty() && uriString[encodedPath.first] != '/') {
                     throw UriSyntaxException(
                         "Invalid uri: (\"${uriString}\"). If a URI contains an authority component, then the path component" +
-                                "must either be empty or begin with a slash (\"/\") character."
+                            "must either be empty or begin with a slash (\"/\") character."
                     )
                 }
             } else {
@@ -448,7 +446,7 @@ class Uri private constructor(
                 ) {
                     throw UriSyntaxException(
                         "If a URI does not contain an authority component, " +
-                                "then the path cannot begin with two slash characters (\"//\")"
+                            "then the path cannot begin with two slash characters (\"//\")"
                     )
                 }
                 if (scheme == null) {
@@ -492,9 +490,9 @@ class Uri private constructor(
 
         private fun isDotDot(input: CharSequence): Boolean =
             input == ".." ||
-                    input.contentEquals("%2e.", ignoreCase = true) ||
-                    input.contentEquals(".%2e", ignoreCase = true) ||
-                    input.contentEquals("%2e%2e", ignoreCase = true)
+                input.contentEquals("%2e.", ignoreCase = true) ||
+                input.contentEquals(".%2e", ignoreCase = true) ||
+                input.contentEquals("%2e%2e", ignoreCase = true)
 
         /**
          * Remove dot segments from path per RFC 3986 Section 5.2.4

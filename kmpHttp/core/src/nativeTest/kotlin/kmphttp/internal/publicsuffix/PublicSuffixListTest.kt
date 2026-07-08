@@ -24,7 +24,6 @@ class PublicSuffixListTest {
         assertTrue(resultOrg != DAFSA_NOT_FOUND, "org should be found in DAFSA")
     }
 
-
     @Test
     fun testGetPublicSuffix() {
         assertEquals("com", PublicSuffixList.getPublicSuffix("example.com"))

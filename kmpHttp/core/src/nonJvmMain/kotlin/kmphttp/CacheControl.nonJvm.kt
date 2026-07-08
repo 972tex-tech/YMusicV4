@@ -19,7 +19,6 @@ actual class CacheControl(
     internal var headerValue: String?,
 ) {
 
-
     override fun toString(): String {
         var result = headerValue
         if (result == null) {
@@ -48,153 +47,152 @@ actual class CacheControl(
         return result
     }
 
+    actual companion object {
+        actual val FORCE_NETWORK = CacheControlBuilder()
+            .noCache()
+            .build()
 
-  actual companion object {
-      actual val FORCE_NETWORK = CacheControlBuilder()
-          .noCache()
-          .build()
+        actual val FORCE_CACHE = CacheControlBuilder()
+            .onlyIfCached()
+            .maxStale(Int.MAX_VALUE.seconds)
+            .build()
 
-      actual val FORCE_CACHE = CacheControlBuilder()
-          .onlyIfCached()
-          .maxStale(Int.MAX_VALUE.seconds)
-          .build()
+        actual fun parse(headers: Headers): CacheControl {
+            var noCache = false
+            var noStore = false
+            var maxAgeSeconds = -1
+            var sMaxAgeSeconds = -1
+            var isPrivate = false
+            var isPublic = false
+            var mustRevalidate = false
+            var maxStaleSeconds = -1
+            var minFreshSeconds = -1
+            var onlyIfCached = false
+            var noTransform = false
+            var immutable = false
 
-      actual fun parse(headers: Headers): CacheControl {
-          var noCache = false
-          var noStore = false
-          var maxAgeSeconds = -1
-          var sMaxAgeSeconds = -1
-          var isPrivate = false
-          var isPublic = false
-          var mustRevalidate = false
-          var maxStaleSeconds = -1
-          var minFreshSeconds = -1
-          var onlyIfCached = false
-          var noTransform = false
-          var immutable = false
+            var canUseHeaderValue = true
+            var headerValue: String? = null
 
-          var canUseHeaderValue = true
-          var headerValue: String? = null
+            loop@ for (i in 0 until headers.size) {
+                val name = headers.name(i)
+                val value = headers.value(i)
 
-          loop@ for (i in 0 until headers.size) {
-              val name = headers.name(i)
-              val value = headers.value(i)
+                when {
+                    name.equals("Cache-Control", ignoreCase = true) -> {
+                        if (headerValue != null) {
+                            // Multiple cache-control headers means we can't use the raw value.
+                            canUseHeaderValue = false
+                        } else {
+                            headerValue = value
+                        }
+                    }
+                    name.equals("Pragma", ignoreCase = true) -> {
+                        // Pragma: no-cache is treated as Cache-Control: no-cache for HTTP/1.0 compatibility
+                        canUseHeaderValue = false
+                        if (value.equals("no-cache", ignoreCase = true)) {
+                            noCache = true
+                        }
+                        continue@loop
+                    }
+                    else -> {
+                        continue@loop
+                    }
+                }
 
-              when {
-                  name.equals("Cache-Control", ignoreCase = true) -> {
-                      if (headerValue != null) {
-                          // Multiple cache-control headers means we can't use the raw value.
-                          canUseHeaderValue = false
-                      } else {
-                          headerValue = value
-                      }
-                  }
-                  name.equals("Pragma", ignoreCase = true) -> {
-                      // Pragma: no-cache is treated as Cache-Control: no-cache for HTTP/1.0 compatibility
-                      canUseHeaderValue = false
-                      if (value.equals("no-cache", ignoreCase = true)) {
-                          noCache = true
-                      }
-                      continue@loop
-                  }
-                  else -> {
-                      continue@loop
-                  }
-              }
+                var pos = 0
+                while (pos < value.length) {
+                    val tokenStart = pos
+                    pos = value.indexOfElement("=,;", pos)
+                    val directive = value.substring(tokenStart, pos).trim()
+                    val parameter: String?
 
-              var pos = 0
-              while (pos < value.length) {
-                  val tokenStart = pos
-                  pos = value.indexOfElement("=,;", pos)
-                  val directive = value.substring(tokenStart, pos).trim()
-                  val parameter: String?
+                    if (pos == value.length || value[pos] == ',' || value[pos] == ';') {
+                        pos++ // Consume ',' or ';' (if necessary).
+                        parameter = null
+                    } else {
+                        pos++ // Consume '='.
+                        pos = value.indexOfNonWhitespace(pos)
 
-                  if (pos == value.length || value[pos] == ',' || value[pos] == ';') {
-                      pos++ // Consume ',' or ';' (if necessary).
-                      parameter = null
-                  } else {
-                      pos++ // Consume '='.
-                      pos = value.indexOfNonWhitespace(pos)
+                        if (pos < value.length && value[pos] == '\"') {
+                            // Quoted string.
+                            pos++ // Consume '"' open quote.
+                            val parameterStart = pos
+                            // An unterminated quote runs to the end of the value.
+                            val closeQuote = value.indexOf('"', pos)
+                            pos = if (closeQuote == -1) value.length else closeQuote
+                            parameter = value.substring(parameterStart, pos)
+                            pos++ // Consume '"' close quote (if necessary).
+                        } else {
+                            // Unquoted string.
+                            val parameterStart = pos
+                            pos = value.indexOfElement(",;", pos)
+                            parameter = value.substring(parameterStart, pos).trim()
+                        }
+                    }
 
-                      if (pos < value.length && value[pos] == '\"') {
-                          // Quoted string.
-                          pos++ // Consume '"' open quote.
-                          val parameterStart = pos
-                          // An unterminated quote runs to the end of the value.
-                          val closeQuote = value.indexOf('"', pos)
-                          pos = if (closeQuote == -1) value.length else closeQuote
-                          parameter = value.substring(parameterStart, pos)
-                          pos++ // Consume '"' close quote (if necessary).
-                      } else {
-                          // Unquoted string.
-                          val parameterStart = pos
-                          pos = value.indexOfElement(",;", pos)
-                          parameter = value.substring(parameterStart, pos).trim()
-                      }
-                  }
+                    when {
+                        "no-cache".equals(directive, ignoreCase = true) -> {
+                            noCache = true
+                        }
+                        "no-store".equals(directive, ignoreCase = true) -> {
+                            noStore = true
+                        }
+                        "max-age".equals(directive, ignoreCase = true) -> {
+                            maxAgeSeconds = parameter.toNonNegativeInt(-1)
+                        }
+                        "s-maxage".equals(directive, ignoreCase = true) -> {
+                            sMaxAgeSeconds = parameter.toNonNegativeInt(-1)
+                        }
+                        "private".equals(directive, ignoreCase = true) -> {
+                            isPrivate = true
+                        }
+                        "public".equals(directive, ignoreCase = true) -> {
+                            isPublic = true
+                        }
+                        "must-revalidate".equals(directive, ignoreCase = true) -> {
+                            mustRevalidate = true
+                        }
+                        "max-stale".equals(directive, ignoreCase = true) -> {
+                            maxStaleSeconds = parameter.toNonNegativeInt(Int.MAX_VALUE)
+                        }
+                        "min-fresh".equals(directive, ignoreCase = true) -> {
+                            minFreshSeconds = parameter.toNonNegativeInt(-1)
+                        }
+                        "only-if-cached".equals(directive, ignoreCase = true) -> {
+                            onlyIfCached = true
+                        }
+                        "no-transform".equals(directive, ignoreCase = true) -> {
+                            noTransform = true
+                        }
+                        "immutable".equals(directive, ignoreCase = true) -> {
+                            immutable = true
+                        }
+                    }
+                }
+            }
 
-                  when {
-                      "no-cache".equals(directive, ignoreCase = true) -> {
-                          noCache = true
-                      }
-                      "no-store".equals(directive, ignoreCase = true) -> {
-                          noStore = true
-                      }
-                      "max-age".equals(directive, ignoreCase = true) -> {
-                          maxAgeSeconds = parameter.toNonNegativeInt(-1)
-                      }
-                      "s-maxage".equals(directive, ignoreCase = true) -> {
-                          sMaxAgeSeconds = parameter.toNonNegativeInt(-1)
-                      }
-                      "private".equals(directive, ignoreCase = true) -> {
-                          isPrivate = true
-                      }
-                      "public".equals(directive, ignoreCase = true) -> {
-                          isPublic = true
-                      }
-                      "must-revalidate".equals(directive, ignoreCase = true) -> {
-                          mustRevalidate = true
-                      }
-                      "max-stale".equals(directive, ignoreCase = true) -> {
-                          maxStaleSeconds = parameter.toNonNegativeInt(Int.MAX_VALUE)
-                      }
-                      "min-fresh".equals(directive, ignoreCase = true) -> {
-                          minFreshSeconds = parameter.toNonNegativeInt(-1)
-                      }
-                      "only-if-cached".equals(directive, ignoreCase = true) -> {
-                          onlyIfCached = true
-                      }
-                      "no-transform".equals(directive, ignoreCase = true) -> {
-                          noTransform = true
-                      }
-                      "immutable".equals(directive, ignoreCase = true) -> {
-                          immutable = true
-                      }
-                  }
-              }
-          }
+            if (!canUseHeaderValue) {
+                headerValue = null
+            }
 
-          if (!canUseHeaderValue) {
-              headerValue = null
-          }
-
-          return CacheControl(
-              noCache = noCache,
-              noStore = noStore,
-              maxAgeSeconds = maxAgeSeconds,
-              sMaxAgeSeconds = sMaxAgeSeconds,
-              isPrivate = isPrivate,
-              isPublic = isPublic,
-              mustRevalidate = mustRevalidate,
-              maxStaleSeconds = maxStaleSeconds,
-              minFreshSeconds = minFreshSeconds,
-              onlyIfCached = onlyIfCached,
-              noTransform = noTransform,
-              immutable = immutable,
-              headerValue = headerValue,
-          )
-      }
-  }
+            return CacheControl(
+                noCache = noCache,
+                noStore = noStore,
+                maxAgeSeconds = maxAgeSeconds,
+                sMaxAgeSeconds = sMaxAgeSeconds,
+                isPrivate = isPrivate,
+                isPublic = isPublic,
+                mustRevalidate = mustRevalidate,
+                maxStaleSeconds = maxStaleSeconds,
+                minFreshSeconds = minFreshSeconds,
+                onlyIfCached = onlyIfCached,
+                noTransform = noTransform,
+                immutable = immutable,
+                headerValue = headerValue,
+            )
+        }
+    }
 }
 
 actual class CacheControlBuilder {
@@ -272,33 +270,33 @@ actual fun CacheControlBuilder.maxStale(maxStale: Duration) = apply { maxStaleNo
 actual fun CacheControlBuilder.minFresh(minFresh: Duration) = apply { minFreshNonJvm(minFresh) }
 
 internal fun Long.commonClampToInt(): Int =
-  when {
-    this > Int.MAX_VALUE -> Int.MAX_VALUE
-    else -> toInt()
-  }
+    when {
+        this > Int.MAX_VALUE -> Int.MAX_VALUE
+        else -> toInt()
+    }
 
 /**
  * Returns the next index in this at or after [startIndex] that is a character from
  * [characters]. Returns the input length if none of the requested characters can be found.
  */
 private fun String.indexOfElement(
-  characters: String,
-  startIndex: Int = 0,
+    characters: String,
+    startIndex: Int = 0,
 ): Int {
-  for (i in startIndex until length) {
-    if (this[i] in characters) {
-      return i
+    for (i in startIndex until length) {
+        if (this[i] in characters) {
+            return i
+        }
     }
-  }
-  return length
+    return length
 }
 
 private fun String.indexOfNonWhitespace(startIndex: Int): Int {
-  for (i in startIndex until length) {
-    if (!this[i].isWhitespace()) return i
-  }
-  // No non-whitespace found: return length (callers guard with `pos < length`), not -1.
-  return length
+    for (i in startIndex until length) {
+        if (!this[i].isWhitespace()) return i
+    }
+    // No non-whitespace found: return length (callers guard with `pos < length`), not -1.
+    return length
 }
 
 /**
@@ -306,14 +304,14 @@ private fun String.indexOfNonWhitespace(startIndex: Int): Int {
  * large, or [defaultValue] if it cannot be parsed.
  */
 internal fun String?.toNonNegativeInt(defaultValue: Int): Int {
-  try {
-    val value = this?.toLong() ?: return defaultValue
-    return when {
-      value > Int.MAX_VALUE -> Int.MAX_VALUE
-      value < 0 -> 0
-      else -> value.toInt()
+    try {
+        val value = this?.toLong() ?: return defaultValue
+        return when {
+            value > Int.MAX_VALUE -> Int.MAX_VALUE
+            value < 0 -> 0
+            else -> value.toInt()
+        }
+    } catch (_: NumberFormatException) {
+        return defaultValue
     }
-  } catch (_: NumberFormatException) {
-    return defaultValue
-  }
 }

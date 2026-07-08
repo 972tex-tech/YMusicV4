@@ -46,7 +46,6 @@ actual class Headers internal constructor(
         }
     }
 
-
     actual companion object {
         actual val EMPTY = Headers(emptyList())
     }

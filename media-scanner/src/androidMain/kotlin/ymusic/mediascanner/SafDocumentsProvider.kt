@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
-import android.net.Uri as AndroidUri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
 import android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID
@@ -22,6 +21,7 @@ import kotlinx.coroutines.withContext
 import ymusic.mediascanner.internal.guessMimeType
 import java.io.File
 import java.io.IOException
+import android.net.Uri as AndroidUri
 
 /**
  * A [DocumentsProvider] over Android's Storage Access Framework — the counterpart to the desktop

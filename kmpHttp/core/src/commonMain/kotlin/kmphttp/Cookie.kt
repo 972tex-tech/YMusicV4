@@ -148,7 +148,6 @@ expect class CookieBuilder {
      */
     fun hostOnlyDomain(domain: String): CookieBuilder
 
-
     fun path(path: String): CookieBuilder
 
     fun secure(): CookieBuilder

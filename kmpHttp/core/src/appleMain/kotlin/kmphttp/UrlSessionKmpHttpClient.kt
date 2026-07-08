@@ -31,6 +31,10 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPCookieAcceptPolicy
 import platform.Foundation.NSHTTPURLResponse
+import platform.Foundation.NSMutableURLRequest
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLAuthenticationChallenge
+import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLErrorCannotConnectToHost
 import platform.Foundation.NSURLErrorCannotFindHost
 import platform.Foundation.NSURLErrorDNSLookupFailed
@@ -38,10 +42,6 @@ import platform.Foundation.NSURLErrorDomain
 import platform.Foundation.NSURLErrorNetworkConnectionLost
 import platform.Foundation.NSURLErrorSecureConnectionFailed
 import platform.Foundation.NSURLErrorTimedOut
-import platform.Foundation.NSMutableURLRequest
-import platform.Foundation.NSURL
-import platform.Foundation.NSURLAuthenticationChallenge
-import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLRequest
 import platform.Foundation.NSURLRequestReloadIgnoringLocalCacheData
 import platform.Foundation.NSURLResponse
@@ -137,7 +137,7 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
         forwardingDelegate = ForwardingUrlSessionDataTaskDelegate(
             onBecomeInvalid = { session, didBecomeInvalidWithError ->
                 didBecomeInvalidWithError?.run {
-                    urlSessionFailure = IOException("${domain}: $code - $localizedDescription")
+                    urlSessionFailure = IOException("$domain: $code - $localizedDescription")
                 }
                 session.invalidateAndCancel()
             },

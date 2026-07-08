@@ -86,7 +86,6 @@ object PublicSuffixList {
         return domain.substring(offset)
     }
 
-
     /** Look up domain in DAFSA */
     private fun lookupDomain(domain: CharSequence): Int {
         // DAFSA stores domains in ASCII/punycode

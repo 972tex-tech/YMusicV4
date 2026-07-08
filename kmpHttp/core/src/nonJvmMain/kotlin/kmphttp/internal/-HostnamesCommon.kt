@@ -1,6 +1,5 @@
 package kmphttp.internal
 
-
 import kmphttp.internal.idn.Idna
 import okio.Buffer
 
@@ -275,12 +274,12 @@ internal fun String.toCanonicalHost(): String? {
         // If the input is encased in square braces "[...]", drop 'em.
         val inetAddressByteArray =
             (
-                    if (host.startsWith("[") && host.endsWith("]")) {
-                        decodeIpv6(host, 1, host.length - 1)
-                    } else {
-                        decodeIpv6(host, 0, host.length)
-                    }
-                    ) ?: return null
+                if (host.startsWith("[") && host.endsWith("]")) {
+                    decodeIpv6(host, 1, host.length - 1)
+                } else {
+                    decodeIpv6(host, 0, host.length)
+                }
+                ) ?: return null
 
         val address = canonicalizeInetAddress(inetAddressByteArray)
         if (address.size == 16) return inet6AddressToAscii(address)

@@ -1,7 +1,8 @@
 package ymusic.mediascanner.internal
 
-import kotlinx.coroutines.CoroutineScope
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kmpcommon.uri.Uri
 import ymusic.mediascanner.DocumentInfo
 import ymusic.mediascanner.DocumentsProvider
 import ymusic.mediascanner.MediaMetadataExtractor

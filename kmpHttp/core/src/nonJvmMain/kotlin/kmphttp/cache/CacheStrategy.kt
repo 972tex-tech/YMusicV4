@@ -302,13 +302,13 @@ internal class CacheStrategy internal constructor(
                 HTTP_REQ_TOO_LONG,
                 HTTP_NOT_IMPLEMENTED,
                 HTTP_PERM_REDIRECT,
-                    -> {
+                -> {
                     // These codes can be cached unless headers forbid it.
                 }
 
                 HTTP_MOVED_TEMP,
                 HTTP_TEMP_REDIRECT,
-                    -> {
+                -> {
                     // These codes can only be cached with the right response headers.
                     // http://tools.ietf.org/html/rfc7234#section-3
                     // s-maxage is not checked because OkHttp is a private cache that should ignore s-maxage.

@@ -23,7 +23,7 @@ import kmphttp.internal.parseHexDigit
 import okio.Buffer
 
 internal val HEX_DIGITS =
-  charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
+    charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
 internal const val USERNAME_ENCODE_SET = " \"':;<=>@[]^`{}|/\\?#"
 internal const val PASSWORD_ENCODE_SET = " \"':;<=>@[]^`{}|/\\?#"
 internal const val PATH_SEGMENT_ENCODE_SET = " \"<>^`{}|/\\?#"
@@ -37,62 +37,62 @@ internal const val FRAGMENT_ENCODE_SET = ""
 internal const val FRAGMENT_ENCODE_SET_URI = " \"#<>\\^`{|}"
 
 internal fun Buffer.writeCanonicalized(
-  input: String,
-  pos: Int,
-  limit: Int,
-  encodeSet: String,
-  alreadyEncoded: Boolean,
-  strict: Boolean,
-  plusIsSpace: Boolean,
-  unicodeAllowed: Boolean
+    input: String,
+    pos: Int,
+    limit: Int,
+    encodeSet: String,
+    alreadyEncoded: Boolean,
+    strict: Boolean,
+    plusIsSpace: Boolean,
+    unicodeAllowed: Boolean
 ) {
-  var encodedCharBuffer: Buffer? = null // Lazily allocated.
-  var codePoint: Int
-  var i = pos
-  while (i < limit) {
-    codePoint = input.codePointAt(i)
-    if (alreadyEncoded &&
-      (
-        codePoint == '\t'.code ||
-          codePoint == '\n'.code ||
-          codePoint == '\u000c'.code ||
-          codePoint == '\r'.code
-      )
-    ) {
-      // Skip this character.
-    } else if (codePoint == ' '.code && encodeSet === FORM_ENCODE_SET) {
-      // Encode ' ' as '+'.
-      writeUtf8("+")
-    } else if (codePoint == '+'.code && plusIsSpace) {
-      // Encode '+' as '%2B' since we permit ' ' to be encoded as either '+' or '%20'.
-      writeUtf8(if (alreadyEncoded) "+" else "%2B")
-    } else if (codePoint < 0x20 ||
-      codePoint == 0x7f ||
-      codePoint >= 0x80 &&
-      !unicodeAllowed ||
-      codePoint.toChar() in encodeSet ||
-      codePoint == '%'.code &&
-      (!alreadyEncoded || strict && !input.isPercentEncoded(i, limit))
-    ) {
-      // Percent encode this character.
-      if (encodedCharBuffer == null) {
-        encodedCharBuffer = Buffer()
-      }
+    var encodedCharBuffer: Buffer? = null // Lazily allocated.
+    var codePoint: Int
+    var i = pos
+    while (i < limit) {
+        codePoint = input.codePointAt(i)
+        if (alreadyEncoded &&
+            (
+                codePoint == '\t'.code ||
+                    codePoint == '\n'.code ||
+                    codePoint == '\u000c'.code ||
+                    codePoint == '\r'.code
+                )
+        ) {
+            // Skip this character.
+        } else if (codePoint == ' '.code && encodeSet === FORM_ENCODE_SET) {
+            // Encode ' ' as '+'.
+            writeUtf8("+")
+        } else if (codePoint == '+'.code && plusIsSpace) {
+            // Encode '+' as '%2B' since we permit ' ' to be encoded as either '+' or '%20'.
+            writeUtf8(if (alreadyEncoded) "+" else "%2B")
+        } else if (codePoint < 0x20 ||
+            codePoint == 0x7f ||
+            codePoint >= 0x80 &&
+            !unicodeAllowed ||
+            codePoint.toChar() in encodeSet ||
+            codePoint == '%'.code &&
+            (!alreadyEncoded || strict && !input.isPercentEncoded(i, limit))
+        ) {
+            // Percent encode this character.
+            if (encodedCharBuffer == null) {
+                encodedCharBuffer = Buffer()
+            }
 
-      encodedCharBuffer.writeUtf8CodePoint(codePoint)
+            encodedCharBuffer.writeUtf8CodePoint(codePoint)
 
-      while (!encodedCharBuffer.exhausted()) {
-        val b = encodedCharBuffer.readByte().toInt() and 0xff
-        writeByte('%'.code)
-        writeByte(HEX_DIGITS[b shr 4 and 0xf].code)
-        writeByte(HEX_DIGITS[b and 0xf].code)
-      }
-    } else {
-      // This character doesn't need encoding. Just copy it over.
-      writeUtf8CodePoint(codePoint)
+            while (!encodedCharBuffer.exhausted()) {
+                val b = encodedCharBuffer.readByte().toInt() and 0xff
+                writeByte('%'.code)
+                writeByte(HEX_DIGITS[b shr 4 and 0xf].code)
+                writeByte(HEX_DIGITS[b and 0xf].code)
+            }
+        } else {
+            // This character doesn't need encoding. Just copy it over.
+            writeUtf8CodePoint(codePoint)
+        }
+        i += codePoint.charCount()
     }
-    i += codePoint.charCount()
-  }
 }
 
 /**
@@ -116,123 +116,123 @@ internal fun Buffer.writeCanonicalized(
  * @param charset which charset to use, null equals UTF-8.
  */
 internal fun String.canonicalizeWithCharset(
-  pos: Int = 0,
-  limit: Int = length,
-  encodeSet: String,
-  alreadyEncoded: Boolean = false,
-  strict: Boolean = false,
-  plusIsSpace: Boolean = false,
-  unicodeAllowed: Boolean = false,
+    pos: Int = 0,
+    limit: Int = length,
+    encodeSet: String,
+    alreadyEncoded: Boolean = false,
+    strict: Boolean = false,
+    plusIsSpace: Boolean = false,
+    unicodeAllowed: Boolean = false,
 ): String {
-  var codePoint: Int
-  var i = pos
-  while (i < limit) {
-    codePoint = codePointAt(i)
-    if (codePoint < 0x20 ||
-      codePoint == 0x7f ||
-      codePoint >= 0x80 &&
-      !unicodeAllowed ||
-      codePoint.toChar() in encodeSet ||
-      codePoint == '%'.code &&
-      (!alreadyEncoded || strict && !isPercentEncoded(i, limit)) ||
-      codePoint == '+'.code &&
-      plusIsSpace
-    ) {
-      // Slow path: the character at i requires encoding!
-      val out = Buffer()
-      out.writeUtf8(this, pos, i)
-      out.writeCanonicalized(
-        input = this,
-        pos = i,
+    var codePoint: Int
+    var i = pos
+    while (i < limit) {
+        codePoint = codePointAt(i)
+        if (codePoint < 0x20 ||
+            codePoint == 0x7f ||
+            codePoint >= 0x80 &&
+            !unicodeAllowed ||
+            codePoint.toChar() in encodeSet ||
+            codePoint == '%'.code &&
+            (!alreadyEncoded || strict && !isPercentEncoded(i, limit)) ||
+            codePoint == '+'.code &&
+            plusIsSpace
+        ) {
+            // Slow path: the character at i requires encoding!
+            val out = Buffer()
+            out.writeUtf8(this, pos, i)
+            out.writeCanonicalized(
+                input = this,
+                pos = i,
+                limit = limit,
+                encodeSet = encodeSet,
+                alreadyEncoded = alreadyEncoded,
+                strict = strict,
+                plusIsSpace = plusIsSpace,
+                unicodeAllowed = unicodeAllowed,
+            )
+            return out.readUtf8()
+        }
+        i += codePoint.charCount()
+    }
+
+    // Fast path: no characters in [pos..limit) required encoding.
+    return substring(pos, limit)
+}
+
+internal fun Buffer.writePercentDecoded(
+    encoded: String,
+    pos: Int,
+    limit: Int,
+    plusIsSpace: Boolean,
+) {
+    var codePoint: Int
+    var i = pos
+    while (i < limit) {
+        codePoint = encoded.codePointAt(i)
+        if (codePoint == '%'.code && i + 2 < limit) {
+            val d1 = encoded[i + 1].parseHexDigit()
+            val d2 = encoded[i + 2].parseHexDigit()
+            if (d1 != -1 && d2 != -1) {
+                writeByte((d1 shl 4) + d2)
+                i += 2
+                i += codePoint.charCount()
+                continue
+            }
+        } else if (codePoint == '+'.code && plusIsSpace) {
+            writeByte(' '.code)
+            i++
+            continue
+        }
+        writeUtf8CodePoint(codePoint)
+        i += codePoint.charCount()
+    }
+}
+
+internal fun String.canonicalize(
+    pos: Int = 0,
+    limit: Int = length,
+    encodeSet: String,
+    alreadyEncoded: Boolean = false,
+    strict: Boolean = false,
+    plusIsSpace: Boolean = false,
+    unicodeAllowed: Boolean = false,
+): String =
+    canonicalizeWithCharset(
+        pos = pos,
         limit = limit,
         encodeSet = encodeSet,
         alreadyEncoded = alreadyEncoded,
         strict = strict,
         plusIsSpace = plusIsSpace,
         unicodeAllowed = unicodeAllowed,
-      )
-      return out.readUtf8()
-    }
-    i += codePoint.charCount()
-  }
-
-  // Fast path: no characters in [pos..limit) required encoding.
-  return substring(pos, limit)
-}
-
-internal fun Buffer.writePercentDecoded(
-  encoded: String,
-  pos: Int,
-  limit: Int,
-  plusIsSpace: Boolean,
-) {
-  var codePoint: Int
-  var i = pos
-  while (i < limit) {
-    codePoint = encoded.codePointAt(i)
-    if (codePoint == '%'.code && i + 2 < limit) {
-      val d1 = encoded[i + 1].parseHexDigit()
-      val d2 = encoded[i + 2].parseHexDigit()
-      if (d1 != -1 && d2 != -1) {
-        writeByte((d1 shl 4) + d2)
-        i += 2
-        i += codePoint.charCount()
-        continue
-      }
-    } else if (codePoint == '+'.code && plusIsSpace) {
-      writeByte(' '.code)
-      i++
-      continue
-    }
-    writeUtf8CodePoint(codePoint)
-    i += codePoint.charCount()
-  }
-}
-
-internal fun String.canonicalize(
-  pos: Int = 0,
-  limit: Int = length,
-  encodeSet: String,
-  alreadyEncoded: Boolean = false,
-  strict: Boolean = false,
-  plusIsSpace: Boolean = false,
-  unicodeAllowed: Boolean = false,
-): String =
-  canonicalizeWithCharset(
-    pos = pos,
-    limit = limit,
-    encodeSet = encodeSet,
-    alreadyEncoded = alreadyEncoded,
-    strict = strict,
-    plusIsSpace = plusIsSpace,
-    unicodeAllowed = unicodeAllowed,
-  )
+    )
 
 internal fun String.percentDecode(
-  pos: Int = 0,
-  limit: Int = length,
-  plusIsSpace: Boolean = false,
+    pos: Int = 0,
+    limit: Int = length,
+    plusIsSpace: Boolean = false,
 ): String {
-  for (i in pos until limit) {
-    val c = this[i]
-    if (c == '%' || c == '+' && plusIsSpace) {
-      // Slow path: the character at i requires decoding!
-      val out = Buffer()
-      out.writeUtf8(this, pos, i)
-      out.writePercentDecoded(this, pos = i, limit = limit, plusIsSpace = plusIsSpace)
-      return out.readUtf8()
+    for (i in pos until limit) {
+        val c = this[i]
+        if (c == '%' || c == '+' && plusIsSpace) {
+            // Slow path: the character at i requires decoding!
+            val out = Buffer()
+            out.writeUtf8(this, pos, i)
+            out.writePercentDecoded(this, pos = i, limit = limit, plusIsSpace = plusIsSpace)
+            return out.readUtf8()
+        }
     }
-  }
 
-  // Fast path: no characters in [pos..limit) required decoding.
-  return substring(pos, limit)
+    // Fast path: no characters in [pos..limit) required decoding.
+    return substring(pos, limit)
 }
 
 internal fun String.isPercentEncoded(
-  pos: Int,
-  limit: Int,
+    pos: Int,
+    limit: Int,
 ): Boolean =
-  pos + 2 < limit &&
-    this[pos] == '%' &&
-    this[pos + 1].parseHexDigit() != -1 &&
-    this[pos + 2].parseHexDigit() != -1
+    pos + 2 < limit &&
+        this[pos] == '%' &&
+        this[pos + 1].parseHexDigit() != -1 &&
+        this[pos + 2].parseHexDigit() != -1

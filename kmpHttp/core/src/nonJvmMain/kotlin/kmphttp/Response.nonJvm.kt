@@ -65,7 +65,6 @@ actual class Response internal constructor(
 
     actual override fun toString(): String =
         "Response{protocol=$protocol, code=$code, message=$message, url=${request.url}}"
-
 }
 
 actual open class ResponseBuilder {

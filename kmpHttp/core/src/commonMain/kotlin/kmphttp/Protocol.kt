@@ -1,7 +1,6 @@
 package kmphttp
 
 import okio.IOException
-import kotlin.jvm.JvmStatic
 /**
  * Protocols for [ALPN][ietf_alpn] selection.
  *
@@ -68,6 +67,7 @@ expect enum class Protocol {
      */
     HTTP_3,
     ;
+
     /**
      * Returns the string used to identify this protocol for ALPN, like "http/1.1", "spdy/3.1" or
      * "h2".

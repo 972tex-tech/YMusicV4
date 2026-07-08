@@ -1,7 +1,7 @@
 package kmphttp.cache
 
-import kmpcommon.io.AsyncSource
 import kmpcommon.io.AsyncSink
+import kmpcommon.io.AsyncSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import okio.Buffer

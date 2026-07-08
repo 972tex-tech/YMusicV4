@@ -29,12 +29,12 @@ object PercentEncoder {
      */
     fun isUnreserved(codePoint: Int): Boolean {
         return codePoint in '0'.code..'9'.code
-                || codePoint in 'A'.code..'Z'.code
-                || codePoint in 'a'.code..'z'.code
-                || codePoint == '-'.code
-                || codePoint == '.'.code
-                || codePoint == '_'.code
-                || codePoint == '~'.code
+            || codePoint in 'A'.code..'Z'.code
+            || codePoint in 'a'.code..'z'.code
+            || codePoint == '-'.code
+            || codePoint == '.'.code
+            || codePoint == '_'.code
+            || codePoint == '~'.code
     }
 
     /**
@@ -208,11 +208,11 @@ object PercentEncoder {
                 codePoint = input.getCodePointAt(i)
                 if (alreadyEncoded &&
                     (
-                            codePoint == '\t'.code ||
-                                    codePoint == '\n'.code ||
-                                    codePoint == '\u000c'.code ||
-                                    codePoint == '\r'.code
-                            )
+                        codePoint == '\t'.code ||
+                            codePoint == '\n'.code ||
+                            codePoint == '\u000c'.code ||
+                            codePoint == '\r'.code
+                        )
                 ) {
                     // Skip this character.
                     i++
@@ -237,7 +237,6 @@ object PercentEncoder {
                     }
                     i = j
                 }
-
             }
         }
     }
@@ -263,9 +262,9 @@ object PercentEncoder {
         pos: Int
     ): Boolean =
         pos + 2 < input.length &&
-                input[pos] == '%' &&
-                input[pos + 1].parseHexDigit() != -1 &&
-                input[pos + 2].parseHexDigit() != -1
+            input[pos] == '%' &&
+            input[pos + 1].parseHexDigit() != -1 &&
+            input[pos + 2].parseHexDigit() != -1
 
     /**
      * Decodes percent-encoded characters in a string.
@@ -370,5 +369,4 @@ object PercentEncoder {
     }
 
     private val HEX_DIGITS = "0123456789ABCDEF"
-
 }

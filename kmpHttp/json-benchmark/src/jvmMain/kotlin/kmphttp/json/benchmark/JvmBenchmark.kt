@@ -1,6 +1,5 @@
 package kmphttp.json.benchmark
 
-import com.squareup.moshi.JsonReader as MoshiJsonReader
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.benchmark.Benchmark
@@ -12,6 +11,7 @@ import kotlinx.benchmark.Scope
 import kotlinx.benchmark.State
 import kotlinx.coroutines.runBlocking
 import okio.Buffer
+import com.squareup.moshi.JsonReader as MoshiJsonReader
 
 /**
  * JVM-only Moshi benchmarks for comparison with kotlinx-serialization and JsonReader.

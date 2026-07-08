@@ -243,8 +243,6 @@ class CurlMultiApi(
                         suspendCondition.await()
                     }
                 }
-
-
             }
 
             // Cleanup remaining jobs on shutdown

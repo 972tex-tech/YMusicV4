@@ -2,8 +2,8 @@
 
 package kmphttp.cache
 
-import kmpcommon.io.AsyncSource
 import kmpcommon.io.AsyncSink
+import kmpcommon.io.AsyncSource
 import kmpcommon.nowMs
 import kmpcommon.removeAll
 import kmphttp.internal.DefaultIODispatcher
@@ -27,7 +27,6 @@ import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.TimeSource
-
 
 private class CacheState(
     initialMaxSize: Long,
@@ -385,6 +384,7 @@ class DiskLruCache(
 
     private val cleanUpScheduled = AtomicBoolean(false)
     private var lastCleanedUpAt = 0L
+
     @OptIn(ExperimentalTime::class)
     private fun scheduleCleanup() {
         if (cleanUpScheduled.compareAndSet(false, true)) {
@@ -677,8 +677,6 @@ class DiskLruCache(
         private val timeMark = TimeSource.Monotonic.markNow()
         private val fileCounter = AtomicInt(0)
         private val random = Random(Random.nextLong())
-
-
 
         /**
          * Generates short unique file names: timestamp + counter + random.

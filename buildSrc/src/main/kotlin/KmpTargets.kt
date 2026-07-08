@@ -10,7 +10,7 @@ val hostOs: org.gradle.internal.os.OperatingSystem =
 val hostIsArm64 = System.getProperty("os.arch").let { it == "aarch64" || it == "arm64" }
 
 fun KotlinMultiplatformExtension.withAppleTargets(
-    configure:  KotlinNativeTarget.() -> Unit = {}
+    configure: KotlinNativeTarget.() -> Unit = {}
 ) {
     if (hostOs.isMacOsX && hostIsArm64 || !isHostCompatibleMode) {
         listOf(
@@ -39,7 +39,7 @@ fun KotlinMultiplatformExtension.withAppleTargets(
 }
 
 fun KotlinMultiplatformExtension.withLinuxTargets(
-    configure:  KotlinNativeTarget.() -> Unit = {}
+    configure: KotlinNativeTarget.() -> Unit = {}
 ) {
     if (hostOs.isLinux && hostIsArm64 || !isHostCompatibleMode) {
         linuxArm64().configure()

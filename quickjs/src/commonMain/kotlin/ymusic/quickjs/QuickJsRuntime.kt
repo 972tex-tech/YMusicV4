@@ -216,8 +216,7 @@ class QuickJsRuntime private constructor(
 
         fun onDrain() {
             val w = writer
-            if (w != null) { writer = null; w.resume(Unit) }
-            else drainCredit = true
+            if (w != null) { writer = null; w.resume(Unit) } else drainCredit = true
         }
 
         override suspend fun receive(sink: Buffer, byteCount: Long): Long {

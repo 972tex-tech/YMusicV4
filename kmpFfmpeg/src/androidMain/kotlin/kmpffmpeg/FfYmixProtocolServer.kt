@@ -120,7 +120,7 @@ internal class FfYmixProtocolServer(
             val hello = source.readUtf8LineStrict().split(' ')
             val mode = hello.getOrNull(1)
             if (hello.firstOrNull() != "start_session" || (mode != "read" && mode != "write")) {
-                sink.replyError(YmixError.BAD_HANDSHAKE);
+                sink.replyError(YmixError.BAD_HANDSHAKE)
                 return@runInterruptible // ffmpeg's protocol error
             }
             // Opening the document is the response to `start_session`: on failure reply the classified
@@ -131,7 +131,7 @@ internal class FfYmixProtocolServer(
                     ?: throw IOException("ContentResolver: Couldn't open $uri")
             } catch (t: Throwable) {
                 rethrowIfInterrupted(t)
-                sink.failCommand(t);
+                sink.failCommand(t)
                 return@runInterruptible
             }
             sink.writeUtf8("ok\n").flush()
@@ -208,12 +208,12 @@ internal class FfYmixProtocolServer(
                     }
 
                     "bye" -> {
-                        sink.writeUtf8("ok\n").flush();
+                        sink.writeUtf8("ok\n").flush()
                         return
                     }
 
                     else -> {
-                        sink.replyError(YmixError.UNKNOWN_COMMAND);
+                        sink.replyError(YmixError.UNKNOWN_COMMAND)
                         return
                     }
                 }
@@ -244,12 +244,12 @@ internal class FfYmixProtocolServer(
                         val pos = parts.getOrNull(1)?.toLongOrNull()
                         val len = parts.getOrNull(2)?.toIntOrNull()
                         if (pos == null || len == null || pos < 0 || len < 0) {
-                            sink.replyError(YmixError.BAD_REQUEST);
+                            sink.replyError(YmixError.BAD_REQUEST)
                             return
                         }
                         try {
                             if (pos != currentPos) {
-                                channel.position(pos);
+                                channel.position(pos)
                                 currentPos = pos
                             }
                             var remaining = len
@@ -283,12 +283,12 @@ internal class FfYmixProtocolServer(
                     }
 
                     "bye" -> {
-                        sink.writeUtf8("ok\n").flush();
+                        sink.writeUtf8("ok\n").flush()
                         return
                     }
 
                     else -> {
-                        sink.replyError(YmixError.UNKNOWN_COMMAND);
+                        sink.replyError(YmixError.UNKNOWN_COMMAND)
                         return
                     }
                 }
@@ -301,7 +301,6 @@ internal class FfYmixProtocolServer(
     private fun BufferedSink.replyError(code: YmixError) {
         runCatching { writeUtf8("error ${code.code}\n").flush() }
     }
-
 
     /**
      * Report a server-side failure that occurred while ffmpeg awaited a reply: fail the process with the

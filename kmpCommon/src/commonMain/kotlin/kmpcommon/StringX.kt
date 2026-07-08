@@ -35,7 +35,6 @@ fun CharSequence.splitSequence(char: Char, offset: Int = 0): Sequence<CharSequen
     return splitRange(char, offset).map { subSequence(it) }
 }
 
-
 fun CharSequence.splitRange(char: Char, offset: Int = 0): Sequence<IntRange> {
     return object : Sequence<IntRange> {
         override fun iterator() = object : Iterator<IntRange> {

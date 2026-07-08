@@ -190,7 +190,6 @@ internal fun advanceSegments(segments: List<PathSegment>): List<PathSegment>? {
     }
 }
 
-
 // Single implementation class with mode
 private class StructFilter(
     private val mode: FilterMode,

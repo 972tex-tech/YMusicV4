@@ -8,7 +8,6 @@ import okio.Buffer
 import okio.Source
 import okio.Timeout
 
-
 internal class UnreadableResponseBody(
     val contentType: MediaType?,
     val contentLength: Long,
@@ -32,7 +31,7 @@ internal class UnreadableResponseBody(
       | * EventSourceListener
       | * WebSocketListener
       |(It is safe to call contentType() and contentLength() on these response bodies.)
-      """.trimMargin(),
+            """.trimMargin(),
         )
 
     override fun timeout() = Timeout.NONE

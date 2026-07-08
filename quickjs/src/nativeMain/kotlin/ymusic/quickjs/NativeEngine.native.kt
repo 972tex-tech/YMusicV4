@@ -34,9 +34,9 @@ import ymusic.quickjs.cinterop.qjs_close
 import ymusic.quickjs.cinterop.qjs_close_read
 import ymusic.quickjs.cinterop.qjs_close_write
 import ymusic.quickjs.cinterop.qjs_create
+import ymusic.quickjs.cinterop.qjs_drain
 import ymusic.quickjs.cinterop.qjs_eval_sync
 import ymusic.quickjs.cinterop.qjs_free
-import ymusic.quickjs.cinterop.qjs_drain
 import ymusic.quickjs.cinterop.qjs_open
 import ymusic.quickjs.cinterop.qjs_write
 

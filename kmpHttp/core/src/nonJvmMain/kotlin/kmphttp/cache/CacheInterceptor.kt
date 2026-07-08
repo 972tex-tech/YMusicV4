@@ -3,10 +3,10 @@ package kmphttp.cache
 import kmpcommon.io.AsyncSource
 import kmphttp.AsyncInterceptor
 import kmphttp.AsyncInterceptor.Chain
-import kmphttp.HttpCache
-import kmphttp.HttpCache.CacheRequest
 import kmphttp.Headers
 import kmphttp.HeadersBuilder
+import kmphttp.HttpCache
+import kmphttp.HttpCache.CacheRequest
 import kmphttp.HttpStatus.HTTP_GATEWAY_TIMEOUT
 import kmphttp.HttpStatus.HTTP_NOT_MODIFIED
 import kmphttp.MediaType
@@ -39,7 +39,6 @@ class CacheInterceptor(
         val strategy = CacheStrategy.Factory(now, chain.request, cacheCandidate).compute()
         val networkRequest = strategy.networkRequest
         val cacheResponse = strategy.cacheResponse
-
 
         if (cacheCandidate != null && cacheResponse == null) {
             // The cache candidate wasn't applicable. Close it.
@@ -271,13 +270,13 @@ class CacheInterceptor(
          */
         private fun isEndToEnd(fieldName: String): Boolean =
             !"Connection".equals(fieldName, ignoreCase = true) &&
-                    !"Keep-Alive".equals(fieldName, ignoreCase = true) &&
-                    !"Proxy-Authenticate".equals(fieldName, ignoreCase = true) &&
-                    !"Proxy-Authorization".equals(fieldName, ignoreCase = true) &&
-                    !"TE".equals(fieldName, ignoreCase = true) &&
-                    !"Trailers".equals(fieldName, ignoreCase = true) &&
-                    !"Transfer-Encoding".equals(fieldName, ignoreCase = true) &&
-                    !"Upgrade".equals(fieldName, ignoreCase = true)
+                !"Keep-Alive".equals(fieldName, ignoreCase = true) &&
+                !"Proxy-Authenticate".equals(fieldName, ignoreCase = true) &&
+                !"Proxy-Authorization".equals(fieldName, ignoreCase = true) &&
+                !"TE".equals(fieldName, ignoreCase = true) &&
+                !"Trailers".equals(fieldName, ignoreCase = true) &&
+                !"Transfer-Encoding".equals(fieldName, ignoreCase = true) &&
+                !"Upgrade".equals(fieldName, ignoreCase = true)
 
         /**
          * Returns true if [fieldName] is content specific and therefore should always be used
@@ -285,7 +284,7 @@ class CacheInterceptor(
          */
         private fun isContentSpecificHeader(fieldName: String): Boolean =
             "Content-Length".equals(fieldName, ignoreCase = true) ||
-                    "Content-Encoding".equals(fieldName, ignoreCase = true) ||
-                    "Content-Type".equals(fieldName, ignoreCase = true)
+                "Content-Encoding".equals(fieldName, ignoreCase = true) ||
+                "Content-Type".equals(fieldName, ignoreCase = true)
     }
 }

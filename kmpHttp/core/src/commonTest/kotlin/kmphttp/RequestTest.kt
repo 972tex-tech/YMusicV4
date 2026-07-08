@@ -278,5 +278,4 @@ class RequestTest {
             request.toString(),
         )
     }
-
 }

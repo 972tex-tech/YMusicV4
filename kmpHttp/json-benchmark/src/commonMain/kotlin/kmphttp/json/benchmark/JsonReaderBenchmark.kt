@@ -37,8 +37,6 @@ data class UserData(
     val active: Boolean
 )
 
-
-
 @OptIn(ExperimentalSerializationApi::class)
 @OutputTimeUnit(BenchmarkTimeUnit.MILLISECONDS)
 abstract class BaseDecodeBenchmark {
@@ -114,7 +112,6 @@ abstract class BaseDecodeBenchmark {
         manyKeysJsonBuffer = Buffer().apply { writeUtf8(manyKeysJson) }
         nestedDeeplyJsonBuffer = Buffer().apply { writeUtf8(nestedDeeplyJson) }
     }
-
 
     // ==================== Small JSON ====================
 
@@ -339,5 +336,4 @@ abstract class BaseDecodeBenchmark {
             check(it.id == 123) { "parseToClass id should be 123, got ${it.id}" }
         }
     }
-
 }

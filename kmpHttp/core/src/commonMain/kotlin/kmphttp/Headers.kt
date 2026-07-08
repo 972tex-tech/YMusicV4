@@ -38,7 +38,6 @@ expect class Headers : Iterable<Pair<String, String>> {
     /** Returns an immutable list of the header values for `name`. */
     fun values(name: String): List<String>
 
-
     fun newBuilder(): HeadersBuilder
 
     /**
@@ -95,7 +94,6 @@ expect class Headers : Iterable<Pair<String, String>> {
     override fun toString(): String
 
     override fun iterator(): Iterator<Pair<String, String>>
-
 
     companion object {
         /** Empty headers. */

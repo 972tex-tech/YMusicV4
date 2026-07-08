@@ -22,7 +22,6 @@ import platform.Foundation.NSURLSessionTask
 import platform.Foundation.NSURLSessionTaskDelegateProtocol
 import platform.darwin.NSObject
 
-
 @OptIn(UnsafeNumber::class)
 class ForwardingUrlSessionDataTaskDelegate(
     private val onBecomeInvalid: (session: NSURLSession, didBecomeInvalidWithError: NSError?) -> Unit,

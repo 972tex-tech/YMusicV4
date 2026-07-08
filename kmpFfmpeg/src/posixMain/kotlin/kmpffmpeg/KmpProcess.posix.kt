@@ -1,7 +1,8 @@
 package kmpffmpeg
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
@@ -18,15 +19,11 @@ import kotlinx.cinterop.set
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -36,17 +33,17 @@ import okio.Sink
 import okio.Source
 import okio.Timeout
 import platform.posix.EINTR
+import platform.posix.O_WRONLY
+import platform.posix.POLLIN
 import platform.posix.SIGKILL
 import platform.posix.SIGTERM
 import platform.posix.WNOHANG
 import platform.posix._exit
 import platform.posix.close
 import platform.posix.dup2
-import platform.posix.O_WRONLY
 import platform.posix.errno
 import platform.posix.execve
 import platform.posix.fork
-import platform.posix.POLLIN
 import platform.posix.kill
 import platform.posix.open
 import platform.posix.pipe
@@ -228,6 +225,7 @@ private class PosixKmpProcess(
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 private class FdSource(private val fd: Int) : Source {
     private var eof = false
+
     @Volatile private var closed = false
     override fun read(sink: Buffer, byteCount: Long): Long {
         if (byteCount == 0L) return 0L
@@ -338,7 +336,8 @@ private fun readable(fd: Int): Boolean = memScoped {
         if (r < 0 && errno == EINTR) continue
         return@memScoped r > 0
     }
-    @Suppress("UNREACHABLE_CODE") false
+    @Suppress("UNREACHABLE_CODE")
+    false
 }
 
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)

@@ -1,12 +1,12 @@
 package kmphttp.cache
 
+import kmpcommon.io.AsyncSink
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
-import kmpcommon.io.AsyncSink
-import kmphttp.HttpCache
-import kmphttp.HttpCache.CacheRequest
 import kmphttp.Headers
 import kmphttp.HeadersBuilder
+import kmphttp.HttpCache
+import kmphttp.HttpCache.CacheRequest
 import kmphttp.HttpUrl
 import kmphttp.MediaType
 import kmphttp.MediaTypeX.toMediaTypeOrNull
@@ -16,14 +16,12 @@ import kmphttp.RequestBuilder
 import kmphttp.Response
 import kmphttp.ResponseBody
 import kmphttp.ResponseBuilder
-import kmphttp.internal.DefaultIODispatcher
 import kmphttp.internal.ForwardingAsyncSink
 import kmphttp.internal.ForwardingAsyncSource
 import kmphttp.internal.HttpMethod
 import kmphttp.internal.StatusLine
 import kmphttp.internal.closeQuietly
 import kmphttp.toHttpUrlOrNull
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -56,7 +54,6 @@ class DefaultCache(
 
     private val isClosed = AtomicBoolean(false)
     private val commitScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-
 
     override val initialized: Boolean
         get() = cache.initialized
@@ -188,7 +185,6 @@ class DefaultCache(
         } catch (_: IOException) {
         }
     }
-
 
     /**
      * Get current cached size in bytes, return 0 if the cache not yet initialized.
@@ -389,8 +385,8 @@ class DefaultCache(
             response: Response,
         ): Boolean =
             url == request.url &&
-                    requestMethod == request.method &&
-                    varyMatches(response, varyHeaders, request)
+                requestMethod == request.method &&
+                varyMatches(response, varyHeaders, request)
 
         fun response(snapshot: DiskLruCache.Snapshot): Response {
             val contentType = responseHeaders["Content-Type"]
