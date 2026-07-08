@@ -410,6 +410,35 @@ static JSValue jstream_end(JStream *s) {
     return r;
 }
 
+/* ---- C-level API (quickjs_json.h) — the pipe layer drives the parser without a JSValue wrapper ---- */
+
+QjsJStream *qjs_jstream_new(JSContext *ctx, int expect) {
+    return (QjsJStream *)jstream_alloc(ctx, expect);
+}
+
+int qjs_jstream_push(QjsJStream *s, const uint8_t *data, size_t len) {
+    return jstream_push((JStream *)s, data, len);
+}
+
+int qjs_jstream_done(QjsJStream *s) {
+    return ((JStream *)s)->tstate == S_DONE;
+}
+
+JSValue qjs_jstream_end(QjsJStream *s) {
+    return jstream_end((JStream *)s);
+}
+
+void qjs_jstream_free(QjsJStream *s) {
+    jstream_free((JStream *)s);
+}
+
+void qjs_jstream_mark(JSRuntime *rt, QjsJStream *js, JS_MarkFunc *mark_func) {
+    JStream *s = (JStream *)js;
+    if (s == NULL) return;
+    for (int i = 0; i < s->sp; i++) JS_MarkValue(rt, s->stack[i].container, mark_func);
+    if (s->have_result) JS_MarkValue(rt, s->result, mark_func);
+}
+
 /* ---- JS class wrapping a JStream (opaque; finalizer frees it) ---- */
 
 static JSClassID jstream_class_id;
@@ -423,10 +452,7 @@ static void jstream_class_finalizer(JSRuntime *rt, JSValue val) {
  * through the normal object graph — the GC must be told, or the cycle collector / shutdown sweep
  * mis-accounts them (a debug build asserts on a non-empty gc_obj_list at JS_FreeRuntime). */
 static void jstream_class_gc_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func) {
-    JStream *s = JS_GetOpaque(val, jstream_class_id);
-    if (s == NULL) return;
-    for (int i = 0; i < s->sp; i++) JS_MarkValue(rt, s->stack[i].container, mark_func);
-    if (s->have_result) JS_MarkValue(rt, s->result, mark_func);
+    qjs_jstream_mark(rt, (QjsJStream *)JS_GetOpaque(val, jstream_class_id), mark_func);
 }
 
 static JSClassDef jstream_class_def = {
