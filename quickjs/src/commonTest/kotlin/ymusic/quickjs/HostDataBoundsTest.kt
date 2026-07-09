@@ -21,7 +21,7 @@ class HostDataBoundsTest {
             val report = CompletableDeferred<String>()
             rt.onAccept("report") { p ->
                 val b = Buffer()
-                while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+                while (p.source.receive(b, 64L) != -1L) { /* to EOF */ }
                 report.complete(b.readUtf8())
             }
             rt.onAccept("sink") { _ -> awaitCancellation() } // hold the pipe open, read nothing
@@ -34,11 +34,11 @@ class HostDataBoundsTest {
                   try {
                     var r = $js;
                     if (r && r.then) await r;
-                    out.send(ymix.utf8Encode("accepted"));
+                    out.sink.send(ymix.utf8Encode("accepted"));
                   } catch (e) {
-                    out.send(ymix.utf8Encode("throw:" + e.name));
+                    out.sink.send(ymix.utf8Encode("throw:" + e.name));
                   }
-                  out.close();
+                  out.sink.close();
                 })()
                 """.trimIndent(),
             )
@@ -50,16 +50,16 @@ class HostDataBoundsTest {
 
     @Test
     fun oversized_len_is_rejected() = runTest {
-        assertEquals("throw:RangeError", jsSendOutcome("pipe.send(buf, 0, 999999)"))
+        assertEquals("throw:RangeError", jsSendOutcome("pipe.sink.send(buf, 0, 999999)"))
     }
 
     @Test
     fun negative_offset_is_rejected() = runTest {
-        assertEquals("throw:RangeError", jsSendOutcome("pipe.send(buf, -8, 8)"))
+        assertEquals("throw:RangeError", jsSendOutcome("pipe.sink.send(buf, -8, 8)"))
     }
 
     @Test
     fun in_bounds_send_still_accepted() = runTest {
-        assertEquals("accepted", jsSendOutcome("pipe.send(buf, 8, 8)"))
+        assertEquals("accepted", jsSendOutcome("pipe.sink.send(buf, 8, 8)"))
     }
 }

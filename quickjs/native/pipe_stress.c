@@ -138,12 +138,12 @@ static char *read_file(const char *path) {
 static void scenario_fragmented_reads(QjsEngine *e) {
     free(eval(e,
         "ymix.onAccept('t1', async function (p) {"
-        "  var line = await p.readUtf8Line(true);"
-        "  var obj = await p.readJsonObject();"
-        "  var i = await p.readInt();"
-        "  var l = await p.readLong();"
-        "  var rest = await p.readUtf8();"
-        "  var eof = await p.receive(new Uint8Array(1), 0, 1);"
+        "  var line = await p.source.readUtf8Line(true);"
+        "  var obj = await p.source.readJsonObject();"
+        "  var i = await p.source.readInt();"
+        "  var l = await p.source.readLong();"
+        "  var rest = await p.source.readUtf8();"
+        "  var eof = await p.source.receive(new Uint8Array(1), 0, 1);"
         "  globalThis.r1 = line + '|' + JSON.stringify(obj) + '|' + i + '|' + l + '|' + rest + '|' + eof;"
         "});"));
     CHECK(qjs_open(e, 1, "t1") == 0, "open t1");
@@ -168,7 +168,7 @@ static void scenario_backpressure(QjsEngine *e, Host *h) {
         "  await new Promise(function (res) { globalThis.go2 = res; });"
         "  var total = 0, sum = 0, buf = new Uint8Array(4096);"
         "  for (;;) {"
-        "    var n = await p.receive(buf, 0, buf.length);"
+        "    var n = await p.source.receive(buf, 0, buf.length);"
         "    if (n < 0) break;"
         "    total += n;"
         "    for (var i = 0; i < n; i++) sum = (sum + buf[i]) & 0xffff;"
@@ -208,7 +208,7 @@ static void scenario_backpressure(QjsEngine *e, Host *h) {
 static void scenario_reset(QjsEngine *e) {
     free(eval(e,
         "ymix.onAccept('t3', function (p) {"
-        "  return p.readUtf8Line(true).then("
+        "  return p.source.readUtf8Line(true).then("
         "    function (v) { globalThis.r3 = 'ok:' + v; },"
         "    function (err) { globalThis.r3 = 'err:' + err.message; });"
         "});"));
@@ -222,8 +222,8 @@ static void scenario_reset(QjsEngine *e) {
 static void scenario_close_read(QjsEngine *e, Host *h) {
     free(eval(e,
         "ymix.onAccept('t4', function (p) {"
-        "  p.closeRead();"
-        "  try { p.readInt(); globalThis.r4 = 'no-throw'; }"
+        "  p.source.close();"
+        "  try { p.source.readInt(); globalThis.r4 = 'no-throw'; }"
         "  catch (err) { globalThis.r4 = 'threw:' + err.message; }"
         "});"));
     CHECK(qjs_open(e, 7, "t4") == 0, "open t4");
@@ -241,10 +241,10 @@ static void scenario_outbound(QjsEngine *e, Host *h) {
         "  var p = ymix.open('slow');"
         "  globalThis.p5 = p;"
         "  var big = 'x'.repeat(50000) + '\xF0\x9F\x8E\xB5';"
-        "  Promise.resolve(p.writeUtf8(big)).then(function () {"
-        "    return p.flush();"
+        "  Promise.resolve(p.sink.writeUtf8(big)).then(function () {"
+        "    return p.sink.flush();"
         "  }).then(function () {"
-        "    return p.close();"
+        "    return p.sink.close();"
         "  }).then(function () { globalThis.r5 = 'sent'; });"
         "})()"));
     uint32_t id = 0;
@@ -274,7 +274,7 @@ static void scenario_refused_open(QjsEngine *e) {
 static void scenario_gc_parked(QjsEngine *e) {
     free(eval(e,
         "ymix.onAccept('t7', async function (p) {"
-        "  var obj = await p.readJsonObject();"
+        "  var obj = await p.source.readJsonObject();"
         "  globalThis.r7 = JSON.stringify(obj);"
         "});"));
     CHECK(qjs_open(e, 9, "t7") == 0, "open t7");
@@ -291,8 +291,8 @@ static void scenario_teardown(const char *bootstrap, Host *h) {
     char *err = NULL;
     QjsEngine *e = qjs_create(bootstrap, host_cb, h, &err);
     CHECK(e != NULL, "second engine: %s", err ? err : "?");
-    free(eval(e, "ymix.onAccept('park', function (p) { return p.readUtf8(); });"
-               "ymix.onAccept('jsonpark', function (p) { return p.readJsonObject(); });"
+    free(eval(e, "ymix.onAccept('park', function (p) { return p.source.readUtf8(); });"
+               "ymix.onAccept('jsonpark', function (p) { return p.source.readJsonObject(); });"
                "ymix.onAccept('full', function (p) { return new Promise(function () {}); });"));
     CHECK(qjs_open(e, 1, "park") == 0, "open park");
     CHECK(qjs_open(e, 3, "full") == 0, "open full");

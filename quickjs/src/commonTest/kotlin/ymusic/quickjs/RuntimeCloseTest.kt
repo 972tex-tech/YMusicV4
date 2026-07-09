@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * Runtime close() lifecycle: exactly one teardown ever reaches the native engine. A second
- * close(), or a pipe op that races teardown (the everyday `finally { pipe.close() }`), must not
+ * close(), or a pipe op that races teardown (the everyday `finally { pipe.sink.close() }`), must not
  * call into an engine whose handle `engine.destroy()` already freed — that's a native
  * use-after-free, not an exception.
  */
@@ -34,15 +34,15 @@ class RuntimeCloseTest {
         rt.close()
 
         // Closes are cleanup calls — safe no-ops (teardown already closed every pipe)...
-        pipe.close()
-        pipe.closeRead()
+        pipe.sink.close()
+        pipe.source.close()
         // ...while data ops are failures the caller must see.
-        assertFailsWith<QuickJsException> { pipe.send(Buffer().writeUtf8("late"), 4L) }
-        assertFailsWith<QuickJsException> { pipe.receive(Buffer(), 4L) }
+        assertFailsWith<QuickJsException> { pipe.sink.send(Buffer().writeUtf8("late"), 4L) }
+        assertFailsWith<QuickJsException> { pipe.source.receive(Buffer(), 4L) }
     }
 
     /** The finding's crash shape: a receive parked when close() tears down resumes with the
-     *  teardown failure, and its `finally { pipe.close() }` lands on the engine queue BEHIND
+     *  teardown failure, and its `finally { pipe.sink.close() }` lands on the engine queue BEHIND
      *  `engine.destroy()`. The poisoned own-side flags must make it bail without an engine call. */
     @Test
     fun pipe_close_in_finally_racing_runtime_close_is_safe() = runTest {
@@ -52,9 +52,9 @@ class RuntimeCloseTest {
         val worker = async(Dispatchers.Default) {
             runCatching {
                 try {
-                    pipe.receive(Buffer(), 4L)
+                    pipe.source.receive(Buffer(), 4L)
                 } finally {
-                    pipe.close()
+                    pipe.sink.close()
                 }
             }
         }

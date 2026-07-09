@@ -23,9 +23,9 @@ class PipeIoTest {
                   var bytes = ymix.utf8Encode("alpha\r\nbeta🎵\ngamma\r\n");
                   var i = 0;
                   function step() {
-                    if (i >= bytes.length) { pipe.close(); return; }
+                    if (i >= bytes.length) { pipe.sink.close(); return; }
                     var n = Math.min(3, bytes.length - i); // 3-byte fragments split the \r\n pairs
-                    var p = pipe.send(bytes, i, n);
+                    var p = pipe.sink.send(bytes, i, n);
                     i += n;
                     if (p) p.then(step); else step();
                   }
@@ -34,7 +34,7 @@ class PipeIoTest {
                 """.trimIndent(),
             )
             val pipe = rt.openPipe("lines")
-            val source = BufferedAsyncSource(pipe.asAsyncSource())
+            val source = BufferedAsyncSource(pipe.source.asAsyncSource())
             assertEquals("alpha", source.readUtf8LineStrict())
             assertEquals("beta🎵", source.readUtf8LineStrict())
             assertEquals("gamma", source.readUtf8LineStrict())
@@ -55,10 +55,10 @@ class PipeIoTest {
                   var chunk = new Uint8Array(8192);
                   var sent = 0, total = 200 * 1024;
                   function step() {
-                    if (sent >= total) { pipe.close(); return; }
+                    if (sent >= total) { pipe.sink.close(); return; }
                     var n = Math.min(chunk.length, total - sent);
                     for (var i = 0; i < n; i++) chunk[i] = (sent + i) & 0xFF;
-                    var p = pipe.send(chunk, 0, n);
+                    var p = pipe.sink.send(chunk, 0, n);
                     sent += n;
                     if (p) p.then(step); else step();
                   }
@@ -67,7 +67,7 @@ class PipeIoTest {
                 """.trimIndent(),
             )
             val pipe = rt.openPipe("blob")
-            val source = pipe.asAsyncSource()
+            val source = pipe.source.asAsyncSource()
             val all = Buffer()
             while (true) {
                 if (source.read(all, 64 * 1024) == -1L) break
@@ -93,14 +93,14 @@ class PipeIoTest {
                   var buf = new Uint8Array(4096);
                   var sum = 0, count = 0;
                   for (;;) {
-                    var r = pipe.receive(buf, 0, buf.length);
+                    var r = pipe.source.receive(buf, 0, buf.length);
                     var n = typeof r === "number" ? r : await r;
                     if (n < 0) break;
                     for (var i = 0; i < n; i++) sum = (sum + buf[i]) >>> 0;
                     count += n;
                   }
-                  pipe.send(ymix.utf8Encode(count + ":" + sum));
-                  pipe.close();
+                  pipe.sink.send(ymix.utf8Encode(count + ":" + sum));
+                  pipe.sink.close();
                 });
                 """.trimIndent(),
             )
@@ -113,11 +113,11 @@ class PipeIoTest {
                 payload.writeByte(b)
                 expectedSum = (expectedSum + b) and 0xFFFFFFFFL
             }
-            val sink = pipe.asAsyncSink()
+            val sink = pipe.sink.asAsyncSink()
             sink.write(payload, payload.size)
             assertEquals(0L, payload.size) // fully consumed
-            pipe.close()
-            assertEquals("$total:$expectedSum", pipe.asAsyncSource().readUtf8String())
+            pipe.sink.close()
+            assertEquals("$total:$expectedSum", pipe.source.asAsyncSource().readUtf8String())
         } finally {
             rt.close()
         }
@@ -130,13 +130,13 @@ class PipeIoTest {
             rt.load(
                 """
                 ymix.onAccept("boom", function (pipe) {
-                  pipe.send(ymix.utf8Encode("partial"));
-                  pipe.close("engine exploded");
+                  pipe.sink.send(ymix.utf8Encode("partial"));
+                  pipe.sink.close("engine exploded");
                 });
                 """.trimIndent(),
             )
             val pipe = rt.openPipe("boom")
-            val source = BufferedAsyncSource(pipe.asAsyncSource())
+            val source = BufferedAsyncSource(pipe.source.asAsyncSource())
             val e = assertFailsWith<PipeResetException> { source.readUtf8LineStrict() }
             assertEquals("engine exploded", e.reason)
         } finally {
@@ -148,10 +148,10 @@ class PipeIoTest {
     fun epipe_surfaces_through_the_sink() = runTest {
         val rt = QuickJsRuntime.create()
         try {
-            rt.load("""ymix.onAccept("deaf", function (pipe) { pipe.closeRead(); });""")
+            rt.load("""ymix.onAccept("deaf", function (pipe) { pipe.source.close(); });""")
             val pipe = rt.openPipe("deaf")
             val payload = Buffer().writeUtf8("anyone listening?")
-            assertFailsWith<BrokenPipeException> { pipe.asAsyncSink().write(payload, payload.size) }
+            assertFailsWith<BrokenPipeException> { pipe.sink.asAsyncSink().write(payload, payload.size) }
         } finally {
             rt.close()
         }

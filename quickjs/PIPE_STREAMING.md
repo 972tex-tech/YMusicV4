@@ -7,27 +7,31 @@ Two things only. Higher-level protocols (HTTP envelopes, etc.) are the app's job
 Bidirectional byte stream between Kotlin and JS. One side `openPipe(name)`, the other `onAccept(name)`;
 `name` is a pure routing name — arguments are streamed as bytes, not encoded in the name.
 
+A `Pipe` is the **pair of ends** this side holds, like `pipe(2)` fds — each closed independently,
+no fused close:
 ```kotlin
-interface Pipe {
-    val command: String
-    suspend fun send(source: Buffer, byteCount: Long)       // okio Sink.write shape; suspends on backpressure
+class Pipe(val source: PipeSource, val sink: PipeSink, val command: String) // destructurable
+interface PipeSource {
     suspend fun receive(sink: Buffer, byteCount: Long): Long // okio Source.read shape; -1 at EOF; throws on RESET
-    suspend fun close(reason: String? = null)               // half-close: END, or RESET(reason)
-    suspend fun closeRead()                                 // abandon reading: peer sends EPIPE
+    suspend fun close()                                      // abandon reading: peer sends EPIPE
+}
+interface PipeSink {
+    suspend fun send(source: Buffer, byteCount: Long)        // okio Sink.write shape; suspends on backpressure
+    suspend fun close(reason: String? = null)                // END, or RESET(reason)
 }
 ```
 The Kotlin surface speaks **okio `Buffer`** end to end: `receive` moves already-buffered bytes into
 the sink as whole segments (no copy) and, when parked, hands deliver() the sink itself — the
 writer's bytes are copied straight into its segments, sized at delivery time so a full chunk can
 rendezvous; `send` walks the source's segments, pinning each across the FFI (zero-copy)
-and consuming it only after the peer fully accepted it. `Pipe.asAsyncSource()`/`asAsyncSink()`
-(pure delegation) adapt a pipe to `kmpcommon.io.AsyncSource`/`AsyncSink`, so `BufferedAsyncSource`'s
-`readUtf8LineStrict`/`indexOf`/`readDecimalLong` work over a pipe directly — the adapters are views
-and do not own the pipe (their `close()` is a no-op; lifecycle stays with `Pipe.close`/`closeRead`).
+and consuming it only after the peer fully accepted it. `PipeSource.asAsyncSource()` /
+`PipeSink.asAsyncSink()` (pure delegation) adapt an end to `kmpcommon.io.AsyncSource`/`AsyncSink`,
+so `BufferedAsyncSource`'s `readUtf8LineStrict`/`indexOf`/`readDecimalLong` work over a pipe
+directly — the adapters are views and do not own the end (their `close()` is a no-op).
 ```js
-await pipe.send(u8, offset, len)      // undefined when fully accepted; a Promise under backpressure
-await pipe.receive(u8, offset, len)   // -> bytes read (<= len), or -1 at EOF; throws the RESET reason
-pipe.close(reason?); pipe.closeRead()
+await pipe.sink.send(u8, offset, len)      // undefined when fully accepted; a Promise under backpressure
+await pipe.source.receive(u8, offset, len) // -> bytes read (<= len), or -1 at EOF; throws the RESET reason
+pipe.sink.close(reason?); pipe.source.close()
 ```
 Both are **await-optional**: the fast path returns synchronously (`send` -> undefined, `receive` ->
 a number when bytes are already buffered), a Promise only under real backpressure/parking — hot
@@ -52,12 +56,12 @@ Each direction is a **bounded, flow-controlled byte stream** (64 KB cap, 8 KB po
   decode **straight out of the C segments** (still one copy total); only a raw `receive(dst)`
   copies out a second time. Consequence: **the send buffer must stay unmodified until the send
   completes** (a partial write holds a window into it).
-- **Half-close, two flavors**: `close(null)` = END — the peer's `receive` returns -1 once drained.
-  `close(reason)` = **RESET** — the peer's pending data is discarded and its parked/next `receive`
-  **throws** the reason (Kotlin: `PipeResetException`; JS: rejection), so a mid-stream failure or
-  cancellation is never mistaken for a clean EOF. A handler that throws RESETs its pipe with the
-  failure message automatically. `closeRead()` abandons the read side: the peer's next send gets
-  EPIPE.
+- **Closing the sink, two flavors**: `sink.close()` = END — the peer's `receive` returns -1 once
+  drained. `sink.close(reason)` = **RESET** — the peer's pending data is discarded and its
+  parked/next `receive` **throws** the reason (Kotlin: `PipeResetException`; JS: rejection), so a
+  mid-stream failure or cancellation is never mistaken for a clean EOF. A handler that throws
+  RESETs its pipe with the failure message automatically. `source.close()` abandons the read side:
+  the peer's next send gets EPIPE.
 - **One receiver / one sender**: only one read and one write may be outstanding per pipe; a
   concurrent second call fails fast rather than queueing (overlapping calls would race the
   cursors, so that's always a bug). On the JS sink this is enforced, not a convention: while an
@@ -105,12 +109,12 @@ Small JS helpers on `ymix`: `open`, `onAccept` (replaces same-name handlers; ret
 `AcceptRegistration`), `utf8Encode` (QuickJS has no TextEncoder; a single
 string delegates to native `__utf8Encode`, the multi-arg concat form stays a small-input JS loop),
 `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
-**no separate `buffered(pipe)` wrapper**: the pipe itself is the okio-`Buffer`-style object (source
-and sink in one). Alongside the raw `send`/`receive`/`close`/`closeRead` it carries buffered reads
-(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2) and buffered
-writes (`writeInt`/`writeLong`/`writeBytes`/`writeUtf8`/`writeUtf8Range`/
-`writeUtf8Line`/`writeObjectAsJson`, `flush`) — the write-staging segment is allocated lazily, so a
-raw or read-only pipe pays nothing.
+**no separate `buffered(pipe)` wrapper**: each end is itself the okio-`Buffer`-style object.
+`pipe.source` carries the raw `receive` plus buffered reads
+(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2) and its
+`close()`; `pipe.sink` carries `send` plus buffered writes (`writeInt`/`writeLong`/`writeBytes`/
+`writeUtf8`/`writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`) and `close(reason?)` —
+the write-staging segment is allocated lazily, so a raw or read-only pipe pays nothing.
 
 Every read is a **thin native over the C `PipeBuf`** (`__pbRecv`/`__pbInt`/`__pbLong`/`__pbLine`/
 `__pbJson`/`__pbUtf8`): it returns the result when it is already buffered, else it parks the job
@@ -148,7 +152,7 @@ backpressure (a flush hit a full pipe), resuming via an internal continuation. R
 charges a full microtask round-trip (~0.4 µs) for `await` even on a non-thenable, plus a promise
 allocation per `async` call — per-token awaits made `writeObjectAsJson` ~70× slower than the native
 one-shot. `await` still works on every write (awaiting `undefined` is legal), but hot loops can
-skip the hop: `var p = pipe.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through
+skip the hop: `var p = pipe.sink.writeUtf8(s); if (p) await p;`. `writeObjectAsJson` serializes through
 the **resumable native encoder** (§2): the walk lives in C as explicit state, `__jsonEncFill` fills
 the segment per call, and the ~10-line JS pump only carries backpressure. Measured (min of 3) on a
 305 KB value: 431 ms (the old async JS walker) → **4 ms**, vs 6 ms for the whole-document
@@ -167,14 +171,14 @@ chunks **without ever holding the whole body in memory**. (There is deliberately
 it was a lot of machinery for a payload-tree saving that's marginal next to not buffering the raw
 bytes, which is what the streaming parser already gives us. Filter/reshape the parsed value in JS.)
 
-### Streaming parse (the primary path) — `pipe.readJsonObject/readJsonArray()`
+### Streaming parse (the primary path) — `source.readJsonObject/readJsonArray()`
 
 JSON reading is a method on the pipe, so one pipe reads a status line, headers, *and* the JSON body
 over the same inbound queue, sharing one buffer:
 ```js
-const status = await pipe.readUtf8Line();   // e.g. read some framing first...
-const data   = await pipe.readJsonObject(); // ...then parse the JSON body
-const tail   = await pipe.readUtf8();       // ...and keep reading whatever follows it
+const status = await pipe.source.readUtf8Line();   // e.g. read some framing first...
+const data   = await pipe.source.readJsonObject(); // ...then parse the JSON body
+const tail   = await pipe.source.readUtf8();       // ...and keep reading whatever follows it
 ```
 
 Two readers — `readJsonObject()` and `readJsonArray()`, one per container type. Each validates the
@@ -214,7 +218,7 @@ is why the parser reports a consumed count instead of demanding it swallow the w
 
 The stringify mirror of the streaming parser: a depth-first walk kept as explicit C state (frame
 stack + one in-flight token), so a value serializes into **fixed-size output chunks** without ever
-materializing the whole JSON text. `pipe.writeObjectAsJson(value)` drives it: each
+materializing the whole JSON text. `sink.writeObjectAsJson(value)` drives it: each
 `__jsonEncFill` fills the sink's 8 KB segment at C speed, and the JS pump flushes between fills
 (backpressure). The encoder object is a JS class — GC frees it, so abandoning one mid-emit is safe
 (same finalizer + `gc_mark` rules as the parser; it holds the frame containers and the pending
@@ -235,7 +239,7 @@ Native `JS_JSONStringify` + native UTF-16->UTF-8 (`JS_ToCStringLen`). Throws `Ty
 value has no JSON form.
 
 ```js
-pipe.send(__stringifyJson(payload));  // value -> bytes
+pipe.sink.send(__stringifyJson(payload));  // value -> bytes
 ```
 
 **Gotchas:**

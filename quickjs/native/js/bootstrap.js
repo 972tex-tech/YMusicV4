@@ -6,19 +6,21 @@
 //  - ymix.open(command) -> a pipe to Kotlin (this side is the client).
 //  - ymix.onAccept(command, async (pipe) => ...) -> handle pipes Kotlin opens to us (server
 //    side); returns { remove() } to unregister.
-//  - a pipe is the whole okio-Buffer-style object: the raw channel is send(buf,off,len) /
-//    receive(buf,off,len) (-> count or -1); buffered reads (readInt/readLong, readUtf8,
-//    readUtf8Line, readJsonObject/readJsonArray); buffered writes coalescing through a
-//    lazily-allocated staging segment (writeInt/writeLong, writeBytes, writeUtf8[Range|Line],
-//    writeObjectAsJson, flush()); then close(reason?) (flushes first) / closeRead() / .command.
+//  - a pipe is the PAIR OF ENDS this side holds, like pipe(2) fds: pipe.source (readable) and
+//    pipe.sink (writable), each closed independently — closing both releases the pipe.
+//    source: receive(buf,off,len) (-> count or -1), buffered reads (readInt/readLong, readUtf8,
+//    readUtf8Line, readJsonObject/readJsonArray), close() (host's next send gets EPIPE).
+//    sink: send(buf,off,len), buffered writes coalescing through a lazily-allocated staging
+//    segment (writeInt/writeLong, writeBytes, writeUtf8[Range|Line], writeObjectAsJson, flush()),
+//    close() = flush + END, close(reason) = RESET abort. Plus pipe.command / pipe.id.
 // Kotlin opens odd pipe ids, JS opens even ones, so the two id spaces never collide.
 //
 // MEMORY MODEL (see PIPE_STREAMING.md): the whole inbound direction lives in C — host writes go
 // straight into pooled C segments (never through JS), and every read is a thin native that
 // returns the result when it is already buffered or a Promise that C settles on a later write /
 // EOF / RESET. Hot callers can skip the microtask hop with
-// `var r = pipe.readX(); typeof r === "..." ? r : await r`. Only the OUTBOUND half is JS: the
-// staging segment, the partial-send park, and the DRAIN/EPIPE bookkeeping below.
+// `var r = pipe.source.readX(); typeof r === "..." ? r : await r`. Only the OUTBOUND half is JS:
+// the staging segment, the partial-send park, and the DRAIN/EPIPE bookkeeping below.
 
 (function () {
   // Encode one or more strings to UTF-8, concatenated. A single string delegates to the native
@@ -239,147 +241,153 @@
     return {
       id: id,
       command: command,
-      send: function (buffer, offset, len) {
-        checkWriteBusy();
-        return writeLock(send(buffer, offset, len));
-      },
-      closeRead: closeRead,
-      // No reason: flush staged writes, then half-close (END). With a reason: RESET = ABORT — no
-      // flush (the peer discards buffered data on reset anyway), allowed mid-write, and a parked
-      // send is failed rather than left hanging.
-      close: function (reason) {
-        if (reason !== undefined) {
-          wlen = 0;
-          var w = writer;
-          if (w) {
-            writer = null;
-            w.reject(new Error("send aborted: " + reason));
-          }
-          closeWrite(reason);
-          return;
-        }
-        checkWriteBusy();
-        var p = flushSink();
-        if (p)
-          return writeLock(
-            p.then(function () {
-              closeWrite(reason);
-            }),
-          );
-        closeWrite(reason);
-      },
-      flush: function () {
-        checkWriteBusy();
-        return writeLock(flushSink());
+
+      // ---- the readable end (C-owned buffer; value when already buffered, else a Promise C
+      // settles). close() abandons it: the host's next send gets EPIPE. ----
+      source: {
+        receive: function (buffer, offset, len) {
+          var o = offset || 0;
+          return __pbRecv(pb, buffer, o, len === undefined ? buffer.length - o : len);
+        },
+        readInt: function () {
+          return __pbInt(pb);
+        },
+        readLong: function () {
+          return __pbLong(pb);
+        }, // number: loses precision above 2^53
+        // strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF
+        readUtf8Line: function (strict) {
+          return __pbLine(pb, !!strict);
+        },
+        // stops at the value's end, leaving trailing bytes queued; root type checked on the first byte
+        readJsonObject: function () {
+          return __pbJson(pb, 1);
+        },
+        readJsonArray: function () {
+          return __pbJson(pb, 2);
+        },
+        readUtf8: function () {
+          return __pbUtf8(pb);
+        },
+        close: closeRead,
       },
 
-      // ---- reads (C-owned buffer; value when already buffered, else a Promise C settles) ----
-      receive: function (buffer, offset, len) {
-        var o = offset || 0;
-        return __pbRecv(pb, buffer, o, len === undefined ? buffer.length - o : len);
-      },
-      readInt: function () {
-        return __pbInt(pb);
-      },
-      readLong: function () {
-        return __pbLong(pb);
-      }, // number: loses precision above 2^53
-      // strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF
-      readUtf8Line: function (strict) {
-        return __pbLine(pb, !!strict);
-      },
-      // stops at the value's end, leaving trailing bytes queued; root type checked on the first byte
-      readJsonObject: function () {
-        return __pbJson(pb, 1);
-      },
-      readJsonArray: function () {
-        return __pbJson(pb, 2);
-      },
-      readUtf8: function () {
-        return __pbUtf8(pb);
-      },
-
-      // ---- buffered writes: undefined = done synchronously, a Promise = backpressure ----
-      writeBytes: function (b) {
-        checkWriteBusy();
-        ensureWbuf();
-        return writeLock(writeBytesFn(b));
-      },
-      // out-of-range throws rather than silently wrapping (DataView truncates mod 2^n)
-      writeInt: function (v) {
-        checkWriteBusy();
-        if (!Number.isInteger(v) || v < -2147483648 || v > 2147483647)
-          throw new RangeError("writeInt: " + v + " is not a signed 32-bit integer");
-        ensureWbuf();
-        if (wlen + 4 > wbuf.length) {
-          var p = flushSink();
-          if (p)
-            return writeLock(
-              p.then(function () {
-                wView.setInt32(wlen, v);
-                wlen += 4;
-              }),
-            );
-        }
-        wView.setInt32(wlen, v);
-        wlen += 4;
-      },
-      writeLong: function (v) {
-        checkWriteBusy();
-        var b = typeof v === "bigint" ? v : BigInt(Math.trunc(v));
-        if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn)
-          throw new RangeError("writeLong: " + b + " does not fit in a signed 64-bit long");
-        ensureWbuf();
-        if (wlen + 8 > wbuf.length) {
-          var p = flushSink();
-          if (p)
-            return writeLock(
-              p.then(function () {
-                wView.setBigInt64(wlen, b);
-                wlen += 8;
-              }),
-            );
-        }
-        wView.setBigInt64(wlen, b);
-        wlen += 8;
-      },
-      writeUtf8: function () {
-        checkWriteBusy();
-        ensureWbuf();
-        return writeLock(writeUtf8Parts(arguments));
-      },
-      writeUtf8Range: function (str, from, to) {
-        checkWriteBusy();
-        ensureWbuf();
-        return writeLock(writeUtf8Native(str, from, to));
-      },
-      writeUtf8Line: function () {
-        checkWriteBusy();
-        ensureWbuf();
-        var p = writeUtf8Parts(arguments);
-        return writeLock(
-          p
-            ? p.then(function () {
-                return putByte(10);
-              })
-            : putByte(10),
-        );
-      },
-      // matches JSON.stringify (a cycle throws TypeError); streams via the native encoder, never
-      // materializing the whole JSON string
-      writeObjectAsJson: function (value) {
-        checkWriteBusy();
-        ensureWbuf();
-        var enc = __jsonEncNew(value);
-        function pump() {
-          for (;;) {
-            wlen += __jsonEncFill(enc, wbuf, wlen);
-            if (__jsonEncDone(enc)) return;
+      // ---- the writable end (buffered writes: undefined = done synchronously, a Promise =
+      // backpressure). close() = END; close(reason) = RESET. ----
+      sink: {
+        send: function (buffer, offset, len) {
+          checkWriteBusy();
+          return writeLock(send(buffer, offset, len));
+        },
+        writeBytes: function (b) {
+          checkWriteBusy();
+          ensureWbuf();
+          return writeLock(writeBytesFn(b));
+        },
+        // out-of-range throws rather than silently wrapping (DataView truncates mod 2^n)
+        writeInt: function (v) {
+          checkWriteBusy();
+          if (!Number.isInteger(v) || v < -2147483648 || v > 2147483647)
+            throw new RangeError("writeInt: " + v + " is not a signed 32-bit integer");
+          ensureWbuf();
+          if (wlen + 4 > wbuf.length) {
             var p = flushSink();
-            if (p) return p.then(pump);
+            if (p)
+              return writeLock(
+                p.then(function () {
+                  wView.setInt32(wlen, v);
+                  wlen += 4;
+                }),
+              );
           }
-        }
-        return writeLock(pump());
+          wView.setInt32(wlen, v);
+          wlen += 4;
+        },
+        writeLong: function (v) {
+          checkWriteBusy();
+          var b = typeof v === "bigint" ? v : BigInt(Math.trunc(v));
+          if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn)
+            throw new RangeError("writeLong: " + b + " does not fit in a signed 64-bit long");
+          ensureWbuf();
+          if (wlen + 8 > wbuf.length) {
+            var p = flushSink();
+            if (p)
+              return writeLock(
+                p.then(function () {
+                  wView.setBigInt64(wlen, b);
+                  wlen += 8;
+                }),
+              );
+          }
+          wView.setBigInt64(wlen, b);
+          wlen += 8;
+        },
+        writeUtf8: function () {
+          checkWriteBusy();
+          ensureWbuf();
+          return writeLock(writeUtf8Parts(arguments));
+        },
+        writeUtf8Range: function (str, from, to) {
+          checkWriteBusy();
+          ensureWbuf();
+          return writeLock(writeUtf8Native(str, from, to));
+        },
+        writeUtf8Line: function () {
+          checkWriteBusy();
+          ensureWbuf();
+          var p = writeUtf8Parts(arguments);
+          return writeLock(
+            p
+              ? p.then(function () {
+                  return putByte(10);
+                })
+              : putByte(10),
+          );
+        },
+        // matches JSON.stringify (a cycle throws TypeError); streams via the native encoder,
+        // never materializing the whole JSON string
+        writeObjectAsJson: function (value) {
+          checkWriteBusy();
+          ensureWbuf();
+          var enc = __jsonEncNew(value);
+          function pump() {
+            for (;;) {
+              wlen += __jsonEncFill(enc, wbuf, wlen);
+              if (__jsonEncDone(enc)) return;
+              var p = flushSink();
+              if (p) return p.then(pump);
+            }
+          }
+          return writeLock(pump());
+        },
+        flush: function () {
+          checkWriteBusy();
+          return writeLock(flushSink());
+        },
+        // No reason: flush staged writes, then END. With a reason: RESET = ABORT — no flush (the
+        // peer discards buffered data on reset anyway), allowed mid-write, and a parked send is
+        // failed rather than left hanging.
+        close: function (reason) {
+          if (reason !== undefined) {
+            wlen = 0;
+            var w = writer;
+            if (w) {
+              writer = null;
+              w.reject(new Error("send aborted: " + reason));
+            }
+            closeWrite(reason);
+            return;
+          }
+          checkWriteBusy();
+          var p = flushSink();
+          if (p)
+            return writeLock(
+              p.then(function () {
+                closeWrite(reason);
+              }),
+            );
+          closeWrite(reason);
+        },
       },
 
       // ---- transport entry points (host -> us; the data path never comes through JS) ----
@@ -440,8 +448,8 @@
         return handler(pipe);
       })
       .catch(function (e) {
-        pipe.closeRead();
-        pipe.close(String((e && e.message) || e));
+        pipe.source.close();
+        pipe.sink.close(String((e && e.message) || e));
       }); // RESET: surface the failure
     return 0;
   };
@@ -511,19 +519,20 @@
     var pipe = ymix.open(command);
     // Delay as a big-endian 8-byte long — fixed width self-frames it (Kotlin reads it with okio
     // readLong).
-    pipe.writeLong(Math.max(0, Math.floor(Number(ms) || 0)));
-    pipe.flush();
+    pipe.sink.writeLong(Math.max(0, Math.floor(Number(ms) || 0)));
+    pipe.sink.flush();
     var buf = new Uint8Array(1);
     (async function () {
       try {
         for (;;) {
-          var n = await pipe.receive(buf, 0, 1);
+          var n = await pipe.source.receive(buf, 0, 1);
           if (n < 1) break; // cleared: host closed the pipe
           cb.apply(null, args);
           if (!repeat) break;
         }
       } finally {
-        pipe.close();
+        pipe.sink.close();
+        pipe.source.close();
       }
     })();
     return pipe; // handle; clear*() closes it
@@ -535,7 +544,7 @@
     return startTimer(cb, ms, "setInterval", true, Array.prototype.slice.call(arguments, 2));
   };
   globalThis.clearTimeout = function (handle) {
-    if (handle && handle.close) handle.close();
+    if (handle && handle.sink) handle.sink.close();
   };
   globalThis.clearInterval = globalThis.clearTimeout;
 })();

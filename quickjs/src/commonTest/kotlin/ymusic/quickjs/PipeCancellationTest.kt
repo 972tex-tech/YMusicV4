@@ -33,7 +33,7 @@ class PipeCancellationTest {
             val report = CompletableDeferred<String>()
             rt.onAccept("report") { p ->
                 val b = Buffer()
-                while (p.receive(b, 8192L) != -1L) { /* to EOF */ }
+                while (p.source.receive(b, 8192L) != -1L) { /* to EOF */ }
                 report.complete(b.readUtf8())
             }
             rt.load(
@@ -43,22 +43,22 @@ class PipeCancellationTest {
                   var buf = new Uint8Array(8192), total = 0, err = "none";
                   try {
                     for (;;) {
-                      var r = pipe.receive(buf, 0, buf.length);
+                      var r = pipe.source.receive(buf, 0, buf.length);
                       var n = typeof r === "number" ? r : await r;
                       if (n < 0) break;
                       total += n;
                     }
                   } catch (e) { err = e.message; }
                   var out = ymix.open("report");
-                  out.send(ymix.utf8Encode(total + "|" + err));
-                  out.close();
+                  out.sink.send(ymix.utf8Encode(total + "|" + err));
+                  out.sink.close();
                 });
                 """.trimIndent(),
             )
             val pipe = rt.openPipe("sink")
             val payload = Buffer()
             repeat(200 * 1024) { payload.writeByte(it and 0xFF) }
-            val sender = launch { pipe.send(payload, payload.size) }
+            val sender = launch { pipe.sink.send(payload, payload.size) }
             withContext(Dispatchers.Default) { delay(300) } // real time: park at the 64 KB cap
             sender.cancelAndJoin()
 
@@ -70,7 +70,7 @@ class PipeCancellationTest {
             assertTrue(err.startsWith("send aborted mid-stream:"), "peer saw: $err")
 
             // ...and this side has declared itself done writing — no silent splicing.
-            assertFailsWith<IllegalStateException> { pipe.send(Buffer().writeUtf8("SENTINEL"), 8L) }
+            assertFailsWith<IllegalStateException> { pipe.sink.send(Buffer().writeUtf8("SENTINEL"), 8L) }
         } finally {
             rt.close()
         }
@@ -85,7 +85,7 @@ class PipeCancellationTest {
         val rt = QuickJsRuntime.create()
         rt.load("""ymix.onAccept("silent", (pipe) => { globalThis.__keep = pipe; });""")
         val pipe = rt.openPipe("silent")
-        val parked = async(Dispatchers.Default) { runCatching { pipe.receive(Buffer(), 4L) } }
+        val parked = async(Dispatchers.Default) { runCatching { pipe.source.receive(Buffer(), 4L) } }
         withContext(Dispatchers.Default) { delay(200) } // real time: let the receive park
 
         val closer = launch(Dispatchers.Default) {
@@ -115,9 +115,9 @@ class PipeCancellationTest {
                 """
                 ymix.onAccept("sink", async (pipe) => {
                   var buf = new Uint8Array(4096);
-                  var r = pipe.receive(buf, 0, buf.length);
+                  var r = pipe.source.receive(buf, 0, buf.length);
                   if (typeof r !== "number") await r;
-                  pipe.closeRead(); // resolves in the pump of the host's first big write
+                  pipe.source.close(); // resolves in the pump of the host's first big write
                 });
                 """.trimIndent(),
             )
@@ -125,7 +125,7 @@ class PipeCancellationTest {
             val payload = Buffer()
             repeat(200 * 1024) { payload.writeByte(it and 0xFF) }
             val result = withContext(Dispatchers.Default) {
-                withTimeout(10_000) { runCatching { pipe.send(payload, payload.size) } }
+                withTimeout(10_000) { runCatching { pipe.sink.send(payload, payload.size) } }
             }
             assertTrue(result.exceptionOrNull() is BrokenPipeException, "expected EPIPE, got $result")
         } finally {
@@ -133,7 +133,7 @@ class PipeCancellationTest {
         }
     }
 
-    /** `finally { pipe.close() }` on an already-cancelled job must still half-close the pipe:
+    /** `finally { pipe.sink.close() }` on an already-cancelled job must still half-close the pipe:
      *  the JS peer's read must see the END/RESET instead of waiting forever on a pipe whose
      *  Kotlin side silently skipped its own cleanup. */
     @Test
@@ -143,7 +143,7 @@ class PipeCancellationTest {
             val report = CompletableDeferred<String>()
             rt.onAccept("report") { p ->
                 val b = Buffer()
-                while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+                while (p.source.receive(b, 64L) != -1L) { /* to EOF */ }
                 report.complete(b.readUtf8())
             }
             rt.load(
@@ -152,13 +152,13 @@ class PipeCancellationTest {
                   var out = ymix.open("report");
                   try {
                     var buf = new Uint8Array(64);
-                    var r = pipe.receive(buf, 0, buf.length);
+                    var r = pipe.source.receive(buf, 0, buf.length);
                     var n = typeof r === "number" ? r : await r;
-                    out.send(ymix.utf8Encode("read:" + n));
+                    out.sink.send(ymix.utf8Encode("read:" + n));
                   } catch (e) {
-                    out.send(ymix.utf8Encode("error:" + e.message));
+                    out.sink.send(ymix.utf8Encode("error:" + e.message));
                   }
-                  out.close();
+                  out.sink.close();
                 });
                 """.trimIndent(),
             )
@@ -167,7 +167,7 @@ class PipeCancellationTest {
                 try {
                     awaitCancellation()
                 } finally {
-                    pipe.close("caller cancelled") // job is cancelled HERE — must still RESET
+                    pipe.sink.close("caller cancelled") // job is cancelled HERE — must still RESET
                 }
             }
             withContext(Dispatchers.Default) { delay(200) } // real time: let JS park its receive
@@ -193,7 +193,7 @@ class PipeCancellationTest {
             val report = CompletableDeferred<String>()
             rt.onAccept("report") { p ->
                 val b = Buffer()
-                while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+                while (p.source.receive(b, 64L) != -1L) { /* to EOF */ }
                 report.complete(b.readUtf8())
             }
             rt.load(
@@ -203,13 +203,13 @@ class PipeCancellationTest {
                   var out = ymix.open("report");
                   try {
                     var buf = new Uint8Array(64);
-                    var r = pipe.receive(buf, 0, buf.length);
+                    var r = pipe.source.receive(buf, 0, buf.length);
                     var n = typeof r === "number" ? r : await r;
-                    out.send(ymix.utf8Encode("read:" + n));
+                    out.sink.send(ymix.utf8Encode("read:" + n));
                   } catch (e) {
-                    out.send(ymix.utf8Encode("error:" + e.message));
+                    out.sink.send(ymix.utf8Encode("error:" + e.message));
                   }
-                  out.close();
+                  out.sink.close();
                 })()
                 """.trimIndent(),
             )
@@ -226,17 +226,17 @@ class PipeCancellationTest {
         try {
             rt.load("""ymix.onAccept("later", (pipe) => { globalThis.__later = pipe; });""")
             val pipe = rt.openPipe("later")
-            val parked = launch { pipe.receive(Buffer(), 16L) }
+            val parked = launch { pipe.source.receive(Buffer(), 16L) }
             withContext(Dispatchers.Default) { delay(200) } // real time: let it park
             parked.cancelAndJoin()
 
             // The abort closed our read end: this side's next receive is a misuse...
-            assertFailsWith<IllegalStateException> { pipe.receive(Buffer(), 16L) }
+            assertFailsWith<IllegalStateException> { pipe.source.receive(Buffer(), 16L) }
             // ...and the peer's next send fails with EPIPE instead of writing into the void.
             val report = CompletableDeferred<String>()
             rt.onAccept("report") { p ->
                 val b = Buffer()
-                while (p.receive(b, 64L) != -1L) { /* to EOF */ }
+                while (p.source.receive(b, 64L) != -1L) { /* to EOF */ }
                 report.complete(b.readUtf8())
             }
             rt.load(
@@ -244,10 +244,10 @@ class PipeCancellationTest {
                 (function () {
                   var out = ymix.open("report");
                   var p;
-                  try { p = __later.send(ymix.utf8Encode("anyone?")); } catch (e) { p = Promise.reject(e); }
+                  try { p = __later.sink.send(ymix.utf8Encode("anyone?")); } catch (e) { p = Promise.reject(e); }
                   Promise.resolve(p).then(
-                    function () { out.send(ymix.utf8Encode("accepted")); out.close(); },
-                    function (e) { out.send(ymix.utf8Encode(e.message)); out.close(); });
+                    function () { out.sink.send(ymix.utf8Encode("accepted")); out.sink.close(); },
+                    function (e) { out.sink.send(ymix.utf8Encode(e.message)); out.sink.close(); });
                 })()
                 """.trimIndent(),
             )

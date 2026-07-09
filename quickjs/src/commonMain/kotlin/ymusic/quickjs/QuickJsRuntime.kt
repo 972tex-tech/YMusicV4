@@ -90,10 +90,10 @@ class QuickJsRuntime private constructor(
     suspend fun openPipe(command: String): Pipe = withContext(engineDispatcher) {
         val id = nextId
         nextId += 2
-        val pipe = PipeImpl(id, command)
+        val impl = PipeImpl(id, command)
         // Registered before open() so anything crossing during the call finds the pipe; dropped
         // again on refusal/throw so a failed open never dangles in the registry.
-        pipes[id] = pipe
+        pipes[id] = impl
         val rc = try {
             engine.open(id, command)
         } catch (e: Throwable) {
@@ -104,27 +104,27 @@ class QuickJsRuntime private constructor(
             pipes.remove(id)
             throw QuickJsException("open(\"$command\") refused: no JS handler")
         }
-        pipe
+        impl.pipe
     }
 
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
     internal fun onOpen(id: Int, command: String): Int {
         val handler = synchronized(acceptsLock) { accepts[command] } ?: return -1
-        val pipe = PipeImpl(id, command)
-        pipes[id] = pipe
+        val impl = PipeImpl(id, command)
+        pipes[id] = impl
         scope.launch {
             try {
-                handler(pipe)
+                handler(impl.pipe)
             } catch (e: CancellationException) {
                 // Real cancellation propagates; a CancellationException on a still-active job (e.g.
                 // withTimeout inside the handler) is a failure and RESETs the pipe like any other.
                 if (!isActive) throw e
-                pipe.closeRead()
-                pipe.close(e.message ?: "handler failed")
+                impl.closeRead()
+                impl.closeWrite(e.message ?: "handler failed")
             } catch (e: Throwable) {
-                pipe.closeRead()
-                pipe.close(e.message ?: "handler failed") // RESET: surface the failure to JS
+                impl.closeRead()
+                impl.closeWrite(e.message ?: "handler failed") // RESET: surface the failure to JS
             }
         }
         return 0
@@ -138,7 +138,10 @@ class QuickJsRuntime private constructor(
 
     internal fun onDrain(id: Int) { pipes[id]?.onDrain() }
 
-    private inner class PipeImpl(val id: Int, override val command: String) : Pipe {
+    private inner class PipeImpl(val id: Int, val command: String) : PipeSource, PipeSink {
+        /** The public pair of ends handed to callers — both views over this one state machine. */
+        val pipe = Pipe(this, this, command)
+
         // ---- inbound: JS writes, we buffer (okio segment pool) & read ----
         private val inbound = Buffer()
         private val cursor = Buffer.UnsafeCursor()
@@ -356,7 +359,11 @@ class QuickJsRuntime private constructor(
 
         // NonCancellable: these are cleanup calls invoked from `finally`, so they must run even
         // when the caller's job is already cancelled. The closed latch skips them after teardown.
-        override suspend fun close(reason: String?) {
+        override suspend fun close(reason: String?) = closeWrite(reason) // PipeSink
+
+        override suspend fun close() = closeRead() // PipeSource
+
+        suspend fun closeWrite(reason: String?) {
             if (closed.load()) return
             withContext(engineDispatcher + NonCancellable) {
                 if (!weEnded) {
@@ -367,7 +374,7 @@ class QuickJsRuntime private constructor(
             }
         }
 
-        override suspend fun closeRead() {
+        suspend fun closeRead() {
             if (closed.load()) return
             withContext(engineDispatcher + NonCancellable) { closeReadNow(null) }
         }

@@ -38,7 +38,7 @@ private const val MIN_INTERVAL_MS = 4L
  * `setTimeout` fires once.
  */
 private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
-    val source = pipe.asBufferedSource()
+    val source = pipe.source.asBufferedSource()
     val ms = readMillis(source).let { if (repeat) it.coerceAtLeast(MIN_INTERVAL_MS) else it }
     coroutineScope {
         val cleared = async { source.awaitEof() } // completes when JS closes the pipe (clear*)
@@ -49,13 +49,14 @@ private suspend fun runTimer(pipe: Pipe, repeat: Boolean) {
                     onTimeout(ms) { false }    // elapsed → fire
                 }
                 if (stopped) break
-                pipe.send(Buffer().writeByte(TICK), 1L)
+                pipe.sink.send(Buffer().writeByte(TICK), 1L)
             } while (repeat)
         } finally {
             cleared.cancel()
         }
     }
-    pipe.close()
+    pipe.sink.close()
+    pipe.source.close()
 }
 
 /** First frame is the delay as a big-endian 8-byte long (okio `readLong`); the fixed width
