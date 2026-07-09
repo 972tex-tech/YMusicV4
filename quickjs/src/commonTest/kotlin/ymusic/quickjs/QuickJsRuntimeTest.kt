@@ -1302,6 +1302,30 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** The KOTLIN mirror of [reset_close_aborts_a_parked_write]: a Kotlin sink.close() while our own
+     *  send is parked at the cap must fail that send with [BrokenPipeException], not leave it hung
+     *  forever (audit KM1). */
+    @Test
+    fun close_aborts_a_parked_kotlin_send() = runTest {
+        val rt = QuickJsRuntime.create()
+        // The handler never reads, so Kotlin's send fills the 64 KB cap and parks.
+        rt.load("""ymix.onAccept("blackhole", async (pipe) => { globalThis.__keep = pipe; });""")
+        try {
+            val pipe = rt.openPipe("blackhole")
+            val big = Buffer().write(ByteArray(200_000))
+            val send = async(Dispatchers.Default) { runCatching { pipe.sink.send(big, big.size) } }
+            withContext(Dispatchers.Default) { delay(200) } // let the send park at the cap
+            pipe.sink.close() // must fail the parked send, not hang
+            val r = withContext(Dispatchers.Default) { withTimeout(5_000) { send.await() } }
+            assertTrue(
+                r.isFailure && r.exceptionOrNull() is BrokenPipeException,
+                "the parked send must fail with BrokenPipeException, got $r",
+            )
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A RESET is terminal for the read side: every receive() after the first re-throws
      *  [PipeResetException] (the KDoc contract), not a read-closed IllegalStateException. */
     @Test
