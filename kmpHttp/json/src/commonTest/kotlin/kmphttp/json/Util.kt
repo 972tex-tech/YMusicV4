@@ -4,8 +4,8 @@ import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import okio.Buffer
 
-fun String.toJsonReader(): JsonReader {
-    val bytes = encodeToByteArray()
+fun ByteArray.toJsonReader(): JsonReader {
+    val bytes = this
     val source = object : AsyncSource {
         var totalRead = 0
         override suspend fun read(sink: Buffer, byteCount: Long): Long {
@@ -20,6 +20,8 @@ fun String.toJsonReader(): JsonReader {
     }
     return JsonReader(BufferedAsyncSource(source))
 }
+
+fun String.toJsonReader(): JsonReader = encodeToByteArray().toJsonReader()
 
 /** Like [toJsonReader] but every read returns at most [chunk] bytes — forces refill boundaries. */
 fun String.toJsonReaderChunked(chunk: Int): JsonReader {

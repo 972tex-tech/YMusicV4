@@ -7,11 +7,23 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class JsonReaderTest {
+
+    /** readObject stops at the root value's end: trailing NON-JSON bytes (e.g. the binary framing
+     *  that follows a protocol head) stay in the source, byte-exact — even bytes that look like
+     *  JSON whitespace. */
+    @Test
+    fun read_object_leaves_trailing_bytes_in_the_source() = runTest {
+        val tail = byteArrayOf(0x20, 0x0A, 0x00, 0x00, -1, -1, -1, -1, 0x7B)
+        val reader = ("""{"a":1}""".encodeToByteArray() + tail).toJsonReader()
+        assertEquals(1, reader.readObject()["a"]!!.jsonPrimitive.int)
+        assertContentEquals(tail, reader.source.readFully().readByteArray())
+    }
 
     // ==================== Step-by-step API tests ====================
 
