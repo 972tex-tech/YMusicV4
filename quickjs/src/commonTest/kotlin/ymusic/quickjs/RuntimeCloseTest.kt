@@ -64,4 +64,35 @@ class RuntimeCloseTest {
         val result = worker.await()
         assertTrue(result.isFailure, "teardown must fail the parked receive, got $result")
     }
+
+    /** openPipe()/load() had no close-guard at all, so after close() they dispatched to the closed
+     *  engine thread and surfaced kotlinx's RejectedExecution as a CancellationException (or, when
+     *  racing, called into the freed engine). They must fail-fast as QuickJsException like the data
+     *  ops do. */
+    @Test
+    fun open_pipe_and_load_after_runtime_close_fail_fast() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.close()
+        assertFailsWith<QuickJsException> { rt.openPipe("anything") }
+        assertFailsWith<QuickJsException> { rt.load("1 + 1") }
+    }
+
+    /** The reaped-pipe UAF (audit K2): a pipe reaped by maybeReap (our END + peer END) has left the
+     *  pipes map, so close()'s failPending never poisons it — yet the caller still holds it and runs
+     *  `finally { source.close() }`. Racing that against runtime close() must stay off the freed
+     *  engine (the engine-thread `closed` recheck, since the own-side flags can't guard here).
+     *  Probabilistic — most valuable under the native/ASan run. */
+    @Test
+    fun reaped_pipe_close_racing_runtime_close_is_safe() = runTest {
+        repeat(30) {
+            val rt = QuickJsRuntime.create()
+            rt.load("""ymix.onAccept("done", async (p) => { await p.sink.close(); });""")
+            val pipe = rt.openPipe("done")
+            pipe.sink.close() // our END; the handler's END makes writeEnded -> reaped
+            withContext(Dispatchers.Default) { delay(10) } // let the JS END cross so the pipe reaps
+            val worker = async(Dispatchers.Default) { runCatching { pipe.source.close() } }
+            rt.close()
+            assertTrue(worker.await().isSuccess, "reaped-pipe source.close() racing close() must not throw")
+        }
+    }
 }

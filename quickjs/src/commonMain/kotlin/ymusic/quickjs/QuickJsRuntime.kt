@@ -69,8 +69,16 @@ class QuickJsRuntime private constructor(
      * Evaluate [script] synchronously (to load engine code / register JS `ymix.onAccept` handlers).
      * Returns the completion value's string form, or null; throws [QuickJsException] on a JS error.
      */
-    suspend fun load(script: String, filename: String = "<load>"): String? =
-        withContext(engineDispatcher) { engine.evalSync(script, filename) }
+    suspend fun load(script: String, filename: String = "<load>"): String? {
+        if (closed.load()) throw QuickJsException("runtime closed")
+        return withContext(engineDispatcher) {
+            // Re-check ON the engine thread: a close() racing the hop CASes `closed` then enqueues
+            // its teardown (engine.destroy()) — if that landed first, a stale pre-hop read must not
+            // call into the freed engine. The single-thread dispatcher serializes the two blocks.
+            if (closed.load()) throw QuickJsException("runtime closed")
+            engine.evalSync(script, filename)
+        }
+    }
 
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
@@ -87,24 +95,30 @@ class QuickJsRuntime private constructor(
 
     /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards).
      *  Fails AT THE OPEN — like ECONNREFUSED — when no JS handler serves [command]. */
-    suspend fun openPipe(command: String): Pipe = withContext(engineDispatcher) {
-        val id = nextId
-        nextId += 2
-        val impl = PipeImpl(id, command)
-        // Registered before open() so anything crossing during the call finds the pipe; dropped
-        // again on refusal/throw so a failed open never dangles in the registry.
-        pipes[id] = impl
-        val rc = try {
-            engine.open(id, command)
-        } catch (e: Throwable) {
-            pipes.remove(id)
-            throw e
+    suspend fun openPipe(command: String): Pipe {
+        if (closed.load()) throw QuickJsException("runtime closed")
+        return withContext(engineDispatcher) {
+            // Re-check on the engine thread (see [load]): without this a openPipe racing close()
+            // runs engine.open() on the destroyed engine and re-populates the cleared pipes map.
+            if (closed.load()) throw QuickJsException("runtime closed")
+            val id = nextId
+            nextId += 2
+            val impl = PipeImpl(id, command)
+            // Registered before open() so anything crossing during the call finds the pipe; dropped
+            // again on refusal/throw so a failed open never dangles in the registry.
+            pipes[id] = impl
+            val rc = try {
+                engine.open(id, command)
+            } catch (e: Throwable) {
+                pipes.remove(id)
+                throw e
+            }
+            if (rc < 0) {
+                pipes.remove(id)
+                throw QuickJsException("open(\"$command\") refused: no JS handler")
+            }
+            impl.pipe
         }
-        if (rc < 0) {
-            pipes.remove(id)
-            throw QuickJsException("open(\"$command\") refused: no JS handler")
-        }
-        impl.pipe
     }
 
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
@@ -239,6 +253,10 @@ class QuickJsRuntime private constructor(
             // (dispatching there is at best a fallback thread, at worst an error).
             if (closed.load()) throw QuickJsException("runtime closed")
             return withContext(engineDispatcher) {
+                // A REAPED pipe (left the pipes map on maybeReap) is not poisoned by failPending, so
+                // its own-side flags can't guard a race with teardown — the engine-thread `closed`
+                // recheck does (a receive draining buffered data still calls engine.drain).
+                if (closed.load()) throw QuickJsException("runtime closed")
                 require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
                 if (byteCount == 0L) return@withContext 0L
                 check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
@@ -283,6 +301,7 @@ class QuickJsRuntime private constructor(
         override suspend fun send(source: Buffer, byteCount: Long) {
             if (closed.load()) throw QuickJsException("runtime closed")
             withContext(engineDispatcher) {
+                if (closed.load()) throw QuickJsException("runtime closed") // reaped-pipe race, see receive()
                 require(byteCount in 0..source.size) {
                     "byteCount $byteCount out of range (buffer size ${source.size})"
                 }
@@ -369,6 +388,10 @@ class QuickJsRuntime private constructor(
             // dispatcher hop on repeated closes (cleanup paths close idempotently by design).
             if (closed.load() || weEnded) return
             withContext(engineDispatcher + NonCancellable) {
+                // A reaped pipe's weEnded may already be true (reaped via our END); but if reaped via
+                // peer-END + our-still-open-write, the `closed` recheck is what stops closeWrite from
+                // reaching a destroyed engine when it lands behind teardown.
+                if (closed.load()) return@withContext
                 if (!weEnded) {
                     weEnded = true
                     engine.closeWrite(id, reason)
@@ -379,7 +402,13 @@ class QuickJsRuntime private constructor(
 
         suspend fun closeRead() {
             if (closed.load() || readClosed) return
-            withContext(engineDispatcher + NonCancellable) { closeReadNow(null) }
+            withContext(engineDispatcher + NonCancellable) {
+                // The reaped-pipe UAF: a reaped pipe (readClosed still false) is not poisoned by
+                // failPending, so only this engine-thread recheck stops closeReadNow → engine.closeRead
+                // on the destroyed engine when the everyday `finally { source.close() }` races close().
+                if (closed.load()) return@withContext
+                closeReadNow(null)
+            }
         }
 
         /** [cause] is the aborted receive's failure when the abort path (not an explicit
