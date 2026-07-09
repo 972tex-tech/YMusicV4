@@ -827,7 +827,8 @@ class QuickJsRuntimeTest {
     }
 
     /** After close() you've declared yourself done writing — a later send() is a misuse and throws
-     *  IllegalStateException (distinct from EPIPE, which is the peer closing its read end). */
+     *  [SendClosedException] (a self-caused IllegalStateException, distinct from EPIPE /
+     *  [BrokenPipeException], which is the peer closing its read end). */
     @Test
     fun send_after_close_is_fatal() = runTest {
         val rt = QuickJsRuntime.create()
@@ -835,7 +836,7 @@ class QuickJsRuntimeTest {
         try {
             val pipe = rt.openPipe("echo")
             pipe.sink.close()
-            assertFailsWith<IllegalStateException> { pipe.sendBytes(byteArrayOf(1, 2, 3)) }
+            assertFailsWith<SendClosedException> { pipe.sendBytes(byteArrayOf(1, 2, 3)) }
         } finally {
             rt.close()
         }
@@ -1303,8 +1304,8 @@ class QuickJsRuntimeTest {
     }
 
     /** The KOTLIN mirror of [reset_close_aborts_a_parked_write]: a Kotlin sink.close() while our own
-     *  send is parked at the cap must fail that send with [BrokenPipeException], not leave it hung
-     *  forever (audit KM1). */
+     *  send is parked at the cap must fail that send with [SendClosedException], not leave it hung
+     *  forever (audit KM1). Self-caused (our close), so NOT EPIPE / [BrokenPipeException]. */
     @Test
     fun close_aborts_a_parked_kotlin_send() = runTest {
         val rt = QuickJsRuntime.create()
@@ -1318,8 +1319,8 @@ class QuickJsRuntimeTest {
             pipe.sink.close() // must fail the parked send, not hang
             val r = withContext(Dispatchers.Default) { withTimeout(5_000) { send.await() } }
             assertTrue(
-                r.isFailure && r.exceptionOrNull() is BrokenPipeException,
-                "the parked send must fail with BrokenPipeException, got $r",
+                r.isFailure && r.exceptionOrNull() is SendClosedException,
+                "the parked send must fail with SendClosedException, got $r",
             )
         } finally {
             rt.close()

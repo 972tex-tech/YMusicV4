@@ -69,7 +69,9 @@ interface PipeSink {
      * suspending while the peer's buffer is full. Each okio segment crosses the FFI as-is (the
      * segment array is pinned for the call, zero-copy) and is consumed only after the peer fully
      * accepted it, so backpressure suspends here with nothing lost. [source] must not be touched
-     * until this returns. Throws [BrokenPipeException] if the peer closed its source.
+     * until this returns. Throws [BrokenPipeException] if the peer closed its source; throws
+     * [SendClosedException] if this write side was closed (before the call, or by a concurrent
+     * [close] while the send was parked at the cap).
      */
     suspend fun send(source: Buffer, byteCount: Long)
 
@@ -77,14 +79,22 @@ interface PipeSink {
      * Close the writable end: END when [reason] is null (the peer's receive returns -1 once
      * drained), RESET otherwise (the peer's pending data is discarded and its parked/next receive
      * throws [PipeResetException] carrying the reason — mid-stream failure, cancellation).
-     * Afterwards [send] is a misuse and throws [IllegalStateException] (you've declared yourself
-     * done writing). Idempotent.
+     * Afterwards [send] is a misuse and throws [SendClosedException] (you've declared yourself done
+     * writing). A [close] that lands while a send is parked at the cap fails that send the same
+     * way. Idempotent.
      */
     suspend fun close(reason: String? = null)
 }
 
-/** Thrown by [PipeSink.send] when the peer has closed its source — the Linux `EPIPE` / `SIGPIPE`. */
+/** Thrown by [PipeSink.send] when the peer has closed its source — the Linux `EPIPE` / `SIGPIPE`. A
+ *  PEER-caused condition, distinct from [SendClosedException] (this side closed its own write). */
 class BrokenPipeException(message: String = "broken pipe") : RuntimeException(message)
+
+/** Thrown by [PipeSink.send] when THIS side's write end is closed: the send was issued after
+ *  [PipeSink.close], or a concurrent [PipeSink.close] aborted it while it was parked at the cap. A
+ *  self-caused misuse (hence an [IllegalStateException]), distinct from the peer-caused
+ *  [BrokenPipeException] (EPIPE). */
+class SendClosedException(message: String) : IllegalStateException(message)
 
 /** Thrown by [PipeSource.receive] when the peer closed the pipe with a RESET [reason] (mid-stream
  *  failure or cancellation) rather than a clean END. */

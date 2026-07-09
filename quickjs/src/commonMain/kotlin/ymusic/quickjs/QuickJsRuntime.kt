@@ -307,7 +307,7 @@ class QuickJsRuntime private constructor(
                 }
                 if (byteCount == 0L) return@withContext
                 check(!sending) { "concurrent send() on the same pipe" }
-                check(!weEnded) { "send() after close()" } // writing past our own half-close is a misuse
+                if (weEnded) throw SendClosedException("send() after close()") // writing past our own half-close
                 sending = true
                 drainCredit = false
                 try {
@@ -397,9 +397,10 @@ class QuickJsRuntime private constructor(
                     engine.closeWrite(id, reason)
                     // A send parked at the cap can't complete once our write side is closed — fail
                     // it rather than leave it hung (mirrors the JS sink failing a parked send on
-                    // close). weEnded is already set, so the send's catch won't re-RESET.
+                    // close). Self-caused (our close), so SendClosedException — NOT the peer-caused
+                    // BrokenPipeException. weEnded is already set, so the send's catch won't re-RESET.
                     val w = writer
-                    if (w != null) { writer = null; w.resumeWithException(BrokenPipeException("send aborted by close()")) }
+                    if (w != null) { writer = null; w.resumeWithException(SendClosedException("send aborted by close()")) }
                     maybeReap()
                 }
             }
