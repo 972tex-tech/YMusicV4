@@ -17,9 +17,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "YMusicV4"
 
-//include(":common")
-//include(":commonUi")
-//include(":androidApp")
+// include(":common")
+// include(":commonUi")
+// include(":androidApp")
 include(":kmpCommon")
 include(":kmpHttp:core")
 include(":kmpHttp:json")
@@ -28,5 +28,6 @@ include(":kmpHttp:curl")
 include(":kmpFfmpeg")
 include(":media-store")
 include(":media-scanner")
+include(":dynamic-engine")
 include(":quickjs")
-//includeBuild("YMusicLegacy")
+// includeBuild("YMusicLegacy")

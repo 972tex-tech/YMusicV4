@@ -1,0 +1,370 @@
+# Host bridge protocols — HTTP / FS / SQL (design, for review)
+
+Application-layer protocols the app implements **on top of** `:quickjs` pipes (see
+[`PIPE_STREAMING.md`](PIPE_STREAMING.md)). Not part of the module — the module deliberately ships
+only the pipe transport + native JSON. This doc pins down the byte protocol so the Kotlin server
+side and the JS client side agree. **Design only — nothing here is implemented yet.**
+
+Direction throughout: the QuickJS **engine (JS) is the client** — it wants a capability. **Kotlin is
+the server** — it owns the network, the filesystem, and the database. JS `ymix.open(command)`,
+Kotlin `onAccept(command) { pipe -> ... }`.
+
+---
+
+## 0. Shared envelope
+
+The pipe's own buffered ends (`pipe.source`/`pipe.sink`) drive everything. There are two message
+shapes; each command picks one:
+
+- **One-shot** (HTTP, FS metadata) — one pipe = one request/response, each direction delimited by
+  **EOF** (half-close). Used when the whole request precedes the whole response.
+- **Session** (file I/O §2.1, SQLite §3) — one pipe = one open handle held across **many** ops until
+  `close`. The pipe never half-closes between ops, so EOF can't delimit them; messages are
+  **length-framed** instead: a head line + exactly `len` body bytes when the head declares one.
+
+### One pipe = one operation (or one session)
+
+Each pipe **is** the correlation handle — no request-ids in the protocol. Concurrent calls =
+concurrent pipes; the mux keeps them independent. A one-shot pipe carries a single exchange; a
+session pipe carries a whole handle's lifetime.
+
+### One-shot framing (EOF-delimited)
+
+The one-shot commands (HTTP, FS metadata) are strictly *client sends the whole request, then the
+server sends the whole response* — never full-duplex on one pipe. That lets each direction be
+delimited by its own EOF:
+
+```
+client:  write head line ─┬─ [write body bytes] ─── close()   // half-close = "request complete"
+server:                   └───────── (reads) ──── write head line ─┬─ [write body bytes] ─── close()
+client:                                        (reads response) ───┘
+```
+
+- **Head** = one **compact** JSON object. It is self-framing — the JS `readJsonObject` and the
+  Kotlin `JsonReader` (`:kmpHttp:json`, over the pipe's async source) both stop exactly at the
+  value's end, leaving what follows readable — so no terminator is needed; a trailing `\n` is
+  optional where line-reading is more convenient. Ordered multimaps (HTTP headers) are arrays of
+  `[name, value]` pairs.
+- **Body** = raw bytes after the head line, until that direction's EOF (the peer's half-close).
+  Body meaning is per-protocol: raw entity bytes (HTTP, file), or **JSONL** — one JSON value per
+  line — for row/entry streams (SQL rows, directory listings). JSONL is what keeps a huge result set
+  from ever being held whole: read a line, parse it (`__parseJson` on the line, or the streaming
+  `readJsonObject`), emit it, drop it.
+- If an operation has **no body** in a direction, that side writes only the head line then
+  `close()`s; the peer reads the head then sees immediate EOF.
+
+### Errors — two channels, deliberately
+
+1. **Operation-level errors that still produced a well-formed answer** ride in the **response head**:
+   HTTP `status`, or `{"ok":false,"code":"ENOENT","error":"..."}`. The client always gets structured
+   info — a 404, a constraint violation, a missing file are *normal responses*, not exceptions.
+2. **Transport / mid-stream failures** (DNS failure, socket reset, disk I/O error mid-body,
+   cancellation) use a pipe **RESET** — `sink.close(reason)` with a non-null reason string.
+
+✅ **RESET is first-class in the transport (§4 — landed).** `sink.close(reason)` crosses the boundary;
+the peer's pending data is discarded and its parked/next read **throws** the reason (Kotlin:
+`PipeResetException`; JS: the promise rejects) instead of faking a clean EOF. A handler that throws
+RESETs its pipe with the failure message automatically. So a mid-stream failure simply throws on
+the next read; the length declaration for raw bodies and the terminal sentinel line for JSONL
+bodies (`{"_end":…}` / `{"_error":…}`) are belt-and-suspenders, not load-bearing.
+
+### Cancellation
+
+Client abandons an in-flight call → it RESETs its pipe (`sink.close(reason)`), the server's read
+throws the reason, and it aborts the underlying call/query/read. (Supported since §4 landed;
+pair it with `source.close()` to also EPIPE a server that is mid-write.)
+
+---
+
+## 1. HTTP  (`command = "http"`)  — *implemented in `:dynamic-engine`*
+
+One **control pipe** per exchange plus, when the request has a body, one **body pipe** — control
+never carries bulk data, so the cancel signal can never queue behind body bytes. Heads are compact
+**JSON** (self-framing: `readJsonObject` / `JsonReader` stop at the value's end); both bodies are
+**EOF-delimited raw bytes** — no framing anywhere. Headers cross as an ordered
+`[["name","value"], …]` multimap (a repeated `Set-Cookie` is representable), and a CR/LF inside a
+value is just data — head injection is impossible by construction.
+
+### Control pipe  (`"http"`)
+```
+JS → K:  {"method":"POST","url":"https://…","headers":[["k","v"],…],
+          "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8"}
+         …then NOTHING, except an optional [int32 -1] = cancel        (write side stays open)
+K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…]}
+         <raw response body bytes> … then close() (END)
+```
+- The server's cancel **watcher arms right after the head** — the JS→K direction is otherwise
+  empty, so `-1` (or a RESET of that direction) is observable at **every** stage, including a
+  transport parked in `execute` with the body never pulled. Clean EOF = the client closed after
+  consuming the response; anything else on the control pipe is a protocol violation (exchange torn
+  down, RESET with the reason).
+- On the response body's EOF the client half-closes its cancel-channel write side so the pipe
+  reaps.
+- Request `"opts"` (all optional; server defaults otherwise): `timeoutMs` (whole-exchange
+  deadline), `followRedirects`. Response `"url"` = the final URL after redirects
+  (`Response.request.url`).
+
+### Body pipe  (`command = head.bodyCmd`, only when the request has a body)
+- The client registers a **one-shot accept** for a unique command (`"http/body/" + controlPipeId`)
+  before sending the head; the server opens it **lazily, on the transport's first body pull** — a
+  response that never needs the body (cache hit, early error) never transfers it. Raw bytes,
+  END = body complete; a JS-side body failure RESETs the body pipe and the exchange fails with
+  that reason.
+- The registration is retired on every terminal path (response consumed, cancel, failure) so a
+  never-opened body command cannot leak; a server opening it after retirement gets a refused open,
+  which lands in an already-dead exchange.
+
+```js
+const res = await HttpRequest.get("https://example.com/api").setHeader("User-Agent", "…").build().execute();
+if (!res.ok) { /* res.status / res.headers.get(name) — body still readable */ }
+const data = await res.json();        // whole body; or res.stream().read(buf, off, len) to stream
+```
+(`HttpRequest`/`Response` — the ergonomic wrapper over this wire shape — is installed by
+`:dynamic-engine`'s `HTTP_JS`; §5 lists the surface.)
+
+### Errors
+Expected failures RESET the control pipe with a **stage-tagged reason** — the stage tells the
+client what it can still trust:
+- HTTP-level (any status, redirects, 4xx/5xx) → normal response, code in the status line; `res.ok`
+  is `status ∈ [200,300)`.
+- Head the server can't parse, or a URL/header the host client rejects → `"invalid request: …"`
+  (nothing reached the HTTP client).
+- Connection failure before the response (DNS/connect/TLS/timeout — the routine failure) →
+  `"request failed: …"`; the client's head read throws (§0).
+- Failure mid-body → `"response body failed: …"`; the client's in-flight read throws the reason
+  (§4). Never a clean EOF — that would read as a complete, silently truncated body.
+- Protocol violations (junk after the head, a torn cancel int) and server bugs throw out of the
+  handler; the runtime's backstop RESETs with the raw message.
+- Client abandons the body → `res.cancel()` = `[-1]` down the control pipe + closing our read end: the
+  watcher aborts the exchange promptly (even mid-transport), and any in-flight server write fails
+  EPIPE. `res.ignoreResult()` instead drains to EOF in the background when the exchange should
+  complete cleanly (fire-and-forget).
+- `HttpCall.cancel()` before a `Response` exists RESETs the control pipe's request direction
+  instead (`-1` needs an idle sink; RESET is legal mid-write) — the watcher treats RESET and `-1`
+  alike. Either way the body registration/pipe is retired.
+
+### Host client
+The server side runs directly on a `kmphttp.KmpHttpClient` (`installHttp(client)`): request built
+with `RequestBuilder`, response streamed via `ResponseBody.asyncSource()`, opts mapped onto
+`execute(request, RedirectOptions, timeout)`. On Android the jvm variant of `:kmpHttp:core`
+resolves, which is real OkHttp (the typealias layer).
+
+---
+
+## 2. Filesystem — sandboxed, session-based
+
+### Sandbox: one app-exposed root, relative plain paths
+
+JS can touch files **only inside a single directory the app exposes** for it — e.g. Android
+`context.filesDir/js_store`, desktop an app-data dir, iOS an app-support subdir. That root is chosen
+by the host and is **never seen by JS**. Every path in this protocol is a **relative, `/`-separated
+plain path** (`"cache/feed.json"`, `"a/b.txt"`) — no `file:` URIs, no SAF document URIs, no absolute
+paths.
+
+**The server enforces the jail (non-bypassable, this is the security boundary for remotely-updatable
+JS):** it rejects absolute paths (leading `/` or `\`, drive/UNC), rejects any `..` segment,
+normalizes, resolves against the root, and canonicalizes the result to verify it still lives under
+the root (symlink defense). Any escape attempt → `{"ok":false,"code":"EINVAL"}` (never touch the
+file). No `DocumentsProvider`/`DocumentInfo` here — this is a private scratch/cache area, backed by
+plain okio `FileSystem` on desktop/Android and `NSFileManager`/okio on iOS.
+
+Two access shapes:
+- **File session** (`command = "file"`) — one pipe = one open file handle, held open across many
+  read/write/seek ops until `close`. This is what you asked for; it's the primary path.
+- **One-shot metadata ops** (`command = "fs"`) — list/stat/delete/mkdir/rename/exists, each a single
+  request→response on its own pipe (the §0 EOF-delimited model).
+
+### 2.1 File session (`command = "file"`)
+
+Because the pipe stays open across ops, EOF can't delimit them — so a session uses **length-framed
+messages**: every message is a **head line** (compact JSON + `\n`, read with `readUtf8Line`)
+optionally followed by **exactly `len` body bytes** declared in that head. (This is the concrete
+instance of §0's "stateful, length-framed" variant.)
+
+**Open** — the first exchange, right after `ymix.open("file")`. **A handle is read-only *or*
+write-only, never both** — `mode` picks one:
+```
+client → {"path":"cache/feed.json","mode":"r"}          // then reads the reply
+server → {"ok":true,"size":12345}                        // or {"ok":false,"code":"ENOENT"} then close
+```
+`mode` ∈ `r` (read, must exist) · `w` (write; create + truncate) · `a` (append; create, position at
+end). No combined read+write. Position starts at 0 (end for `a`).
+
+**Ops** (each: request head [+ body] → response head [+ body]); the handle keeps a file position. An
+op that doesn't match the open mode → `{"ok":false,"code":"EBADF"}`:
+
+| op      | mode  | request                             | response                                                        |
+|---------|-------|-------------------------------------|-----------------------------------------------------------------|
+| `read`  | `r`   | `{"op":"read","len":65536}`         | `{"len":M}` + M bytes · `M=0` (no body) = EOF; advances pos by M |
+| `seek`  | `r`   | `{"op":"seek","pos":P}`             | `{"ok":true}` · absolute byte offset (ranged reads)             |
+| `size`  | `r`   | `{"op":"size"}`                     | `{"size":S}`                                                    |
+| `write` | `w`/`a` | `{"op":"write","len":N}` + N bytes | `{"ok":true}` · appends at pos, advances pos by N               |
+| `flush` | `w`/`a` | `{"op":"flush"}`                   | `{"ok":true}` · durability                                      |
+| `close` | any   | `{"op":"close"}`                    | `{"ok":true}` · server flushes + closes the file, both close the pipe |
+
+- Read handles are seekable (ranged reads); write handles are **sequential** (truncate-on-open for
+  `w`, append for `a`) — no random writes, which keeps the write path a pure stream.
+- **Streaming is the loop**: read a big file by looping `read` at e.g. 64 KB; write one by looping
+  `write` chunks. Memory stays at one chunk on both sides — no whole-file buffer, ever.
+- Dropping the pipe (half-close/RESET) without a `close` op still releases the handle server-side;
+  the explicit `close` just acks and gives a flush error a place to surface.
+
+### 2.2 One-shot metadata ops (`command = "fs"`)
+
+Each is a single request→response, §0 model. `path` is a sandbox-relative plain path.
+
+| op       | request head                             | response                                              |
+|----------|------------------------------------------|-------------------------------------------------------|
+| `list`   | `{"op":"list","path":"sub"}`             | `{"ok":true}` + JSONL entries + `{"_end":N}`          |
+| `stat`   | `{"op":"stat","path":"a/b.txt"}`         | `{"ok":true,"stat":<entry>}`                          |
+| `exists` | `{"op":"exists","path":"a/b.txt"}`       | `{"ok":true,"exists":true}`                           |
+| `mkdir`  | `{"op":"mkdir","path":"a/b"}`            | `{"ok":true}` · parents created                       |
+| `delete` | `{"op":"delete","path":"a","recursive":false}` | `{"ok":true}`                                   |
+| `rename` | `{"op":"rename","from":"a","to":"b"}`    | `{"ok":true}`                                         |
+
+- **entry** (plain, no URI/mime): `{"name":"feed.json","dir":false,"size":123,"mtime":1700000000000}`.
+- `list` streams as JSONL (one entry per line) + a terminal `{"_end":N}` (or `{"_error":"…"}`), so a
+  large directory never materializes as one array.
+
+### Errors
+Operation-level errors ride in the response head: `{"ok":false,"code":"…","error":"…"}`, `code` ∈ a
+stable set (`ENOENT`, `EEXIST`, `EISDIR`, `ENOTDIR`, `EACCES`, `EINVAL` for a bad/escaping path,
+`EIO`). In a session the op's `ok:false` reply lets the session continue; a fatal I/O failure RESETs
+the pipe. Open failure replies `ok:false` then closes.
+
+---
+
+## 3. SQLite — the engine's own database, session-based  (`command = "sqlite"`)
+
+The engine gets its **own** SQLite database — a private file in the sandbox area (§2), **not** the
+app's media DB. So there is no `BetterMediaStore`, no typed RPC, and no injection/schema-tampering
+concern about app data: the engine owns this DB outright and raw SQL against it is fine. (The app
+still decides *whether* to expose it and can cap its size / put it on its own disk quota.)
+
+Like a file, a DB is a **session**: `ymix.open("sqlite")` opens a connection, JS runs
+query/exec/transaction ops on it, then `close`. One pipe = one open connection, **length-framed**
+messages (head line + optional `len`-declared body), same framing as §2.1.
+
+### 3.1 Open — with managed init/upgrade
+
+The first exchange declares the schema the engine expects; the host migrates the file up to it
+(SQLiteOpenHelper / SQLDelight-style), keyed by `PRAGMA user_version`:
+```
+client → {"op":"open","name":"engine","version":3,
+          "migrations":["<v0→v1 SQL>","<v1→v2 SQL>","<v2→v3 SQL>"]}
+server → {"ok":true,"version":3}          // or {"ok":false,"code":"...","error":"..."} then close
+```
+- `name` → a DB file in the sandbox (`{name}.db`); isolated per name.
+- `migrations[k]` is the SQL (one or more statements) that upgrades **from version k to k+1**, so
+  `migrations.length` must be ≥ `version`. The host reads `user_version`, runs
+  `migrations[user_version .. version-1]` in **one transaction**, then sets `user_version = version`.
+  A fresh DB (`user_version 0`) runs the whole chain; an up-to-date DB runs nothing.
+- `user_version > version` (an older engine against a newer file) → `{"ok":false,"code":"EDOWNGRADE"}`.
+
+### 3.2 Ops within the session
+
+Each op is a request head [+ body] → response head [+ body]. `args` is a JSON array bound positionally
+to `?` placeholders (parameterized — never string-interpolated).
+
+| op         | request                                              | response                                             |
+|------------|------------------------------------------------------|------------------------------------------------------|
+| `query`    | `{"op":"query","sql":"SELECT …","args":[…]}`         | `{"ok":true,"columns":[…]}` + JSONL rows + `{"_end":N}` |
+| `exec`     | `{"op":"exec","sql":"INSERT/UPDATE/DELETE …","args":[…]}` | `{"ok":true,"rowsAffected":N,"lastInsertRowId":M}` |
+| `begin`    | `{"op":"begin"}`                                     | `{"ok":true}`                                        |
+| `commit`   | `{"op":"commit"}`                                    | `{"ok":true}`                                        |
+| `rollback` | `{"op":"rollback"}`                                  | `{"ok":true}`                                        |
+| `close`    | `{"op":"close"}`                                     | `{"ok":true}` · closes the connection, both close the pipe |
+
+- **`query` rows stream as JSONL** — one **positional** array per line (column names are in the head,
+  so rows stay compact) terminated by `{"_end":N}` (or `{"_error":"…","code":"…"}` if the cursor
+  fails partway). The client reads a line, parses it, emits it, drops it → memory = one row, not the
+  whole result set. The `_end` sentinel delimits the body on the persistent pipe (no EOF between ops).
+  ```
+  {"ok":true,"columns":["id","title"]}
+  [1,"Song A"]
+  [2,"Song B"]
+  {"_end":2}
+  ```
+- **Transactions are natural** here because the session is one connection: `begin` … `exec`/`query` …
+  `commit`/`rollback`. (No separate batch op needed — the round-trips share the connection. Add a
+  JSONL `batch` later only if round-trip latency ever matters.)
+
+### 3.3 arg & cell types
+JSON `null`→NULL, number→INTEGER/REAL, string→TEXT, bool→INTEGER 0/1. **BLOB** args and BLOB result
+cells: a base64 string tagged `{"$blob":"<base64>"}`. Kept out of v1 unless a caller needs it.
+
+### Errors
+SQL errors (syntax, constraint) at/ before execution → `{"ok":false,"code":"SQLITE_CONSTRAINT",
+"error":"…"}` in the response head; the session stays open. A cursor that fails mid-stream →
+`{"_error":…}` terminal line. A fatal connection error RESETs the pipe. Open/migration failure
+replies `ok:false` then closes (a failed migration rolls back — the file is left at its old version).
+
+---
+
+## 4. Transport: RESET reason — ✅ LANDED (part of the pipe-protocol rewrite)
+
+The transport threads the reason through `closeWrite(id, reason)` / `__jsClose(id, reason)`. A
+non-null reason is a **RESET**: the peer's pending data is discarded and its parked/next `receive`
+throws (Kotlin: `PipeResetException(reason)`; JS: the promise rejects with the reason). Both sides
+expose `sink.close(reason: String? = null)`, and a handler that throws RESETs its pipe with the
+failure message automatically. Buffered readers propagate naturally: a `read`/`readUtf8Line`/
+`readJsonObject` in flight throws the reason. Clean END (reason `null`) still returns `-1`/`null` —
+no behavior change on the happy path. See `quickjs/PIPE_STREAMING.md` §1.
+
+---
+
+## 5. Intended JS surface (built on the above)
+
+Thin ergonomic wrappers the engine code actually calls — the wire protocol stays invisible:
+
+```js
+// HTTP (one-shot) — implemented (:dynamic-engine HTTP_JS)
+const call = HttpRequest.get(url).setHeader(n, v)   // .post/.put/…; body: string | Uint8Array | (io) => …
+  .timeout(5000).followRedirects(false)             // per-request opts (server defaults otherwise)
+  .build();                                         // -> HttpCall
+const res = await call.execute();                   // resolves the Response (once)
+call.cancel();                                      // aborts at ANY stage, even parked inside the client
+res.status; res.ok; res.url; res.headers.get(n); await res.json(); await res.text();
+res.stream().read(buf, off, len);
+res.cancel(); res.ignoreResult();  // abort the body / drain it to nowhere (both fire-and-forget)
+
+// FS — file session (paths are sandbox-relative; a handle is read-only OR write-only)
+const rf = await host.file.open("cache/feed.json", "r");
+let chunk; while ((chunk = await rf.read(65536))) { … }  // Uint8Array, null at EOF
+await rf.close();
+const wf = await host.file.open("cache/feed.json", "w");
+await wf.write(bytes); await wf.close();
+// FS — one-shot metadata
+for await (const e of host.fs.list("sub")) { … }         // {name,dir,size,mtime}
+await host.fs.stat(path); await host.fs.mkdir(path); await host.fs.delete(path);
+
+// SQLite — DB session (engine's own DB)
+const db = await host.sqlite.open("engine", 3, migrations);
+for await (const row of db.query(sql, args)) { … }       // streams rows
+const { rowsAffected, lastInsertRowId } = await db.exec(sql, args);
+await db.begin(); …; await db.commit();
+await db.close();
+```
+
+Each is a thin wrapper over `ymix.open` + `ymix.buffered`. Kept out of `:quickjs` — they live in
+whatever module wires the host handlers (the engine host, not the binding).
+
+---
+
+## Summary
+
+| Protocol   | command  | shape                          | notes                                                    |
+|------------|----------|--------------------------------|----------------------------------------------------------|
+| HTTP       | `http`   | control pipe + lazy body pipe  | JSON heads; raw EOF-framed bodies; `-1` on control = cancel at any stage |
+| File I/O   | `file`   | **session**, length-framed     | open(path, r\|w\|a) — read-only *or* write-only → read/seek/size *or* write/flush → close; chunks stream |
+| FS meta    | `fs`     | one-shot, EOF-framed           | list/stat/delete/mkdir/rename/exists; list streams JSONL |
+| SQLite     | `sqlite` | **session**, length-framed     | open(name,version,migrations) → query/exec/begin/commit/close; rows stream JSONL |
+
+Sandbox: `file`/`fs`/`sqlite` all operate under one app-exposed root, **relative plain paths**, no
+escaping (server-enforced) — the security boundary for remotely-updatable JS.
+
+Common: one pipe per op · compact-JSON head line + `readUtf8Line(strict)` · raw or JSONL body to EOF ·
+op-errors in head, transport-errors as RESET · RESET throws on read (§4, landed).
+
+Open decisions for review: **(1)** SQL raw-bridge (A) vs typed-RPC (B), and the sandbox/allowlist if
+(A) · **(2)** is FS write in scope now, or defer until a bytes-capable provider exists?
