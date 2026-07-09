@@ -230,8 +230,16 @@ static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JS
     if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1])) {
         size_t rlen = 0;
         const char *reason = JS_ToCStringLen(ctx, &rlen, argv[1]);
-        jreason = utf8_to_jstring(env, reason ? reason : "", reason ? rlen : 0);
-        if (reason) JS_FreeCString(ctx, reason);
+        if (reason) {
+            jreason = utf8_to_jstring(env, reason, rlen);
+            JS_FreeCString(ctx, reason);
+        } else {
+            /* A RESET whose reason won't coerce must stay a RESET, not degrade to END (a non-null
+             * jreason is RESET). Drop the pending exception and use a fallback reason — matches the
+             * cinterop shim. */
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            jreason = utf8_to_jstring(env, "reason coercion failed", 22);
+        }
     }
     (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onCloseWrite, (jlong)(intptr_t)e, (jint)id, jreason);
     if (jreason) (*env)->DeleteLocalRef(env, jreason);

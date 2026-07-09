@@ -1071,6 +1071,22 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** A JS RESET whose reason won't string-coerce (a Symbol) must still surface as a
+     *  [PipeResetException], never a clean EOF — a coercion failure that degraded to END would
+     *  silently truncate the stream. The shim substitutes a fallback reason (audit S1). */
+    @Test
+    fun js_reset_with_uncoercible_reason_still_resets() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load("""ymix.onAccept("reset-sym", async (pipe) => { pipe.sink.close(Symbol("boom")); });""")
+        try {
+            val pipe = rt.openPipe("reset-sym")
+            val e = assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
+            assertEquals("reason coercion failed", e.reason)
+        } finally {
+            rt.close()
+        }
+    }
+
     /** okio-style fixed-width integers cross the pipe both ways: Kotlin writes an int + long with
      *  okio, JS reads them via the buffered source's readInt/readLong and echoes them back through
      *  writeInt/writeLong, and okio reads them out unchanged. */

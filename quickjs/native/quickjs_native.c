@@ -74,15 +74,27 @@ static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JS
     QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
     uint32_t id = 0;
     JS_ToUint32(ctx, &id, argv[0]);
-    const char *reason = NULL;
+    const char *reason = NULL; /* JS-owned; needs JS_FreeCString */
+    const char *out = NULL;    /* what the callback sees: NULL = END, non-NULL = RESET */
     size_t rlen = 0;
-    if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]))
+    if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1])) {
         reason = JS_ToCStringLen(ctx, &rlen, argv[1]);
+        if (reason) {
+            out = reason;
+        } else {
+            /* A RESET whose reason won't coerce (Symbol / throwing toString) must NOT degrade to a
+             * clean END — that reads as a valid EOF and silently truncates the stream. Drop the
+             * pending exception and RESET with a fallback reason so the peer's read still throws. */
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            out = "reason coercion failed";
+            rlen = strlen(out);
+        }
+    }
     /* The trampoline returns 0 on success, -1 when the host callback threw. Unlike open/data the
      * return here isn't a protocol value, so a failure would vanish — raise it as a JS exception so
      * the bootstrap's failure paths engage (mirrors the JNI check_java_exception path). */
     int rc = 0;
-    if (e->cb) rc = e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)reason, rlen);
+    if (e->cb) rc = e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)out, rlen);
     if (reason) JS_FreeCString(ctx, reason);
     if (rc < 0) return JS_ThrowInternalError(ctx, "host callback failed (closeWrite)");
     return JS_UNDEFINED;
