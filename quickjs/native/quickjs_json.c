@@ -476,6 +476,13 @@ static JSValue js_json_push(JSContext *ctx, JSValueConst this_val, int argc, JSV
     if (argc < 2) return JS_ThrowTypeError(ctx, "__jsonPush(parser, u8, off, len)");
     JStream *s = (JStream *)JS_GetOpaque2(ctx, argv[0], jstream_class_id);
     if (s == NULL) return JS_EXCEPTION;
+    /* Convert off/len FIRST: a valueOf here can detach or resize the source buffer, so base/ta_len
+     * must be captured AFTER (reflecting the post-conversion state) — otherwise a cached base
+     * dangles into freed memory. */
+    int64_t off = 0, len = -1; /* len < 0: default to the whole buffer from off */
+    int have_len = argc >= 4;
+    if (argc >= 3 && JS_ToInt64(ctx, &off, argv[2])) return JS_EXCEPTION;
+    if (have_len && JS_ToInt64(ctx, &len, argv[3])) return JS_EXCEPTION;
     size_t ta_off = 0, ta_len = 0, bpe = 0;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
     if (JS_IsException(ab)) return ab;
@@ -485,12 +492,9 @@ static JSValue js_json_push(JSContext *ctx, JSValueConst this_val, int argc, JSV
     if (base == NULL) {
         ret = JS_ThrowTypeError(ctx, "__jsonPush: argument is not a byte buffer");
     } else {
-        int64_t off = 0, len = (int64_t)ta_len;
-        int ok = 1;
-        if (argc >= 3 && JS_ToInt64(ctx, &off, argv[2])) ok = 0;
-        if (ok && argc >= 4 && JS_ToInt64(ctx, &len, argv[3])) ok = 0;
-        if (!ok) { ret = JS_EXCEPTION; }
-        else if (off < 0 || len < 0 || (size_t)(off + len) > ta_len) {
+        if (!have_len) len = (int64_t)ta_len;
+        // Unsigned, no `off + len` sum — that overflows on 32-bit and bypasses the check.
+        if (off < 0 || len < 0 || (uint64_t)off > ta_len || (uint64_t)len > ta_len - (uint64_t)off) {
             ret = JS_ThrowRangeError(ctx, "__jsonPush: offset/length out of range");
         } else {
             int consumed = len > 0 ? jstream_push(s, base + ta_off + off, (size_t)len) : 0;
@@ -965,18 +969,23 @@ static JSValue js_json_enc_fill(JSContext *ctx, JSValueConst this_val, int argc,
     if (e->failed) return JS_ThrowInternalError(ctx, "__jsonEncFill: encoder already failed");
     int64_t off = 0;
     if (JS_ToInt64(ctx, &off, argv[2])) return JS_EXCEPTION;
-    size_t ta_off = 0, ta_len = 0, bpe = 0;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
-    if (JS_IsException(ab)) return ab;
-    size_t sz = 0;
-    uint8_t *base = JS_GetArrayBuffer(ctx, &sz, ab);
-    JS_FreeValue(ctx, ab); /* argv keeps the buffer alive; QuickJS heap data never moves */
-    if (base == NULL || off < 0 || (uint64_t)off > ta_len)
-        return JS_ThrowRangeError(ctx, "__jsonEncFill: bad destination range");
-    uint8_t *dst = base + ta_off + off;
-    size_t cap = ta_len - (size_t)off;
+    if (off < 0) return JS_ThrowRangeError(ctx, "__jsonEncFill: bad destination range");
     size_t w = 0;
     for (;;) {
+        /* Re-resolve the destination EVERY iteration: jenc_produce runs user JS (getters, toJSON,
+         * Proxy traps) that can detach or resize this ArrayBuffer, dangling any cached base/cap.
+         * Mirrors the pipe layer's PB_JOB_RECV re-resolve. `w` is validated against the fresh cap
+         * so a mid-fill shrink can't drive an out-of-bounds write. */
+        size_t ta_off = 0, ta_len = 0, bpe = 0;
+        JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
+        if (JS_IsException(ab)) return ab;
+        size_t sz = 0;
+        uint8_t *base = JS_GetArrayBuffer(ctx, &sz, ab);
+        JS_FreeValue(ctx, ab);
+        if (base == NULL || (uint64_t)off > ta_len || (uint64_t)off + w > ta_len)
+            return JS_ThrowRangeError(ctx, "__jsonEncFill: destination detached or shrank mid-encode");
+        size_t cap = ta_len - (size_t)off;
+        uint8_t *dst = base + ta_off + off;
         size_t avail = e->tok.size - e->tok_pos;
         if (avail > 0) {
             size_t n = avail < cap - w ? avail : cap - w;
