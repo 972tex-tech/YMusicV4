@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okio.Buffer
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -1066,6 +1067,45 @@ class QuickJsRuntimeTest {
             val pipe = rt.openPipe("reset-up")
             val e = assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
             assertEquals("kaboom mid-stream", e.reason)
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** END-path sink.close() whose final flush EPIPEs (the peer closed its read end) must still
+     *  half-close — the fix runs closeWrite() on the flush's rejection, not only its resolution, so
+     *  the pipe reaps instead of leaking (audit B1). This pins that the EPIPE still propagates to
+     *  the caller (the fix must not swallow it); the leak itself needs engine introspection to
+     *  observe, so it is verified by inspection. */
+    @Test
+    fun end_close_propagates_epipe_when_the_final_flush_fails() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("staged-end", async (pipe) => {
+              pipe.sink.writeUtf8("staged");          // into wbuf, unflushed
+              const go = new Uint8Array(1);
+              await pipe.source.receive(go, 0, 1);     // wait until Kotlin has closed its read
+              let result;
+              try {
+                await pipe.sink.close();               // END: flush -> EPIPE -> must still half-close
+                result = "resolved";
+              } catch (e) {
+                result = /^EPIPE/.test(e.message) ? "epipe" : "other:" + e.message;
+              }
+              const r = ymix.open("staged-end-result");
+              await r.sink.writeUtf8(result);
+              await r.sink.close();
+            });
+            """.trimIndent(),
+        )
+        val result = CompletableDeferred<String>()
+        rt.onAccept("staged-end-result") { p -> result.complete(p.readText()) }
+        try {
+            val pipe = rt.openPipe("staged-end")
+            pipe.source.close() // close our read -> the handler's flush will EPIPE
+            pipe.sendText("go") // wake the handler's parked receive
+            assertEquals("epipe", withContext(Dispatchers.Default) { withTimeout(5_000) { result.await() } })
         } finally {
             rt.close()
         }

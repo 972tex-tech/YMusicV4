@@ -379,12 +379,28 @@
             return;
           }
           checkWriteBusy();
-          var p = flushSink();
+          // The half-close MUST run even if the final flush fails (EPIPE: the peer closed its read
+          // end, or a host error) — otherwise weEnded stays false, __hostClose is never sent, and
+          // the pipe plus its wbuf leak for the runtime's life while the peer never learns we
+          // ended. Half-close on success AND failure, then propagate the flush error to the caller.
+          var p;
+          try {
+            p = flushSink();
+          } catch (e) {
+            closeWrite(reason);
+            throw e;
+          }
           if (p)
             return writeLock(
-              p.then(function () {
-                closeWrite(reason);
-              }),
+              p.then(
+                function () {
+                  closeWrite(reason);
+                },
+                function (e) {
+                  closeWrite(reason);
+                  throw e;
+                },
+              ),
             );
           closeWrite(reason);
         },
