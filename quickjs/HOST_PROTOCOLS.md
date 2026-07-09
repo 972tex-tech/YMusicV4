@@ -68,6 +68,53 @@ RESETs its pipe with the failure message automatically. So a mid-stream failure 
 the next read; the length declaration for raw bodies and the terminal sentinel line for JSONL
 bodies (`{"_end":…}` / `{"_error":…}`) are belt-and-suspenders, not load-bearing.
 
+### Errors across the boundary — the unified code contract  *(implemented in `:dynamic-engine`)*
+
+Every failure resolves to a **code** — one error object, minted once at the origin, passed through
+every tier (server ↔ JS ↔ Kotlin) unchanged. A tier that receives a coded error **wraps, never
+re-mints** (cause chain; the deepest code wins), so a user report is answered by one global search.
+
+```json
+{ "code": "E90210",            // category ("network") or site code (E#####) — required
+  "name": "ExtractError",      // JS constructor name, when it originated in JS
+  "message": "quota exceeded", // technical, for logs/grep — NEVER shown to the user
+  "userMessage": "…",          // OPTIONAL: localized, display-ready (e.g. server-minted)
+  "stack": "…",                // capped at 4 KB
+  "cause": { "name": "…", "message": "…" } }
+```
+
+Codes come in two kinds (CLAUDE.md "Error Handling"):
+- **Categories** — the small shared vocabulary all tiers classify into, localized by the app:
+  `network` (transport; retryable), `parse` (scraped shape not understood → ship new JS), `oom`
+  (engine gave out). Open set: an unknown category (newer remote JS/server than this app build)
+  degrades to the generic message + code, never a crash.
+- **Site codes** — `E#####`, one hardcoded literal at one throw/classification site; grep is the
+  registry. `E2xxxx` = `:dynamic-engine` incl. its remote JS, `E9xxxx` = server-minted. Reserved so
+  far: `E20001` uncaught script error (serve's classifier fallback), `E20002` no engine handler for
+  the command, `E20003` unstructured pipe reset (decoder fallback), `E20010` / `E20011` — §1.
+
+Carriers, per hop:
+- **JS**: `throw ExtractError.parse("…")` / `throw new ExtractError("E29999", "…", {userMessage})`;
+  http.js tags transport-stage failures `code:"network"` automatically. The **`serve(command,
+  handler)`** dispatcher (handler gets `(args, out)` after the JSON args head is read) classifies
+  ANY throw — explicit `.code` wins, then a site code embedded in the message, `InternalError` →
+  `oom`, runtime `SyntaxError` → `parse`, else `E20001` — and RESETs the pipe with the object as
+  JSON. EPIPE (the caller hung up) is the one silent path.
+- **Pipe**: the structured RESET reason. Plain-text reasons (transport-generated, raw
+  `ymix.onAccept` backstop) stay legal — the decoder salvages an embedded `E#####` or falls back
+  to `E20003` with the text as message.
+- **Kotlin**: `DynamicEngine.call(command, args) { source -> … }` rebuilds the object as a sealed
+  `EngineError` (`Network`/`Parse`/`Oom`/`Technical(E#####)`/`Other(unknown category)`), which
+  implements `kmpcommon.error.CodedError`; `Throwable.errorCode()` walks the cause chain (deepest
+  wins).
+- **Server**: responds `{"ok":false,"error":{…same object…}}`; the JS API wrapper rethrows it as an
+  `ExtractError` carrying the object as-is — a server-minted code + localized `userMessage` reach
+  the UI with zero app or JS changes. (Third parties — YouTube — can't mint our codes: the JS that
+  understands their failure is the minting/classifying site.)
+
+Rendering, at the UI edge only, fixed precedence: known category → localized string; `userMessage`
+present → show it verbatim + code; else → generic "Something went wrong (code)".
+
 ### Cancellation
 
 Client abandons an in-flight call → it RESETs its pipe (`sink.close(reason)`), the server's read
@@ -127,14 +174,15 @@ Expected failures RESET the control pipe with a **stage-tagged reason** — the 
 client what it can still trust:
 - HTTP-level (any status, redirects, 4xx/5xx) → normal response, code in the status line; `res.ok`
   is `status ∈ [200,300)`.
-- Head the server can't parse, or a URL/header the host client rejects → `"invalid request: …"`
-  (nothing reached the HTTP client).
+- Head the server can't parse, or a URL/header the host client rejects → `"E20011 invalid
+  request: …"` (a caller bug — site-coded; nothing reached the HTTP client).
 - Connection failure before the response (DNS/connect/TLS/timeout — the routine failure) →
-  `"request failed: …"`; the client's head read throws (§0).
+  `"request failed: …"`; the client's head read throws (§0). http.js tags it `code:"network"`.
 - Failure mid-body → `"response body failed: …"`; the client's in-flight read throws the reason
-  (§4). Never a clean EOF — that would read as a complete, silently truncated body.
-- Protocol violations (junk after the head, a torn cancel int) and server bugs throw out of the
-  handler; the runtime's backstop RESETs with the raw message.
+  (§4), also tagged `network`. Never a clean EOF — that would read as a complete, silently
+  truncated body.
+- Protocol violations (junk after the head → `E20010`, a torn cancel int) and server bugs throw
+  out of the handler; the runtime's backstop RESETs with the raw message.
 - Client abandons the body → `res.cancel()` = `[-1]` down the control pipe + closing our read end: the
   watcher aborts the exchange promptly (even mid-transport), and any in-flight server write fails
   EPIPE. `res.ignoreResult()` instead drains to EOF in the background when the exchange should

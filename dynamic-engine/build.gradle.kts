@@ -55,6 +55,9 @@ kotlin {
                 // android target — the android target resolves their jvm variants (for :core
                 // that means real OkHttp), the same rule :kmpCommon relies on.
                 api(project(":kmpHttp:core"))
+                // api: EngineError implements kmpcommon.error.CodedError; call() takes a JsonObject
+                api(project(":kmpCommon"))
+                api(Libs.Kotlinx.serializationJson)
                 implementation(project(":kmpHttp:json"))
                 implementation(Libs.Kotlinx.coroutinesCore)
             }
@@ -69,44 +72,55 @@ kotlin {
     }
 }
 
-// HTTP preamble: authored (with comments) in js/http.js, minified at build time with Closure
-// Compiler (SIMPLE, no transpile) and emitted as a generated Kotlin const the engine loads. Mirrors
-// :quickjs's bootstrap handling — globals (HttpRequest) and property names are preserved.
-val httpJs = layout.projectDirectory.file("js/http.js")
-val httpKtDir = layout.buildDirectory.dir("generated/httpJs")
+// JS preambles: authored (with comments) in js/*.js, minified at build time with Closure Compiler
+// (SIMPLE, no transpile) and emitted as generated Kotlin consts the engine loads. Mirrors
+// :quickjs's bootstrap handling — globals (HttpRequest, serve, …) and property names are preserved.
+val jsPreambles = listOf(
+    "http.js" to "HTTP_JS",
+    "serve.js" to "SERVE_JS",
+)
+val preambleKtDir = layout.buildDirectory.dir("generated/httpJs")
 
-val generateHttpJs by tasks.registering {
-    inputs.file(httpJs)
-    outputs.dir(httpKtDir)
+val generateJsPreambles by tasks.registering {
+    for ((jsName, _) in jsPreambles) inputs.file(layout.projectDirectory.file("js/$jsName"))
+    outputs.dir(preambleKtDir)
     doLast {
-        val options = CompilerOptions().apply {
-            setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_NEXT)
-            setLanguageOut(CompilerOptions.LanguageMode.NO_TRANSPILE) // keep async/await, classes
+        preambleKtDir.get().asFile.deleteRecursively() // no stale consts from renamed preambles
+        val dir = preambleKtDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
+        for ((jsName, constName) in jsPreambles) {
+            val options = CompilerOptions().apply {
+                setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_NEXT)
+                setLanguageOut(CompilerOptions.LanguageMode.NO_TRANSPILE) // keep async/await, classes
+            }
+            CompilationLevel.SIMPLE_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
+            WarningLevel.QUIET.setOptionsForWarningLevel(options)
+            val compiler = Compiler()
+            val result = compiler.compile(
+                emptyList<SourceFile>(), // externs (none) — undeclared globals (ymix, …) preserved
+                listOf(SourceFile.fromCode(jsName, layout.projectDirectory.file("js/$jsName").asFile.readText())),
+                options,
+            )
+            if (!result.success) {
+                throw GradleException("$jsName minify failed:\n" + compiler.errors.joinToString("\n"))
+            }
+            val minified = compiler.toSource()
+            check(minified.isNotBlank()) { "closure produced empty output for $jsName" }
+            val escaped = minified
+                .replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
+            val ktName = constName.split("_").joinToString("") { part ->
+                part.lowercase().replaceFirstChar { it.uppercase() }
+            }
+            dir.resolve("${ktName}Preamble.kt").writeText(
+                """
+                |package ymusic.dynamicengine.internal
+                |
+                |// GENERATED — do not edit. Minified from js/$jsName (Closure Compiler) at build time.
+                |internal const val $constName: String = "$escaped"
+                |""".trimMargin(),
+            )
         }
-        CompilationLevel.SIMPLE_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
-        WarningLevel.QUIET.setOptionsForWarningLevel(options)
-        val compiler = Compiler()
-        val result = compiler.compile(
-            emptyList<SourceFile>(), // externs (none) — undeclared globals (ymix, …) preserved
-            listOf(SourceFile.fromCode("http.js", httpJs.asFile.readText())),
-            options,
-        )
-        if (!result.success) throw GradleException("http minify failed:\n" + compiler.errors.joinToString("\n"))
-        val minified = compiler.toSource()
-        check(minified.isNotBlank()) { "closure produced empty output" }
-        val escaped = minified
-            .replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
-        val dir = httpKtDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
-        dir.resolve("HttpPreamble.kt").writeText(
-            """
-            |package ymusic.dynamicengine.internal
-            |
-            |// GENERATED — do not edit. Minified from js/http.js (Closure Compiler) at build time.
-            |internal const val HTTP_JS: String = "$escaped"
-            |""".trimMargin(),
-        )
     }
 }
 
-kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(httpKtDir).builtBy(generateHttpJs))
+kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(preambleKtDir).builtBy(generateJsPreambles))

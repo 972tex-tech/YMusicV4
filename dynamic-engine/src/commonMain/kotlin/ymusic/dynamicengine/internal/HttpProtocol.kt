@@ -52,10 +52,11 @@ import kotlin.time.Duration.Companion.milliseconds
  * `HttpCall.cancel` mid-flight) cancels the exchange even while it is parked inside
  * [KmpHttpClient.execute] with the body never pulled.
  *
- * Expected failures RESET the control pipe with a stage-tagged reason — `invalid request: …`
- * (bad head or a URL/header kmpHttp rejects), `request failed: …` (transport: DNS/connect/TLS/
- * timeout), `response body failed: …` (the stream died after the head was already sent). Only
- * protocol violations and bugs propagate to the runtime's generic throw→RESET backstop.
+ * Expected failures RESET the control pipe with a stage-tagged reason — `E20011 invalid request: …`
+ * (bad head or a URL/header kmpHttp rejects; a caller bug, hence a site code), `request failed: …`
+ * (transport: DNS/connect/TLS/timeout), `response body failed: …` (the stream died after the head
+ * was already sent) — the transport stages are tagged the well-known `network` category by http.js.
+ * Only protocol violations and bugs propagate to the runtime's generic throw→RESET backstop.
  */
 internal fun QuickJsRuntime.installHttp(client: KmpHttpClient) {
     val runtime = this
@@ -142,7 +143,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             } catch (e: Throwable) {
                 // Malformed head JSON, missing fields, or a URL/header kmpHttp rejects — all the
                 // client's fault, none of them started an exchange.
-                pipe.sink.close("invalid request: ${e.message}")
+                pipe.sink.close("E20011 invalid request: ${e.message}")
                 return@coroutineScope
             }
 
@@ -204,7 +205,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                         if (n == -1) {
                             exchange.cancel()
                         } else {
-                            error("unexpected data on the control pipe ($n)")
+                            error("E20010 unexpected data on the control pipe ($n)")
                         }
                     }
                 } catch (e: PipeResetException) {

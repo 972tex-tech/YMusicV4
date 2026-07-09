@@ -121,6 +121,22 @@
     if (p && p.catch) p.catch(function () {});
   }
 
+  // Tag the host's transport-stage RESETs as the well-known "network" category (HOST_PROTOCOLS
+  // "Errors across the boundary") so an uncaught HTTP failure classifies without scraper effort.
+  // "invalid request: …" is deliberately NOT tagged — that one is the caller's bug, not the
+  // network's. Mutates the error to keep its stack.
+  function asNetworkError(e) {
+    if (
+      e &&
+      e.code === undefined &&
+      /^(request failed|response body failed): /.test(e.message || "")
+    ) {
+      e.name = "NetworkError";
+      e.code = "network";
+    }
+    return e;
+  }
+
   // A pull reader over the response body.
   class BodyStream {
     constructor(res) {
@@ -171,7 +187,7 @@
         n = await this._io.source.receive(buffer, offset, len);
       } catch (e) {
         this._fail();
-        throw e;
+        throw asNetworkError(e);
       }
       if (n < 0) this._end();
       return n;
@@ -184,7 +200,7 @@
         s = await this._io.source.readUtf8();
       } catch (e) {
         this._fail();
-        throw e;
+        throw asNetworkError(e);
       }
       this._end();
       return s;
@@ -335,7 +351,7 @@
       } catch (e) {
         this._retireBody("request failed");
         if (this._cancelled) throw new Error("request cancelled");
-        throw e;
+        throw asNetworkError(e);
       }
     }
   }

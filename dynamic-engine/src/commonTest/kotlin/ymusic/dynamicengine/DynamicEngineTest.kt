@@ -215,7 +215,7 @@ class DynamicEngineTest {
         val e = DynamicEngine.create(client)
         try {
             assertEquals(
-                "ERR:unexpected data on the control pipe (5)",
+                "ERR:E20010 unexpected data on the control pipe (5)",
                 e.eval(
                     """
                     const io = ymix.open("http"); /* drive the wire raw: HttpRequest can't emit this */
@@ -537,7 +537,7 @@ class DynamicEngineTest {
                 return await io.source.readJsonObject(); /* the RESET reason lands on this read */
                 """.trimIndent(),
             )
-            assertTrue(r.startsWith("ERR:invalid request:"), r)
+            assertTrue(r.startsWith("ERR:E20011 invalid request:"), r)
             assertEquals(null, client.lastRequest, "nothing may reach the client")
         } finally {
             e.close()
