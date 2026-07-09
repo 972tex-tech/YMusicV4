@@ -364,7 +364,10 @@ class QuickJsRuntime private constructor(
         override suspend fun close() = closeRead() // PipeSource
 
         suspend fun closeWrite(reason: String?) {
-            if (closed.load()) return
+            // weEnded/readClosed are engine-confined, but as monotonic flags an off-thread read
+            // can only be stale-false (take the hop and recheck) — never wrongly true. Skips the
+            // dispatcher hop on repeated closes (cleanup paths close idempotently by design).
+            if (closed.load() || weEnded) return
             withContext(engineDispatcher + NonCancellable) {
                 if (!weEnded) {
                     weEnded = true
@@ -375,7 +378,7 @@ class QuickJsRuntime private constructor(
         }
 
         suspend fun closeRead() {
-            if (closed.load()) return
+            if (closed.load() || readClosed) return
             withContext(engineDispatcher + NonCancellable) { closeReadNow(null) }
         }
 
