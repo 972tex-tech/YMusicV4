@@ -1567,4 +1567,65 @@ class QuickJsRuntimeTest {
             rt.close()
         }
     }
+
+    /** ymix.onAccept returns a registration: remove() unregisters (host open then refuses), and a
+     *  STALE handle — one replaced by a newer registration — must not remove the newer handler. */
+    @Test
+    fun js_accept_registration_can_be_removed() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            globalThis.reg1 = ymix.onAccept("svc", async (p) => { p.send(ymix.utf8Encode("one")); p.close(); });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("one", rt.openPipe("svc").readText())
+            rt.load(
+                """
+                ymix.onAccept("svc", async (p) => { p.send(ymix.utf8Encode("two")); p.close(); });
+                reg1.remove(); // stale — replaced above; must not unregister the new handler
+                """.trimIndent(),
+            )
+            assertEquals("two", rt.openPipe("svc").readText())
+            rt.load("""ymix.onAccept("svc", async (p) => { p.close(); }).remove();""")
+            assertFailsWith<QuickJsException> { rt.openPipe("svc") }
+        } finally {
+            rt.close()
+        }
+    }
+
+    /** The Kotlin mirror: onAccept's registration removes (JS open then refuses at the open), and
+     *  a stale handle is a no-op. */
+    @Test
+    fun kotlin_accept_registration_can_be_removed() = runTest {
+        val rt = QuickJsRuntime.create()
+        val reg1 = rt.onAccept("svc") { pipe ->
+            pipe.sendText("one")
+            pipe.close()
+        }
+        rt.load(
+            """
+            ymix.onAccept("run", async (p) => {
+              try {
+                const io = ymix.open("svc");
+                p.send(ymix.utf8Encode(await io.readUtf8()));
+              } catch (e) { p.send(ymix.utf8Encode("ERR:" + e.message)); }
+              p.close();
+            });
+            """.trimIndent(),
+        )
+        try {
+            assertEquals("one", rt.openPipe("run").readText())
+            val reg2 = rt.onAccept("svc") { pipe ->
+                pipe.sendText("two")
+                pipe.close()
+            }
+            reg1.remove() // stale — replaced by reg2; must not unregister it
+            assertEquals("two", rt.openPipe("run").readText())
+            reg2.remove()
+            assertEquals("ERR:open(\"svc\") refused by host", rt.openPipe("run").readText())
+        } finally {
+            rt.close()
+        }
+    }
 }

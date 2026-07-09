@@ -29,6 +29,11 @@ private const val PIPE_LOW = PIPE_CAP / 2
 
 private const val EOF = -1L
 
+/** A live [QuickJsRuntime.onAccept] registration; [remove] unregisters it. */
+fun interface AcceptRegistration {
+    fun remove()
+}
+
 /**
  * A QuickJS engine reached over an in-process pipe protocol, on every KMP target. JS execution is
  * confined to a single thread; the FFI boundary ([NativeEngine]) shuttles operations. On top of it
@@ -67,10 +72,17 @@ class QuickJsRuntime private constructor(
     suspend fun load(script: String, filename: String = "<load>"): String? =
         withContext(engineDispatcher) { engine.evalSync(script, filename) }
 
-    /** Handle pipes JS opens with the exact [command] name. Any arguments are read inside [handler]
-     *  from the pipe's bytes — the command is a routing name only, never carries args. */
-    fun onAccept(command: String, handler: suspend (Pipe) -> Unit) {
+    /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
+     *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
+     *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]
+     *  unregisters it — a no-op once a newer registration has replaced this one. */
+    fun onAccept(command: String, handler: suspend (Pipe) -> Unit): AcceptRegistration {
         synchronized(acceptsLock) { accepts[command] = handler }
+        return AcceptRegistration {
+            synchronized(acceptsLock) {
+                if (accepts[command] === handler) accepts.remove(command)
+            }
+        }
     }
 
     /** Open a pipe to JS addressed to the [command] name (send any arguments as bytes afterwards).

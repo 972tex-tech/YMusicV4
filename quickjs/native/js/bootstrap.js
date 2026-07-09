@@ -4,7 +4,8 @@
 // build time into a generated Kotlin const the engine evals (see build.gradle.kts).
 //
 //  - ymix.open(command) -> a pipe to Kotlin (this side is the client).
-//  - ymix.onAccept(command, async (pipe) => ...) -> handle pipes Kotlin opens to us (server side).
+//  - ymix.onAccept(command, async (pipe) => ...) -> handle pipes Kotlin opens to us (server
+//    side); returns { remove() } to unregister.
 //  - a pipe is the whole okio-Buffer-style object: the raw channel is send(buf,off,len) /
 //    receive(buf,off,len) (-> count or -1); buffered reads (readInt/readLong, readUtf8,
 //    readUtf8Line, readJsonObject/readJsonArray); buffered writes coalescing through a
@@ -482,8 +483,15 @@
       }
       return pipe;
     },
+    // Replaces any previous handler for `command`. Returns a registration whose remove()
+    // unregisters it — a no-op once a newer registration has replaced this one.
     onAccept: function (command, handler) {
       accepts[command] = handler;
+      return {
+        remove: function () {
+          if (accepts[command] === handler) delete accepts[command];
+        },
+      };
     },
     utf8Encode: utf8Encode,
     // Native decode (JS_NewStringLen) — astral-correct, no per-codepoint JS loop. Range args avoid

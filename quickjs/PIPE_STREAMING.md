@@ -100,7 +100,9 @@ release — so JNI re-entry is impossible by construction. The DRAIN hook fires 
 JS-initiated read paths (during a write the host writer is mid-write, not parked, so the accepted
 count itself is the flow control); the shim keeps its in-critical guards as cheap defense.
 
-Small JS helpers on `ymix`: `open`, `onAccept`, `utf8Encode` (QuickJS has no TextEncoder; a single
+Small JS helpers on `ymix`: `open`, `onAccept` (replaces same-name handlers; returns
+`{ remove() }`, a no-op once replaced — the Kotlin `onAccept` mirrors this with an
+`AcceptRegistration`), `utf8Encode` (QuickJS has no TextEncoder; a single
 string delegates to native `__utf8Encode`, the multi-arg concat form stays a small-input JS loop),
 `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
 **no separate `buffered(pipe)` wrapper**: the pipe itself is the okio-`Buffer`-style object (source
