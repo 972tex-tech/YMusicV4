@@ -498,8 +498,12 @@ class QuickJsRuntime private constructor(
                     override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
                     override fun onDrain(id: Int) { rtRef?.onDrain(id) }
                 }
-                engine = withContext(dispatcher) { NativeEngine.create(BOOTSTRAP_JS, callbacks) }
-                val rt = QuickJsRuntime(engine, dispatcher)
+                // Assign INSIDE the block: prompt-cancellation throws a CancellationException on the
+                // way back out of a withContext whose body already completed, so `engine = <result>`
+                // would never run and the catch would see null and leak the freshly-created engine.
+                // Assigned in-block, the engine is visible to the catch on that path.
+                withContext(dispatcher) { engine = NativeEngine.create(BOOTSTRAP_JS, callbacks) }
+                val rt = QuickJsRuntime(engine!!, dispatcher)
                 rtRef = rt
                 rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
                 return rt
