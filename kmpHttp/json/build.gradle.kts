@@ -31,9 +31,10 @@ kotlin {
 
         commonMain.dependencies {
             implementation(Libs.Kotlinx.coroutinesCore)
-            implementation(Libs.Kotlinx.serializationJson)
+            // api: JsonReader's public surface exposes JsonElement and BufferedAsyncSource
+            api(Libs.Kotlinx.serializationJson)
+            api(project(":kmpCommon"))
             implementation(Libs.Okio.core)
-            implementation(project(":kmpHttp:core"))
         }
 
         commonTest.dependencies {
