@@ -95,7 +95,8 @@ Codes come in two kinds (CLAUDE.md "Error Handling"):
 
 Carriers, per hop:
 - **JS**: `throw JsEngineError.parse("…")` / `throw new JsEngineError("…", "E29999", {userMessage})`
-  (message first, then code); http.js tags transport-stage failures `code:"network"` automatically.
+  (message first, then code); http.js adopts the host's origin-classified code (`network`, …) from
+  the structured RESET reason automatically.
   **`ymix.onAccept(command, commandHandler(handler))`** wraps a handler in the contract — the handler
   gets `(src, out[, pipe])` and reads its own head off `src` (args format not assumed) — and
   classifies ANY throw — explicit `.code` wins, then a site code embedded in the message,
@@ -172,16 +173,18 @@ const data = await res.json();        // whole body; or res.stream().read(buf, o
 `:dynamic-engine`'s `HTTP_JS`; §5 lists the surface.)
 
 ### Errors
-Expected failures RESET the control pipe with a **stage-tagged reason** — the stage tells the
-client what it can still trust:
+Expected failures RESET the control pipe with a **structured, origin-classified reason**
+(the WireError shape, `{code, message}` — the server decides the code where the real exception is
+understood; http.js adopts it, never guesses from text). The stage tells the client what it can
+still trust:
 - HTTP-level (any status, redirects, 4xx/5xx) → normal response, code in the status line; `res.ok`
   is `status ∈ [200,300)`.
-- Head the server can't parse, or a URL/header the host client rejects → `"E20011 invalid
-  request: …"` (a caller bug — site-coded; nothing reached the HTTP client).
+- Head the server can't parse, or a URL/header the host client rejects → `{code:"E20011",
+  message:"invalid request: …"}` (a caller bug — site-coded; nothing reached the HTTP client).
 - Connection failure before the response (DNS/connect/TLS/timeout — the routine failure) →
-  `"request failed: …"`; the client's head read throws (§0). http.js tags it `code:"network"`.
-- Failure mid-body → `"response body failed: …"`; the client's in-flight read throws the reason
-  (§4), also tagged `network`. Never a clean EOF — that would read as a complete, silently
+  `{code:"network", message:"request failed: …"}`; the client's head read throws (§0).
+- Failure mid-body → `{code:"network", message:"response body failed: …"}`; the client's in-flight
+  read throws the reason (§4). Never a clean EOF — that would read as a complete, silently
   truncated body.
 - Protocol violations (junk after the head → `E20010`, a torn cancel int) and server bugs throw
   out of the handler; the runtime's backstop RESETs with the raw message.
