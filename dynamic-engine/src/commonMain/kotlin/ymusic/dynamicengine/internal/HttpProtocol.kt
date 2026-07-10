@@ -2,6 +2,7 @@ package ymusic.dynamicengine.internal
 
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
+import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.Request
@@ -13,12 +14,15 @@ import kmphttp.json.JsonReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -26,6 +30,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import okio.Buffer
 import okio.IOException
+import ymusic.dynamicengine.WireError
 import ymusic.quickjs.BrokenPipeException
 import ymusic.quickjs.Pipe
 import ymusic.quickjs.PipeResetException
@@ -52,23 +57,27 @@ import kotlin.time.Duration.Companion.milliseconds
  * `HttpCall.cancel` mid-flight) cancels the exchange even while it is parked inside
  * [KmpHttpClient.execute] with the body never pulled.
  *
- * Expected failures RESET the control pipe with a stage-tagged reason — `E20011 invalid request: …`
- * (bad head or a URL/header kmpHttp rejects; a caller bug, hence a site code), `request failed: …`
- * (transport: DNS/connect/TLS/timeout), `response body failed: …` (the stream died after the head
- * was already sent) — the transport stages are tagged the well-known `network` category by http.js.
- * Only protocol violations and bugs propagate to the runtime's generic throw→RESET backstop.
+ * Expected failures RESET the control pipe with a **structured, origin-classified** reason
+ * `{code, message}` — the code is decided HERE, where the real exception is understood, not guessed
+ * from text downstream: `E20011` (bad head or a URL/header kmpHttp rejects — a caller bug, hence a
+ * site code), `network` (transport `IOException`: DNS/connect/TLS/timeout, or the body stream dying
+ * after the head). http.js adopts the code as-is. Only protocol violations and bugs propagate to the
+ * runtime's generic throw→RESET backstop.
  */
-internal fun QuickJsRuntime.installHttp(client: KmpHttpClient) {
+internal fun QuickJsRuntime.installHttp(client: KmpHttpClient, logger: Logger?) {
     val runtime = this
-    onAccept("http") { pipe -> serveHttp(runtime, pipe, client) }
+    onAccept("http") { pipe -> serveHttp(runtime, pipe, client, logger) }
 }
 
-private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHttpClient) {
+private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHttpClient, logger: Logger?) {
     // Every EXPECTED failure is handled in place with a stage-tagged RESET reason — the runtime's
     // throw→RESET backstop is reserved for bugs and protocol violations. The finally must never
     // touch the sink: closeWrite is first-close-wins, so a clean END there would preempt the
     // backstop's RESET and an error would reach JS as a complete-looking (truncated) response.
+    // Each in-place RESET is also a birth-site log: the caller's context (threaded down in the head)
+    // plus the native cause, logged HERE where the fidelity is (HOST_PROTOCOLS "Logging context").
     var bodyPipe: Pipe? = null
+    var logCtx: List<String> = HTTP_SCOPE // caller trail + "http"; the fallback until the head parses
     try {
         coroutineScope {
             val requestScope = this
@@ -76,6 +85,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
 
             val prepared = try {
                 val head = JsonReader(src).readObject()
+                logCtx = readLogCtx(head)
                 val method = head["method"]?.jsonPrimitive?.content ?: "GET"
                 val url = head["url"]?.jsonPrimitive?.content ?: ""
                 val headers = (head["headers"] as? JsonArray).orEmpty().map { entry ->
@@ -143,7 +153,8 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             } catch (e: Throwable) {
                 // Malformed head JSON, missing fields, or a URL/header kmpHttp rejects — all the
                 // client's fault, none of them started an exchange.
-                pipe.sink.close("E20011 invalid request: ${e.message}")
+                logger?.log(Logger.Level.WARN, logCtx, "E20011 invalid request: ${e.message}", e)
+                pipe.sink.close(errorReason("E20011", "invalid request: ${e.message}"))
                 return@coroutineScope
             }
 
@@ -152,7 +163,8 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     client.execute(prepared.request, prepared.redirects, prepared.timeout)
                 } catch (e: IOException) {
                     // The ROUTINE failure (DNS/connect/TLS/timeout) — reported, never thrown.
-                    pipe.sink.close("request failed: ${e.message}")
+                    logger?.log(Logger.Level.WARN, logCtx, "request failed: ${e.message}", e)
+                    pipe.sink.close(errorReason("network", "request failed: ${e.message}"))
                     return@launch
                 }
                 try {
@@ -188,7 +200,8 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                 } catch (e: IOException) {
                     // The head is already out, so RESET is the only channel left: a clean EOF here
                     // would read as a complete (silently truncated) body.
-                    pipe.sink.close("response body failed: ${e.message}")
+                    logger?.log(Logger.Level.WARN, logCtx, "response body failed: ${e.message}", e)
+                    pipe.sink.close(errorReason("network", "response body failed: ${e.message}"))
                 } finally {
                     response.closeQuietly()
                 }
@@ -224,6 +237,18 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
         pipe.source.close()
     }
 }
+
+/** A RESET reason encoded from the typed [WireError] contract — the same shape `commandHandler`
+ *  emits, so http.js (and `decodeEngineError`) adopt the origin's code directly, no text matching. */
+private fun errorReason(code: String, message: String): String =
+    Json.encodeToString(WireError(code = code, message = message))
+
+private val HTTP_SCOPE = listOf("http")
+
+/** The caller's logging-context trail (threaded down in the head) with this protocol's hop appended
+ *  — the trail every birth-site log here is tagged with. Absent/garbage degrades to just `["http"]`. */
+private fun readLogCtx(head: JsonObject): List<String> =
+    (head["logCtx"] as? JsonArray).orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull } + "http"
 
 private class PreparedRequest(val request: Request, val redirects: RedirectOptions, val timeout: Duration?)
 

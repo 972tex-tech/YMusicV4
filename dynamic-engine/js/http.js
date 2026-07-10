@@ -14,10 +14,10 @@
 //                        writeObjectAsJson/…, all streaming) — length unknown so no Content-Length
 // .json(obj) is sugar for a callback body writing the object as JSON + a default Content-Type.
 // Response: status / statusText / ok / url (final, after redirects) /
-// headers.get(name)|has(name) / await text() | await json() |
+// headers.get(name)|has(name) / await text() | await jsonObject() | await jsonArray() |
 // stream() -> { read(buf, off, len) } for chunk-by-chunk reads / cancel() to abort the body /
 // ignoreResult() to drain it to nowhere in the background (fire-and-forget).
-// text()/json()/stream()/ignoreResult() consume the body once — a second call throws.
+// text()/jsonObject()/jsonArray()/stream()/ignoreResult() consume the body once — a second throws.
 //
 // WIRE (v3, HOST_PROTOCOLS §1; server side: HttpProtocol.kt): a CONTROL pipe carries the JSON
 // heads (self-framing — readJsonObject/JsonReader stop at the value's end) and the response body
@@ -121,18 +121,24 @@
     if (p && p.catch) p.catch(function () {});
   }
 
-  // Tag the host's transport-stage RESETs as the well-known "network" category (HOST_PROTOCOLS
-  // "Errors across the boundary") so an uncaught HTTP failure classifies without scraper effort.
-  // "invalid request: …" is deliberately NOT tagged — that one is the caller's bug, not the
-  // network's. Mutates the error to keep its stack.
-  function asNetworkError(e) {
-    if (
-      e &&
-      e.code === undefined &&
-      /^(request failed|response body failed): /.test(e.message || "")
-    ) {
-      e.name = "NetworkError";
-      e.code = "network";
+  // Adopt the host's classification. HttpProtocol RESETs a transport/protocol failure with a
+  // structured {code, message} reason — it classifies at the ORIGIN, where it holds the real
+  // IOException (HOST_PROTOCOLS "Errors across the boundary") — so we do NOT guess a category from
+  // the message text. Parse that reason onto the error; a non-structured reason (the runtime's raw
+  // backstop text, or a scraper's own throw) is left untouched for commandHandler's classifier.
+  // Never overwrites an existing code. Mutates the error to keep its stack.
+  function hostError(e) {
+    if (e && e.code === undefined && typeof e.message === "string") {
+      var o = null;
+      try {
+        o = JSON.parse(e.message);
+      } catch (_) {}
+      if (o && typeof o === "object" && typeof o.code === "string") {
+        e.code = o.code;
+        if (typeof o.name === "string") e.name = o.name;
+        if (typeof o.message === "string") e.message = o.message;
+        if (typeof o.userMessage === "string") e.userMessage = o.userMessage;
+      }
     }
     return e;
   }
@@ -187,7 +193,7 @@
         n = await this._io.source.receive(buffer, offset, len);
       } catch (e) {
         this._fail();
-        throw asNetworkError(e);
+        throw hostError(e);
       }
       if (n < 0) this._end();
       return n;
@@ -200,13 +206,49 @@
         s = await this._io.source.readUtf8();
       } catch (e) {
         this._fail();
-        throw asNetworkError(e);
+        throw hostError(e);
       }
       this._end();
       return s;
     }
-    async json() {
-      return JSON.parse(await this.text());
+    // Parse the body with the STREAMING JSON parser, validating the root type: jsonObject() requires
+    // a `{…}` body, jsonArray() a `[…]` (readJsonObject/readJsonArray reject a mismatched root on the
+    // first byte). Object vs array is the caller's to pick, not guessed.
+    jsonObject() {
+      return this._readJson((src) => src.readJsonObject());
+    }
+    jsonArray() {
+      return this._readJson((src) => src.readJsonArray());
+    }
+    // Chunk-by-chunk, never materializing the whole body as a string (that's what the streaming
+    // parser is for). A read failure -> network; malformed JSON -> the parser's own error (classified
+    // "parse"). The parser stops at the value's end, so drain to EOF to reap the read side like
+    // text() — but the body must be ONE JSON value: any non-whitespace tail is a corrupt/misframed
+    // body (SyntaxError -> "parse", naming the offending byte), not silently eaten.
+    async _readJson(read) {
+      this._take();
+      var v;
+      try {
+        v = await read(this._io.source);
+        var scratch = new Uint8Array(64);
+        for (;;) {
+          var n = await this._io.source.receive(scratch, 0, scratch.length);
+          if (n < 0) break; // EOF
+          for (var i = 0; i < n; i++) {
+            var b = scratch[i];
+            if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d) {
+              var hex = "0x" + b.toString(16).padStart(2, "0");
+              var shown = b >= 0x20 && b < 0x7f ? " '" + String.fromCharCode(b) + "'" : "";
+              throw new SyntaxError("unexpected data after JSON body: " + hex + shown);
+            }
+          }
+        }
+      } catch (e) {
+        this._fail();
+        throw hostError(e);
+      }
+      this._end();
+      return v;
     }
     // Raw byte reads as they arrive; never buffers the whole body.
     stream() {
@@ -253,7 +295,7 @@
   // one parked inside its transport with the body never pulled; execute() rejects
   // "request cancelled"), or after the Response (delegates to Response.cancel()).
   class HttpCall {
-    constructor(method, url, headers, kind, body, len, opts) {
+    constructor(method, url, headers, kind, body, len, opts, logCtx) {
       this._method = method;
       this._url = url;
       this._headers = headers;
@@ -261,6 +303,7 @@
       this._body = body;
       this._len = len;
       this._opts = opts; // null, or {timeoutMs?, followRedirects?}
+      this._logCtx = logCtx; // null, or the caller's logging-context trail for birth-site logs
       this._io = null;
       this._response = null;
       this._bodyReg = null; // the body pipe's one-shot accept registration, until opened
@@ -326,6 +369,9 @@
         });
       }
       if (this._opts) head.opts = this._opts;
+      // Threads the caller's logging context to the host so a transport failure (request/response
+      // body) logs at its birth site with the full trail (HOST_PROTOCOLS "Logging context").
+      if (this._logCtx) head.logCtx = this._logCtx;
       try {
         // control pipe: the JSON head (self-framing), then NOTHING outbound except a possible -1
         // cancel — the channel stays unobstructed at every stage.
@@ -349,9 +395,18 @@
         this._response = res;
         return res;
       } catch (e) {
+        // No Response will be returned, so nothing else will ever own the control pipe — retire it
+        // here (like OkHttp's Call.execute() releasing its resources on a failed call). Idempotent
+        // with a later cancel() (pipe close is first-close-wins).
         this._retireBody("request failed");
+        var io2 = this._io;
+        if (io2) {
+          this._io = null;
+          io2.sink.close();
+          io2.source.close();
+        }
         if (this._cancelled) throw new Error("request cancelled");
-        throw asNetworkError(e);
+        throw hostError(e);
       }
     }
   }
@@ -418,6 +473,13 @@
       this._followRedirects = !!follow;
       return this;
     }
+    // Logging context: a logical scope trail (["downloadController","js:resolve",…]) the host tags a
+    // birth-site failure (request/response body) with. Developer-only (scope labels, never data/PII)
+    // — it never reaches the user; the error code does. Rides the head to HttpProtocol.
+    logContext(ctx) {
+      this._logCtx = Array.isArray(ctx) ? ctx.slice() : [String(ctx)];
+      return this;
+    }
 
     // Snapshot this builder into an executable, cancellable call.
     build() {
@@ -446,7 +508,16 @@
       if (this._timeoutMs !== undefined) (opts = opts || {}).timeoutMs = this._timeoutMs;
       if (this._followRedirects !== undefined)
         (opts = opts || {}).followRedirects = this._followRedirects;
-      return new HttpCall(this._method, this._url, headers, kind, body, len, opts);
+      return new HttpCall(
+        this._method,
+        this._url,
+        headers,
+        kind,
+        body,
+        len,
+        opts,
+        this._logCtx || null,
+      );
     }
   }
 

@@ -16,6 +16,7 @@ buildscript {
 
 plugins {
     kotlin("multiplatform")
+    kotlin("plugin.serialization")
     // AGP KMP plugin (same as :media-store / :kmpFfmpeg) — supplies the `android {}` KMP target.
     id("com.android.kotlin.multiplatform.library")
 }
@@ -74,10 +75,11 @@ kotlin {
 
 // JS preambles: authored (with comments) in js/*.js, minified at build time with Closure Compiler
 // (SIMPLE, no transpile) and emitted as generated Kotlin consts the engine loads. Mirrors
-// :quickjs's bootstrap handling — globals (HttpRequest, serve, …) and property names are preserved.
+// :quickjs's bootstrap handling — globals (HttpRequest, commandHandler, …) and property names are
+// preserved.
 val jsPreambles = listOf(
     "http.js" to "HTTP_JS",
-    "serve.js" to "SERVE_JS",
+    "command.js" to "COMMAND_JS",
 )
 val preambleKtDir = layout.buildDirectory.dir("generated/httpJs")
 

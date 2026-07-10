@@ -76,7 +76,7 @@ re-mints** (cause chain; the deepest code wins), so a user report is answered by
 
 ```json
 { "code": "E90210",            // category ("network") or site code (E#####) — required
-  "name": "ExtractError",      // JS constructor name, when it originated in JS
+  "name": "JsEngineError",     // JS constructor name, when it originated in JS
   "message": "quota exceeded", // technical, for logs/grep — NEVER shown to the user
   "userMessage": "…",          // OPTIONAL: localized, display-ready (e.g. server-minted)
   "stack": "…",                // capped at 4 KB
@@ -90,25 +90,27 @@ Codes come in two kinds (CLAUDE.md "Error Handling"):
   degrades to the generic message + code, never a crash.
 - **Site codes** — `E#####`, one hardcoded literal at one throw/classification site; grep is the
   registry. `E2xxxx` = `:dynamic-engine` incl. its remote JS, `E9xxxx` = server-minted. Reserved so
-  far: `E20001` uncaught script error (serve's classifier fallback), `E20002` no engine handler for
+  far: `E20001` uncaught script error (commandHandler's classifier fallback), `E20002` no engine handler for
   the command, `E20003` unstructured pipe reset (decoder fallback), `E20010` / `E20011` — §1.
 
 Carriers, per hop:
-- **JS**: `throw ExtractError.parse("…")` / `throw new ExtractError("E29999", "…", {userMessage})`;
-  http.js tags transport-stage failures `code:"network"` automatically. The **`serve(command,
-  handler)`** dispatcher (handler gets `(args, out)` after the JSON args head is read) classifies
-  ANY throw — explicit `.code` wins, then a site code embedded in the message, `InternalError` →
-  `oom`, runtime `SyntaxError` → `parse`, else `E20001` — and RESETs the pipe with the object as
-  JSON. EPIPE (the caller hung up) is the one silent path.
+- **JS**: `throw JsEngineError.parse("…")` / `throw new JsEngineError("…", "E29999", {userMessage})`
+  (message first, then code); http.js tags transport-stage failures `code:"network"` automatically.
+  **`ymix.onAccept(command, commandHandler(handler))`** wraps a handler in the contract — the handler
+  gets `(src, out[, pipe])` and reads its own head off `src` (args format not assumed) — and
+  classifies ANY throw — explicit `.code` wins, then a site code embedded in the message,
+  `InternalError` → `oom`, runtime `SyntaxError` → `parse`, else `E20001` — and RESETs the pipe with
+  the object as JSON. EPIPE (the caller hung up) is the one silent path.
 - **Pipe**: the structured RESET reason. Plain-text reasons (transport-generated, raw
   `ymix.onAccept` backstop) stay legal — the decoder salvages an embedded `E#####` or falls back
   to `E20003` with the text as message.
-- **Kotlin**: `DynamicEngine.call(command, args) { source -> … }` rebuilds the object as a sealed
+- **Kotlin**: a per-command job method opens the pipe, sends the JSON args head, reads the result,
+  and on a `PipeResetException` calls `decodeEngineError(reason)` to rebuild the object as a sealed
   `EngineError` (`Network`/`Parse`/`Oom`/`Technical(E#####)`/`Other(unknown category)`), which
   implements `kmpcommon.error.CodedError`; `Throwable.errorCode()` walks the cause chain (deepest
   wins).
 - **Server**: responds `{"ok":false,"error":{…same object…}}`; the JS API wrapper rethrows it as an
-  `ExtractError` carrying the object as-is — a server-minted code + localized `userMessage` reach
+  `JsEngineError` carrying the object as-is — a server-minted code + localized `userMessage` reach
   the UI with zero app or JS changes. (Third parties — YouTube — can't mint our codes: the JS that
   understands their failure is the minting/classifying site.)
 

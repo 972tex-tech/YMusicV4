@@ -1,13 +1,11 @@
 package ymusic.dynamicengine
 
 import kmpcommon.error.CodedError
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * A failure of an engine call, rebuilt from the structured RESET reason the JS `serve()` dispatcher
+ * A failure of an engine call, rebuilt from the structured RESET reason the JS `commandHandler`
  * sends (HOST_PROTOCOLS "Errors across the boundary"): `{code, name, message, stack, userMessage}`.
  *
  * [code] is the boundary contract — a well-known category mapped to a subclass here, or a site
@@ -19,7 +17,7 @@ sealed class EngineError(
     override val code: String,
     message: String,
     override val userMessage: String?,
-    /** JS constructor name (`TypeError`, `ExtractError`, …) when the failure originated in JS. */
+    /** JS constructor name (`TypeError`, `JsEngineError`, …) when the failure originated in JS. */
     val jsName: String?,
     /** JS stack (capped at the boundary), for reports. */
     val jsStack: String?,
@@ -50,32 +48,30 @@ sealed class EngineError(
 }
 
 private val SITE_CODE = Regex("""E\d{5}""")
+private val wireJson = Json { ignoreUnknownKeys = true }
 
-/** Rebuild an [EngineError] from a pipe RESET [reason]. Fallback-tolerant: a reason that isn't the
- *  structured JSON object (transport-generated, or a raw `ymix.onAccept` handler's backstop
- *  message) still salvages an embedded site code, else mints the decoder's own. */
+/** Rebuild an [EngineError] from a pipe RESET [reason] by decoding the typed [WireError] contract.
+ *  Fallback-tolerant: a reason that isn't the contract (the runtime's raw backstop text — a
+ *  different, generic layer) still salvages an embedded site code, else mints the decoder's own. */
 internal fun decodeEngineError(reason: String, cause: Throwable?): EngineError {
-    val obj = reason.takeIf { it.startsWith("{") }?.let {
+    val wire = reason.takeIf { it.startsWith("{") }?.let {
         try {
-            Json.parseToJsonElement(it) as? JsonObject
+            wireJson.decodeFromString<WireError>(it)
         } catch (_: Exception) {
             null
         }
     }
-    val code = obj?.get("code")?.jsonPrimitive?.contentOrNull
-    if (obj == null || code == null) {
+    if (wire == null) {
         val embedded = SITE_CODE.find(reason)?.value
         return EngineError.Technical(embedded ?: "E20003", reason, null, null, null, cause) // E20003: unstructured pipe reset
     }
-    val message = obj["message"]?.jsonPrimitive?.contentOrNull ?: reason
-    val userMessage = obj["userMessage"]?.jsonPrimitive?.contentOrNull
-    val name = obj["name"]?.jsonPrimitive?.contentOrNull
-    val stack = obj["stack"]?.jsonPrimitive?.contentOrNull
+    val message = wire.message ?: reason
     return when {
-        code == "network" -> EngineError.Network(message, userMessage, name, stack, cause)
-        code == "parse" -> EngineError.Parse(message, userMessage, name, stack, cause)
-        code == "oom" -> EngineError.Oom(message, userMessage, name, stack, cause)
-        SITE_CODE.matches(code) -> EngineError.Technical(code, message, userMessage, name, stack, cause)
-        else -> EngineError.Other(code, message, userMessage, name, stack, cause)
+        wire.code == "network" -> EngineError.Network(message, wire.userMessage, wire.name, wire.stack, cause)
+        wire.code == "parse" -> EngineError.Parse(message, wire.userMessage, wire.name, wire.stack, cause)
+        wire.code == "oom" -> EngineError.Oom(message, wire.userMessage, wire.name, wire.stack, cause)
+        SITE_CODE.matches(wire.code) ->
+            EngineError.Technical(wire.code, message, wire.userMessage, wire.name, wire.stack, cause)
+        else -> EngineError.Other(wire.code, message, wire.userMessage, wire.name, wire.stack, cause)
     }
 }

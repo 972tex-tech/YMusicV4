@@ -92,11 +92,66 @@ class DynamicEngineTest {
         try {
             val count = e.eval(
                 """
-                const body = await (await HttpRequest.get("https://example.com/api").build().execute()).json();
+                const body = await (await HttpRequest.get("https://example.com/api").build().execute()).jsonObject();
                 return body.items.length;
                 """.trimIndent(),
             )
             assertEquals("3", count)
+        } finally {
+            e.close()
+        }
+    }
+
+    /** jsonArray() validates a `[…]` root and parses it (readJsonObject would reject the array). */
+    @Test
+    fun json_array_parses_a_top_level_array() = runTest {
+        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("""["a","b","c"]""", chunkSize = 4)))
+        try {
+            val len = e.eval(
+                """
+                const a = await (await HttpRequest.get("https://x/").build().execute()).jsonArray();
+                return a.length;
+                """.trimIndent(),
+            )
+            assertEquals("3", len)
+        } finally {
+            e.close()
+        }
+    }
+
+    /** jsonObject() streams the body then asserts the tail is blank to EOF — a misframed body (data
+     *  after the value) is a SyntaxError (commandHandler classifies it "parse"), never silently eaten. */
+    @Test
+    fun json_rejects_non_whitespace_after_the_body() = runTest {
+        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("""{"id":"a"}JUNK""")))
+        try {
+            val r = e.eval(
+                """
+                try {
+                  await (await HttpRequest.get("https://x/").build().execute()).jsonObject();
+                  return "no-throw";
+                } catch (err) { return err.name + " " + err.message; }
+                """.trimIndent(),
+            )
+            assertTrue(r.startsWith("SyntaxError"), r) // -> commandHandler classifies SyntaxError as "parse"
+            assertTrue(r.contains("0x4a") && r.contains("'J'"), "must name the offending byte: $r")
+        } finally {
+            e.close()
+        }
+    }
+
+    /** Trailing whitespace after the JSON value is fine (matches JSON.parse) — the body still parses. */
+    @Test
+    fun json_tolerates_trailing_whitespace() = runTest {
+        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("{\"id\":\"a\"}\n  \n")))
+        try {
+            val id = e.eval(
+                """
+                const b = await (await HttpRequest.get("https://x/").build().execute()).jsonObject();
+                return b.id;
+                """.trimIndent(),
+            )
+            assertEquals("a", id)
         } finally {
             e.close()
         }
@@ -454,19 +509,20 @@ class DynamicEngineTest {
         }
     }
 
-    /** A transport IOException (DNS/connect/TLS/timeout) is the ROUTINE failure: serveHttp
-     *  reports it as a stage-tagged RESET, and execute() rejects with the reason. */
+    /** A transport IOException (DNS/connect/TLS/timeout) is the ROUTINE failure: serveHttp reports it
+     *  as an origin-classified `{code:"network", message}` RESET, and execute() rejects carrying both
+     *  — the code is decided at the origin, not guessed from the message text downstream. */
     @Test
-    fun transport_failure_rejects_execute_with_request_failed() = runTest {
+    fun transport_failure_rejects_execute_coded_network() = runTest {
         val client = FakeHttpClient { throw IOException("dns lookup failed") }
         val e = DynamicEngine.create(client)
         try {
             assertEquals(
-                "ERR:request failed: dns lookup failed",
+                "network|request failed: dns lookup failed",
                 e.eval(
                     """
                     try { await HttpRequest.get("https://example.com").build().execute(); return "resolved"; }
-                    catch (err) { return "ERR:" + err.message; }
+                    catch (err) { return err.code + "|" + err.message; }
                     """.trimIndent(),
                 ),
             )
@@ -521,8 +577,9 @@ class DynamicEngineTest {
         }
     }
 
-    /** A head the server can't parse RESETs with "invalid request: …" — the client's fault,
-     *  reported before anything reaches the HTTP client. */
+    /** A head the server can't parse RESETs with a structured `{code:"E20011", message}` reason — the
+     *  client's fault (a site code), reported before anything reaches the HTTP client. Read raw here,
+     *  so the reason is the JSON string itself (a real call gets it parsed onto err.code by http.js). */
     @Test
     fun malformed_head_resets_with_invalid_request() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
@@ -537,7 +594,7 @@ class DynamicEngineTest {
                 return await io.source.readJsonObject(); /* the RESET reason lands on this read */
                 """.trimIndent(),
             )
-            assertTrue(r.startsWith("ERR:E20011 invalid request:"), r)
+            assertTrue(r.startsWith("ERR:") && r.contains("E20011") && r.contains("invalid request"), r)
             assertEquals(null, client.lastRequest, "nothing may reach the client")
         } finally {
             e.close()
