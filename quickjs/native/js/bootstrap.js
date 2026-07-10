@@ -364,18 +364,20 @@
           checkWriteBusy();
           return writeLock(flushSink());
         },
-        // No reason: flush staged writes, then END. With a reason: RESET = ABORT — no flush (the
-        // peer discards buffered data on reset anyway), allowed mid-write, and a parked send is
-        // failed rather than left hanging.
+        // ABORT — an explicit RESET, or an END that must interrupt a parked send (a clean END then
+        // would truncate the peer's stream, so it becomes a RESET instead). Discards staged bytes,
+        // fails the parked send, RESETs the peer; bypasses the busy-guard. A plain END with nothing
+        // in flight takes the clean path below.
         close: function (reason) {
-          if (reason !== undefined) {
+          if (reason !== undefined || writer) {
+            var resetReason = reason !== undefined ? reason : "closed while a send was in progress";
             wlen = 0;
             var w = writer;
             if (w) {
               writer = null;
-              w.reject(new Error("send aborted: " + reason));
+              w.reject(new Error("send aborted: " + resetReason));
             }
-            closeWrite(reason);
+            closeWrite(resetReason);
             return;
           }
           checkWriteBusy();

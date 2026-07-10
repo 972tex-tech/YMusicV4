@@ -394,12 +394,15 @@ class QuickJsRuntime private constructor(
                 if (closed.load()) return@withContext
                 if (!weEnded) {
                     weEnded = true
-                    engine.closeWrite(id, reason)
-                    // A send parked at the cap can't complete once our write side is closed — fail
-                    // it rather than leave it hung (mirrors the JS sink failing a parked send on
-                    // close). Self-caused (our close), so SendClosedException — NOT the peer-caused
-                    // BrokenPipeException. weEnded is already set, so the send's catch won't re-RESET.
                     val w = writer
+                    // A send parked at the cap has undelivered bytes: an END-close that must abort
+                    // it delivers a RESET instead — a clean END would truncate the peer's stream. A
+                    // RESET-close passes its own reason through. Either way the parked send is
+                    // force-failed (never left hung) with SendClosedException — self-caused (our
+                    // close), NOT the peer-caused BrokenPipeException; weEnded is set so the send's
+                    // catch won't re-RESET.
+                    val effectiveReason = reason ?: if (w != null) "closed while a send was in progress" else null
+                    engine.closeWrite(id, effectiveReason)
                     if (w != null) { writer = null; w.resumeWithException(SendClosedException("send aborted by close()")) }
                     maybeReap()
                 }

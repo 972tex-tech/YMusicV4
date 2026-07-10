@@ -1327,6 +1327,34 @@ class QuickJsRuntimeTest {
         }
     }
 
+    /** An END-close that has to interrupt a parked send must reach the peer as a RESET, never a
+     *  clean EOF: the peer began receiving 200 KB and only 64 KB was delivered, so a clean EOF here
+     *  would be silent truncation. The JS handler sends (parks), then close()s [END] the same pipe;
+     *  Kotlin's receive must throw [PipeResetException] with the upgrade reason, not return -1. */
+    @Test
+    fun end_close_of_a_parked_send_resets_the_peer() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.load(
+            """
+            ymix.onAccept("push", (pipe) => {
+              const sendP = pipe.sink.send(new Uint8Array(200000)); // parks: 64 KB in, rest waits
+              if (sendP && sendP.catch) sendP.catch(function () {}); // it will be force-failed
+              pipe.sink.close(); // END while parked -> abort the send, RESET the peer (no truncation)
+            });
+            """.trimIndent(),
+        )
+        try {
+            val pipe = rt.openPipe("push")
+            val e = assertFailsWith<PipeResetException> {
+                val buf = Buffer()
+                while (pipe.source.receive(buf, 8192L) != -1L) { /* to EOF or RESET */ }
+            }
+            assertEquals("closed while a send was in progress", e.reason)
+        } finally {
+            rt.close()
+        }
+    }
+
     /** A RESET is terminal for the read side: every receive() after the first re-throws
      *  [PipeResetException] (the KDoc contract), not a read-closed IllegalStateException. */
     @Test
