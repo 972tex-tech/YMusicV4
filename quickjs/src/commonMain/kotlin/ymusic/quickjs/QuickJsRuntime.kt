@@ -43,11 +43,12 @@ fun interface AcceptRegistration {
  *
  * Each pipe direction is a **bounded, flow-controlled byte stream** whose buffer lives on the
  * *reader's* side: bytes JS writes to us land here, in an okio [Buffer] (segment pool, no per-chunk
- * allocation); bytes we write to JS land in its queue of pooled C segments. Writes cross the FFI
- * zero-copy and are **rendezvous-first**: when a reader is parked, the writer's bytes are copied
- * straight into the reader's buffer (one copy) and only the remainder is buffered (a second copy for
- * those bytes, never a throwaway allocation). A partially accepted write parks the writer until the
- * reader drains to the low-water mark (DRAIN). All state lives on the engine thread — no locking.
+ * allocation); bytes we write to JS land in its queue of pooled C segments. The JS→Kotlin direction
+ * is **rendezvous-first**: when a reader is parked, `deliver()` copies the writer's bytes straight
+ * into the reader's buffer (one copy) and only the remainder is buffered. The host→JS direction
+ * always fills the C `PipeBuf` segments and satisfies the parked JS read from them (rendezvous was
+ * deliberately dropped there). A partially accepted write parks the writer until the reader drains
+ * to the low-water mark (DRAIN). All state lives on the engine thread — no locking.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class QuickJsRuntime private constructor(
@@ -126,6 +127,10 @@ class QuickJsRuntime private constructor(
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
     internal fun onOpen(id: Int, command: String): Int {
         val handler = synchronized(acceptsLock) { accepts[command] } ?: return -1
+        // Refuse a colliding id rather than overwrite a live pipe: a buggy/hostile bundle reusing an
+        // id (or opening an odd Kotlin-range id) would otherwise orphan the old PipeImpl, whose
+        // parked continuation close()'s failPending — walking only the pipes map — could never fail.
+        if (pipes.containsKey(id)) return -1
         val impl = PipeImpl(id, command)
         pipes[id] = impl
         scope.launch {
