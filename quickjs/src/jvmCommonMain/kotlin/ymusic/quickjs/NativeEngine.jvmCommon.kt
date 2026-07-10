@@ -42,6 +42,15 @@ internal actual class NativeEngine private constructor(private val handle: Long)
             QuickJsNative.register(handle, callbacks)
             return NativeEngine(handle)
         }
+
+        actual fun createFromBytecode(bytecode: ByteArray, prelude: String, callbacks: EngineCallbacks): NativeEngine {
+            val handle = QuickJsNative.createBytecode(bytecode, prelude)
+            QuickJsNative.register(handle, callbacks)
+            return NativeEngine(handle)
+        }
+
+        actual fun compile(script: String, filename: String): ByteArray =
+            QuickJsNative.compile(script, filename)
     }
 }
 

@@ -283,8 +283,7 @@ static int drain_hook(void *user, uint32_t id) {
 
 /* ---- JNI entry points (all on the single engine thread) ---- */
 
-JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript) {
+static Engine *engine_new(JNIEnv *env) {
     Engine *e = (Engine *)calloc(1, sizeof(Engine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -308,39 +307,30 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscr
     JS_FreeValue(e->ctx, global);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
+    return e;
+}
 
-    size_t blen = 0;
-    char *script = jstring_to_utf8(env, jscript, &blen);
-    if (!script) { /* OOM converting the script source — tear down and report, don't feed JS_Eval a null */
-        (*env)->DeleteGlobalRef(env, e->bridgeClass);
-        qjs_pipe_ctx_release(e->pipe, e->ctx);
-        JS_FreeContext(e->ctx);
-        JS_FreeRuntime(e->rt);
-        qjs_pipe_ctx_free(e->pipe);
-        free(e);
-        throw_qjs(env, utf8_to_jstring(env, "out of memory (script)", 22));
-        return 0;
-    }
-    JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
-    free(script);
-    if (JS_IsException(bret)) {
-        JSValue exc = JS_GetException(e->ctx);
-        const char *msg = JS_ToCString(e->ctx, exc);
-        throw_qjs(env, utf8_to_jstring(env, msg ? msg : "engine script failed", msg ? strlen(msg) : 20));
-        if (msg) JS_FreeCString(e->ctx, msg);
-        JS_FreeValue(e->ctx, exc);
-        JS_FreeValue(e->ctx, bret);
-        /* full teardown — a failed create must not leak the engine (Kotlin may retry) */
-        (*env)->DeleteGlobalRef(env, e->bridgeClass);
-        qjs_pipe_ctx_release(e->pipe, e->ctx);
-        JS_FreeContext(e->ctx);
-        JS_FreeRuntime(e->rt);
-        qjs_pipe_ctx_free(e->pipe);
-        free(e);
-        return 0;
-    }
-    JS_FreeValue(e->ctx, bret);
+/* Full teardown of a half-built engine — a failed create must not leak (Kotlin may retry). */
+static void engine_teardown(JNIEnv *env, Engine *e) {
+    (*env)->DeleteGlobalRef(env, e->bridgeClass);
+    qjs_pipe_ctx_release(e->pipe, e->ctx);
+    JS_FreeContext(e->ctx);
+    JS_FreeRuntime(e->rt);
+    qjs_pipe_ctx_free(e->pipe);
+    free(e);
+}
 
+/* Throw the pending JS exception as a QuickJsException (falls back to [fallback]). */
+static void throw_js_exception(JNIEnv *env, JSContext *ctx, const char *fallback) {
+    JSValue exc = JS_GetException(ctx);
+    size_t mlen = 0;
+    const char *msg = JS_ToCStringLen(ctx, &mlen, exc);
+    throw_qjs(env, utf8_to_jstring(env, msg ? msg : fallback, msg ? mlen : strlen(fallback)));
+    if (msg) JS_FreeCString(ctx, msg);
+    JS_FreeValue(ctx, exc);
+}
+
+static jlong engine_finish(Engine *e) {
     JSValue g = JS_GetGlobalObject(e->ctx);
     e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
     e->jsClose = JS_GetPropertyStr(e->ctx, g, "__jsClose");
@@ -348,6 +338,106 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscr
     e->jsDrain = JS_GetPropertyStr(e->ctx, g, "__jsDrain");
     JS_FreeValue(e->ctx, g);
     return (jlong)(intptr_t)e;
+}
+
+JNIEXPORT jlong JNICALL
+Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript) {
+    Engine *e = engine_new(env);
+    size_t blen = 0;
+    char *script = jstring_to_utf8(env, jscript, &blen);
+    if (!script) { /* OOM converting the script source — tear down and report, don't feed JS_Eval a null */
+        engine_teardown(env, e);
+        throw_qjs(env, utf8_to_jstring(env, "out of memory (script)", 22));
+        return 0;
+    }
+    JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
+    free(script);
+    if (JS_IsException(bret)) {
+        throw_js_exception(env, e->ctx, "engine script failed");
+        engine_teardown(env, e);
+        return 0;
+    }
+    JS_FreeValue(e->ctx, bret);
+    return engine_finish(e);
+}
+
+JNIEXPORT jlong JNICALL
+Java_ymusic_quickjs_QuickJsNative_createBytecode(JNIEnv *env, jobject thiz, jbyteArray jbc,
+                                                 jstring jprelude) {
+    Engine *e = engine_new(env);
+    if (jprelude != NULL && (*env)->GetStringLength(env, jprelude) > 0) {
+        size_t plen = 0;
+        char *prelude = jstring_to_utf8(env, jprelude, &plen);
+        if (!prelude) {
+            engine_teardown(env, e);
+            throw_qjs(env, utf8_to_jstring(env, "out of memory (prelude)", 23));
+            return 0;
+        }
+        JSValue pret = JS_Eval(e->ctx, prelude, plen, "<prelude>", JS_EVAL_TYPE_GLOBAL);
+        free(prelude);
+        if (JS_IsException(pret)) {
+            throw_js_exception(env, e->ctx, "prelude failed");
+            engine_teardown(env, e);
+            return 0;
+        }
+        JS_FreeValue(e->ctx, pret);
+    }
+    jsize bclen = (*env)->GetArrayLength(env, jbc);
+    jbyte *bc = (*env)->GetByteArrayElements(env, jbc, NULL);
+    JSValue fn = bc ? JS_ReadObject(e->ctx, (const uint8_t *)bc, (size_t)bclen, JS_READ_OBJ_BYTECODE)
+                    : JS_ThrowInternalError(e->ctx, "out of memory (bytecode)");
+    if (bc) (*env)->ReleaseByteArrayElements(env, jbc, bc, JNI_ABORT);
+    if (JS_IsException(fn)) {
+        throw_js_exception(env, e->ctx, "bad bytecode");
+        engine_teardown(env, e);
+        return 0;
+    }
+    JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    if (JS_IsException(r)) {
+        throw_js_exception(env, e->ctx, "engine bytecode failed");
+        engine_teardown(env, e);
+        return 0;
+    }
+    JS_FreeValue(e->ctx, r);
+    return engine_finish(e);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_ymusic_quickjs_QuickJsNative_compile(JNIEnv *env, jobject thiz, jstring jscript,
+                                          jstring jfilename) {
+    size_t slen = 0;
+    char *script = jstring_to_utf8(env, jscript, &slen);
+    char *filename = jstring_to_utf8(env, jfilename, NULL);
+    if (!script || !filename) {
+        free(script);
+        free(filename);
+        throw_qjs(env, utf8_to_jstring(env, "out of memory", 13));
+        return NULL;
+    }
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JS_SetStripInfo(rt, JS_STRIP_SOURCE); /* consumed at parse time — must precede JS_Eval */
+    jbyteArray result = NULL;
+    JSValue fn = JS_Eval(ctx, script, slen, filename, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+    free(script);
+    free(filename);
+    if (JS_IsException(fn)) {
+        throw_js_exception(env, ctx, "compile failed");
+    } else {
+        size_t sz = 0;
+        uint8_t *buf = JS_WriteObject(ctx, &sz, fn, JS_WRITE_OBJ_BYTECODE);
+        if (!buf) {
+            throw_js_exception(env, ctx, "bytecode write failed");
+        } else {
+            result = (*env)->NewByteArray(env, (jsize)sz);
+            if (result) (*env)->SetByteArrayRegion(env, result, 0, (jsize)sz, (const jbyte *)buf);
+            js_free(ctx, buf);
+        }
+    }
+    JS_FreeValue(ctx, fn);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return result;
 }
 
 JNIEXPORT jstring JNICALL

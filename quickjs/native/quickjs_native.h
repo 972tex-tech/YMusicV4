@@ -40,6 +40,17 @@ typedef int (*QjsInboundCb)(void *user, int op, uint32_t id, const uint8_t *data
  * Returns NULL on failure with *err set to a malloc'd message (free via qjs_free). */
 QjsEngine *qjs_create(const char *script, QjsInboundCb cb, void *user, char **err);
 
+/* Compile [script] to serialized bytecode with per-function source text stripped
+ * (Function.prototype.toString yields a placeholder; line-number debug info is kept so stack
+ * traces stay useful). Returns a malloc'd buffer with *out_len set (free via qjs_free), or NULL
+ * with *err set to a malloc'd message. */
+uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, char **err);
+
+/* qjs_create from qjs_compile output. [prelude] (NULL/empty = none) is evaluated as plain source
+ * before the bytecode program runs — for host-owned values unknown at compile time (`versions`). */
+QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, const char *prelude,
+                         QjsInboundCb cb, void *user, char **err);
+
 /* Evaluate [script]; returns a malloc'd UTF-8 string (the result's string form, or the error
  * message) or NULL. *isError is set to 1 when the returned string is an error message. */
 char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int *isError);

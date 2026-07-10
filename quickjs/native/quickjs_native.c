@@ -111,7 +111,16 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
-QjsEngine *qjs_create(const char *script, QjsInboundCb cb, void *user, char **err) {
+/* Extract the pending JS exception into *err (malloc'd; falls back to [fallback]). */
+static void set_err(JSContext *ctx, char **err, const char *fallback) {
+    JSValue exc = JS_GetException(ctx);
+    const char *m = JS_ToCString(ctx, exc);
+    if (err) *err = strdup(m ? m : fallback);
+    if (m) JS_FreeCString(ctx, m);
+    JS_FreeValue(ctx, exc);
+}
+
+static QjsEngine *engine_new(QjsInboundCb cb, void *user) {
     QjsEngine *e = (QjsEngine *)calloc(1, sizeof(QjsEngine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -128,31 +137,86 @@ QjsEngine *qjs_create(const char *script, QjsInboundCb cb, void *user, char **er
     JS_FreeValue(e->ctx, g);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
-
-    JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(r)) {
-        JSValue exc = JS_GetException(e->ctx);
-        const char *m = JS_ToCString(e->ctx, exc);
-        if (err) *err = strdup(m ? m : "engine script failed");
-        if (m) JS_FreeCString(e->ctx, m);
-        JS_FreeValue(e->ctx, exc);
-        JS_FreeValue(e->ctx, r);
-        qjs_pipe_ctx_release(e->pipe, e->ctx);
-        JS_FreeContext(e->ctx);
-        JS_FreeRuntime(e->rt);
-        qjs_pipe_ctx_free(e->pipe);
-        free(e);
-        return NULL;
-    }
-    JS_FreeValue(e->ctx, r);
-
-    JSValue g2 = JS_GetGlobalObject(e->ctx);
-    e->jsOpen = JS_GetPropertyStr(e->ctx, g2, "__jsOpen");
-    e->jsClose = JS_GetPropertyStr(e->ctx, g2, "__jsClose");
-    e->jsCloseRead = JS_GetPropertyStr(e->ctx, g2, "__jsCloseRead");
-    e->jsDrain = JS_GetPropertyStr(e->ctx, g2, "__jsDrain");
-    JS_FreeValue(e->ctx, g2);
     return e;
+}
+
+/* Failed create: report the pending exception and tear the half-built engine down. */
+static QjsEngine *engine_fail(QjsEngine *e, char **err, const char *fallback) {
+    set_err(e->ctx, err, fallback);
+    qjs_pipe_ctx_release(e->pipe, e->ctx);
+    JS_FreeContext(e->ctx);
+    JS_FreeRuntime(e->rt);
+    qjs_pipe_ctx_free(e->pipe);
+    free(e);
+    return NULL;
+}
+
+static void engine_capture(QjsEngine *e) {
+    JSValue g = JS_GetGlobalObject(e->ctx);
+    e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
+    e->jsClose = JS_GetPropertyStr(e->ctx, g, "__jsClose");
+    e->jsCloseRead = JS_GetPropertyStr(e->ctx, g, "__jsCloseRead");
+    e->jsDrain = JS_GetPropertyStr(e->ctx, g, "__jsDrain");
+    JS_FreeValue(e->ctx, g);
+}
+
+QjsEngine *qjs_create(const char *script, QjsInboundCb cb, void *user, char **err) {
+    QjsEngine *e = engine_new(cb, user);
+    JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(r)) return engine_fail(e, err, "engine script failed");
+    JS_FreeValue(e->ctx, r);
+    engine_capture(e);
+    return e;
+}
+
+QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, const char *prelude,
+                         QjsInboundCb cb, void *user, char **err) {
+    QjsEngine *e = engine_new(cb, user);
+    if (prelude && prelude[0]) {
+        JSValue p = JS_Eval(e->ctx, prelude, strlen(prelude), "<prelude>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(p)) return engine_fail(e, err, "prelude failed");
+        JS_FreeValue(e->ctx, p);
+    }
+    JSValue fn = JS_ReadObject(e->ctx, bytecode, len, JS_READ_OBJ_BYTECODE);
+    if (JS_IsException(fn)) return engine_fail(e, err, "bad bytecode");
+    JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    if (JS_IsException(r)) return engine_fail(e, err, "engine bytecode failed");
+    JS_FreeValue(e->ctx, r);
+    engine_capture(e);
+    return e;
+}
+
+uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, char **err) {
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JS_SetStripInfo(rt, JS_STRIP_SOURCE); /* consumed at parse time — must precede JS_Eval */
+    uint8_t *out = NULL;
+    *out_len = 0;
+    JSValue fn = JS_Eval(ctx, script, strlen(script), filename ? filename : "<engine>",
+                         JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+    if (JS_IsException(fn)) {
+        set_err(ctx, err, "compile failed");
+    } else {
+        size_t sz = 0;
+        uint8_t *buf = JS_WriteObject(ctx, &sz, fn, JS_WRITE_OBJ_BYTECODE);
+        if (!buf) {
+            set_err(ctx, err, "bytecode write failed");
+        } else {
+            /* copy out of the JS heap: the caller frees with qjs_free (plain free) */
+            out = (uint8_t *)malloc(sz > 0 ? sz : 1);
+            if (out) {
+                memcpy(out, buf, sz);
+                *out_len = sz;
+            } else if (err) {
+                *err = strdup("out of memory (bytecode)");
+            }
+            js_free(ctx, buf);
+        }
+    }
+    JS_FreeValue(ctx, fn);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return out;
 }
 
 char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int *isError) {

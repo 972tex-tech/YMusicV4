@@ -5,6 +5,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -494,7 +495,22 @@ class QuickJsRuntime private constructor(
          *  define the transport globals (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`,
          *  `ymix`) — the native engine captures them right after this one eval, so the script is
          *  only accepted HERE, never loaded onto a live runtime. This module ships no JS. */
-        suspend fun create(script: String): QuickJsRuntime {
+        suspend fun create(script: String): QuickJsRuntime =
+            create { callbacks -> NativeEngine.create(script, callbacks) }
+
+        /** Create from [compile]d bytecode of the engine JS (same contract as the [String]
+         *  overload). [prelude] is evaluated as plain source before the bytecode program runs —
+         *  for host-owned values unknown at compile time (the `versions` global). */
+        suspend fun create(bytecode: ByteArray, prelude: String = ""): QuickJsRuntime =
+            create { callbacks -> NativeEngine.createFromBytecode(bytecode, prelude, callbacks) }
+
+        /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
+         *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding
+         *  the whole script in the bytecode); line-number debug info is kept for stack traces. */
+        suspend fun compile(script: String, filename: String = "<engine>"): ByteArray =
+            withContext(Dispatchers.Default) { NativeEngine.compile(script, filename) }
+
+        private suspend fun create(newEngine: (EngineCallbacks) -> NativeEngine): QuickJsRuntime {
             val dispatcher = newEngineDispatcher()
             var engine: NativeEngine? = null
             try {
@@ -510,7 +526,7 @@ class QuickJsRuntime private constructor(
                 // way back out of a withContext whose body already completed, so `engine = <result>`
                 // would never run and the catch would see null and leak the freshly-created engine.
                 // Assigned in-block, the engine is visible to the catch on that path.
-                withContext(dispatcher) { engine = NativeEngine.create(script, callbacks) }
+                withContext(dispatcher) { engine = newEngine(callbacks) }
                 val rt = QuickJsRuntime(engine!!, dispatcher)
                 rtRef = rt
                 rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)

@@ -71,6 +71,14 @@ internal expect class NativeEngine {
 
     companion object {
         fun create(script: String, callbacks: EngineCallbacks): NativeEngine
+
+        /** [create] from [compile] output. [prelude] (may be empty) is evaluated as plain source
+         *  before the bytecode program runs — for host-owned values unknown at compile time. */
+        fun createFromBytecode(bytecode: ByteArray, prelude: String, callbacks: EngineCallbacks): NativeEngine
+
+        /** Compile [script] to serialized bytecode with per-function source text stripped
+         *  (`Function.prototype.toString` yields a placeholder; line-number debug info is kept). */
+        fun compile(script: String, filename: String): ByteArray
     }
 }
 

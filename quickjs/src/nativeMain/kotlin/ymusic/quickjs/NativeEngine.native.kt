@@ -25,6 +25,7 @@ import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.newSingleThreadContext
 import platform.posix.memcpy
 import platform.posix.size_t
+import platform.posix.size_tVar
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_READ
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_WRITE
 import ymusic.quickjs.cinterop.QJS_OP_DRAIN
@@ -33,7 +34,9 @@ import ymusic.quickjs.cinterop.QJS_OP_WRITE
 import ymusic.quickjs.cinterop.qjs_close
 import ymusic.quickjs.cinterop.qjs_close_read
 import ymusic.quickjs.cinterop.qjs_close_write
+import ymusic.quickjs.cinterop.qjs_compile
 import ymusic.quickjs.cinterop.qjs_create
+import ymusic.quickjs.cinterop.qjs_create_bc
 import ymusic.quickjs.cinterop.qjs_drain
 import ymusic.quickjs.cinterop.qjs_eval_sync
 import ymusic.quickjs.cinterop.qjs_free
@@ -100,6 +103,49 @@ internal actual class NativeEngine private constructor(
                 throw QuickJsException(msg ?: "quickjs create failed")
             }
             NativeEngine(eng, ref)
+        }
+
+        actual fun createFromBytecode(bytecode: ByteArray, prelude: String, callbacks: EngineCallbacks): NativeEngine =
+            memScoped {
+                val ref = StableRef.create(callbacks)
+                val errVar = alloc<CPointerVar<ByteVar>>()
+                val eng = if (bytecode.isEmpty()) {
+                    qjs_create_bc(null, 0u, prelude, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
+                } else {
+                    bytecode.usePinned { pinned ->
+                        qjs_create_bc(
+                            pinned.addressOf(0).reinterpret(),
+                            bytecode.size.convert(),
+                            prelude,
+                            staticCFunction(::inboundTrampoline),
+                            ref.asCPointer(),
+                            errVar.ptr,
+                        )
+                    }
+                }
+                if (eng == null) {
+                    val msg = errVar.value?.toKString()
+                    errVar.value?.let { qjs_free(it) }
+                    ref.dispose()
+                    throw QuickJsException(msg ?: "quickjs create failed")
+                }
+                NativeEngine(eng, ref)
+            }
+
+        actual fun compile(script: String, filename: String): ByteArray = memScoped {
+            val lenVar = alloc<size_tVar>()
+            val errVar = alloc<CPointerVar<ByteVar>>()
+            val buf = qjs_compile(script, filename, lenVar.ptr, errVar.ptr)
+            if (buf == null) {
+                val msg = errVar.value?.toKString()
+                errVar.value?.let { qjs_free(it) }
+                throw QuickJsException(msg ?: "compile failed")
+            }
+            val n = lenVar.value.toInt()
+            val out = ByteArray(n)
+            if (n > 0) out.usePinned { pinned -> memcpy(pinned.addressOf(0), buf, n.convert()) }
+            qjs_free(buf)
+            out
         }
     }
 }

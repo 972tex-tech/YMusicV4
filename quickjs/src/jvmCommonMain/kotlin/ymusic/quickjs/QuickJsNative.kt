@@ -51,6 +51,8 @@ internal object QuickJsNative {
     }
 
     external fun create(script: String): Long
+    external fun createBytecode(bytecode: ByteArray, prelude: String): Long
+    external fun compile(script: String, filename: String): ByteArray
     external fun evalSync(handle: Long, script: String, filename: String): String?
     external fun open(handle: Long, id: Int, command: String): Int
     external fun write(handle: Long, id: Int, bytes: ByteArray, off: Int, len: Int): Int
