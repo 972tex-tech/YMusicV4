@@ -77,6 +77,7 @@ kotlin {
 // (SIMPLE, no transpile) and emitted as generated Kotlin consts the engine loads. Mirrors
 // :quickjs's bootstrap handling — globals (HttpRequest, commandHandler, …) and property names are
 // preserved.
+val preambleSrcDir = rootProject.projectDir.resolve("engine-js/src/protocol")
 val jsPreambles = listOf(
     "http.js" to "HTTP_JS",
     "command.js" to "COMMAND_JS",
@@ -84,7 +85,7 @@ val jsPreambles = listOf(
 val preambleKtDir = layout.buildDirectory.dir("generated/httpJs")
 
 val generateJsPreambles by tasks.registering {
-    for ((jsName, _) in jsPreambles) inputs.file(layout.projectDirectory.file("js/$jsName"))
+    for ((jsName, _) in jsPreambles) inputs.file(preambleSrcDir.resolve(jsName))
     outputs.dir(preambleKtDir)
     doLast {
         preambleKtDir.get().asFile.deleteRecursively() // no stale consts from renamed preambles
@@ -99,7 +100,7 @@ val generateJsPreambles by tasks.registering {
             val compiler = Compiler()
             val result = compiler.compile(
                 emptyList<SourceFile>(), // externs (none) — undeclared globals (ymix, …) preserved
-                listOf(SourceFile.fromCode(jsName, layout.projectDirectory.file("js/$jsName").asFile.readText())),
+                listOf(SourceFile.fromCode(jsName, preambleSrcDir.resolve(jsName).readText())),
                 options,
             )
             if (!result.success) {

@@ -21,6 +21,10 @@ object Versions {
     const val activityCompose = "1.9.3"
     const val composeBom = "2024.12.01"
 
+    // JS toolchain (:engine-js, run via npx — Node required at build)
+    const val esbuild = "0.25.12"
+    const val typescript = "5.9.3"
+
     // Benchmark
     const val kotlinxBenchmark = "0.4.17"
 

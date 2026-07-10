@@ -291,12 +291,13 @@ tasks.matching {
 }.configureEach { dependsOn(stageAndroidJni) }
 
 // ---------------------------------------------------------------------------------------------
-// Bootstrap JS: authored (with comments) in native/js/bootstrap.js, minified at build time with
-// Closure Compiler (SIMPLE, no transpile) and emitted as a generated Kotlin const the engine evals.
+// Bootstrap JS: authored (with comments) in :engine-js (the one home for all engine JS), minified
+// at build time with Closure Compiler (SIMPLE, no transpile) and emitted as a generated Kotlin
+// const the engine evals — this module stays Node-free and self-contained.
 // Comments/whitespace are stripped and locals renamed; globals (ymix/__jsOpen/setTimeout/…) and
 // property names are preserved, so the host contract is intact.
 // ---------------------------------------------------------------------------------------------
-val bootstrapJs = nativeSrc.resolve("js/bootstrap.js")
+val bootstrapJs = rootProject.projectDir.resolve("engine-js/src/bootstrap/bootstrap.js")
 val bootstrapKtDir = layout.buildDirectory.dir("generated/bootstrapJs")
 
 val generateBootstrapJs by tasks.registering {
@@ -326,7 +327,7 @@ val generateBootstrapJs by tasks.registering {
             """
             |package ymusic.quickjs
             |
-            |// GENERATED — do not edit. Minified from native/js/bootstrap.js (Closure Compiler) at build time.
+            |// GENERATED — do not edit. Minified from engine-js/src/bootstrap/bootstrap.js (Closure Compiler) at build time.
             |internal const val BOOTSTRAP_JS: String = "$escaped"
             |""".trimMargin(),
         )

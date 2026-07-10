@@ -9,7 +9,7 @@
  * Build & run (from quickjs/native):
  *   JAVA_HOME=$(/usr/libexec/java_home) cmake -S . -B build-asan
  *   cmake --build build-asan --target pipe_stress
- *   ./build-asan/pipe_stress js/bootstrap.js
+ *   ./build-asan/pipe_stress ../../engine-js/src/bootstrap/bootstrap.js
  * Exits 0 with "ALL OK" or 1 on the first failed check / any sanitizer report.
  * (Apple clang's ASan has no leak detection; this catches UAF/overflow/double-free + UB.)
  */
@@ -306,7 +306,7 @@ static void scenario_teardown(const char *bootstrap, Host *h) {
 }
 
 int main(int argc, char **argv) {
-    const char *path = argc > 1 ? argv[1] : "js/bootstrap.js";
+    const char *path = argc > 1 ? argv[1] : "../../engine-js/src/bootstrap/bootstrap.js";
     char *bootstrap = read_file(path);
     Host host;
     memset(&host, 0, sizeof(host));
