@@ -488,6 +488,9 @@
   };
 
   globalThis.ymix = {
+    // Bootstrap API version — bumped when this host<->JS surface changes, so remote JS can
+    // feature-gate against the runtime it's loaded into.
+    version: 1,
     // Open a pipe to the host. Fails AT THE OPEN — like ECONNREFUSED — when nothing serves the
     // command: __hostOpen returns a C-style code (0 accepted; -1 refused / host callback failed;
     // -2 called under a critical region, a bootstrap bug), and a failed open leaves no registry
