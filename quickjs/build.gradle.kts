@@ -50,7 +50,9 @@ fun registerNativeLib(targetName: String): TaskProvider<Exec> {
         ).joinToString(" ") { "'${nativeSrc.resolve(it)}'" }
         // `cc` = clang on macOS (accepts the -arch flags), gcc on Linux (no -arch; native x86_64).
         val arch = clangArch(targetName).joinToString(" ")
-        val cmd = "set -e; cc $arch -O2 -w -DCONFIG_VERSION='\"2026-06-04\"' -D_GNU_SOURCE " +
+        // -funsigned-char: vendored QuickJS assumes unsigned char (byte handling breaks with signed
+        // char >= 0x80); matches the CMake JVM/Android + ASan builds (native/CMakeLists.txt).
+        val cmd = "set -e; cc $arch -O2 -w -funsigned-char -DCONFIG_VERSION='\"2026-06-04\"' -D_GNU_SOURCE " +
             "-I'${nativeSrc.resolve("quickjs")}' -I'$nativeSrc' -c $srcs && ar rcs libqjscore.a *.o"
         commandLine("bash", "-c", cmd)
     }
@@ -298,7 +300,7 @@ val generateTestEngineJs by tasks.registering {
     doLast {
         val escaped = testEngineJs.singleFile.readText()
             .replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
+            .replace("\$", "\${'\$'}").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
         val dir = testEngineJsKtDir.get().asFile.resolve("ymusic/quickjs").apply { mkdirs() }
         dir.resolve("TestEngineJs.kt").writeText(
             """
@@ -311,4 +313,8 @@ val generateTestEngineJs by tasks.registering {
     }
 }
 
-kotlin.sourceSets.getByName("commonTest").kotlin.srcDir(files(testEngineJsKtDir).builtBy(generateTestEngineJs))
+// commonTest holds the shared suite; androidDeviceTest shares it by physical srcDir (the KMP
+// android plugin can't dependsOn commonTest across trees), so it needs the generated const too.
+val testEngineJsSrc = files(testEngineJsKtDir).builtBy(generateTestEngineJs)
+kotlin.sourceSets.getByName("commonTest").kotlin.srcDir(testEngineJsSrc)
+kotlin.sourceSets.getByName("androidDeviceTest").kotlin.srcDir(testEngineJsSrc)
