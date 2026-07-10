@@ -14,6 +14,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+/** The pipe transport end to end. JS halves live in the test-bundle fixtures
+ *  (engine-js/src/test/fixtures/runtime.ts, `test/rt/…` commands); the remaining load() snippets
+ *  are pure JS or `__*`-natives only, which survive the ADVANCED bundle (natives are externed). */
 class QuickJsRuntimeTest {
 
     private suspend fun Pipe.sendText(s: String) {
@@ -33,14 +36,8 @@ class QuickJsRuntimeTest {
 
     private suspend fun Pipe.readText(): String = readAll().decodeToString()
 
-    // A JS echo handler: stream bytes straight back, then close.
-    private val echoJs = """
-        ymix.onAccept("echo", async (pipe) => {
-          const buf = new Uint8Array(64);
-          for (;;) { const n = await pipe.source.receive(buf, 0, buf.length); if (n < 0) break; pipe.sink.send(buf, 0, n); }
-          pipe.sink.close();
-        });
-    """.trimIndent()
+    /** Run a self-reporting `test/rt/…` probe to EOF. */
+    private suspend fun QuickJsRuntime.probe(name: String): String = openPipe("test/rt/$name").readText()
 
     /** Native `__parseJson` (JS_ParseJSON over raw UTF-8 bytes) — no giant JS string, astral-safe. */
     @Test
@@ -51,7 +48,15 @@ class QuickJsRuntimeTest {
             // objects, arrays, nested, emoji; parsed straight from a Uint8Array of UTF-8 bytes.
             assertEquals(
                 """{"title":"hi🎵","items":[1,2,3]}""",
-                rt.load("""JSON.stringify(__parseJson(ymix.utf8Encode('{"title":"hi🎵","items":[1,2,3]}')))"""),
+                rt.load(
+                    """
+                    (function () {
+                      const s = '{"title":"hi🎵","items":[1,2,3]}';
+                      const out = __stringifyJson(__parseJson(__utf8Encode(s, 0, s.length)));
+                      return __utf8Decode(out, 0, out.length);
+                    })()
+                    """.trimIndent(),
+                ),
             )
         } finally {
             rt.close()
@@ -75,7 +80,7 @@ class QuickJsRuntimeTest {
                       const json =
                         '{"nested":{"x":[1,2,{"y":"}]"}]},"s":"a\\"b\\ud83c\\udfb5\\n",' +
                         '"n":-12.5e3,"items":[{"id":1},{"id":2}],"big":9007199254740991}';
-                      const bytes = ymix.utf8Encode(json);
+                      const bytes = __utf8Encode(json, 0, json.length);
                       // feed one byte per push — exercises every possible suspend point
                       const p = __jsonNew();
                       const one = new Uint8Array(1);
@@ -107,18 +112,8 @@ class QuickJsRuntimeTest {
             }
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("feed");
-              const data = await io.source.readJsonObject();
-              pipe.sink.send(ymix.utf8Encode(JSON.stringify(data)));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals(body, rt.openPipe("run").readText())
+            assertEquals(body, rt.probe("buffered-read-json"))
         } finally {
             rt.close()
         }
@@ -128,23 +123,8 @@ class QuickJsRuntimeTest {
     @Test
     fun read_json_object_and_array_enforce_root_type() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            // "parse": Kotlin sends [kind byte 'o'|'a'][json...]; JS parses with the matching typed
-            // reader and returns either JSON.stringify(value) or "ERR:" + the thrown message.
-            ymix.onAccept("parse", async (pipe) => {
-              const io = pipe;
-              const kind = await io.source.readUtf8Line();       // "o" or "a"
-              try {
-                const data = kind === "o" ? await io.source.readJsonObject() : await io.source.readJsonArray();
-                pipe.sink.send(ymix.utf8Encode(JSON.stringify(data)));
-              } catch (e) { pipe.sink.send(ymix.utf8Encode("ERR:" + e.message)); }
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         suspend fun run(kind: String, json: String): String {
-            val p = rt.openPipe("parse")
+            val p = rt.openPipe("test/rt/parse")
             p.sendText("$kind\n$json")
             p.sink.close()
             return p.readText()
@@ -174,19 +154,8 @@ class QuickJsRuntimeTest {
             pipe.sendText("IL-🎵-DATA")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("feed");
-              const data = await io.source.readJsonObject();   // stops right after '}'
-              const tail = await io.source.readUtf8();         // everything after the JSON value
-              pipe.sink.send(ymix.utf8Encode(JSON.stringify(data) + "|" + tail));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("""{"a":1,"b":[2,3]}|TAIL-🎵-DATA""", rt.openPipe("run").readText())
+            assertEquals("""{"a":1,"b":[2,3]}|TAIL-🎵-DATA""", rt.probe("read-json-tail"))
         } finally {
             rt.close()
         }
@@ -203,7 +172,8 @@ class QuickJsRuntimeTest {
             globalThis.__leak = [];
             for (let i = 0; i < 50; i++) {
               const p = __jsonNew();
-              __jsonPush(p, ymix.utf8Encode('{"a":[1,2,'), 0, 10);
+              const s = '{"a":[1,2,';
+              __jsonPush(p, __utf8Encode(s, 0, s.length), 0, 10);
               __leak.push(p);
             }
             """.trimIndent(),
@@ -224,7 +194,8 @@ class QuickJsRuntimeTest {
               let threw = false;
               try {
                 // opens obj -> array -> obj -> array (partial stack), then an invalid token
-                const bytes = ymix.utf8Encode('{"a":[1,2,{"b":[3, xBAD');
+                const s = '{"a":[1,2,{"b":[3, xBAD';
+                const bytes = __utf8Encode(s, 0, s.length);
                 __jsonPush(p, bytes, 0, bytes.length);
               } catch (e) { threw = true; }
               if (!threw) throw new Error("expected a parse error");
@@ -244,37 +215,19 @@ class QuickJsRuntimeTest {
             // value -> UTF-8 bytes; emoji survives the native UTF-16 -> UTF-8 encode
             assertEquals(
                 """{"title":"hi🎵","items":[1,2,3]}""",
-                rt.load("""ymix.utf8Decode(__stringifyJson({title:"hi🎵",items:[1,2,3]}))"""),
+                rt.load(
+                    """
+                    (function () {
+                      const out = __stringifyJson({title:"hi🎵",items:[1,2,3]});
+                      return __utf8Decode(out, 0, out.length);
+                    })()
+                    """.trimIndent(),
+                ),
             )
             // bytes round-trip straight back through the native parse
             assertEquals("hi🎵", rt.load("""__parseJson(__stringifyJson({t:"hi🎵"})).t"""))
             // no JSON representation -> throws
             assertFailsWith<QuickJsException> { rt.load("__stringifyJson(undefined)") }
-        } finally {
-            rt.close()
-        }
-    }
-
-    /** utf8Encode is variadic: multiple strings encode concatenated (no JS string concat first). */
-    @Test
-    fun utf8_encode_is_variadic() = runTest {
-        val rt = QuickJsRuntime.create()
-        try {
-            // three args concatenated, astral char intact, round-trips through decode
-            assertEquals("hi🎵\n", rt.load("""ymix.utf8Decode(ymix.utf8Encode("hi", "🎵", "\n"))"""))
-            // equals the single-arg encode of the concatenation
-            assertEquals(
-                "true",
-                rt.load(
-                    """
-                    (function () {
-                      const a = ymix.utf8Encode("hello", "\n");
-                      const b = ymix.utf8Encode("hello\n");
-                      return a.length === b.length && a.every((v, i) => v === b[i]);
-                    })()
-                    """.trimIndent(),
-                ),
-            )
         } finally {
             rt.close()
         }
@@ -307,11 +260,10 @@ class QuickJsRuntimeTest {
     @Test
     fun kotlin_streams_to_js_echo() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(echoJs)
         try {
-            val pipe = rt.openPipe("echo")
+            val pipe = rt.openPipe("test/rt/echo")
             pipe.sendText("hi🎵")
-            pipe.sink.close()                 // EOF our input → JS echo loop ends and closes
+            pipe.sink.close() // EOF our input → JS echo loop ends and closes
             assertEquals("hi🎵", pipe.readText())
         } finally {
             rt.close()
@@ -321,9 +273,8 @@ class QuickJsRuntimeTest {
     @Test
     fun stream_is_binary_safe() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(echoJs)
         try {
-            val pipe = rt.openPipe("echo")
+            val pipe = rt.openPipe("test/rt/echo")
             val payload = byteArrayOf(0, 127, -128, -1, -2, 1, 0)
             pipe.sendBytes(payload, 0, payload.size)
             pipe.sink.close()
@@ -337,9 +288,8 @@ class QuickJsRuntimeTest {
     @Test
     fun send_respects_offset_and_len() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(echoJs)
         try {
-            val pipe = rt.openPipe("echo")
+            val pipe = rt.openPipe("test/rt/echo")
             val buf = "XXXhelloYYY".encodeToByteArray()
             pipe.sendBytes(buf, 3, 5) // "hello"
             pipe.sink.close()
@@ -349,30 +299,7 @@ class QuickJsRuntimeTest {
         }
     }
 
-    /** The command is a routing name only; arguments stream in and are read in the handler. */
-    @Test
-    fun command_reads_args_from_stream() = runTest {
-        val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("youtube_fetch_feed", async (pipe) => {
-              const args = await pipe.source.readUtf8();   // "home 20"
-              pipe.sink.send(ymix.utf8Encode("feed:" + args));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
-        try {
-            val pipe = rt.openPipe("youtube_fetch_feed")
-            pipe.sendText("home 20")
-            pipe.sink.close()
-            assertEquals("feed:home 20", pipe.readText())
-        } finally {
-            rt.close()
-        }
-    }
-
-    /** JS is the client here: while serving Kotlin's "run", JS opens its own "upper" pipe back to Kotlin. */
+    /** JS is the client here: while serving Kotlin's probe, JS opens its own "upper" pipe back to Kotlin. */
     @Test
     fun js_opens_pipe_kotlin_serves_nested() = runTest {
         val rt = QuickJsRuntime.create()
@@ -381,21 +308,8 @@ class QuickJsRuntimeTest {
             p.sendText(text.uppercase())
             p.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = pipe;
-              const input = await io.source.readUtf8();
-              const inner = ymix.open("upper");
-              let p = inner.sink.writeUtf8(input); if (p) await p;
-              p = inner.sink.close(); if (p) await p;
-              p = io.sink.writeUtf8(await inner.source.readUtf8()); if (p) await p;
-              p = io.sink.close(); if (p) await p;
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("run")
+            val pipe = rt.openPipe("test/rt/nested-upper")
             pipe.sendText("hello🎵")
             pipe.sink.close()
             assertEquals("HELLO🎵", pipe.readText())
@@ -416,21 +330,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(all.readUtf8())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("sink");
-              // 2000 lines "ABCDE\n" = 12000 bytes > the 8 KB segment, so the sink auto-flushes at
-              // least once mid-write; the reassembled stream must still be identical.
-              for (let i = 0; i < 2000; i++) await io.sink.writeUtf8Line("ABCDE");
-              await io.sink.close();
-              pipe.sink.send(ymix.utf8Encode(await io.source.readUtf8()));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("ABCDE\n".repeat(2000), rt.openPipe("run").readText())
+            assertEquals("ABCDE\n".repeat(2000), rt.probe("sink-2000-lines"))
         } finally {
             rt.close()
         }
@@ -454,31 +355,8 @@ class QuickJsRuntimeTest {
             pipe.sendText("$len:$sum")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("sink");
-              // A multibyte+astral string repeated so codepoints land across many segment boundaries,
-              // then a >segment byte array that bypasses the buffer and is streamed in slices.
-              const s = "héllo🎵\n".repeat(30000);   // stream-encoded into the segment
-              const b = new Uint8Array(400000);        // >= segment -> bypass, sliced to the pipe
-              for (let i = 0; i < b.length; i++) b[i] = i & 0xFF;
-              // Expected length + additive checksum, computed independently from the same source.
-              const sbytes = ymix.utf8Encode(s);
-              let len = sbytes.length + b.length, sum = 0;
-              for (let i = 0; i < sbytes.length; i++) sum += sbytes[i];
-              for (let i = 0; i < b.length; i++) sum += b[i];
-              await io.sink.writeUtf8(s);
-              await io.sink.writeBytes(b);
-              await io.sink.close();
-              const got = await io.source.readUtf8(), want = len + ":" + sum;
-              pipe.sink.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH want=" + want + " got=" + got)));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("sink-large-writes"))
         } finally {
             rt.close()
         }
@@ -490,20 +368,8 @@ class QuickJsRuntimeTest {
     @Test
     fun write_utf8_direct_path_keeps_order_with_staged_writes() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const big = "x🎵".repeat(30000); // 90000 units -> 150000 bytes: direct + backpressure
-              let p;
-              p = pipe.sink.writeUtf8("head|"); if (p) await p;
-              p = pipe.sink.writeUtf8(big); if (p) await p;
-              p = pipe.sink.writeUtf8("|tail"); if (p) await p;
-              await pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("head|" + "x🎵".repeat(30000) + "|tail", rt.openPipe("run").readText())
+            assertEquals("head|" + "x🎵".repeat(30000) + "|tail", rt.openPipe("test/rt/direct-order").readText())
         } finally {
             rt.close()
         }
@@ -511,8 +377,7 @@ class QuickJsRuntimeTest {
 
     /** writeObjectAsJson streams a value to the pipe token-by-token (no whole string / Uint8Array).
      *  Its output must match JSON.stringify exactly — escapes, NaN/Infinity->null, undefined omitted
-     *  in objects / null in arrays, nesting, astral chars — and stay correct across flush boundaries
-     *  (the big array pushes the output past the 8 KB segment). */
+     *  in objects / null in arrays, nesting, astral chars — and stay correct across flush boundaries. */
     @Test
     fun write_object_as_json_matches_stringify() = runTest {
         val rt = QuickJsRuntime.create()
@@ -522,37 +387,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(all.readUtf8())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              var big = []; for (var i = 0; i < 5000; i++) big.push(i); // pushes output past a segment
-              var value = {
-                s: "q\"uote back\\slash nl\n cr\r tab\t bell slash/ emoji🎵 unicodé",
-                n: 42, f: 3.5, neg: -7, exp: 1e21, nan: NaN, inf: Infinity, neginf: -Infinity,
-                t: true, f2: false, nil: null,
-                arr: [1, "two", null, [3, 4], { x: 5 }, undefined, function(){}, Symbol("s")], // -> null
-                obj: { a: 1, skip: undefined, fn: function(){}, sym: Symbol("k"), c: 3 }, // omitted
-                empty: {}, emptyArr: [], date: new Date(0),           // toJSON honored
-                big: big
-              };
-              const io = ymix.open("sink");
-              await io.sink.writeObjectAsJson(value);
-              await io.sink.close();
-              const got = await io.source.readUtf8(), want = JSON.stringify(value);
-              let msg;
-              if (got === want) msg = "OK";
-              else {
-                let k = 0; while (k < got.length && k < want.length && got[k] === want[k]) k++;
-                msg = "MISMATCH@" + k + " want[..." + want.slice(Math.max(0,k-15), k+15) +
-                      "...] got[..." + got.slice(Math.max(0,k-15), k+15) + "...]";
-              }
-              pipe.sink.send(ymix.utf8Encode(msg));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("json-stringify-match"))
         } finally {
             rt.close()
         }
@@ -562,20 +398,8 @@ class QuickJsRuntimeTest {
     @Test
     fun set_timeout_fires_after_delay() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-              let fired = false;
-              setTimeout(() => { fired = true; }, 30);
-              await sleep(90);                 // outlast the 30ms timer
-              pipe.sink.send(ymix.utf8Encode(fired ? "FIRED" : "NOT"));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("FIRED", rt.openPipe("run").readText())
+            assertEquals("FIRED", rt.probe("timer-fires"))
         } finally {
             rt.close()
         }
@@ -585,21 +409,8 @@ class QuickJsRuntimeTest {
     @Test
     fun clear_timeout_prevents_callback() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-              let fired = false;
-              const t = setTimeout(() => { fired = true; }, 30);
-              clearTimeout(t);
-              await sleep(90);
-              pipe.sink.send(ymix.utf8Encode(fired ? "FIRED" : "CLEARED"));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("CLEARED", rt.openPipe("run").readText())
+            assertEquals("CLEARED", rt.probe("timer-cleared"))
         } finally {
             rt.close()
         }
@@ -609,24 +420,8 @@ class QuickJsRuntimeTest {
     @Test
     fun set_interval_ticks_until_cleared() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-              let n = 0;
-              const t = setInterval(() => { n++; }, 20);
-              await sleep(110);                 // ~5 ticks
-              clearInterval(t);
-              const after = n;
-              await sleep(70);                  // stays frozen (allow at most one in-flight tick)
-              const ok = after >= 3 && (n - after) <= 1;
-              pipe.sink.send(ymix.utf8Encode(ok ? "OK" : ("BAD:" + after + "/" + n)));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("interval-ticks"))
         } finally {
             rt.close()
         }
@@ -637,21 +432,8 @@ class QuickJsRuntimeTest {
     fun concurrent_receive_rejects() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("silent") { /* never send: the first receive stays pending, pipe stays open */ }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("silent");
-              const buf = new Uint8Array(8);
-              io.source.receive(buf, 0, 8);                 // first: pends (no data arrives)
-              let err = "no-error";
-              try { await io.source.receive(buf, 0, 8); } catch (e) { err = e.message; }
-              pipe.sink.send(ymix.utf8Encode(err));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("concurrent receive() on the same pipe", rt.openPipe("run").readText())
+            assertEquals("concurrent receive() on the same pipe", rt.probe("concurrent-receive"))
         } finally {
             rt.close()
         }
@@ -662,31 +444,19 @@ class QuickJsRuntimeTest {
     @Test
     fun read_utf8_line_strict() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.onAccept("feed") { pipe -> pipe.sendText("a\nbc"); pipe.sink.close() } // "bc" unterminated
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const flag = new Uint8Array(1);
-              const strict = (await pipe.source.receive(flag, 0, 1)) === 1 && flag[0] === 49; // '1' -> strict
-              const io = ymix.open("feed");
-              const l1 = await io.source.readUtf8Line(strict);            // "a" — terminated by '\n'
-              let l2;
-              try { l2 = await io.source.readUtf8Line(strict); if (l2 === null) l2 = "NULL"; }
-              catch (e) { l2 = "THREW"; }
-              pipe.sink.send(ymix.utf8Encode(l1 + "|" + l2));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
+        rt.onAccept("feed") { pipe ->
+            pipe.sendText("a\nbc")
+            pipe.sink.close()
+        } // "bc" unterminated
         suspend fun run(strict: Boolean): String {
-            val p = rt.openPipe("run")
-            p.sendText((if (strict) "1" else "0"))
+            val p = rt.openPipe("test/rt/line-strict")
+            p.sendText(if (strict) "1" else "0")
             p.sink.close()
             return p.readText()
         }
         try {
-            assertEquals("a|bc", run(false))     // non-strict: trailing unterminated line returned
-            assertEquals("a|THREW", run(true))   // strict: no newline before EOF -> throws
+            assertEquals("a|bc", run(false)) // non-strict: trailing unterminated line returned
+            assertEquals("a|THREW", run(true)) // strict: no newline before EOF -> throws
         } finally {
             rt.close()
         }
@@ -702,24 +472,8 @@ class QuickJsRuntimeTest {
             while (pipe.source.receive(b, 64L) != -1L) pipe.sink.send(b, b.size)
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("echo");
-              await io.sink.writeUtf8Line("hello🎵");
-              await io.sink.writeUtf8Line("world");
-              await io.sink.close();                          // done sending → echo returns the rest and ends
-              const l1 = await io.source.readUtf8Line();
-              const l2 = await io.source.readUtf8Line();
-              const l3 = await io.source.readUtf8Line();        // null at EOF
-              pipe.sink.send(ymix.utf8Encode(l1 + "|" + l2 + "|" + (l3 === null ? "EOF" : l3)));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("run")
-            assertEquals("hello🎵|world|EOF", pipe.readText())
+            assertEquals("hello🎵|world|EOF", rt.probe("line-io"))
         } finally {
             rt.close()
         }
@@ -735,21 +489,8 @@ class QuickJsRuntimeTest {
             pipe.sendText("\nsecond\n")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const io = ymix.open("lines");
-              const l1 = await io.source.readUtf8Line();
-              const l2 = await io.source.readUtf8Line();
-              const l3 = await io.source.readUtf8Line();
-              pipe.sink.send(ymix.utf8Encode(l1 + "|" + l2 + "|" + (l3 === null ? "EOF" : l3)));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("run")
-            assertEquals("hello🎵|second|EOF", pipe.readText())
+            assertEquals("hello🎵|second|EOF", rt.probe("line-split-frames"))
         } finally {
             rt.close()
         }
@@ -763,28 +504,8 @@ class QuickJsRuntimeTest {
             pipe.sendText("""{"title":"hi🎵","items":[1,2,3]}""")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (pipe) => {
-              const body = ymix.open("fetch");
-              body.sink.close();
-              // the one-shot __parseJson wants the raw bytes whole — accumulate them here
-              let buf = new Uint8Array(4096), size = 0;
-              for (;;) {
-                if (size === buf.length) { const g = new Uint8Array(buf.length * 2); g.set(buf); buf = g; }
-                const n = await body.source.receive(buf, size, buf.length - size);
-                if (n < 0) break;
-                size += n;
-              }
-              const data = __parseJson(buf.subarray(0, size));   // native parse of the streamed bytes
-              pipe.sink.send(ymix.utf8Encode(data.title + ":" + data.items.length));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("run")
-            assertEquals("hi🎵:3", pipe.readText())
+            assertEquals("hi🎵:3", rt.probe("native-parse-stream"))
         } finally {
             rt.close()
         }
@@ -794,18 +515,8 @@ class QuickJsRuntimeTest {
     @Test
     fun streams_multiple_sends_as_one_stream() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("stream", async (pipe) => {
-              pipe.sink.send(Uint8Array.of(1, 2, 3));
-              pipe.sink.send(Uint8Array.of(4, 5));
-              pipe.sink.send(Uint8Array.of(6));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("stream")
+            val pipe = rt.openPipe("test/rt/stream")
             assertContentEquals(byteArrayOf(1, 2, 3, 4, 5, 6), pipe.readAll())
         } finally {
             rt.close()
@@ -817,9 +528,8 @@ class QuickJsRuntimeTest {
     @Test
     fun send_throws_broken_pipe_after_peer_closes_read() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("sink", async (pipe) => { pipe.source.close(); });""")
         try {
-            val pipe = rt.openPipe("sink") // openPipe pumps the handler, so closeRead has already run
+            val pipe = rt.openPipe("test/rt/deaf") // openPipe pumps the handler, so closeRead has already run
             assertFailsWith<BrokenPipeException> { pipe.sendBytes(byteArrayOf(1, 2, 3)) }
         } finally {
             rt.close()
@@ -832,9 +542,8 @@ class QuickJsRuntimeTest {
     @Test
     fun send_after_close_is_fatal() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(echoJs)
         try {
-            val pipe = rt.openPipe("echo")
+            val pipe = rt.openPipe("test/rt/echo")
             pipe.sink.close()
             assertFailsWith<SendClosedException> { pipe.sendBytes(byteArrayOf(1, 2, 3)) }
         } finally {
@@ -847,20 +556,8 @@ class QuickJsRuntimeTest {
     fun js_send_after_close_is_fatal() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("idle") { /* accepted, never used — the test only exercises the JS write end */ }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("idle");
-              io.sink.close();
-              let err = "none";
-              try { await io.sink.send(ymix.utf8Encode("x")); } catch (e) { err = (e && e.message) || String(e); }
-              p.sink.send(ymix.utf8Encode(err));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("send() after close()", rt.openPipe("run").readText())
+            assertEquals("send() after close()", rt.probe("send-after-close"))
         } finally {
             rt.close()
         }
@@ -872,20 +569,8 @@ class QuickJsRuntimeTest {
     fun receive_after_close_read_is_fatal() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("idle") { /* accepted, never used — the test only exercises the JS read end */ }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("idle");
-              io.source.close();
-              let err = "none";
-              try { await io.source.receive(new Uint8Array(4), 0, 4); } catch (e) { err = (e && e.message) || String(e); }
-              p.sink.send(ymix.utf8Encode(err));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("receive() after closeRead()", rt.openPipe("run").readText())
+            assertEquals("receive() after closeRead()", rt.probe("receive-after-close-read"))
         } finally {
             rt.close()
         }
@@ -897,21 +582,8 @@ class QuickJsRuntimeTest {
     fun js_send_rejects_with_epipe_after_kotlin_closes_read() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("up") { pipe -> pipe.source.close() } // refuse to read anything
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("up");
-              let err = "none";
-              try { for (let i = 0; i < 1000000; i++) await io.sink.send(ymix.utf8Encode("x")); }
-              catch (e) { err = (e && e.message) || String(e); }
-              p.sink.send(ymix.utf8Encode(err));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val out = rt.openPipe("run").readText()
-            assertEquals("EPIPE: broken pipe", out)
+            assertEquals("EPIPE: broken pipe", rt.probe("epipe-loop"))
         } finally {
             rt.close()
         }
@@ -923,20 +595,8 @@ class QuickJsRuntimeTest {
     @Test
     fun kotlin_to_js_large_transfer_is_backpressured_and_intact() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("down", async (pipe) => {
-              const buf = new Uint8Array(4096);
-              let len = 0, sum = 0;
-              for (;;) { const n = await pipe.source.receive(buf, 0, buf.length); if (n < 0) break;
-                         len += n; for (let i = 0; i < n; i++) sum += buf[i]; }
-              pipe.sink.send(ymix.utf8Encode(len + ":" + sum));
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("down")
+            val pipe = rt.openPipe("test/rt/down")
             val total = 500_000 // ~8x the 64 KB buffer, so the writer parks and resumes many times
             val chunk = ByteArray(4096) { (it and 0xFF).toByte() }
             var sent = 0
@@ -972,26 +632,8 @@ class QuickJsRuntimeTest {
             pipe.sendText("$len:$sum")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("up-big");
-              const chunk = new Uint8Array(4096);
-              for (let i = 0; i < chunk.length; i++) chunk[i] = i & 0xFF;
-              let sum = 0;
-              for (let i = 0; i < chunk.length; i++) sum += chunk[i];
-              const rounds = 125; // 500 KB, ~8x the 64 KB buffer -> many partial writes + parks
-              for (let r = 0; r < rounds; r++) await io.sink.send(chunk, 0, chunk.length);
-              io.sink.close();
-              const got = await io.source.readUtf8();
-              const want = (rounds * chunk.length) + ":" + (rounds * sum);
-              p.sink.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH want=" + want + " got=" + got)));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("up-big"))
         } finally {
             rt.close()
         }
@@ -1002,18 +644,8 @@ class QuickJsRuntimeTest {
     @Test
     fun js_open_unknown_command_fails_at_open() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              let msg = "no-throw";
-              try { ymix.open("no-such-command"); } catch (e) { msg = (e && e.message) || String(e); }
-              p.sink.send(ymix.utf8Encode(msg));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("""open("no-such-command") refused by host""", rt.openPipe("run").readText())
+            assertEquals("""open("no-such-command") refused by host""", rt.probe("open-unknown"))
         } finally {
             rt.close()
         }
@@ -1036,20 +668,8 @@ class QuickJsRuntimeTest {
     @Test
     fun kotlin_reset_surfaces_in_js_receive() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("reset-down", async (pipe) => {
-              const buf = new Uint8Array(16);
-              const n = await pipe.source.receive(buf, 0, buf.length);   // the byte sent before the reset
-              let err = "none";
-              try { await pipe.source.receive(buf, 0, buf.length); } catch (e) { err = (e && e.message) || String(e); }
-              pipe.sink.send(ymix.utf8Encode(n + "|" + err));          // our write end is still open
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("reset-down")
+            val pipe = rt.openPipe("test/rt/reset-down")
             pipe.sendBytes(byteArrayOf(42))
             pipe.sink.close("boom: connection lost")
             assertEquals("1|boom: connection lost", pipe.readText())
@@ -1063,9 +683,8 @@ class QuickJsRuntimeTest {
     @Test
     fun js_reset_surfaces_as_pipe_reset_exception() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("reset-up", async (pipe) => { pipe.sink.close("kaboom mid-stream"); });""")
         try {
-            val pipe = rt.openPipe("reset-up")
+            val pipe = rt.openPipe("test/rt/reset-up")
             val e = assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
             assertEquals("kaboom mid-stream", e.reason)
         } finally {
@@ -1074,36 +693,15 @@ class QuickJsRuntimeTest {
     }
 
     /** END-path sink.close() whose final flush EPIPEs (the peer closed its read end) must still
-     *  half-close — the fix runs closeWrite() on the flush's rejection, not only its resolution, so
-     *  the pipe reaps instead of leaking (audit B1). This pins that the EPIPE still propagates to
-     *  the caller (the fix must not swallow it); the leak itself needs engine introspection to
-     *  observe, so it is verified by inspection. */
+     *  half-close — closeWrite() runs on the flush's rejection, not only its resolution, so the pipe
+     *  reaps instead of leaking (audit B1). This pins that the EPIPE still propagates to the caller. */
     @Test
     fun end_close_propagates_epipe_when_the_final_flush_fails() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("staged-end", async (pipe) => {
-              pipe.sink.writeUtf8("staged");          // into wbuf, unflushed
-              const go = new Uint8Array(1);
-              await pipe.source.receive(go, 0, 1);     // wait until Kotlin has closed its read
-              let result;
-              try {
-                await pipe.sink.close();               // END: flush -> EPIPE -> must still half-close
-                result = "resolved";
-              } catch (e) {
-                result = /^EPIPE/.test(e.message) ? "epipe" : "other:" + e.message;
-              }
-              const r = ymix.open("staged-end-result");
-              await r.sink.writeUtf8(result);
-              await r.sink.close();
-            });
-            """.trimIndent(),
-        )
         val result = CompletableDeferred<String>()
         rt.onAccept("staged-end-result") { p -> result.complete(p.readText()) }
         try {
-            val pipe = rt.openPipe("staged-end")
+            val pipe = rt.openPipe("test/rt/staged-end")
             pipe.source.close() // close our read -> the handler's flush will EPIPE
             pipe.sendText("go") // wake the handler's parked receive
             assertEquals("epipe", withContext(Dispatchers.Default) { withTimeout(5_000) { result.await() } })
@@ -1118,9 +716,8 @@ class QuickJsRuntimeTest {
     @Test
     fun js_reset_with_uncoercible_reason_still_resets() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("reset-sym", async (pipe) => { pipe.sink.close(Symbol("boom")); });""")
         try {
-            val pipe = rt.openPipe("reset-sym")
+            val pipe = rt.openPipe("test/rt/reset-sym")
             val e = assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
             assertEquals("reason coercion failed", e.reason)
         } finally {
@@ -1134,25 +731,17 @@ class QuickJsRuntimeTest {
     @Test
     fun buffered_fixed_width_ints_round_trip() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("intecho", async (pipe) => {
-              const io = pipe;
-              const i = await io.source.readInt();
-              const l = await io.source.readLong();
-              io.sink.writeInt(i);
-              io.sink.writeLong(l);
-              await io.sink.flush();
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("intecho")
-            val out = Buffer().apply { writeInt(-42); writeLong(1234567890123L) }
+            val pipe = rt.openPipe("test/rt/intecho")
+            val out = Buffer().apply {
+                writeInt(-42)
+                writeLong(1234567890123L)
+            }
             pipe.sink.send(out, out.size)
             val inb = Buffer()
-            while (inb.size < 12L) { if (pipe.source.receive(inb, 12L) < 0L) break }
+            while (inb.size < 12L) {
+                if (pipe.source.receive(inb, 12L) < 0L) break
+            }
             assertEquals(-42, inb.readInt())
             assertEquals(1234567890123L, inb.readLong())
         } finally {
@@ -1165,24 +754,15 @@ class QuickJsRuntimeTest {
     @Test
     fun buffered_readLong_reassembles_a_fragmented_frame() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("longin", async (pipe) => {
-              const io = pipe;
-              const v = await io.source.readLong();
-              io.sink.writeLong(v);
-              await io.sink.flush();
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("longin")
+            val pipe = rt.openPipe("test/rt/longin")
             val value = 1234567890123L // within readLong's documented safe-integer (<2^53) range
             val bytes = Buffer().apply { writeLong(value) }.readByteArray()
             for (b in bytes) pipe.sink.send(Buffer().apply { writeByte(b.toInt()) }, 1L) // one byte per write
             val inb = Buffer()
-            while (inb.size < 8L) { if (pipe.source.receive(inb, 8L) < 0L) break }
+            while (inb.size < 8L) {
+                if (pipe.source.receive(inb, 8L) < 0L) break
+            }
             assertEquals(value, inb.readLong())
         } finally {
             rt.close()
@@ -1194,20 +774,8 @@ class QuickJsRuntimeTest {
     @Test
     fun writeLong_rejects_out_of_range_bigint() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("bigcheck", async (pipe) => {
-              const io = pipe;
-              let msg = "no throw";
-              try { io.sink.writeLong(0x8000000000000000n); } catch (e) { msg = "threw: " + e.constructor.name; }
-              io.sink.writeUtf8(msg);
-              await io.sink.flush();
-              pipe.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("threw: RangeError", rt.openPipe("bigcheck").readText())
+            assertEquals("threw: RangeError", rt.openPipe("test/rt/bigcheck").readText())
         } finally {
             rt.close()
         }
@@ -1232,30 +800,14 @@ class QuickJsRuntimeTest {
             report.complete(b.readUtf8())
         }
         try {
-            rt.load(
-                """
-                (async function () {
-                  const out = ymix.open("report");
-                  const pipe = ymix.open("slowsink");
-                  const first = pipe.sink.writeBytes(new Uint8Array(200000)); // parks: the host isn't reading yet
-                  const kind = first && first.then ? "parked" : "sync";
-                  let e1 = "none", e2 = "none";
-                  try { pipe.sink.writeInt(1); } catch (e) { e1 = e.message; }
-                  try { pipe.sink.flush(); } catch (e) { e2 = e.message; }
-                  await first;
-                  pipe.sink.writeUtf8("after");
-                  await pipe.sink.flush();
-                  await pipe.sink.close();
-                  out.sink.send(ymix.utf8Encode(kind + "|" + e1 + "|" + e2));
-                  out.sink.close();
-                })()
-                """.trimIndent(),
-            )
+            val trigger = rt.openPipe("test/rt/concurrent-write")
             gate.complete(Unit)
             assertEquals(
                 "parked|concurrent write on the same pipe|concurrent write on the same pipe",
                 report.await(),
             )
+            trigger.sink.close()
+            trigger.source.close()
         } finally {
             rt.close()
         }
@@ -1280,24 +832,12 @@ class QuickJsRuntimeTest {
             report.complete(b.readUtf8())
         }
         try {
-            rt.load(
-                """
-                (async function () {
-                  const out = ymix.open("report");
-                  const pipe = ymix.open("stuck");
-                  const first = pipe.sink.writeBytes(new Uint8Array(200000)); // parks: the host isn't reading
-                  let closeErr = "none";
-                  try { pipe.sink.close("deliberate abort"); } catch (e) { closeErr = e.message; }
-                  let firstErr = "none";
-                  try { await first; } catch (e) { firstErr = e.message; }
-                  out.sink.send(ymix.utf8Encode(closeErr + "|" + firstErr));
-                  out.sink.close();
-                })()
-                """.trimIndent(),
-            )
+            val trigger = rt.openPipe("test/rt/reset-parked-write")
             gate.complete(Unit)
             assertEquals("none|send aborted: deliberate abort", report.await())
             assertEquals("deliberate abort", resetSeen.await())
+            trigger.sink.close()
+            trigger.source.close()
         } finally {
             rt.close()
         }
@@ -1309,10 +849,9 @@ class QuickJsRuntimeTest {
     @Test
     fun close_aborts_a_parked_kotlin_send() = runTest {
         val rt = QuickJsRuntime.create()
-        // The handler never reads, so Kotlin's send fills the 64 KB cap and parks.
-        rt.load("""ymix.onAccept("blackhole", async (pipe) => { globalThis.__keep = pipe; });""")
         try {
-            val pipe = rt.openPipe("blackhole")
+            // The fixture never reads, so Kotlin's send fills the 64 KB cap and parks.
+            val pipe = rt.openPipe("test/rt/blackhole")
             val big = Buffer().write(ByteArray(200_000))
             val send = async(Dispatchers.Default) { runCatching { pipe.sink.send(big, big.size) } }
             withContext(Dispatchers.Default) { delay(200) } // let the send park at the cap
@@ -1329,22 +868,12 @@ class QuickJsRuntimeTest {
 
     /** An END-close that has to interrupt a parked send must reach the peer as a RESET, never a
      *  clean EOF: the peer began receiving 200 KB and only 64 KB was delivered, so a clean EOF here
-     *  would be silent truncation. The JS handler sends (parks), then close()s [END] the same pipe;
-     *  Kotlin's receive must throw [PipeResetException] with the upgrade reason, not return -1. */
+     *  would be silent truncation. */
     @Test
     fun end_close_of_a_parked_send_resets_the_peer() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            ymix.onAccept("push", (pipe) => {
-              const sendP = pipe.sink.send(new Uint8Array(200000)); // parks: 64 KB in, rest waits
-              if (sendP && sendP.catch) sendP.catch(function () {}); // it will be force-failed
-              pipe.sink.close(); // END while parked -> abort the send, RESET the peer (no truncation)
-            });
-            """.trimIndent(),
-        )
         try {
-            val pipe = rt.openPipe("push")
+            val pipe = rt.openPipe("test/rt/push")
             val e = assertFailsWith<PipeResetException> {
                 val buf = Buffer()
                 while (pipe.source.receive(buf, 8192L) != -1L) { /* to EOF or RESET */ }
@@ -1360,9 +889,8 @@ class QuickJsRuntimeTest {
     @Test
     fun receive_after_reset_keeps_throwing_pipe_reset() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("reset-up", async (pipe) => { pipe.sink.close("kaboom mid-stream"); });""")
         try {
-            val pipe = rt.openPipe("reset-up")
+            val pipe = rt.openPipe("test/rt/reset-up")
             assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
             val again = assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
             assertEquals("kaboom mid-stream", again.reason)
@@ -1377,19 +905,8 @@ class QuickJsRuntimeTest {
     fun kotlin_handler_failure_resets_js_pipe() = runTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("boom") { throw RuntimeException("handler blew up") }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("boom");
-              let err = "none";
-              try { await io.source.receive(new Uint8Array(8), 0, 8); } catch (e) { err = (e && e.message) || String(e); }
-              p.sink.send(ymix.utf8Encode(err));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("handler blew up", rt.openPipe("run").readText())
+            assertEquals("handler blew up", rt.probe("kotlin-boom"))
         } finally {
             rt.close()
         }
@@ -1400,9 +917,7 @@ class QuickJsRuntimeTest {
     @Test
     fun runtime_close_fails_parked_receive() = runTest {
         val rt = QuickJsRuntime.create()
-        // The handler sends one byte (a handshake proving it ran), then keeps the pipe open forever.
-        rt.load("""ymix.onAccept("silent", async (pipe) => { pipe.sink.send(Uint8Array.of(1)); });""")
-        val pipe = rt.openPipe("silent")
+        val pipe = rt.openPipe("test/rt/silent-hs")
         assertEquals(1L, pipe.source.receive(Buffer(), 4L)) // handshake consumed; nothing more will come
         val parked = async(Dispatchers.Default) {
             runCatching { pipe.source.receive(Buffer(), 4L) }
@@ -1422,28 +937,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(pipe.readText())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("sink");
-              const value = { a: [1, "two🎵"], b: null };
-              const rs = [
-                io.sink.writeUtf8("hello"),
-                io.sink.writeUtf8Line("x", "y"),
-                io.sink.writeObjectAsJson(value),
-                io.sink.flush(),
-              ];
-              const allSync = rs.every((r) => r === undefined);
-              const c = io.sink.close(); if (c) await c;
-              const got = await io.source.readUtf8();
-              const want = "hello" + "xy\n" + JSON.stringify(value);
-              p.sink.send(ymix.utf8Encode(!allSync ? "NOT-SYNC" : got === want ? "OK" : ("MISMATCH got=" + got)));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("sync-writes"))
         } finally {
             rt.close()
         }
@@ -1458,24 +953,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(pipe.readText())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const depth = 5000; // deep enough to blow a recursive walker's stack
-              let v = 1;
-              for (let i = 0; i < depth; i++) v = [v];
-              const io = ymix.open("sink");
-              const w = io.sink.writeObjectAsJson(v); if (w) await w;
-              const c = io.sink.close(); if (c) await c;
-              const got = await io.source.readUtf8();
-              const want = "[".repeat(depth) + "1" + "]".repeat(depth);
-              p.sink.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH len=" + got.length + " want=" + want.length)));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("json-depth"))
         } finally {
             rt.close()
         }
@@ -1490,26 +969,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(pipe.readText())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              let rope = "";                                    // repeated concat -> a rope string
-              for (let i = 0; i < 400; i++) rope += "seg" + i + "-héllo🎵|";  // wide + Latin-1 mix
-              let latin = "";                                   // Latin-1-only rope (narrow storage)
-              for (let i = 0; i < 300; i++) latin += "café-æß" + i; // all < U+0100 -> narrow storage
-              const value = { rope: rope, latin: latin, esc: rope + "\n\t\"" };
-              const io = ymix.open("sink");
-              const w = io.sink.writeObjectAsJson(value); if (w) await w;
-              const c = io.sink.close(); if (c) await c;
-              const got = await io.source.readUtf8();
-              const want = JSON.stringify(value);
-              p.sink.send(ymix.utf8Encode(got === want ? "OK" : ("MISMATCH len=" + got.length + " want=" + want.length)));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("OK", rt.openPipe("run").readText())
+            assertEquals("OK", rt.probe("json-ropes"))
         } finally {
             rt.close()
         }
@@ -1524,23 +985,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(pipe.readText())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const a = { name: "a" };
-              a.self = { deeper: [1, a] };  // cycle through two levels
-              const io = ymix.open("sink");
-              let msg = "no-throw";
-              try { const w = io.sink.writeObjectAsJson(a); if (w) await w; }
-              catch (e) { msg = (e instanceof TypeError) ? "TYPE_ERROR" : ("WRONG:" + e); }
-              io.sink.close("abort");
-              p.sink.send(ymix.utf8Encode(msg));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("TYPE_ERROR", rt.openPipe("run").readText())
+            assertEquals("TYPE_ERROR", rt.probe("json-cycle"))
         } finally {
             rt.close()
         }
@@ -1575,30 +1021,15 @@ class QuickJsRuntimeTest {
     fun line_longer_than_pipe_cap_does_not_deadlock() = runTest {
         val rt = QuickJsRuntime.create()
         val big = buildString { repeat(25_000) { append("abcdefé🎵") } } // ~275 KB of UTF-8
-        val tail = "T".repeat(100_000)                                    // over-cap, no trailing '\n'
+        val tail = "T".repeat(100_000) // over-cap, no trailing '\n'
         rt.onAccept("lines") { pipe ->
             pipe.sendText("$big\r\nsecond🎵\n$tail")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("lines");
-              const l1 = await io.source.readUtf8Line();
-              const l2 = await io.source.readUtf8Line();
-              const l3 = await io.source.readUtf8Line();
-              const l4 = await io.source.readUtf8Line();
-              let s1 = 0; for (let i = 0; i < l1.length; i++) s1 += l1.charCodeAt(i);
-              let s3 = 0; for (let i = 0; i < l3.length; i++) s3 += l3.charCodeAt(i);
-              p.sink.send(ymix.utf8Encode(l1.length + ":" + s1 + "|" + l2 + "|" + l3.length + ":" + s3 + "|" + (l4 === null ? "EOF" : l4)));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
             val s1 = big.sumOf { it.code.toLong() }
             val s3 = tail.sumOf { it.code.toLong() }
-            assertEquals("${big.length}:$s1|second🎵|${tail.length}:$s3|EOF", rt.openPipe("run").readText())
+            assertEquals("${big.length}:$s1|second🎵|${tail.length}:$s3|EOF", rt.probe("long-line-over-cap"))
         } finally {
             rt.close()
         }
@@ -1614,23 +1045,9 @@ class QuickJsRuntimeTest {
             pipe.sendText("$long\nsecond🎵\n") // one send -> several pool segments
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("lines");
-              const l1 = await io.source.readUtf8Line();
-              const l2 = await io.source.readUtf8Line();
-              const l3 = await io.source.readUtf8Line();
-              // report a checksum of l1 rather than echoing 20 KB back
-              let sum = 0; for (let i = 0; i < l1.length; i++) sum += l1.charCodeAt(i);
-              p.sink.send(ymix.utf8Encode(l1.length + ":" + sum + "|" + l2 + "|" + (l3 === null ? "EOF" : l3)));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
             val sum = long.sumOf { it.code }
-            assertEquals("${long.length}:$sum|second🎵|EOF", rt.openPipe("run").readText())
+            assertEquals("${long.length}:$sum|second🎵|EOF", rt.probe("long-line-segments"))
         } finally {
             rt.close()
         }
@@ -1644,19 +1061,8 @@ class QuickJsRuntimeTest {
             pipe.sendText(pipe.readText())
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              const io = ymix.open("sink");
-              await io.sink.writeUtf8Range("XXhello🎵YY", 2, 9);   // "hello🎵" (surrogate pair = 2 units)
-              await io.sink.close();
-              p.sink.send(ymix.utf8Encode(await io.source.readUtf8()));
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("hello🎵", rt.openPipe("run").readText())
+            assertEquals("hello🎵", rt.probe("utf8-range"))
         } finally {
             rt.close()
         }
@@ -1667,9 +1073,8 @@ class QuickJsRuntimeTest {
     @Test
     fun js_handler_failure_resets_kotlin_pipe() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("jsboom", async (pipe) => { throw new Error("js blew up"); });""")
         try {
-            val pipe = rt.openPipe("jsboom")
+            val pipe = rt.openPipe("test/rt/jsboom")
             val e = assertFailsWith<PipeResetException> { pipe.source.receive(Buffer(), 8L) }
             assertEquals("js blew up", e.reason)
         } finally {
@@ -1677,26 +1082,23 @@ class QuickJsRuntimeTest {
         }
     }
 
-    /** ymix.onAccept returns a registration: remove() unregisters (host open then refuses), and a
+    /** onAccept returns a registration: remove() unregisters (host open then refuses), and a
      *  STALE handle — one replaced by a newer registration — must not remove the newer handler. */
     @Test
     fun js_accept_registration_can_be_removed() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load(
-            """
-            globalThis.reg1 = ymix.onAccept("svc", async (p) => { p.sink.send(ymix.utf8Encode("one")); p.sink.close(); });
-            """.trimIndent(),
-        )
+        suspend fun step(n: Char) {
+            val p = rt.openPipe("test/rt/reg-step")
+            p.sendText(n.toString())
+            p.sink.close()
+            assertEquals("done", p.readText())
+        }
         try {
+            step('1')
             assertEquals("one", rt.openPipe("svc").readText())
-            rt.load(
-                """
-                ymix.onAccept("svc", async (p) => { p.sink.send(ymix.utf8Encode("two")); p.sink.close(); });
-                reg1.remove(); // stale — replaced above; must not unregister the new handler
-                """.trimIndent(),
-            )
+            step('2') // replace + stale remove — must not unregister the new handler
             assertEquals("two", rt.openPipe("svc").readText())
-            rt.load("""ymix.onAccept("svc", async (p) => { p.sink.close(); }).remove();""")
+            step('3') // register-and-remove
             assertFailsWith<QuickJsException> { rt.openPipe("svc") }
         } finally {
             rt.close()
@@ -1712,27 +1114,16 @@ class QuickJsRuntimeTest {
             pipe.sendText("one")
             pipe.sink.close()
         }
-        rt.load(
-            """
-            ymix.onAccept("run", async (p) => {
-              try {
-                const io = ymix.open("svc");
-                p.sink.send(ymix.utf8Encode(await io.source.readUtf8()));
-              } catch (e) { p.sink.send(ymix.utf8Encode("ERR:" + e.message)); }
-              p.sink.close();
-            });
-            """.trimIndent(),
-        )
         try {
-            assertEquals("one", rt.openPipe("run").readText())
+            assertEquals("one", rt.probe("probe-svc"))
             val reg2 = rt.onAccept("svc") { pipe ->
                 pipe.sendText("two")
                 pipe.sink.close()
             }
             reg1.remove() // stale — replaced by reg2; must not unregister it
-            assertEquals("two", rt.openPipe("run").readText())
+            assertEquals("two", rt.probe("probe-svc"))
             reg2.remove()
-            assertEquals("ERR:open(\"svc\") refused by host", rt.openPipe("run").readText())
+            assertEquals("ERR:open(\"svc\") refused by host", rt.probe("probe-svc"))
         } finally {
             rt.close()
         }
