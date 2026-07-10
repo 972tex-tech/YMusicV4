@@ -36,17 +36,22 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
     suspend fun close() = runtime.close()
 
     companion object {
+        /** The versions the HOST evals before the bundle — one frozen object, all host-owned ints:
+         *  the remotely-updated JS branches on these for backward compatibility (`versions.app >=
+         *  123`, `typeof __x === "function"`); never a load handshake. Bump [BOOTSTRAP_VERSION] /
+         *  [ENGINE_VERSION] when the bootstrap transport / host-protocol surface changes. */
+        private const val BOOTSTRAP_VERSION = 1
+        private const val ENGINE_VERSION = 1
+
         /**
          * Create an engine running [engineJs] — the single :engine-js bundle (bootstrap + protocol
          * layers + scraping logic), evaluated as the runtime's bootstrap — and wire the `"http"`
          * handler onto [client].
          *
-         * [appVersion] is the host app's version code, visible to the bundle before it evaluates
-         * (`__appVersion` → the frozen `versions` global) so the remotely-updated JS can branch for
-         * backward compatibility. [engineJs] defaults to the build-time baseline; the app passes a
-         * remotely-fetched bundle here, and falls back to the default when that fails to load (a bad
-         * push must not brick the engine). [logger] receives host-protocol birth-site failures
-         * (null = logging off).
+         * [appVersion] is the host app's version code. [engineJs] defaults to the build-time
+         * baseline; the app passes a remotely-fetched bundle here, and falls back to the default
+         * when that fails to load (a bad push must not brick the engine). [logger] receives
+         * host-protocol birth-site failures (null = logging off).
          */
         suspend fun create(
             client: KmpHttpClient,
@@ -54,7 +59,9 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
         ): DynamicEngine {
-            val runtime = QuickJsRuntime.create(bootstrap = "globalThis.__appVersion=$appVersion;$engineJs")
+            val versions =
+                "globalThis.versions=Object.freeze({bootstrap:$BOOTSTRAP_VERSION,engine:$ENGINE_VERSION,app:$appVersion});"
+            val runtime = QuickJsRuntime.create(bootstrap = versions + engineJs)
             runtime.installHttp(client, logger)
             return DynamicEngine(runtime)
         }

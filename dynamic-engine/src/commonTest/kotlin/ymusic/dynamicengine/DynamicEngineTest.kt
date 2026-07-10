@@ -42,9 +42,8 @@ class DynamicEngineTest {
         return openPipe("run").readText()
     }
 
-    /** create() exposes a frozen `versions` global (built by the bundle's versions.ts): the
-     *  bootstrap version (`ymix.version`), the bundle's engine version, and the app version passed
-     *  in via the `__appVersion` prefix. */
+    /** create() evals the frozen `versions` global before the bundle — all three host-owned ints
+     *  (bootstrap, engine, app) in one snippet, for the bundle's backward-compat branching. */
     @Test
     fun versions_are_exposed_to_js() = runTest {
         val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), 42)
