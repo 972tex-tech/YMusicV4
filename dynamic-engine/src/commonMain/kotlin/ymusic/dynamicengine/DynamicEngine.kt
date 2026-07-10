@@ -2,8 +2,7 @@ package ymusic.dynamicengine
 
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
-import ymusic.dynamicengine.internal.COMMAND_JS
-import ymusic.dynamicengine.internal.HTTP_JS
+import ymusic.dynamicengine.internal.ENGINE_JS
 import ymusic.dynamicengine.internal.installHttp
 import ymusic.quickjs.Pipe
 import ymusic.quickjs.QuickJsRuntime
@@ -37,25 +36,27 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
     suspend fun close() = runtime.close()
 
     companion object {
-        /** This module's API version — bumped when the JS surface (`commandHandler`, `HttpRequest`,
-         *  the error contract) changes, so remote JS can feature-gate against the engine it runs in. */
-        const val VERSION: Int = 1
-
-        /** Create an engine, wire the `"http"` handler onto [client], and install `HttpRequest`.
-         *  [appVersion] is the host app's version code; it and [VERSION] are exposed to JS as a frozen
-         *  `versions` object (alongside `ymix.version`, the bootstrap version). [logger] receives
-         *  host-protocol birth-site failures (null = logging off). */
-        suspend fun create(client: KmpHttpClient, appVersion: Int, logger: Logger? = null): DynamicEngine {
-            val runtime = QuickJsRuntime.create()
+        /**
+         * Create an engine running [engineJs] — the single :engine-js bundle (bootstrap + protocol
+         * layers + scraping logic), evaluated as the runtime's bootstrap — and wire the `"http"`
+         * handler onto [client].
+         *
+         * [appVersion] is the host app's version code, visible to the bundle before it evaluates
+         * (`__appVersion` → the frozen `versions` global) so the remotely-updated JS can branch for
+         * backward compatibility. [engineJs] defaults to the build-time baseline; the app passes a
+         * remotely-fetched bundle here, and falls back to the default when that fails to load (a bad
+         * push must not brick the engine). [logger] receives host-protocol birth-site failures
+         * (null = logging off).
+         */
+        suspend fun create(
+            client: KmpHttpClient,
+            appVersion: Int,
+            logger: Logger? = null,
+            engineJs: String = ENGINE_JS,
+        ): DynamicEngine {
+            val runtime = QuickJsRuntime.create(bootstrap = "globalThis.__appVersion=$appVersion;$engineJs")
             runtime.installHttp(client, logger)
-            runtime.load(COMMAND_JS, "<command>")
-            runtime.load(HTTP_JS, "<http>")
-            runtime.load(versionsJs(appVersion), "<versions>")
             return DynamicEngine(runtime)
         }
-
-        /** `globalThis.versions = { bootstrap, engine, app }` — all three are ints (safe to inline). */
-        private fun versionsJs(appVersion: Int): String =
-            "globalThis.versions = Object.freeze({ bootstrap: ymix.version, engine: $VERSION, app: $appVersion });"
     }
 }

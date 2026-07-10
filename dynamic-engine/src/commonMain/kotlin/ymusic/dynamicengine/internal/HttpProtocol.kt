@@ -40,7 +40,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Serves the `"http"` pipe command (the host side of [HTTP_JS]) directly on a [KmpHttpClient].
+ * Serves the `"http"` pipe command (the host side of the bundle's http.js) directly on a [KmpHttpClient].
  *
  * Wire shape (v3, HOST_PROTOCOLS §1): one **control pipe** per exchange plus, when the request has
  * a body, one **body pipe** — control never carries bulk data, so cancellation is observable at
