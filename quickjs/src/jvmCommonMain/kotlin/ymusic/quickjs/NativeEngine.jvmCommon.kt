@@ -37,14 +37,19 @@ internal actual class NativeEngine private constructor(private val handle: Long)
     }
 
     actual companion object {
-        actual fun create(script: String, callbacks: EngineCallbacks): NativeEngine {
-            val handle = QuickJsNative.create(script)
+        actual fun create(script: String, engineVersion: Int, appVersion: Int, callbacks: EngineCallbacks): NativeEngine {
+            val handle = QuickJsNative.create(script, engineVersion, appVersion)
             QuickJsNative.register(handle, callbacks)
             return NativeEngine(handle)
         }
 
-        actual fun createFromBytecode(bytecode: ByteArray, prelude: String, callbacks: EngineCallbacks): NativeEngine {
-            val handle = QuickJsNative.createBytecode(bytecode, prelude)
+        actual fun createFromBytecode(
+            bytecode: ByteArray,
+            engineVersion: Int,
+            appVersion: Int,
+            callbacks: EngineCallbacks,
+        ): NativeEngine {
+            val handle = QuickJsNative.createBytecode(bytecode, engineVersion, appVersion)
             QuickJsNative.register(handle, callbacks)
             return NativeEngine(handle)
         }

@@ -38,6 +38,15 @@
 /* Pool block size; PipeBuf segment payload is this minus a small header. */
 #define QJS_SEG_SIZE 8192
 
+/* The pipe-transport ABI version, surfaced to the bundle as `versions.bootstrap` — bump when the
+ * transport contract (the `__js*` / `__host*` / `__pb*` surface or semantics) changes. */
+#define QJS_BOOTSTRAP_VERSION 1
+
+/* Define the frozen `versions` global ({bootstrap, engine, app}, all ints) the bundle branches on
+ * for backward compatibility. Installed before the engine script/bytecode runs; the global is
+ * non-writable, so no (remotely updated) bundle can reassign it. */
+void qjs_install_versions(JSContext *ctx, int engine_version, int app_version);
+
 typedef struct QjsPipeCtx QjsPipeCtx;
 
 /* Flow control toward the host: our buffer drained below low-water while its writer was parked.

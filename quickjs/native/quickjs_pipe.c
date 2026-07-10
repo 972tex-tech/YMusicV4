@@ -914,3 +914,14 @@ void qjs_pipe_ctx_free(QjsPipeCtx *pc) {
     free(pc->ents);
     free(pc);
 }
+
+void qjs_install_versions(JSContext *ctx, int engine_version, int app_version) {
+    JSValue v = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, v, "bootstrap", JS_NewInt32(ctx, QJS_BOOTSTRAP_VERSION), JS_PROP_ENUMERABLE);
+    JS_DefinePropertyValueStr(ctx, v, "engine", JS_NewInt32(ctx, engine_version), JS_PROP_ENUMERABLE);
+    JS_DefinePropertyValueStr(ctx, v, "app", JS_NewInt32(ctx, app_version), JS_PROP_ENUMERABLE);
+    JS_PreventExtensions(ctx, v); /* non-writable props + non-extensible = Object.isFrozen */
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_DefinePropertyValueStr(ctx, g, "versions", v, JS_PROP_ENUMERABLE); /* not writable/configurable */
+    JS_FreeValue(ctx, g);
+}

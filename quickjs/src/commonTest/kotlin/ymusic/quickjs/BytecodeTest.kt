@@ -71,26 +71,20 @@ class BytecodeTest {
     }
 
     @Test
-    fun prelude_runs_before_the_bytecode_program() = runTest {
+    fun versions_are_installed_before_the_bytecode_program() = runTest {
         val bc = QuickJsRuntime.compile(TEST_ENGINE_JS)
-        // The bundle assigns globalThis.__jsOpen unconditionally: if the prelude ran AFTER it,
-        // 123 would win and the transport would be dead. A working pipe proves prelude-first.
-        val rt = QuickJsRuntime.create(bc, "globalThis.__jsOpen = 123; globalThis.__mark = 41 + 1;")
+        val rt = QuickJsRuntime.create(bc, engineVersion = 5, appVersion = 7)
         try {
-            assertEquals("function", rt.load("typeof __jsOpen"))
-            assertEquals("42", rt.load("__mark"))
+            assertEquals(
+                "1|5|7", // bootstrap is C-owned (QJS_BOOTSTRAP_VERSION)
+                rt.load("versions.bootstrap + \"|\" + versions.engine + \"|\" + versions.app"),
+            )
+            assertEquals("true", rt.load("Object.isFrozen(versions)"))
+            // the global binding itself is non-writable: a bundle can't clobber it
+            assertEquals("1", rt.load("versions = 123; String(versions.bootstrap)"))
         } finally {
             rt.close()
         }
-    }
-
-    @Test
-    fun prelude_failure_fails_create() = runTest {
-        val bc = QuickJsRuntime.compile(TEST_ENGINE_JS)
-        val e = assertFailsWith<QuickJsException> {
-            QuickJsRuntime.create(bc, "throw new Error(\"prelude boom\")")
-        }
-        assertTrue("prelude boom" in (e.message ?: ""), "got: ${e.message}")
     }
 
     @Test

@@ -70,11 +70,18 @@ internal expect class NativeEngine {
     fun destroy()
 
     companion object {
-        fun create(script: String, callbacks: EngineCallbacks): NativeEngine
+        /** C installs the frozen `versions` global (`bootstrap` = the transport's own ABI version,
+         *  plus the two caller-owned ints) before evaluating [script]. */
+        fun create(script: String, engineVersion: Int, appVersion: Int, callbacks: EngineCallbacks): NativeEngine
 
-        /** [create] from [compile] output. [prelude] (may be empty) is evaluated as plain source
-         *  before the bytecode program runs — for host-owned values unknown at compile time. */
-        fun createFromBytecode(bytecode: ByteArray, prelude: String, callbacks: EngineCallbacks): NativeEngine
+        /** [create] from [compile] output — versions can't be baked into the precompiled blob, so
+         *  they cross here and C installs them before the bytecode program runs. */
+        fun createFromBytecode(
+            bytecode: ByteArray,
+            engineVersion: Int,
+            appVersion: Int,
+            callbacks: EngineCallbacks,
+        ): NativeEngine
 
         /** Compile [script] to serialized bytecode with per-function source text stripped
          *  (`Function.prototype.toString` yields a placeholder; line-number debug info is kept). */

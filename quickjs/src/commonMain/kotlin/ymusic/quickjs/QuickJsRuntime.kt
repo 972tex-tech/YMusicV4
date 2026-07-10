@@ -494,15 +494,19 @@ class QuickJsRuntime private constructor(
         /** [script] is the engine JS (the :engine-js bundle) evaluated once at creation. It must
          *  define the transport globals (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`,
          *  `ymix`) — the native engine captures them right after this one eval, so the script is
-         *  only accepted HERE, never loaded onto a live runtime. This module ships no JS. */
-        suspend fun create(script: String): QuickJsRuntime =
-            create { callbacks -> NativeEngine.create(script, callbacks) }
+         *  only accepted HERE, never loaded onto a live runtime. This module ships no JS.
+         *
+         *  Before the eval, C installs the frozen, non-writable `versions` global the bundle
+         *  branches on for backward compatibility: `bootstrap` is the transport's own ABI version
+         *  (C-owned); [engineVersion] and [appVersion] are the caller's. */
+        suspend fun create(script: String, engineVersion: Int = 0, appVersion: Int = 0): QuickJsRuntime =
+            create { callbacks -> NativeEngine.create(script, engineVersion, appVersion, callbacks) }
 
         /** Create from [compile]d bytecode of the engine JS (same contract as the [String]
-         *  overload). [prelude] is evaluated as plain source before the bytecode program runs —
-         *  for host-owned values unknown at compile time (the `versions` global). */
-        suspend fun create(bytecode: ByteArray, prelude: String = ""): QuickJsRuntime =
-            create { callbacks -> NativeEngine.createFromBytecode(bytecode, prelude, callbacks) }
+         *  overload, including the C-installed `versions` global — versions can never be baked
+         *  into the precompiled blob). */
+        suspend fun create(bytecode: ByteArray, engineVersion: Int = 0, appVersion: Int = 0): QuickJsRuntime =
+            create { callbacks -> NativeEngine.createFromBytecode(bytecode, engineVersion, appVersion, callbacks) }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
          *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding

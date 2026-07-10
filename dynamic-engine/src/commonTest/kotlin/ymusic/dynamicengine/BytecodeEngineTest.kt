@@ -6,8 +6,8 @@ import ymusic.dynamicengine.internal.ENGINE_TEST_JS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** compile() + create(bytecode): the versions prelude and the HTTP protocol work when the bundle
- *  runs from stripped bytecode instead of source. */
+/** compile() + create(bytecode): the C-installed versions and the HTTP protocol work when the
+ *  bundle runs from stripped bytecode instead of source. */
 class BytecodeEngineTest {
 
     private suspend fun DynamicEngine.scenario(name: String, args: String = "{}"): String {
@@ -25,7 +25,7 @@ class BytecodeEngineTest {
     }
 
     @Test
-    fun versions_prelude_reaches_the_bytecode_bundle() = runTest {
+    fun versions_reach_the_bytecode_bundle() = runTest {
         val bc = DynamicEngine.compile(ENGINE_TEST_JS)
         val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), appVersion = 42, engineBytecode = bc)
         try {

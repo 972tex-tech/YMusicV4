@@ -92,37 +92,18 @@ internal actual class NativeEngine private constructor(
     }
 
     actual companion object {
-        actual fun create(script: String, callbacks: EngineCallbacks): NativeEngine = memScoped {
-            val ref = StableRef.create(callbacks)
-            val errVar = alloc<CPointerVar<ByteVar>>()
-            val eng = qjs_create(script, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
-            if (eng == null) {
-                val msg = errVar.value?.toKString()
-                errVar.value?.let { qjs_free(it) }
-                ref.dispose()
-                throw QuickJsException(msg ?: "quickjs create failed")
-            }
-            NativeEngine(eng, ref)
-        }
-
-        actual fun createFromBytecode(bytecode: ByteArray, prelude: String, callbacks: EngineCallbacks): NativeEngine =
+        actual fun create(script: String, engineVersion: Int, appVersion: Int, callbacks: EngineCallbacks): NativeEngine =
             memScoped {
                 val ref = StableRef.create(callbacks)
                 val errVar = alloc<CPointerVar<ByteVar>>()
-                val eng = if (bytecode.isEmpty()) {
-                    qjs_create_bc(null, 0u, prelude, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
-                } else {
-                    bytecode.usePinned { pinned ->
-                        qjs_create_bc(
-                            pinned.addressOf(0).reinterpret(),
-                            bytecode.size.convert(),
-                            prelude,
-                            staticCFunction(::inboundTrampoline),
-                            ref.asCPointer(),
-                            errVar.ptr,
-                        )
-                    }
-                }
+                val eng = qjs_create(
+                    script,
+                    engineVersion,
+                    appVersion,
+                    staticCFunction(::inboundTrampoline),
+                    ref.asCPointer(),
+                    errVar.ptr,
+                )
                 if (eng == null) {
                     val msg = errVar.value?.toKString()
                     errVar.value?.let { qjs_free(it) }
@@ -131,6 +112,46 @@ internal actual class NativeEngine private constructor(
                 }
                 NativeEngine(eng, ref)
             }
+
+        actual fun createFromBytecode(
+            bytecode: ByteArray,
+            engineVersion: Int,
+            appVersion: Int,
+            callbacks: EngineCallbacks,
+        ): NativeEngine = memScoped {
+            val ref = StableRef.create(callbacks)
+            val errVar = alloc<CPointerVar<ByteVar>>()
+            val eng = if (bytecode.isEmpty()) {
+                qjs_create_bc(
+                    null,
+                    0u,
+                    engineVersion,
+                    appVersion,
+                    staticCFunction(::inboundTrampoline),
+                    ref.asCPointer(),
+                    errVar.ptr,
+                )
+            } else {
+                bytecode.usePinned { pinned ->
+                    qjs_create_bc(
+                        pinned.addressOf(0).reinterpret(),
+                        bytecode.size.convert(),
+                        engineVersion,
+                        appVersion,
+                        staticCFunction(::inboundTrampoline),
+                        ref.asCPointer(),
+                        errVar.ptr,
+                    )
+                }
+            }
+            if (eng == null) {
+                val msg = errVar.value?.toKString()
+                errVar.value?.let { qjs_free(it) }
+                ref.dispose()
+                throw QuickJsException(msg ?: "quickjs create failed")
+            }
+            NativeEngine(eng, ref)
+        }
 
         actual fun compile(script: String, filename: String): ByteArray = memScoped {
             val lenVar = alloc<size_tVar>()

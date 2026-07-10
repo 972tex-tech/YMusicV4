@@ -283,7 +283,7 @@ static int drain_hook(void *user, uint32_t id) {
 
 /* ---- JNI entry points (all on the single engine thread) ---- */
 
-static Engine *engine_new(JNIEnv *env) {
+static Engine *engine_new(JNIEnv *env, jint engineVersion, jint appVersion) {
     Engine *e = (Engine *)calloc(1, sizeof(Engine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -307,6 +307,7 @@ static Engine *engine_new(JNIEnv *env) {
     JS_FreeValue(e->ctx, global);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
+    qjs_install_versions(e->ctx, engineVersion, appVersion);
     return e;
 }
 
@@ -341,8 +342,9 @@ static jlong engine_finish(Engine *e) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript) {
-    Engine *e = engine_new(env);
+Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript,
+                                         jint engineVersion, jint appVersion) {
+    Engine *e = engine_new(env, engineVersion, appVersion);
     size_t blen = 0;
     char *script = jstring_to_utf8(env, jscript, &blen);
     if (!script) { /* OOM converting the script source — tear down and report, don't feed JS_Eval a null */
@@ -363,25 +365,8 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscr
 
 JNIEXPORT jlong JNICALL
 Java_ymusic_quickjs_QuickJsNative_createBytecode(JNIEnv *env, jobject thiz, jbyteArray jbc,
-                                                 jstring jprelude) {
-    Engine *e = engine_new(env);
-    if (jprelude != NULL && (*env)->GetStringLength(env, jprelude) > 0) {
-        size_t plen = 0;
-        char *prelude = jstring_to_utf8(env, jprelude, &plen);
-        if (!prelude) {
-            engine_teardown(env, e);
-            throw_qjs(env, utf8_to_jstring(env, "out of memory (prelude)", 23));
-            return 0;
-        }
-        JSValue pret = JS_Eval(e->ctx, prelude, plen, "<prelude>", JS_EVAL_TYPE_GLOBAL);
-        free(prelude);
-        if (JS_IsException(pret)) {
-            throw_js_exception(env, e->ctx, "prelude failed");
-            engine_teardown(env, e);
-            return 0;
-        }
-        JS_FreeValue(e->ctx, pret);
-    }
+                                                 jint engineVersion, jint appVersion) {
+    Engine *e = engine_new(env, engineVersion, appVersion);
     jsize bclen = (*env)->GetArrayLength(env, jbc);
     jbyte *bc = (*env)->GetByteArrayElements(env, jbc, NULL);
     JSValue fn = bc ? JS_ReadObject(e->ctx, (const uint8_t *)bc, (size_t)bclen, JS_READ_OBJ_BYTECODE)
