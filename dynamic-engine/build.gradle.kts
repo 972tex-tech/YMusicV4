@@ -59,37 +59,40 @@ kotlin {
     }
 }
 
-// The :engine-js bundle (already esbuild-minified), embedded as the baseline ENGINE_JS const —
-// DynamicEngine.create evals it as the runtime's creation script; a remote bundle replaces it
-// via the engineJs parameter.
-val engineJsBundle by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
-dependencies {
-    engineJsBundle(project(":engine-js", "engineJs"))
-}
-val engineJsKtDir = layout.buildDirectory.dir("generated/engineJs")
-
-val generateEngineJsKt by tasks.registering {
-    inputs.files(engineJsBundle)
-    outputs.dir(engineJsKtDir)
-    doLast {
-        val bundle = engineJsBundle.singleFile.readText()
-        check(bundle.isNotBlank()) { "engine-js produced an empty bundle" }
-        val escaped = bundle
-            .replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
-        val dir = engineJsKtDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
-        dir.resolve("EngineJsPreamble.kt").writeText(
-            """
-            |package ymusic.dynamicengine.internal
-            |
-            |// GENERATED — do not edit. The :engine-js bundle (esbuild), embedded at build time.
-            |internal const val ENGINE_JS: String = "$escaped"
-            |""".trimMargin(),
-        )
+// The :engine-js bundles, embedded as consts: ENGINE_JS (production, Closure ADVANCED) is the
+// baseline DynamicEngine.create evals as the runtime's creation script (a remote bundle replaces
+// it via the engineJs parameter); ENGINE_TEST_JS (production + test fixtures) is what the tests
+// run on.
+fun embedBundle(configName: String, projectConfig: String, constName: String, ktFile: String, sourceSet: String) {
+    val config = configurations.create(configName) {
+        isCanBeConsumed = false
+        isCanBeResolved = true
     }
+    dependencies { config(project(":engine-js", projectConfig)) }
+    val ktDir = layout.buildDirectory.dir("generated/" + configName)
+    val taskName = "generate" + configName.replaceFirstChar { it.uppercase() } + "Kt"
+    val task = tasks.register(taskName) {
+        inputs.files(config)
+        outputs.dir(ktDir)
+        doLast {
+            val bundle = config.singleFile.readText()
+            check(bundle.isNotBlank()) { "engine-js produced an empty bundle for " + configName }
+            val escaped = bundle
+                .replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("${'$'}", "${'$'}{'${'$'}'}").replace("\n", "\\n").replace("\t", "\\t")
+            val dir = ktDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
+            dir.resolve(ktFile).writeText(
+                """
+                |package ymusic.dynamicengine.internal
+                |
+                |// GENERATED — do not edit. The :engine-js "$projectConfig" artifact, embedded at build time.
+                |internal const val $constName: String = "$escaped"
+                |""".trimMargin(),
+            )
+        }
+    }
+    kotlin.sourceSets.getByName(sourceSet).kotlin.srcDir(files(ktDir).builtBy(task))
 }
 
-kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(engineJsKtDir).builtBy(generateEngineJsKt))
+embedBundle("engineJsBundle", "engineJs", "ENGINE_JS", "EngineJsPreamble.kt", "commonMain")
+embedBundle("engineTestJsBundle", "engineTestJs", "ENGINE_TEST_JS", "EngineTestJsPreamble.kt", "commonTest")

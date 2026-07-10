@@ -32,7 +32,7 @@ class CommandHandlerTest {
 
     @Test
     fun command_handler_round_trips_a_result() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), 1)
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")), 1)
         try {
             e.load(
                 """
@@ -52,7 +52,7 @@ class CommandHandlerTest {
 
     @Test
     fun command_handler_failure_resets_with_a_classified_error() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), 1)
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")), 1)
         try {
             e.load(
                 """

@@ -46,7 +46,7 @@ class DynamicEngineTest {
      *  (bootstrap, engine, app) in one snippet, for the bundle's backward-compat branching. */
     @Test
     fun versions_are_exposed_to_js() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), 42)
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")), 42)
         try {
             assertEquals(
                 "1|1|42",
@@ -62,7 +62,7 @@ class DynamicEngineTest {
         val client = FakeHttpClient(
             CannedResponse.ofText("Hello, world!", headers = listOf("Content-Type" to "text/plain")),
         )
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             val text = e.eval(
                 """
@@ -83,7 +83,7 @@ class DynamicEngineTest {
         // bridge; bytes cross the pipe raw.)
         val full = "café — 世界 αβγ smörgåsbord 🎵"
         val client = FakeHttpClient(CannedResponse.ofText(full, chunkSize = 3))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 full,
@@ -103,7 +103,7 @@ class DynamicEngineTest {
                 chunkSize = 5,
             ),
         )
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             val count = e.eval(
                 """
@@ -120,7 +120,7 @@ class DynamicEngineTest {
     /** jsonArray() validates a `[…]` root and parses it (readJsonObject would reject the array). */
     @Test
     fun json_array_parses_a_top_level_array() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("""["a","b","c"]""", chunkSize = 4)), 1)
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("""["a","b","c"]""", chunkSize = 4)), 1)
         try {
             val len = e.eval(
                 """
@@ -138,7 +138,7 @@ class DynamicEngineTest {
      *  after the value) is a SyntaxError (commandHandler classifies it "parse"), never silently eaten. */
     @Test
     fun json_rejects_non_whitespace_after_the_body() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("""{"id":"a"}JUNK""")), 1)
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("""{"id":"a"}JUNK""")), 1)
         try {
             val r = e.eval(
                 """
@@ -158,7 +158,7 @@ class DynamicEngineTest {
     /** Trailing whitespace after the JSON value is fine (matches JSON.parse) — the body still parses. */
     @Test
     fun json_tolerates_trailing_whitespace() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("{\"id\":\"a\"}\n  \n")), 1)
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("{\"id\":\"a\"}\n  \n")), 1)
         try {
             val id = e.eval(
                 """
@@ -177,7 +177,7 @@ class DynamicEngineTest {
         val client = FakeHttpClient(
             CannedResponse.ofText("x", headers = listOf("Content-Type" to "application/json; charset=utf-8")),
         )
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "application/json; charset=utf-8",
@@ -198,7 +198,7 @@ class DynamicEngineTest {
             body = req.body?.readAll()
             canned.build(req)
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             e.eval(
                 """
@@ -229,7 +229,7 @@ class DynamicEngineTest {
             body = req.body?.readAll()
             canned.build(req)
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             e.eval(
                 """
@@ -253,7 +253,7 @@ class DynamicEngineTest {
             body = req.body?.readAll()
             canned.build(req)
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             // The callback owns the body: streams two writes, no Content-Length (chunk-framed).
             e.eval(
@@ -282,7 +282,7 @@ class DynamicEngineTest {
                 aborted.complete(Unit)
             }
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "ERR:E20010 unexpected data on the control pipe (5)",
@@ -318,7 +318,7 @@ class DynamicEngineTest {
             for (b in bytes) sum += b.toInt() and 0xFF
             canned.build(req)
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             e.eval(
                 """
@@ -342,7 +342,7 @@ class DynamicEngineTest {
     @Test
     fun bodiless_post_fails_at_build() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "ERR:POST requires a body — use .body(\"\") to send an empty one",
@@ -362,7 +362,7 @@ class DynamicEngineTest {
     @Test
     fun request_opts_reach_the_client() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             e.eval(
                 """
@@ -387,7 +387,7 @@ class DynamicEngineTest {
             chunks = listOf("ok".encodeToByteArray()),
             finalUrl = "https://cdn.example.com/real",
         )
-        val e = DynamicEngine.create(FakeHttpClient(canned), 1)
+        val e = createTestEngine(FakeHttpClient(canned), 1)
         try {
             assertEquals(
                 "https://cdn.example.com/real",
@@ -401,7 +401,7 @@ class DynamicEngineTest {
     @Test
     fun closes_the_response_stream_after_text() = runTest {
         val canned = CannedResponse.ofText("body", chunkSize = 1)
-        val e = DynamicEngine.create(FakeHttpClient(canned), 1)
+        val e = createTestEngine(FakeHttpClient(canned), 1)
         try {
             e.eval("""return await (await HttpRequest.get("https://example.com").build().execute()).text();""")
             assertTrue(canned.closed, "the response body should be closed once it is read")
@@ -413,7 +413,7 @@ class DynamicEngineTest {
     @Test
     fun stream_reads_body_chunk_by_chunk() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("abcdefghij", chunkSize = 2))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             // Pull the body via stream().read() without ever building the whole body in JS.
             val total = e.eval(
@@ -437,7 +437,7 @@ class DynamicEngineTest {
     @Test
     fun header_injection_is_rejected_at_the_builder() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "ERR:header value must not contain CR/LF/NUL",
@@ -461,7 +461,7 @@ class DynamicEngineTest {
     @Test
     fun sanitized_header_coerces_instead_of_throwing() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             e.eval(
                 """
@@ -483,7 +483,7 @@ class DynamicEngineTest {
     @Test
     fun set_header_replaces_add_header_appends() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             e.eval(
                 """
@@ -508,7 +508,7 @@ class DynamicEngineTest {
         val client = FakeHttpClient(
             CannedResponse.ofText("ok", headers = listOf("X-Bad" to "a\nInjected: 1")),
         )
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "a\nInjected: 1|ok",
@@ -530,7 +530,7 @@ class DynamicEngineTest {
     @Test
     fun transport_failure_rejects_execute_coded_network() = runTest {
         val client = FakeHttpClient { throw IOException("dns lookup failed") }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "network|request failed: dns lookup failed",
@@ -551,7 +551,7 @@ class DynamicEngineTest {
     @Test
     fun handler_crash_surfaces_its_reason_to_js() = runTest {
         val client = FakeHttpClient { throw IllegalStateException("client blew up") }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "ERR:client blew up",
@@ -568,7 +568,7 @@ class DynamicEngineTest {
     @Test
     fun mid_body_failure_rejects_the_body_instead_of_clean_eof() = runTest {
         val canned = CannedResponse(failAfterChunks = true)
-        val e = DynamicEngine.create(FakeHttpClient(canned), 1)
+        val e = createTestEngine(FakeHttpClient(canned), 1)
         try {
             assertEquals(
                 "ERR:response body failed: origin died",
@@ -598,7 +598,7 @@ class DynamicEngineTest {
     @Test
     fun malformed_head_resets_with_invalid_request() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             val r = e.eval(
                 """
@@ -628,7 +628,7 @@ class DynamicEngineTest {
                 aborted.complete(Unit)
             }
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             val r = e.eval(
                 """
@@ -656,7 +656,7 @@ class DynamicEngineTest {
     fun cancel_releases_a_streaming_response() = runTest {
         // > pipe cap (64 KB), so the server parks mid-body and would sit there forever otherwise.
         val canned = CannedResponse.ofText("x".repeat(200_000), chunkSize = 8192)
-        val e = DynamicEngine.create(FakeHttpClient(canned), 1)
+        val e = createTestEngine(FakeHttpClient(canned), 1)
         try {
             assertEquals(
                 "done",
@@ -693,7 +693,7 @@ class DynamicEngineTest {
                 aborted.complete(Unit)
             }
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         e.onAccept("entered") { pipe ->
             entered.await()
             val b = Buffer().writeUtf8("go")
@@ -736,7 +736,7 @@ class DynamicEngineTest {
                 aborted.complete(Unit)
             }
         }
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         e.onAccept("entered") { pipe ->
             entered.await()
             val b = Buffer().writeUtf8("go")
@@ -768,7 +768,7 @@ class DynamicEngineTest {
     @Test
     fun call_cancel_before_execute_refuses_to_start() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("ok"))
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "ERR:request cancelled",
@@ -795,7 +795,7 @@ class DynamicEngineTest {
             chunks = listOf("part1".encodeToByteArray()),
             hangAfterChunks = true,
         )
-        val e = DynamicEngine.create(FakeHttpClient(canned), 1)
+        val e = createTestEngine(FakeHttpClient(canned), 1)
         try {
             assertEquals(
                 "part1",
@@ -825,7 +825,7 @@ class DynamicEngineTest {
     @Test
     fun ignore_result_drains_the_body_fire_and_forget() = runTest {
         val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
-        val e = DynamicEngine.create(FakeHttpClient(canned), 1)
+        val e = createTestEngine(FakeHttpClient(canned), 1)
         try {
             assertEquals(
                 "200",
@@ -852,7 +852,7 @@ class DynamicEngineTest {
         val client = FakeHttpClient(
             CannedResponse(status = 404, message = "Not Found", chunks = listOf("nope".encodeToByteArray())),
         )
-        val e = DynamicEngine.create(client, 1)
+        val e = createTestEngine(client, 1)
         try {
             assertEquals(
                 "404 false nope",

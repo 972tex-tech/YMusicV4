@@ -31,7 +31,7 @@ class HostLoggingTest {
     @Test
     fun http_transport_failure_logs_at_its_birth_site_with_the_context() = runTest {
         val log = Capture()
-        val engine = DynamicEngine.create(FakeHttpClient { throw IOException("connect refused") }, 1, log)
+        val engine = createTestEngine(FakeHttpClient { throw IOException("connect refused") }, 1, log)
         try {
             engine.load(
                 """
@@ -65,7 +65,7 @@ class HostLoggingTest {
     @Test
     fun no_context_degrades_to_just_the_protocol_hop() = runTest {
         val log = Capture()
-        val engine = DynamicEngine.create(FakeHttpClient { throw IOException("dns") }, 1, log)
+        val engine = createTestEngine(FakeHttpClient { throw IOException("dns") }, 1, log)
         try {
             engine.load(
                 """
@@ -86,7 +86,7 @@ class HostLoggingTest {
 
     @Test
     fun no_logger_is_a_safe_no_op() = runTest {
-        val engine = DynamicEngine.create(FakeHttpClient { throw IOException("boom") }, 1)
+        val engine = createTestEngine(FakeHttpClient { throw IOException("boom") }, 1)
         try {
             engine.load(
                 """

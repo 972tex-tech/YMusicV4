@@ -280,15 +280,15 @@ tasks.matching {
 
 // ---------------------------------------------------------------------------------------------
 // Test engine JS: this module ships NO JS — QuickJsRuntime.create requires the caller to supply
-// the script (the :engine-js bundle). Only the TESTS need one, so the real bundle is embedded,
-// escape-only, into a commonTest const (tests run on exactly what production runs on).
+// the script (the :engine-js bundle). Only the TESTS need one, so the :engine-js TEST bundle
+// (production + fixtures) is embedded, escape-only, into a commonTest const.
 // ---------------------------------------------------------------------------------------------
 val testEngineJs by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
 dependencies {
-    testEngineJs(project(":engine-js", "engineJs"))
+    testEngineJs(project(":engine-js", "engineTestJs"))
 }
 val testEngineJsKtDir = layout.buildDirectory.dir("generated/testEngineJs")
 
