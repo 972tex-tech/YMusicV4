@@ -1,19 +1,7 @@
 @file:Suppress("UnstableApiUsage")
 
-import com.google.javascript.jscomp.CompilationLevel
-import com.google.javascript.jscomp.Compiler
-import com.google.javascript.jscomp.CompilerOptions
-import com.google.javascript.jscomp.SourceFile
-import com.google.javascript.jscomp.WarningLevel
 import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
-// Closure Compiler (pure-JVM JS minifier) on the build classpath, only for this module — used to
-// minify the engine bootstrap at build time (see generateBootstrapJs). No Node/npm toolchain.
-buildscript {
-    repositories { mavenCentral() }
-    dependencies { classpath("com.google.javascript:closure-compiler:v20231112") }
-}
 
 plugins {
     kotlin("multiplatform")
@@ -291,47 +279,36 @@ tasks.matching {
 }.configureEach { dependsOn(stageAndroidJni) }
 
 // ---------------------------------------------------------------------------------------------
-// Bootstrap JS: authored (with comments) in :engine-js (the one home for all engine JS), minified
-// at build time with Closure Compiler (SIMPLE, no transpile) and emitted as a generated Kotlin
-// const the engine evals — this module stays Node-free and self-contained.
-// Comments/whitespace are stripped and locals renamed; globals (ymix/__jsOpen/setTimeout/…) and
-// property names are preserved, so the host contract is intact.
+// Test engine JS: this module ships NO JS — QuickJsRuntime.create requires the caller to supply
+// the script (the :engine-js bundle). Only the TESTS need one, so the real bundle is embedded,
+// escape-only, into a commonTest const (tests run on exactly what production runs on).
 // ---------------------------------------------------------------------------------------------
-val bootstrapJs = rootProject.projectDir.resolve("engine-js/src/bootstrap/bootstrap.js")
-val bootstrapKtDir = layout.buildDirectory.dir("generated/bootstrapJs")
+val testEngineJs by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+dependencies {
+    testEngineJs(project(":engine-js", "engineJs"))
+}
+val testEngineJsKtDir = layout.buildDirectory.dir("generated/testEngineJs")
 
-val generateBootstrapJs by tasks.registering {
-    inputs.file(bootstrapJs)
-    outputs.dir(bootstrapKtDir)
+val generateTestEngineJs by tasks.registering {
+    inputs.files(testEngineJs)
+    outputs.dir(testEngineJsKtDir)
     doLast {
-        val options = CompilerOptions().apply {
-            setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_NEXT)
-            setLanguageOut(CompilerOptions.LanguageMode.NO_TRANSPILE) // keep async/await, classes
-        }
-        CompilationLevel.SIMPLE_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
-        WarningLevel.QUIET.setOptionsForWarningLevel(options)
-        val compiler = Compiler()
-        val result = compiler.compile(
-            emptyList<SourceFile>(), // externs (none) — undeclared globals are preserved, not renamed
-            listOf(SourceFile.fromCode("bootstrap.js", bootstrapJs.readText())),
-            options,
-        )
-        if (!result.success) throw GradleException("bootstrap minify failed:\n" + compiler.errors.joinToString("\n"))
-        val minified = compiler.toSource()
-        check(minified.isNotBlank()) { "closure produced empty output" }
-        val escaped = minified
+        val escaped = testEngineJs.singleFile.readText()
             .replace("\\", "\\\\").replace("\"", "\\\"")
             .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
-        val dir = bootstrapKtDir.get().asFile.resolve("ymusic/quickjs").apply { mkdirs() }
-        dir.resolve("Bootstrap.kt").writeText(
+        val dir = testEngineJsKtDir.get().asFile.resolve("ymusic/quickjs").apply { mkdirs() }
+        dir.resolve("TestEngineJs.kt").writeText(
             """
             |package ymusic.quickjs
             |
-            |// GENERATED — do not edit. Minified from engine-js/src/bootstrap/bootstrap.js (Closure Compiler) at build time.
-            |internal const val BOOTSTRAP_JS: String = "$escaped"
+            |// GENERATED — do not edit. The :engine-js bundle, for tests only.
+            |internal const val TEST_ENGINE_JS: String = "$escaped"
             |""".trimMargin(),
         )
     }
 }
 
-kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(bootstrapKtDir).builtBy(generateBootstrapJs))
+kotlin.sourceSets.getByName("commonTest").kotlin.srcDir(files(testEngineJsKtDir).builtBy(generateTestEngineJs))

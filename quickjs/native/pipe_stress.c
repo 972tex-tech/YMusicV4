@@ -1,15 +1,15 @@
 /*
  * ASan/UBSan harness for the C pipe layer (dev-only; not part of any shipped build).
  *
- * Drives the REAL engine — quickjs_native.c's qjs_* API over the real bootstrap.js — through the
+ * Drives the REAL engine — quickjs_native.c's qjs_* API over the real engine bundle — through the
  * pipe scenarios whose memory management is now C's problem: fragmented delivery into every read
  * type, cap/backpressure/drain, RESET into a parked read, closeRead vs a writing host, a refused
  * open, GC with parked jobs, and teardown with live parked pipes.
  *
- * Build & run (from quickjs/native):
+ * Build & run (from quickjs/native; build the bundle first: ./gradlew :engine-js:bundleJs):
  *   JAVA_HOME=$(/usr/libexec/java_home) cmake -S . -B build-asan
  *   cmake --build build-asan --target pipe_stress
- *   ./build-asan/pipe_stress ../../engine-js/src/bootstrap/bootstrap.js
+ *   ./build-asan/pipe_stress ../../engine-js/build/dist/engine.js
  * Exits 0 with "ALL OK" or 1 on the first failed check / any sanitizer report.
  * (Apple clang's ASan has no leak detection; this catches UAF/overflow/double-free + UB.)
  */
@@ -287,9 +287,9 @@ static void scenario_gc_parked(QjsEngine *e) {
 
 /* S8: teardown with parked reads (incl. a JSON job holding half-built containers), a never-drained
  * buffer, and a live registry (finalizer + gc_mark paths). */
-static void scenario_teardown(const char *bootstrap, Host *h) {
+static void scenario_teardown(const char *script, Host *h) {
     char *err = NULL;
-    QjsEngine *e = qjs_create(bootstrap, host_cb, h, &err);
+    QjsEngine *e = qjs_create(script, host_cb, h, &err);
     CHECK(e != NULL, "second engine: %s", err ? err : "?");
     free(eval(e, "ymix.onAccept('park', function (p) { return p.source.readUtf8(); });"
                "ymix.onAccept('jsonpark', function (p) { return p.source.readJsonObject(); });"
@@ -306,12 +306,12 @@ static void scenario_teardown(const char *bootstrap, Host *h) {
 }
 
 int main(int argc, char **argv) {
-    const char *path = argc > 1 ? argv[1] : "../../engine-js/src/bootstrap/bootstrap.js";
-    char *bootstrap = read_file(path);
+    const char *path = argc > 1 ? argv[1] : "../../engine-js/build/dist/engine.js";
+    char *script = read_file(path);
     Host host;
     memset(&host, 0, sizeof(host));
     char *err = NULL;
-    QjsEngine *e = qjs_create(bootstrap, host_cb, &host, &err);
+    QjsEngine *e = qjs_create(script, host_cb, &host, &err);
     CHECK(e != NULL, "create: %s", err ? err : "?");
 
     scenario_fragmented_reads(e);
@@ -326,9 +326,9 @@ int main(int argc, char **argv) {
 
     Host host2;
     memset(&host2, 0, sizeof(host2));
-    scenario_teardown(bootstrap, &host2);
+    scenario_teardown(script, &host2);
 
-    free(bootstrap);
+    free(script);
     printf("ALL OK\n");
     return 0;
 }

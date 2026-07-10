@@ -70,7 +70,7 @@ internal expect class NativeEngine {
     fun destroy()
 
     companion object {
-        fun create(bootstrap: String, callbacks: EngineCallbacks): NativeEngine
+        fun create(script: String, callbacks: EngineCallbacks): NativeEngine
     }
 }
 

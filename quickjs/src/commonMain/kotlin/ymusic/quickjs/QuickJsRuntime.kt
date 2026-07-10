@@ -490,11 +490,11 @@ class QuickJsRuntime private constructor(
     }
 
     companion object {
-        /** [bootstrap] must define the transport globals (`__jsOpen`/`__jsClose`/`__jsCloseRead`/
-         *  `__jsDrain`, `ymix`) — the native engine captures them right after this one eval, so a
-         *  replacement (e.g. :engine-js's bundle, which embeds the bootstrap) is only accepted
-         *  HERE, never loaded onto a live runtime. */
-        suspend fun create(bootstrap: String = BOOTSTRAP_JS): QuickJsRuntime {
+        /** [script] is the engine JS (the :engine-js bundle) evaluated once at creation. It must
+         *  define the transport globals (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`,
+         *  `ymix`) — the native engine captures them right after this one eval, so the script is
+         *  only accepted HERE, never loaded onto a live runtime. This module ships no JS. */
+        suspend fun create(script: String): QuickJsRuntime {
             val dispatcher = newEngineDispatcher()
             var engine: NativeEngine? = null
             try {
@@ -510,7 +510,7 @@ class QuickJsRuntime private constructor(
                 // way back out of a withContext whose body already completed, so `engine = <result>`
                 // would never run and the catch would see null and leak the freshly-created engine.
                 // Assigned in-block, the engine is visible to the catch on that path.
-                withContext(dispatcher) { engine = NativeEngine.create(bootstrap, callbacks) }
+                withContext(dispatcher) { engine = NativeEngine.create(script, callbacks) }
                 val rt = QuickJsRuntime(engine!!, dispatcher)
                 rtRef = rt
                 rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)

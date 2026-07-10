@@ -37,8 +37,8 @@ internal actual class NativeEngine private constructor(private val handle: Long)
     }
 
     actual companion object {
-        actual fun create(bootstrap: String, callbacks: EngineCallbacks): NativeEngine {
-            val handle = QuickJsNative.create(bootstrap)
+        actual fun create(script: String, callbacks: EngineCallbacks): NativeEngine {
+            val handle = QuickJsNative.create(script)
             QuickJsNative.register(handle, callbacks)
             return NativeEngine(handle)
         }

@@ -92,7 +92,7 @@ static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JS
     }
     /* The trampoline returns 0 on success, -1 when the host callback threw. Unlike open/data the
      * return here isn't a protocol value, so a failure would vanish — raise it as a JS exception so
-     * the bootstrap's failure paths engage (mirrors the JNI check_java_exception path). */
+     * the transport JS's failure paths engage (mirrors the JNI check_java_exception path). */
     int rc = 0;
     if (e->cb) rc = e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)out, rlen);
     if (reason) JS_FreeCString(ctx, reason);
@@ -111,7 +111,7 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
-QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char **err) {
+QjsEngine *qjs_create(const char *script, QjsInboundCb cb, void *user, char **err) {
     QjsEngine *e = (QjsEngine *)calloc(1, sizeof(QjsEngine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -129,11 +129,11 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
 
-    JSValue r = JS_Eval(e->ctx, bootstrap, strlen(bootstrap), "<bootstrap>", JS_EVAL_TYPE_GLOBAL);
+    JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(r)) {
         JSValue exc = JS_GetException(e->ctx);
         const char *m = JS_ToCString(e->ctx, exc);
-        if (err) *err = strdup(m ? m : "bootstrap failed");
+        if (err) *err = strdup(m ? m : "engine script failed");
         if (m) JS_FreeCString(e->ctx, m);
         JS_FreeValue(e->ctx, exc);
         JS_FreeValue(e->ctx, r);
@@ -187,7 +187,7 @@ static int call_js(QjsEngine *e, JSValue fn, int argc, JSValue *argv, int exc_rc
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
-    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* bootstrap bug; don't leave it pending */
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
     JS_FreeValue(e->ctx, r);
     JS_FreeValue(e->ctx, g);
     for (int i = 0; i < argc; i++) JS_FreeValue(e->ctx, argv[i]);

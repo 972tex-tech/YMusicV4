@@ -36,9 +36,9 @@ typedef struct QjsEngine QjsEngine;
  * CLOSE_READ / DRAIN: data = NULL, len = 0. Return values of the other ops are ignored. */
 typedef int (*QjsInboundCb)(void *user, int op, uint32_t id, const uint8_t *data, size_t len);
 
-/* Create an engine, install the JS transport + pipe/JSON natives, and eval [bootstrap].
+/* Create an engine, install the JS transport + pipe/JSON natives, and eval [script].
  * Returns NULL on failure with *err set to a malloc'd message (free via qjs_free). */
-QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char **err);
+QjsEngine *qjs_create(const char *script, QjsInboundCb cb, void *user, char **err);
 
 /* Evaluate [script]; returns a malloc'd UTF-8 string (the result's string form, or the error
  * message) or NULL. *isError is set to 1 when the returned string is an error message. */

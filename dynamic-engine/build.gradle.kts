@@ -60,7 +60,7 @@ kotlin {
 }
 
 // The :engine-js bundle (already esbuild-minified), embedded as the baseline ENGINE_JS const —
-// DynamicEngine.create evals it as the runtime's bootstrap; a remotely-updated bundle replaces it
+// DynamicEngine.create evals it as the runtime's creation script; a remote bundle replaces it
 // via the engineJs parameter.
 val engineJsBundle by configurations.creating {
     isCanBeConsumed = false

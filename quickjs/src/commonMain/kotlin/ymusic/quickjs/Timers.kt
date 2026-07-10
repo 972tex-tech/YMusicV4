@@ -23,7 +23,7 @@ import okio.EOFException
 internal fun QuickJsRuntime.installTimers() {
     onAccept("setTimeout") { pipe -> runTimer(pipe, repeat = false) }
     onAccept("setInterval") { pipe -> runTimer(pipe, repeat = true) }
-    // The JS globals (setTimeout/setInterval/clear*) live in the bootstrap bytecode blob.
+    // The JS globals (setTimeout/setInterval/clear*) live in the engine script (transport.ts).
 }
 
 private const val TICK = 1

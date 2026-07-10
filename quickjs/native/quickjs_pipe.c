@@ -399,7 +399,7 @@ static void pb_job_reset(PipeBuf *pb) {
 }
 
 /* Settle the parked promise. `result` is consumed. Returns -1 when the capability call itself
- * threw (a bootstrap bug — the caller poisons the pipe so the host writer fails loudly). */
+ * threw (a transport-JS bug — the caller poisons the pipe so the host writer fails loudly). */
 static int pb_settle(PipeBuf *pb, int ok, JSValue result) {
     JSContext *ctx = pb->ctx;
     JSValue fn = ok ? pb->resolve : pb->reject;

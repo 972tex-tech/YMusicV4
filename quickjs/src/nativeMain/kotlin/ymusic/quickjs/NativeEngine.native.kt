@@ -89,10 +89,10 @@ internal actual class NativeEngine private constructor(
     }
 
     actual companion object {
-        actual fun create(bootstrap: String, callbacks: EngineCallbacks): NativeEngine = memScoped {
+        actual fun create(script: String, callbacks: EngineCallbacks): NativeEngine = memScoped {
             val ref = StableRef.create(callbacks)
             val errVar = alloc<CPointerVar<ByteVar>>()
-            val eng = qjs_create(bootstrap, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
+            val eng = qjs_create(script, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
             if (eng == null) {
                 val msg = errVar.value?.toKString()
                 errVar.value?.let { qjs_free(it) }

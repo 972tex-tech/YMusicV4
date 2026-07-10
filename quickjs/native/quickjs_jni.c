@@ -148,7 +148,7 @@ static void flush_pending(Engine *e, JNIEnv *env) {
 
 /* A Kotlin callback that threw leaves a pending Java exception; continuing to run JS (or making
  * further JNI calls) with one pending is undefined behavior. Convert it into a JS exception so the
- * bootstrap's normal failure paths (RESET the pipe, reject the caller) take over. */
+ * the transport JS's normal failure paths (RESET the pipe, reject the caller) take over. */
 static int check_java_exception(Engine *e, JNIEnv *env, JSContext *ctx) {
     if (!(*env)->ExceptionCheck(env)) return 0;
     (*env)->ExceptionDescribe(env);
@@ -160,7 +160,7 @@ static int check_java_exception(Engine *e, JNIEnv *env, JSContext *ctx) {
 /* ---- inbound: JS -> host (JS calls these) ---- */
 
 /* __hostOpen(id, command) -> 0 accepted | -1 refused (no handler / host callback failed) |
- * -2 called under a critical region (bootstrap bug). C-error-code style: the JS side checks the
+ * -2 called under a critical region (transport JS bug). C-error-code style: the JS side checks the
  * code and cleans up its registry — no exception crosses the boundary for the normal refusal. */
 static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
@@ -284,7 +284,7 @@ static int drain_hook(void *user, uint32_t id) {
 /* ---- JNI entry points (all on the single engine thread) ---- */
 
 JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jbootstrap) {
+Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript) {
     Engine *e = (Engine *)calloc(1, sizeof(Engine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -310,23 +310,23 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
 
     size_t blen = 0;
-    char *bootstrap = jstring_to_utf8(env, jbootstrap, &blen);
-    if (!bootstrap) { /* OOM converting the bootstrap source — tear down and report, don't feed JS_Eval a null */
+    char *script = jstring_to_utf8(env, jscript, &blen);
+    if (!script) { /* OOM converting the script source — tear down and report, don't feed JS_Eval a null */
         (*env)->DeleteGlobalRef(env, e->bridgeClass);
         qjs_pipe_ctx_release(e->pipe, e->ctx);
         JS_FreeContext(e->ctx);
         JS_FreeRuntime(e->rt);
         qjs_pipe_ctx_free(e->pipe);
         free(e);
-        throw_qjs(env, utf8_to_jstring(env, "out of memory (bootstrap)", 25));
+        throw_qjs(env, utf8_to_jstring(env, "out of memory (script)", 22));
         return 0;
     }
-    JSValue bret = JS_Eval(e->ctx, bootstrap, blen, "<bootstrap>", JS_EVAL_TYPE_GLOBAL);
-    free(bootstrap);
+    JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
+    free(script);
     if (JS_IsException(bret)) {
         JSValue exc = JS_GetException(e->ctx);
         const char *msg = JS_ToCString(e->ctx, exc);
-        throw_qjs(env, utf8_to_jstring(env, msg ? msg : "bootstrap failed", msg ? strlen(msg) : 16));
+        throw_qjs(env, utf8_to_jstring(env, msg ? msg : "engine script failed", msg ? strlen(msg) : 20));
         if (msg) JS_FreeCString(e->ctx, msg);
         JS_FreeValue(e->ctx, exc);
         JS_FreeValue(e->ctx, bret);
@@ -395,7 +395,7 @@ static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
-    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* bootstrap bug; don't leave it pending */
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
     JS_FreeValue(e->ctx, r);
     JS_FreeValue(e->ctx, g);
     for (int i = 0; i < argc; i++) JS_FreeValue(e->ctx, argv[i]);
