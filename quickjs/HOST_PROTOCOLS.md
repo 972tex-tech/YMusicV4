@@ -3,7 +3,8 @@
 Application-layer protocols the app implements **on top of** `:quickjs` pipes (see
 [`PIPE_STREAMING.md`](PIPE_STREAMING.md)). Not part of the module — the module deliberately ships
 only the pipe transport + native JSON. This doc pins down the byte protocol so the Kotlin server
-side and the JS client side agree. **Design only — nothing here is implemented yet.**
+side and the JS client side agree. The error contract (§0) and HTTP (§1) are implemented in
+`:dynamic-engine`; the rest is design-only until built (each section marks its status).
 
 Direction throughout: the QuickJS **engine (JS) is the client** — it wants a capability. **Kotlin is
 the server** — it owns the network, the filesystem, and the database. JS `ymix.open(command)`,
@@ -356,7 +357,8 @@ replies `ok:false` then closes (a failed migration rolls back — the file is le
 
 ## 4. Transport: RESET reason — ✅ LANDED (part of the pipe-protocol rewrite)
 
-The transport threads the reason through `closeWrite(id, reason)` / `__jsClose(id, reason)`. A
+The transport threads the reason through `closeWrite(id, reason)`; on the JS side `__jsClose(id)`
+carries only the id — the reason crosses through the C pipe layer (see PIPE_STREAMING.md). A
 non-null reason is a **RESET**: the peer's pending data is discarded and its parked/next `receive`
 throws (Kotlin: `PipeResetException(reason)`; JS: the promise rejects with the reason). Both sides
 expose `sink.close(reason: String? = null)`, and a handler that throws RESETs its pipe with the
@@ -399,7 +401,8 @@ await db.begin(); …; await db.commit();
 await db.close();
 ```
 
-Each is a thin wrapper over `ymix.open` + `ymix.buffered`. Kept out of `:quickjs` — they live in
+Each is a thin wrapper over `ymix.open` (its pipe ends already carry the buffered read/write
+helpers). Kept out of `:quickjs` — they live in
 whatever module wires the host handlers (the engine host, not the binding).
 
 ---

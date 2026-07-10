@@ -16,7 +16,7 @@ import okio.EOFException
  * while a timer waits, and the callback fires as a normal host→JS edge (like any pipe event) followed
  * by the microtask pump.
  *
- * Wire: JS opens a `"setTimeout"` / `"setInterval"` pipe, sends the delay (ms, as decimal text), then
+ * Wire: JS opens a `"setTimeout"` / `"setInterval"` pipe, sends the delay (ms, big-endian 8-byte long), then
  * receives one byte per fire; closing the pipe (`clearTimeout`/`clearInterval`) stops it. Reserves
  * those two command names.
  */
