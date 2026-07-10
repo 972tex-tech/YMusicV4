@@ -59,11 +59,33 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
         ): DynamicEngine {
-            val versions =
-                "globalThis.versions=Object.freeze({bootstrap:$BOOTSTRAP_VERSION,engine:$ENGINE_VERSION,app:$appVersion});"
-            val runtime = QuickJsRuntime.create(versions + engineJs)
+            val runtime = QuickJsRuntime.create(versionsSnippet(appVersion) + engineJs)
             runtime.installHttp(client, logger)
             return DynamicEngine(runtime)
         }
+
+        /**
+         * Create from [compile]d bytecode of a bundle. The `versions` snippet is evaluated as a
+         * source prelude before the bytecode program runs — `versions.app` is only known here, so
+         * it can never be baked into the precompiled blob.
+         */
+        suspend fun create(
+            client: KmpHttpClient,
+            appVersion: Int,
+            engineBytecode: ByteArray,
+            logger: Logger? = null,
+        ): DynamicEngine {
+            val runtime = QuickJsRuntime.create(engineBytecode, versionsSnippet(appVersion))
+            runtime.installHttp(client, logger)
+            return DynamicEngine(runtime)
+        }
+
+        /** Compile a bundle to QuickJS bytecode for [create] — per-function source text is
+         *  stripped, so the blob carries no copy of the script. Compile once (e.g. after fetching
+         *  a remote bundle), persist, and create from the bytes on later launches. */
+        suspend fun compile(engineJs: String): ByteArray = QuickJsRuntime.compile(engineJs)
+
+        private fun versionsSnippet(appVersion: Int): String =
+            "globalThis.versions=Object.freeze({bootstrap:$BOOTSTRAP_VERSION,engine:$ENGINE_VERSION,app:$appVersion});"
     }
 }
