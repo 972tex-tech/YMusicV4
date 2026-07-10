@@ -62,4 +62,37 @@ class JsonBufferSafetyTest {
             rt.close()
         }
     }
+
+    /**
+     * A getter running mid-encode that reenters `__jsonEncFill` on the SAME encoder must be rejected:
+     * the outer fill holds a raw frame pointer into the encoder's walk stack across the getter, and a
+     * nested fill would realloc/pop that stack and dangle it (a UAF/double-free under ASan). The guard
+     * throws instead; the outer encode then fails cleanly (not "no-throw", never a corrupt result).
+     */
+    @Test
+    fun encoder_rejects_a_reentrant_fill_from_a_getter() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            val result = rt.load(
+                """
+                (function () {
+                  var u8 = new Uint8Array(new ArrayBuffer(8)); // small: forces multiple produce() rounds
+                  var enc;
+                  var evil = {
+                    a: 1,
+                    get b() { __jsonEncFill(enc, u8, 0); return 2; }, // reenter the same encoder
+                  };
+                  enc = __jsonEncNew(evil);
+                  try {
+                    while (!__jsonEncDone(enc)) __jsonEncFill(enc, u8, 0);
+                    return "no-throw";
+                  } catch (e) { return "threw"; }
+                })()
+                """.trimIndent(),
+            )
+            assertEquals("threw", result, "a reentrant __jsonEncFill on the same encoder must throw, not dangle the frame stack")
+        } finally {
+            rt.close()
+        }
+    }
 }

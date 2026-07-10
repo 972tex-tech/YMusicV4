@@ -541,12 +541,18 @@ static JSValue pb_drain_check(PipeBuf *pb) {
 static JSValue pb_read_finish(JSContext *ctx, PipeBuf *pb) {
     JSValue out = JS_UNDEFINED;
     int r = pb_try(pb, &out);
+    // Error teardown drops any bytes pb_try scanned into `acc` (a partial line/body): the pipe is
+    // dead on these paths (OOM / a poisoned drain hook), and leaving them would make a later
+    // different-typed read — which reads segments only — skip them. The park path (r==0) keeps
+    // `acc` on purpose (it survives across writes).
     if (JS_IsException(pb_drain_check(pb))) {
         if (r == 1) JS_FreeValue(ctx, out);
+        pb_acc_reset(pb);
         pb_job_reset(pb);
         return JS_EXCEPTION;
     }
     if (r < 0) {
+        pb_acc_reset(pb);
         pb_job_reset(pb);
         return JS_EXCEPTION;
     }
@@ -557,6 +563,7 @@ static JSValue pb_read_finish(JSContext *ctx, PipeBuf *pb) {
     JSValue funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, funcs);
     if (JS_IsException(promise)) {
+        pb_acc_reset(pb);
         pb_job_reset(pb);
         return promise;
     }
@@ -597,12 +604,14 @@ static JSValue js_pb_new(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 static JSValue js_pb_recv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     PipeBuf *pb = pb_get(ctx, argv[0]);
     if (!pb) return JS_EXCEPTION;
-    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    // Coerce every argument BEFORE the guard and BEFORE arming any job: coercion of an object arg
+    // runs user JS (valueOf) that could reenter and arm a job on this same pb; guarding afterward
+    // then rejects it as a concurrent read instead of silently overwriting (and leaking) it.
     int64_t off = 0, len = 0;
-    JS_ToInt64(ctx, &off, argv[2]);
-    JS_ToInt64(ctx, &len, argv[3]);
+    if (JS_ToInt64(ctx, &off, argv[2]) || JS_ToInt64(ctx, &len, argv[3])) return JS_EXCEPTION;
     size_t dlen = 0;
     if (!view_bytes(ctx, argv[1], &dlen)) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     if (off < 0 || len < 0 || (uint64_t)off + (uint64_t)len > dlen)
         return JS_ThrowRangeError(ctx, "receive destination out of bounds");
     if (len == 0) return JS_NewInt32(ctx, 0);
@@ -635,8 +644,9 @@ static JSValue js_pb_line(JSContext *ctx, JSValueConst this_val, int argc, JSVal
     PipeBuf *pb = pb_get(ctx, argv[0]);
     if (!pb) return JS_EXCEPTION;
     if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    uint8_t strict = (uint8_t)JS_ToBool(ctx, argv[1]); // ToBoolean never runs user JS; still coerce first
     pb->job = PB_JOB_LINE;
-    pb->strict = (uint8_t)JS_ToBool(ctx, argv[1]);
+    pb->strict = strict;
     return pb_read_finish(ctx, pb);
 }
 
@@ -644,9 +654,9 @@ static JSValue js_pb_line(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 static JSValue js_pb_json(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     PipeBuf *pb = pb_get(ctx, argv[0]);
     if (!pb) return JS_EXCEPTION;
-    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     int32_t expect = QJS_JSON_EXPECT_ANY;
-    JS_ToInt32(ctx, &expect, argv[1]);
+    if (JS_ToInt32(ctx, &expect, argv[1])) return JS_EXCEPTION; // coerce before guard/arm (see js_pb_recv)
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     pb->jstream = qjs_jstream_new(ctx, expect);
     if (!pb->jstream) return JS_EXCEPTION;
     pb->job = PB_JOB_JSON;

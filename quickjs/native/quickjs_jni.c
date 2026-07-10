@@ -96,6 +96,13 @@ static jstring utf8_to_jstring(JNIEnv *env, const char *s, size_t len) {
 static char *jstring_to_utf8(JNIEnv *env, jstring s, size_t *outLen) {
     jsize n = (*env)->GetStringLength(env, s);
     const jchar *u = (*env)->GetStringChars(env, s, NULL);
+    /* n*4+1 (max UTF-8 expansion) must not overflow size_t — it can on 32-bit ABIs (armv7/x86)
+     * for a pathological ~1 GB string. Guard before the malloc; callers treat NULL as OOM. */
+    if (n < 0 || (size_t)n > (SIZE_MAX - 1) / 4) {
+        (*env)->ReleaseStringChars(env, s, u);
+        if (outLen) *outLen = 0;
+        return NULL;
+    }
     char *buf = (char *)malloc((size_t)n * 4 + 1);
     if (!buf) { /* OOM: release the pinned chars and report empty; callers guard the null (see create/evalSync) */
         (*env)->ReleaseStringChars(env, s, u);
@@ -495,6 +502,12 @@ Java_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong handle,
                                         jbyteArray bytes, jint off, jint len) {
     Engine *e = (Engine *)(intptr_t)handle;
     if (len <= 0) return 0;
+    /* off/len come from the Kotlin mux; bound them against the array before pinning so a caller bug
+     * can't hand qjs_pipe_write a pointer past the buffer (the native shim validates the same way for
+     * JS-supplied ranges). Do it before GetPrimitiveArrayCritical — GetArrayLength is illegal under it. */
+    jsize alen = (*env)->GetArrayLength(env, bytes);
+    if (off < 0 || (jlong)off + (jlong)len > (jlong)alen)
+        return -1;
     jbyte *base = (*env)->GetPrimitiveArrayCritical(env, bytes, NULL);
     if (!base) return -1;
     e->in_critical = 1;

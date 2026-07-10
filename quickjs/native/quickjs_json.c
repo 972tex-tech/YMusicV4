@@ -621,6 +621,7 @@ typedef struct {
     size_t tok_pos;
     int done;
     int failed;
+    int busy;             /* inside js_json_enc_fill: reject reentrant fills (a held EncFrame* would dangle) */
 } JEnc;
 
 /* From the YMusic patch at the end of the vendored quickjs.c: direct flat-string storage access,
@@ -967,10 +968,15 @@ static JSValue js_json_enc_fill(JSContext *ctx, JSValueConst this_val, int argc,
     JEnc *e = (JEnc *)JS_GetOpaque2(ctx, argv[0], jenc_class_id);
     if (e == NULL) return JS_EXCEPTION;
     if (e->failed) return JS_ThrowInternalError(ctx, "__jsonEncFill: encoder already failed");
+    // jenc_produce below runs user JS (getters/toJSON/Proxy traps) while a raw EncFrame* into
+    // e->stack is held across the call; a reentrant fill on THIS encoder would realloc/pop that
+    // stack and dangle the pointer. Reject reentry outright — encoding is strictly one-at-a-time.
+    if (e->busy) return JS_ThrowInternalError(ctx, "__jsonEncFill: reentrant fill");
     int64_t off = 0;
     if (JS_ToInt64(ctx, &off, argv[2])) return JS_EXCEPTION;
     if (off < 0) return JS_ThrowRangeError(ctx, "__jsonEncFill: bad destination range");
     size_t w = 0;
+    e->busy = 1;
     for (;;) {
         /* Re-resolve the destination EVERY iteration: jenc_produce runs user JS (getters, toJSON,
          * Proxy traps) that can detach or resize this ArrayBuffer, dangling any cached base/cap.
@@ -978,12 +984,14 @@ static JSValue js_json_enc_fill(JSContext *ctx, JSValueConst this_val, int argc,
          * so a mid-fill shrink can't drive an out-of-bounds write. */
         size_t ta_off = 0, ta_len = 0, bpe = 0;
         JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &ta_off, &ta_len, &bpe);
-        if (JS_IsException(ab)) return ab;
+        if (JS_IsException(ab)) { e->busy = 0; return ab; }
         size_t sz = 0;
         uint8_t *base = JS_GetArrayBuffer(ctx, &sz, ab);
         JS_FreeValue(ctx, ab);
-        if (base == NULL || (uint64_t)off > ta_len || (uint64_t)off + w > ta_len)
+        if (base == NULL || (uint64_t)off > ta_len || (uint64_t)off + w > ta_len) {
+            e->busy = 0;
             return JS_ThrowRangeError(ctx, "__jsonEncFill: destination detached or shrank mid-encode");
+        }
         size_t cap = ta_len - (size_t)off;
         uint8_t *dst = base + ta_off + off;
         size_t avail = e->tok.size - e->tok_pos;
@@ -995,8 +1003,9 @@ static JSValue js_json_enc_fill(JSContext *ctx, JSValueConst this_val, int argc,
             if (w == cap) break;
         }
         if (e->done) break;
-        if (jenc_produce(e)) return JS_EXCEPTION;
+        if (jenc_produce(e)) { e->busy = 0; return JS_EXCEPTION; }
     }
+    e->busy = 0;
     return JS_NewInt64(ctx, (int64_t)w);
 }
 
