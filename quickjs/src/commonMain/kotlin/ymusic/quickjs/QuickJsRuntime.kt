@@ -496,17 +496,17 @@ class QuickJsRuntime private constructor(
          *  `ymix`) — the native engine captures them right after this one eval, so the script is
          *  only accepted HERE, never loaded onto a live runtime. This module ships no JS.
          *
-         *  Before the eval, C installs the frozen, non-writable `versions` global the bundle
-         *  branches on for backward compatibility: `bootstrap` is the transport's own ABI version
-         *  (C-owned); [engineVersion] and [appVersion] are the caller's. */
-        suspend fun create(script: String, engineVersion: Int = 0, appVersion: Int = 0): QuickJsRuntime =
-            create { callbacks -> NativeEngine.create(script, engineVersion, appVersion, callbacks) }
+         *  Before the eval, C installs the frozen, non-writable `versions` global
+         *  (`{app: appVersion}`) the bundle branches on for backward compatibility — the host
+         *  ships as one app build, so the app version identifies its whole surface. */
+        suspend fun create(script: String, appVersion: Int = 0): QuickJsRuntime =
+            create { callbacks -> NativeEngine.create(script, appVersion, callbacks) }
 
         /** Create from [compile]d bytecode of the engine JS (same contract as the [String]
-         *  overload, including the C-installed `versions` global — versions can never be baked
+         *  overload, including the C-installed `versions` global — the version can never be baked
          *  into the precompiled blob). */
-        suspend fun create(bytecode: ByteArray, engineVersion: Int = 0, appVersion: Int = 0): QuickJsRuntime =
-            create { callbacks -> NativeEngine.createFromBytecode(bytecode, engineVersion, appVersion, callbacks) }
+        suspend fun create(bytecode: ByteArray, appVersion: Int = 0): QuickJsRuntime =
+            create { callbacks -> NativeEngine.createFromBytecode(bytecode, appVersion, callbacks) }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
          *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding

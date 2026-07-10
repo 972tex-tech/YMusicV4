@@ -283,7 +283,7 @@ static int drain_hook(void *user, uint32_t id) {
 
 /* ---- JNI entry points (all on the single engine thread) ---- */
 
-static Engine *engine_new(JNIEnv *env, jint engineVersion, jint appVersion) {
+static Engine *engine_new(JNIEnv *env, jint appVersion) {
     Engine *e = (Engine *)calloc(1, sizeof(Engine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -307,7 +307,7 @@ static Engine *engine_new(JNIEnv *env, jint engineVersion, jint appVersion) {
     JS_FreeValue(e->ctx, global);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
-    qjs_install_versions(e->ctx, engineVersion, appVersion);
+    qjs_install_versions(e->ctx, appVersion);
     return e;
 }
 
@@ -343,8 +343,8 @@ static jlong engine_finish(Engine *e) {
 
 JNIEXPORT jlong JNICALL
 Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript,
-                                         jint engineVersion, jint appVersion) {
-    Engine *e = engine_new(env, engineVersion, appVersion);
+                                         jint appVersion) {
+    Engine *e = engine_new(env, appVersion);
     size_t blen = 0;
     char *script = jstring_to_utf8(env, jscript, &blen);
     if (!script) { /* OOM converting the script source — tear down and report, don't feed JS_Eval a null */
@@ -365,8 +365,8 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscr
 
 JNIEXPORT jlong JNICALL
 Java_ymusic_quickjs_QuickJsNative_createBytecode(JNIEnv *env, jobject thiz, jbyteArray jbc,
-                                                 jint engineVersion, jint appVersion) {
-    Engine *e = engine_new(env, engineVersion, appVersion);
+                                                 jint appVersion) {
+    Engine *e = engine_new(env, appVersion);
     jsize bclen = (*env)->GetArrayLength(env, jbc);
     jbyte *bc = (*env)->GetByteArrayElements(env, jbc, NULL);
     JSValue fn = bc ? JS_ReadObject(e->ctx, (const uint8_t *)bc, (size_t)bclen, JS_READ_OBJ_BYTECODE)

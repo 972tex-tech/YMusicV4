@@ -73,15 +73,12 @@ class BytecodeTest {
     @Test
     fun versions_are_installed_before_the_bytecode_program() = runTest {
         val bc = QuickJsRuntime.compile(TEST_ENGINE_JS)
-        val rt = QuickJsRuntime.create(bc, engineVersion = 5, appVersion = 7)
+        val rt = QuickJsRuntime.create(bc, appVersion = 7)
         try {
-            assertEquals(
-                "1|5|7", // bootstrap is C-owned (QJS_BOOTSTRAP_VERSION)
-                rt.load("versions.bootstrap + \"|\" + versions.engine + \"|\" + versions.app"),
-            )
+            assertEquals("7", rt.load("String(versions.app)"))
             assertEquals("true", rt.load("Object.isFrozen(versions)"))
             // the global binding itself is non-writable: a bundle can't clobber it
-            assertEquals("1", rt.load("versions = 123; String(versions.bootstrap)"))
+            assertEquals("7", rt.load("versions = 123; String(versions.app)"))
         } finally {
             rt.close()
         }

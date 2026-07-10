@@ -37,10 +37,9 @@ typedef struct QjsEngine QjsEngine;
 typedef int (*QjsInboundCb)(void *user, int op, uint32_t id, const uint8_t *data, size_t len);
 
 /* Create an engine: install the JS transport + pipe/JSON natives and the frozen `versions`
- * global ({bootstrap: QJS_BOOTSTRAP_VERSION, engine: engine_version, app: app_version}), then
- * eval [script]. Returns NULL on failure with *err set to a malloc'd message (free via qjs_free). */
-QjsEngine *qjs_create(const char *script, int engine_version, int app_version,
-                      QjsInboundCb cb, void *user, char **err);
+ * global ({app: app_version}), then eval [script]. Returns NULL on failure with *err set to a
+ * malloc'd message (free via qjs_free). */
+QjsEngine *qjs_create(const char *script, int app_version, QjsInboundCb cb, void *user, char **err);
 
 /* Compile [script] to serialized bytecode with per-function source text stripped
  * (Function.prototype.toString yields a placeholder; line-number debug info is kept so stack
@@ -48,9 +47,9 @@ QjsEngine *qjs_create(const char *script, int engine_version, int app_version,
  * with *err set to a malloc'd message. */
 uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, char **err);
 
-/* qjs_create from qjs_compile output — versions can't be baked into the precompiled blob, so
- * they cross here and C installs them before the bytecode program runs. */
-QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, int engine_version, int app_version,
+/* qjs_create from qjs_compile output — the version can't be baked into the precompiled blob, so
+ * it crosses here and C installs it before the bytecode program runs. */
+QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, int app_version,
                          QjsInboundCb cb, void *user, char **err);
 
 /* Evaluate [script]; returns a malloc'd UTF-8 string (the result's string form, or the error

@@ -36,12 +36,6 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
     suspend fun close() = runtime.close()
 
     companion object {
-        /** One of the frozen `versions` ints C installs before the bundle — the remotely-updated
-         *  JS branches on them for backward compatibility (`versions.app >= 123`, `typeof __x ===
-         *  "function"`); never a load handshake. Bump when the host-protocol surface changes
-         *  (`versions.bootstrap`, the transport ABI, is owned by :quickjs's C). */
-        private const val ENGINE_VERSION = 1
-
         /**
          * Create an engine running [engineJs] — the single :engine-js bundle (transport + protocol
          * layers + scraping logic), evaluated as the runtime's creation script — and wire the `"http"`
@@ -58,7 +52,7 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
         ): DynamicEngine {
-            val runtime = QuickJsRuntime.create(engineJs, ENGINE_VERSION, appVersion)
+            val runtime = QuickJsRuntime.create(engineJs, appVersion)
             runtime.installHttp(client, logger)
             return DynamicEngine(runtime)
         }
@@ -71,7 +65,7 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
             engineBytecode: ByteArray,
             logger: Logger? = null,
         ): DynamicEngine {
-            val runtime = QuickJsRuntime.create(engineBytecode, ENGINE_VERSION, appVersion)
+            val runtime = QuickJsRuntime.create(engineBytecode, appVersion)
             runtime.installHttp(client, logger)
             return DynamicEngine(runtime)
         }

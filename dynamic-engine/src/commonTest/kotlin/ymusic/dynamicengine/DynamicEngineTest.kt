@@ -34,13 +34,13 @@ class DynamicEngineTest {
         }
     }
 
-    /** create() evals the frozen `versions` global before the bundle — all three host-owned ints
-     *  (bootstrap, engine, app) in one snippet, for the bundle's backward-compat branching. */
+    /** create() installs the frozen `versions` global from C before the bundle — the app version
+     *  identifies the whole host surface, for the bundle's backward-compat branching. */
     @Test
     fun versions_are_exposed_to_js() = runTest {
         val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")), 42)
         try {
-            assertEquals("1|1|42", e.scenario("versions"))
+            assertEquals("app=42", e.scenario("versions"))
         } finally {
             e.close()
         }

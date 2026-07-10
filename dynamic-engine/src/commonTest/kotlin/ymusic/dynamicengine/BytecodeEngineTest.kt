@@ -29,7 +29,7 @@ class BytecodeEngineTest {
         val bc = DynamicEngine.compile(ENGINE_TEST_JS)
         val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), appVersion = 42, engineBytecode = bc)
         try {
-            assertEquals("1|1|42", e.scenario("versions"))
+            assertEquals("app=42", e.scenario("versions"))
         } finally {
             e.close()
         }

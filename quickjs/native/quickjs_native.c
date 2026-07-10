@@ -120,7 +120,7 @@ static void set_err(JSContext *ctx, char **err, const char *fallback) {
     JS_FreeValue(ctx, exc);
 }
 
-static QjsEngine *engine_new(int engine_version, int app_version, QjsInboundCb cb, void *user) {
+static QjsEngine *engine_new(int app_version, QjsInboundCb cb, void *user) {
     QjsEngine *e = (QjsEngine *)calloc(1, sizeof(QjsEngine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -137,7 +137,7 @@ static QjsEngine *engine_new(int engine_version, int app_version, QjsInboundCb c
     JS_FreeValue(e->ctx, g);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
-    qjs_install_versions(e->ctx, engine_version, app_version);
+    qjs_install_versions(e->ctx, app_version);
     return e;
 }
 
@@ -161,9 +161,8 @@ static void engine_capture(QjsEngine *e) {
     JS_FreeValue(e->ctx, g);
 }
 
-QjsEngine *qjs_create(const char *script, int engine_version, int app_version,
-                      QjsInboundCb cb, void *user, char **err) {
-    QjsEngine *e = engine_new(engine_version, app_version, cb, user);
+QjsEngine *qjs_create(const char *script, int app_version, QjsInboundCb cb, void *user, char **err) {
+    QjsEngine *e = engine_new(app_version, cb, user);
     JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(r)) return engine_fail(e, err, "engine script failed");
     JS_FreeValue(e->ctx, r);
@@ -171,9 +170,9 @@ QjsEngine *qjs_create(const char *script, int engine_version, int app_version,
     return e;
 }
 
-QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, int engine_version, int app_version,
+QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, int app_version,
                          QjsInboundCb cb, void *user, char **err) {
-    QjsEngine *e = engine_new(engine_version, app_version, cb, user);
+    QjsEngine *e = engine_new(app_version, cb, user);
     JSValue fn = JS_ReadObject(e->ctx, bytecode, len, JS_READ_OBJ_BYTECODE);
     if (JS_IsException(fn)) return engine_fail(e, err, "bad bytecode");
     JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */

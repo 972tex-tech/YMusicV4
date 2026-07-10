@@ -240,7 +240,7 @@ static void scenario_gc_parked(QjsEngine *e) {
  * buffer, and a live registry (finalizer + gc_mark paths). */
 static void scenario_teardown(const char *script, Host *h) {
     char *err = NULL;
-    QjsEngine *e = qjs_create(script, 1, 1, host_cb, h, &err);
+    QjsEngine *e = qjs_create(script, 1, host_cb, h, &err);
     CHECK(e != NULL, "second engine: %s", err ? err : "?");
     CHECK(qjs_open(e, 1, "park") == 0, "open park"); /* handlers = the bundle's stress fixtures */
     CHECK(qjs_open(e, 3, "full") == 0, "open full");
@@ -259,7 +259,7 @@ int main(int argc, char **argv) {
     Host host;
     memset(&host, 0, sizeof(host));
     char *err = NULL;
-    QjsEngine *e = qjs_create(script, 1, 1, host_cb, &host, &err);
+    QjsEngine *e = qjs_create(script, 1, host_cb, &host, &err);
     CHECK(e != NULL, "create: %s", err ? err : "?");
 
     scenario_fragmented_reads(e);
