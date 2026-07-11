@@ -136,13 +136,14 @@ other section here:
   typed rejection (`E20021`; a RESET carrying the bundle's own code keeps it), and the round-trip
   proves open routing, handler dispatch, JSON encode, and END — not just that the eval ran.
 - **`"shutdown"`** — SIGINT as a pipe, sent when `DynamicEngineManager` retires an engine after a
-  swap. The bundle sets its `shuttingDown` flag, clears every live timer (a repeat timer's pipe
-  otherwise holds the engine out of idle forever), runs the `onShutdown(cb)` registrations, and
-  ENDs. The ack is **observed, not replied**: finished work closes its pipes, and the host waits —
-  bounded — on `QuickJsRuntime.awaitIdle()` (the pipe map emptying IS "quiesced"), then closes.
-  A bundle without the module refuses the open; the host skips the signal and the deadline +
-  `close()` backstop. Bundle-side rule: cleanup that matters goes in `onShutdown` — after the
-  runtime closes there is no JS.
+  swap. The bundle sets its `shuttingDown` flag, runs the `onShutdown(cb)` registrations, and
+  ENDs. **Ownership rule**: whoever starts repeat work (a timer, a cron) clears it in its own
+  `onShutdown` callback — nothing mass-clears on the owner's behalf; a timer nobody clears keeps
+  its pipe open and rides into the force-close deadline. The ack is **observed, not replied**:
+  finished work closes its pipes, and the host waits — bounded — on `QuickJsRuntime.awaitIdle()`
+  (the pipe map emptying IS "quiesced"), then closes. A bundle without the module refuses the
+  open; the host skips the signal and the deadline + `close()` backstop. Bundle-side rule:
+  cleanup that matters goes in `onShutdown` — after the runtime closes there is no JS.
 
 ---
 
