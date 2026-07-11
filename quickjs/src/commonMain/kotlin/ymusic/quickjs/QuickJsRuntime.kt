@@ -99,27 +99,41 @@ class QuickJsRuntime private constructor(
      *  Fails AT THE OPEN — like ECONNREFUSED — when no JS handler serves [command]. */
     suspend fun openPipe(command: String): Pipe {
         if (closed.load()) throw QuickJsException("runtime closed")
-        return withContext(engineDispatcher) {
-            // Re-check on the engine thread (see [load]): without this a openPipe racing close()
-            // runs engine.open() on the destroyed engine and re-populates the cleared pipes map.
-            if (closed.load()) throw QuickJsException("runtime closed")
-            val id = nextId
-            nextId += 2
-            val impl = PipeImpl(id, command)
-            // Registered before open() so anything crossing during the call finds the pipe; dropped
-            // again on refusal/throw so a failed open never dangles in the registry.
-            pipes[id] = impl
-            val rc = try {
-                engine.open(id, command)
-            } catch (e: Throwable) {
-                pipes.remove(id)
-                throw e
+        var opened: PipeImpl? = null
+        try {
+            return withContext(engineDispatcher) {
+                // Re-check on the engine thread (see [load]): without this a openPipe racing close()
+                // runs engine.open() on the destroyed engine and re-populates the cleared pipes map.
+                if (closed.load()) throw QuickJsException("runtime closed")
+                val id = nextId
+                nextId += 2
+                val impl = PipeImpl(id, command)
+                // Registered before open() so anything crossing during the call finds the pipe;
+                // dropped again on refusal/throw so a failed open never dangles in the registry.
+                pipes[id] = impl
+                val rc = try {
+                    engine.open(id, command)
+                } catch (e: Throwable) {
+                    pipes.remove(id)
+                    throw e
+                }
+                if (rc < 0) {
+                    pipes.remove(id)
+                    throw QuickJsException("open(\"$command\") refused: no JS handler")
+                }
+                opened = impl
+                impl.pipe
             }
-            if (rc < 0) {
-                pipes.remove(id)
-                throw QuickJsException("open(\"$command\") refused: no JS handler")
+        } catch (t: Throwable) {
+            // Prompt cancellation thrown at the withContext boundary AFTER the open succeeded: the pipe
+            // exists on both sides but the caller never receives its handle, so nobody can close it —
+            // tear it down here or it leaks (a live JS handler + a routing entry). closeWrite/closeRead
+            // self-hop NonCancellable (surviving the cancellation) and reap it from the pipes map.
+            opened?.let { impl ->
+                runCatching { impl.closeWrite(null) }
+                runCatching { impl.closeRead() }
             }
-            impl.pipe
+            throw t
         }
     }
 
@@ -261,47 +275,67 @@ class QuickJsRuntime private constructor(
             // Checked before the dispatcher hop: after runtime close() the engine thread is gone
             // (dispatching there is at best a fallback thread, at worst an error).
             if (closed.load()) throw QuickJsException("runtime closed")
-            return withContext(engineDispatcher) {
-                // A REAPED pipe (left the pipes map on maybeReap) is not poisoned by failPending, so
-                // its own-side flags can't guard a race with teardown — the engine-thread `closed`
-                // recheck does (a receive draining buffered data still calls engine.drain).
-                if (closed.load()) throw QuickJsException("runtime closed")
-                require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
-                if (byteCount == 0L) return@withContext 0L
-                check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
-                check(!receiving) { "concurrent receive() on the same pipe" }
-                receiving = true
-                try {
-                    resetReason?.let { throw PipeResetException(it) }
-                    if (inbound.size > 0L) {
-                        val n = inbound.read(sink, byteCount) // whole-segment moves, no copy
-                        if (peerBlocked && inbound.size <= PIPE_LOW) {
-                            peerBlocked = false
-                            engine.drain(id)
+            var entered = false // passed validation and began the read — pre-read misuse must not close
+            var cleaned = false // the in-body catch already closed the read side (skip the outer hop)
+            try {
+                return withContext(engineDispatcher) {
+                    // A REAPED pipe (left the pipes map on maybeReap) is not poisoned by failPending,
+                    // so its own-side flags can't guard a race with teardown — the engine-thread
+                    // `closed` recheck does (a receive draining buffered data still calls engine.drain).
+                    if (closed.load()) throw QuickJsException("runtime closed")
+                    require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
+                    if (byteCount == 0L) return@withContext 0L
+                    check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
+                    check(!receiving) { "concurrent receive() on the same pipe" }
+                    receiving = true
+                    entered = true
+                    try {
+                        resetReason?.let { throw PipeResetException(it) }
+                        if (inbound.size > 0L) {
+                            val n = inbound.read(sink, byteCount) // whole-segment moves, no copy
+                            if (peerBlocked && inbound.size <= PIPE_LOW) {
+                                peerBlocked = false
+                                engine.drain(id)
+                            }
+                            return@withContext n
                         }
-                        return@withContext n
+                        if (writeEnded) return@withContext -1L
+                        // Park with the sink itself; deliver() copies straight into it (sized at
+                        // delivery time) and resumes us with the count — or EOF / a reset / a failure.
+                        // No invokeOnCancellation: [reader] is engine-confined, and the catch below
+                        // clears it on the engine thread; a cancellation cleanup would run on the
+                        // canceller's thread and race deliver().
+                        suspendCancellableCoroutine { cont ->
+                            reader = ParkedReader(sink, byteCount, cont)
+                        }
+                    } catch (t: Throwable) {
+                        // In-body abort (parked cancel, resetReason). A PipeResetException is the peer's
+                        // terminal signal, not a stranded read: leave the read side open so every later
+                        // receive() re-throws it (the KDoc contract). Any other abort closes the read
+                        // side HERE, synchronously on the engine thread, so a racing deliver() can't
+                        // slip in before it closes. Fire-and-forget: cleanup must not mask the cause.
+                        if (t !is PipeResetException) {
+                            runCatching { closeReadNow(t) }
+                            cleaned = true
+                        }
+                        throw t
+                    } finally {
+                        receiving = false
                     }
-                    if (writeEnded) return@withContext -1L
-                    // Park with the sink itself; deliver() copies straight into it (sized at
-                    // delivery time) and resumes us with the count — or EOF / a reset / a failure.
-                    // No invokeOnCancellation: [reader] is engine-confined, and the catch below
-                    // clears it on the engine thread; a cancellation cleanup would run on the
-                    // canceller's thread and race deliver().
-                    suspendCancellableCoroutine { cont ->
-                        reader = ParkedReader(sink, byteCount, cont)
-                    }
-                } catch (t: Throwable) {
-                    // A PipeResetException is the peer's terminal signal, not a stranded read: leave
-                    // the read side open so every later receive() re-throws it (the KDoc contract),
-                    // rather than a read-closed IllegalStateException. Any other abort (cancellation
-                    // included) may have stranded bytes in a sink nobody will read — close the read
-                    // side so the pipe lands in ONE predictable state: done reading, peer gets EPIPE.
-                    // Deliberate fire-and-forget: cleanup must not mask the abort cause.
-                    if (t !is PipeResetException) runCatching { closeReadNow(t) }
-                    throw t
-                } finally {
-                    receiving = false
                 }
+            } catch (t: Throwable) {
+                // Prompt cancellation thrown at the withContext boundary AFTER the body completed: the
+                // bytes were already moved out of inbound / a DRAIN sent, but withContext discards the
+                // return value, so honor the same abort-closes-the-read-side contract. `entered` gates
+                // out pre-read misuse; `cleaned` skips the in-body path that already closed it; a
+                // re-hop is needed because closeReadNow is engine-confined (NonCancellable to survive
+                // the very cancellation that brought us here). On any completion the reader is already
+                // null (sync paths never parked; a parked read that completed was resumed by deliver),
+                // so this closeReadNow can't race a live deliver.
+                if (entered && !cleaned && t !is PipeResetException) {
+                    withContext(engineDispatcher + NonCancellable) { runCatching { closeReadNow(t) } }
+                }
+                throw t
             }
         }
 
