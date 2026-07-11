@@ -3,7 +3,8 @@
 Application-layer protocols the app implements **on top of** `:quickjs` pipes (see
 [`PIPE_STREAMING.md`](PIPE_STREAMING.md)). Not part of the module — the module deliberately ships
 only the pipe transport + native JSON. This doc pins down the byte protocol so the Kotlin server
-side and the JS client side agree. **Design only — nothing here is implemented yet.**
+side and the JS client side agree. The error contract (§0) and HTTP (§1) are implemented in
+`:dynamic-engine`; the rest is design-only until built (each section marks its status).
 
 Direction throughout: the QuickJS **engine (JS) is the client** — it wants a capability. **Kotlin is
 the server** — it owns the network, the filesystem, and the database. JS `ymix.open(command)`,
@@ -95,7 +96,8 @@ Codes come in two kinds (CLAUDE.md "Error Handling"):
 
 Carriers, per hop:
 - **JS**: `throw JsEngineError.parse("…")` / `throw new JsEngineError("…", "E29999", {userMessage})`
-  (message first, then code); http.js tags transport-stage failures `code:"network"` automatically.
+  (message first, then code); http.js adopts the host's origin-classified code (`network`, …) from
+  the structured RESET reason automatically.
   **`ymix.onAccept(command, commandHandler(handler))`** wraps a handler in the contract — the handler
   gets `(src, out[, pipe])` and reads its own head off `src` (args format not assumed) — and
   classifies ANY throw — explicit `.code` wins, then a site code embedded in the message,
@@ -122,6 +124,26 @@ present → show it verbatim + code; else → generic "Something went wrong (cod
 Client abandons an in-flight call → it RESETs its pipe (`sink.close(reason)`), the server's read
 throws the reason, and it aborts the underlying call/query/read. (Supported since §4 landed;
 pair it with `source.close()` to also EPIPE a server that is mid-write.)
+
+### Engine lifecycle (`"init"` / `"shutdown"`, bundle-served) — *implemented*
+
+The two commands the HOST opens on the bundle (`engine-js/src/lifecycle.ts`), the reverse of every
+other section here:
+
+- **`"init"`** — the post-boot health check. No head; the bundle writes
+  `{"backendVersion": N}` (its self-declared revision) and ENDs. `DynamicEngine.create` drives it
+  with a deadline right after the boot eval: a refused open / RESET / malformed head / timeout is a
+  typed rejection (`E20021`; a RESET carrying the bundle's own code keeps it), and the round-trip
+  proves open routing, handler dispatch, JSON encode, and END — not just that the eval ran.
+- **`"shutdown"`** — SIGINT as a pipe, sent when `DynamicEngineManager` retires an engine after a
+  swap. The bundle sets its `shuttingDown` flag, runs the `onShutdown(cb)` registrations, and
+  ENDs. **Ownership rule**: whoever starts repeat work (a timer, a cron) clears it in its own
+  `onShutdown` callback — nothing mass-clears on the owner's behalf; a timer nobody clears keeps
+  its pipe open and rides into the force-close deadline. The ack is **observed, not replied**:
+  finished work closes its pipes, and the host waits — bounded — on `QuickJsRuntime.awaitIdle()`
+  (the pipe map emptying IS "quiesced"), then closes. A bundle without the module refuses the
+  open; the host skips the signal and the deadline + `close()` backstop. Bundle-side rule:
+  cleanup that matters goes in `onShutdown` — after the runtime closes there is no JS.
 
 ---
 
@@ -172,16 +194,18 @@ const data = await res.json();        // whole body; or res.stream().read(buf, o
 `:dynamic-engine`'s `HTTP_JS`; §5 lists the surface.)
 
 ### Errors
-Expected failures RESET the control pipe with a **stage-tagged reason** — the stage tells the
-client what it can still trust:
+Expected failures RESET the control pipe with a **structured, origin-classified reason**
+(the WireError shape, `{code, message}` — the server decides the code where the real exception is
+understood; http.js adopts it, never guesses from text). The stage tells the client what it can
+still trust:
 - HTTP-level (any status, redirects, 4xx/5xx) → normal response, code in the status line; `res.ok`
   is `status ∈ [200,300)`.
-- Head the server can't parse, or a URL/header the host client rejects → `"E20011 invalid
-  request: …"` (a caller bug — site-coded; nothing reached the HTTP client).
+- Head the server can't parse, or a URL/header the host client rejects → `{code:"E20011",
+  message:"invalid request: …"}` (a caller bug — site-coded; nothing reached the HTTP client).
 - Connection failure before the response (DNS/connect/TLS/timeout — the routine failure) →
-  `"request failed: …"`; the client's head read throws (§0). http.js tags it `code:"network"`.
-- Failure mid-body → `"response body failed: …"`; the client's in-flight read throws the reason
-  (§4), also tagged `network`. Never a clean EOF — that would read as a complete, silently
+  `{code:"network", message:"request failed: …"}`; the client's head read throws (§0).
+- Failure mid-body → `{code:"network", message:"response body failed: …"}`; the client's in-flight
+  read throws the reason (§4). Never a clean EOF — that would read as a complete, silently
   truncated body.
 - Protocol violations (junk after the head → `E20010`, a torn cancel int) and server bugs throw
   out of the handler; the runtime's backstop RESETs with the raw message.
@@ -353,7 +377,8 @@ replies `ok:false` then closes (a failed migration rolls back — the file is le
 
 ## 4. Transport: RESET reason — ✅ LANDED (part of the pipe-protocol rewrite)
 
-The transport threads the reason through `closeWrite(id, reason)` / `__jsClose(id, reason)`. A
+The transport threads the reason through `closeWrite(id, reason)`; on the JS side `__jsClose(id)`
+carries only the id — the reason crosses through the C pipe layer (see PIPE_STREAMING.md). A
 non-null reason is a **RESET**: the peer's pending data is discarded and its parked/next `receive`
 throws (Kotlin: `PipeResetException(reason)`; JS: the promise rejects with the reason). Both sides
 expose `sink.close(reason: String? = null)`, and a handler that throws RESETs its pipe with the
@@ -396,7 +421,8 @@ await db.begin(); …; await db.commit();
 await db.close();
 ```
 
-Each is a thin wrapper over `ymix.open` + `ymix.buffered`. Kept out of `:quickjs` — they live in
+Each is a thin wrapper over `ymix.open` (its pipe ends already carry the buffered read/write
+helpers). Kept out of `:quickjs` — they live in
 whatever module wires the host handlers (the engine host, not the binding).
 
 ---

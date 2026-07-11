@@ -4,14 +4,14 @@ import kmpcommon.log.Logger
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.IOException
-import ymusic.quickjs.Pipe
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** The HTTP protocol's birth-site logging: the scraper tags a request with `HttpRequest.logContext`,
- *  it rides the head to [HttpProtocol], and a transport failure is logged there — where it's born,
- *  with the trail + the native cause — through the app's [Logger]. */
+/** The HTTP protocol's birth-site logging: the scraper tags a request with `logContext`, it rides
+ *  the head to [HttpProtocol], and a transport failure is logged there — where it's born, with the
+ *  trail + the native cause — through the app's [Logger]. Driven via the `test/http-log` fixture
+ *  (engine-js/src/test/fixtures/logging.ts). */
 class HostLoggingTest {
 
     private class Capture : Logger {
@@ -23,31 +23,24 @@ class HostLoggingTest {
         }
     }
 
-    private suspend fun Pipe.drain() {
-        val b = Buffer()
-        while (source.receive(b, 4096L) != -1L) { /* to EOF */ }
+    /** Drive the fixture: send the JSON [head], drain to EOF (the request failure is swallowed
+     *  JS-side — the assertion target is the captured log). */
+    private suspend fun DynamicEngine.probe(head: String) {
+        val pipe = openPipe("test/http-log")
+        val b = Buffer().writeUtf8(head)
+        pipe.sink.send(b, b.size)
+        val out = Buffer()
+        while (pipe.source.receive(out, 4096L) != -1L) out.clear()
+        pipe.sink.close()
+        pipe.source.close()
     }
 
     @Test
     fun http_transport_failure_logs_at_its_birth_site_with_the_context() = runTest {
         val log = Capture()
-        val engine = DynamicEngine.create(FakeHttpClient { throw IOException("connect refused") }, 1, log)
+        val engine = createTestEngine(FakeHttpClient { throw IOException("connect refused") }, 1, log)
         try {
-            engine.load(
-                """
-                ymix.onAccept("probe", async (p) => {
-                  try {
-                    var res = await HttpRequest.get("https://youtube.com/watch")
-                      .logContext(["download#a1b2", "js:fetchForLinkParser"])
-                      .build()
-                      .execute();
-                    await res.text();
-                  } catch (e) {}
-                  p.sink.close();
-                });
-                """.trimIndent(),
-            )
-            engine.openPipe("probe").drain()
+            engine.probe("""{"url":"https://youtube.com/watch","ctx":["download#a1b2","js:fetchForLinkParser"]}""")
 
             // The failure is logged once, where it's born, with the trail + this protocol's hop.
             assertEquals(1, log.calls.size, "the transport failure must be logged once at its birth site")
@@ -65,19 +58,9 @@ class HostLoggingTest {
     @Test
     fun no_context_degrades_to_just_the_protocol_hop() = runTest {
         val log = Capture()
-        val engine = DynamicEngine.create(FakeHttpClient { throw IOException("dns") }, 1, log)
+        val engine = createTestEngine(FakeHttpClient { throw IOException("dns") }, 1, log)
         try {
-            engine.load(
-                """
-                ymix.onAccept("probe", async (p) => {
-                  try {
-                    await HttpRequest.get("https://x/").build().execute();
-                  } catch (e) {}
-                  p.sink.close();
-                });
-                """.trimIndent(),
-            )
-            engine.openPipe("probe").drain()
+            engine.probe("""{"url":"https://x/"}""")
             assertEquals(listOf("http"), log.calls.single().tags)
         } finally {
             engine.close()
@@ -86,17 +69,9 @@ class HostLoggingTest {
 
     @Test
     fun no_logger_is_a_safe_no_op() = runTest {
-        val engine = DynamicEngine.create(FakeHttpClient { throw IOException("boom") }, 1)
+        val engine = createTestEngine(FakeHttpClient { throw IOException("boom") })
         try {
-            engine.load(
-                """
-                ymix.onAccept("probe", async (p) => {
-                  try { await HttpRequest.get("https://x/").build().execute(); } catch (e) {}
-                  p.sink.close();
-                });
-                """.trimIndent(),
-            )
-            engine.openPipe("probe").drain() // must not NPE with a null logger
+            engine.probe("""{"url":"https://x/"}""") // must not NPE with a null logger
         } finally {
             engine.close()
         }

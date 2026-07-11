@@ -399,7 +399,7 @@ static void pb_job_reset(PipeBuf *pb) {
 }
 
 /* Settle the parked promise. `result` is consumed. Returns -1 when the capability call itself
- * threw (a bootstrap bug — the caller poisons the pipe so the host writer fails loudly). */
+ * threw (a transport-JS bug — the caller poisons the pipe so the host writer fails loudly). */
 static int pb_settle(PipeBuf *pb, int ok, JSValue result) {
     JSContext *ctx = pb->ctx;
     JSValue fn = ok ? pb->resolve : pb->reject;
@@ -541,12 +541,18 @@ static JSValue pb_drain_check(PipeBuf *pb) {
 static JSValue pb_read_finish(JSContext *ctx, PipeBuf *pb) {
     JSValue out = JS_UNDEFINED;
     int r = pb_try(pb, &out);
+    // Error teardown drops any bytes pb_try scanned into `acc` (a partial line/body): the pipe is
+    // dead on these paths (OOM / a poisoned drain hook), and leaving them would make a later
+    // different-typed read — which reads segments only — skip them. The park path (r==0) keeps
+    // `acc` on purpose (it survives across writes).
     if (JS_IsException(pb_drain_check(pb))) {
         if (r == 1) JS_FreeValue(ctx, out);
+        pb_acc_reset(pb);
         pb_job_reset(pb);
         return JS_EXCEPTION;
     }
     if (r < 0) {
+        pb_acc_reset(pb);
         pb_job_reset(pb);
         return JS_EXCEPTION;
     }
@@ -557,6 +563,7 @@ static JSValue pb_read_finish(JSContext *ctx, PipeBuf *pb) {
     JSValue funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, funcs);
     if (JS_IsException(promise)) {
+        pb_acc_reset(pb);
         pb_job_reset(pb);
         return promise;
     }
@@ -597,12 +604,14 @@ static JSValue js_pb_new(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 static JSValue js_pb_recv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     PipeBuf *pb = pb_get(ctx, argv[0]);
     if (!pb) return JS_EXCEPTION;
-    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    // Coerce every argument BEFORE the guard and BEFORE arming any job: coercion of an object arg
+    // runs user JS (valueOf) that could reenter and arm a job on this same pb; guarding afterward
+    // then rejects it as a concurrent read instead of silently overwriting (and leaking) it.
     int64_t off = 0, len = 0;
-    JS_ToInt64(ctx, &off, argv[2]);
-    JS_ToInt64(ctx, &len, argv[3]);
+    if (JS_ToInt64(ctx, &off, argv[2]) || JS_ToInt64(ctx, &len, argv[3])) return JS_EXCEPTION;
     size_t dlen = 0;
     if (!view_bytes(ctx, argv[1], &dlen)) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     if (off < 0 || len < 0 || (uint64_t)off + (uint64_t)len > dlen)
         return JS_ThrowRangeError(ctx, "receive destination out of bounds");
     if (len == 0) return JS_NewInt32(ctx, 0);
@@ -635,8 +644,9 @@ static JSValue js_pb_line(JSContext *ctx, JSValueConst this_val, int argc, JSVal
     PipeBuf *pb = pb_get(ctx, argv[0]);
     if (!pb) return JS_EXCEPTION;
     if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    uint8_t strict = (uint8_t)JS_ToBool(ctx, argv[1]); // ToBoolean never runs user JS; still coerce first
     pb->job = PB_JOB_LINE;
-    pb->strict = (uint8_t)JS_ToBool(ctx, argv[1]);
+    pb->strict = strict;
     return pb_read_finish(ctx, pb);
 }
 
@@ -644,9 +654,9 @@ static JSValue js_pb_line(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 static JSValue js_pb_json(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     PipeBuf *pb = pb_get(ctx, argv[0]);
     if (!pb) return JS_EXCEPTION;
-    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     int32_t expect = QJS_JSON_EXPECT_ANY;
-    JS_ToInt32(ctx, &expect, argv[1]);
+    if (JS_ToInt32(ctx, &expect, argv[1])) return JS_EXCEPTION; // coerce before guard/arm (see js_pb_recv)
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     pb->jstream = qjs_jstream_new(ctx, expect);
     if (!pb->jstream) return JS_EXCEPTION;
     pb->job = PB_JOB_JSON;
@@ -669,7 +679,9 @@ static JSValue js_pb_close_read(JSContext *ctx, JSValueConst this_val, int argc,
     if (pb->read_closed) return JS_UNDEFINED;
     pb->read_closed = 1;
     pb_free_all(pb);
-    if (pb->job != PB_JOB_NONE) {
+    // The resolve guard matches pb_fail: only a fully-parked job (capability stored) can be settled.
+    // In reachable states a job here is always parked; the guard hardens against a half-armed reentry.
+    if (pb->job != PB_JOB_NONE && !JS_IsUndefined(pb->resolve)) {
         pb_acc_reset(pb);
         pb_settle(pb, 0, pb_error(ctx, "receive() after closeRead()")); /* in-flight read is a misuse */
     }
@@ -839,6 +851,32 @@ static JSValue js_utf8_encode(JSContext *ctx, JSValueConst this_val, int argc, J
     return u8;
 }
 
+/* __utf8Length(str, from, to) -> number. The exact byte count __utf8Encode(str, from, to) would
+ * produce, measured without encoding — the same utf8_measure_units the encoder sizes with, so the
+ * two can never disagree (a JS mirror would drift on lone surrogates). */
+static JSValue js_utf8_length(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    int64_t from = 0, to = 0;
+    JS_ToInt64(ctx, &from, argv[1]);
+    JS_ToInt64(ctx, &to, argv[2]);
+    if (from < 0 || to < from)
+        return JS_ThrowRangeError(ctx, "__utf8Length range out of bounds");
+    JSValue flat = JS_ToFlatString(ctx, argv[0]);
+    if (JS_IsException(flat)) return flat;
+    const void *data = NULL;
+    uint32_t slen = 0;
+    int wide = JS_GetFlatStringStorage(flat, &data, &slen);
+    if (wide < 0) {
+        JS_FreeValue(ctx, flat);
+        return JS_ThrowTypeError(ctx, "__utf8Length: not a string");
+    }
+    uint32_t i = (from > (int64_t)slen) ? slen : (uint32_t)from;
+    uint32_t end = (to > (int64_t)slen) ? slen : (uint32_t)to;
+    if (i > end) i = end;
+    size_t n = utf8_measure_units(data, wide, i, end);
+    JS_FreeValue(ctx, flat);
+    return JS_NewInt64(ctx, (int64_t)n);
+}
+
 /* ---- class + registration ---- */
 
 static void pipebuf_finalizer(JSRuntime *rt, JSValue val) {
@@ -893,6 +931,7 @@ QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user) 
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
     JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 3));
+    JS_SetPropertyStr(ctx, g, "__utf8Length", JS_NewCFunction(ctx, js_utf8_length, "__utf8Length", 3));
     JS_FreeValue(ctx, g);
     return pc;
 }
@@ -913,4 +952,13 @@ void qjs_pipe_ctx_free(QjsPipeCtx *pc) {
     }
     free(pc->ents);
     free(pc);
+}
+
+void qjs_install_versions(JSContext *ctx, int app_version) {
+    JSValue v = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, v, "app", JS_NewInt32(ctx, app_version), JS_PROP_ENUMERABLE);
+    JS_PreventExtensions(ctx, v); /* non-writable props + non-extensible = Object.isFrozen */
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_DefinePropertyValueStr(ctx, g, "versions", v, JS_PROP_ENUMERABLE); /* not writable/configurable */
+    JS_FreeValue(ctx, g);
 }

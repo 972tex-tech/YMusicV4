@@ -26,6 +26,9 @@ typedef struct QjsEngine QjsEngine;
 #define QJS_OP_CLOSE_WRITE 2 /* data = RESET reason (NUL-terminated UTF-8) or NULL for END */
 #define QJS_OP_CLOSE_READ  3 /* abandon read end: host's next write gets EPIPE */
 #define QJS_OP_DRAIN       4 /* flow control: the reader drained; resume the parked writer */
+#define QJS_OP_LOG         5 /* console/diagnostics: id = level (0 debug, 1 info, 2 warn,
+                              * 3 error, 4 unhandled promise rejection), data/len = UTF-8
+                              * message (valid only during the call); return value ignored */
 
 
 /* Invoked when JS reaches the host. OPEN: data = command (NUL-terminated UTF-8), len = its
@@ -36,9 +39,26 @@ typedef struct QjsEngine QjsEngine;
  * CLOSE_READ / DRAIN: data = NULL, len = 0. Return values of the other ops are ignored. */
 typedef int (*QjsInboundCb)(void *user, int op, uint32_t id, const uint8_t *data, size_t len);
 
-/* Create an engine, install the JS transport + pipe/JSON natives, and eval [bootstrap].
- * Returns NULL on failure with *err set to a malloc'd message (free via qjs_free). */
-QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char **err);
+/* Create a bare engine: install the pipe/JSON natives and the frozen `versions` global
+ * ({app: app_version}) — no script. The host can serve commands before any JS exists; the
+ * engine script loads via qjs_eval_engine. */
+QjsEngine *qjs_create(int app_version, QjsInboundCb cb, void *user);
+
+/* Evaluate the engine script (the :engine-js bundle) and capture the transport globals
+ * (__jsOpen/__jsClose/__jsCloseRead/__jsDrain) right after — call exactly once, before any
+ * qjs_open. Returns 0, or -1 with *err set to a malloc'd message (free via qjs_free); the
+ * engine stays valid on failure (tear down via qjs_close). */
+int qjs_eval_engine(QjsEngine *e, const char *script, char **err);
+
+/* Compile [script] to serialized bytecode with per-function source text stripped
+ * (Function.prototype.toString yields a placeholder; line-number debug info is kept so stack
+ * traces stay useful). Returns a malloc'd buffer with *out_len set (free via qjs_free), or NULL
+ * with *err set to a malloc'd message. */
+uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, char **err);
+
+/* qjs_eval_engine from qjs_compile output — the version can't be baked into the precompiled
+ * blob, so it's installed at qjs_create, before the bytecode program runs. */
+int qjs_eval_engine_bc(QjsEngine *e, const uint8_t *bytecode, size_t len, char **err);
 
 /* Evaluate [script]; returns a malloc'd UTF-8 string (the result's string form, or the error
  * message) or NULL. *isError is set to 1 when the returned string is an error message. */

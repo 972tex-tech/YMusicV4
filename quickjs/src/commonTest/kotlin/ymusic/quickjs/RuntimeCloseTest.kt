@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  * Runtime close() lifecycle: exactly one teardown ever reaches the native engine. A second
  * close(), or a pipe op that races teardown (the everyday `finally { pipe.sink.close() }`), must not
  * call into an engine whose handle `engine.destroy()` already freed — that's a native
- * use-after-free, not an exception.
+ * use-after-free, not an exception. Held pipes come from the `test/keep` fixture.
  */
 class RuntimeCloseTest {
 
@@ -29,8 +29,7 @@ class RuntimeCloseTest {
     @Test
     fun pipe_ops_after_runtime_close_fail_fast_without_touching_the_engine() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("silent", (pipe) => { globalThis.__keep = pipe; });""")
-        val pipe = rt.openPipe("silent")
+        val pipe = rt.openPipe("test/keep")
         rt.close()
 
         // Closes are cleanup calls — safe no-ops (teardown already closed every pipe)...
@@ -47,8 +46,7 @@ class RuntimeCloseTest {
     @Test
     fun pipe_close_in_finally_racing_runtime_close_is_safe() = runTest {
         val rt = QuickJsRuntime.create()
-        rt.load("""ymix.onAccept("silent", (pipe) => { globalThis.__keep = pipe; });""")
-        val pipe = rt.openPipe("silent")
+        val pipe = rt.openPipe("test/keep")
         val worker = async(Dispatchers.Default) {
             runCatching {
                 try {
@@ -86,9 +84,8 @@ class RuntimeCloseTest {
     fun reaped_pipe_close_racing_runtime_close_is_safe() = runTest {
         repeat(30) {
             val rt = QuickJsRuntime.create()
-            rt.load("""ymix.onAccept("done", async (p) => { await p.sink.close(); });""")
-            val pipe = rt.openPipe("done")
-            pipe.sink.close() // our END; the handler's END makes writeEnded -> reaped
+            val pipe = rt.openPipe("test/close-now")
+            pipe.sink.close() // our END; the fixture's END makes writeEnded -> reaped
             withContext(Dispatchers.Default) { delay(10) } // let the JS END cross so the pipe reaps
             val worker = async(Dispatchers.Default) { runCatching { pipe.source.close() } }
             rt.close()

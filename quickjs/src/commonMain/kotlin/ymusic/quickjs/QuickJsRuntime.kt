@@ -5,6 +5,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -42,21 +43,24 @@ fun interface AcceptRegistration {
  *
  * Each pipe direction is a **bounded, flow-controlled byte stream** whose buffer lives on the
  * *reader's* side: bytes JS writes to us land here, in an okio [Buffer] (segment pool, no per-chunk
- * allocation); bytes we write to JS land in its queue of pooled C segments. Writes cross the FFI
- * zero-copy and are **rendezvous-first**: when a reader is parked, the writer's bytes are copied
- * straight into the reader's buffer (one copy) and only the remainder is buffered (a second copy for
- * those bytes, never a throwaway allocation). A partially accepted write parks the writer until the
- * reader drains to the low-water mark (DRAIN). All state lives on the engine thread — no locking.
+ * allocation); bytes we write to JS land in its queue of pooled C segments. The JS→Kotlin direction
+ * is **rendezvous-first**: when a reader is parked, `deliver()` copies the writer's bytes straight
+ * into the reader's buffer (one copy) and only the remainder is buffered. The host→JS direction
+ * always fills the C `PipeBuf` segments and satisfies the parked JS read from them (rendezvous was
+ * deliberately dropped there). A partially accepted write parks the writer until the reader drains
+ * to the low-water mark (DRAIN). All state lives on the engine thread — no locking.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class QuickJsRuntime private constructor(
     private val engine: NativeEngine,
     private val engineDispatcher: CloseableCoroutineDispatcher,
+    private val logHandler: ((level: Int, message: String) -> Unit)?,
 ) {
 
     private val scope = CoroutineScope(engineDispatcher + SupervisorJob())
     private val closed = AtomicBoolean(false)
     private val pipes = HashMap<Int, PipeImpl>()
+    private val idleWaiters = ArrayList<CancellableContinuation<Unit>>() // engine-thread confined
 
     // onAccept is called from any thread (the app registers handlers off the engine thread), while
     // onOpen reads on the engine thread — the one piece of state not engine-confined. Guard both
@@ -80,6 +84,34 @@ class QuickJsRuntime private constructor(
         }
     }
 
+    /**
+     * Suspend until no pipe is open in either direction — everything in flight is a pipe
+     * (host-opened commands, JS-opened commands, timers), so empty = quiesced. Returns immediately
+     * when already idle; multiple waiters are allowed. Completes (rather than throws) when the
+     * runtime is closed mid-wait — no pipes is factually true then. Callers bound the wait
+     * themselves (`withTimeoutOrNull(...) { awaitIdle() }`).
+     */
+    suspend fun awaitIdle() {
+        if (closed.load()) return
+        withContext(engineDispatcher) {
+            if (closed.load() || pipes.isEmpty()) return@withContext
+            suspendCancellableCoroutine { cont ->
+                // No off-thread removal on cancellation: a cancelled waiter stays in the list and
+                // the eventual resume is ignored (the list is engine-confined; mutating it from
+                // the canceller's thread would race).
+                idleWaiters.add(cont)
+            }
+        }
+    }
+
+    /** On the engine thread, after any pipe leaves the map. */
+    private fun notifyIfIdle() {
+        if (pipes.isNotEmpty() || idleWaiters.isEmpty()) return
+        val waiters = idleWaiters.toList()
+        idleWaiters.clear()
+        for (w in waiters) w.resume(Unit)
+    }
+
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
      *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]
@@ -97,27 +129,43 @@ class QuickJsRuntime private constructor(
      *  Fails AT THE OPEN — like ECONNREFUSED — when no JS handler serves [command]. */
     suspend fun openPipe(command: String): Pipe {
         if (closed.load()) throw QuickJsException("runtime closed")
-        return withContext(engineDispatcher) {
-            // Re-check on the engine thread (see [load]): without this a openPipe racing close()
-            // runs engine.open() on the destroyed engine and re-populates the cleared pipes map.
-            if (closed.load()) throw QuickJsException("runtime closed")
-            val id = nextId
-            nextId += 2
-            val impl = PipeImpl(id, command)
-            // Registered before open() so anything crossing during the call finds the pipe; dropped
-            // again on refusal/throw so a failed open never dangles in the registry.
-            pipes[id] = impl
-            val rc = try {
-                engine.open(id, command)
-            } catch (e: Throwable) {
-                pipes.remove(id)
-                throw e
+        var opened: PipeImpl? = null
+        try {
+            return withContext(engineDispatcher) {
+                // Re-check on the engine thread (see [load]): without this a openPipe racing close()
+                // runs engine.open() on the destroyed engine and re-populates the cleared pipes map.
+                if (closed.load()) throw QuickJsException("runtime closed")
+                val id = nextId
+                nextId += 2
+                val impl = PipeImpl(id, command)
+                // Registered before open() so anything crossing during the call finds the pipe;
+                // dropped again on refusal/throw so a failed open never dangles in the registry.
+                pipes[id] = impl
+                val rc = try {
+                    engine.open(id, command)
+                } catch (e: Throwable) {
+                    pipes.remove(id)
+                    notifyIfIdle()
+                    throw e
+                }
+                if (rc < 0) {
+                    pipes.remove(id)
+                    notifyIfIdle()
+                    throw QuickJsException("open(\"$command\") refused: no JS handler")
+                }
+                opened = impl
+                impl.pipe
             }
-            if (rc < 0) {
-                pipes.remove(id)
-                throw QuickJsException("open(\"$command\") refused: no JS handler")
+        } catch (t: Throwable) {
+            // Prompt cancellation thrown at the withContext boundary AFTER the open succeeded: the pipe
+            // exists on both sides but the caller never receives its handle, so nobody can close it —
+            // tear it down here or it leaks (a live JS handler + a routing entry). closeWrite/closeRead
+            // self-hop NonCancellable (surviving the cancellation) and reap it from the pipes map.
+            opened?.let { impl ->
+                runCatching { impl.closeWrite(null) }
+                runCatching { impl.closeRead() }
             }
-            impl.pipe
+            throw t
         }
     }
 
@@ -125,6 +173,10 @@ class QuickJsRuntime private constructor(
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
     internal fun onOpen(id: Int, command: String): Int {
         val handler = synchronized(acceptsLock) { accepts[command] } ?: return -1
+        // Refuse a colliding id rather than overwrite a live pipe: a buggy/hostile bundle reusing an
+        // id (or opening an odd Kotlin-range id) would otherwise orphan the old PipeImpl, whose
+        // parked continuation close()'s failPending — walking only the pipes map — could never fail.
+        if (pipes.containsKey(id)) return -1
         val impl = PipeImpl(id, command)
         pipes[id] = impl
         scope.launch {
@@ -132,13 +184,11 @@ class QuickJsRuntime private constructor(
                 handler(impl.pipe)
             } catch (e: CancellationException) {
                 // Real cancellation propagates; a CancellationException on a still-active job (e.g.
-                // withTimeout inside the handler) is a failure and RESETs the pipe like any other.
+                // withTimeout inside the handler) is a failure and aborts the pipe like any other.
                 if (!isActive) throw e
-                impl.closeRead()
-                impl.closeWrite(e.message ?: "handler failed")
+                impl.abort(e)
             } catch (e: Throwable) {
-                impl.closeRead()
-                impl.closeWrite(e.message ?: "handler failed") // RESET: surface the failure to JS
+                impl.abort(e)
             }
         }
         return 0
@@ -151,6 +201,13 @@ class QuickJsRuntime private constructor(
     internal fun onCloseRead(id: Int) { pipes[id]?.onPeerCloseRead() }
 
     internal fun onDrain(id: Int) { pipes[id]?.onDrain() }
+
+    /** Console/diagnostics from the engine (levels per [LOG_ERROR]…). A throwing handler must not
+     *  unwind into C — swallowed here, deliberately (there is no channel left to report on). */
+    internal fun onLog(level: Int, message: String) {
+        val handler = logHandler ?: return
+        runCatching { handler(level, message) }
+    }
 
     private inner class PipeImpl(val id: Int, val command: String) : PipeSource, PipeSink {
         /** The public pair of ends handed to callers — both views over this one state machine. */
@@ -179,7 +236,10 @@ class QuickJsRuntime private constructor(
          *  parked reader's sink (up to its byteCount — sized at delivery time, so a full chunk can
          *  rendezvous), then the okio buffer up to [PIPE_CAP]. Returns accepted, or -1 (EPIPE). */
         fun deliver(chunk: NativeChunk): Int {
-            if (readClosed) return -1
+            // Reject after our read close (EPIPE) or after the peer's own END: no bytes may land past a
+            // clean END. Both are serialized on the engine thread in the normal flow; the writeEnded
+            // guard also blocks a hostile __hostData whose off/len valueOf reentered __hostClose(END).
+            if (readClosed || writeEnded) return -1
             var pos = 0
             val r = reader
             if (r != null) {
@@ -248,51 +308,81 @@ class QuickJsRuntime private constructor(
             if (w != null) { writer = null; w.resume(Unit) } else drainCredit = true
         }
 
+        /** Fire-and-forget teardown of a failed/aborted served pipe: RESET the peer with the cause's
+         *  message. This is the transport's DUMB backstop — the richer `{code, …}` error contract
+         *  (classify + birth-site log) lives one layer up in `dynamicengine.commandHandler`. Each
+         *  close is wrapped so a teardown failure can't escape the launched coroutine into the
+         *  SupervisorJob's uncaught handler. */
+        suspend fun abort(cause: Throwable) {
+            runCatching { closeRead() }
+            runCatching { closeWrite(cause.message ?: "handler failed") }
+        }
+
         override suspend fun receive(sink: Buffer, byteCount: Long): Long {
             // Checked before the dispatcher hop: after runtime close() the engine thread is gone
             // (dispatching there is at best a fallback thread, at worst an error).
             if (closed.load()) throw QuickJsException("runtime closed")
-            return withContext(engineDispatcher) {
-                // A REAPED pipe (left the pipes map on maybeReap) is not poisoned by failPending, so
-                // its own-side flags can't guard a race with teardown — the engine-thread `closed`
-                // recheck does (a receive draining buffered data still calls engine.drain).
-                if (closed.load()) throw QuickJsException("runtime closed")
-                require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
-                if (byteCount == 0L) return@withContext 0L
-                check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
-                check(!receiving) { "concurrent receive() on the same pipe" }
-                receiving = true
-                try {
-                    resetReason?.let { throw PipeResetException(it) }
-                    if (inbound.size > 0L) {
-                        val n = inbound.read(sink, byteCount) // whole-segment moves, no copy
-                        if (peerBlocked && inbound.size <= PIPE_LOW) {
-                            peerBlocked = false
-                            engine.drain(id)
+            var entered = false // passed validation and began the read — pre-read misuse must not close
+            var cleaned = false // the in-body catch already closed the read side (skip the outer hop)
+            try {
+                return withContext(engineDispatcher) {
+                    // A REAPED pipe (left the pipes map on maybeReap) is not poisoned by failPending,
+                    // so its own-side flags can't guard a race with teardown — the engine-thread
+                    // `closed` recheck does (a receive draining buffered data still calls engine.drain).
+                    if (closed.load()) throw QuickJsException("runtime closed")
+                    require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
+                    if (byteCount == 0L) return@withContext 0L
+                    check(!readClosed) { "receive() after the read side was closed (closeRead() or an aborted receive)" }
+                    check(!receiving) { "concurrent receive() on the same pipe" }
+                    receiving = true
+                    entered = true
+                    try {
+                        resetReason?.let { throw PipeResetException(it) }
+                        if (inbound.size > 0L) {
+                            val n = inbound.read(sink, byteCount) // whole-segment moves, no copy
+                            if (peerBlocked && inbound.size <= PIPE_LOW) {
+                                peerBlocked = false
+                                engine.drain(id)
+                            }
+                            return@withContext n
                         }
-                        return@withContext n
+                        if (writeEnded) return@withContext -1L
+                        // Park with the sink itself; deliver() copies straight into it (sized at
+                        // delivery time) and resumes us with the count — or EOF / a reset / a failure.
+                        // No invokeOnCancellation: [reader] is engine-confined, and the catch below
+                        // clears it on the engine thread; a cancellation cleanup would run on the
+                        // canceller's thread and race deliver().
+                        suspendCancellableCoroutine { cont ->
+                            reader = ParkedReader(sink, byteCount, cont)
+                        }
+                    } catch (t: Throwable) {
+                        // In-body abort (parked cancel, resetReason). A PipeResetException is the peer's
+                        // terminal signal, not a stranded read: leave the read side open so every later
+                        // receive() re-throws it (the KDoc contract). Any other abort closes the read
+                        // side HERE, synchronously on the engine thread, so a racing deliver() can't
+                        // slip in before it closes. Fire-and-forget: cleanup must not mask the cause.
+                        if (t !is PipeResetException) {
+                            runCatching { closeReadNow(t) }
+                            cleaned = true
+                        }
+                        throw t
+                    } finally {
+                        receiving = false
                     }
-                    if (writeEnded) return@withContext -1L
-                    // Park with the sink itself; deliver() copies straight into it (sized at
-                    // delivery time) and resumes us with the count — or EOF / a reset / a failure.
-                    // No invokeOnCancellation: [reader] is engine-confined, and the catch below
-                    // clears it on the engine thread; a cancellation cleanup would run on the
-                    // canceller's thread and race deliver().
-                    suspendCancellableCoroutine { cont ->
-                        reader = ParkedReader(sink, byteCount, cont)
-                    }
-                } catch (t: Throwable) {
-                    // A PipeResetException is the peer's terminal signal, not a stranded read: leave
-                    // the read side open so every later receive() re-throws it (the KDoc contract),
-                    // rather than a read-closed IllegalStateException. Any other abort (cancellation
-                    // included) may have stranded bytes in a sink nobody will read — close the read
-                    // side so the pipe lands in ONE predictable state: done reading, peer gets EPIPE.
-                    // Deliberate fire-and-forget: cleanup must not mask the abort cause.
-                    if (t !is PipeResetException) runCatching { closeReadNow(t) }
-                    throw t
-                } finally {
-                    receiving = false
                 }
+            } catch (t: Throwable) {
+                // Prompt cancellation thrown at the withContext boundary AFTER the body completed: the
+                // bytes were already moved out of inbound / a DRAIN sent, but withContext discards the
+                // return value, so honor the same abort-closes-the-read-side contract. `entered` gates
+                // out pre-read misuse; `cleaned` skips the in-body path that already closed it; a
+                // re-hop is needed because closeReadNow is engine-confined (NonCancellable to survive
+                // the very cancellation that brought us here). On any completion the reader is already
+                // null (sync paths never parked; a parked read that completed was resumed by deliver),
+                // so this closeReadNow can't race a live deliver.
+                if (entered && !cleaned && t !is PipeResetException) {
+                    withContext(engineDispatcher + NonCancellable) { runCatching { closeReadNow(t) } }
+                }
+                throw t
             }
         }
 
@@ -437,7 +527,10 @@ class QuickJsRuntime private constructor(
 
         // No more data either way — drop routing. (The runtime close() reaps everything regardless.)
         private fun maybeReap() {
-            if (weEnded && (writeEnded || readClosed)) pipes.remove(id)
+            if (weEnded && (writeEnded || readClosed)) {
+                pipes.remove(id)
+                notifyIfIdle()
+            }
         }
 
         /** Runtime teardown: poison the pipe on BOTH sides and fail anything parked — a
@@ -482,6 +575,7 @@ class QuickJsRuntime private constructor(
             val cause = QuickJsException("runtime closed")
             val open = pipes.values.toList()
             pipes.clear()
+            notifyIfIdle() // no pipes is factually true; idle waiters complete, not throw
             for (p in open) p.failPending(cause)
             yield() // let the failed continuations unwind while the engine is still alive
             engine.destroy()
@@ -490,9 +584,58 @@ class QuickJsRuntime private constructor(
     }
 
     companion object {
-        suspend fun create(): QuickJsRuntime {
+        /** [onLog] levels: the bundle's console methods, plus 4 = an unhandled promise rejection
+         *  (the classic silent async failure, surfaced by the C-side tracker). */
+        const val LOG_DEBUG = 0
+        const val LOG_INFO = 1
+        const val LOG_WARN = 2
+        const val LOG_ERROR = 3
+        const val LOG_REJECTION = 4
+
+        /**
+         * [script] is the engine JS (the :engine-js bundle). It must define the transport globals
+         * (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`, `ymix`) — the native engine
+         * captures them right after the one eval, so the script is only accepted HERE, never
+         * loaded onto a live runtime. This module ships no JS.
+         *
+         * [configure] runs on the fresh runtime BEFORE the eval — register [onAccept] handlers
+         * there, and the bundle's top-level code can already open every host command it needs
+         * (the eval is the engine's boot; a handler registered after [create] returns would miss
+         * boot-time opens). Before the eval, C installs the frozen, non-writable `versions`
+         * global (`{app: appVersion}`) the bundle branches on for backward compatibility — the
+         * host ships as one app build, so the app version identifies its whole surface.
+         */
+        suspend fun create(
+            script: String,
+            appVersion: Int = 0,
+            onLog: ((level: Int, message: String) -> Unit)? = null,
+            configure: (QuickJsRuntime) -> Unit = {},
+        ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngine(script) }
+
+        /** The [ByteArray] twin, from [compile]d bytecode (same contract — `versions` is
+         *  installed at create, so the version is never baked into the blob). */
+        suspend fun create(
+            bytecode: ByteArray,
+            appVersion: Int = 0,
+            onLog: ((level: Int, message: String) -> Unit)? = null,
+            configure: (QuickJsRuntime) -> Unit = {},
+        ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
+
+        /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
+         *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding
+         *  the whole script in the bytecode); line-number debug info is kept for stack traces. */
+        suspend fun compile(script: String, filename: String = "<engine>"): ByteArray =
+            withContext(Dispatchers.Default) { NativeEngine.compile(script, filename) }
+
+        private suspend fun create(
+            appVersion: Int,
+            onLog: ((level: Int, message: String) -> Unit)?,
+            configure: (QuickJsRuntime) -> Unit,
+            eval: (NativeEngine) -> Unit,
+        ): QuickJsRuntime {
             val dispatcher = newEngineDispatcher()
             var engine: NativeEngine? = null
+            var owned = false // rt took over engine + dispatcher; its close() is the teardown
             try {
                 var rtRef: QuickJsRuntime? = null
                 val callbacks = object : EngineCallbacks {
@@ -501,21 +644,33 @@ class QuickJsRuntime private constructor(
                     override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
                     override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
                     override fun onDrain(id: Int) { rtRef?.onDrain(id) }
+                    override fun onLog(level: Int, message: String) { rtRef?.onLog(level, message) }
                 }
                 // Assign INSIDE the block: prompt-cancellation throws a CancellationException on the
                 // way back out of a withContext whose body already completed, so `engine = <result>`
                 // would never run and the catch would see null and leak the freshly-created engine.
                 // Assigned in-block, the engine is visible to the catch on that path.
-                withContext(dispatcher) { engine = NativeEngine.create(BOOTSTRAP_JS, callbacks) }
-                val rt = QuickJsRuntime(engine!!, dispatcher)
+                withContext(dispatcher) { engine = NativeEngine.create(appVersion, callbacks) }
+                val rt = QuickJsRuntime(engine!!, dispatcher, onLog)
                 rtRef = rt
+                owned = true
                 rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
+                try {
+                    configure(rt) // register the host-served commands the bundle's boot may open
+                    withContext(dispatcher) { eval(rt.engine) }
+                } catch (t: Throwable) {
+                    // Full close, not the bare teardown: pipes may have opened during the failed boot.
+                    runCatching { rt.close() }
+                    throw t
+                }
                 return rt
             } catch (t: Throwable) {
                 // A partial create must free the engine thread (and the native engine, if it got
                 // that far) — otherwise each failed/retried create() leaks a dispatcher thread.
-                engine?.let { e -> runCatching { withContext(dispatcher + NonCancellable) { e.destroy() } } }
-                dispatcher.close()
+                if (!owned) {
+                    engine?.let { e -> runCatching { withContext(dispatcher + NonCancellable) { e.destroy() } } }
+                    dispatcher.close()
+                }
                 throw t
             }
         }

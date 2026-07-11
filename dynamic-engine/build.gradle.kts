@@ -1,18 +1,4 @@
-@file:Suppress("UnstableApiUsage")
-
-import com.google.javascript.jscomp.CompilationLevel
-import com.google.javascript.jscomp.Compiler
-import com.google.javascript.jscomp.CompilerOptions
-import com.google.javascript.jscomp.SourceFile
-import com.google.javascript.jscomp.WarningLevel
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
-// Closure Compiler (pure-JVM JS minifier) on the build classpath, only for this module — used to
-// minify the HTTP preamble at build time (see generateHttpJs). No Node/npm toolchain.
-buildscript {
-    repositories { mavenCentral() }
-    dependencies { classpath("com.google.javascript:closure-compiler:v20231112") }
-}
 
 plugins {
     kotlin("multiplatform")
@@ -73,56 +59,40 @@ kotlin {
     }
 }
 
-// JS preambles: authored (with comments) in js/*.js, minified at build time with Closure Compiler
-// (SIMPLE, no transpile) and emitted as generated Kotlin consts the engine loads. Mirrors
-// :quickjs's bootstrap handling — globals (HttpRequest, commandHandler, …) and property names are
-// preserved.
-val jsPreambles = listOf(
-    "http.js" to "HTTP_JS",
-    "command.js" to "COMMAND_JS",
-)
-val preambleKtDir = layout.buildDirectory.dir("generated/httpJs")
-
-val generateJsPreambles by tasks.registering {
-    for ((jsName, _) in jsPreambles) inputs.file(layout.projectDirectory.file("js/$jsName"))
-    outputs.dir(preambleKtDir)
-    doLast {
-        preambleKtDir.get().asFile.deleteRecursively() // no stale consts from renamed preambles
-        val dir = preambleKtDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
-        for ((jsName, constName) in jsPreambles) {
-            val options = CompilerOptions().apply {
-                setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_NEXT)
-                setLanguageOut(CompilerOptions.LanguageMode.NO_TRANSPILE) // keep async/await, classes
-            }
-            CompilationLevel.SIMPLE_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
-            WarningLevel.QUIET.setOptionsForWarningLevel(options)
-            val compiler = Compiler()
-            val result = compiler.compile(
-                emptyList<SourceFile>(), // externs (none) — undeclared globals (ymix, …) preserved
-                listOf(SourceFile.fromCode(jsName, layout.projectDirectory.file("js/$jsName").asFile.readText())),
-                options,
-            )
-            if (!result.success) {
-                throw GradleException("$jsName minify failed:\n" + compiler.errors.joinToString("\n"))
-            }
-            val minified = compiler.toSource()
-            check(minified.isNotBlank()) { "closure produced empty output for $jsName" }
-            val escaped = minified
+// The :engine-js bundles, embedded as consts: ENGINE_JS (production, Closure ADVANCED) is the
+// baseline DynamicEngine.create evals as the runtime's creation script (a remote bundle replaces
+// it via the engineJs parameter); ENGINE_TEST_JS (production + test fixtures) is what the tests
+// run on.
+fun embedBundle(configName: String, projectConfig: String, constName: String, ktFile: String, sourceSet: String) {
+    val config = configurations.create(configName) {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+    }
+    dependencies { config(project(":engine-js", projectConfig)) }
+    val ktDir = layout.buildDirectory.dir("generated/" + configName)
+    val taskName = "generate" + configName.replaceFirstChar { it.uppercase() } + "Kt"
+    val task = tasks.register(taskName) {
+        inputs.files(config)
+        outputs.dir(ktDir)
+        doLast {
+            val bundle = config.singleFile.readText()
+            check(bundle.isNotBlank()) { "engine-js produced an empty bundle for " + configName }
+            val escaped = bundle
                 .replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\$", "\${'\$'}").replace("\n", "\\n").replace("\t", "\\t")
-            val ktName = constName.split("_").joinToString("") { part ->
-                part.lowercase().replaceFirstChar { it.uppercase() }
-            }
-            dir.resolve("${ktName}Preamble.kt").writeText(
+                .replace("${'$'}", "${'$'}{'${'$'}'}").replace("\n", "\\n").replace("\t", "\\t")
+            val dir = ktDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
+            dir.resolve(ktFile).writeText(
                 """
                 |package ymusic.dynamicengine.internal
                 |
-                |// GENERATED — do not edit. Minified from js/$jsName (Closure Compiler) at build time.
+                |// GENERATED — do not edit. The :engine-js "$projectConfig" artifact, embedded at build time.
                 |internal const val $constName: String = "$escaped"
                 |""".trimMargin(),
             )
         }
     }
+    kotlin.sourceSets.getByName(sourceSet).kotlin.srcDir(files(ktDir).builtBy(task))
 }
 
-kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(preambleKtDir).builtBy(generateJsPreambles))
+embedBundle("engineJsBundle", "engineJs", "ENGINE_JS", "EngineJsPreamble.kt", "commonMain")
+embedBundle("engineTestJsBundle", "engineTestJs", "ENGINE_TEST_JS", "EngineTestJsPreamble.kt", "commonTest")

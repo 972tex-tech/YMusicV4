@@ -47,6 +47,7 @@ typedef struct Engine {
     jmethodID onCloseWrite; /* static void onCloseWrite(long, int, String|null) */
     jmethodID onCloseRead;  /* static void onCloseRead(long, int) */
     jmethodID onDrain;    /* static void onDrain(long, int) */
+    jmethodID onLog;      /* static void onLog(long, int, String) */
     JSValue jsOpen, jsClose, jsCloseRead, jsDrain; /* JS mux entry points (C -> JS) */
     int in_critical;      /* a host ByteArray is held critically: JNI re-entry is forbidden */
     uint32_t pending_drains[PENDING_DRAIN_MAX];
@@ -96,6 +97,13 @@ static jstring utf8_to_jstring(JNIEnv *env, const char *s, size_t len) {
 static char *jstring_to_utf8(JNIEnv *env, jstring s, size_t *outLen) {
     jsize n = (*env)->GetStringLength(env, s);
     const jchar *u = (*env)->GetStringChars(env, s, NULL);
+    /* n*4+1 (max UTF-8 expansion) must not overflow size_t — it can on 32-bit ABIs (armv7/x86)
+     * for a pathological ~1 GB string. Guard before the malloc; callers treat NULL as OOM. */
+    if (n < 0 || (size_t)n > (SIZE_MAX - 1) / 4) {
+        (*env)->ReleaseStringChars(env, s, u);
+        if (outLen) *outLen = 0;
+        return NULL;
+    }
     char *buf = (char *)malloc((size_t)n * 4 + 1);
     if (!buf) { /* OOM: release the pinned chars and report empty; callers guard the null (see create/evalSync) */
         (*env)->ReleaseStringChars(env, s, u);
@@ -148,7 +156,7 @@ static void flush_pending(Engine *e, JNIEnv *env) {
 
 /* A Kotlin callback that threw leaves a pending Java exception; continuing to run JS (or making
  * further JNI calls) with one pending is undefined behavior. Convert it into a JS exception so the
- * bootstrap's normal failure paths (RESET the pipe, reject the caller) take over. */
+ * the transport JS's normal failure paths (RESET the pipe, reject the caller) take over. */
 static int check_java_exception(Engine *e, JNIEnv *env, JSContext *ctx) {
     if (!(*env)->ExceptionCheck(env)) return 0;
     (*env)->ExceptionDescribe(env);
@@ -160,7 +168,7 @@ static int check_java_exception(Engine *e, JNIEnv *env, JSContext *ctx) {
 /* ---- inbound: JS -> host (JS calls these) ---- */
 
 /* __hostOpen(id, command) -> 0 accepted | -1 refused (no handler / host callback failed) |
- * -2 called under a critical region (bootstrap bug). C-error-code style: the JS side checks the
+ * -2 called under a critical region (transport JS bug). C-error-code style: the JS side checks the
  * code and cleans up its registry — no exception crosses the boundary for the normal refusal. */
 static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
@@ -259,6 +267,56 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
+/* __consoleLog(level, msg) — the bundle's console + diagnostics, straight to the Kotlin log hook
+ * (no pipe: logging must work from the first instruction of the boot eval and when the pipe
+ * layer itself is sick). Coercions run before the callback; nothing is held across them. */
+static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    if (e->in_critical) return JS_ThrowInternalError(ctx, "__consoleLog during data delivery");
+    JNIEnv *env = engine_env(e);
+    int32_t level = 0;
+    JS_ToInt32(ctx, &level, argv[0]);
+    if (level < 0 || level > 3) level = 3;
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, argv[1]);
+    if (!msg) return JS_EXCEPTION;
+    jstring jmsg = utf8_to_jstring(env, msg, len);
+    JS_FreeCString(ctx, msg);
+    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)level, jmsg);
+    (*env)->DeleteLocalRef(env, jmsg);
+    if (check_java_exception(e, env, ctx)) return JS_EXCEPTION;
+    return JS_UNDEFINED;
+}
+
+/* Rejections nobody handles are the classic silent async failure — surface them on the log
+ * channel (level 4). is_handled=true retractions are ignored: a breadcrumb, not a crash record. */
+static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
+                                      int is_handled, void *opaque) {
+    if (is_handled) return;
+    Engine *e = (Engine *)opaque;
+    if (!e || e->in_critical) return; /* never re-enter JNI under a critical region */
+    JNIEnv *env = engine_env(e);
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, reason);
+    if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        msg = "(unprintable reason)";
+        len = 20;
+        jstring jm = utf8_to_jstring(env, msg, len);
+        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
+        (*env)->DeleteLocalRef(env, jm);
+    } else {
+        jstring jm = utf8_to_jstring(env, msg, len);
+        JS_FreeCString(ctx, msg);
+        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
+        (*env)->DeleteLocalRef(env, jm);
+    }
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+    }
+}
+
 /* Inbound flow control from the C pipe layer: its buffer drained below low-water; resume the
  * host's parked writer. Fires from JS-initiated read paths only — never under the critical
  * region by construction; queued as defense if it ever were. */
@@ -283,8 +341,7 @@ static int drain_hook(void *user, uint32_t id) {
 
 /* ---- JNI entry points (all on the single engine thread) ---- */
 
-JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jbootstrap) {
+static Engine *engine_new(JNIEnv *env, jint appVersion) {
     Engine *e = (Engine *)calloc(1, sizeof(Engine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -299,55 +356,126 @@ Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jboo
     e->onCloseWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseWrite", "(JILjava/lang/String;)V");
     e->onCloseRead = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseRead", "(JI)V");
     e->onDrain = (*env)->GetStaticMethodID(env, e->bridgeClass, "onDrain", "(JI)V");
+    e->onLog = (*env)->GetStaticMethodID(env, e->bridgeClass, "onLog", "(JILjava/lang/String;)V");
 
     JSValue global = JS_GetGlobalObject(e->ctx);
     JS_SetPropertyStr(e->ctx, global, "__hostOpen", JS_NewCFunction(e->ctx, js_host_open, "__hostOpen", 2));
     JS_SetPropertyStr(e->ctx, global, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, global, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
     JS_SetPropertyStr(e->ctx, global, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
+    JS_SetPropertyStr(e->ctx, global, "__consoleLog", JS_NewCFunction(e->ctx, js_console_log, "__consoleLog", 2));
     JS_FreeValue(e->ctx, global);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
+    qjs_install_versions(e->ctx, appVersion);
+    JS_SetHostPromiseRejectionTracker(e->rt, promise_rejection_tracker, e);
+    return e;
+}
 
-    size_t blen = 0;
-    char *bootstrap = jstring_to_utf8(env, jbootstrap, &blen);
-    if (!bootstrap) { /* OOM converting the bootstrap source — tear down and report, don't feed JS_Eval a null */
-        (*env)->DeleteGlobalRef(env, e->bridgeClass);
-        qjs_pipe_ctx_release(e->pipe, e->ctx);
-        JS_FreeContext(e->ctx);
-        JS_FreeRuntime(e->rt);
-        qjs_pipe_ctx_free(e->pipe);
-        free(e);
-        throw_qjs(env, utf8_to_jstring(env, "out of memory (bootstrap)", 25));
-        return 0;
-    }
-    JSValue bret = JS_Eval(e->ctx, bootstrap, blen, "<bootstrap>", JS_EVAL_TYPE_GLOBAL);
-    free(bootstrap);
-    if (JS_IsException(bret)) {
-        JSValue exc = JS_GetException(e->ctx);
-        const char *msg = JS_ToCString(e->ctx, exc);
-        throw_qjs(env, utf8_to_jstring(env, msg ? msg : "bootstrap failed", msg ? strlen(msg) : 16));
-        if (msg) JS_FreeCString(e->ctx, msg);
-        JS_FreeValue(e->ctx, exc);
-        JS_FreeValue(e->ctx, bret);
-        /* full teardown — a failed create must not leak the engine (Kotlin may retry) */
-        (*env)->DeleteGlobalRef(env, e->bridgeClass);
-        qjs_pipe_ctx_release(e->pipe, e->ctx);
-        JS_FreeContext(e->ctx);
-        JS_FreeRuntime(e->rt);
-        qjs_pipe_ctx_free(e->pipe);
-        free(e);
-        return 0;
-    }
-    JS_FreeValue(e->ctx, bret);
+/* Throw the pending JS exception as a QuickJsException (falls back to [fallback]). */
+static void throw_js_exception(JNIEnv *env, JSContext *ctx, const char *fallback) {
+    JSValue exc = JS_GetException(ctx);
+    size_t mlen = 0;
+    const char *msg = JS_ToCStringLen(ctx, &mlen, exc);
+    throw_qjs(env, utf8_to_jstring(env, msg ? msg : fallback, msg ? mlen : strlen(fallback)));
+    if (msg) JS_FreeCString(ctx, msg);
+    JS_FreeValue(ctx, exc);
+}
 
+static void engine_capture(Engine *e) {
     JSValue g = JS_GetGlobalObject(e->ctx);
     e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
     e->jsClose = JS_GetPropertyStr(e->ctx, g, "__jsClose");
     e->jsCloseRead = JS_GetPropertyStr(e->ctx, g, "__jsCloseRead");
     e->jsDrain = JS_GetPropertyStr(e->ctx, g, "__jsDrain");
     JS_FreeValue(e->ctx, g);
-    return (jlong)(intptr_t)e;
+}
+
+JNIEXPORT jlong JNICALL
+Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jint appVersion) {
+    return (jlong)(intptr_t)engine_new(env, appVersion);
+}
+
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong handle,
+                                             jstring jscript) {
+    Engine *e = (Engine *)(intptr_t)handle;
+    size_t blen = 0;
+    char *script = jstring_to_utf8(env, jscript, &blen);
+    if (!script) { /* OOM converting the script source — don't feed JS_Eval a null */
+        throw_qjs(env, utf8_to_jstring(env, "out of memory (script)", 22));
+        return;
+    }
+    JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
+    free(script);
+    if (JS_IsException(bret)) {
+        throw_js_exception(env, e->ctx, "engine script failed");
+        return;
+    }
+    JS_FreeValue(e->ctx, bret);
+    pump_jobs(e); /* top-level JS may open host pipes; let its microtasks settle before capture */
+    engine_capture(e);
+}
+
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_evalEngineBytecode(JNIEnv *env, jobject thiz, jlong handle,
+                                                     jbyteArray jbc) {
+    Engine *e = (Engine *)(intptr_t)handle;
+    jsize bclen = (*env)->GetArrayLength(env, jbc);
+    jbyte *bc = (*env)->GetByteArrayElements(env, jbc, NULL);
+    JSValue fn = bc ? JS_ReadObject(e->ctx, (const uint8_t *)bc, (size_t)bclen, JS_READ_OBJ_BYTECODE)
+                    : JS_ThrowInternalError(e->ctx, "out of memory (bytecode)");
+    if (bc) (*env)->ReleaseByteArrayElements(env, jbc, bc, JNI_ABORT);
+    if (JS_IsException(fn)) {
+        throw_js_exception(env, e->ctx, "bad bytecode");
+        return;
+    }
+    JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    if (JS_IsException(r)) {
+        throw_js_exception(env, e->ctx, "engine bytecode failed");
+        return;
+    }
+    JS_FreeValue(e->ctx, r);
+    pump_jobs(e);
+    engine_capture(e);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_ymusic_quickjs_QuickJsNative_compile(JNIEnv *env, jobject thiz, jstring jscript,
+                                          jstring jfilename) {
+    size_t slen = 0;
+    char *script = jstring_to_utf8(env, jscript, &slen);
+    char *filename = jstring_to_utf8(env, jfilename, NULL);
+    if (!script || !filename) {
+        free(script);
+        free(filename);
+        throw_qjs(env, utf8_to_jstring(env, "out of memory", 13));
+        return NULL;
+    }
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JS_SetStripInfo(rt, JS_STRIP_SOURCE); /* consumed at parse time — must precede JS_Eval */
+    jbyteArray result = NULL;
+    JSValue fn = JS_Eval(ctx, script, slen, filename, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+    free(script);
+    free(filename);
+    if (JS_IsException(fn)) {
+        throw_js_exception(env, ctx, "compile failed");
+    } else {
+        size_t sz = 0;
+        uint8_t *buf = JS_WriteObject(ctx, &sz, fn, JS_WRITE_OBJ_BYTECODE);
+        if (!buf) {
+            throw_js_exception(env, ctx, "bytecode write failed");
+        } else {
+            result = (*env)->NewByteArray(env, (jsize)sz);
+            if (result) (*env)->SetByteArrayRegion(env, result, 0, (jsize)sz, (const jbyte *)buf);
+            js_free(ctx, buf);
+        }
+    }
+    JS_FreeValue(ctx, fn);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return result;
 }
 
 JNIEXPORT jstring JNICALL
@@ -395,7 +523,7 @@ static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
-    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* bootstrap bug; don't leave it pending */
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
     JS_FreeValue(e->ctx, r);
     JS_FreeValue(e->ctx, g);
     for (int i = 0; i < argc; i++) JS_FreeValue(e->ctx, argv[i]);
@@ -420,6 +548,12 @@ Java_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong handle,
                                         jbyteArray bytes, jint off, jint len) {
     Engine *e = (Engine *)(intptr_t)handle;
     if (len <= 0) return 0;
+    /* off/len come from the Kotlin mux; bound them against the array before pinning so a caller bug
+     * can't hand qjs_pipe_write a pointer past the buffer (the native shim validates the same way for
+     * JS-supplied ranges). Do it before GetPrimitiveArrayCritical — GetArrayLength is illegal under it. */
+    jsize alen = (*env)->GetArrayLength(env, bytes);
+    if (off < 0 || (jlong)off + (jlong)len > (jlong)alen)
+        return -1;
     jbyte *base = (*env)->GetPrimitiveArrayCritical(env, bytes, NULL);
     if (!base) return -1;
     e->in_critical = 1;

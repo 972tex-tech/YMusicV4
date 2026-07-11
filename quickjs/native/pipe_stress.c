@@ -1,15 +1,16 @@
 /*
  * ASan/UBSan harness for the C pipe layer (dev-only; not part of any shipped build).
  *
- * Drives the REAL engine — quickjs_native.c's qjs_* API over the real bootstrap.js — through the
+ * Drives the REAL engine — quickjs_native.c's qjs_* API over the real engine bundle — through the
  * pipe scenarios whose memory management is now C's problem: fragmented delivery into every read
  * type, cap/backpressure/drain, RESET into a parked read, closeRead vs a writing host, a refused
  * open, GC with parked jobs, and teardown with live parked pipes.
  *
- * Build & run (from quickjs/native):
+ * Build & run (from quickjs/native; build the TEST bundle first — it carries the stress
+ * fixtures: ./gradlew :engine-js:bundleTestJs):
  *   JAVA_HOME=$(/usr/libexec/java_home) cmake -S . -B build-asan
  *   cmake --build build-asan --target pipe_stress
- *   ./build-asan/pipe_stress js/bootstrap.js
+ *   ./build-asan/pipe_stress ../../engine-js/build/dist/engine-test.js
  * Exits 0 with "ALL OK" or 1 on the first failed check / any sanitizer report.
  * (Apple clang's ASan has no leak detection; this catches UAF/overflow/double-free + UB.)
  */
@@ -104,6 +105,9 @@ static int host_cb(void *user, int op, uint32_t id, const uint8_t *data, size_t 
         if (i >= 0) h->p[i].drains++;
         return 0;
     }
+    case QJS_OP_LOG:
+        fprintf(stderr, "[js log %u] %.*s\n", id, (int)len, (const char *)data);
+        return 0;
     }
     return -1;
 }
@@ -136,17 +140,7 @@ static char *read_file(const char *path) {
 
 /* S1: every read type over worst-case fragmentation (one byte per write). */
 static void scenario_fragmented_reads(QjsEngine *e) {
-    free(eval(e,
-        "ymix.onAccept('t1', async function (p) {"
-        "  var line = await p.source.readUtf8Line(true);"
-        "  var obj = await p.source.readJsonObject();"
-        "  var i = await p.source.readInt();"
-        "  var l = await p.source.readLong();"
-        "  var rest = await p.source.readUtf8();"
-        "  var eof = await p.source.receive(new Uint8Array(1), 0, 1);"
-        "  globalThis.r1 = line + '|' + JSON.stringify(obj) + '|' + i + '|' + l + '|' + rest + '|' + eof;"
-        "});"));
-    CHECK(qjs_open(e, 1, "t1") == 0, "open t1");
+    CHECK(qjs_open(e, 1, "t1") == 0, "open t1"); /* handler = the bundle's stress fixture */
     static const uint8_t payload[] = {
         'h', 'e', 'l', 'l', 'o', 0xF0, 0x9F, 0x8E, 0xB5, '\r', '\n',            /* hello🎵\r\n */
         '{', '"', 'a', '"', ':', '[', '1', ',', '2', ']', ',',
@@ -163,19 +157,7 @@ static void scenario_fragmented_reads(QjsEngine *e) {
 
 /* S2: fill the 64 KB cap against a gated reader, then drain and finish. */
 static void scenario_backpressure(QjsEngine *e, Host *h) {
-    free(eval(e,
-        "ymix.onAccept('t2', async function (p) {"
-        "  await new Promise(function (res) { globalThis.go2 = res; });"
-        "  var total = 0, sum = 0, buf = new Uint8Array(4096);"
-        "  for (;;) {"
-        "    var n = await p.source.receive(buf, 0, buf.length);"
-        "    if (n < 0) break;"
-        "    total += n;"
-        "    for (var i = 0; i < n; i++) sum = (sum + buf[i]) & 0xffff;"
-        "  }"
-        "  globalThis.r2 = total + ':' + sum;"
-        "});"));
-    CHECK(qjs_open(e, 3, "t2") == 0, "open t2");
+    CHECK(qjs_open(e, 3, "t2") == 0, "open t2"); /* handler = the bundle's stress fixture */
     enum { TOTAL = 300000, CHUNK = 8192 };
     uint8_t chunk[CHUNK];
     size_t sent = 0;
@@ -206,13 +188,7 @@ static void scenario_backpressure(QjsEngine *e, Host *h) {
 
 /* S3: RESET lands in a parked strict line read as a thrown reason. */
 static void scenario_reset(QjsEngine *e) {
-    free(eval(e,
-        "ymix.onAccept('t3', function (p) {"
-        "  return p.source.readUtf8Line(true).then("
-        "    function (v) { globalThis.r3 = 'ok:' + v; },"
-        "    function (err) { globalThis.r3 = 'err:' + err.message; });"
-        "});"));
-    CHECK(qjs_open(e, 5, "t3") == 0, "open t3");
+    CHECK(qjs_open(e, 5, "t3") == 0, "open t3"); /* handler = the bundle's stress fixture */
     CHECK(qjs_write(e, 5, (const uint8_t *)"no newline yet", 14) == 14, "partial line accepted");
     qjs_close_write(e, 5, "boom\xF0\x9F\x92\xA5");
     eval_expect(e, "globalThis.r3", "err:boom\xF0\x9F\x92\xA5");
@@ -220,13 +196,7 @@ static void scenario_reset(QjsEngine *e) {
 
 /* S4: JS closeRead -> host write returns EPIPE; a read after closeRead throws. */
 static void scenario_close_read(QjsEngine *e, Host *h) {
-    free(eval(e,
-        "ymix.onAccept('t4', function (p) {"
-        "  p.source.close();"
-        "  try { p.source.readInt(); globalThis.r4 = 'no-throw'; }"
-        "  catch (err) { globalThis.r4 = 'threw:' + err.message; }"
-        "});"));
-    CHECK(qjs_open(e, 7, "t4") == 0, "open t4");
+    CHECK(qjs_open(e, 7, "t4") == 0, "open t4"); /* handler = the bundle's stress fixture */
     uint8_t b = 42;
     CHECK(qjs_write(e, 7, &b, 1) == -1, "write after closeRead is EPIPE");
     int i = host_slot(h, 7);
@@ -236,17 +206,7 @@ static void scenario_close_read(QjsEngine *e, Host *h) {
 
 /* S5: outbound — JS writes through the staging sink to a slow host, paced by drains. */
 static void scenario_outbound(QjsEngine *e, Host *h) {
-    free(eval(e,
-        "(function () {"
-        "  var p = ymix.open('slow');"
-        "  globalThis.p5 = p;"
-        "  var big = 'x'.repeat(50000) + '\xF0\x9F\x8E\xB5';"
-        "  Promise.resolve(p.sink.writeUtf8(big)).then(function () {"
-        "    return p.sink.flush();"
-        "  }).then(function () {"
-        "    return p.sink.close();"
-        "  }).then(function () { globalThis.r5 = 'sent'; });"
-        "})()"));
+    CHECK(qjs_open(e, 11, "t5") == 0, "open t5"); /* trigger: the fixture opens 'slow' and streams */
     uint32_t id = 0;
     for (int i = 0; i < MAXP; i++)
         if (h->p[i].used && h->p[i].slow) id = h->p[i].id;
@@ -265,19 +225,13 @@ static void scenario_outbound(QjsEngine *e, Host *h) {
 
 /* S6: a refused open leaves nothing behind on either side. */
 static void scenario_refused_open(QjsEngine *e) {
-    eval_expect(e,
-        "(function () { try { ymix.open('nope'); return 'opened'; } catch (err) { return err.message; } })()",
-        "open(\"nope\") refused by host");
+    CHECK(qjs_open(e, 13, "t6") == 0, "open t6"); /* trigger: the fixture tries open('nope') */
+    eval_expect(e, "globalThis.r6", "open(\"nope\") refused by host");
 }
 
 /* S7: GC with a parked job (gc_mark must keep dst/capability/parser alive), then complete it. */
 static void scenario_gc_parked(QjsEngine *e) {
-    free(eval(e,
-        "ymix.onAccept('t7', async function (p) {"
-        "  var obj = await p.source.readJsonObject();"
-        "  globalThis.r7 = JSON.stringify(obj);"
-        "});"));
-    CHECK(qjs_open(e, 9, "t7") == 0, "open t7");
+    CHECK(qjs_open(e, 9, "t7") == 0, "open t7"); /* handler = the bundle's stress fixture */
     CHECK(qjs_write(e, 9, (const uint8_t *)"{\"deep\":[[[", 11) == 11, "half a json accepted");
     JS_RunGC(e->rt);
     CHECK(qjs_write(e, 9, (const uint8_t *)"1]]]}", 5) == 5, "rest accepted");
@@ -287,14 +241,12 @@ static void scenario_gc_parked(QjsEngine *e) {
 
 /* S8: teardown with parked reads (incl. a JSON job holding half-built containers), a never-drained
  * buffer, and a live registry (finalizer + gc_mark paths). */
-static void scenario_teardown(const char *bootstrap, Host *h) {
+static void scenario_teardown(const char *script, Host *h) {
     char *err = NULL;
-    QjsEngine *e = qjs_create(bootstrap, host_cb, h, &err);
-    CHECK(e != NULL, "second engine: %s", err ? err : "?");
-    free(eval(e, "ymix.onAccept('park', function (p) { return p.source.readUtf8(); });"
-               "ymix.onAccept('jsonpark', function (p) { return p.source.readJsonObject(); });"
-               "ymix.onAccept('full', function (p) { return new Promise(function () {}); });"));
-    CHECK(qjs_open(e, 1, "park") == 0, "open park");
+    QjsEngine *e = qjs_create(1, host_cb, h);
+    CHECK(e != NULL, "second engine");
+    CHECK(qjs_eval_engine(e, script, &err) == 0, "second engine eval: %s", err ? err : "?");
+    CHECK(qjs_open(e, 1, "park") == 0, "open park"); /* handlers = the bundle's stress fixtures */
     CHECK(qjs_open(e, 3, "full") == 0, "open full");
     CHECK(qjs_open(e, 5, "jsonpark") == 0, "open jsonpark");
     CHECK(qjs_write(e, 5, (const uint8_t *)"{\"a\":[1,{\"b\":", 13) == 13, "half a json parked");
@@ -306,13 +258,14 @@ static void scenario_teardown(const char *bootstrap, Host *h) {
 }
 
 int main(int argc, char **argv) {
-    const char *path = argc > 1 ? argv[1] : "js/bootstrap.js";
-    char *bootstrap = read_file(path);
+    const char *path = argc > 1 ? argv[1] : "../../engine-js/build/dist/engine-test.js";
+    char *script = read_file(path);
     Host host;
     memset(&host, 0, sizeof(host));
     char *err = NULL;
-    QjsEngine *e = qjs_create(bootstrap, host_cb, &host, &err);
-    CHECK(e != NULL, "create: %s", err ? err : "?");
+    QjsEngine *e = qjs_create(1, host_cb, &host);
+    CHECK(e != NULL, "create");
+    CHECK(qjs_eval_engine(e, script, &err) == 0, "eval engine: %s", err ? err : "?");
 
     scenario_fragmented_reads(e);
     scenario_backpressure(e, &host);
@@ -326,9 +279,9 @@ int main(int argc, char **argv) {
 
     Host host2;
     memset(&host2, 0, sizeof(host2));
-    scenario_teardown(bootstrap, &host2);
+    scenario_teardown(script, &host2);
 
-    free(bootstrap);
+    free(script);
     printf("ALL OK\n");
     return 0;
 }

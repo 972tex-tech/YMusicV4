@@ -92,7 +92,7 @@ static JSValue js_host_close(JSContext *ctx, JSValueConst this_val, int argc, JS
     }
     /* The trampoline returns 0 on success, -1 when the host callback threw. Unlike open/data the
      * return here isn't a protocol value, so a failure would vanish — raise it as a JS exception so
-     * the bootstrap's failure paths engage (mirrors the JNI check_java_exception path). */
+     * the transport JS's failure paths engage (mirrors the JNI check_java_exception path). */
     int rc = 0;
     if (e->cb) rc = e->cb(e->user, QJS_OP_CLOSE_WRITE, id, (const uint8_t *)out, rlen);
     if (reason) JS_FreeCString(ctx, reason);
@@ -111,7 +111,50 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
-QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char **err) {
+/* __consoleLog(level, msg) — the bundle's console + diagnostics, straight to the host callback
+ * (no pipe: logging must work from the first instruction of the boot eval and when the pipe
+ * layer itself is sick). Coercions run before the callback; nothing is held across them. */
+static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
+    int32_t level = 0;
+    JS_ToInt32(ctx, &level, argv[0]);
+    if (level < 0 || level > 3) level = 3;
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, argv[1]);
+    if (!msg) return JS_EXCEPTION;
+    if (e->cb) e->cb(e->user, QJS_OP_LOG, (uint32_t)level, (const uint8_t *)msg, len);
+    JS_FreeCString(ctx, msg);
+    return JS_UNDEFINED;
+}
+
+/* Rejections nobody handles are the classic silent async failure — surface them on the log
+ * channel. is_handled=true retractions are ignored: a breadcrumb, not a crash record. */
+static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
+                                      int is_handled, void *opaque) {
+    if (is_handled) return;
+    QjsEngine *e = (QjsEngine *)opaque;
+    if (!e || !e->cb) return;
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, reason);
+    if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)"(unprintable reason)", 20);
+        return;
+    }
+    e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)msg, len);
+    JS_FreeCString(ctx, msg);
+}
+
+/* Extract the pending JS exception into *err (malloc'd; falls back to [fallback]). */
+static void set_err(JSContext *ctx, char **err, const char *fallback) {
+    JSValue exc = JS_GetException(ctx);
+    const char *m = JS_ToCString(ctx, exc);
+    if (err) *err = strdup(m ? m : fallback);
+    if (m) JS_FreeCString(ctx, m);
+    JS_FreeValue(ctx, exc);
+}
+
+static QjsEngine *engine_new(int app_version, QjsInboundCb cb, void *user) {
     QjsEngine *e = (QjsEngine *)calloc(1, sizeof(QjsEngine));
     e->rt = JS_NewRuntime();
     e->ctx = JS_NewContext(e->rt);
@@ -125,34 +168,88 @@ QjsEngine *qjs_create(const char *bootstrap, QjsInboundCb cb, void *user, char *
     JS_SetPropertyStr(e->ctx, g, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, g, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
     JS_SetPropertyStr(e->ctx, g, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
+    JS_SetPropertyStr(e->ctx, g, "__consoleLog", JS_NewCFunction(e->ctx, js_console_log, "__consoleLog", 2));
     JS_FreeValue(e->ctx, g);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
+    qjs_install_versions(e->ctx, app_version);
+    JS_SetHostPromiseRejectionTracker(e->rt, promise_rejection_tracker, e);
+    return e;
+}
 
-    JSValue r = JS_Eval(e->ctx, bootstrap, strlen(bootstrap), "<bootstrap>", JS_EVAL_TYPE_GLOBAL);
+static void engine_capture(QjsEngine *e) {
+    JSValue g = JS_GetGlobalObject(e->ctx);
+    e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
+    e->jsClose = JS_GetPropertyStr(e->ctx, g, "__jsClose");
+    e->jsCloseRead = JS_GetPropertyStr(e->ctx, g, "__jsCloseRead");
+    e->jsDrain = JS_GetPropertyStr(e->ctx, g, "__jsDrain");
+    JS_FreeValue(e->ctx, g);
+}
+
+QjsEngine *qjs_create(int app_version, QjsInboundCb cb, void *user) {
+    return engine_new(app_version, cb, user);
+}
+
+int qjs_eval_engine(QjsEngine *e, const char *script, char **err) {
+    JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(r)) {
-        JSValue exc = JS_GetException(e->ctx);
-        const char *m = JS_ToCString(e->ctx, exc);
-        if (err) *err = strdup(m ? m : "bootstrap failed");
-        if (m) JS_FreeCString(e->ctx, m);
-        JS_FreeValue(e->ctx, exc);
-        JS_FreeValue(e->ctx, r);
-        qjs_pipe_ctx_release(e->pipe, e->ctx);
-        JS_FreeContext(e->ctx);
-        JS_FreeRuntime(e->rt);
-        qjs_pipe_ctx_free(e->pipe);
-        free(e);
-        return NULL;
+        set_err(e->ctx, err, "engine script failed");
+        return -1;
     }
     JS_FreeValue(e->ctx, r);
+    pump(e); /* top-level JS may open host pipes; let its microtasks settle before capture */
+    engine_capture(e);
+    return 0;
+}
 
-    JSValue g2 = JS_GetGlobalObject(e->ctx);
-    e->jsOpen = JS_GetPropertyStr(e->ctx, g2, "__jsOpen");
-    e->jsClose = JS_GetPropertyStr(e->ctx, g2, "__jsClose");
-    e->jsCloseRead = JS_GetPropertyStr(e->ctx, g2, "__jsCloseRead");
-    e->jsDrain = JS_GetPropertyStr(e->ctx, g2, "__jsDrain");
-    JS_FreeValue(e->ctx, g2);
-    return e;
+int qjs_eval_engine_bc(QjsEngine *e, const uint8_t *bytecode, size_t len, char **err) {
+    JSValue fn = JS_ReadObject(e->ctx, bytecode, len, JS_READ_OBJ_BYTECODE);
+    if (JS_IsException(fn)) {
+        set_err(e->ctx, err, "bad bytecode");
+        return -1;
+    }
+    JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    if (JS_IsException(r)) {
+        set_err(e->ctx, err, "engine bytecode failed");
+        return -1;
+    }
+    JS_FreeValue(e->ctx, r);
+    pump(e);
+    engine_capture(e);
+    return 0;
+}
+
+uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, char **err) {
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JS_SetStripInfo(rt, JS_STRIP_SOURCE); /* consumed at parse time — must precede JS_Eval */
+    uint8_t *out = NULL;
+    *out_len = 0;
+    JSValue fn = JS_Eval(ctx, script, strlen(script), filename ? filename : "<engine>",
+                         JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+    if (JS_IsException(fn)) {
+        set_err(ctx, err, "compile failed");
+    } else {
+        size_t sz = 0;
+        uint8_t *buf = JS_WriteObject(ctx, &sz, fn, JS_WRITE_OBJ_BYTECODE);
+        if (!buf) {
+            set_err(ctx, err, "bytecode write failed");
+        } else {
+            /* copy out of the JS heap: the caller frees with qjs_free (plain free) */
+            out = (uint8_t *)malloc(sz > 0 ? sz : 1);
+            if (out) {
+                memcpy(out, buf, sz);
+                *out_len = sz;
+            } else if (err) {
+                *err = strdup("out of memory (bytecode)");
+            }
+            js_free(ctx, buf);
+        }
+    }
+    JS_FreeValue(ctx, fn);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return out;
 }
 
 char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int *isError) {
@@ -187,7 +284,7 @@ static int call_js(QjsEngine *e, JSValue fn, int argc, JSValue *argv, int exc_rc
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
-    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* bootstrap bug; don't leave it pending */
+    else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
     JS_FreeValue(e->ctx, r);
     JS_FreeValue(e->ctx, g);
     for (int i = 0; i < argc; i++) JS_FreeValue(e->ctx, argv[i]);

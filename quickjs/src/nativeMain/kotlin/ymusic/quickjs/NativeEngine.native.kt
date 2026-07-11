@@ -25,16 +25,21 @@ import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.newSingleThreadContext
 import platform.posix.memcpy
 import platform.posix.size_t
+import platform.posix.size_tVar
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_READ
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_WRITE
 import ymusic.quickjs.cinterop.QJS_OP_DRAIN
+import ymusic.quickjs.cinterop.QJS_OP_LOG
 import ymusic.quickjs.cinterop.QJS_OP_OPEN
 import ymusic.quickjs.cinterop.QJS_OP_WRITE
 import ymusic.quickjs.cinterop.qjs_close
 import ymusic.quickjs.cinterop.qjs_close_read
 import ymusic.quickjs.cinterop.qjs_close_write
+import ymusic.quickjs.cinterop.qjs_compile
 import ymusic.quickjs.cinterop.qjs_create
 import ymusic.quickjs.cinterop.qjs_drain
+import ymusic.quickjs.cinterop.qjs_eval_engine
+import ymusic.quickjs.cinterop.qjs_eval_engine_bc
 import ymusic.quickjs.cinterop.qjs_eval_sync
 import ymusic.quickjs.cinterop.qjs_free
 import ymusic.quickjs.cinterop.qjs_open
@@ -68,6 +73,23 @@ internal actual class NativeEngine private constructor(
         out
     }
 
+    actual fun evalEngine(script: String): Unit = memScoped {
+        val errVar = alloc<CPointerVar<ByteVar>>()
+        if (qjs_eval_engine(engine, script, errVar.ptr) != 0) throwEvalError(errVar.value, "engine script failed")
+    }
+
+    actual fun evalEngineBytecode(bytecode: ByteArray): Unit = memScoped {
+        val errVar = alloc<CPointerVar<ByteVar>>()
+        val rc = if (bytecode.isEmpty()) {
+            qjs_eval_engine_bc(engine, null, 0u, errVar.ptr)
+        } else {
+            bytecode.usePinned { pinned ->
+                qjs_eval_engine_bc(engine, pinned.addressOf(0).reinterpret(), bytecode.size.convert(), errVar.ptr)
+            }
+        }
+        if (rc != 0) throwEvalError(errVar.value, "engine bytecode failed")
+    }
+
     actual fun open(id: Int, command: String): Int = qjs_open(engine, id.toUInt(), command)
 
     actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int {
@@ -89,19 +111,40 @@ internal actual class NativeEngine private constructor(
     }
 
     actual companion object {
-        actual fun create(bootstrap: String, callbacks: EngineCallbacks): NativeEngine = memScoped {
+        actual fun create(appVersion: Int, callbacks: EngineCallbacks): NativeEngine {
             val ref = StableRef.create(callbacks)
-            val errVar = alloc<CPointerVar<ByteVar>>()
-            val eng = qjs_create(bootstrap, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
+            val eng = qjs_create(appVersion, staticCFunction(::inboundTrampoline), ref.asCPointer())
             if (eng == null) {
+                ref.dispose()
+                throw QuickJsException("quickjs create failed")
+            }
+            return NativeEngine(eng, ref)
+        }
+
+        actual fun compile(script: String, filename: String): ByteArray = memScoped {
+            val lenVar = alloc<size_tVar>()
+            val errVar = alloc<CPointerVar<ByteVar>>()
+            val buf = qjs_compile(script, filename, lenVar.ptr, errVar.ptr)
+            if (buf == null) {
                 val msg = errVar.value?.toKString()
                 errVar.value?.let { qjs_free(it) }
-                ref.dispose()
-                throw QuickJsException(msg ?: "quickjs create failed")
+                throw QuickJsException(msg ?: "compile failed")
             }
-            NativeEngine(eng, ref)
+            val n = lenVar.value.toInt()
+            val out = ByteArray(n)
+            if (n > 0) out.usePinned { pinned -> memcpy(pinned.addressOf(0), buf, n.convert()) }
+            qjs_free(buf)
+            out
         }
     }
+}
+
+/** Consume a malloc'd C error message (freed here) as a [QuickJsException]. */
+@OptIn(ExperimentalForeignApi::class)
+private fun throwEvalError(err: CPointer<ByteVar>?, fallback: String): Nothing {
+    val msg = err?.toKString()
+    err?.let { qjs_free(it) }
+    throw QuickJsException(msg ?: fallback)
 }
 
 /** C -> Kotlin inbound callback. [user] is the StableRef to the engine's [EngineCallbacks].
@@ -126,6 +169,7 @@ private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CP
             QJS_OP_CLOSE_WRITE -> { cb.onCloseWrite(idInt, data?.reinterpret<ByteVar>()?.toKString()); 0 }
             QJS_OP_CLOSE_READ -> { cb.onCloseRead(idInt); 0 }
             QJS_OP_DRAIN -> { cb.onDrain(idInt); 0 }
+            QJS_OP_LOG -> { cb.onLog(idInt, data?.reinterpret<ByteVar>()?.toKString() ?: ""); 0 }
             else -> 0
         }
     } catch (e: Throwable) {
