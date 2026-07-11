@@ -240,8 +240,9 @@ static void scenario_gc_parked(QjsEngine *e) {
  * buffer, and a live registry (finalizer + gc_mark paths). */
 static void scenario_teardown(const char *script, Host *h) {
     char *err = NULL;
-    QjsEngine *e = qjs_create(script, 1, host_cb, h, &err);
-    CHECK(e != NULL, "second engine: %s", err ? err : "?");
+    QjsEngine *e = qjs_create(1, host_cb, h);
+    CHECK(e != NULL, "second engine");
+    CHECK(qjs_eval_engine(e, script, &err) == 0, "second engine eval: %s", err ? err : "?");
     CHECK(qjs_open(e, 1, "park") == 0, "open park"); /* handlers = the bundle's stress fixtures */
     CHECK(qjs_open(e, 3, "full") == 0, "open full");
     CHECK(qjs_open(e, 5, "jsonpark") == 0, "open jsonpark");
@@ -259,8 +260,9 @@ int main(int argc, char **argv) {
     Host host;
     memset(&host, 0, sizeof(host));
     char *err = NULL;
-    QjsEngine *e = qjs_create(script, 1, host_cb, &host, &err);
-    CHECK(e != NULL, "create: %s", err ? err : "?");
+    QjsEngine *e = qjs_create(1, host_cb, &host);
+    CHECK(e != NULL, "create");
+    CHECK(qjs_eval_engine(e, script, &err) == 0, "eval engine: %s", err ? err : "?");
 
     scenario_fragmented_reads(e);
     scenario_backpressure(e, &host);

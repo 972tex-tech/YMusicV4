@@ -50,6 +50,15 @@ internal expect class NativeEngine {
     /** Evaluate [script]; returns the completion value's string form (or null). Throws on JS error. */
     fun evalSync(script: String, filename: String): String?
 
+    /** Evaluate the engine script (the :engine-js bundle) and capture the transport globals
+     *  (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`) right after — exactly once, before any
+     *  [open]. Throws [QuickJsException] on a JS error (the engine stays valid; [destroy] it). */
+    fun evalEngine(script: String)
+
+    /** [evalEngine] from [compile] output — the version can't be baked into the precompiled blob,
+     *  so it's installed at [create], before the bytecode program runs. */
+    fun evalEngineBytecode(bytecode: ByteArray)
+
     /** Host -> JS. Returns 0 when JS accepted the pipe, or -1 when it refused (no handler). */
     fun open(id: Int, command: String): Int
 
@@ -70,13 +79,10 @@ internal expect class NativeEngine {
     fun destroy()
 
     companion object {
-        /** C installs the frozen `versions` global (`{app: appVersion}`) before evaluating
-         *  [script]. */
-        fun create(script: String, appVersion: Int, callbacks: EngineCallbacks): NativeEngine
-
-        /** [create] from [compile] output — the version can't be baked into the precompiled blob,
-         *  so it crosses here and C installs it before the bytecode program runs. */
-        fun createFromBytecode(bytecode: ByteArray, appVersion: Int, callbacks: EngineCallbacks): NativeEngine
+        /** A bare engine — natives + the frozen `versions` global (`{app: appVersion}`), no
+         *  script. [callbacks] route from the first instruction of the later [evalEngine], so
+         *  host-served commands registered before it are visible to the bundle's top-level code. */
+        fun create(appVersion: Int, callbacks: EngineCallbacks): NativeEngine
 
         /** Compile [script] to serialized bytecode with per-function source text stripped
          *  (`Function.prototype.toString` yields a placeholder; line-number debug info is kept). */

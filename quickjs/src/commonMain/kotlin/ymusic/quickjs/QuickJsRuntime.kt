@@ -58,6 +58,7 @@ class QuickJsRuntime private constructor(
 
     private val scope = CoroutineScope(engineDispatcher + SupervisorJob())
     private val closed = AtomicBoolean(false)
+    private val engineLoaded = AtomicBoolean(false)
     private val pipes = HashMap<Int, PipeImpl>()
 
     // onAccept is called from any thread (the app registers handlers off the engine thread), while
@@ -82,6 +83,31 @@ class QuickJsRuntime private constructor(
         }
     }
 
+    /**
+     * Evaluate the engine script (the :engine-js bundle) — exactly once, before any [openPipe].
+     * The native engine captures the transport globals (`__jsOpen`/…, `ymix`) right after this
+     * eval. Register [onAccept] handlers FIRST: the bundle's top-level code may open host commands
+     * during the eval itself. A failed eval consumes the one shot (the JS globals are
+     * half-poisoned) — [close] the runtime and create a fresh one.
+     */
+    suspend fun evalEngine(script: String) = evalEngineImpl { it.evalEngine(script) }
+
+    /** [evalEngine] from [compile]d bytecode (same contract; `versions` was installed at create,
+     *  so the version is never baked into the blob). */
+    suspend fun evalEngine(bytecode: ByteArray) = evalEngineImpl { it.evalEngineBytecode(bytecode) }
+
+    private suspend fun evalEngineImpl(eval: (NativeEngine) -> Unit) {
+        if (closed.load()) throw QuickJsException("runtime closed")
+        if (!engineLoaded.compareAndSet(expectedValue = false, newValue = true)) {
+            throw QuickJsException("engine script already loaded")
+        }
+        withContext(engineDispatcher) {
+            // Re-check ON the engine thread (see [load]).
+            if (closed.load()) throw QuickJsException("runtime closed")
+            eval(engine)
+        }
+    }
+
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
      *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]
@@ -99,6 +125,7 @@ class QuickJsRuntime private constructor(
      *  Fails AT THE OPEN — like ECONNREFUSED — when no JS handler serves [command]. */
     suspend fun openPipe(command: String): Pipe {
         if (closed.load()) throw QuickJsException("runtime closed")
+        if (!engineLoaded.load()) throw QuickJsException("engine script not loaded (call evalEngine first)")
         var opened: PipeImpl? = null
         try {
             return withContext(engineDispatcher) {
@@ -541,22 +568,36 @@ class QuickJsRuntime private constructor(
     }
 
     companion object {
-        /** [script] is the engine JS (the :engine-js bundle) evaluated once at creation. It must
-         *  define the transport globals (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`,
-         *  `ymix`) — the native engine captures them right after this one eval, so the script is
-         *  only accepted HERE, never loaded onto a live runtime. This module ships no JS.
-         *
-         *  Before the eval, C installs the frozen, non-writable `versions` global
+        /** A bare runtime — no script. C installs the frozen, non-writable `versions` global
          *  (`{app: appVersion}`) the bundle branches on for backward compatibility — the host
-         *  ships as one app build, so the app version identifies its whole surface. */
-        suspend fun create(script: String, appVersion: Int = 0): QuickJsRuntime =
-            create { callbacks -> NativeEngine.create(script, appVersion, callbacks) }
+         *  ships as one app build, so the app version identifies its whole surface. Register
+         *  [onAccept] handlers, then [evalEngine] the :engine-js bundle (it must define the
+         *  transport globals `__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`, `ymix`); its
+         *  top-level code can already open every registered host command. This module ships
+         *  no JS. (No default on [appVersion]: a bare `create()` must not swallow calls meant
+         *  for the script overloads.) */
+        suspend fun create(appVersion: Int): QuickJsRuntime =
+            create { callbacks -> NativeEngine.create(appVersion, callbacks) }
 
-        /** Create from [compile]d bytecode of the engine JS (same contract as the [String]
-         *  overload, including the C-installed `versions` global — the version can never be baked
-         *  into the precompiled blob). */
+        /** [create] + [evalEngine] in one step, for a runtime with no host-served commands
+         *  (the bundle's top-level code would find nothing registered to open). */
+        suspend fun create(script: String, appVersion: Int = 0): QuickJsRuntime =
+            createLoaded(appVersion) { it.evalEngine(script) }
+
+        /** The [ByteArray] twin of the [String] convenience overload, from [compile]d bytecode. */
         suspend fun create(bytecode: ByteArray, appVersion: Int = 0): QuickJsRuntime =
-            create { callbacks -> NativeEngine.createFromBytecode(bytecode, appVersion, callbacks) }
+            createLoaded(appVersion) { it.evalEngine(bytecode) }
+
+        private suspend fun createLoaded(appVersion: Int, eval: suspend (QuickJsRuntime) -> Unit): QuickJsRuntime {
+            val rt = create(appVersion)
+            try {
+                eval(rt)
+            } catch (t: Throwable) {
+                runCatching { rt.close() }
+                throw t
+            }
+            return rt
+        }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
          *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding

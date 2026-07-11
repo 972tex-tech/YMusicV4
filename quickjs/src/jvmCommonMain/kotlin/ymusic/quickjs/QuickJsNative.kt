@@ -50,8 +50,9 @@ internal object QuickJsNative {
         sinks[handle]?.onDrain(id)
     }
 
-    external fun create(script: String, appVersion: Int): Long
-    external fun createBytecode(bytecode: ByteArray, appVersion: Int): Long
+    external fun create(appVersion: Int): Long
+    external fun evalEngine(handle: Long, script: String)
+    external fun evalEngineBytecode(handle: Long, bytecode: ByteArray)
     external fun compile(script: String, filename: String): ByteArray
     external fun evalSync(handle: Long, script: String, filename: String): String?
     external fun open(handle: Long, id: Int, command: String): Int

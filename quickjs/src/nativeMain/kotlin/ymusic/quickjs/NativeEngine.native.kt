@@ -36,8 +36,9 @@ import ymusic.quickjs.cinterop.qjs_close_read
 import ymusic.quickjs.cinterop.qjs_close_write
 import ymusic.quickjs.cinterop.qjs_compile
 import ymusic.quickjs.cinterop.qjs_create
-import ymusic.quickjs.cinterop.qjs_create_bc
 import ymusic.quickjs.cinterop.qjs_drain
+import ymusic.quickjs.cinterop.qjs_eval_engine
+import ymusic.quickjs.cinterop.qjs_eval_engine_bc
 import ymusic.quickjs.cinterop.qjs_eval_sync
 import ymusic.quickjs.cinterop.qjs_free
 import ymusic.quickjs.cinterop.qjs_open
@@ -71,6 +72,23 @@ internal actual class NativeEngine private constructor(
         out
     }
 
+    actual fun evalEngine(script: String): Unit = memScoped {
+        val errVar = alloc<CPointerVar<ByteVar>>()
+        if (qjs_eval_engine(engine, script, errVar.ptr) != 0) throwEvalError(errVar.value, "engine script failed")
+    }
+
+    actual fun evalEngineBytecode(bytecode: ByteArray): Unit = memScoped {
+        val errVar = alloc<CPointerVar<ByteVar>>()
+        val rc = if (bytecode.isEmpty()) {
+            qjs_eval_engine_bc(engine, null, 0u, errVar.ptr)
+        } else {
+            bytecode.usePinned { pinned ->
+                qjs_eval_engine_bc(engine, pinned.addressOf(0).reinterpret(), bytecode.size.convert(), errVar.ptr)
+            }
+        }
+        if (rc != 0) throwEvalError(errVar.value, "engine bytecode failed")
+    }
+
     actual fun open(id: Int, command: String): Int = qjs_open(engine, id.toUInt(), command)
 
     actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int {
@@ -92,46 +110,15 @@ internal actual class NativeEngine private constructor(
     }
 
     actual companion object {
-        actual fun create(script: String, appVersion: Int, callbacks: EngineCallbacks): NativeEngine =
-            memScoped {
-                val ref = StableRef.create(callbacks)
-                val errVar = alloc<CPointerVar<ByteVar>>()
-                val eng = qjs_create(script, appVersion, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
-                if (eng == null) {
-                    val msg = errVar.value?.toKString()
-                    errVar.value?.let { qjs_free(it) }
-                    ref.dispose()
-                    throw QuickJsException(msg ?: "quickjs create failed")
-                }
-                NativeEngine(eng, ref)
+        actual fun create(appVersion: Int, callbacks: EngineCallbacks): NativeEngine {
+            val ref = StableRef.create(callbacks)
+            val eng = qjs_create(appVersion, staticCFunction(::inboundTrampoline), ref.asCPointer())
+            if (eng == null) {
+                ref.dispose()
+                throw QuickJsException("quickjs create failed")
             }
-
-        actual fun createFromBytecode(bytecode: ByteArray, appVersion: Int, callbacks: EngineCallbacks): NativeEngine =
-            memScoped {
-                val ref = StableRef.create(callbacks)
-                val errVar = alloc<CPointerVar<ByteVar>>()
-                val eng = if (bytecode.isEmpty()) {
-                    qjs_create_bc(null, 0u, appVersion, staticCFunction(::inboundTrampoline), ref.asCPointer(), errVar.ptr)
-                } else {
-                    bytecode.usePinned { pinned ->
-                        qjs_create_bc(
-                            pinned.addressOf(0).reinterpret(),
-                            bytecode.size.convert(),
-                            appVersion,
-                            staticCFunction(::inboundTrampoline),
-                            ref.asCPointer(),
-                            errVar.ptr,
-                        )
-                    }
-                }
-                if (eng == null) {
-                    val msg = errVar.value?.toKString()
-                    errVar.value?.let { qjs_free(it) }
-                    ref.dispose()
-                    throw QuickJsException(msg ?: "quickjs create failed")
-                }
-                NativeEngine(eng, ref)
-            }
+            return NativeEngine(eng, ref)
+        }
 
         actual fun compile(script: String, filename: String): ByteArray = memScoped {
             val lenVar = alloc<size_tVar>()
@@ -149,6 +136,14 @@ internal actual class NativeEngine private constructor(
             out
         }
     }
+}
+
+/** Consume a malloc'd C error message (freed here) as a [QuickJsException]. */
+@OptIn(ExperimentalForeignApi::class)
+private fun throwEvalError(err: CPointer<ByteVar>?, fallback: String): Nothing {
+    val msg = err?.toKString()
+    err?.let { qjs_free(it) }
+    throw QuickJsException(msg ?: fallback)
 }
 
 /** C -> Kotlin inbound callback. [user] is the StableRef to the engine's [EngineCallbacks].

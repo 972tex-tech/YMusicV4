@@ -20,6 +20,10 @@ internal actual class NativeEngine private constructor(private val handle: Long)
     actual fun evalSync(script: String, filename: String): String? =
         QuickJsNative.evalSync(handle, script, filename)
 
+    actual fun evalEngine(script: String) = QuickJsNative.evalEngine(handle, script)
+
+    actual fun evalEngineBytecode(bytecode: ByteArray) = QuickJsNative.evalEngineBytecode(handle, bytecode)
+
     actual fun open(id: Int, command: String): Int = QuickJsNative.open(handle, id, command)
 
     actual fun write(id: Int, buffer: ByteArray, offset: Int, len: Int): Int =
@@ -37,14 +41,10 @@ internal actual class NativeEngine private constructor(private val handle: Long)
     }
 
     actual companion object {
-        actual fun create(script: String, appVersion: Int, callbacks: EngineCallbacks): NativeEngine {
-            val handle = QuickJsNative.create(script, appVersion)
-            QuickJsNative.register(handle, callbacks)
-            return NativeEngine(handle)
-        }
-
-        actual fun createFromBytecode(bytecode: ByteArray, appVersion: Int, callbacks: EngineCallbacks): NativeEngine {
-            val handle = QuickJsNative.createBytecode(bytecode, appVersion)
+        actual fun create(appVersion: Int, callbacks: EngineCallbacks): NativeEngine {
+            val handle = QuickJsNative.create(appVersion)
+            // Registered before any script runs, so opens from the engine script's own top-level
+            // code already route.
             QuickJsNative.register(handle, callbacks)
             return NativeEngine(handle)
         }

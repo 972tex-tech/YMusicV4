@@ -318,16 +318,6 @@ static Engine *engine_new(JNIEnv *env, jint appVersion) {
     return e;
 }
 
-/* Full teardown of a half-built engine — a failed create must not leak (Kotlin may retry). */
-static void engine_teardown(JNIEnv *env, Engine *e) {
-    (*env)->DeleteGlobalRef(env, e->bridgeClass);
-    qjs_pipe_ctx_release(e->pipe, e->ctx);
-    JS_FreeContext(e->ctx);
-    JS_FreeRuntime(e->rt);
-    qjs_pipe_ctx_free(e->pipe);
-    free(e);
-}
-
 /* Throw the pending JS exception as a QuickJsException (falls back to [fallback]). */
 static void throw_js_exception(JNIEnv *env, JSContext *ctx, const char *fallback) {
     JSValue exc = JS_GetException(ctx);
@@ -338,42 +328,45 @@ static void throw_js_exception(JNIEnv *env, JSContext *ctx, const char *fallback
     JS_FreeValue(ctx, exc);
 }
 
-static jlong engine_finish(Engine *e) {
+static void engine_capture(Engine *e) {
     JSValue g = JS_GetGlobalObject(e->ctx);
     e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
     e->jsClose = JS_GetPropertyStr(e->ctx, g, "__jsClose");
     e->jsCloseRead = JS_GetPropertyStr(e->ctx, g, "__jsCloseRead");
     e->jsDrain = JS_GetPropertyStr(e->ctx, g, "__jsDrain");
     JS_FreeValue(e->ctx, g);
-    return (jlong)(intptr_t)e;
 }
 
 JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jstring jscript,
-                                         jint appVersion) {
-    Engine *e = engine_new(env, appVersion);
+Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jint appVersion) {
+    return (jlong)(intptr_t)engine_new(env, appVersion);
+}
+
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong handle,
+                                             jstring jscript) {
+    Engine *e = (Engine *)(intptr_t)handle;
     size_t blen = 0;
     char *script = jstring_to_utf8(env, jscript, &blen);
-    if (!script) { /* OOM converting the script source — tear down and report, don't feed JS_Eval a null */
-        engine_teardown(env, e);
+    if (!script) { /* OOM converting the script source — don't feed JS_Eval a null */
         throw_qjs(env, utf8_to_jstring(env, "out of memory (script)", 22));
-        return 0;
+        return;
     }
     JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
     free(script);
     if (JS_IsException(bret)) {
         throw_js_exception(env, e->ctx, "engine script failed");
-        engine_teardown(env, e);
-        return 0;
+        return;
     }
     JS_FreeValue(e->ctx, bret);
-    return engine_finish(e);
+    pump_jobs(e); /* top-level JS may open host pipes; let its microtasks settle before capture */
+    engine_capture(e);
 }
 
-JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_createBytecode(JNIEnv *env, jobject thiz, jbyteArray jbc,
-                                                 jint appVersion) {
-    Engine *e = engine_new(env, appVersion);
+JNIEXPORT void JNICALL
+Java_ymusic_quickjs_QuickJsNative_evalEngineBytecode(JNIEnv *env, jobject thiz, jlong handle,
+                                                     jbyteArray jbc) {
+    Engine *e = (Engine *)(intptr_t)handle;
     jsize bclen = (*env)->GetArrayLength(env, jbc);
     jbyte *bc = (*env)->GetByteArrayElements(env, jbc, NULL);
     JSValue fn = bc ? JS_ReadObject(e->ctx, (const uint8_t *)bc, (size_t)bclen, JS_READ_OBJ_BYTECODE)
@@ -381,17 +374,16 @@ Java_ymusic_quickjs_QuickJsNative_createBytecode(JNIEnv *env, jobject thiz, jbyt
     if (bc) (*env)->ReleaseByteArrayElements(env, jbc, bc, JNI_ABORT);
     if (JS_IsException(fn)) {
         throw_js_exception(env, e->ctx, "bad bytecode");
-        engine_teardown(env, e);
-        return 0;
+        return;
     }
     JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
     if (JS_IsException(r)) {
         throw_js_exception(env, e->ctx, "engine bytecode failed");
-        engine_teardown(env, e);
-        return 0;
+        return;
     }
     JS_FreeValue(e->ctx, r);
-    return engine_finish(e);
+    pump_jobs(e);
+    engine_capture(e);
 }
 
 JNIEXPORT jbyteArray JNICALL

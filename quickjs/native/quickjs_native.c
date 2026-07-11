@@ -141,17 +141,6 @@ static QjsEngine *engine_new(int app_version, QjsInboundCb cb, void *user) {
     return e;
 }
 
-/* Failed create: report the pending exception and tear the half-built engine down. */
-static QjsEngine *engine_fail(QjsEngine *e, char **err, const char *fallback) {
-    set_err(e->ctx, err, fallback);
-    qjs_pipe_ctx_release(e->pipe, e->ctx);
-    JS_FreeContext(e->ctx);
-    JS_FreeRuntime(e->rt);
-    qjs_pipe_ctx_free(e->pipe);
-    free(e);
-    return NULL;
-}
-
 static void engine_capture(QjsEngine *e) {
     JSValue g = JS_GetGlobalObject(e->ctx);
     e->jsOpen = JS_GetPropertyStr(e->ctx, g, "__jsOpen");
@@ -161,25 +150,37 @@ static void engine_capture(QjsEngine *e) {
     JS_FreeValue(e->ctx, g);
 }
 
-QjsEngine *qjs_create(const char *script, int app_version, QjsInboundCb cb, void *user, char **err) {
-    QjsEngine *e = engine_new(app_version, cb, user);
-    JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(r)) return engine_fail(e, err, "engine script failed");
-    JS_FreeValue(e->ctx, r);
-    engine_capture(e);
-    return e;
+QjsEngine *qjs_create(int app_version, QjsInboundCb cb, void *user) {
+    return engine_new(app_version, cb, user);
 }
 
-QjsEngine *qjs_create_bc(const uint8_t *bytecode, size_t len, int app_version,
-                         QjsInboundCb cb, void *user, char **err) {
-    QjsEngine *e = engine_new(app_version, cb, user);
-    JSValue fn = JS_ReadObject(e->ctx, bytecode, len, JS_READ_OBJ_BYTECODE);
-    if (JS_IsException(fn)) return engine_fail(e, err, "bad bytecode");
-    JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
-    if (JS_IsException(r)) return engine_fail(e, err, "engine bytecode failed");
+int qjs_eval_engine(QjsEngine *e, const char *script, char **err) {
+    JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(r)) {
+        set_err(e->ctx, err, "engine script failed");
+        return -1;
+    }
     JS_FreeValue(e->ctx, r);
+    pump(e); /* top-level JS may open host pipes; let its microtasks settle before capture */
     engine_capture(e);
-    return e;
+    return 0;
+}
+
+int qjs_eval_engine_bc(QjsEngine *e, const uint8_t *bytecode, size_t len, char **err) {
+    JSValue fn = JS_ReadObject(e->ctx, bytecode, len, JS_READ_OBJ_BYTECODE);
+    if (JS_IsException(fn)) {
+        set_err(e->ctx, err, "bad bytecode");
+        return -1;
+    }
+    JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    if (JS_IsException(r)) {
+        set_err(e->ctx, err, "engine bytecode failed");
+        return -1;
+    }
+    JS_FreeValue(e->ctx, r);
+    pump(e);
+    engine_capture(e);
+    return 0;
 }
 
 uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, char **err) {
