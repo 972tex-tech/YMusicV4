@@ -152,13 +152,11 @@ class QuickJsRuntime private constructor(
                 handler(impl.pipe)
             } catch (e: CancellationException) {
                 // Real cancellation propagates; a CancellationException on a still-active job (e.g.
-                // withTimeout inside the handler) is a failure and RESETs the pipe like any other.
+                // withTimeout inside the handler) is a failure and aborts the pipe like any other.
                 if (!isActive) throw e
-                impl.closeRead()
-                impl.closeWrite(e.message ?: "handler failed")
+                impl.abort(e)
             } catch (e: Throwable) {
-                impl.closeRead()
-                impl.closeWrite(e.message ?: "handler failed") // RESET: surface the failure to JS
+                impl.abort(e)
             }
         }
         return 0
@@ -269,6 +267,16 @@ class QuickJsRuntime private constructor(
         fun onDrain() {
             val w = writer
             if (w != null) { writer = null; w.resume(Unit) } else drainCredit = true
+        }
+
+        /** Fire-and-forget teardown of a failed/aborted served pipe: RESET the peer with the cause's
+         *  message. This is the transport's DUMB backstop — the richer `{code, …}` error contract
+         *  (classify + birth-site log) lives one layer up in `dynamicengine.commandHandler`. Each
+         *  close is wrapped so a teardown failure can't escape the launched coroutine into the
+         *  SupervisorJob's uncaught handler. */
+        suspend fun abort(cause: Throwable) {
+            runCatching { closeRead() }
+            runCatching { closeWrite(cause.message ?: "handler failed") }
         }
 
         override suspend fun receive(sink: Buffer, byteCount: Long): Long {
