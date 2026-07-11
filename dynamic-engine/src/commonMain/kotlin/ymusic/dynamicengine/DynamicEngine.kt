@@ -17,20 +17,25 @@ import ymusic.quickjs.QuickJsRuntime
  * Storage / file / SQLite protocols are planned as further host-served pipe commands (see
  * `quickjs/HOST_PROTOCOLS.md`).
  *
- * The engine JS drives work over pipes: [load] engine code that registers `ymix.onAccept(command,…)`
- * handlers, then [openPipe] a command to invoke it (or vice-versa). Not thread-safe — the underlying
- * runtime confines JS to a single thread. Build one, use it, [close] it. All work is `suspend`.
+ * The pipe/command plumbing is **internal**: callers don't open pipes or register handlers, they
+ * call a task method (`getHomeFeed()`, …) that drives the engine JS over pipes under the hood and
+ * serves any host command the JS calls back on (via [commandHandler], using [logger]). Not
+ * thread-safe — the underlying runtime confines JS to a single thread. Build one, use it, [close] it.
  */
-class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
+class DynamicEngine private constructor(
+    private val runtime: QuickJsRuntime,
+    internal val logger: Logger?,
+) {
 
-    /** Evaluate [script] synchronously (to load engine code / register `ymix.onAccept` handlers). */
-    suspend fun load(script: String, filename: String = "<engine>"): String? = runtime.load(script, filename)
+    /** Evaluate [script] synchronously (load engine code / register `ymix.onAccept` handlers). */
+    internal suspend fun load(script: String, filename: String = "<engine>"): String? = runtime.load(script, filename)
 
-    /** Handle pipes the engine JS opens with the exact [command] name. */
-    fun onAccept(command: String, handler: suspend (Pipe) -> Unit) = runtime.onAccept(command, handler)
+    /** Handle pipes the engine JS opens with the exact [command] name (wrap [handler] in
+     *  [commandHandler] for the error contract). */
+    internal fun onAccept(command: String, handler: suspend (Pipe) -> Unit) = runtime.onAccept(command, handler)
 
     /** Open a pipe to the engine JS addressed to [command] (its `ymix.onAccept` handler serves it). */
-    suspend fun openPipe(command: String): Pipe = runtime.openPipe(command)
+    internal suspend fun openPipe(command: String): Pipe = runtime.openPipe(command)
 
     /** Free the runtime and its engine thread. Idempotent-safe to call once when done. */
     suspend fun close() = runtime.close()
@@ -54,7 +59,7 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
         ): DynamicEngine {
             val runtime = QuickJsRuntime.create(engineJs, appVersion)
             runtime.installHttp(client, logger)
-            return DynamicEngine(runtime)
+            return DynamicEngine(runtime, logger)
         }
 
         /** Create from [compile]d bytecode of a bundle — `versions.app` is only known here, so it
@@ -67,7 +72,7 @@ class DynamicEngine private constructor(private val runtime: QuickJsRuntime) {
         ): DynamicEngine {
             val runtime = QuickJsRuntime.create(engineBytecode, appVersion)
             runtime.installHttp(client, logger)
-            return DynamicEngine(runtime)
+            return DynamicEngine(runtime, logger)
         }
 
         /** Compile a bundle to QuickJS bytecode for [create] — per-function source text is

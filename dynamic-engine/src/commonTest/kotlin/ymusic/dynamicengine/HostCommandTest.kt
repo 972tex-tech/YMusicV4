@@ -38,7 +38,7 @@ class HostCommandTest {
         try {
             e.onAccept(
                 "hostcmd/echo",
-                commandHandler { src, out ->
+                e.commandHandler { src, out ->
                     val buf = Buffer()
                     while (src.receive(buf, 4096L) != -1L) { /* read the request to EOF */ }
                     out.send(buf, buf.size) // commandHandler ENDs the sink after we return
@@ -54,7 +54,7 @@ class HostCommandTest {
     fun a_coded_throw_crosses_with_its_code() = runTest {
         val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
         try {
-            e.onAccept("hostcmd/boom", commandHandler { _, _ -> throw Coded("network", "boom") })
+            e.onAccept("hostcmd/boom", e.commandHandler { _, _ -> throw Coded("network", "boom") })
             assertEquals("ERR:network:boom", e.drive("test/callhost/boom"))
         } finally {
             e.close()
@@ -65,7 +65,7 @@ class HostCommandTest {
     fun a_site_code_in_the_message_is_preserved() = runTest {
         val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
         try {
-            e.onAccept("hostcmd/boom", commandHandler { _, _ -> error("E24242 shelf renderer shape") })
+            e.onAccept("hostcmd/boom", e.commandHandler { _, _ -> error("E24242 shelf renderer shape") })
             assertEquals("ERR:E24242:E24242 shelf renderer shape", e.drive("test/callhost/boom"))
         } finally {
             e.close()
@@ -76,7 +76,7 @@ class HostCommandTest {
     fun an_uncoded_throw_defaults_to_E20002() = runTest {
         val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
         try {
-            e.onAccept("hostcmd/boom", commandHandler { _, _ -> throw RuntimeException("plain fail") })
+            e.onAccept("hostcmd/boom", e.commandHandler { _, _ -> throw RuntimeException("plain fail") })
             assertEquals("ERR:E20002:plain fail", e.drive("test/callhost/boom"))
         } finally {
             e.close()

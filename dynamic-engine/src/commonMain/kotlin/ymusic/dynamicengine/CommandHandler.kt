@@ -16,28 +16,29 @@ import ymusic.quickjs.PipeSource
  * own head off `source` (format not assumed — JSON, a line, length-prefixed, or nothing), does the
  * work, and writes the result to `sink`. Throwing is the error channel.
  *
- * [commandHandler] wraps one into a pipe handler for [ymusic.quickjs.QuickJsRuntime.onAccept] that
- * ENDs on success and, on ANY throw, classifies it into the typed [WireError] contract, LOGS it at
- * this birth site (with full native fidelity — the real [Throwable] — per CLAUDE.md "Log at the
- * birth site"), and RESETs the pipe with the structured reason so the JS caller's `callHost`/
- * `hostError` rebuild a coded error. The transport's own throw→RESET is only a dumb backstop
- * (message, no code); this is where the `{code, …}` contract is minted on the host side.
+ * Internal plumbing: a [DynamicEngine] task method wraps one with [DynamicEngine.commandHandler] and
+ * registers it on a host command; callers never see it (they call the task method).
  */
-fun interface CommandHandler {
+internal fun interface CommandHandler {
     suspend fun handle(source: PipeSource, sink: PipeSink)
 }
 
 /**
- * Wrap [handler] in the host error contract. [logCtx] is the scope trail this command's birth-site
- * logs are tagged with (the caller's trail plus this command's hop); [logger] null = logging off.
- * A caller that hung up ([BrokenPipeException]) is the one silent path — no one left to report to;
- * real cancellation propagates so the runtime can tear down.
+ * Wrap [handler] in the host error contract → a pipe handler for [DynamicEngine.onAccept]. ENDs on
+ * success; on ANY throw, classifies it into the typed [WireError], LOGS it at this birth site
+ * through [DynamicEngine.logger] (with full native fidelity — the real [Throwable] — per CLAUDE.md
+ * "Log at the birth site"), and RESETs the pipe with the structured reason so the JS caller's
+ * `callHost`/`hostError` rebuild a coded error. The transport's own throw→RESET is only a dumb
+ * backstop (message, no code); this is where the `{code, …}` contract is minted on the host side.
+ *
+ * [logCtx] is the scope trail these birth-site logs are tagged with (the caller's trail plus this
+ * command's hop). A caller that hung up ([BrokenPipeException]) is the one silent path; real
+ * cancellation propagates so the runtime can tear down.
  */
-fun commandHandler(
-    logger: Logger? = null,
+internal fun DynamicEngine.commandHandler(
     logCtx: List<String> = emptyList(),
     handler: CommandHandler,
-): suspend (Pipe) -> Unit = handler@{ pipe ->
+): suspend (Pipe) -> Unit = { pipe ->
     try {
         handler.handle(pipe.source, pipe.sink)
         pipe.sink.close(null) // END: call complete
