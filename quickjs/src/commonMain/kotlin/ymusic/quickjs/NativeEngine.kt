@@ -38,6 +38,10 @@ internal interface EngineCallbacks {
 
     /** Flow control: JS drained its buffer to the low-water mark — wake our parked writer. */
     fun onDrain(id: Int)
+
+    /** Console/diagnostics line from the engine (0 debug, 1 info, 2 warn, 3 error, 4 unhandled
+     *  promise rejection). Must be cheap and must not throw. */
+    fun onLog(level: Int, message: String)
 }
 
 /**

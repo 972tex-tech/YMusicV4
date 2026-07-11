@@ -47,6 +47,7 @@ typedef struct Engine {
     jmethodID onCloseWrite; /* static void onCloseWrite(long, int, String|null) */
     jmethodID onCloseRead;  /* static void onCloseRead(long, int) */
     jmethodID onDrain;    /* static void onDrain(long, int) */
+    jmethodID onLog;      /* static void onLog(long, int, String) */
     JSValue jsOpen, jsClose, jsCloseRead, jsDrain; /* JS mux entry points (C -> JS) */
     int in_critical;      /* a host ByteArray is held critically: JNI re-entry is forbidden */
     uint32_t pending_drains[PENDING_DRAIN_MAX];
@@ -266,6 +267,56 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
+/* __consoleLog(level, msg) — the bundle's console + diagnostics, straight to the Kotlin log hook
+ * (no pipe: logging must work from the first instruction of the boot eval and when the pipe
+ * layer itself is sick). Coercions run before the callback; nothing is held across them. */
+static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    if (e->in_critical) return JS_ThrowInternalError(ctx, "__consoleLog during data delivery");
+    JNIEnv *env = engine_env(e);
+    int32_t level = 0;
+    JS_ToInt32(ctx, &level, argv[0]);
+    if (level < 0 || level > 3) level = 3;
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, argv[1]);
+    if (!msg) return JS_EXCEPTION;
+    jstring jmsg = utf8_to_jstring(env, msg, len);
+    JS_FreeCString(ctx, msg);
+    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)level, jmsg);
+    (*env)->DeleteLocalRef(env, jmsg);
+    if (check_java_exception(e, env, ctx)) return JS_EXCEPTION;
+    return JS_UNDEFINED;
+}
+
+/* Rejections nobody handles are the classic silent async failure — surface them on the log
+ * channel (level 4). is_handled=true retractions are ignored: a breadcrumb, not a crash record. */
+static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
+                                      int is_handled, void *opaque) {
+    if (is_handled) return;
+    Engine *e = (Engine *)opaque;
+    if (!e || e->in_critical) return; /* never re-enter JNI under a critical region */
+    JNIEnv *env = engine_env(e);
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, reason);
+    if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        msg = "(unprintable reason)";
+        len = 20;
+        jstring jm = utf8_to_jstring(env, msg, len);
+        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
+        (*env)->DeleteLocalRef(env, jm);
+    } else {
+        jstring jm = utf8_to_jstring(env, msg, len);
+        JS_FreeCString(ctx, msg);
+        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
+        (*env)->DeleteLocalRef(env, jm);
+    }
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+    }
+}
+
 /* Inbound flow control from the C pipe layer: its buffer drained below low-water; resume the
  * host's parked writer. Fires from JS-initiated read paths only — never under the critical
  * region by construction; queued as defense if it ever were. */
@@ -305,16 +356,19 @@ static Engine *engine_new(JNIEnv *env, jint appVersion) {
     e->onCloseWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseWrite", "(JILjava/lang/String;)V");
     e->onCloseRead = (*env)->GetStaticMethodID(env, e->bridgeClass, "onCloseRead", "(JI)V");
     e->onDrain = (*env)->GetStaticMethodID(env, e->bridgeClass, "onDrain", "(JI)V");
+    e->onLog = (*env)->GetStaticMethodID(env, e->bridgeClass, "onLog", "(JILjava/lang/String;)V");
 
     JSValue global = JS_GetGlobalObject(e->ctx);
     JS_SetPropertyStr(e->ctx, global, "__hostOpen", JS_NewCFunction(e->ctx, js_host_open, "__hostOpen", 2));
     JS_SetPropertyStr(e->ctx, global, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, global, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
     JS_SetPropertyStr(e->ctx, global, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
+    JS_SetPropertyStr(e->ctx, global, "__consoleLog", JS_NewCFunction(e->ctx, js_console_log, "__consoleLog", 2));
     JS_FreeValue(e->ctx, global);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
     qjs_install_versions(e->ctx, appVersion);
+    JS_SetHostPromiseRejectionTracker(e->rt, promise_rejection_tracker, e);
     return e;
 }
 

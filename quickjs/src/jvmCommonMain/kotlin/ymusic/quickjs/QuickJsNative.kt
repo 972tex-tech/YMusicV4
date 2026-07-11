@@ -50,6 +50,11 @@ internal object QuickJsNative {
         sinks[handle]?.onDrain(id)
     }
 
+    @JvmStatic
+    fun onLog(handle: Long, level: Int, message: String) {
+        sinks[handle]?.onLog(level, message)
+    }
+
     external fun create(appVersion: Int): Long
     external fun evalEngine(handle: Long, script: String)
     external fun evalEngineBytecode(handle: Long, bytecode: ByteArray)

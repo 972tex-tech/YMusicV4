@@ -111,6 +111,40 @@ static JSValue js_host_close_read(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
+/* __consoleLog(level, msg) — the bundle's console + diagnostics, straight to the host callback
+ * (no pipe: logging must work from the first instruction of the boot eval and when the pipe
+ * layer itself is sick). Coercions run before the callback; nothing is held across them. */
+static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
+    int32_t level = 0;
+    JS_ToInt32(ctx, &level, argv[0]);
+    if (level < 0 || level > 3) level = 3;
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, argv[1]);
+    if (!msg) return JS_EXCEPTION;
+    if (e->cb) e->cb(e->user, QJS_OP_LOG, (uint32_t)level, (const uint8_t *)msg, len);
+    JS_FreeCString(ctx, msg);
+    return JS_UNDEFINED;
+}
+
+/* Rejections nobody handles are the classic silent async failure — surface them on the log
+ * channel. is_handled=true retractions are ignored: a breadcrumb, not a crash record. */
+static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
+                                      int is_handled, void *opaque) {
+    if (is_handled) return;
+    QjsEngine *e = (QjsEngine *)opaque;
+    if (!e || !e->cb) return;
+    size_t len = 0;
+    const char *msg = JS_ToCStringLen(ctx, &len, reason);
+    if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)"(unprintable reason)", 20);
+        return;
+    }
+    e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)msg, len);
+    JS_FreeCString(ctx, msg);
+}
+
 /* Extract the pending JS exception into *err (malloc'd; falls back to [fallback]). */
 static void set_err(JSContext *ctx, char **err, const char *fallback) {
     JSValue exc = JS_GetException(ctx);
@@ -134,10 +168,12 @@ static QjsEngine *engine_new(int app_version, QjsInboundCb cb, void *user) {
     JS_SetPropertyStr(e->ctx, g, "__hostData", JS_NewCFunction(e->ctx, js_host_data, "__hostData", 4));
     JS_SetPropertyStr(e->ctx, g, "__hostClose", JS_NewCFunction(e->ctx, js_host_close, "__hostClose", 2));
     JS_SetPropertyStr(e->ctx, g, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
+    JS_SetPropertyStr(e->ctx, g, "__consoleLog", JS_NewCFunction(e->ctx, js_console_log, "__consoleLog", 2));
     JS_FreeValue(e->ctx, g);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
     qjs_install_versions(e->ctx, app_version);
+    JS_SetHostPromiseRejectionTracker(e->rt, promise_rejection_tracker, e);
     return e;
 }
 

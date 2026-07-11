@@ -29,6 +29,7 @@ import platform.posix.size_tVar
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_READ
 import ymusic.quickjs.cinterop.QJS_OP_CLOSE_WRITE
 import ymusic.quickjs.cinterop.QJS_OP_DRAIN
+import ymusic.quickjs.cinterop.QJS_OP_LOG
 import ymusic.quickjs.cinterop.QJS_OP_OPEN
 import ymusic.quickjs.cinterop.QJS_OP_WRITE
 import ymusic.quickjs.cinterop.qjs_close
@@ -168,6 +169,7 @@ private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CP
             QJS_OP_CLOSE_WRITE -> { cb.onCloseWrite(idInt, data?.reinterpret<ByteVar>()?.toKString()); 0 }
             QJS_OP_CLOSE_READ -> { cb.onCloseRead(idInt); 0 }
             QJS_OP_DRAIN -> { cb.onDrain(idInt); 0 }
+            QJS_OP_LOG -> { cb.onLog(idInt, data?.reinterpret<ByteVar>()?.toKString() ?: ""); 0 }
             else -> 0
         }
     } catch (e: Throwable) {

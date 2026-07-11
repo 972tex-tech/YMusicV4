@@ -105,6 +105,9 @@ static int host_cb(void *user, int op, uint32_t id, const uint8_t *data, size_t 
         if (i >= 0) h->p[i].drains++;
         return 0;
     }
+    case QJS_OP_LOG:
+        fprintf(stderr, "[js log %u] %.*s\n", id, (int)len, (const char *)data);
+        return 0;
     }
     return -1;
 }

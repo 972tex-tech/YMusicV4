@@ -26,6 +26,9 @@ typedef struct QjsEngine QjsEngine;
 #define QJS_OP_CLOSE_WRITE 2 /* data = RESET reason (NUL-terminated UTF-8) or NULL for END */
 #define QJS_OP_CLOSE_READ  3 /* abandon read end: host's next write gets EPIPE */
 #define QJS_OP_DRAIN       4 /* flow control: the reader drained; resume the parked writer */
+#define QJS_OP_LOG         5 /* console/diagnostics: id = level (0 debug, 1 info, 2 warn,
+                              * 3 error, 4 unhandled promise rejection), data/len = UTF-8
+                              * message (valid only during the call); return value ignored */
 
 
 /* Invoked when JS reaches the host. OPEN: data = command (NUL-terminated UTF-8), len = its

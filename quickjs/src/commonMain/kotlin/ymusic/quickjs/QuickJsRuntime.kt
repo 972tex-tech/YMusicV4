@@ -54,6 +54,7 @@ fun interface AcceptRegistration {
 class QuickJsRuntime private constructor(
     private val engine: NativeEngine,
     private val engineDispatcher: CloseableCoroutineDispatcher,
+    private val logHandler: ((level: Int, message: String) -> Unit)?,
 ) {
 
     private val scope = CoroutineScope(engineDispatcher + SupervisorJob())
@@ -200,6 +201,13 @@ class QuickJsRuntime private constructor(
     internal fun onCloseRead(id: Int) { pipes[id]?.onPeerCloseRead() }
 
     internal fun onDrain(id: Int) { pipes[id]?.onDrain() }
+
+    /** Console/diagnostics from the engine (levels per [LOG_ERROR]…). A throwing handler must not
+     *  unwind into C — swallowed here, deliberately (there is no channel left to report on). */
+    internal fun onLog(level: Int, message: String) {
+        val handler = logHandler ?: return
+        runCatching { handler(level, message) }
+    }
 
     private inner class PipeImpl(val id: Int, val command: String) : PipeSource, PipeSink {
         /** The public pair of ends handed to callers — both views over this one state machine. */
@@ -576,6 +584,14 @@ class QuickJsRuntime private constructor(
     }
 
     companion object {
+        /** [onLog] levels: the bundle's console methods, plus 4 = an unhandled promise rejection
+         *  (the classic silent async failure, surfaced by the C-side tracker). */
+        const val LOG_DEBUG = 0
+        const val LOG_INFO = 1
+        const val LOG_WARN = 2
+        const val LOG_ERROR = 3
+        const val LOG_REJECTION = 4
+
         /**
          * [script] is the engine JS (the :engine-js bundle). It must define the transport globals
          * (`__jsOpen`/`__jsClose`/`__jsCloseRead`/`__jsDrain`, `ymix`) — the native engine
@@ -592,16 +608,18 @@ class QuickJsRuntime private constructor(
         suspend fun create(
             script: String,
             appVersion: Int = 0,
+            onLog: ((level: Int, message: String) -> Unit)? = null,
             configure: (QuickJsRuntime) -> Unit = {},
-        ): QuickJsRuntime = create(appVersion, configure) { it.evalEngine(script) }
+        ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngine(script) }
 
         /** The [ByteArray] twin, from [compile]d bytecode (same contract — `versions` is
          *  installed at create, so the version is never baked into the blob). */
         suspend fun create(
             bytecode: ByteArray,
             appVersion: Int = 0,
+            onLog: ((level: Int, message: String) -> Unit)? = null,
             configure: (QuickJsRuntime) -> Unit = {},
-        ): QuickJsRuntime = create(appVersion, configure) { it.evalEngineBytecode(bytecode) }
+        ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
          *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding
@@ -611,6 +629,7 @@ class QuickJsRuntime private constructor(
 
         private suspend fun create(
             appVersion: Int,
+            onLog: ((level: Int, message: String) -> Unit)?,
             configure: (QuickJsRuntime) -> Unit,
             eval: (NativeEngine) -> Unit,
         ): QuickJsRuntime {
@@ -625,13 +644,14 @@ class QuickJsRuntime private constructor(
                     override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
                     override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
                     override fun onDrain(id: Int) { rtRef?.onDrain(id) }
+                    override fun onLog(level: Int, message: String) { rtRef?.onLog(level, message) }
                 }
                 // Assign INSIDE the block: prompt-cancellation throws a CancellationException on the
                 // way back out of a withContext whose body already completed, so `engine = <result>`
                 // would never run and the catch would see null and leak the freshly-created engine.
                 // Assigned in-block, the engine is visible to the catch on that path.
                 withContext(dispatcher) { engine = NativeEngine.create(appVersion, callbacks) }
-                val rt = QuickJsRuntime(engine!!, dispatcher)
+                val rt = QuickJsRuntime(engine!!, dispatcher, onLog)
                 rtRef = rt
                 owned = true
                 rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)

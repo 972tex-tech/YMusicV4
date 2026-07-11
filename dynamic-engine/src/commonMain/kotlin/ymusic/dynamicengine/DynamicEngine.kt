@@ -77,7 +77,9 @@ class DynamicEngine private constructor(
             appVersion: Int,
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
-        ): DynamicEngine = boot(logger) { QuickJsRuntime.create(engineJs, appVersion) { it.installHttp(client, logger) } }
+        ): DynamicEngine = boot(logger) {
+            QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) { it.installHttp(client, logger) }
+        }
 
         /** Create from [compile]d bytecode of a bundle — `versions.app` is only known here, so it
          *  can never be baked into the precompiled blob; C installs it before the bytecode runs. */
@@ -86,7 +88,9 @@ class DynamicEngine private constructor(
             appVersion: Int,
             engineBytecode: ByteArray,
             logger: Logger? = null,
-        ): DynamicEngine = boot(logger) { QuickJsRuntime.create(engineBytecode, appVersion) { it.installHttp(client, logger) } }
+        ): DynamicEngine = boot(logger) {
+            QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) { it.installHttp(client, logger) }
+        }
 
         /** Compile a bundle to QuickJS bytecode for [create] — per-function source text is
          *  stripped, so the blob carries no copy of the script. Compile once (e.g. after fetching
@@ -153,5 +157,20 @@ class DynamicEngine private constructor(
 
         @Serializable
         private data class InitHead(val backendVersion: Int)
+
+        private val JS_LOG_CTX = listOf("engine-js")
+
+        /** The bundle's console + the unhandled-rejection tracker onto the app [Logger] —
+         *  developer breadcrumbs (never shown to the user, per the two-channel error contract). */
+        private fun jsLog(logger: Logger): (Int, String) -> Unit = { level, message ->
+            when (level) {
+                QuickJsRuntime.LOG_DEBUG -> logger.log(Logger.Level.DEBUG, JS_LOG_CTX, message)
+                QuickJsRuntime.LOG_INFO -> logger.log(Logger.Level.INFO, JS_LOG_CTX, message)
+                QuickJsRuntime.LOG_WARN -> logger.log(Logger.Level.WARN, JS_LOG_CTX, message)
+                QuickJsRuntime.LOG_REJECTION ->
+                    logger.log(Logger.Level.ERROR, JS_LOG_CTX, "unhandled promise rejection: $message")
+                else -> logger.log(Logger.Level.ERROR, JS_LOG_CTX, message)
+            }
+        }
     }
 }
