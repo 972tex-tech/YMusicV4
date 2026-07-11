@@ -163,6 +163,25 @@ class DynamicEngineTest {
     }
 
     @Test
+    fun content_length_matches_the_encoded_bytes_for_every_utf8_width() = runTest {
+        val canned = CannedResponse.ofText("ok")
+        var body: ByteArray? = null
+        val client = FakeHttpClient { req ->
+            body = req.body?.readAll()
+            canned.build(req)
+        }
+        val e = createTestEngine(client)
+        try {
+            e.scenario("post-body-unicode")
+            // "aé€𝄞\uD800!": 1 + 2 + 3 + 4 + 3 (lone surrogate as WTF-8) + 1
+            assertEquals(14, body?.size)
+            assertEquals("14", client.lastRequest!!.header("Content-Length"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
     fun json_body_sets_content_type_and_serializes() = runTest {
         val canned = CannedResponse.ofText("ok")
         var body: ByteArray? = null
