@@ -4,60 +4,39 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
-/** The bare-create / one-shot [QuickJsRuntime.evalEngine] contract. */
+/** The create(script, configure) boot contract. */
 class EvalEngineTest {
 
     @Test
-    fun open_before_evalEngine_is_refused() = runTest {
-        val rt = QuickJsRuntime.create(appVersion = 1)
-        try {
-            val e = assertFailsWith<QuickJsException> { rt.openPipe("anything") }
-            assertTrue(e.message!!.contains("not loaded"), e.message)
-        } finally {
-            rt.close()
-        }
-    }
-
-    @Test
-    fun evalEngine_is_one_shot() = runTest {
-        val rt = QuickJsRuntime.create(appVersion = 1)
-        try {
-            rt.evalEngine(TEST_ENGINE_JS)
-            val e = assertFailsWith<QuickJsException> { rt.evalEngine(TEST_ENGINE_JS) }
-            assertTrue(e.message!!.contains("already loaded"), e.message)
-        } finally {
-            rt.close()
-        }
-    }
-
-    @Test
-    fun a_failed_eval_consumes_the_one_shot() = runTest {
-        val rt = QuickJsRuntime.create(appVersion = 1)
-        try {
-            assertFailsWith<QuickJsException> { rt.evalEngine("throw new Error('bad bundle')") }
-            assertFailsWith<QuickJsException> { rt.evalEngine(TEST_ENGINE_JS) }
-        } finally {
-            rt.close()
-        }
-    }
-
-    @Test
-    fun handlers_registered_before_the_eval_serve_the_split_flow() = runTest {
-        val rt = QuickJsRuntime.create(appVersion = 7)
-        try {
-            rt.onAccept("echo-cmd") { pipe ->
-                val buf = okio.Buffer()
-                while (pipe.source.receive(buf, 4096L) != -1L) { /* to EOF */ }
-                pipe.sink.send(buf, buf.size)
+    fun configure_registers_handlers_before_the_boot_eval() = runTest {
+        var configured = false
+        val rt = QuickJsRuntime.create(TEST_ENGINE_JS, appVersion = 7) { r ->
+            configured = true
+            r.onAccept("host-cmd") { pipe ->
                 pipe.sink.close()
                 pipe.source.close()
             }
-            rt.evalEngine(TEST_ENGINE_JS)
+        }
+        try {
+            assertEquals(true, configured)
             assertEquals("7", rt.load("String(versions.app)"))
         } finally {
             rt.close()
+        }
+    }
+
+    @Test
+    fun a_failing_boot_eval_throws_and_does_not_leak() = runTest {
+        assertFailsWith<QuickJsException> {
+            QuickJsRuntime.create("throw new Error('bad bundle')")
+        }
+    }
+
+    @Test
+    fun a_throwing_configure_fails_the_create() = runTest {
+        assertFailsWith<IllegalStateException> {
+            QuickJsRuntime.create(TEST_ENGINE_JS) { error("wiring failed") }
         }
     }
 }
