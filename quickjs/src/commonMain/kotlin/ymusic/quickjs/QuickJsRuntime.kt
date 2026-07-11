@@ -185,7 +185,10 @@ class QuickJsRuntime private constructor(
          *  parked reader's sink (up to its byteCount — sized at delivery time, so a full chunk can
          *  rendezvous), then the okio buffer up to [PIPE_CAP]. Returns accepted, or -1 (EPIPE). */
         fun deliver(chunk: NativeChunk): Int {
-            if (readClosed) return -1
+            // Reject after our read close (EPIPE) or after the peer's own END: no bytes may land past a
+            // clean END. Both are serialized on the engine thread in the normal flow; the writeEnded
+            // guard also blocks a hostile __hostData whose off/len valueOf reentered __hostClose(END).
+            if (readClosed || writeEnded) return -1
             var pos = 0
             val r = reader
             if (r != null) {

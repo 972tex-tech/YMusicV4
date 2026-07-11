@@ -95,4 +95,33 @@ class JsonBufferSafetyTest {
             rt.close()
         }
     }
+
+    /**
+     * The reentrancy guard must cover its OWN argument coercion: `off` can be an object whose valueOf
+     * runs before the loop and reenters __jsonEncFill. The busy flag is armed before that coercion, so
+     * the nested fill is rejected (and the throw propagates out of the outer coercion) rather than
+     * running the encoder from a mutated walk position.
+     */
+    @Test
+    fun encoder_rejects_reentry_from_an_off_valueof() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            val result = rt.load(
+                """
+                (function () {
+                  var u8 = new Uint8Array(new ArrayBuffer(8));
+                  var enc = __jsonEncNew({ a: 1, b: 2 });
+                  var evilOff = { valueOf: function () { __jsonEncFill(enc, u8, 0); return 0; } };
+                  try {
+                    __jsonEncFill(enc, u8, evilOff);
+                    return "no-throw";
+                  } catch (e) { return "threw"; }
+                })()
+                """.trimIndent(),
+            )
+            assertEquals("threw", result, "a reentrant fill via the off argument's valueOf must be rejected")
+        } finally {
+            rt.close()
+        }
+    }
 }

@@ -679,7 +679,9 @@ static JSValue js_pb_close_read(JSContext *ctx, JSValueConst this_val, int argc,
     if (pb->read_closed) return JS_UNDEFINED;
     pb->read_closed = 1;
     pb_free_all(pb);
-    if (pb->job != PB_JOB_NONE) {
+    // The resolve guard matches pb_fail: only a fully-parked job (capability stored) can be settled.
+    // In reachable states a job here is always parked; the guard hardens against a half-armed reentry.
+    if (pb->job != PB_JOB_NONE && !JS_IsUndefined(pb->resolve)) {
         pb_acc_reset(pb);
         pb_settle(pb, 0, pb_error(ctx, "receive() after closeRead()")); /* in-flight read is a misuse */
     }

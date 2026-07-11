@@ -972,11 +972,11 @@ static JSValue js_json_enc_fill(JSContext *ctx, JSValueConst this_val, int argc,
     // e->stack is held across the call; a reentrant fill on THIS encoder would realloc/pop that
     // stack and dangle the pointer. Reject reentry outright — encoding is strictly one-at-a-time.
     if (e->busy) return JS_ThrowInternalError(ctx, "__jsonEncFill: reentrant fill");
+    e->busy = 1; // arm before coercing off: an object off's valueOf must not reenter unguarded
     int64_t off = 0;
-    if (JS_ToInt64(ctx, &off, argv[2])) return JS_EXCEPTION;
-    if (off < 0) return JS_ThrowRangeError(ctx, "__jsonEncFill: bad destination range");
+    if (JS_ToInt64(ctx, &off, argv[2])) { e->busy = 0; return JS_EXCEPTION; }
+    if (off < 0) { e->busy = 0; return JS_ThrowRangeError(ctx, "__jsonEncFill: bad destination range"); }
     size_t w = 0;
-    e->busy = 1;
     for (;;) {
         /* Re-resolve the destination EVERY iteration: jenc_produce runs user JS (getters, toJSON,
          * Proxy traps) that can detach or resize this ArrayBuffer, dangling any cached base/cap.
