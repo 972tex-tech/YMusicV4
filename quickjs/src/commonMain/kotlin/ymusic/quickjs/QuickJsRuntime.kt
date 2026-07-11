@@ -60,6 +60,7 @@ class QuickJsRuntime private constructor(
     private val closed = AtomicBoolean(false)
     private val engineLoaded = AtomicBoolean(false)
     private val pipes = HashMap<Int, PipeImpl>()
+    private val idleWaiters = ArrayList<CancellableContinuation<Unit>>() // engine-thread confined
 
     // onAccept is called from any thread (the app registers handlers off the engine thread), while
     // onOpen reads on the engine thread — the one piece of state not engine-confined. Guard both
@@ -108,6 +109,34 @@ class QuickJsRuntime private constructor(
         }
     }
 
+    /**
+     * Suspend until no pipe is open in either direction — everything in flight is a pipe
+     * (host-opened commands, JS-opened commands, timers), so empty = quiesced. Returns immediately
+     * when already idle; multiple waiters are allowed. Completes (rather than throws) when the
+     * runtime is closed mid-wait — no pipes is factually true then. Callers bound the wait
+     * themselves (`withTimeoutOrNull(...) { awaitIdle() }`).
+     */
+    suspend fun awaitIdle() {
+        if (closed.load()) return
+        withContext(engineDispatcher) {
+            if (closed.load() || pipes.isEmpty()) return@withContext
+            suspendCancellableCoroutine { cont ->
+                // No off-thread removal on cancellation: a cancelled waiter stays in the list and
+                // the eventual resume is ignored (the list is engine-confined; mutating it from
+                // the canceller's thread would race).
+                idleWaiters.add(cont)
+            }
+        }
+    }
+
+    /** On the engine thread, after any pipe leaves the map. */
+    private fun notifyIfIdle() {
+        if (pipes.isNotEmpty() || idleWaiters.isEmpty()) return
+        val waiters = idleWaiters.toList()
+        idleWaiters.clear()
+        for (w in waiters) w.resume(Unit)
+    }
+
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
      *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]
@@ -142,10 +171,12 @@ class QuickJsRuntime private constructor(
                     engine.open(id, command)
                 } catch (e: Throwable) {
                     pipes.remove(id)
+                    notifyIfIdle()
                     throw e
                 }
                 if (rc < 0) {
                     pipes.remove(id)
+                    notifyIfIdle()
                     throw QuickJsException("open(\"$command\") refused: no JS handler")
                 }
                 opened = impl
@@ -515,7 +546,10 @@ class QuickJsRuntime private constructor(
 
         // No more data either way — drop routing. (The runtime close() reaps everything regardless.)
         private fun maybeReap() {
-            if (weEnded && (writeEnded || readClosed)) pipes.remove(id)
+            if (weEnded && (writeEnded || readClosed)) {
+                pipes.remove(id)
+                notifyIfIdle()
+            }
         }
 
         /** Runtime teardown: poison the pipe on BOTH sides and fail anything parked — a
@@ -560,6 +594,7 @@ class QuickJsRuntime private constructor(
             val cause = QuickJsException("runtime closed")
             val open = pipes.values.toList()
             pipes.clear()
+            notifyIfIdle() // no pipes is factually true; idle waiters complete, not throw
             for (p in open) p.failPending(cause)
             yield() // let the failed continuations unwind while the engine is still alive
             engine.destroy()
