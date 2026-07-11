@@ -21,6 +21,8 @@ class EvalEngineTest {
         try {
             assertEquals(true, configured)
             assertEquals("7", rt.load("String(versions.app)"))
+            // BACKEND_VERSION/APP_VERSION are compile-time defines — inlined, gone at runtime;
+            // in-bundle use is covered by the lifecycle fixtures/init head.
         } finally {
             rt.close()
         }
