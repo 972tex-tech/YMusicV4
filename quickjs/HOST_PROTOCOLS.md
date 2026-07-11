@@ -125,6 +125,25 @@ Client abandons an in-flight call → it RESETs its pipe (`sink.close(reason)`),
 throws the reason, and it aborts the underlying call/query/read. (Supported since §4 landed;
 pair it with `source.close()` to also EPIPE a server that is mid-write.)
 
+### Engine lifecycle (`"init"` / `"shutdown"`, bundle-served) — *implemented*
+
+The two commands the HOST opens on the bundle (`engine-js/src/lifecycle.ts`), the reverse of every
+other section here:
+
+- **`"init"`** — the post-boot health check. No head; the bundle writes
+  `{"backendVersion": N}` (its self-declared revision) and ENDs. `DynamicEngine.create` drives it
+  with a deadline right after the boot eval: a refused open / RESET / malformed head / timeout is a
+  typed rejection (`E20021`; a RESET carrying the bundle's own code keeps it), and the round-trip
+  proves open routing, handler dispatch, JSON encode, and END — not just that the eval ran.
+- **`"shutdown"`** — SIGINT as a pipe, sent when `DynamicEngineManager` retires an engine after a
+  swap. The bundle sets its `shuttingDown` flag, clears every live timer (a repeat timer's pipe
+  otherwise holds the engine out of idle forever), runs the `onShutdown(cb)` registrations, and
+  ENDs. The ack is **observed, not replied**: finished work closes its pipes, and the host waits —
+  bounded — on `QuickJsRuntime.awaitIdle()` (the pipe map emptying IS "quiesced"), then closes.
+  A bundle without the module refuses the open; the host skips the signal and the deadline +
+  `close()` backstop. Bundle-side rule: cleanup that matters goes in `onShutdown` — after the
+  runtime closes there is no JS.
+
 ---
 
 ## 1. HTTP  (`command = "http"`)  — *implemented in `:dynamic-engine`*
