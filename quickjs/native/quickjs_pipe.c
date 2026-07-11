@@ -851,6 +851,32 @@ static JSValue js_utf8_encode(JSContext *ctx, JSValueConst this_val, int argc, J
     return u8;
 }
 
+/* __utf8Length(str, from, to) -> number. The exact byte count __utf8Encode(str, from, to) would
+ * produce, measured without encoding — the same utf8_measure_units the encoder sizes with, so the
+ * two can never disagree (a JS mirror would drift on lone surrogates). */
+static JSValue js_utf8_length(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    int64_t from = 0, to = 0;
+    JS_ToInt64(ctx, &from, argv[1]);
+    JS_ToInt64(ctx, &to, argv[2]);
+    if (from < 0 || to < from)
+        return JS_ThrowRangeError(ctx, "__utf8Length range out of bounds");
+    JSValue flat = JS_ToFlatString(ctx, argv[0]);
+    if (JS_IsException(flat)) return flat;
+    const void *data = NULL;
+    uint32_t slen = 0;
+    int wide = JS_GetFlatStringStorage(flat, &data, &slen);
+    if (wide < 0) {
+        JS_FreeValue(ctx, flat);
+        return JS_ThrowTypeError(ctx, "__utf8Length: not a string");
+    }
+    uint32_t i = (from > (int64_t)slen) ? slen : (uint32_t)from;
+    uint32_t end = (to > (int64_t)slen) ? slen : (uint32_t)to;
+    if (i > end) i = end;
+    size_t n = utf8_measure_units(data, wide, i, end);
+    JS_FreeValue(ctx, flat);
+    return JS_NewInt64(ctx, (int64_t)n);
+}
+
 /* ---- class + registration ---- */
 
 static void pipebuf_finalizer(JSRuntime *rt, JSValue val) {
@@ -905,6 +931,7 @@ QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user) 
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
     JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 3));
+    JS_SetPropertyStr(ctx, g, "__utf8Length", JS_NewCFunction(ctx, js_utf8_length, "__utf8Length", 3));
     JS_FreeValue(ctx, g);
     return pc;
 }

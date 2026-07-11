@@ -17,7 +17,9 @@
  *   __pbUtf8(pb)               -> string | Promise            whole remaining body, decoded once
  *   __pbCloseRead(pb)          abandon the read side (free segments, unregister; next write -1)
  *   __utf8Decode(u8, off, len) -> string
- *   __utf8Into(str, from, to, dst, dstOff) -> (unitsRead << 16) | bytesWritten (sink encode)
+ *   __utf8Into(str, from, to, dst, dstOff) -> bytes written (sink encode into a staged segment)
+ *   __utf8Encode(str, from, to) -> Uint8Array   exact-size, zero-copy wrap of a C buffer
+ *   __utf8Length(str, from, to) -> number       the byte count __utf8Encode would produce
  *
  * CRITICAL-REGION RULE (JVM): qjs_pipe_write runs while the host ByteArray is held with
  * GetPrimitiveArrayCritical. This path never calls back into the host — the accepted-count return
