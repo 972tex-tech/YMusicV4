@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.watchNext
+import ymusic.mediastore.model.MediaStoreItem
 import ymusic.player.PlayableItem
 import ymusic.player.Player
 
@@ -60,6 +61,20 @@ class PlaybackCoordinator(
         }
     }
 
+    /** Play local library [songs] as the queue, starting at [index]. */
+    fun playLocal(songs: List<MediaStoreItem>, index: Int) {
+        val display = songs.map { s ->
+            YtFeedItem(
+                kind = KIND_LOCAL,
+                id = s.uri.toString(),
+                title = s.title,
+                byline = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
+            )
+        }
+        _metadata.update { it + display.associateBy(YtFeedItem::id) }
+        player.setQueue(songs.map { PlayableItem.LocalUri(it.uri.toString()) }, playIndex = index)
+    }
+
     fun playNext(video: YtFeedItem) {
         remember(listOf(video))
         player.addToPlayNext(listOf(PlayableItem.YtVideoId(video.id)))
@@ -73,5 +88,10 @@ class PlaybackCoordinator(
     private fun remember(items: List<YtFeedItem>) {
         if (items.isEmpty()) return
         _metadata.update { it + items.associateBy(YtFeedItem::id) }
+    }
+
+    private companion object {
+        /** Display-metadata kind for local library items (keyed by uri, never a YouTube id). */
+        const val KIND_LOCAL = "local"
     }
 }

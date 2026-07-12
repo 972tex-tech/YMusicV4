@@ -21,11 +21,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import kmpcommon.uri.UriBuilder
+import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.withContext
+import okio.FileSystem
 import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.mediascanner.FfmpegMetadataExtractor
+import ymusic.mediascanner.FileSystemDocumentsProvider
+import ymusic.mediascanner.MediaScanner
+import ymusic.mediastore.BetterMediaStore
+import ymusic.mediastore.mediaStoreJdbcDriver
 import ymusic.player.LocalPlayer
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
@@ -38,6 +47,8 @@ import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
 import java.awt.BorderLayout
+import java.awt.FileDialog
+import java.awt.Frame
 import java.io.File
 import javax.swing.JPanel
 
@@ -83,6 +94,11 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val engines = DynamicEngineManager(httpClient, appVersion = 1)
     engines.start()
 
+    val mediaStore = withContext(Dispatchers.IO) {
+        val dir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
+        BetterMediaStore.create(mediaStoreJdbcDriver(File(dir, "media-store.db").absolutePath))
+    }
+
     val cefClient = cefManager.createClient()
     val webViewContainer = JPanel(BorderLayout())
     val webViewJs = withContext(Dispatchers.IO) { readWebViewJs() }
@@ -103,7 +119,12 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         )
     }
 
-    return AppGraph(engines, player) { engine, modifier ->
+    return AppGraph(
+        engines,
+        player,
+        mediaStore = mediaStore,
+        scanLibraryFolder = { scanPickedFolder(mediaStore) },
+    ) { engine, modifier ->
         // The surface follows the engine kind: VLCJ's AWT component for local files, the shared
         // JCEF container (the player injects its browser into it) for YouTube.
         when (engine) {
@@ -115,6 +136,48 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             else -> {}
         }
     }
+}
+
+/** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
+private suspend fun scanPickedFolder(store: BetterMediaStore): String? {
+    val picked = pickFolder() ?: return null
+    val ffmpeg = findFfmpeg()
+        ?: return "ffmpeg not found — install it (e.g. brew install ffmpeg) to scan metadata"
+    val scanner = MediaScanner.create(
+        store,
+        FileSystemDocumentsProvider(FileSystem.SYSTEM),
+        FfmpegMetadataExtractor(FfmpegMetadataGetter(ffmpeg)),
+    )
+    val rootUri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
+    val progress = scanner.scan(rootUri).last()
+    progress.errors.forEach { println("scan error at ${it.uri}: ${it.cause}") }
+    return buildString {
+        append("Scanned ${progress.scanned}: ${progress.added} added, ${progress.updated} updated, ")
+        append("${progress.deleted} removed")
+        if (progress.errors.isNotEmpty()) append(", ${progress.errors.size} failed")
+    }
+}
+
+// macOS's AWT FileDialog only picks directories while this property is set; elsewhere the dialog
+// picks a single file, which the scanner indexes on its own (a supported single-file scan).
+private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
+    val prop = "apple.awt.fileDialogForDirectories"
+    val previous = System.getProperty(prop)
+    System.setProperty(prop, "true")
+    try {
+        val dialog = FileDialog(null as Frame?, "Choose a music folder", FileDialog.LOAD)
+        dialog.isVisible = true
+        dialog.file?.let { File(dialog.directory, it) }
+    } finally {
+        if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
+    }
+}
+
+private fun findFfmpeg(): String? {
+    System.getenv("YMUSIC_FFMPEG")?.let { if (File(it).canExecute()) return it }
+    val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator) +
+        listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
+    return dirs.asSequence().map { File(it, "ffmpeg") }.firstOrNull { it.canExecute() }?.absolutePath
 }
 
 /** The built webview-js bundle — the injected YouTube player script (run `npm run build` there). */

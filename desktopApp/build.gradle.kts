@@ -18,6 +18,7 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 implementation(project(":commonUi"))
+                implementation(project(":media-scanner"))
                 implementation(compose.desktop.currentOs)
                 implementation(compose.material3)
                 implementation(Libs.Jcef.maven)

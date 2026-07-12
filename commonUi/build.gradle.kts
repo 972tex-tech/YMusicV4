@@ -30,6 +30,7 @@ kotlin {
             dependencies {
                 api(project(":player"))
                 api(project(":dynamic-engine"))
+                api(project(":media-store"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material3)
