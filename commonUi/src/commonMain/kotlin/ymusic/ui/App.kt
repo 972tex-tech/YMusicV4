@@ -109,6 +109,7 @@ fun App(graph: AppGraph) {
                     when {
                         searching -> SearchScreen(graph, coordinator, onBack = { searching = false })
                         section == AppSection.Discover -> DiscoverScreen(graph, coordinator)
+                        section == AppSection.Library -> LibraryScreen(graph, coordinator)
                         else -> ComingSoon(section)
                     }
                 }
