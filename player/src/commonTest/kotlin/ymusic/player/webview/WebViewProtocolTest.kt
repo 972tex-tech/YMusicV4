@@ -98,6 +98,48 @@ class WebViewProtocolTest {
     }
 
     @Test
+    fun capability_commands_carry_the_right_discriminators() {
+        assertEquals(3, parse(WebViewProtocol.encodeSelectVideoQuality("hd720"))["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals("hd720", parse(WebViewProtocol.encodeSelectVideoQuality("hd720"))["quality"]!!.jsonPrimitive.content)
+        assertEquals(7, parse(WebViewProtocol.encodeSelectCaption("en"))["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals(8, parse(WebViewProtocol.encodeSelectAudioTrack("t1"))["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals(9, parse(WebViewProtocol.encodeSetCaptionVisible(true))["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals(true, parse(WebViewProtocol.encodeSetCaptionVisible(true))["visible"]!!.jsonPrimitive.content.toBoolean())
+    }
+
+    @Test
+    fun decodes_quality_captions_audiotracks() {
+        val q = WebViewProtocol.decodeEvent(
+            "s_quality_changed",
+            """{"available":[{"quality":"hd720","label":"720p"},{"quality":"auto","label":"Auto"}],"actual":"hd720","prefer":"auto"}""",
+            "s",
+        )
+        assertTrue(q is WebViewEvent.QualityChanged)
+        assertEquals(2, q.state.options.size)
+        assertEquals("720p", q.state.options.first().label)
+        assertEquals("hd720", q.state.actualQuality)
+        assertEquals("auto", q.state.preferredQuality)
+
+        val c = WebViewProtocol.decodeEvent(
+            "s_captions",
+            """{"tracks":[{"languageCode":"en","displayName":"English"}],"selectedCaptionLanguage":"en"}""",
+            "s",
+        )
+        assertTrue(c is WebViewEvent.CaptionsChanged)
+        assertEquals("English", c.state.tracks.single().displayName)
+        assertEquals("en", c.state.selectedLanguage)
+
+        val a = WebViewProtocol.decodeEvent(
+            "s_audio_tracks",
+            """{"tracks":[{"trackId":"t1","displayName":"Original"}],"selectedTrackId":"t1"}""",
+            "s",
+        )
+        assertTrue(a is WebViewEvent.AudioTracksChanged)
+        assertEquals("t1", a.state.tracks.single().id)
+        assertEquals("t1", a.state.selectedId)
+    }
+
+    @Test
     fun wrong_session_and_unknown_channel_are_ignored() {
         // Unknown channel name (after stripping) → null.
         assertNull(WebViewProtocol.decodeEvent("sid_bogus", "{}", "sid"))

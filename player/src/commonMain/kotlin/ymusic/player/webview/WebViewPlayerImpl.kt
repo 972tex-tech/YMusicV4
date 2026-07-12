@@ -14,12 +14,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
+import ymusic.player.AudioTrackState
+import ymusic.player.CaptionState
 import ymusic.player.PlaybackConfig
 import ymusic.player.PlaybackState
 import ymusic.player.PlaybackStatus
 import ymusic.player.PlayerError
 import ymusic.player.Progress
 import ymusic.player.ResolvedSource
+import ymusic.player.VideoQualityState
 import ymusic.player.WebViewPlayer
 import kotlin.random.Random
 
@@ -45,6 +48,15 @@ internal class WebViewPlayerImpl(
 
     private val _progress = MutableStateFlow(Progress())
     override val progress: StateFlow<Progress> = _progress.asStateFlow()
+
+    private val _videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
+    override val videoQuality: StateFlow<VideoQualityState> = _videoQuality.asStateFlow()
+
+    private val _captions = MutableStateFlow(CaptionState.DEFAULT)
+    override val captions: StateFlow<CaptionState> = _captions.asStateFlow()
+
+    private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+    override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
 
     private var sessionId: String = ""
     private var connected = false
@@ -113,6 +125,14 @@ internal class WebViewPlayerImpl(
         command(WebViewProtocol.encodeSetAudioOnly(audioOnly))
     }
 
+    override fun selectVideoQuality(quality: String) = command(WebViewProtocol.encodeSelectVideoQuality(quality))
+
+    override fun selectCaption(languageCode: String?) = command(WebViewProtocol.encodeSelectCaption(languageCode))
+
+    override fun setCaptionVisible(visible: Boolean) = command(WebViewProtocol.encodeSetCaptionVisible(visible))
+
+    override fun selectAudioTrack(id: String) = command(WebViewProtocol.encodeSelectAudioTrack(id))
+
     override fun release() {
         if (released) return
         released = true
@@ -159,6 +179,9 @@ internal class WebViewPlayerImpl(
                     bufferedPositionMs = e.bufferedMs,
                 )
             }
+            is WebViewEvent.QualityChanged -> _videoQuality.value = e.state
+            is WebViewEvent.CaptionsChanged -> _captions.value = e.state
+            is WebViewEvent.AudioTracksChanged -> _audioTracks.value = e.state
             null -> Unit
         }
     }

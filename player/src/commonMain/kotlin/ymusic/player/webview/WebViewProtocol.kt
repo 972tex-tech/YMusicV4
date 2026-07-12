@@ -8,7 +8,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import ymusic.player.AudioTrack
+import ymusic.player.AudioTrackState
+import ymusic.player.CaptionState
+import ymusic.player.CaptionTrack
 import ymusic.player.PlaybackState
+import ymusic.player.VideoQualityOption
+import ymusic.player.VideoQualityState
 
 /**
  * The pure wire protocol for the WebView YouTube engine — the KMP counterpart of the legacy
@@ -21,9 +27,9 @@ import ymusic.player.PlaybackState
  *  - **page → host**: the page posts `"${sessionId}_<name>"` channels with a JSON payload
  *    ([decodeEvent] strips the session prefix and returns a typed [WebViewEvent]).
  *
- * Only the narrow [ymusic.player.MediaEngine] surface is covered here; YouTube extras (quality,
- * captions, audio tracks, po-token, player-response) are deliberately omitted — future capability
- * interfaces, not this core.
+ * Covers the narrow [ymusic.player.MediaEngine] surface plus the YouTube capability channels
+ * (video quality / captions / audio tracks — the `*Selectable` interfaces). `po-token` and
+ * `player-response` remain out of scope (extraction concerns, not playback).
  */
 object WebViewProtocol {
     // `what` discriminators — must match Actions.kt (legacy) and player_connect.ts (the page agent).
@@ -32,6 +38,9 @@ object WebViewProtocol {
     private const val SET_QUALITY = 3
     private const val SEEK = 4
     private const val STOP = 5
+    private const val SET_PREFER_CAPTION_LANGUAGE = 7
+    private const val SET_AUDIO_TRACK = 8
+    private const val SET_CAPTION_VISIBLE = 9
     private const val SET_VOLUME = 10
     private const val SET_PLAY_SPEED = 11
     private const val BULK = 12
@@ -94,6 +103,25 @@ object WebViewProtocol {
     fun encodeSetAudioOnly(audioOnly: Boolean): String =
         qualityObject(if (audioOnly) QUALITY_AUDIO_ONLY else QUALITY_AUTO).toString()
 
+    // --- capability commands ---
+
+    fun encodeSelectVideoQuality(quality: String): String = qualityObject(quality).toString()
+
+    fun encodeSelectCaption(languageCode: String?): String = buildJsonObject {
+        put("what", JsonPrimitive(SET_PREFER_CAPTION_LANGUAGE))
+        put("languageCode", languageCode?.let { JsonPrimitive(it) } ?: JsonNull)
+    }.toString()
+
+    fun encodeSetCaptionVisible(visible: Boolean): String = buildJsonObject {
+        put("what", JsonPrimitive(SET_CAPTION_VISIBLE))
+        put("visible", JsonPrimitive(visible))
+    }.toString()
+
+    fun encodeSelectAudioTrack(trackId: String): String = buildJsonObject {
+        put("what", JsonPrimitive(SET_AUDIO_TRACK))
+        put("trackId", JsonPrimitive(trackId))
+    }.toString()
+
     /**
      * Decode a page → host channel. [channel] is the raw channel name (`"${sessionId}_state_changed"`,
      * or `"report_error"` which carries no prefix). Returns null for an unknown channel, a wrong
@@ -116,6 +144,25 @@ object WebViewProtocol {
                 durationMs = obj.seconds("durationSeconds"),
                 bufferedMs = obj.seconds("bufferedSeconds"),
                 seekable = obj.bool("seekable"),
+            )
+            "quality_changed" -> WebViewEvent.QualityChanged(
+                VideoQualityState(
+                    options = obj.qualityOptions("available"),
+                    actualQuality = obj.string("actual") ?: VideoQualityState.AUTO,
+                    preferredQuality = obj.string("prefer") ?: VideoQualityState.AUTO,
+                ),
+            )
+            "captions" -> WebViewEvent.CaptionsChanged(
+                CaptionState(
+                    tracks = obj.captionTracks("tracks"),
+                    selectedLanguage = obj.string("selectedCaptionLanguage"),
+                ),
+            )
+            "audio_tracks" -> WebViewEvent.AudioTracksChanged(
+                AudioTrackState(
+                    tracks = obj.audioTrackList("tracks"),
+                    selectedId = obj.string("selectedTrackId"),
+                ),
             )
             else -> null
         }
@@ -163,6 +210,27 @@ object WebViewProtocol {
         val s = this[key]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
         return (s * 1000.0).toLong()
     }
+
+    private fun JsonObject.objects(key: String): List<JsonObject> =
+        (this[key] as? JsonArray)?.mapNotNull { it as? JsonObject } ?: emptyList()
+
+    private fun JsonObject.qualityOptions(key: String): List<VideoQualityOption> =
+        objects(key).mapNotNull { o ->
+            val q = o.string("quality") ?: return@mapNotNull null
+            VideoQualityOption(q, o.string("label") ?: q)
+        }
+
+    private fun JsonObject.captionTracks(key: String): List<CaptionTrack> =
+        objects(key).mapNotNull { o ->
+            val lang = o.string("languageCode") ?: o.string("actualLanguageCode") ?: return@mapNotNull null
+            CaptionTrack(lang, o.string("displayName") ?: lang)
+        }
+
+    private fun JsonObject.audioTrackList(key: String): List<AudioTrack> =
+        objects(key).mapNotNull { o ->
+            val id = o.string("trackId") ?: return@mapNotNull null
+            AudioTrack(id, o.string("displayName") ?: id)
+        }
 }
 
 /** A decoded page → host event; the engine maps these onto its `status`/`progress` flows. */
@@ -183,4 +251,10 @@ sealed interface WebViewEvent {
         val bufferedMs: Long,
         val seekable: Boolean,
     ) : WebViewEvent
+
+    data class QualityChanged(val state: VideoQualityState) : WebViewEvent
+
+    data class CaptionsChanged(val state: CaptionState) : WebViewEvent
+
+    data class AudioTracksChanged(val state: AudioTrackState) : WebViewEvent
 }
