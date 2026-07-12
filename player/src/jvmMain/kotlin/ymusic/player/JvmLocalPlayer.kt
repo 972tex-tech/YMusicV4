@@ -42,11 +42,24 @@ internal class JvmLocalPlayer : LocalPlayer {
     private val _progress = MutableStateFlow(Progress())
     override val progress: StateFlow<Progress> = _progress.asStateFlow()
 
+    private val _videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
+    override val videoQuality: StateFlow<VideoQualityState> = _videoQuality.asStateFlow()
+
+    private val _captions = MutableStateFlow(CaptionState.DEFAULT)
+    override val captions: StateFlow<CaptionState> = _captions.asStateFlow()
+
+    private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+    override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
     @Volatile private var desiredSpeed: Float = 1f
 
     @Volatile private var audioOnly = false
 
     @Volatile private var released = false
+
+    @Volatile private var preferVideoQuality = VideoQualityState.AUTO
+
+    @Volatile private var lastSpuId = -1
 
     /** The AWT video component for the desktop `PlayerSurface` to embed. */
     val videoComponent: Component get() = component
@@ -147,6 +160,65 @@ internal class JvmLocalPlayer : LocalPlayer {
         _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
     }
 
+    override fun selectVideoQuality(quality: String) {
+        if (released) return
+        preferVideoQuality = quality
+        // libVLC has no per-resolution track selection for local files; audio-only is the honored axis.
+        val ao = quality == VideoQualityState.AUDIO_ONLY
+        audioOnly = ao
+        applyAudioOnly()
+        _status.update { it.copy(audioOnly = ao, videoSize = if (ao) null else it.videoSize) }
+        _videoQuality.update { it.copy(preferredQuality = quality) }
+    }
+
+    override fun selectCaption(languageCode: String?) {
+        if (released) return
+        val id = if (languageCode == null || languageCode == "off") -1 else languageCode.toIntOrNull() ?: return
+        if (id != -1) lastSpuId = id
+        vlc.subpictures().setTrack(id)
+        _captions.update { it.copy(selectedLanguage = id.takeIf { it != -1 }?.toString()) }
+    }
+
+    override fun setCaptionVisible(visible: Boolean) {
+        if (released) return
+        vlc.subpictures().setTrack(if (visible) lastSpuId else -1)
+    }
+
+    override fun selectAudioTrack(id: String) {
+        if (released) return
+        val trackId = id.toIntOrNull() ?: return
+        vlc.audio().setTrack(trackId)
+        _audioTracks.update { it.copy(selectedId = id) }
+    }
+
+    /** Rebuild the capability states from libVLC's current track descriptions (called from the ticker). */
+    private fun populateTracks() {
+        val dim = vlc.video().videoDimension()
+        _videoQuality.value = if (dim == null || dim.height <= 0) {
+            VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
+        } else {
+            val opt = VideoQualityState.optionForHeight(minOf(dim.width, dim.height))
+            val actual = if (audioOnly) VideoQualityState.AUDIO_ONLY else opt.quality
+            VideoQualityState(listOf(opt) + VideoQualityState.DEFAULT.options, actual, preferVideoQuality)
+        }
+
+        val subs = vlc.subpictures().trackDescriptions().filter { it.id() != -1 }
+        val curSpu = vlc.subpictures().track()
+        _captions.value = if (subs.isEmpty()) {
+            CaptionState.DEFAULT
+        } else {
+            CaptionState(subs.map { CaptionTrack(it.id().toString(), it.description()) }, curSpu.takeIf { it != -1 }?.toString())
+        }
+
+        val auds = vlc.audio().trackDescriptions().filter { it.id() != -1 }
+        val curAud = vlc.audio().track()
+        _audioTracks.value = if (auds.size <= 1) {
+            AudioTrackState.DEFAULT
+        } else {
+            AudioTrackState(auds.map { AudioTrack(it.id().toString(), it.description()) }, curAud.takeIf { it != -1 }?.toString())
+        }
+    }
+
     /** Disable/enable the libVLC video track so audio-only stops decoding video. */
     private fun applyAudioOnly() {
         val video = vlc.video()
@@ -175,6 +247,8 @@ internal class JvmLocalPlayer : LocalPlayer {
                 val dim = if (audioOnly) null else vlc.video().videoDimension()
                 val vs = if (dim != null && dim.width > 0 && dim.height > 0) VideoSize(dim.width, dim.height) else null
                 if (vs != null && vs != _status.value.videoSize) _status.update { it.copy(videoSize = vs) }
+
+                populateTracks()
             }
             delay(TICK_MS)
         }

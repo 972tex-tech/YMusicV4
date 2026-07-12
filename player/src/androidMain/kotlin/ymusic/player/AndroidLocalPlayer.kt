@@ -8,6 +8,8 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,12 +39,25 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
     private val _progress = MutableStateFlow(Progress())
     override val progress: StateFlow<Progress> = _progress.asStateFlow()
 
+    private val _videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
+    override val videoQuality: StateFlow<VideoQualityState> = _videoQuality.asStateFlow()
+
+    private val _captions = MutableStateFlow(CaptionState.DEFAULT)
+    override val captions: StateFlow<CaptionState> = _captions.asStateFlow()
+
+    private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+    override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
     private val player = ExoPlayer.Builder(context.applicationContext)
         .setLooper(Looper.getMainLooper())
         .build()
 
     private var released = false
     private var audioOnly = false
+    private var preferVideoQuality = VideoQualityState.AUTO
+
+    // Audio-track id → its (group, index) for TrackSelectionOverride, refreshed on onTracksChanged.
+    private val audioGroups = mutableMapOf<String, Pair<Tracks.Group, Int>>()
 
     init {
         player.addListener(object : Player.Listener {
@@ -67,6 +82,8 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
                 }
                 _status.update { it.copy(videoSize = size) }
             }
+
+            override fun onTracksChanged(tracks: Tracks) = updateTrackStates(tracks)
         })
         scope.launch { tick() }
     }
@@ -137,6 +154,100 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly)
             .build()
         _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
+    }
+
+    override fun selectVideoQuality(quality: String) {
+        if (released) return
+        preferVideoQuality = quality
+        val ao = quality == VideoQualityState.AUDIO_ONLY
+        audioOnly = ao
+        val height = VideoQualityState.heightForQuality(quality)
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, ao)
+            .apply { if (height != null) setMaxVideoSize(Int.MAX_VALUE, height) else clearVideoSizeConstraints() }
+            .build()
+        _status.update { it.copy(audioOnly = ao, videoSize = if (ao) null else it.videoSize) }
+        _videoQuality.update { it.copy(preferredQuality = quality) }
+    }
+
+    override fun selectCaption(languageCode: String?) {
+        if (released) return
+        val off = languageCode == null || languageCode == "off"
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, off)
+            .apply { if (!off) setPreferredTextLanguage(languageCode) }
+            .build()
+        _captions.update { it.copy(selectedLanguage = if (off) null else languageCode) }
+    }
+
+    override fun setCaptionVisible(visible: Boolean) {
+        if (released) return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !visible)
+            .build()
+    }
+
+    override fun selectAudioTrack(id: String) {
+        if (released) return
+        val (group, index) = audioGroups[id] ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+            .build()
+        _audioTracks.update { it.copy(selectedId = id) }
+    }
+
+    /** Rebuild the three capability states from the player's current [Tracks] (on onTracksChanged). */
+    private fun updateTrackStates(tracks: Tracks) {
+        val sizes = mutableListOf<Int>()
+        var selectedSize = 0
+        tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO && it.isSupported }.forEach { g ->
+            for (i in 0 until g.length) {
+                val h = minOf(g.getTrackFormat(i).width, g.getTrackFormat(i).height)
+                if (h > 0) {
+                    if (h !in sizes) sizes.add(h)
+                    if (g.isTrackSelected(i)) selectedSize = h
+                }
+            }
+        }
+        _videoQuality.value = if (sizes.isEmpty()) {
+            VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
+        } else {
+            sizes.sortDescending()
+            val options = sizes.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.DEFAULT.options
+            val actual = if (selectedSize > 0) {
+                VideoQualityState.optionForHeight(selectedSize).quality
+            } else {
+                VideoQualityState.AUDIO_ONLY
+            }
+            VideoQualityState(options, actual, preferVideoQuality)
+        }
+
+        val captionTracks = mutableListOf<CaptionTrack>()
+        var selectedCaption: String? = null
+        tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }.forEach { g ->
+            for (i in 0 until g.length) {
+                val fmt = g.getTrackFormat(i)
+                val lang = fmt.language ?: "und"
+                captionTracks.add(CaptionTrack(lang, fmt.label ?: lang))
+                if (g.isTrackSelected(i)) selectedCaption = lang
+            }
+        }
+        _captions.value =
+            if (captionTracks.isEmpty()) CaptionState.DEFAULT else CaptionState(captionTracks, selectedCaption)
+
+        audioGroups.clear()
+        val audio = mutableListOf<AudioTrack>()
+        var selectedAudio: String? = null
+        tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }.forEach { g ->
+            for (i in 0 until g.length) {
+                val fmt = g.getTrackFormat(i)
+                val id = fmt.id ?: "${fmt.language ?: "und"}#$i"
+                audioGroups[id] = g to i
+                audio.add(AudioTrack(id, fmt.label ?: fmt.language ?: id))
+                if (g.isTrackSelected(i)) selectedAudio = id
+            }
+        }
+        _audioTracks.value = if (audio.isEmpty()) AudioTrackState.DEFAULT else AudioTrackState(audio, selectedAudio)
     }
 
     /** Bind/unbind the ExoPlayer video output. Called by the Android `PlayerSurface`. */

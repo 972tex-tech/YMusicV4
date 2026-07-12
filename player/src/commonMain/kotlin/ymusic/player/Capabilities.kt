@@ -24,6 +24,27 @@ data class VideoQualityState(
         const val AUTO = "auto"
         const val AUDIO_ONLY = "zero"
         val DEFAULT = VideoQualityState(emptyList(), AUTO, AUTO)
+
+        /** YouTube-style quality tiers keyed by min video dimension (px), ascending. */
+        private val LADDER = listOf(
+            VideoQualityOption("tiny", "144p") to 144,
+            VideoQualityOption("small", "240p") to 240,
+            VideoQualityOption("medium", "360p") to 360,
+            VideoQualityOption("large", "480p") to 480,
+            VideoQualityOption("hd720", "720p") to 720,
+            VideoQualityOption("hd1080", "1080p") to 1080,
+            VideoQualityOption("hd1440", "1440p") to 1440,
+            VideoQualityOption("hd2160", "4K") to 2160,
+            VideoQualityOption("hd2880", "5K") to 2880,
+            VideoQualityOption("highres", "8K") to 4320,
+        )
+
+        /** The nearest ladder option at or below [heightPx] (a local track's resolution → a tier). */
+        fun optionForHeight(heightPx: Int): VideoQualityOption =
+            LADDER.lastOrNull { heightPx >= it.second }?.first ?: LADDER.first().first
+
+        /** The pixel height a ladder [quality] id maps to, or null for AUTO/AUDIO_ONLY/unknown. */
+        fun heightForQuality(quality: String): Int? = LADDER.firstOrNull { it.first.quality == quality }?.second
     }
 }
 

@@ -14,27 +14,41 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import platform.AVFoundation.AVAssetTrack
+import platform.AVFoundation.AVMediaCharacteristicAudible
+import platform.AVFoundation.AVMediaCharacteristicLegible
+import platform.AVFoundation.AVMediaSelectionGroup
+import platform.AVFoundation.AVMediaSelectionOption
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusUnknown
 import platform.AVFoundation.AVPlayerItemTrack
+import platform.AVFoundation.asset
 import platform.AVFoundation.currentItem
+import platform.AVFoundation.currentMediaSelection
 import platform.AVFoundation.currentTime
 import platform.AVFoundation.duration
 import platform.AVFoundation.error
+import platform.AVFoundation.extendedLanguageTag
+import platform.AVFoundation.mediaSelectionGroupForMediaCharacteristic
 import platform.AVFoundation.mediaType
+import platform.AVFoundation.naturalSize
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
 import platform.AVFoundation.presentationSize
 import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.seekToTime
+import platform.AVFoundation.selectMediaOption
+import platform.AVFoundation.selectMediaOptionAutomaticallyInMediaSelectionGroup
+import platform.AVFoundation.selectedMediaOptionInMediaSelectionGroup
 import platform.AVFoundation.setRate
 import platform.AVFoundation.setVolume
 import platform.AVFoundation.status
 import platform.AVFoundation.tracks
+import platform.AVFoundation.tracksWithMediaType
 import platform.AVFoundation.volume
 import platform.CoreMedia.CMTime
 import platform.CoreMedia.CMTimeGetSeconds
@@ -61,9 +75,23 @@ internal class AppleLocalPlayer : LocalPlayer {
     private val _progress = MutableStateFlow(Progress())
     override val progress: StateFlow<Progress> = _progress.asStateFlow()
 
+    private val _videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
+    override val videoQuality: StateFlow<VideoQualityState> = _videoQuality.asStateFlow()
+
+    private val _captions = MutableStateFlow(CaptionState.DEFAULT)
+    override val captions: StateFlow<CaptionState> = _captions.asStateFlow()
+
+    private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+    override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
     private var desiredSpeed: Float = 1f
     private var audioOnly = false
     private var released = false
+    private var preferVideoQuality = VideoQualityState.AUTO
+
+    // Track id → (group, option) for selectMediaOption, refreshed when a load reaches Ready.
+    private val captionOptions = mutableMapOf<String, Pair<AVMediaSelectionGroup, AVMediaSelectionOption>>()
+    private val audioOptions = mutableMapOf<String, Pair<AVMediaSelectionGroup, AVMediaSelectionOption>>()
 
     /** The underlying player, for an iOS/macOS `AVPlayerLayer`-backed surface to bind to. */
     val player0: AVPlayer get() = player
@@ -122,6 +150,7 @@ internal class AppleLocalPlayer : LocalPlayer {
             it.copy(state = PlaybackState.Ready, audioOnly = audioOnly,
                 videoSize = if (audioOnly) null else item.videoSize())
         }
+        populateTracks(item)
         if (playWhenReady) play()
     }
 
@@ -175,6 +204,101 @@ internal class AppleLocalPlayer : LocalPlayer {
         this.audioOnly = audioOnly
         applyAudioOnly()
         _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
+    }
+
+    override fun selectVideoQuality(quality: String) {
+        if (released) return
+        preferVideoQuality = quality
+        // AVPlayer has no per-resolution selection for progressive files; audio-only is the honored axis.
+        val ao = quality == VideoQualityState.AUDIO_ONLY
+        audioOnly = ao
+        applyAudioOnly()
+        _status.update { it.copy(audioOnly = ao, videoSize = if (ao) null else it.videoSize) }
+        _videoQuality.update {
+            it.copy(preferredQuality = quality, actualQuality = if (ao) VideoQualityState.AUDIO_ONLY else it.actualQuality)
+        }
+    }
+
+    override fun selectCaption(languageCode: String?) {
+        if (released) return
+        val item = player.currentItem ?: return
+        val legible = item.asset.mediaSelectionGroupForMediaCharacteristic(AVMediaCharacteristicLegible) ?: return
+        val off = languageCode == null || languageCode == "off"
+        if (off) {
+            item.selectMediaOption(null, legible)
+            _captions.update { it.copy(selectedLanguage = null) }
+        } else {
+            captionOptions[languageCode]?.let { (group, opt) ->
+                item.selectMediaOption(opt, group)
+                _captions.update { it.copy(selectedLanguage = languageCode) }
+            }
+        }
+    }
+
+    override fun setCaptionVisible(visible: Boolean) {
+        if (released) return
+        val item = player.currentItem ?: return
+        val legible = item.asset.mediaSelectionGroupForMediaCharacteristic(AVMediaCharacteristicLegible) ?: return
+        if (visible) item.selectMediaOptionAutomaticallyInMediaSelectionGroup(legible) else item.selectMediaOption(null, legible)
+    }
+
+    override fun selectAudioTrack(id: String) {
+        if (released) return
+        val item = player.currentItem ?: return
+        val (group, opt) = audioOptions[id] ?: return
+        item.selectMediaOption(opt, group)
+        _audioTracks.update { it.copy(selectedId = id) }
+    }
+
+    /** Populate the caption/audio/video-quality states from the ready item's selection groups + tracks. */
+    private fun populateTracks(item: AVPlayerItem) {
+        val asset = item.asset
+        audioOptions.clear()
+        captionOptions.clear()
+
+        val audible = asset.mediaSelectionGroupForMediaCharacteristic(AVMediaCharacteristicAudible)
+        _audioTracks.value = if (audible == null) {
+            AudioTrackState.DEFAULT
+        } else {
+            val current = item.currentMediaSelection.selectedMediaOptionInMediaSelectionGroup(audible)
+            val tracks = mutableListOf<AudioTrack>()
+            var selected: String? = null
+            (audible.options ?: emptyList<Any?>()).filterIsInstance<AVMediaSelectionOption>().forEachIndexed { i, opt ->
+                val id = opt.extendedLanguageTag ?: "audio#$i"
+                audioOptions[id] = audible to opt
+                tracks.add(AudioTrack(id, opt.displayName ?: id))
+                if (opt == current) selected = id
+            }
+            if (tracks.isEmpty()) AudioTrackState.DEFAULT else AudioTrackState(tracks, selected)
+        }
+
+        val legible = asset.mediaSelectionGroupForMediaCharacteristic(AVMediaCharacteristicLegible)
+        _captions.value = if (legible == null) {
+            CaptionState.DEFAULT
+        } else {
+            val current = item.currentMediaSelection.selectedMediaOptionInMediaSelectionGroup(legible)
+            val tracks = mutableListOf<CaptionTrack>()
+            var selected: String? = null
+            (legible.options ?: emptyList<Any?>()).filterIsInstance<AVMediaSelectionOption>().forEach { opt ->
+                val lang = opt.extendedLanguageTag ?: "und"
+                captionOptions[lang] = legible to opt
+                tracks.add(CaptionTrack(lang, opt.displayName ?: lang))
+                if (opt == current) selected = lang
+            }
+            if (tracks.isEmpty()) CaptionState.DEFAULT else CaptionState(tracks, selected)
+        }
+
+        val heights = (asset.tracksWithMediaType(AVMediaTypeVideo) ?: emptyList<Any?>())
+            .filterIsInstance<AVAssetTrack>()
+            .map { it.naturalSize.useContents { minOf(width, height).toInt() } }
+            .filter { it > 0 }.distinct().sortedDescending()
+        _videoQuality.value = if (heights.isEmpty()) {
+            VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
+        } else {
+            val options = heights.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.DEFAULT.options
+            val actual = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.optionForHeight(heights.first()).quality
+            VideoQualityState(options, actual, preferVideoQuality)
+        }
     }
 
     /** Enable/disable the video item tracks so audio-only truly stops decoding video. */
