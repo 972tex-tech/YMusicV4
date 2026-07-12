@@ -45,6 +45,7 @@ object Libs {
         const val coroutinesCore = "org.jetbrains.kotlinx:kotlinx-coroutines-core:${Versions.coroutines}"
         const val atomicfu = "org.jetbrains.kotlinx:atomicfu:${Versions.atomicfu}"
         const val coroutinesAndroid = "org.jetbrains.kotlinx:kotlinx-coroutines-android:${Versions.coroutines}"
+        const val coroutinesSwing = "org.jetbrains.kotlinx:kotlinx-coroutines-swing:${Versions.coroutines}"
         const val coroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:${Versions.coroutines}"
         const val serializationJson = "org.jetbrains.kotlinx:kotlinx-serialization-json:${Versions.kotlinxSerialization}"
         const val serializationJsonOkio = "org.jetbrains.kotlinx:kotlinx-serialization-json-okio:${Versions.kotlinxSerialization}"

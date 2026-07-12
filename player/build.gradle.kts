@@ -75,6 +75,9 @@ kotlin {
             // JCEF (Chromium) for the desktop WebView YouTube host. The app owns CefApp
             // init/download; :player only drives a CefClient/CefBrowser it is handed.
             implementation(Libs.Jcef.maven)
+            // Provides Dispatchers.Main on JVM desktop (Swing EDT) — the WebView engine marshals
+            // the fetched HTML load back to the UI thread. Android/iOS supply Main natively.
+            implementation(Libs.Kotlinx.coroutinesSwing)
         }
 
         val commonTest by getting {
