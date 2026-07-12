@@ -56,6 +56,9 @@ kotlin {
             dependencies {
                 api(project(":kmpCommon"))
                 api(Libs.Kotlinx.coroutinesCore)
+                // JsonElement runtime only (no @Serializable/codegen) — the WebView YouTube engine's
+                // ymusicAction command + event wire format.
+                implementation(Libs.Kotlinx.serializationJson)
             }
         }
 
