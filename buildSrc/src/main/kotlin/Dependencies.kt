@@ -10,7 +10,7 @@ object Versions {
     const val atomicfu = "0.23.1" // aligned with coroutines 1.11.0
     const val kotlinxSerialization = "1.9.0"
     const val kotlinxDateTime = "0.8.0"
-    const val composeMultiplatform = "1.7.1"
+    const val composeMultiplatform = "1.11.1"
     const val okhttp = "5.4.0"
     const val okio = "3.17.0"
     const val sqldelight = "2.3.2"
