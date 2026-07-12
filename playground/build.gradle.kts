@@ -31,6 +31,9 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)
+                // WebView YouTube check: JCEF (CefApp bootstrap) + an HTTP client for the engine.
+                implementation(Libs.Jcef.maven)
+                implementation(project(":kmpHttp:core"))
             }
         }
     }
@@ -39,6 +42,12 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "ymusic.playground.MainKt"
+        // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
+        jvmArgs(
+            "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+        )
         nativeDistributions {
             targetFormats(TargetFormat.Dmg)
             packageName = "YMusicPlayground"
