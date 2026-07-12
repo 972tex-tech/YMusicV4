@@ -30,5 +30,6 @@ E60021 - libVLC playback error (player jvm)
 E60031 - failed to fetch the YouTube embed page (player webview)
 E60033 - YouTube playback error, no page-supplied code (player webview fallback)
 E60040 - WebView host not available on this platform (player webview jvm stub)
+E60050 - queue item needs the WebView engine but none is configured (player facade)
 
 E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture
