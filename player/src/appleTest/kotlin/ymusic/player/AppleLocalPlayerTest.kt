@@ -20,6 +20,7 @@ import platform.Foundation.timeIntervalSinceDate
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
+import platform.posix.system
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.test.AfterTest
@@ -88,6 +89,61 @@ class AppleLocalPlayerTest {
         assertEquals(PlaybackState.Error, p.status.value.state, "loading a missing file must fail")
         assertTrue(p.status.value.error?.code?.startsWith("E600") == true)
     }
+
+    /**
+     * Real multi-track validation of the capability interfaces on AVFoundation — a generated MP4 with
+     * a video track, two audio languages, and two subtitle languages. Skipped when ffmpeg is absent.
+     */
+    @Test
+    fun multitrack_capabilities() = pumpingMainLoop {
+        val path = NSTemporaryDirectory() + "localplayer_multitrack.mp4"
+        if (!generateMultiTrack(path)) return@pumpingMainLoop // ffmpeg not installed → skip
+        val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
+
+        p.load(PlayableItem.LocalUri(path), playWhenReady = false)
+        awaitState(p, PlaybackState.Ready)
+        assertEquals(PlaybackState.Ready, p.status.value.state)
+
+        val audio = p.audioTracks.value
+        assertTrue(audio.tracks.size >= 2, "expected ≥2 audio tracks, got ${audio.tracks}")
+        val captions = p.captions.value
+        assertTrue(captions.tracks.isNotEmpty(), "expected caption tracks, got ${captions.tracks}")
+        assertTrue(p.videoQuality.value.options.isNotEmpty(), "expected video-quality options")
+
+        // Selecting the second audio track updates the state.
+        p.selectAudioTrack(audio.tracks[1].id)
+        delay(200)
+        assertEquals(audio.tracks[1].id, p.audioTracks.value.selectedId, "audio selection should stick")
+
+        // Enabling a caption track updates the state.
+        p.selectCaption(captions.tracks.first().languageCode)
+        delay(200)
+        assertEquals(
+            captions.tracks.first().languageCode, p.captions.value.selectedLanguage,
+            "caption selection should stick",
+        )
+    }
+}
+
+/** Generate a video + 2-audio + 2-subtitle MP4 via ffmpeg; false if ffmpeg is not installed. */
+@OptIn(ExperimentalForeignApi::class)
+private fun generateMultiTrack(path: String): Boolean {
+    if (system("command -v ffmpeg >/dev/null 2>&1") != 0) return false
+    val en = NSTemporaryDirectory() + "cap_en.srt"
+    val es = NSTemporaryDirectory() + "cap_es.srt"
+    writeFile(en, "1\n00:00:00,000 --> 00:00:02,000\nHello\n".encodeToByteArray())
+    writeFile(es, "1\n00:00:00,000 --> 00:00:02,000\nHola\n".encodeToByteArray())
+    val cmd = "ffmpeg -y -hide_banner -loglevel error " +
+        "-f lavfi -i testsrc=duration=2:size=320x240:rate=15 " +
+        "-f lavfi -i sine=frequency=440:duration=2 " +
+        "-f lavfi -i sine=frequency=880:duration=2 " +
+        "-i $en -i $es " +
+        "-map 0:v -map 1:a -map 2:a -map 3:s -map 4:s " +
+        "-c:v libx264 -c:a aac -c:s mov_text " +
+        "-metadata:s:a:0 language=eng -metadata:s:a:1 language=spa " +
+        "-metadata:s:s:0 language=eng -metadata:s:s:1 language=spa " +
+        path
+    return system(cmd) == 0
 }
 
 /** Poll [player]'s status until it reaches [target] (or a competing terminal state), with a timeout. */
