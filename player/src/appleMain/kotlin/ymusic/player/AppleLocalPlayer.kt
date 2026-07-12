@@ -72,13 +72,9 @@ internal class AppleLocalPlayer : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean) {
         if (released) return
-        val uri = (source as? ResolvedSource.LocalUri)?.uri
-        if (uri == null) {
-            fail("E60004", "unsupported source: $source")
-            return
-        }
+        val uri = source.uri
         val url = uri.toNsUrl()
         if (url == null) {
             fail("E60001", "bad media uri: $uri")

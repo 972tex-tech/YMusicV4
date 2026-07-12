@@ -15,7 +15,7 @@ import ymusic.player.webview.createWebViewBridge
  * every platform. The caller supplies a **view container**; the player adds its WebView into it
  * (container-injection, like the legacy player), rather than exposing a view to host.
  */
-interface WebViewPlayer : MediaEngine
+interface WebViewPlayer : MediaEngine<ResolvedSource.YtVideoId>
 
 /**
  * Platform handle the player needs: the host view **container** it injects its WebView into, plus any

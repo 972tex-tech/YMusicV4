@@ -10,7 +10,7 @@ sealed interface ResolvedSource {
     /** A local file — a `file://` URI or an absolute path. Played by the native-local engine. */
     data class LocalUri(val uri: String) : ResolvedSource
 
-    /** A YouTube video id. Played by the (future) WebView engine; not handled by [LocalPlayer]. */
+    /** A YouTube video id. Played by the WebView engine (`MediaEngine<YtVideoId>`). */
     data class YtVideoId(val videoId: String) : ResolvedSource
 }
 
@@ -32,7 +32,7 @@ sealed interface ResolvedSource {
  * is marshaled — that is the caller's responsibility. The [status] / [progress] flows may be
  * collected from any thread.
  */
-interface MediaEngine {
+interface MediaEngine<in S : ResolvedSource> {
     /**
      * Rarely-changing status: playback state, play/pause intent, volume/speed, audio-only, video
      * size, error. Emits only on discrete events — never on a position tick (that's [progress]).
@@ -47,10 +47,10 @@ interface MediaEngine {
      * state goes [PlaybackState.Buffering] → [PlaybackState.Ready], or [PlaybackState.Error] (with
      * [PlaybackStatus.error]) on failure — loading never throws. [startPositionMs] seeks before the
      * first frame; playback begins as soon as it is ready when [playWhenReady]. A second [load]
-     * replaces whatever was loaded before. An engine that does not handle [source]'s variant reports
-     * [PlaybackState.Error].
+     * replaces whatever was loaded before. [S] is the engine's source variant — a mismatched source
+     * is a compile error, not a runtime failure.
      */
-    fun load(source: ResolvedSource, startPositionMs: Long = 0L, playWhenReady: Boolean = true)
+    fun load(source: S, startPositionMs: Long = 0L, playWhenReady: Boolean = true)
 
     fun play()
 

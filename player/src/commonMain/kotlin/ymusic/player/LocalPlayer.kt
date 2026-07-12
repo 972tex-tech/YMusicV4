@@ -11,4 +11,4 @@ package ymusic.player
  * (Local-only capabilities — an equalizer/`audioSessionId` handle, embedded-caption and audio-track
  * selection — will be added as capability interfaces this type implements, not on [MediaEngine].)
  */
-interface LocalPlayer : MediaEngine
+interface LocalPlayer : MediaEngine<ResolvedSource.LocalUri>

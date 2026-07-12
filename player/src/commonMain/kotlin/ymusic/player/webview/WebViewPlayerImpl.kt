@@ -50,13 +50,9 @@ internal class WebViewPlayerImpl(
     private val pending = mutableListOf<String>() // command JSONs queued until the page connects
     private var released = false
 
-    override fun load(source: ResolvedSource, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.YtVideoId, startPositionMs: Long, playWhenReady: Boolean) {
         if (released) return
-        val videoId = (source as? ResolvedSource.YtVideoId)?.videoId
-        if (videoId == null) {
-            fail("E60030", "unsupported source for the WebView engine: $source")
-            return
-        }
+        val videoId = source.videoId
         sessionId = (Random.nextLong() and Long.MAX_VALUE).toString()
         connected = false
         pending.clear()

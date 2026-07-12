@@ -14,10 +14,10 @@ import platform.AVFoundation.AVPlayer
 fun LocalPlayer.avPlayer(): AVPlayer? = (this as? AppleLocalPlayer)?.player0
 
 /** A plain snapshot of the current status (avoids exposing the `StateFlow` generic to Swift). */
-fun MediaEngine.currentStatus(): PlaybackStatus = status.value
+fun MediaEngine<*>.currentStatus(): PlaybackStatus = status.value
 
 /** A plain snapshot of the current play-head (position/duration/buffered). */
-fun MediaEngine.currentProgress(): Progress = progress.value
+fun MediaEngine<*>.currentProgress(): Progress = progress.value
 
 /**
  * Convenience for Apple apps: a WKWebView YouTube [WebViewPlayer] with a default NSURLSession-backed

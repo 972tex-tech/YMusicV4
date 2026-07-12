@@ -71,18 +71,9 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean) {
         if (released) return
-        val uri = (source as? ResolvedSource.LocalUri)?.uri
-        if (uri == null) {
-            _status.update {
-                it.copy(
-                    state = PlaybackState.Error, playWhenReady = false,
-                    error = PlayerError("E60004", "unsupported source: $source"),
-                )
-            }
-            return
-        }
+        val uri = source.uri
         _status.update { it.copy(state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null) }
         _progress.value = Progress(positionMs = startPositionMs)
         player.setMediaItem(MediaItem.fromUri(uri.toPlayableUri()), startPositionMs)
