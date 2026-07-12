@@ -27,5 +27,9 @@ E60010 ExoPlayer playback error (player android)
 E60020 libVLC not found at construction (player jvm)
 E60021 libVLC playback error (player jvm)
 E60022 (retired) minted and removed before ever shipping (player jvm)
+E60030 unsupported ResolvedSource for the WebView engine (player webview)
+E60031 failed to fetch the YouTube embed page (player webview)
+E60033 YouTube playback error, no page-supplied code (player webview fallback)
+E60040 WebView host not available on this platform (player webview jvm stub)
 
 E90210 (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture

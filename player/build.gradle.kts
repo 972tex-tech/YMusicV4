@@ -59,6 +59,8 @@ kotlin {
                 // JsonElement runtime only (no @Serializable/codegen) — the WebView YouTube engine's
                 // ymusicAction command + event wire format.
                 implementation(Libs.Kotlinx.serializationJson)
+                // The WebView engine fetches the YouTube embed HTML to inject the bundle into.
+                implementation(project(":kmpHttp:core"))
             }
         }
 
