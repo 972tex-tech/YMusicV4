@@ -60,7 +60,9 @@ kotlin {
                 // ymusicAction command + event wire format.
                 implementation(Libs.Kotlinx.serializationJson)
                 // The WebView engine fetches the YouTube embed HTML to inject the bundle into.
-                implementation(project(":kmpHttp:core"))
+                // `api` so KmpHttpClient (a public param of createWebViewPlayer) exports through
+                // the Apple Player.framework.
+                api(project(":kmpHttp:core"))
             }
         }
 
