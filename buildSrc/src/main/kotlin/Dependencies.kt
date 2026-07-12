@@ -15,6 +15,10 @@ object Versions {
     const val okio = "3.17.0"
     const val sqldelight = "2.3.2"
 
+    // :player local-file backends (per platform; Apple uses AVFoundation cinterop, no dep)
+    const val media3 = "1.5.1"   // Android ExoPlayer
+    const val vlcj = "4.8.3"     // JVM desktop libVLC binding
+
     // AndroidX
     const val coreKtx = "1.15.0"
     const val lifecycleRuntimeKtx = "2.8.7"
@@ -99,5 +103,16 @@ object Libs {
         const val core = "com.squareup.moshi:moshi:1.15.2"
         const val kotlin = "com.squareup.moshi:moshi-kotlin:1.15.2"
         const val okio = "com.squareup.moshi:moshi-adapters:1.15.2"
+    }
+
+    // :player local-file backend deps. Apple (iOS/macOS) needs none — AVFoundation is a cinterop
+    // platform lib.
+    object Media3 {
+        const val exoplayer = "androidx.media3:media3-exoplayer:${Versions.media3}"
+        const val common = "androidx.media3:media3-common:${Versions.media3}"
+    }
+
+    object Vlcj {
+        const val core = "uk.co.caprica:vlcj:${Versions.vlcj}"
     }
 }

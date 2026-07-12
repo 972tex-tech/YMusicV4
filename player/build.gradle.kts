@@ -1,0 +1,79 @@
+@file:Suppress("UnstableApiUsage")
+
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    kotlin("multiplatform")
+    // AGP KMP plugin (same as :media-store / :kmpFfmpeg) — supplies the `android {}` KMP target.
+    id("com.android.kotlin.multiplatform.library")
+}
+
+kotlin {
+    // LocalPlayerContext is an expect/actual class (Android carries a Context; the rest are empty).
+    targets.all {
+        compilations.all {
+            compileTaskProvider.configure {
+                compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
+            }
+        }
+    }
+    sourceSets.all { languageSettings.optIn("kotlin.ExperimentalMultiplatform") }
+
+    jvm {
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+
+    android {
+        namespace = "ymusic.player"
+        compileSdk = Versions.compileSdk
+        minSdk = Versions.minSdk
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+
+    // Apple (iOS device + simulator, macOS) share ONE AVPlayer backend (appleMain). macOS is the
+    // host-runnable reference target; iOS reuses it verbatim.
+    withIosTargets()
+    // macOS also exports a `Player.framework` so the native SwiftUI player-lab app
+    // (spikes/macos-player-lab) can drive the real AVFoundation backend.
+    withMacosTargets {
+        binaries.framework {
+            baseName = "Player"
+            isStatic = false
+        }
+    }
+
+    applyDefaultHierarchyTemplate()
+
+    sourceSets {
+        /**
+         * commonMain — the LocalPlayer interface + model + the expect factory. One responsibility:
+         * play a SINGLE local file (load / play / pause / seek / stop). No queue, no gapless.
+         * ├── appleMain   → AVPlayer          (iOS + macOS)   [reference]
+         * ├── androidMain → Media3 ExoPlayer                  [reference]
+         * └── jvmMain     → VLCJ (libVLC)                     [best effort; needs libVLC at runtime]
+         */
+        val commonMain by getting {
+            dependencies {
+                api(project(":kmpCommon"))
+                api(Libs.Kotlinx.coroutinesCore)
+            }
+        }
+
+        androidMain.dependencies {
+            implementation(Libs.Media3.exoplayer)
+            implementation(Libs.Media3.common)
+            implementation(Libs.Kotlinx.coroutinesAndroid)
+        }
+
+        jvmMain.dependencies {
+            implementation(Libs.Vlcj.core)
+        }
+
+        val commonTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(Libs.Kotlinx.coroutinesTest)
+            }
+        }
+    }
+}
