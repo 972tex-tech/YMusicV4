@@ -21,6 +21,17 @@ enum class PlaybackState {
 }
 
 /**
+ * The settable playback parameters. Passed to [MediaEngine.load] to apply atomically before the first
+ * frame; the same fields are also settable at runtime via the individual setters. Engine-specific
+ * selections (video quality, captions, audio track) are NOT here — they live on capability interfaces.
+ */
+data class PlaybackConfig(
+    val volume: Float = 1f,
+    val speed: Float = 1f,
+    val audioOnly: Boolean = false,
+)
+
+/**
  * A recoverable classification the caller can surface — a [CodedError] with a stable `E6xxxx` player
  * code. [message] is developer detail (the backend's own error text) — log material, never shown.
  */

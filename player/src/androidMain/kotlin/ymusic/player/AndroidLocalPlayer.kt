@@ -71,10 +71,22 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri
-        _status.update { it.copy(state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null) }
+        // Apply config before prepare so the first frame is already at the right settings.
+        audioOnly = config.audioOnly
+        player.volume = config.volume.coerceIn(0f, 1f)
+        player.setPlaybackSpeed(config.speed.coerceAtLeast(0.01f))
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, config.audioOnly)
+            .build()
+        _status.update {
+            it.copy(
+                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null,
+                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+            )
+        }
         _progress.value = Progress(positionMs = startPositionMs)
         player.setMediaItem(MediaItem.fromUri(uri.toPlayableUri()), startPositionMs)
         player.playWhenReady = playWhenReady

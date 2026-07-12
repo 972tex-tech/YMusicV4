@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
+import ymusic.player.PlaybackConfig
 import ymusic.player.PlaybackState
 import ymusic.player.PlaybackStatus
 import ymusic.player.PlayerError
@@ -50,21 +51,23 @@ internal class WebViewPlayerImpl(
     private val pending = mutableListOf<String>() // command JSONs queued until the page connects
     private var released = false
 
-    override fun load(source: ResolvedSource.YtVideoId, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val videoId = source.videoId
         sessionId = (Random.nextLong() and Long.MAX_VALUE).toString()
         connected = false
         pending.clear()
         _status.update {
-            it.copy(state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null)
+            it.copy(
+                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
+                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+            )
         }
         _progress.value = Progress(positionMs = startPositionMs)
         // The Load command is the first thing sent once the page connects; config rides along in the
         // batch so volume/speed/audio-only apply before the first frame.
-        val s = _status.value
         pending.add(
-            WebViewProtocol.encodeLoad(videoId, startPositionMs, playWhenReady, s.volume, s.speed, s.audioOnly),
+            WebViewProtocol.encodeLoad(videoId, startPositionMs, playWhenReady, config.volume, config.speed, config.audioOnly),
         )
         val boot = bootScript(sessionId)
         scope.launch {

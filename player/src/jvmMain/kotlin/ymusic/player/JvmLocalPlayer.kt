@@ -80,11 +80,18 @@ internal class JvmLocalPlayer : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri
+        // The `playing` event re-asserts rate + audio-only; set them (and volume) now so they hold.
+        desiredSpeed = config.speed.coerceAtLeast(0.01f)
+        audioOnly = config.audioOnly
+        vlc.audio().setVolume((config.volume.coerceIn(0f, 1f) * 100f).toInt())
         _status.update {
-            it.copy(state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null)
+            it.copy(
+                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
+                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+            )
         }
         _progress.value = Progress(positionMs = startPositionMs)
         // Non-blocking: play() returns immediately; the `playing`/`error` events drive the status. The

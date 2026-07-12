@@ -49,8 +49,17 @@ interface MediaEngine<in S : ResolvedSource> {
      * first frame; playback begins as soon as it is ready when [playWhenReady]. A second [load]
      * replaces whatever was loaded before. [S] is the engine's source variant — a mismatched source
      * is a compile error, not a runtime failure.
+     *
+     * [config] (volume/speed/audio-only) is applied **atomically before the first frame**, so the
+     * media starts with the right settings — no full-volume blip or a video flash before audio-only.
+     * The individual setters below change the same fields at runtime.
      */
-    fun load(source: S, startPositionMs: Long = 0L, playWhenReady: Boolean = true)
+    fun load(
+        source: S,
+        startPositionMs: Long = 0L,
+        playWhenReady: Boolean = true,
+        config: PlaybackConfig = PlaybackConfig(),
+    )
 
     fun play()
 

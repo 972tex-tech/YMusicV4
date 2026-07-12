@@ -72,7 +72,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri
         val url = uri.toNsUrl()
@@ -80,9 +80,18 @@ internal class AppleLocalPlayer : LocalPlayer {
             fail("E60001", "bad media uri: $uri")
             return
         }
+        // Config applies before finalizeLoad (which calls applyAudioOnly on the new item).
+        audioOnly = config.audioOnly
+        desiredSpeed = config.speed.coerceAtLeast(0.01f)
+        player.setVolume(config.volume.coerceIn(0f, 1f))
         val item = AVPlayerItem(uRL = url)
         player.replaceCurrentItemWithPlayerItem(item)
-        _status.update { it.copy(state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null) }
+        _status.update {
+            it.copy(
+                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null,
+                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+            )
+        }
         _progress.value = Progress(positionMs = startPositionMs)
         scope.launch { finalizeLoad(item, uri, startPositionMs, playWhenReady) }
     }
