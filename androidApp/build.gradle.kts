@@ -1,54 +1,26 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    kotlin("multiplatform")
     id("com.android.application")
     id("org.jetbrains.compose")
-    kotlin("plugin.compose")
-}
-
-kotlin {
-    androidTarget {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-    }
-    sourceSets {
-        androidMain.dependencies {
-            implementation(project(":common"))
-            implementation(project(":commonUi"))
-            implementation(Libs.AndroidX.coreKtx)
-            implementation(Libs.AndroidX.lifecycleRuntimeKtx)
-            implementation(Libs.AndroidX.activityCompose)
-            implementation(compose.preview)
-        }
-    }
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
-    namespace = "com.example.ymusicv4"
-    compileSdk = Versions.compileSdk
+    namespace = "ymusic.android"
+    // okhttp-android 5.4 (via :kmpHttp) demands API 36+ for apps; libraries stay on Versions.compileSdk.
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.ymusicv4"
+        applicationId = "ymusic.android"
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
         versionCode = 1
-        versionName = "1.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
+        versionName = "4.0.0"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -57,17 +29,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures {
-        compose = true
-    }
-
     packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 }
 
+/** The Android product shell over :commonUi (see MainActivity). Plain Android app module —
+ *  AGP 9's built-in Kotlin (com.android.application cannot combine with the KMP plugin). */
 dependencies {
-    debugImplementation(compose.uiTooling)
+    implementation(project(":commonUi"))
+    implementation(Libs.AndroidX.coreKtx)
+    implementation(Libs.AndroidX.activityCompose)
+    implementation(Libs.Kotlinx.coroutinesAndroid)
+    implementation(project(":kmpHttp:core"))
+    implementation(compose.material3)
+    implementation(compose.foundation)
 }
