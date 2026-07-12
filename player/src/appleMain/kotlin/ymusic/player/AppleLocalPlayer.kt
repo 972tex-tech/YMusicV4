@@ -72,7 +72,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
+    override fun load(source: PlayableItem.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri
         val url = uri.toNsUrl()

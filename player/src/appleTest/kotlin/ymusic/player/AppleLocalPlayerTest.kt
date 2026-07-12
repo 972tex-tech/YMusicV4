@@ -46,7 +46,7 @@ class AppleLocalPlayerTest {
         writeFile(path, sineWavPcm16(seconds = 3.0))
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
 
-        p.load(ResolvedSource.LocalUri(path), playWhenReady = true)
+        p.load(PlayableItem.LocalUri(path), playWhenReady = true)
         awaitState(p, PlaybackState.Ready)
         assertEquals(PlaybackState.Ready, p.status.value.state)
         val duration = p.progress.value.durationMs
@@ -83,7 +83,7 @@ class AppleLocalPlayerTest {
     @Test
     fun bad_uri_fails_typed() = pumpingMainLoop {
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
-        p.load(ResolvedSource.LocalUri(NSTemporaryDirectory() + "does_not_exist.wav"), playWhenReady = false)
+        p.load(PlayableItem.LocalUri(NSTemporaryDirectory() + "does_not_exist.wav"), playWhenReady = false)
         awaitState(p, PlaybackState.Error)
         assertEquals(PlaybackState.Error, p.status.value.state, "loading a missing file must fail")
         assertTrue(p.status.value.error?.code?.startsWith("E600") == true)

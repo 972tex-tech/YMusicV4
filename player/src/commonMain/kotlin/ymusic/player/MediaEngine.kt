@@ -6,12 +6,12 @@ import kotlinx.coroutines.flow.StateFlow
  * A resolved, playable source. The `Player` router picks an engine by variant; each engine plays
  * only the variant it understands (a [LocalPlayer] only ever receives a [LocalUri]).
  */
-sealed interface ResolvedSource {
+sealed interface PlayableItem {
     /** A local file — a `file://` URI or an absolute path. Played by the native-local engine. */
-    data class LocalUri(val uri: String) : ResolvedSource
+    data class LocalUri(val uri: String) : PlayableItem
 
     /** A YouTube video id. Played by the WebView engine (`MediaEngine<YtVideoId>`). */
-    data class YtVideoId(val videoId: String) : ResolvedSource
+    data class YtVideoId(val videoId: String) : PlayableItem
 }
 
 /**
@@ -32,7 +32,7 @@ sealed interface ResolvedSource {
  * is marshaled — that is the caller's responsibility. The [status] / [progress] flows may be
  * collected from any thread.
  */
-interface MediaEngine<in S : ResolvedSource> {
+interface MediaEngine<in S : PlayableItem> {
     /**
      * Rarely-changing status: playback state, play/pause intent, volume/speed, audio-only, video
      * size, error. Emits only on discrete events — never on a position tick (that's [progress]).

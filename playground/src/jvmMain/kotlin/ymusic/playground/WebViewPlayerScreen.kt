@@ -26,7 +26,7 @@ import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.unit.dp
 import kmphttp.KmpHttpClient
 import org.cef.CefClient
-import ymusic.player.ResolvedSource
+import ymusic.player.PlayableItem
 import ymusic.player.WebViewPlayer
 import ymusic.player.WebViewPlayerContext
 import ymusic.player.createWebViewPlayer
@@ -73,7 +73,7 @@ fun WebViewPlayerScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
-            Button(onClick = { player.load(ResolvedSource.YtVideoId(videoId), playWhenReady = true) }) { Text("Load") }
+            Button(onClick = { player.load(PlayableItem.YtVideoId(videoId), playWhenReady = true) }) { Text("Load") }
         }
 
         Text("State: ${status.state}", style = MaterialTheme.typography.bodyMedium)

@@ -28,9 +28,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ymusic.player.LocalPlayer
+import ymusic.player.PlayableItem
 import ymusic.player.PlaybackState
 import ymusic.player.PlaybackStatus
-import ymusic.player.ResolvedSource
 
 /** The file-picker seam — each platform supplies one (Desktop: AWT dialog; Android/iOS: SAF/UIDocument). */
 fun interface FilePicker {
@@ -61,7 +61,7 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
         Button(onClick = {
             val picked = filePicker.pick() ?: return@Button
             fileName = picked.substringAfterLast('/')
-            player.load(ResolvedSource.LocalUri(picked), playWhenReady = true)
+            player.load(PlayableItem.LocalUri(picked), playWhenReady = true)
         }) { Text("Open file…") }
 
         Text(

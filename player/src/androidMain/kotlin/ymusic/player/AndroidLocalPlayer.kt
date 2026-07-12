@@ -71,7 +71,7 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         scope.launch { tick() }
     }
 
-    override fun load(source: ResolvedSource.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
+    override fun load(source: PlayableItem.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri
         // Apply config before prepare so the first frame is already at the right settings.

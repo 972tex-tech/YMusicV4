@@ -1,7 +1,7 @@
 package ymusic.player
 
 /**
- * The native-local [MediaEngine]: plays exactly ONE local media file (a [ResolvedSource.LocalUri])
+ * The native-local [MediaEngine]: plays exactly ONE local media file (a [PlayableItem.LocalUri])
  * natively — load, then play / pause / resume / seek / stop, reporting position and state. No queue,
  * no gapless, no playlist; those belong to a higher layer that drives one engine per item.
  *
@@ -11,4 +11,4 @@ package ymusic.player
  * (Local-only capabilities — an equalizer/`audioSessionId` handle, embedded-caption and audio-track
  * selection — will be added as capability interfaces this type implements, not on [MediaEngine].)
  */
-interface LocalPlayer : MediaEngine<ResolvedSource.LocalUri>
+interface LocalPlayer : MediaEngine<PlayableItem.LocalUri>

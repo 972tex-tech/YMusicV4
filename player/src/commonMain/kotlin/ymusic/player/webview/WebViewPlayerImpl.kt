@@ -16,12 +16,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import ymusic.player.AudioTrackState
 import ymusic.player.CaptionState
+import ymusic.player.PlayableItem
 import ymusic.player.PlaybackConfig
 import ymusic.player.PlaybackState
 import ymusic.player.PlaybackStatus
 import ymusic.player.PlayerError
 import ymusic.player.Progress
-import ymusic.player.ResolvedSource
 import ymusic.player.VideoQualityState
 import ymusic.player.WebViewPlayer
 import kotlin.random.Random
@@ -63,7 +63,7 @@ internal class WebViewPlayerImpl(
     private val pending = mutableListOf<String>() // command JSONs queued until the page connects
     private var released = false
 
-    override fun load(source: ResolvedSource.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
+    override fun load(source: PlayableItem.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val videoId = source.videoId
         sessionId = (Random.nextLong() and Long.MAX_VALUE).toString()
