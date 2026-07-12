@@ -1,35 +1,34 @@
-# Append-only error-code ledger — every code EVER minted, including deleted ones.
-# Mint = grep this file for a free number, add the line in the same commit as the throw site.
-# Never delete or renumber a line: a removed throw site keeps its row, marked (retired) —
-# a shipped code stays burned forever. Git history is the backstop for anything missed here.
+# Error-code ledger. One row per code:  E##### <flag> <explanation>
+#   flag  D  = DEPLOYED (shipped in a release) — burned forever: never reuse, renumber, or remove.
+#   flag  -  = not deployed — free to remove, renumber, or reallocate elsewhere.
+# On release, flip every `-` row of the shipped module to D; from then on those numbers are permanent.
+# Mint = grep this file for a free number, add a `-` row in the same commit as the throw site.
+# NOTHING is deployed yet, so every row below is `-` (free).
 # Ranges: E1xxxx :quickjs | E2xxxx :dynamic-engine + engine-js | E3xxxx :kmpHttp
 #         E4xxxx :kmpFfmpeg | E5xxxx :media-store / :media-scanner | E6xxxx :player
 
-E10001 (example) kmpCommon CodedErrorTest fixture
-E12345 (example) doc placeholder in CLAUDE.md minting rule
-E12375 (example) doc placeholder in CLAUDE.md / CodedError kdoc
+E10001 - (example) kmpCommon CodedErrorTest fixture
+E12345 - (example) doc placeholder in CLAUDE.md minting rule
+E12375 - (example) doc placeholder in CLAUDE.md / CodedError kdoc
 
-E20001 uncaught engine script error (engine-js commandHandler classifier fallback)
-E20002 uncaught host command-handler error (dynamic-engine CommandHandler)
-E20003 unstructured pipe RESET, no embedded code salvageable (dynamic-engine EngineError)
-E20010 unexpected data on the http control pipe (dynamic-engine HttpProtocol)
-E20011 invalid http request — bad head or URL/header kmpHttp rejects (dynamic-engine HttpProtocol)
-E20020 engine bundle failed to load/eval (DynamicEngine.create)
-E20021 engine init health check failed (DynamicEngine.create)
-E24242 (example) dynamic-engine HostCommandTest fixture
-E29999 (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
+E20001 - uncaught engine script error (engine-js commandHandler classifier fallback)
+E20002 - uncaught host command-handler error (dynamic-engine CommandHandler)
+E20003 - unstructured pipe RESET, no embedded code salvageable (dynamic-engine EngineError)
+E20010 - unexpected data on the http control pipe (dynamic-engine HttpProtocol)
+E20011 - invalid http request — bad head or URL/header kmpHttp rejects (dynamic-engine HttpProtocol)
+E20020 - engine bundle failed to load/eval (DynamicEngine.create)
+E20021 - engine init health check failed (DynamicEngine.create)
+E24242 - (example) dynamic-engine HostCommandTest fixture
+E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
-E60001 bad media uri — AVURLAsset unopenable (player apple)
-E60002 timed out preparing the AVPlayerItem (player apple)
-E60003 AVPlayerItem load failed (player apple)
-E60004 (retired) unsupported source variant — now a compile error via MediaEngine<S> (player, all backends)
-E60010 ExoPlayer playback error (player android)
-E60020 libVLC not found at construction (player jvm)
-E60021 libVLC playback error (player jvm)
-E60022 (retired) minted and removed before ever shipping (player jvm)
-E60030 (retired) unsupported source for WebView — now a compile error via MediaEngine<S> (player webview)
-E60031 failed to fetch the YouTube embed page (player webview)
-E60033 YouTube playback error, no page-supplied code (player webview fallback)
-E60040 WebView host not available on this platform (player webview jvm stub)
+E60001 - bad media uri — AVURLAsset unopenable (player apple)
+E60002 - timed out preparing the AVPlayerItem (player apple)
+E60003 - AVPlayerItem load failed (player apple)
+E60010 - ExoPlayer playback error (player android)
+E60020 - libVLC not found at construction (player jvm)
+E60021 - libVLC playback error (player jvm)
+E60031 - failed to fetch the YouTube embed page (player webview)
+E60033 - YouTube playback error, no page-supplied code (player webview fallback)
+E60040 - WebView host not available on this platform (player webview jvm stub)
 
-E90210 (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture
+E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture
