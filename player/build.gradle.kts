@@ -72,6 +72,9 @@ kotlin {
 
         jvmMain.dependencies {
             implementation(Libs.Vlcj.core)
+            // JCEF (Chromium) for the desktop WebView YouTube host. The app owns CefApp
+            // init/download; :player only drives a CefClient/CefBrowser it is handed.
+            implementation(Libs.Jcef.maven)
         }
 
         val commonTest by getting {

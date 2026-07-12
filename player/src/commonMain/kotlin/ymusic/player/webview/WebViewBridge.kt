@@ -12,6 +12,14 @@ internal interface WebViewBridge {
     /** `"android"` | `"darwin"` | `"jvm"` — installed as `ymixInitConfig.platform` for the bundle. */
     val platform: String
 
+    /**
+     * JS the engine evaluates (at document-start, ahead of the globals + bundle) to install the
+     * page → host transport the bundle's `postMsg` expects. Empty on platforms that provide it
+     * natively (Android's `ymixChannelAndroid` interface, Apple's `webkit.messageHandlers`); the JVM
+     * bridge uses it to shim `window.ymixChannelAndroid` onto JCEF's `cefQuery`.
+     */
+    val bootPrelude: String get() = ""
+
     /** Load [html] as the document at [baseUrl] (origin) — the injected bundle runs at document-start. */
     fun load(html: String, baseUrl: String)
 

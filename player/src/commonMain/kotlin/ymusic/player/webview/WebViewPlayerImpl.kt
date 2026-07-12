@@ -178,8 +178,12 @@ internal class WebViewPlayerImpl(
         }
     }
 
-    /** The globals the bundle reads, then the bundle itself — evaluated as the first `<head>` script. */
+    /**
+     * The first `<head>` script: the bridge's transport shim (if any), then the globals the bundle
+     * reads, then the bundle itself.
+     */
     private fun bootScript(sessionId: String): String = buildString {
+        bridge.bootPrelude.takeIf { it.isNotEmpty() }?.let { append(it).append(";\n") }
         append("window.ymusicSessionId=").append(JsonPrimitive(sessionId)).append(";")
         append("window.mainAppVer=").append(appVersion).append(";")
         append("window.ymixInitConfig={\"platform\":").append(JsonPrimitive(bridge.platform)).append("};")
