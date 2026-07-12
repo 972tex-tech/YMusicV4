@@ -18,6 +18,7 @@ E20010 - unexpected data on the http control pipe (dynamic-engine HttpProtocol)
 E20011 - invalid http request — bad head or URL/header kmpHttp rejects (dynamic-engine HttpProtocol)
 E20020 - engine bundle failed to load/eval (DynamicEngine.create)
 E20021 - engine init health check failed (DynamicEngine.create)
+E20030 - yt/* command returned a malformed result (dynamic-engine YtCommands)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
