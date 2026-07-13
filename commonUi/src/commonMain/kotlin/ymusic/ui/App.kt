@@ -1,8 +1,12 @@
 package ymusic.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Download
@@ -31,17 +35,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import ymusic.dynamicengine.yt.browse
+import ymusic.player.PlayableItem
 
 /** App-level sections (the drawer, design §7). */
 enum class AppSection(val label: String, val icon: ImageVector) {
@@ -66,6 +73,14 @@ fun App(graph: AppGraph) {
         var section by rememberSaveable { mutableStateOf(AppSection.Discover) }
         var searching by rememberSaveable { mutableStateOf(false) }
         var nowPlayingOpen by rememberSaveable { mutableStateOf(false) }
+
+        // The one shared video surface must be *realized* for a WebView (YouTube) source to play at
+        // all — a windowed JCEF/WKWebView that is never shown never initializes, so it can't play even
+        // audio-only. Now Playing hosts it while open; otherwise dock it here so playback keeps going
+        // (the same single container just re-parents, which the engines tolerate).
+        val queue by graph.player.queue.collectAsState()
+        val status by graph.player.status.collectAsState()
+        val needsSurface = queue.currentItem is PlayableItem.YtVideoId || status.videoSize != null
 
         ModalNavigationDrawer(
             drawerState = drawer,
@@ -102,7 +117,21 @@ fun App(graph: AppGraph) {
                         )
                     }
                 },
-                bottomBar = { MiniPlayer(coordinator) { nowPlayingOpen = true } },
+                bottomBar = {
+                    Column {
+                        // Docked video preview: hosts the shared surface while Now Playing is closed so
+                        // a WebView source keeps playing (see needsSurface). Now Playing takes it over
+                        // when opened.
+                        if (needsSurface && !nowPlayingOpen) {
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                                Box(Modifier.width(240.dp).aspectRatio(16f / 9f)) {
+                                    graph.playerSurface(Modifier.fillMaxSize())
+                                }
+                            }
+                        }
+                        MiniPlayer(coordinator) { nowPlayingOpen = true }
+                    }
+                },
             ) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
                     when {
