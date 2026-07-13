@@ -190,8 +190,8 @@ private fun FeedRow(item: YtFeedItem, coordinator: PlaybackCoordinator) {
 private fun Thumb(item: YtFeedItem) {
     Box(
         modifier = Modifier
-            .size(width = 92.dp, height = 60.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+            .size(92.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center,
     ) {
         val icon = when (item.kind) {

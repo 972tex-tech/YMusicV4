@@ -29,7 +29,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,7 +59,7 @@ enum class AppSection(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(graph: AppGraph) {
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    YMusicTheme {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
