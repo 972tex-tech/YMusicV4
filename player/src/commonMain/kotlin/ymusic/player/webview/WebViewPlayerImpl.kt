@@ -73,6 +73,7 @@ internal class WebViewPlayerImpl(
         connected = false
         pending.clear()
         appliedConfig = config
+        bridge.setVideoVisible(!config.audioOnly)
         _status.update {
             it.copy(
                 state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
@@ -110,6 +111,7 @@ internal class WebViewPlayerImpl(
         command(WebViewProtocol.encodeStop())
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null) }
+        bridge.setVideoVisible(false)
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -132,10 +134,12 @@ internal class WebViewPlayerImpl(
             if (config.audioOnly) {
                 _status.update { it.copy(videoSize = null) }
                 command(WebViewProtocol.encodeSetAudioOnly(true))
+                bridge.setVideoVisible(false)
             } else {
                 // A concrete quality re-enables video (audio-only off) then selects the tier.
                 command(WebViewProtocol.encodeSetAudioOnly(false))
                 command(WebViewProtocol.encodeSelectVideoQuality(quality))
+                if (_status.value.state != PlaybackState.Idle) bridge.setVideoVisible(true)
             }
         }
         if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first) {

@@ -61,8 +61,9 @@ internal class PlayerImpl(
         get() = _config.value
         set(value) { _config.value = value }
 
+    /** The engine bound to the current item — internal routing state; not exposed (the UI hands one
+     *  video container to the engines and each owns its own surface, so it never needs this). */
     private val _currentEngine = MutableStateFlow<MediaEngine<*>?>(null)
-    override val currentEngine: StateFlow<MediaEngine<*>?> = _currentEngine.asStateFlow()
 
     private val _sleepTimerMs = MutableStateFlow<Long?>(null)
     override val sleepTimerMs: StateFlow<Long?> = _sleepTimerMs.asStateFlow()

@@ -15,7 +15,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -125,15 +124,13 @@ class PlayerFacadeTest {
         runCurrent()
         assertEquals(1, h.localBuilds)
         assertEquals(0, h.webViewBuilds, "WebView engine must not build until a yt item plays")
-        assertSame(h.local, h.player.currentEngine.value)
-        assertEquals(local(1), h.local.loads.single().item)
+        assertEquals(local(1), h.local.loads.single().item, "local item routes to the local engine")
 
         h.player.skipNext()
         runCurrent()
         assertEquals(1, h.webViewBuilds)
-        assertSame(h.webView, h.player.currentEngine.value)
         assertEquals(1, h.local.stopped, "switching engines must stop the old one")
-        assertEquals(yt("abc"), h.webView.loads.single().item)
+        assertEquals(yt("abc"), h.webView.loads.single().item, "yt item routes to the WebView engine")
     }
 
     @Test

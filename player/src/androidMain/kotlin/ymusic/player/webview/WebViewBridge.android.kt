@@ -53,6 +53,10 @@ private class AndroidWebViewBridge(
         webView.evaluateJavascript(js, null)
     }
 
+    override fun setVideoVisible(visible: Boolean) {
+        webView.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
     override fun release() {
         container.removeView(webView)
         webView.destroy()

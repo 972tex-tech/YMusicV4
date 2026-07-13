@@ -16,6 +16,8 @@ import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
 import java.awt.Component
+import java.awt.Container
+import javax.swing.SwingUtilities
 
 /**
  * libVLC backend via VLCJ, for JVM desktop. Per the `LocalPlayer` contract the caller drives it on
@@ -26,8 +28,12 @@ import java.awt.Component
  * (a VLC install or bundled libVLC) — [createLocalPlayer] throws a `E60020` [TechnicalException]
  * when it is not. `setSpeed` shifts pitch here (libVLC has no pitch-preserving tempo without a
  * filter) — see the module docs.
+ *
+ * When a [videoContainer] is supplied (the shell's shared video host), the engine adds its video
+ * component into it and owns that component's visibility: shown while a non-audio-only source plays,
+ * hidden when idle/stopped/audio-only so a co-hosted engine's surface (the WebView) shows through.
  */
-internal class JvmLocalPlayer : LocalPlayer {
+internal class JvmLocalPlayer(private val videoContainer: Container? = null) : LocalPlayer {
     private val component: CallbackMediaPlayerComponent = try {
         CallbackMediaPlayerComponent()
     } catch (t: Throwable) {
@@ -67,7 +73,28 @@ internal class JvmLocalPlayer : LocalPlayer {
     /** The AWT video component for the desktop `PlayerSurface` to embed. */
     val videoComponent: Component get() = component
 
+    /** Run [block] on the Swing EDT (container/visibility mutations must not race the toolkit). */
+    private fun onSwing(block: () -> Unit) {
+        if (SwingUtilities.isEventDispatchThread()) block() else SwingUtilities.invokeLater(block)
+    }
+
+    /** Show/hide this engine's video component within the shared container (a no-op without one). */
+    private fun showSurface(visible: Boolean) {
+        val container = videoContainer ?: return
+        onSwing {
+            component.isVisible = visible
+            container.revalidate()
+            container.repaint()
+        }
+    }
+
     init {
+        videoContainer?.let { c ->
+            onSwing {
+                component.isVisible = false
+                c.add(component)
+            }
+        }
         vlc.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             override fun playing(mp: MediaPlayer) {
                 // Re-assert per-load settings once libVLC is actually playing (idempotent).
@@ -117,6 +144,7 @@ internal class JvmLocalPlayer : LocalPlayer {
         val options = if (startPositionMs > 0L) arrayOf(":start-time=${startPositionMs / 1000.0}") else emptyArray()
         vlc.media().play(uri, *options)
         if (!playWhenReady) vlc.controls().setPause(true)
+        showSurface(!config.audioOnly)
     }
 
     override fun play() {
@@ -142,6 +170,7 @@ internal class JvmLocalPlayer : LocalPlayer {
         vlc.controls().stop()
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
+        showSurface(false)
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -167,6 +196,7 @@ internal class JvmLocalPlayer : LocalPlayer {
             applyAudioOnly()
             _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
             _videoQuality.update { it.copy(preferredQuality = quality) }
+            if (_status.value.state != PlaybackState.Idle) showSurface(!audioOnly)
         }
         if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
             config.captionVisible != prev.captionVisible
@@ -233,6 +263,7 @@ internal class JvmLocalPlayer : LocalPlayer {
         if (released) return
         released = true
         scope.cancel()
+        videoContainer?.let { c -> onSwing { c.remove(component) } }
         component.release()
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false) }
     }

@@ -3,7 +3,10 @@ package ymusic.player
 import android.content.Context
 import android.net.Uri
 import android.os.Looper
-import android.view.Surface
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -30,7 +33,10 @@ import kotlinx.coroutines.launch
  * main-thread). No calls are marshaled. State is driven by a [Player.Listener], not written
  * speculatively; the position ticker runs on the main dispatcher (the same thread the player is used on).
  */
-internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
+internal class AndroidLocalPlayer(
+    context: Context,
+    private val videoContainer: ViewGroup? = null,
+) : LocalPlayer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _status = MutableStateFlow(PlaybackStatus())
@@ -58,6 +64,9 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
 
     /** The last-applied config; [setConfig] diffs against it so only changed fields re-touch ExoPlayer. */
     private var appliedConfig = PlaybackConfig()
+
+    /** This engine's own video surface within the shared container; it owns the view's visibility. */
+    private val surfaceView: SurfaceView? = videoContainer?.let { SurfaceView(it.context) }
 
     // Audio-track id → its (group, index) for TrackSelectionOverride, refreshed on onTracksChanged.
     private val audioGroups = mutableMapOf<String, Pair<Tracks.Group, Int>>()
@@ -88,7 +97,30 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
 
             override fun onTracksChanged(tracks: Tracks) = updateTrackStates(tracks)
         })
+        surfaceView?.let { sv ->
+            sv.visibility = View.GONE
+            videoContainer?.addView(
+                sv,
+                ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+            sv.holder.addCallback(object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    if (!released) player.setVideoSurface(holder.surface)
+                }
+
+                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    if (!released) player.setVideoSurface(null)
+                }
+            })
+        }
         scope.launch { tick() }
+    }
+
+    /** Show/hide this engine's `SurfaceView` in the shared container (a no-op without one). */
+    private fun showSurface(visible: Boolean) {
+        surfaceView?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     override fun load(source: PlayableItem.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
@@ -113,6 +145,7 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         player.setMediaItem(MediaItem.fromUri(uri.toPlayableUri()), startPositionMs)
         player.playWhenReady = playWhenReady
         player.prepare()
+        showSurface(!config.audioOnly)
     }
 
     override fun play() {
@@ -136,6 +169,7 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         player.clearMediaItems()
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
+        showSurface(false)
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -174,6 +208,7 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
             .build()
         _status.update { it.copy(videoSize = if (ao) null else it.videoSize) }
         _videoQuality.update { it.copy(preferredQuality = quality) }
+        if (_status.value.state != PlaybackState.Idle) showSurface(!ao)
     }
 
     private fun applyCaptions(config: PlaybackConfig) {
@@ -250,15 +285,11 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         _audioTracks.value = if (audio.isEmpty()) AudioTrackState.DEFAULT else AudioTrackState(audio, selectedAudio)
     }
 
-    /** Bind/unbind the ExoPlayer video output. Called by the Android `PlayerSurface`. */
-    internal fun setVideoSurface(surface: Surface?) {
-        if (!released) player.setVideoSurface(surface)
-    }
-
     override fun release() {
         if (released) return
         released = true
         scope.cancel()
+        surfaceView?.let { sv -> videoContainer?.removeView(sv) }
         player.release()
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false) }
     }
@@ -302,8 +333,3 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
 /** ExoPlayer needs a scheme; a bare path becomes `file://…`. */
 private fun String.toPlayableUri(): Uri =
     if (contains("://")) Uri.parse(this) else Uri.fromFile(java.io.File(this))
-
-/** Bind/unbind an Android video output [Surface]. A no-op for non-Android players. */
-fun LocalPlayer.setVideoSurface(surface: Surface?) {
-    (this as? AndroidLocalPlayer)?.setVideoSurface(surface)
-}

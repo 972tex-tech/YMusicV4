@@ -39,7 +39,6 @@ class MediaControlsTest {
         override val captions = MutableStateFlow(CaptionState.DEFAULT)
         override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
         override val config = MutableStateFlow(PlaybackConfig())
-        override val currentEngine = MutableStateFlow<MediaEngine<*>?>(null)
         override val sleepTimerMs = MutableStateFlow<Long?>(null)
 
         override fun setQueue(items: List<PlayableItem>, playIndex: Int, startPositionMs: Long, playWhenReady: Boolean) {}

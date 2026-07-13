@@ -34,12 +34,6 @@ interface Player {
      *  [PlaybackConfig.audioOnly] (`preferVideoQuality == "zero"`), not a separate flag. */
     val config: StateFlow<PlaybackConfig>
 
-    /**
-     * The engine currently bound to the queue's item — the render seam: a `PlayerSurface` watches
-     * this to host the right platform view (video surface vs WebView). Null before the first load.
-     */
-    val currentEngine: StateFlow<MediaEngine<*>?>
-
     /** Remaining sleep-timer time (ticked ~1 Hz), or null when no timer is armed. */
     val sleepTimerMs: StateFlow<Long?>
 

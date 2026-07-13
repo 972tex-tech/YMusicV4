@@ -124,6 +124,15 @@ private class JcefWebViewBridge(
         browser.executeJavaScript(js, browser.url ?: EMBED_URL, 0)
     }
 
+    override fun setVideoVisible(visible: Boolean) {
+        val c = browser.uiComponent
+        if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+            c.isVisible = visible
+        } else {
+            javax.swing.SwingUtilities.invokeLater { c.isVisible = visible }
+        }
+    }
+
     override fun release() {
         container.remove(browser.uiComponent)
         client.removeRequestHandler()

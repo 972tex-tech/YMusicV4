@@ -26,6 +26,13 @@ internal interface WebViewBridge {
     /** Evaluate [js] in the page (fire-and-forget). */
     fun evaluate(js: String)
 
+    /**
+     * Show/hide the WebView within its shared container so a co-hosted engine's surface (the local
+     * video surface) shows through when this engine is idle/audio-only. Default no-op — platforms
+     * whose surface visibility is managed by the host (the Apple spike) ignore it.
+     */
+    fun setVideoVisible(visible: Boolean) {}
+
     /** Tear down the WebView and detach it from the container. */
     fun release()
 }
