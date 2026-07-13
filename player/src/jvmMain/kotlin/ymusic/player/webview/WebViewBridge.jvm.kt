@@ -5,6 +5,7 @@ import org.cef.browser.CefFrame
 import org.cef.browser.CefMessageRouter
 import org.cef.callback.CefCallback
 import org.cef.callback.CefQueryCallback
+import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefMessageRouterHandlerAdapter
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.handler.CefResourceHandlerAdapter
@@ -108,7 +109,26 @@ private class JcefWebViewBridge(
 
     private val browser: CefBrowser
 
+    // A *windowed* JCEF browser is created natively only once its UI component is realized (added to
+    // a showing window), signalled by onAfterCreated. loadURL before that is dropped, so gate it: a
+    // navigation requested earlier is held in [pendingUrl] and replayed when the browser is created.
+    @Volatile private var browserCreated = false
+    private var pendingUrl: String? = null // EDT-confined
+
+    private val lifeSpanHandler = object : CefLifeSpanHandlerAdapter() {
+        override fun onAfterCreated(created: CefBrowser?) {
+            SwingUtilities.invokeLater {
+                browserCreated = true
+                pendingUrl?.let { url ->
+                    pendingUrl = null
+                    browser.loadURL(url)
+                }
+            }
+        }
+    }
+
     init {
+        client.addLifeSpanHandler(lifeSpanHandler)
         client.addMessageRouter(router)
         client.addRequestHandler(requestHandler)
         browser = client.createBrowser("about:blank", false, false)
@@ -117,7 +137,7 @@ private class JcefWebViewBridge(
 
     override fun load(html: String, baseUrl: String) {
         pendingHtml = html
-        browser.loadURL(baseUrl)
+        if (browserCreated) browser.loadURL(baseUrl) else pendingUrl = baseUrl
     }
 
     override fun evaluate(js: String) {
@@ -137,6 +157,7 @@ private class JcefWebViewBridge(
         container.remove(browser.uiComponent)
         client.removeRequestHandler()
         client.removeMessageRouter(router)
+        client.removeLifeSpanHandler()
         router.dispose()
         browser.close(true)
     }
