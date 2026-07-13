@@ -35,22 +35,19 @@ import ymusic.mediascanner.FileSystemDocumentsProvider
 import ymusic.mediascanner.MediaScanner
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.mediaStoreJdbcDriver
-import ymusic.player.LocalPlayer
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
-import ymusic.player.WebViewPlayer
 import ymusic.player.WebViewPlayerContext
-import ymusic.player.awtVideoComponent
 import ymusic.player.createLocalPlayer
 import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
-import java.awt.BorderLayout
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 import javax.swing.JPanel
+import javax.swing.OverlayLayout
 
 /**
  * The desktop shell: boots JCEF + the scraping engine, assembles the [AppGraph] (player facade over
@@ -100,16 +97,19 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     }
 
     val cefClient = cefManager.createClient()
-    val webViewContainer = JPanel(BorderLayout())
+    // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
+    // the WebView adds its browser, the VLCJ engine adds its video component, each toggling its own
+    // visibility so only the playing engine's picture shows.
+    val videoContainer = JPanel().apply { layout = OverlayLayout(this) }
     val webViewJs = withContext(Dispatchers.IO) { readWebViewJs() }
 
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
-                local = { createLocalPlayer(LocalPlayerContext()) },
+                local = { createLocalPlayer(LocalPlayerContext(videoContainer)) },
                 webView = {
                     createWebViewPlayer(
-                        WebViewPlayerContext(cefClient, webViewContainer),
+                        WebViewPlayerContext(cefClient, videoContainer),
                         engineJs = webViewJs,
                         appVersion = 1,
                         httpClient = httpClient,
@@ -124,17 +124,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         player,
         mediaStore = mediaStore,
         scanLibraryFolder = { scanPickedFolder(mediaStore) },
-    ) { engine, modifier ->
-        // The surface follows the engine kind: VLCJ's AWT component for local files, the shared
-        // JCEF container (the player injects its browser into it) for YouTube.
-        when (engine) {
-            is WebViewPlayer -> SwingPanel(factory = { webViewContainer }, modifier = modifier)
-            is LocalPlayer -> {
-                val video = engine.awtVideoComponent()
-                if (video != null) SwingPanel(factory = { video }, modifier = modifier)
-            }
-            else -> {}
-        }
+    ) { modifier ->
+        SwingPanel(factory = { videoContainer }, modifier = modifier)
     }
 }
 

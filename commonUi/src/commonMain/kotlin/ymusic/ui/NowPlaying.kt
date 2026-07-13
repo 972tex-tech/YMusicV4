@@ -102,7 +102,6 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     val queue by player.queue.collectAsState()
-    val engine by player.currentEngine.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
 
     Surface(Modifier.fillMaxSize()) {
@@ -113,9 +112,9 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
                 SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
             }
 
-            // Video surface — shell-provided; audio-only renders nothing inside it.
+            // Video surface — the shell's shared container; each engine shows/hides its own picture.
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-                graph.playerSurface(engine, Modifier.fillMaxSize())
+                graph.playerSurface(Modifier.fillMaxSize())
             }
 
             val current = queue.currentItem

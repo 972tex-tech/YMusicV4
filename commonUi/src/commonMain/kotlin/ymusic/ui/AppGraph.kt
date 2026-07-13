@@ -5,14 +5,14 @@ import androidx.compose.ui.Modifier
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.yt.YtContext
 import ymusic.mediastore.BetterMediaStore
-import ymusic.player.MediaEngine
 import ymusic.player.Player
 
 /**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
- * running engine manager, the player facade, and the platform video surface. [playerSurface]
- * renders the active engine's picture (SwingPanel over VLCJ/JCEF on desktop, AndroidView over
- * SurfaceView/WebView on Android) — the shell owns the platform views, the UI only places them.
+ * running engine manager, the player facade, and the platform video surface. [playerSurface] hosts
+ * the **one** shared video container the shell handed to the engines (a Swing panel on desktop, a
+ * `FrameLayout` on Android) — each engine attaches its own surface (WebView / SurfaceView / VLCJ)
+ * into it and owns that surface's visibility, so the UI never needs to know which engine is active.
  *
  * [mediaStore] backs the Library screen; a shell without one (no local library yet) leaves it null.
  * [scanLibraryFolder] is the shell's directory-pick + scan action (desktop's FileDialog + media
@@ -24,5 +24,5 @@ class AppGraph(
     val ytContext: YtContext = YtContext(),
     val mediaStore: BetterMediaStore? = null,
     val scanLibraryFolder: (suspend () -> String?)? = null,
-    val playerSurface: @Composable (engine: MediaEngine<*>?, modifier: Modifier) -> Unit,
+    val playerSurface: @Composable (modifier: Modifier) -> Unit,
 )

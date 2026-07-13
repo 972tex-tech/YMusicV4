@@ -23,7 +23,6 @@ import kmphttp.create
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
-import ymusic.player.WebViewPlayer
 import ymusic.player.WebViewPlayerContext
 import ymusic.player.createLocalPlayer
 import ymusic.player.createPlayer
@@ -63,7 +62,9 @@ class MainActivity : ComponentActivity() {
         val engines = DynamicEngineManager(httpClient, appVersion = 1)
         engines.start()
 
-        val webViewContainer = FrameLayout(this)
+        // One shared video host (a FrameLayout) both engines render into: the WebView engine adds its
+        // WebView, the local engine adds its SurfaceView, each owning its own view's visibility.
+        val videoContainer = FrameLayout(this)
         // The injected YouTube player script, bundled as an asset (copied from webview-js/dist).
         // Without it the WebView engine is absent and a YouTube item surfaces E60050.
         val webViewJs = runCatching {
@@ -72,11 +73,11 @@ class MainActivity : ComponentActivity() {
 
         val player = createPlayer(
             PlayerEngines(
-                local = { createLocalPlayer(LocalPlayerContext(this)) },
+                local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
                 webView = webViewJs?.let { js ->
                     {
                         createWebViewPlayer(
-                            WebViewPlayerContext(this, webViewContainer),
+                            WebViewPlayerContext(this, videoContainer),
                             engineJs = js,
                             appVersion = 1,
                             httpClient = httpClient,
@@ -86,12 +87,8 @@ class MainActivity : ComponentActivity() {
             ),
         )
 
-        return AppGraph(engines, player) { engine, modifier ->
-            when (engine) {
-                is WebViewPlayer -> AndroidView(factory = { webViewContainer }, modifier = modifier)
-                // Local video needs a SurfaceView + setVideoSurface — wired with the library milestone.
-                else -> {}
-            }
+        return AppGraph(engines, player) { modifier ->
+            AndroidView(factory = { videoContainer }, modifier = modifier)
         }
     }
 }
