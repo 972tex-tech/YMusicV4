@@ -29,8 +29,15 @@ internal class AppleWebViewBridge(sink: WebViewMessageSink) : WebViewBridge {
         userContentController.addScriptMessageHandler(handler, HANDLER_NAME)
     }
 
-    /** The WebKit view; a `UIView`/`NSView` the leaf actual injects into the caller's container. */
-    val nativeView: WKWebView = WKWebView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), configuration = config)
+    /**
+     * The WebKit view; a `UIView`/`NSView` the leaf actual injects into the caller's container. Born
+     * at a real 320×180 (not 0×0) so the page's viewport is never 0×0 — a 0-size webview reports
+     * `innerWidth/innerHeight == 0` and gets throttled/paused. Once attached the leaf resizes it to the
+     * container; a headless host keeps a real size and moves the window off-screen instead. Verified on
+     * macOS WKWebView (window off-screen keeps `visibilityState:"visible"`; 0×0 / occlusion / alpha=0
+     * do not).
+     */
+    val nativeView: WKWebView = WKWebView(frame = CGRectMake(0.0, 0.0, 320.0, 180.0), configuration = config)
 
     override fun load(html: String, baseUrl: String) {
         nativeView.loadHTMLString(html, NSURL(string = baseUrl))
