@@ -20,16 +20,44 @@ enum class PlaybackState {
     Error,
 }
 
+/** How the video fills its surface. Mirrors the legacy player's scale modes. */
+enum class ScaleMode { COVER, FILL, CONTAIN }
+
 /**
- * The settable playback parameters. Passed to [MediaEngine.load] to apply atomically before the first
- * frame; the same fields are also settable at runtime via the individual setters. Engine-specific
- * selections (video quality, captions, audio track) are NOT here — they live on capability interfaces.
+ * The full settable playback state — a single object pushed to the engine via [MediaEngine.setConfig]
+ * (and carried by [MediaEngine.load] to apply atomically before the first frame). One config, one
+ * application path: the engine diffs old→new and applies what changed, so load-time and runtime
+ * settings never drift. A faithful port of the legacy `BasicMediaPlayer.Config`.
+ *
+ * **Audio-only is not a boolean here** — it is [preferVideoQuality]`.first == `[VideoQualityState.AUDIO_ONLY]
+ * (`"zero"`), the music-app default. The `Pair<String, Long>` preference fields carry a monotonic
+ * sequence in `.second` so the engine can tell the freshest user choice from a stale restore.
+ *
+ * Quality/caption *selection* lives here (as in legacy); the available-options **state** stays on the
+ * read-only capability flows ([VideoQualitySelectable.videoQuality] etc.). Audio-track selection is an
+ * immediate action ([AudioTrackSelectable.selectAudioTrack]), not a persistent preference.
  */
 data class PlaybackConfig(
+    val preferVideoQuality: Pair<String, Long> = VideoQualityState.AUDIO_ONLY to 0L,
+    val captionVisible: Boolean = false,
     val volume: Float = 1f,
     val speed: Float = 1f,
-    val audioOnly: Boolean = false,
-)
+    val pitchFactor: Float = 1f,
+    val loop: Boolean = false,
+    val preferCaptionLanguage: Pair<String, Long> = UNDETERMINED_LANGUAGE to 0L,
+    val scaleMode: ScaleMode = ScaleMode.CONTAIN,
+) {
+    init {
+        require(volume in 0f..1f) { "volume out of range: $volume" }
+    }
+
+    /** True when video is disabled (the music default) — `preferVideoQuality` is [VideoQualityState.AUDIO_ONLY]. */
+    val audioOnly: Boolean get() = preferVideoQuality.first == VideoQualityState.AUDIO_ONLY
+
+    companion object {
+        const val UNDETERMINED_LANGUAGE = "und"
+    }
+}
 
 /**
  * A recoverable classification the caller can surface — a [CodedError] with a stable `E6xxxx` player
@@ -72,8 +100,6 @@ data class PlaybackStatus(
     val playWhenReady: Boolean = false,
     val volume: Float = 1f,
     val speed: Float = 1f,
-    /** When true the video renderer is off (audio-only mode — the music default). */
-    val audioOnly: Boolean = false,
     /** Dimensions of the current video track, or null for audio-only / an audio-only file. */
     val videoSize: VideoSize? = null,
     val error: PlayerError? = null,

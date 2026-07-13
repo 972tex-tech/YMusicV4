@@ -57,6 +57,9 @@ internal class JvmLocalPlayer : LocalPlayer {
 
     @Volatile private var released = false
 
+    /** The last-applied config; [setConfig] diffs against it so only changed fields touch libVLC. */
+    @Volatile private var appliedConfig = PlaybackConfig()
+
     @Volatile private var preferVideoQuality = VideoQualityState.AUTO
 
     @Volatile private var lastSpuId = -1
@@ -97,13 +100,15 @@ internal class JvmLocalPlayer : LocalPlayer {
         if (released) return
         val uri = source.uri
         // The `playing` event re-asserts rate + audio-only; set them (and volume) now so they hold.
+        appliedConfig = config
         desiredSpeed = config.speed.coerceAtLeast(0.01f)
         audioOnly = config.audioOnly
+        preferVideoQuality = config.preferVideoQuality.first
         vlc.audio().setVolume((config.volume.coerceIn(0f, 1f) * 100f).toInt())
         _status.update {
             it.copy(
                 state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
-                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+                volume = config.volume, speed = config.speed,
             )
         }
         _progress.value = Progress(positionMs = startPositionMs)
@@ -139,49 +144,44 @@ internal class JvmLocalPlayer : LocalPlayer {
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
     }
 
-    override fun setVolume(volume: Float) {
+    override fun setConfig(config: PlaybackConfig) {
         if (released) return
-        val v = volume.coerceIn(0f, 1f)
-        vlc.audio().setVolume((v * 100f).toInt())
-        _status.update { it.copy(volume = v) }
+        val prev = appliedConfig
+        appliedConfig = config
+
+        if (config.volume != prev.volume) {
+            val v = config.volume.coerceIn(0f, 1f)
+            vlc.audio().setVolume((v * 100f).toInt())
+            _status.update { it.copy(volume = v) }
+        }
+        if (config.speed != prev.speed) {
+            desiredSpeed = config.speed.coerceAtLeast(0.01f)
+            vlc.controls().setRate(desiredSpeed)
+            _status.update { it.copy(speed = desiredSpeed) }
+        }
+        val quality = config.preferVideoQuality.first
+        if (quality != prev.preferVideoQuality.first) {
+            // libVLC has no per-resolution track selection for local files; audio-only is the honored axis.
+            preferVideoQuality = quality
+            audioOnly = config.audioOnly
+            applyAudioOnly()
+            _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
+            _videoQuality.update { it.copy(preferredQuality = quality) }
+        }
+        if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
+            config.captionVisible != prev.captionVisible
+        ) {
+            applyCaption(config)
+        }
     }
 
-    override fun setSpeed(speed: Float) {
-        if (released) return
-        desiredSpeed = speed.coerceAtLeast(0.01f)
-        vlc.controls().setRate(desiredSpeed)
-        _status.update { it.copy(speed = desiredSpeed) }
-    }
-
-    override fun setAudioOnly(audioOnly: Boolean) {
-        if (released) return
-        this.audioOnly = audioOnly
-        applyAudioOnly()
-        _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
-    }
-
-    override fun selectVideoQuality(quality: String) {
-        if (released) return
-        preferVideoQuality = quality
-        // libVLC has no per-resolution track selection for local files; audio-only is the honored axis.
-        val ao = quality == VideoQualityState.AUDIO_ONLY
-        audioOnly = ao
-        applyAudioOnly()
-        _status.update { it.copy(audioOnly = ao, videoSize = if (ao) null else it.videoSize) }
-        _videoQuality.update { it.copy(preferredQuality = quality) }
-    }
-
-    override fun selectCaption(languageCode: String?) {
-        if (released) return
-        val id = if (languageCode == null || languageCode == "off") -1 else languageCode.toIntOrNull() ?: return
+    /** Map [PlaybackConfig] caption fields onto libVLC's SPU track (`-1` = off). */
+    private fun applyCaption(config: PlaybackConfig) {
+        val lang = config.preferCaptionLanguage.first
+        val id = if (lang == PlaybackConfig.UNDETERMINED_LANGUAGE) -1 else lang.toIntOrNull() ?: -1
         if (id != -1) lastSpuId = id
-        vlc.subpictures().setTrack(id)
+        vlc.subpictures().setTrack(if (config.captionVisible) (if (id != -1) id else lastSpuId) else -1)
         _captions.update { it.copy(selectedLanguage = id.takeIf { it != -1 }?.toString()) }
-    }
-
-    override fun setCaptionVisible(visible: Boolean) {
-        if (released) return
-        vlc.subpictures().setTrack(if (visible) lastSpuId else -1)
     }
 
     override fun selectAudioTrack(id: String) {

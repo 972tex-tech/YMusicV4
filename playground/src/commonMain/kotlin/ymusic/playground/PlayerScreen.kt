@@ -29,8 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ymusic.player.LocalPlayer
 import ymusic.player.PlayableItem
+import ymusic.player.PlaybackConfig
 import ymusic.player.PlaybackState
 import ymusic.player.PlaybackStatus
+import ymusic.player.VideoQualityState
 
 /** The file-picker seam — each platform supplies one (Desktop: AWT dialog; Android/iOS: SAF/UIDocument). */
 fun interface FilePicker {
@@ -47,7 +49,9 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     var fileName by remember { mutableStateOf<String?>(null) }
-    var audioOnly by remember { mutableStateOf(status.audioOnly) }
+    // The playground is a video harness, so it starts with video enabled (not the audio-only default).
+    var config by remember { mutableStateOf(PlaybackConfig(preferVideoQuality = VideoQualityState.AUTO to 0L)) }
+    val audioOnly = config.audioOnly
 
     val duration = progress.durationMs.coerceAtLeast(0L)
     val position = progress.positionMs.coerceAtLeast(0L)
@@ -61,7 +65,7 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
         Button(onClick = {
             val picked = filePicker.pick() ?: return@Button
             fileName = picked.substringAfterLast('/')
-            player.load(PlayableItem.LocalUri(picked), playWhenReady = true)
+            player.load(PlayableItem.LocalUri(picked), playWhenReady = true, config = config)
         }) { Text("Open file…") }
 
         Text(
@@ -84,8 +88,9 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
             Switch(
                 checked = audioOnly,
                 onCheckedChange = {
-                    audioOnly = it
-                    player.setAudioOnly(it)
+                    val quality = if (it) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO
+                    config = config.copy(preferVideoQuality = quality to 0L)
+                    player.setConfig(config)
                 },
             )
             Spacer(Modifier.weight(1f))
@@ -120,13 +125,13 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
         }
 
         Spacer(Modifier.height(4.dp))
-        Text("Volume ${(status.volume * 100).toInt()}%")
-        Slider(value = status.volume, onValueChange = { player.setVolume(it) })
+        Text("Volume ${(config.volume * 100).toInt()}%")
+        Slider(value = config.volume, onValueChange = { config = config.copy(volume = it); player.setConfig(config) })
 
-        Text("Speed ${formatSpeed(status.speed)}×")
+        Text("Speed ${formatSpeed(config.speed)}×")
         Slider(
-            value = status.speed,
-            onValueChange = { player.setSpeed(it) },
+            value = config.speed,
+            onValueChange = { config = config.copy(speed = it); player.setConfig(config) },
             valueRange = 0.5f..2.0f,
         )
     }

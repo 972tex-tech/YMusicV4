@@ -23,9 +23,12 @@ internal class PlayerImpl(
     private var localEngine: LocalPlayer? = null
     private var webViewEngine: WebViewPlayer? = null
 
-    private var config = PlaybackConfig()
     private var playWhenReadyIntent = false
     private var released = false
+
+    /** Monotonic stamp for the `Pair<String, Long>` preference fields — freshest choice wins a restore. */
+    private var configSeq = 0L
+    private fun nextSeq(): Long = ++configSeq
 
     /** Bumped on every load; the Ended auto-advance fires at most once per generation. */
     private var loadGeneration = 0
@@ -51,6 +54,12 @@ internal class PlayerImpl(
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
+    private val _config = MutableStateFlow(PlaybackConfig())
+    override val config: StateFlow<PlaybackConfig> = _config.asStateFlow()
+    private var currentConfig: PlaybackConfig
+        get() = _config.value
+        set(value) { _config.value = value }
 
     private val _currentEngine = MutableStateFlow<MediaEngine<*>?>(null)
     override val currentEngine: StateFlow<MediaEngine<*>?> = _currentEngine.asStateFlow()
@@ -181,31 +190,31 @@ internal class PlayerImpl(
         publishQueue()
     }
 
-    override fun setVolume(volume: Float) {
-        config = config.copy(volume = volume)
-        _currentEngine.value?.setVolume(volume)
-    }
+    override fun setVolume(volume: Float) = pushConfig(currentConfig.copy(volume = volume.coerceIn(0f, 1f)))
 
-    override fun setSpeed(speed: Float) {
-        config = config.copy(speed = speed)
-        _currentEngine.value?.setSpeed(speed)
-    }
+    override fun setSpeed(speed: Float) = pushConfig(currentConfig.copy(speed = speed))
 
     override fun setAudioOnly(audioOnly: Boolean) {
-        config = config.copy(audioOnly = audioOnly)
-        _currentEngine.value?.setAudioOnly(audioOnly)
+        // Audio-only is quality "zero"; leaving it restores AUTO. A fresh stamp marks the user's choice.
+        val quality = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO
+        pushConfig(currentConfig.copy(preferVideoQuality = quality to nextSeq()))
     }
 
-    override fun selectVideoQuality(quality: String) {
-        (_currentEngine.value as? VideoQualitySelectable)?.selectVideoQuality(quality)
-    }
+    override fun selectVideoQuality(quality: String) =
+        pushConfig(currentConfig.copy(preferVideoQuality = quality to nextSeq()))
 
-    override fun selectCaption(languageCode: String?) {
-        (_currentEngine.value as? CaptionSelectable)?.selectCaption(languageCode)
-    }
+    override fun selectCaption(languageCode: String?) =
+        pushConfig(currentConfig.copy(preferCaptionLanguage = (languageCode ?: PlaybackConfig.UNDETERMINED_LANGUAGE) to nextSeq()))
 
-    override fun setCaptionVisible(visible: Boolean) {
-        (_currentEngine.value as? CaptionSelectable)?.setCaptionVisible(visible)
+    override fun setCaptionVisible(visible: Boolean) = pushConfig(currentConfig.copy(captionVisible = visible))
+
+    override fun setScaleMode(mode: ScaleMode) = pushConfig(currentConfig.copy(scaleMode = mode))
+
+    /** Update the held config and push it to the active engine (the one application path). */
+    private fun pushConfig(next: PlaybackConfig) {
+        if (next == currentConfig) return
+        currentConfig = next
+        _currentEngine.value?.setConfig(next)
     }
 
     override fun selectAudioTrack(id: String) {
@@ -253,7 +262,7 @@ internal class PlayerImpl(
             is PlayableItem.LocalUri -> {
                 val engine = localEngine ?: engines.local().also { localEngine = it }
                 bind(engine)
-                engine.load(item, startPositionMs, playWhenReadyIntent, config)
+                engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
             }
             is PlayableItem.YtVideoId -> {
                 val factory = engines.webView
@@ -267,7 +276,7 @@ internal class PlayerImpl(
                 }
                 val engine = webViewEngine ?: factory().also { webViewEngine = it }
                 bind(engine)
-                engine.load(item, startPositionMs, playWhenReadyIntent, config)
+                engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
             }
         }
     }

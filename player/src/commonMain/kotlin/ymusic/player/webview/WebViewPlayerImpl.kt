@@ -63,16 +63,20 @@ internal class WebViewPlayerImpl(
     private val pending = mutableListOf<String>() // command JSONs queued until the page connects
     private var released = false
 
+    /** The last-applied config; [setConfig] diffs against it so only changed fields hit the page. */
+    private var appliedConfig = PlaybackConfig()
+
     override fun load(source: PlayableItem.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val videoId = source.videoId
         sessionId = (Random.nextLong() and Long.MAX_VALUE).toString()
         connected = false
         pending.clear()
+        appliedConfig = config
         _status.update {
             it.copy(
                 state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
-                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+                volume = config.volume, speed = config.speed,
             )
         }
         _progress.value = Progress(positionMs = startPositionMs)
@@ -108,28 +112,41 @@ internal class WebViewPlayerImpl(
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null) }
     }
 
-    override fun setVolume(volume: Float) {
-        val v = volume.coerceIn(0f, 1f)
-        _status.update { it.copy(volume = v) }
-        command(WebViewProtocol.encodeSetVolume(v))
+    override fun setConfig(config: PlaybackConfig) {
+        if (released) return
+        val prev = appliedConfig
+        appliedConfig = config
+
+        if (config.volume != prev.volume) {
+            val v = config.volume.coerceIn(0f, 1f)
+            _status.update { it.copy(volume = v) }
+            command(WebViewProtocol.encodeSetVolume(v))
+        }
+        if (config.speed != prev.speed) {
+            val s = config.speed.coerceAtLeast(0.01f)
+            _status.update { it.copy(speed = s) }
+            command(WebViewProtocol.encodeSetSpeed(s))
+        }
+        val quality = config.preferVideoQuality.first
+        if (quality != prev.preferVideoQuality.first) {
+            if (config.audioOnly) {
+                _status.update { it.copy(videoSize = null) }
+                command(WebViewProtocol.encodeSetAudioOnly(true))
+            } else {
+                // A concrete quality re-enables video (audio-only off) then selects the tier.
+                command(WebViewProtocol.encodeSetAudioOnly(false))
+                command(WebViewProtocol.encodeSelectVideoQuality(quality))
+            }
+        }
+        if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first) {
+            val lang = config.preferCaptionLanguage.first
+            command(WebViewProtocol.encodeSelectCaption(lang.takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }))
+        }
+        if (config.captionVisible != prev.captionVisible) {
+            command(WebViewProtocol.encodeSetCaptionVisible(config.captionVisible))
+        }
+        // pitchFactor / loop / scaleMode: no wire encoder yet — ignored per the setConfig contract.
     }
-
-    override fun setSpeed(speed: Float) {
-        val s = speed.coerceAtLeast(0.01f)
-        _status.update { it.copy(speed = s) }
-        command(WebViewProtocol.encodeSetSpeed(s))
-    }
-
-    override fun setAudioOnly(audioOnly: Boolean) {
-        _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
-        command(WebViewProtocol.encodeSetAudioOnly(audioOnly))
-    }
-
-    override fun selectVideoQuality(quality: String) = command(WebViewProtocol.encodeSelectVideoQuality(quality))
-
-    override fun selectCaption(languageCode: String?) = command(WebViewProtocol.encodeSelectCaption(languageCode))
-
-    override fun setCaptionVisible(visible: Boolean) = command(WebViewProtocol.encodeSetCaptionVisible(visible))
 
     override fun selectAudioTrack(id: String) = command(WebViewProtocol.encodeSelectAudioTrack(id))
 

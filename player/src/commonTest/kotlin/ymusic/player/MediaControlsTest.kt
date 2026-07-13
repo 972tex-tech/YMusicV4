@@ -38,6 +38,7 @@ class MediaControlsTest {
         override val videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
         override val captions = MutableStateFlow(CaptionState.DEFAULT)
         override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+        override val config = MutableStateFlow(PlaybackConfig())
         override val currentEngine = MutableStateFlow<MediaEngine<*>?>(null)
         override val sleepTimerMs = MutableStateFlow<Long?>(null)
 
@@ -102,6 +103,8 @@ class MediaControlsTest {
         override fun selectCaption(languageCode: String?) {}
 
         override fun setCaptionVisible(visible: Boolean) {}
+
+        override fun setScaleMode(mode: ScaleMode) {}
 
         override fun selectAudioTrack(id: String) {}
 

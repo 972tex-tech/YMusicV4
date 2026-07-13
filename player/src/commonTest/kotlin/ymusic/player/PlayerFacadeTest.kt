@@ -27,10 +27,12 @@ import kotlin.test.assertTrue
 class PlayerFacadeTest {
     private class Load(val item: PlayableItem, val startMs: Long, val playWhenReady: Boolean, val config: PlaybackConfig)
 
-    private open class FakeEngine<S : PlayableItem> : MediaEngine<S> {
+    private open class FakeEngine<S : PlayableItem> :
+        MediaEngine<S>, VideoQualitySelectable, CaptionSelectable, AudioTrackSelectable {
         val loads = mutableListOf<Load>()
         var stopped = 0
         var releasedCount = 0
+        var lastConfig = PlaybackConfig()
 
         private val _status = MutableStateFlow(PlaybackStatus())
         override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -38,14 +40,18 @@ class PlayerFacadeTest {
         private val _progress = MutableStateFlow(Progress())
         override val progress: StateFlow<Progress> = _progress.asStateFlow()
 
+        override val videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
+        override val captions = MutableStateFlow(CaptionState.DEFAULT)
+        override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+
         override fun load(source: S, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
             loads += Load(source, startPositionMs, playWhenReady, config)
+            lastConfig = config
             _status.value = PlaybackStatus(
                 state = PlaybackState.Ready,
                 playWhenReady = playWhenReady,
                 volume = config.volume,
                 speed = config.speed,
-                audioOnly = config.audioOnly,
             )
             _progress.value = Progress(positionMs = startPositionMs, durationMs = 60_000)
         }
@@ -66,56 +72,27 @@ class PlayerFacadeTest {
             _progress.value = Progress()
         }
 
-        override fun setVolume(volume: Float) = _status.update { it.copy(volume = volume) }
+        override fun setConfig(config: PlaybackConfig) {
+            lastConfig = config
+            _status.update { it.copy(volume = config.volume, speed = config.speed) }
+            videoQuality.update { it.copy(preferredQuality = config.preferVideoQuality.first) }
+            captions.update {
+                it.copy(selectedLanguage = config.preferCaptionLanguage.first.takeIf { l -> l != PlaybackConfig.UNDETERMINED_LANGUAGE })
+            }
+        }
 
-        override fun setSpeed(speed: Float) = _status.update { it.copy(speed = speed) }
-
-        override fun setAudioOnly(audioOnly: Boolean) = _status.update { it.copy(audioOnly = audioOnly) }
+        override fun selectAudioTrack(id: String) {
+            audioTracks.update { it.copy(selectedId = id) }
+        }
 
         override fun release() {
             releasedCount++
         }
     }
 
-    private class FakeLocal : FakeEngine<PlayableItem.LocalUri>(), LocalPlayer {
-        override val videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
-        override val captions = MutableStateFlow(CaptionState.DEFAULT)
-        override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+    private class FakeLocal : FakeEngine<PlayableItem.LocalUri>(), LocalPlayer
 
-        override fun selectVideoQuality(quality: String) {
-            videoQuality.update { it.copy(preferredQuality = quality) }
-        }
-
-        override fun selectCaption(languageCode: String?) {
-            captions.update { it.copy(selectedLanguage = languageCode) }
-        }
-
-        override fun setCaptionVisible(visible: Boolean) {}
-
-        override fun selectAudioTrack(id: String) {
-            audioTracks.update { it.copy(selectedId = id) }
-        }
-    }
-
-    private class FakeWebView : FakeEngine<PlayableItem.YtVideoId>(), WebViewPlayer {
-        override val videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
-        override val captions = MutableStateFlow(CaptionState.DEFAULT)
-        override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
-
-        override fun selectVideoQuality(quality: String) {
-            videoQuality.update { it.copy(preferredQuality = quality) }
-        }
-
-        override fun selectCaption(languageCode: String?) {
-            captions.update { it.copy(selectedLanguage = languageCode) }
-        }
-
-        override fun setCaptionVisible(visible: Boolean) {}
-
-        override fun selectAudioTrack(id: String) {
-            audioTracks.update { it.copy(selectedId = id) }
-        }
-    }
+    private class FakeWebView : FakeEngine<PlayableItem.YtVideoId>(), WebViewPlayer
 
     private class Harness(scope: TestScope, webViewFactory: Boolean = true) {
         val local = FakeLocal()

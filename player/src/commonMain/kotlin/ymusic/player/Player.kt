@@ -13,8 +13,8 @@ import kotlin.random.Random
  * playing (a switch-latest merge — when the engine changes, the facade flows follow the new one).
  *
  * Main-thread only, like the engines it drives ([MediaEngine]); flows collect from anywhere.
- * Config (volume/speed/audio-only) is facade state: it survives track and engine changes, applied
- * atomically at every load via [PlaybackConfig].
+ * [config] is facade state: it survives track and engine changes, applied atomically at every load and
+ * pushed to the active engine on every change via [MediaEngine.setConfig].
  */
 interface Player {
     /** The active engine's [MediaEngine.status]; [PlaybackStatus] default when nothing has loaded. */
@@ -29,6 +29,10 @@ interface Player {
     val videoQuality: StateFlow<VideoQualityState>
     val captions: StateFlow<CaptionState>
     val audioTracks: StateFlow<AudioTrackState>
+
+    /** The current playback settings, pushed to the active engine on every change. Audio-only is
+     *  [PlaybackConfig.audioOnly] (`preferVideoQuality == "zero"`), not a separate flag. */
+    val config: StateFlow<PlaybackConfig>
 
     /**
      * The engine currently bound to the queue's item — the render seam: a `PlayerSurface` watches
@@ -90,17 +94,22 @@ interface Player {
 
     fun setSpeed(speed: Float)
 
+    /** Audio-only sets [PlaybackConfig.preferVideoQuality] to [VideoQualityState.AUDIO_ONLY] / [AUTO][VideoQualityState.AUTO]. */
     fun setAudioOnly(audioOnly: Boolean)
 
-    /** Forwarded to the active engine when it is [VideoQualitySelectable]. */
+    /** Sets [PlaybackConfig.preferVideoQuality] (a [VideoQualityOption.quality], `AUTO`, or `AUDIO_ONLY`). */
     fun selectVideoQuality(quality: String)
 
-    /** Forwarded to the active engine when it is [CaptionSelectable]. */
+    /** Sets [PlaybackConfig.preferCaptionLanguage] (a language code, or null for undetermined). */
     fun selectCaption(languageCode: String?)
 
+    /** Sets [PlaybackConfig.captionVisible]. */
     fun setCaptionVisible(visible: Boolean)
 
-    /** Forwarded to the active engine when it is [AudioTrackSelectable]. */
+    /** Sets [PlaybackConfig.scaleMode] (how the video fills its surface). */
+    fun setScaleMode(mode: ScaleMode)
+
+    /** The one immediate action — forwarded to the active engine when it is [AudioTrackSelectable]. */
     fun selectAudioTrack(id: String)
 
     /** Pause automatically after [durationMs]; null disarms. */

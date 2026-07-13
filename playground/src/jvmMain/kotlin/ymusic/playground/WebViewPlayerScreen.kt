@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import kmphttp.KmpHttpClient
 import org.cef.CefClient
 import ymusic.player.PlayableItem
+import ymusic.player.PlaybackConfig
+import ymusic.player.VideoQualityState
 import ymusic.player.WebViewPlayer
 import ymusic.player.WebViewPlayerContext
 import ymusic.player.createWebViewPlayer
@@ -52,7 +54,9 @@ fun WebViewPlayerScreen(
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     var videoId by remember { mutableStateOf("dQw4w9WgXcQ") }
-    var audioOnly by remember { mutableStateOf(status.audioOnly) }
+    // Video harness → start with video enabled (not the audio-only default).
+    var config by remember { mutableStateOf(PlaybackConfig(preferVideoQuality = VideoQualityState.AUTO to 0L)) }
+    val audioOnly = config.audioOnly
 
     DisposableEffect(Unit) { onDispose { player.release() } }
 
@@ -73,7 +77,7 @@ fun WebViewPlayerScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
-            Button(onClick = { player.load(PlayableItem.YtVideoId(videoId), playWhenReady = true) }) { Text("Load") }
+            Button(onClick = { player.load(PlayableItem.YtVideoId(videoId), playWhenReady = true, config = config) }) { Text("Load") }
         }
 
         Text("State: ${status.state}", style = MaterialTheme.typography.bodyMedium)
@@ -81,7 +85,14 @@ fun WebViewPlayerScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Audio-only")
-            Switch(checked = audioOnly, onCheckedChange = { audioOnly = it; player.setAudioOnly(it) })
+            Switch(
+                checked = audioOnly,
+                onCheckedChange = {
+                    val quality = if (it) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO
+                    config = config.copy(preferVideoQuality = quality to 0L)
+                    player.setConfig(config)
+                },
+            )
         }
 
         // The WebView surface (the player already added its browser into `container`).
@@ -103,8 +114,8 @@ fun WebViewPlayerScreen(
         }
 
         Spacer(Modifier.height(4.dp))
-        Text("Volume ${(status.volume * 100).toInt()}%")
-        Slider(value = status.volume, onValueChange = { player.setVolume(it) })
+        Text("Volume ${(config.volume * 100).toInt()}%")
+        Slider(value = config.volume, onValueChange = { config = config.copy(volume = it); player.setConfig(config) })
     }
 }
 

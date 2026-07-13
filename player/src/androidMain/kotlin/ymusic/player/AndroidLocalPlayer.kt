@@ -56,6 +56,9 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
     private var audioOnly = false
     private var preferVideoQuality = VideoQualityState.AUTO
 
+    /** The last-applied config; [setConfig] diffs against it so only changed fields re-touch ExoPlayer. */
+    private var appliedConfig = PlaybackConfig()
+
     // Audio-track id → its (group, index) for TrackSelectionOverride, refreshed on onTracksChanged.
     private val audioGroups = mutableMapOf<String, Pair<Tracks.Group, Int>>()
 
@@ -92,7 +95,9 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         if (released) return
         val uri = source.uri
         // Apply config before prepare so the first frame is already at the right settings.
+        appliedConfig = config
         audioOnly = config.audioOnly
+        preferVideoQuality = config.preferVideoQuality.first
         player.volume = config.volume.coerceIn(0f, 1f)
         player.setPlaybackSpeed(config.speed.coerceAtLeast(0.01f))
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
@@ -101,7 +106,7 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         _status.update {
             it.copy(
                 state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null,
-                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+                volume = config.volume, speed = config.speed,
             )
         }
         _progress.value = Progress(positionMs = startPositionMs)
@@ -133,31 +138,32 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
     }
 
-    override fun setVolume(volume: Float) {
+    override fun setConfig(config: PlaybackConfig) {
         if (released) return
-        val v = volume.coerceIn(0f, 1f)
-        player.volume = v
-        _status.update { it.copy(volume = v) }
+        val prev = appliedConfig
+        appliedConfig = config
+
+        if (config.volume != prev.volume) {
+            val v = config.volume.coerceIn(0f, 1f)
+            player.volume = v
+            _status.update { it.copy(volume = v) }
+        }
+        if (config.speed != prev.speed) {
+            val s = config.speed.coerceAtLeast(0.01f)
+            player.setPlaybackSpeed(s)
+            _status.update { it.copy(speed = s) }
+        }
+        if (config.preferVideoQuality.first != prev.preferVideoQuality.first) {
+            applyVideoQuality(config.preferVideoQuality.first)
+        }
+        if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
+            config.captionVisible != prev.captionVisible
+        ) {
+            applyCaptions(config)
+        }
     }
 
-    override fun setSpeed(speed: Float) {
-        if (released) return
-        val s = speed.coerceAtLeast(0.01f)
-        player.setPlaybackSpeed(s)
-        _status.update { it.copy(speed = s) }
-    }
-
-    override fun setAudioOnly(audioOnly: Boolean) {
-        if (released) return
-        this.audioOnly = audioOnly
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly)
-            .build()
-        _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
-    }
-
-    override fun selectVideoQuality(quality: String) {
-        if (released) return
+    private fun applyVideoQuality(quality: String) {
         preferVideoQuality = quality
         val ao = quality == VideoQualityState.AUDIO_ONLY
         audioOnly = ao
@@ -166,25 +172,19 @@ internal class AndroidLocalPlayer(context: Context) : LocalPlayer {
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, ao)
             .apply { if (height != null) setMaxVideoSize(Int.MAX_VALUE, height) else clearVideoSizeConstraints() }
             .build()
-        _status.update { it.copy(audioOnly = ao, videoSize = if (ao) null else it.videoSize) }
+        _status.update { it.copy(videoSize = if (ao) null else it.videoSize) }
         _videoQuality.update { it.copy(preferredQuality = quality) }
     }
 
-    override fun selectCaption(languageCode: String?) {
-        if (released) return
-        val off = languageCode == null || languageCode == "off"
+    private fun applyCaptions(config: PlaybackConfig) {
+        val lang = config.preferCaptionLanguage.first
+        val undetermined = lang == PlaybackConfig.UNDETERMINED_LANGUAGE
+        val off = !config.captionVisible || undetermined
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, off)
-            .apply { if (!off) setPreferredTextLanguage(languageCode) }
+            .apply { if (!undetermined) setPreferredTextLanguage(lang) }
             .build()
-        _captions.update { it.copy(selectedLanguage = if (off) null else languageCode) }
-    }
-
-    override fun setCaptionVisible(visible: Boolean) {
-        if (released) return
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !visible)
-            .build()
+        _captions.update { it.copy(selectedLanguage = if (off) null else lang) }
     }
 
     override fun selectAudioTrack(id: String) {

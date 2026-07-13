@@ -42,7 +42,6 @@ import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.seekToTime
 import platform.AVFoundation.selectMediaOption
-import platform.AVFoundation.selectMediaOptionAutomaticallyInMediaSelectionGroup
 import platform.AVFoundation.selectedMediaOptionInMediaSelectionGroup
 import platform.AVFoundation.setRate
 import platform.AVFoundation.setVolume
@@ -89,6 +88,9 @@ internal class AppleLocalPlayer : LocalPlayer {
     private var released = false
     private var preferVideoQuality = VideoQualityState.AUTO
 
+    /** The last-applied config; [setConfig] diffs against it so only changed fields re-touch AVPlayer. */
+    private var appliedConfig = PlaybackConfig()
+
     // Track id → (group, option) for selectMediaOption, refreshed when a load reaches Ready.
     private val captionOptions = mutableMapOf<String, Pair<AVMediaSelectionGroup, AVMediaSelectionOption>>()
     private val audioOptions = mutableMapOf<String, Pair<AVMediaSelectionGroup, AVMediaSelectionOption>>()
@@ -109,7 +111,9 @@ internal class AppleLocalPlayer : LocalPlayer {
             return
         }
         // Config applies before finalizeLoad (which calls applyAudioOnly on the new item).
+        appliedConfig = config
         audioOnly = config.audioOnly
+        preferVideoQuality = config.preferVideoQuality.first
         desiredSpeed = config.speed.coerceAtLeast(0.01f)
         player.setVolume(config.volume.coerceIn(0f, 1f))
         val item = AVPlayerItem(uRL = url)
@@ -117,7 +121,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         _status.update {
             it.copy(
                 state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null,
-                volume = config.volume, speed = config.speed, audioOnly = config.audioOnly,
+                volume = config.volume, speed = config.speed,
             )
         }
         _progress.value = Progress(positionMs = startPositionMs)
@@ -147,8 +151,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         applyAudioOnly()
         _progress.value = Progress(positionMs = startPositionMs, durationMs = durationMs)
         _status.update {
-            it.copy(state = PlaybackState.Ready, audioOnly = audioOnly,
-                videoSize = if (audioOnly) null else item.videoSize())
+            it.copy(state = PlaybackState.Ready, videoSize = if (audioOnly) null else item.videoSize())
         }
         populateTracks(item)
         if (playWhenReady) play()
@@ -183,63 +186,59 @@ internal class AppleLocalPlayer : LocalPlayer {
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
     }
 
-    override fun setVolume(volume: Float) {
+    override fun setConfig(config: PlaybackConfig) {
         if (released) return
-        val v = volume.coerceIn(0f, 1f)
-        player.setVolume(v)
-        _status.update { it.copy(volume = v) }
-    }
+        val prev = appliedConfig
+        appliedConfig = config
 
-    override fun setSpeed(speed: Float) {
-        if (released) return
-        desiredSpeed = speed.coerceAtLeast(0.01f)
-        if (_status.value.playWhenReady && _status.value.state == PlaybackState.Ready) {
-            player.setRate(desiredSpeed)
+        if (config.volume != prev.volume) {
+            val v = config.volume.coerceIn(0f, 1f)
+            player.setVolume(v)
+            _status.update { it.copy(volume = v) }
         }
-        _status.update { it.copy(speed = desiredSpeed) }
+        if (config.speed != prev.speed) {
+            desiredSpeed = config.speed.coerceAtLeast(0.01f)
+            if (_status.value.playWhenReady && _status.value.state == PlaybackState.Ready) {
+                player.setRate(desiredSpeed)
+            }
+            _status.update { it.copy(speed = desiredSpeed) }
+        }
+        if (config.preferVideoQuality.first != prev.preferVideoQuality.first) {
+            applyVideoQuality(config.preferVideoQuality.first)
+        }
+        if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
+            config.captionVisible != prev.captionVisible
+        ) {
+            applyCaptions(config)
+        }
     }
 
-    override fun setAudioOnly(audioOnly: Boolean) {
-        if (released) return
-        this.audioOnly = audioOnly
-        applyAudioOnly()
-        _status.update { it.copy(audioOnly = audioOnly, videoSize = if (audioOnly) null else it.videoSize) }
-    }
-
-    override fun selectVideoQuality(quality: String) {
-        if (released) return
+    private fun applyVideoQuality(quality: String) {
         preferVideoQuality = quality
         // AVPlayer has no per-resolution selection for progressive files; audio-only is the honored axis.
         val ao = quality == VideoQualityState.AUDIO_ONLY
         audioOnly = ao
         applyAudioOnly()
-        _status.update { it.copy(audioOnly = ao, videoSize = if (ao) null else it.videoSize) }
+        _status.update { it.copy(videoSize = if (ao) null else it.videoSize) }
         _videoQuality.update {
             it.copy(preferredQuality = quality, actualQuality = if (ao) VideoQualityState.AUDIO_ONLY else it.actualQuality)
         }
     }
 
-    override fun selectCaption(languageCode: String?) {
-        if (released) return
+    private fun applyCaptions(config: PlaybackConfig) {
         val item = player.currentItem ?: return
         val legible = item.asset.mediaSelectionGroupForMediaCharacteristic(AVMediaCharacteristicLegible) ?: return
-        val off = languageCode == null || languageCode == "off"
-        if (off) {
+        val lang = config.preferCaptionLanguage.first
+        val undetermined = lang == PlaybackConfig.UNDETERMINED_LANGUAGE
+        if (!config.captionVisible || undetermined) {
             item.selectMediaOption(null, legible)
             _captions.update { it.copy(selectedLanguage = null) }
         } else {
-            captionOptions[languageCode]?.let { (group, opt) ->
+            captionOptions[lang]?.let { (group, opt) ->
                 item.selectMediaOption(opt, group)
-                _captions.update { it.copy(selectedLanguage = languageCode) }
+                _captions.update { it.copy(selectedLanguage = lang) }
             }
         }
-    }
-
-    override fun setCaptionVisible(visible: Boolean) {
-        if (released) return
-        val item = player.currentItem ?: return
-        val legible = item.asset.mediaSelectionGroupForMediaCharacteristic(AVMediaCharacteristicLegible) ?: return
-        if (visible) item.selectMediaOptionAutomaticallyInMediaSelectionGroup(legible) else item.selectMediaOption(null, legible)
     }
 
     override fun selectAudioTrack(id: String) {

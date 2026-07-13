@@ -115,8 +115,8 @@ class AppleLocalPlayerTest {
         delay(200)
         assertEquals(audio.tracks[1].id, p.audioTracks.value.selectedId, "audio selection should stick")
 
-        // Enabling a caption track updates the state.
-        p.selectCaption(captions.tracks.first().languageCode)
+        // Enabling a caption track (via config) updates the state.
+        p.setConfig(PlaybackConfig(preferCaptionLanguage = captions.tracks.first().languageCode to 1L, captionVisible = true))
         delay(200)
         assertEquals(
             captions.tracks.first().languageCode, p.captions.value.selectedLanguage,

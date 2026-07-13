@@ -50,9 +50,9 @@ interface MediaEngine<in S : PlayableItem> {
      * replaces whatever was loaded before. [S] is the engine's source variant — a mismatched source
      * is a compile error, not a runtime failure.
      *
-     * [config] (volume/speed/audio-only) is applied **atomically before the first frame**, so the
-     * media starts with the right settings — no full-volume blip or a video flash before audio-only.
-     * The individual setters below change the same fields at runtime.
+     * [config] is applied **atomically before the first frame**, so the media starts with the right
+     * settings — no full-volume blip or a video flash before audio-only. [setConfig] changes the same
+     * settings at runtime through the same application path.
      */
     fun load(
         source: S,
@@ -71,18 +71,14 @@ interface MediaEngine<in S : PlayableItem> {
     /** Stop and unload the current source; returns to [PlaybackState.Idle]. The engine stays usable. */
     fun stop()
 
-    /** Linear gain, clamped to `0f..1f`. */
-    fun setVolume(volume: Float)
-
-    /** Playback rate (`1f` = normal). Pitch handling is per-backend; see the module docs. */
-    fun setSpeed(speed: Float)
-
     /**
-     * Toggle audio-only mode. When true the video renderer is disabled (the music-app default) — the
-     * source's audio still plays, but no frames are decoded/shown even if a `PlayerSurface` is
-     * attached. When false, video is rendered wherever a surface is bound. A no-op for audio-only sources.
+     * Push the full playback settings ([PlaybackConfig]) — the single runtime-tunable path, the same
+     * object [load] applies atomically. The engine diffs against its current config and applies only
+     * what changed (volume, speed/pitch, video quality incl. audio-only via `preferVideoQuality ==
+     * "zero"`, captions, loop, scale). Fields a backend does not support are ignored. Cheap to call on
+     * every change; idempotent for an unchanged config.
      */
-    fun setAudioOnly(audioOnly: Boolean)
+    fun setConfig(config: PlaybackConfig)
 
     /** Releases native resources. The instance is unusable afterwards. Idempotent. */
     fun release()

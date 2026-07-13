@@ -3,11 +3,15 @@ package ymusic.player
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Engine-specific capabilities — the narrow [MediaEngine] core stays free of features not every
- * backend has. An engine implements only the capabilities it supports; a caller queries at runtime:
- * `(engine as? VideoQualitySelectable)?.selectVideoQuality(...)`. Today the WebView/YouTube engine
- * implements all three; the native-local engine implements none (yet). This is the alternative to
- * the legacy `BasicMediaPlayer` fat superset where every impl had to stub what it lacked.
+ * Engine-specific **state** an engine exposes — the available video qualities, caption tracks, and
+ * audio tracks it discovered for the current source. A caller queries at runtime:
+ * `(engine as? VideoQualitySelectable)?.videoQuality`. Today the WebView/YouTube engine implements
+ * all three; the native-local engine implements none (yet).
+ *
+ * *Selecting* a quality/caption is not here — it goes through [PlaybackConfig] (`preferVideoQuality`,
+ * `preferCaptionLanguage`, `captionVisible`) pushed via [MediaEngine.setConfig], so every setting
+ * travels one path. Audio-track selection is the one immediate action ([AudioTrackSelectable]), since
+ * it is a one-shot switch, not a persistent preference the engine restores across loads.
  */
 
 // --- Video quality (YouTube) ---
@@ -48,11 +52,9 @@ data class VideoQualityState(
     }
 }
 
+/** An engine that reports its available video qualities. Selection is via [PlaybackConfig.preferVideoQuality]. */
 interface VideoQualitySelectable {
     val videoQuality: StateFlow<VideoQualityState>
-
-    /** Select a [VideoQualityOption.quality], or [VideoQualityState.AUTO] / [VideoQualityState.AUDIO_ONLY]. */
-    fun selectVideoQuality(quality: String)
 }
 
 // --- Captions ---
@@ -69,13 +71,12 @@ data class CaptionState(
     }
 }
 
+/**
+ * An engine that reports its available caption tracks. Selection/visibility is via
+ * [PlaybackConfig.preferCaptionLanguage] and [PlaybackConfig.captionVisible].
+ */
 interface CaptionSelectable {
     val captions: StateFlow<CaptionState>
-
-    /** Select a [CaptionTrack.languageCode], null (auto), or `"off"` to disable. */
-    fun selectCaption(languageCode: String?)
-
-    fun setCaptionVisible(visible: Boolean)
 }
 
 // --- Audio tracks (multi-language YouTube audio) ---
