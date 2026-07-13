@@ -45,3 +45,14 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.foundation)
 }
+
+// The injected YouTube player script rides as an asset — copied from the built webview-js bundle
+// (npm run build there) rather than checked in. Absent bundle = absent asset: YouTube items then
+// surface E60050 at runtime.
+val copyWebViewJs by tasks.registering(Copy::class) {
+    from(rootProject.file("webview-js/dist/webview_ymusic.js"))
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(copyWebViewJs)
+}

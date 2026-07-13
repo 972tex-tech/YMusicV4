@@ -28,3 +28,6 @@ quickjs/src/androidMain/jniLibs/
 quickjs/src/androidDeviceTest/jniLibs/
 # quickjs: vendored QuickJS build commit marker is kept; build dirs are ignored via build/
 build-asan
+
+# built webview-js bundle, copied in by :androidApp copyWebViewJs
+androidApp/src/main/assets/webview_ymusic.js
