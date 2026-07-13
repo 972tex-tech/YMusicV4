@@ -211,7 +211,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
 @Composable
 private fun SelectorsRow(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
-    val status by player.status.collectAsState()
+    val config by player.config.collectAsState()
     val quality by player.videoQuality.collectAsState()
     val captions by player.captions.collectAsState()
     val audioTracks by player.audioTracks.collectAsState()
@@ -222,7 +222,7 @@ private fun SelectorsRow(coordinator: PlaybackCoordinator) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Audio-only", style = MaterialTheme.typography.labelMedium)
-        Switch(checked = status.audioOnly, onCheckedChange = { player.setAudioOnly(it) })
+        Switch(checked = config.audioOnly, onCheckedChange = { player.setAudioOnly(it) })
 
         if (quality.options.isNotEmpty()) {
             Selector(
