@@ -29,6 +29,23 @@ kotlin {
     }
 }
 
+// Headless diagnostic for the WebView engine (see WebViewProbe.kt):
+//   ./gradlew :desktopApp:webviewProbe -PprobeArgs="realized"   (or "headless")
+tasks.register<JavaExec>("webviewProbe") {
+    group = "verification"
+    description = "Drive the JVM WebView YouTube engine headlessly and report whether playback advances."
+    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
+    dependsOn(jvmMainCompilation.compileTaskProvider)
+    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
+    mainClass.set("ymusic.desktop.WebViewProbeKt")
+    jvmArgs(
+        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+    )
+    args((providers.gradleProperty("probeArgs").orNull ?: "realized").split(" "))
+}
+
 compose.desktop {
     application {
         mainClass = "ymusic.desktop.MainKt"
