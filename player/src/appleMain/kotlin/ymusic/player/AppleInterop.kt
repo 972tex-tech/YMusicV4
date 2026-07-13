@@ -20,6 +20,18 @@ fun MediaEngine<*>.currentStatus(): PlaybackStatus = status.value
 fun MediaEngine<*>.currentProgress(): Progress = progress.value
 
 /**
+ * Swift-friendly [PlaybackConfig] factory — Swift can't ergonomically build the `Pair<String, Long>`
+ * preference fields, so it passes the three common knobs and audio-only maps to
+ * `preferVideoQuality == "zero"`. Read [PlaybackConfig.audioOnly] back on the returned value.
+ */
+fun playbackConfig(volume: Float = 1f, speed: Float = 1f, audioOnly: Boolean = false): PlaybackConfig =
+    PlaybackConfig(
+        preferVideoQuality = (if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO) to 0L,
+        volume = volume,
+        speed = speed,
+    )
+
+/**
  * Convenience for Apple apps: a WKWebView YouTube [WebViewPlayer] with a default NSURLSession-backed
  * HTTP client (the [context] carries the host view container). Use [createWebViewPlayer] directly to
  * supply your own [KmpHttpClient] (cookies/cache).
