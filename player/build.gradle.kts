@@ -30,11 +30,15 @@ kotlin {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
 
-    // Apple (iOS device + simulator, macOS) share ONE AVPlayer backend (appleMain). macOS is the
-    // host-runnable reference target; iOS reuses it verbatim.
-    withIosTargets()
-    // macOS also exports a `Player.framework` so the native SwiftUI player-lab app
-    // (spikes/macos-player-lab) can drive the real AVFoundation backend.
+    // Apple (iOS device + simulator, macOS) share ONE AVPlayer backend (appleMain). Both macOS and
+    // iOS export a `Player.framework` so the native SwiftUI player-lab apps (spikes/macos-player-lab,
+    // spikes/ios-player-lab) can drive the real AVFoundation + WKWebView backends.
+    withIosTargets {
+        binaries.framework {
+            baseName = "Player"
+            isStatic = false
+        }
+    }
     withMacosTargets {
         binaries.framework {
             baseName = "Player"
