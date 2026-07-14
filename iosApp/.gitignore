@@ -1,0 +1,6 @@
+# Xcode local state + build outputs (iosApp.xcodeproj is committed for one-tap open/Run;
+# regenerate it with `ruby gen_xcodeproj.rb`).
+build/
+iosApp.xcodeproj/xcuserdata/
+iosApp.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate
