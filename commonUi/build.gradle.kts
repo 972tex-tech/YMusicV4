@@ -19,6 +19,16 @@ kotlin {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
 
+    // Shared Compose UI for iOS — arm64 device + arm64 simulator only (Compose MP has no iosX64).
+    // On this Intel host this compiles only under -PkmpTargets=all (cross-compiled for a device).
+    // Exports one framework the iOS app embeds; MainViewController() is its Swift entry point.
+    withComposeIosTargets {
+        binaries.framework {
+            baseName = "YMusicApp"
+            isStatic = false
+        }
+    }
+
     sourceSets {
         /**
          * The shared Compose Multiplatform app UI (design/: drawer + Discover tabs + search +
