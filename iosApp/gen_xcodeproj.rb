@@ -31,7 +31,9 @@ gradle_phase.shell_script = <<~SH
   export JAVA_HOME="${JAVA_HOME:-$HOME/.sdkman/candidates/java/current}"
   cd "$SRCROOT/.."
   # -PkmpTargets=all so iosArm64 (device) is configured even on this Intel host.
-  ./gradlew :commonUi:embedAndSignAppleFrameworkForXcode -PkmpTargets=all
+  # -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode
+  # (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.
+  ./gradlew :commonUi:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true
 SH
 target.build_phases.unshift(target.build_phases.delete(gradle_phase))
 

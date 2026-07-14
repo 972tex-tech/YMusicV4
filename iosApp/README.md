@@ -7,23 +7,30 @@ shells, on a real iPhone/iPad, over the AVFoundation local + WKWebView YouTube e
 `iosApp/iOSApp.swift` (SwiftUI `@main`) hosts `MainViewControllerKt.MainViewController()` from the
 `:commonUi` **YMusicApp** framework, which builds the iOS `AppGraph` and runs `App(graph)`.
 
-## Status — blocked on Xcode 16 (not on code)
+## SDK / Xcode requirement
 
 The whole Kotlin chain (`:quickjs` / `:media-store` / `:dynamic-engine` / `:player` + the shared Compose
-UI) **compiles for `iosArm64`** on this Intel host. It does **not link** under **Xcode 15.3**: Compose
-Multiplatform 1.11.1's `ui-uikit` references `UIViewLayoutRegion` (an **iOS 18** UIKit class), absent
-from Xcode 15.3's iOS 17.4 SDK — the link fails with:
+UI) **compiles for `iosArm64`** here. Linking the Compose framework is the subtle part:
+
+Compose Multiplatform 1.11.1 (with Kotlin/Native 2.4.0, whose toolchain is pinned to **Xcode 26.4**)
+links `ui-uikit` against `UIViewLayoutRegion` — an **iOS 26** UIKit class. It is absent from the iOS
+17.4 (Xcode 15.3) **and** iOS 18.2 (Xcode 16.2) SDKs, so a normal link fails with:
 
 ```
 Undefined symbols for architecture arm64:
   "_OBJC_CLASS_$_UIViewLayoutRegion", referenced from: … ui-uikit … CMPLayoutRegion.o
 ```
 
-**Fix: install Xcode 16+ (iOS 18 SDK).** This Mac (macOS 14.8) supports Xcode 16.0–16.2. The Kotlin
-compiles fine on any Xcode; only the framework *link* needs the iOS 18 SDK. (Alternatively, CI on a
-`macos-15` runner with Xcode 16 links it today.)
+- **Clean build: Xcode 26 (iOS 26 SDK).** That needs macOS 15/26 — newer than this host's macOS 14.8,
+  so it's a macOS upgrade or a CI runner with Xcode 26.
+- **Works today on Xcode 16.2 (this Mac) via a guarded workaround:** `-PiosAllowUndefined=true` (baked
+  into the Gradle build phase) links with `-undefined dynamic_lookup`, allowing the iOS 26 symbol to
+  stay unresolved. Compose `@available`-guards its use, so on a sub-iOS-26 device (e.g. the iPad on iOS
+  17.5) it is never referenced. **Verified: a complete arm64 `.app` builds** (arm64 binary + embedded
+  `YMusicApp.framework` + `compose-resources`). Runtime on-device is still to be confirmed; this is a
+  dev/test build, **not** App-Store-shippable (dynamic_lookup) — drop the flag on Xcode 26.
 
-## Run on a device (once Xcode 16 is installed)
+## Run on a device (Xcode 16.2, today)
 
 1. `ruby gen_xcodeproj.rb` (regenerates `iosApp.xcodeproj`; needs the `xcodeproj` gem)
 2. `open iosApp.xcodeproj`
@@ -32,8 +39,8 @@ compiles fine on any Xcode; only the framework *link* needs the iOS 18 SDK. (Alt
 4. Plug in + unlock + **Trust** the device; select it as the run destination.
 5. **Run** (⌘R). First launch: **Settings → General → VPN & Device Management** → trust the profile.
 
-A Gradle build phase runs `:commonUi:embedAndSignAppleFrameworkForXcode -PkmpTargets=all` to build +
-embed + sign `YMusicApp.framework` for the targeted SDK/arch. `-PkmpTargets=all` is what configures
+The Gradle build phase runs `:commonUi:embedAndSignAppleFrameworkForXcode -PkmpTargets=all
+-PiosAllowUndefined=true` to build + embed + sign `YMusicApp.framework`. `-PkmpTargets=all` configures
 `iosArm64` on this Intel host; `JAVA_HOME` is set to `$HOME/.sdkman/candidates/java/current`.
 
 Signing is the only manual step — this environment can't enter your Apple ID; Xcode does it locally.
