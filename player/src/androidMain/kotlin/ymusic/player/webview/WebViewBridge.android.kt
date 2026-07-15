@@ -46,15 +46,12 @@ private class AndroidWebViewBridge(
     }
 
     override fun load(html: String, baseUrl: String) {
+        webView.bringToFront() // this engine is becoming active — show its surface over a co-hosted one
         webView.loadDataWithBaseURL(baseUrl, html, "text/html", "UTF-8", baseUrl)
     }
 
     override fun evaluate(js: String) {
         webView.evaluateJavascript(js, null)
-    }
-
-    override fun setVideoVisible(visible: Boolean) {
-        webView.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     override fun release() {

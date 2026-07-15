@@ -136,6 +136,7 @@ private class JcefWebViewBridge(
     }
 
     override fun load(html: String, baseUrl: String) {
+        bringToFront() // this engine is becoming active — show its surface over a co-hosted one
         pendingHtml = html
         if (browserCreated) browser.loadURL(baseUrl) else pendingUrl = baseUrl
     }
@@ -144,13 +145,15 @@ private class JcefWebViewBridge(
         browser.executeJavaScript(js, browser.url ?: EMBED_URL, 0)
     }
 
-    override fun setVideoVisible(visible: Boolean) {
+    /** Raise this WebView to the top of the shared OverlayLayout container (the active engine shows). */
+    private fun bringToFront() {
         val c = browser.uiComponent
-        if (javax.swing.SwingUtilities.isEventDispatchThread()) {
-            c.isVisible = visible
-        } else {
-            javax.swing.SwingUtilities.invokeLater { c.isVisible = visible }
+        val move = {
+            if (c.parent === container) container.setComponentZOrder(c, 0)
+            container.revalidate()
+            container.repaint()
         }
+        if (SwingUtilities.isEventDispatchThread()) move() else SwingUtilities.invokeLater(move)
     }
 
     override fun release() {

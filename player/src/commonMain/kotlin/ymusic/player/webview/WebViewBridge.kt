@@ -20,18 +20,17 @@ internal interface WebViewBridge {
      */
     val bootPrelude: String get() = ""
 
-    /** Load [html] as the document at [baseUrl] (origin) — the injected bundle runs at document-start. */
+    /**
+     * Load [html] as the document at [baseUrl] (origin) — the injected bundle runs at document-start.
+     * The bridge brings its WebView to the front of the shared container here (this engine is becoming
+     * the active one); the view is otherwise left attached and visible for its whole lifetime — the
+     * WebView shows YouTube's own thumbnail in audio-only mode, so audio-only never hides it (mirrors
+     * legacy `BasicMediaPlayer`, which has no `setVideoVisible`: each player owns its view).
+     */
     fun load(html: String, baseUrl: String)
 
     /** Evaluate [js] in the page (fire-and-forget). */
     fun evaluate(js: String)
-
-    /**
-     * Show/hide the WebView within its shared container so a co-hosted engine's surface (the local
-     * video surface) shows through when this engine is idle/audio-only. Default no-op — platforms
-     * whose surface visibility is managed by the host (the Apple spike) ignore it.
-     */
-    fun setVideoVisible(visible: Boolean) {}
 
     /** Tear down the WebView and detach it from the container. */
     fun release()

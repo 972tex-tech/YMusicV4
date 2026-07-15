@@ -118,9 +118,13 @@ internal class AndroidLocalPlayer(
         scope.launch { tick() }
     }
 
-    /** Show/hide this engine's `SurfaceView` in the shared container (a no-op without one). */
+    /** Show/hide this engine's `SurfaceView` in the shared container (a no-op without one). When
+     *  shown, raise it to the front so this (active) engine's picture covers a co-hosted surface. */
     private fun showSurface(visible: Boolean) {
-        surfaceView?.visibility = if (visible) View.VISIBLE else View.GONE
+        surfaceView?.let { sv ->
+            sv.visibility = if (visible) View.VISIBLE else View.GONE
+            if (visible) sv.bringToFront()
+        }
     }
 
     override fun load(source: PlayableItem.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {

@@ -73,11 +73,10 @@ internal class WebViewPlayerImpl(
         connected = false
         pending.clear()
         appliedConfig = config
-        // This engine is now the active one — show its surface. Audio-only disables the video *track*
-        // (via the JS below), NOT the surface: a hidden/zero-size windowed WebView (JCEF) never
-        // initializes and won't play at all, so audio-only must keep the surface realized. Only
-        // engine-switching (stop/release) hides it, so the co-hosted local engine can show through.
-        bridge.setVideoVisible(true)
+        // Audio-only disables the video *track* (via the JS below), not the WebView: it keeps showing
+        // YouTube's thumbnail, and a hidden/zero-size windowed WebView (JCEF) never initializes and
+        // won't play at all. The bridge brings its view to the front when the page loads; nothing here
+        // toggles surface visibility (each engine owns its own view — see WebViewBridge).
         _status.update {
             it.copy(
                 state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
@@ -115,7 +114,8 @@ internal class WebViewPlayerImpl(
         command(WebViewProtocol.encodeStop())
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null) }
-        bridge.setVideoVisible(false)
+        // The WebView stays attached/visible (paused on its thumbnail). When another engine takes over
+        // it brings its own surface to the front; when this engine is released the view is detached.
     }
 
     override fun setConfig(config: PlaybackConfig) {

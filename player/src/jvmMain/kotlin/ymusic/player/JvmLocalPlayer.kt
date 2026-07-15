@@ -78,11 +78,13 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         if (SwingUtilities.isEventDispatchThread()) block() else SwingUtilities.invokeLater(block)
     }
 
-    /** Show/hide this engine's video component within the shared container (a no-op without one). */
+    /** Show/hide this engine's video component within the shared container (a no-op without one).
+     *  When shown, it is raised to the front so this (active) engine's picture covers a co-hosted one. */
     private fun showSurface(visible: Boolean) {
         val container = videoContainer ?: return
         onSwing {
             component.isVisible = visible
+            if (visible && component.parent === container) container.setComponentZOrder(component, 0)
             container.revalidate()
             container.repaint()
         }
