@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
         val engines = DynamicEngineManager(
             httpClient,
             appVersion = 1,
+            logger = LogcatLogger(),
             cacheStore = androidEngineCacheStore(applicationContext),
         )
         engines.start()
