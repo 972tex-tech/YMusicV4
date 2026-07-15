@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import ymusic.player.WebViewPlayerContext
@@ -39,6 +40,13 @@ private class AndroidWebViewBridge(
     }
 
     init {
+        // The YouTube embed is cross-origin to googlevideo.com and the auth/session hosts, so its
+        // session cookies are third-party from the page's view — enable them on THIS WebView or the
+        // player's streaming session cookies get dropped. setAcceptCookie is global (once).
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
         container.addView(
             webView,
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
