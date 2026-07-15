@@ -19,6 +19,8 @@ E20011 - invalid http request — bad head or URL/header kmpHttp rejects (dynami
 E20020 - engine bundle failed to load/eval (DynamicEngine.create)
 E20021 - engine init health check failed (DynamicEngine.create)
 E20030 - yt/* command returned a malformed result (dynamic-engine YtCommands)
+E20040 - cookie request has a missing/blank/invalid url or no setCookie, or a malformed head (dynamic-engine CookieProtocol)
+E20041 - cookie jar (KmpHttpClient.cookieJar) get/set threw (dynamic-engine CookieProtocol)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okio.Buffer
 import ymusic.dynamicengine.internal.ENGINE_JS
+import ymusic.dynamicengine.internal.installCookies
 import ymusic.dynamicengine.internal.installHttp
 import ymusic.quickjs.Pipe
 import ymusic.quickjs.PipeResetException
@@ -21,10 +22,12 @@ import ymusic.quickjs.QuickJsRuntime
  * point is that the scraping logic ships as JS that can be updated remotely — no app release — so
  * YouTube feed-shape changes don't surface to the user as errors.
  *
- * Today it wires **HTTP**: a global `HttpRequest` builder served directly on a [KmpHttpClient]
- * (streaming responses; on Android the jvm variant of `:kmpHttp:core` resolves, which is OkHttp).
- * Storage / file / SQLite protocols are planned as further host-served pipe commands (see
- * `quickjs/HOST_PROTOCOLS.md`).
+ * Today it wires **HTTP** — a global `HttpRequest` builder served directly on a [KmpHttpClient]
+ * (streaming responses; on Android the jvm variant of `:kmpHttp:core` resolves, which is OkHttp) —
+ * and **cookies**: the bundle's `Cookies.get`/`.set` over the `"cookie/get"` / `"cookie/set"`
+ * commands, served on that same client's [KmpHttpClient.cookieJar], so the scraping JS and its own
+ * HTTP requests share one cookie jar (configure the client with a persistent jar to keep a login).
+ * File / SQLite protocols are planned (see `quickjs/HOST_PROTOCOLS.md`).
  *
  * Creation boots the bundle and then drives its `"init"` command as the health check — a pipe
  * round-trip proving the whole stack (open routing, handler dispatch, JSON encode, END) — which
@@ -78,7 +81,10 @@ class DynamicEngine private constructor(
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
         ): DynamicEngine = boot(logger) {
-            QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) { it.installHttp(client, logger) }
+            QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) {
+                it.installHttp(client, logger)
+                it.installCookies(client, logger)
+            }
         }
 
         /** Create from [compile]d bytecode of a bundle — `versions.app` is only known here, so it
@@ -89,7 +95,10 @@ class DynamicEngine private constructor(
             engineBytecode: ByteArray,
             logger: Logger? = null,
         ): DynamicEngine = boot(logger) {
-            QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) { it.installHttp(client, logger) }
+            QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) {
+                it.installHttp(client, logger)
+                it.installCookies(client, logger)
+            }
         }
 
         /** Compile a bundle to QuickJS bytecode for [create] — per-function source text is

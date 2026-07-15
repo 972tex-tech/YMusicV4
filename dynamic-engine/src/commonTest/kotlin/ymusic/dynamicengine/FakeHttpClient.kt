@@ -4,6 +4,7 @@ import kmphttp.AsyncInterceptor
 import kmphttp.Cache
 import kmphttp.CookieJar
 import kmphttp.HeadersBuilder
+import kmphttp.InMemoryCookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.Protocol
 import kmphttp.RedirectOptions
@@ -24,6 +25,9 @@ class FakeHttpClient(
 ) : KmpHttpClient {
     constructor(canned: CannedResponse) : this({ request -> canned.build(request) })
 
+    /** Settable so cookie tests can back the client with a real (or throwing) jar. */
+    override var cookieJar: CookieJar = InMemoryCookieJar()
+
     var lastRequest: Request? = null
         private set
     var lastOptions: RedirectOptions? = null
@@ -34,7 +38,6 @@ class FakeHttpClient(
     override val interceptors: List<AsyncInterceptor> = emptyList()
     override val networkInterceptors: List<AsyncInterceptor> = emptyList()
     override val cache: Cache? = null
-    override val cookieJar: CookieJar = CookieJar.NO_COOKIES
     override val sslConfig: SslConfig = SslConfig()
     override val defaultRedirectOptions: RedirectOptions =
         RedirectOptions(followRedirects = true, followSslRedirects = true)
@@ -116,3 +119,7 @@ expect fun fakeResponseBody(
 
 /** Read a request body's content (platform write/read APIs differ). */
 expect suspend fun RequestBody.readAll(): ByteArray
+
+/** A [CookieJar] whose every operation throws — exercises the cookie protocol's `E20041` jar-failure
+ *  path. Built per platform because `CookieJar` is blocking on JVM (OkHttp) and suspend elsewhere. */
+expect fun throwingCookieJar(): CookieJar

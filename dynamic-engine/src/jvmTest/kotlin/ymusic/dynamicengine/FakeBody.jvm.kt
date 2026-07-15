@@ -60,3 +60,11 @@ actual suspend fun RequestBody.readAll(): ByteArray = withContext(Dispatchers.IO
     writeTo(buffer)
     buffer.readByteArray()
 }
+
+actual fun throwingCookieJar(): kmphttp.CookieJar = object : kmphttp.CookieJar {
+    override fun saveFromResponse(url: kmphttp.HttpUrl, cookies: List<kmphttp.Cookie>): Unit =
+        throw RuntimeException("cookie jar unavailable")
+
+    override fun loadForRequest(url: kmphttp.HttpUrl): List<kmphttp.Cookie> =
+        throw RuntimeException("cookie jar unavailable")
+}
