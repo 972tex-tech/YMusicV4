@@ -65,6 +65,15 @@ kotlin {
             }
         }
 
+        // Platform SqlDelight drivers for the DiskCacheStore factories (jvm = JDBC, android = the
+        // AndroidSqliteDriver). Native shells don't wire the cache yet, so no nativeMain driver.
+        jvmMain.dependencies {
+            implementation(Libs.SqlDelight.sqliteDriver)
+        }
+        androidMain.dependencies {
+            implementation(Libs.SqlDelight.androidDriver)
+        }
+
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
