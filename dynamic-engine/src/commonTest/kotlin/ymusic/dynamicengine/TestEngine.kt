@@ -10,4 +10,5 @@ internal suspend fun createTestEngine(
     client: KmpHttpClient,
     appVersion: Int = 1,
     logger: Logger? = null,
-): DynamicEngine = DynamicEngine.create(client, appVersion, logger, ENGINE_TEST_JS)
+    cacheStore: CacheStore? = null,
+): DynamicEngine = DynamicEngine.create(client, appVersion, logger, ENGINE_TEST_JS, cacheStore)

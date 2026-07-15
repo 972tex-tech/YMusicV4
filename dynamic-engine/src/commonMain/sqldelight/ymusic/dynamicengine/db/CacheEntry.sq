@@ -1,0 +1,30 @@
+-- The cache metadata index (SqliteCacheStore). One row per (scope, key); the value blob itself lives
+-- on the filesystem, keyed by sha256(scope, key). `list`/`init` is a single indexed SELECT — the whole
+-- point of moving the index off a per-file directory scan. `custom` is the caller meta map, JSON.
+CREATE TABLE cache_entry (
+    scope     TEXT    NOT NULL,
+    key       TEXT    NOT NULL,
+    size      INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    lastUsed  INTEGER NOT NULL,
+    custom    TEXT    NOT NULL,
+    PRIMARY KEY (scope, key)
+);
+
+CREATE INDEX cache_entry_scope ON cache_entry(scope);
+
+selectByScope:
+SELECT * FROM cache_entry WHERE scope = ?;
+
+selectOne:
+SELECT * FROM cache_entry WHERE scope = ? AND key = ?;
+
+upsert:
+INSERT OR REPLACE INTO cache_entry(scope, key, size, updatedAt, lastUsed, custom)
+VALUES (?, ?, ?, ?, ?, ?);
+
+touch:
+UPDATE cache_entry SET lastUsed = ? WHERE scope = ? AND key = ?;
+
+deleteOne:
+DELETE FROM cache_entry WHERE scope = ? AND key = ?;

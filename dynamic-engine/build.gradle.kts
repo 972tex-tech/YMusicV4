@@ -5,6 +5,17 @@ plugins {
     kotlin("plugin.serialization")
     // AGP KMP plugin (same as :media-store / :kmpFfmpeg) — supplies the `android {}` KMP target.
     id("com.android.kotlin.multiplatform.library")
+    // SQLDelight codegen — the cache store indexes its metadata in SQLite (blobs stay on the FS).
+    id("app.cash.sqldelight")
+}
+
+sqldelight {
+    databases {
+        create("CacheDatabase") {
+            packageName.set("ymusic.dynamicengine.db")
+            // .sq lives in src/commonMain/sqldelight — one shared schema for every platform.
+        }
+    }
 }
 
 kotlin {
@@ -45,6 +56,10 @@ kotlin {
                 // api: EngineError implements kmpcommon.error.CodedError; call() takes a JsonObject
                 api(project(":kmpCommon"))
                 api(Libs.Kotlinx.serializationJson)
+                // api: SqliteCacheStore's public constructor takes okio FileSystem/Path (blob dir)
+                // and a SqlDelight SqlDriver (the metadata index).
+                api(Libs.Okio.core)
+                api(Libs.SqlDelight.runtime)
                 implementation(project(":kmpHttp:json"))
                 implementation(Libs.Kotlinx.coroutinesCore)
             }
@@ -54,6 +69,16 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(Libs.Kotlinx.coroutinesTest)
+            }
+        }
+
+        // In-memory SQLite drivers for the cache-store tests (JVM = JDBC, native = sqliter).
+        jvmTest.dependencies {
+            implementation(Libs.SqlDelight.sqliteDriver)
+        }
+        val nativeTest by getting {
+            dependencies {
+                implementation(Libs.SqlDelight.nativeDriver)
             }
         }
     }

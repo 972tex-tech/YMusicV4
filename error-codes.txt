@@ -21,6 +21,8 @@ E20021 - engine init health check failed (DynamicEngine.create)
 E20030 - yt/* command returned a malformed result (dynamic-engine YtCommands)
 E20040 - cookie request has a missing/blank/invalid url or no setCookie, or a malformed head (dynamic-engine CookieProtocol)
 E20041 - cookie jar (KmpHttpClient.cookieJar) get/set threw (dynamic-engine CookieProtocol)
+E20050 - cache request has a missing/blank scope/key or a malformed head (dynamic-engine CacheProtocol)
+E20051 - cache store get/put/delete/list threw (dynamic-engine CacheProtocol)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

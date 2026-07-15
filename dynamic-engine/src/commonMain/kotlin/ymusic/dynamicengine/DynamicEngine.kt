@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okio.Buffer
 import ymusic.dynamicengine.internal.ENGINE_JS
+import ymusic.dynamicengine.internal.installCache
 import ymusic.dynamicengine.internal.installCookies
 import ymusic.dynamicengine.internal.installHttp
 import ymusic.quickjs.Pipe
@@ -27,7 +28,9 @@ import ymusic.quickjs.QuickJsRuntime
  * and **cookies**: the bundle's `Cookies.get`/`.set` over the `"cookie/get"` / `"cookie/set"`
  * commands, served on that same client's [KmpHttpClient.cookieJar], so the scraping JS and its own
  * HTTP requests share one cookie jar (configure the client with a persistent jar to keep a login).
- * File / SQLite protocols are planned (see `quickjs/HOST_PROTOCOLS.md`).
+ * When a [CacheStore] is supplied it also wires **cache** — the bundle's `Cache` over `cache/…`,
+ * a streaming keyed blob cache (JS owns eviction) for the InnerTube session params. File / SQLite
+ * protocols are planned (see `quickjs/HOST_PROTOCOLS.md`).
  *
  * Creation boots the bundle and then drives its `"init"` command as the health check — a pipe
  * round-trip proving the whole stack (open routing, handler dispatch, JSON encode, END) — which
@@ -80,10 +83,12 @@ class DynamicEngine private constructor(
             appVersion: Int,
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
+            cacheStore: CacheStore? = null,
         ): DynamicEngine = boot(logger) {
             QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
                 it.installCookies(client, logger)
+                if (cacheStore != null) it.installCache(cacheStore, logger)
             }
         }
 
@@ -94,10 +99,12 @@ class DynamicEngine private constructor(
             appVersion: Int,
             engineBytecode: ByteArray,
             logger: Logger? = null,
+            cacheStore: CacheStore? = null,
         ): DynamicEngine = boot(logger) {
             QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
                 it.installCookies(client, logger)
+                if (cacheStore != null) it.installCache(cacheStore, logger)
             }
         }
 
