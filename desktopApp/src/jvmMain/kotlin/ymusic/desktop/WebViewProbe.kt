@@ -67,8 +67,8 @@ fun main(args: Array<String>) {
             httpClient = httpClient,
         )
         // Muted (position advancing is the "is it playing" signal). `audioonly` exercises the
-        // music-default path where the engine hides the browser component via setVideoVisible(false):
-        // does playback still advance when the surface is realized but the component is hidden?
+        // music-default path: audio-only must still play (the WebView stays shown on its thumbnail —
+        // it disables the video track, not the surface).
         val quality = if (mode == "audioonly") VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO
         player.load(
             PlayableItem.YtVideoId(videoId),
