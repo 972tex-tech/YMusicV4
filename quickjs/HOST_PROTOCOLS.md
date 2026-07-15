@@ -3,7 +3,7 @@
 Application-layer protocols the app implements **on top of** `:quickjs` pipes (see
 [`PIPE_STREAMING.md`](PIPE_STREAMING.md)). Not part of the module — the module deliberately ships
 only the pipe transport + native JSON. This doc pins down the byte protocol so the Kotlin server
-side and the JS client side agree. The error contract (§0), HTTP (§1), and Cookies (§2) are
+side and the JS client side agree. The error contract (§0), HTTP (§1), Cookies (§2), and Cache (§3) are
 implemented in `:dynamic-engine`; the rest is design-only until built (each section marks its status).
 
 Direction throughout: the QuickJS **engine (JS) is the client** — it wants a capability. **Kotlin is
@@ -19,7 +19,7 @@ shapes; each command picks one:
 
 - **One-shot** (HTTP, FS metadata) — one pipe = one request/response, each direction delimited by
   **EOF** (half-close). Used when the whole request precedes the whole response.
-- **Session** (file I/O §3.1, SQLite §4) — one pipe = one open handle held across **many** ops until
+- **Session** (file I/O §4.1, SQLite §5) — one pipe = one open handle held across **many** ops until
   `close`. The pipe never half-closes between ops, so EOF can't delimit them; messages are
   **length-framed** instead: a head line + exactly `len` body bytes when the head declares one.
 
@@ -62,7 +62,7 @@ client:                                        (reads response) ───┘
 2. **Transport / mid-stream failures** (DNS failure, socket reset, disk I/O error mid-body,
    cancellation) use a pipe **RESET** — `sink.close(reason)` with a non-null reason string.
 
-✅ **RESET is first-class in the transport (§5 — landed).** `sink.close(reason)` crosses the boundary;
+✅ **RESET is first-class in the transport (§6 — landed).** `sink.close(reason)` crosses the boundary;
 the peer's pending data is discarded and its parked/next read **throws** the reason (Kotlin:
 `PipeResetException`; JS: the promise rejects) instead of faking a clean EOF. A handler that throws
 RESETs its pipe with the failure message automatically. So a mid-stream failure simply throws on
@@ -122,7 +122,7 @@ present → show it verbatim + code; else → generic "Something went wrong (cod
 ### Cancellation
 
 Client abandons an in-flight call → it RESETs its pipe (`sink.close(reason)`), the server's read
-throws the reason, and it aborts the underlying call/query/read. (Supported since §5 landed;
+throws the reason, and it aborts the underlying call/query/read. (Supported since §6 landed;
 pair it with `source.close()` to also EPIPE a server that is mid-write.)
 
 ### Engine lifecycle (`"init"` / `"shutdown"`, bundle-served) — *implemented*
@@ -191,7 +191,7 @@ if (!res.ok) { /* res.status / res.headers.get(name) — body still readable */ 
 const data = await res.json();        // whole body; or res.stream().read(buf, off, len) to stream
 ```
 (`HttpRequest`/`Response` — the ergonomic wrapper over this wire shape — is installed by
-`:dynamic-engine`'s `HTTP_JS`; §6 lists the surface.)
+`:dynamic-engine`'s `HTTP_JS`; §7 lists the surface.)
 
 ### Errors
 Expected failures RESET the control pipe with a **structured, origin-classified reason**
@@ -205,7 +205,7 @@ still trust:
 - Connection failure before the response (DNS/connect/TLS/timeout — the routine failure) →
   `{code:"network", message:"request failed: …"}`; the client's head read throws (§0).
 - Failure mid-body → `{code:"network", message:"response body failed: …"}`; the client's in-flight
-  read throws the reason (§5). Never a clean EOF — that would read as a complete, silently
+  read throws the reason (§6). Never a clean EOF — that would read as a complete, silently
   truncated body.
 - Protocol violations (junk after the head → `E20010`, a torn cancel int) and server bugs throw
   out of the handler; the runtime's backstop RESETs with the raw message.
@@ -267,7 +267,51 @@ The bundle's `callHost`/`hostError` adopt the code onto the thrown error, so JS 
 
 ---
 
-## 3. Filesystem — sandboxed, session-based
+## 3. Cache  (`command = "cache/get"` / `"cache/put"` / `"cache/delete"` / `"cache/list"`)  — *implemented in `:dynamic-engine`*
+
+A **scoped** keyed blob cache for the scraping engine. Every op names a **scope** — an independent
+partition with its own keys, listing, and eviction — so unrelated caches coexist (e.g. "keep the last
+10 home-feed items" alongside "a 100 MB download cache"). Keyed, **not** a filesystem: no paths, no
+seek/append. **Values stream** both ways (head then body on the one pipe, §0 EOF-delimited), so a big
+JSON blob never lands whole in Kotlin. Each entry carries host-stamped metadata — `size` (bytes),
+`updatedAt` (last write), `lastUsed` (last access — **bumped on `get`**, so an LRU evictor sees it) —
+plus a caller `meta` string→string map, stored verbatim.
+
+**Eviction lives entirely in the JS**, not the host. The store (`CacheStore`, shipped as
+`DiskCacheStore` — the **metadata index in SQLite** (SqlDelight) so `list`/`init` is one indexed
+`SELECT` instead of a per-file dir scan, while **value blobs stay on the filesystem**, `sha256(scope,key)`
+filenames, atomic writes; a 100 MB download never streams through the DB) is **unbounded**; the bundle's `Cache` client
+trims via `list` + `delete`. `scopedCache(scope, evictor)` drives a **stateful `CacheEvictor`** —
+`init(entries)` seeds it from the scope (persisted entries survive restarts), `onAdded(meta)` after
+every write returns what to evict, `onRead(meta)` after every get refreshes `lastUsed` (no eviction — a
+read adds nothing), `onDeleted(key)` on an external delete — so it never re-lists the store. Built-ins
+`keepCount(n)` (by `updatedAt`), `lruCount(n)` / `lruSize(bytes)` (by `lastUsed`), or hand-write a
+`CacheEvictor`. So the whole policy is remotely updatable with the rest of the engine JS. The app wires
+the store with `DynamicEngine.create(cacheStore = …)`; absent = no cache capability (the `ymix.open` is
+refused).
+
+JS client (engine-js `protocol/cache.ts`): every method takes the scope first —
+`Cache.setJson(scope, key, value, meta?)` / `getJson(scope, key)` / `setText` / `getText` /
+`delete(scope, key)` / `list(scope)`, plus the streaming primitives `Cache.put(scope, key, write, meta?)`
+(a sink callback — `sink.writeObjectAsJson(obj)` streams the encode straight to the file) and
+`Cache.get(scope, key, read)` (a source callback). `scopedCache` binds the scope so callers pass just
+`key`.
+
+```
+cache/get     JS→K {"scope":…,"key":…}                        K→JS {"hit":true,"size":N,"updatedAt":T,"lastUsed":T,"key":…,"meta":{…}} + value bytes   (or {"hit":false})
+cache/put     JS→K {"scope":…,"key":…,"meta":{…}} + bytes, half-close   K→JS {"size":N,"updatedAt":T,"lastUsed":T,"key":…,"meta":{…}}
+cache/delete  JS→K {"scope":…,"key":…}                        K→JS (no body — END)
+cache/list    JS→K {"scope":…}                                K→JS [{"size","updatedAt","lastUsed","key","meta"}, …]
+```
+
+### Errors
+Structured RESET (§0 boundary contract), classified at the host:
+- `E20050` — a missing/blank `scope`/`key`, or a malformed head. A caller bug.
+- `E20051` — the `CacheStore` threw (disk I/O). A `CodedError` from the store keeps its own code.
+
+---
+
+## 4. Filesystem — sandboxed, session-based
 
 ### Sandbox: one app-exposed root, relative plain paths
 
@@ -290,7 +334,7 @@ Two access shapes:
 - **One-shot metadata ops** (`command = "fs"`) — list/stat/delete/mkdir/rename/exists, each a single
   request→response on its own pipe (the §0 EOF-delimited model).
 
-### 3.1 File session (`command = "file"`)
+### 4.1 File session (`command = "file"`)
 
 Because the pipe stays open across ops, EOF can't delimit them — so a session uses **length-framed
 messages**: every message is a **head line** (compact JSON + `\n`, read with `readUtf8Line`)
@@ -325,7 +369,7 @@ op that doesn't match the open mode → `{"ok":false,"code":"EBADF"}`:
 - Dropping the pipe (half-close/RESET) without a `close` op still releases the handle server-side;
   the explicit `close` just acks and gives a flush error a place to surface.
 
-### 3.2 One-shot metadata ops (`command = "fs"`)
+### 4.2 One-shot metadata ops (`command = "fs"`)
 
 Each is a single request→response, §0 model. `path` is a sandbox-relative plain path.
 
@@ -350,18 +394,18 @@ the pipe. Open failure replies `ok:false` then closes.
 
 ---
 
-## 4. SQLite — the engine's own database, session-based  (`command = "sqlite"`)
+## 5. SQLite — the engine's own database, session-based  (`command = "sqlite"`)
 
-The engine gets its **own** SQLite database — a private file in the sandbox area (§3), **not** the
+The engine gets its **own** SQLite database — a private file in the sandbox area (§4), **not** the
 app's media DB. So there is no `BetterMediaStore`, no typed RPC, and no injection/schema-tampering
 concern about app data: the engine owns this DB outright and raw SQL against it is fine. (The app
 still decides *whether* to expose it and can cap its size / put it on its own disk quota.)
 
 Like a file, a DB is a **session**: `ymix.open("sqlite")` opens a connection, JS runs
 query/exec/transaction ops on it, then `close`. One pipe = one open connection, **length-framed**
-messages (head line + optional `len`-declared body), same framing as §3.1.
+messages (head line + optional `len`-declared body), same framing as §4.1.
 
-### 4.1 Open — with managed init/upgrade
+### 5.1 Open — with managed init/upgrade
 
 The first exchange declares the schema the engine expects; the host migrates the file up to it
 (SQLiteOpenHelper / SQLDelight-style), keyed by `PRAGMA user_version`:
@@ -377,7 +421,7 @@ server → {"ok":true,"version":3}          // or {"ok":false,"code":"...","erro
   A fresh DB (`user_version 0`) runs the whole chain; an up-to-date DB runs nothing.
 - `user_version > version` (an older engine against a newer file) → `{"ok":false,"code":"EDOWNGRADE"}`.
 
-### 4.2 Ops within the session
+### 5.2 Ops within the session
 
 Each op is a request head [+ body] → response head [+ body]. `args` is a JSON array bound positionally
 to `?` placeholders (parameterized — never string-interpolated).
@@ -405,7 +449,7 @@ to `?` placeholders (parameterized — never string-interpolated).
   `commit`/`rollback`. (No separate batch op needed — the round-trips share the connection. Add a
   JSONL `batch` later only if round-trip latency ever matters.)
 
-### 4.3 arg & cell types
+### 5.3 arg & cell types
 JSON `null`→NULL, number→INTEGER/REAL, string→TEXT, bool→INTEGER 0/1. **BLOB** args and BLOB result
 cells: a base64 string tagged `{"$blob":"<base64>"}`. Kept out of v1 unless a caller needs it.
 
@@ -417,7 +461,7 @@ replies `ok:false` then closes (a failed migration rolls back — the file is le
 
 ---
 
-## 5. Transport: RESET reason — ✅ LANDED (part of the pipe-protocol rewrite)
+## 6. Transport: RESET reason — ✅ LANDED (part of the pipe-protocol rewrite)
 
 The transport threads the reason through `closeWrite(id, reason)`; on the JS side `__jsClose(id)`
 carries only the id — the reason crosses through the C pipe layer (see PIPE_STREAMING.md). A
@@ -430,7 +474,7 @@ no behavior change on the happy path. See `quickjs/PIPE_STREAMING.md` §1.
 
 ---
 
-## 6. Intended JS surface (built on the above)
+## 7. Intended JS surface (built on the above)
 
 Thin ergonomic wrappers the engine code actually calls — the wire protocol stays invisible:
 
@@ -475,6 +519,7 @@ whatever module wires the host handlers (the engine host, not the binding).
 |------------|----------|--------------------------------|----------------------------------------------------------|
 | HTTP       | `http`   | control pipe + lazy body pipe  | JSON heads; raw EOF-framed bodies; `-1` on control = cancel at any stage |
 | Cookies    | `cookie/get`, `cookie/set` | one-shot, EOF-framed | on `client.cookieJar`; get → name→value object, set → `Set-Cookie[]`, no body; `E20040`/`E20041` |
+| Cache      | `cache/get\|put\|delete\|list` | one-shot, **streamed** values | **scoped** keyed blob store; host-stamped size/updatedAt/lastUsed + custom `meta`; JS owns eviction (scopedCache + evictors); `E20050`/`E20051` |
 | File I/O   | `file`   | **session**, length-framed     | open(path, r\|w\|a) — read-only *or* write-only → read/seek/size *or* write/flush → close; chunks stream |
 | FS meta    | `fs`     | one-shot, EOF-framed           | list/stat/delete/mkdir/rename/exists; list streams JSONL |
 | SQLite     | `sqlite` | **session**, length-framed     | open(name,version,migrations) → query/exec/begin/commit/close; rows stream JSONL |
@@ -483,7 +528,7 @@ Sandbox: `file`/`fs`/`sqlite` all operate under one app-exposed root, **relative
 escaping (server-enforced) — the security boundary for remotely-updatable JS.
 
 Common: one pipe per op · compact-JSON head line + `readUtf8Line(strict)` · raw or JSONL body to EOF ·
-op-errors in head, transport-errors as RESET · RESET throws on read (§5, landed).
+op-errors in head, transport-errors as RESET · RESET throws on read (§6, landed).
 
 Open decisions for review: **(1)** SQL raw-bridge (A) vs typed-RPC (B), and the sandbox/allowlist if
 (A) · **(2)** is FS write in scope now, or defer until a bytes-capable provider exists?
