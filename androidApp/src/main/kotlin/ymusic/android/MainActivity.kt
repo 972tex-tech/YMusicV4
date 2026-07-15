@@ -1,6 +1,7 @@
 package ymusic.android
 
 import android.os.Bundle
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -98,7 +99,20 @@ class MainActivity : ComponentActivity() {
         )
 
         return AppGraph(engines, player) { modifier ->
-            AndroidView(factory = { videoContainer }, modifier = modifier)
+            // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
+            // Playing). They're logically exclusive, but across a transition frame Compose builds the
+            // new host before disposing the old one — and Android's addView does NOT auto-detach
+            // (unlike Swing/UIKit), so adding the container directly throws "child already has a
+            // parent". So each AndroidView gets its own empty host and re-parents the shared container
+            // into whichever is active, detaching from the previous parent first.
+            AndroidView(
+                factory = { context -> FrameLayout(context) },
+                modifier = modifier,
+                update = { host ->
+                    (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
+                    host.addView(videoContainer)
+                },
+            )
         }
     }
 }
