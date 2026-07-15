@@ -233,6 +233,10 @@ internal class WebViewPlayerImpl(
         append("window.ymusicSessionId=").append(JsonPrimitive(sessionId)).append(";")
         append("window.mainAppVer=").append(appVersion).append(";")
         append("window.ymixInitConfig={\"platform\":").append(JsonPrimitive(bridge.platform)).append("};")
+        // Globals the bundle reads (some as BARE identifiers — e.g. enablePlayerCache in skip_ads.ts —
+        // so leaving them unset is an uncaught ReferenceError that surfaces as YouTube's error screen).
+        append("window.isAndroid=").append(bridge.platform == "android").append(";")
+        append("window.enablePlayerCache=false;")
         append("\n").append(engineJs)
     }
 

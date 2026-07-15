@@ -30,6 +30,10 @@ private class AndroidWebViewBridge(
 
     override val platform: String = "android"
 
+    // The bundle reads window.androidOsVer for OS-version-gated behavior; ymixChannelAndroid is the
+    // native JS interface (added below), so no transport shim is needed here.
+    override val bootPrelude: String = "window.androidOsVer=${android.os.Build.VERSION.SDK_INT}"
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val webView = WebView(androidContext).apply {
