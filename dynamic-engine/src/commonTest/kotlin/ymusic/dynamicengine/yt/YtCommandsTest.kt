@@ -26,8 +26,14 @@ class YtCommandsTest {
     private suspend fun manager(handler: suspend (kmphttp.Request) -> kmphttp.Response): Pair<DynamicEngineManager, FakeHttpClient> {
         sentBody = null
         val client = FakeHttpClient { request ->
-            sentBody = request.body?.readAll()?.decodeToString()
-            handler(request)
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                // The session bootstrap's homepage fetch — serve the ytcfg so scraping succeeds.
+                CannedResponse.ofText(HOMEPAGE_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                sentBody = request.body?.readAll()?.decodeToString()
+                handler(request)
+            }
         }
         val m = DynamicEngineManager(client, appVersion = 1)
         m.start()
