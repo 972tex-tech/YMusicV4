@@ -18,9 +18,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import kmphttp.InMemoryCookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.dynamicengine.androidEngineCacheStore
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -58,8 +60,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun buildGraph(): AppGraph {
-        val httpClient = KmpHttpClient.create {}
-        val engines = DynamicEngineManager(httpClient, appVersion = 1)
+        // A live cookie jar (NOT NO_COOKIES) so the scraping engine carries YouTube's anonymous
+        // session cookies (VISITOR_INFO1_LIVE / YSC / consent) across its requests — the engine's
+        // Cookies protocol and its own HTTP share this one jar.
+        val httpClient = KmpHttpClient.create { cookieJar = InMemoryCookieJar() }
+        val engines = DynamicEngineManager(
+            httpClient,
+            appVersion = 1,
+            cacheStore = androidEngineCacheStore(applicationContext),
+        )
         engines.start()
 
         // One shared video host (a FrameLayout) both engines render into: the WebView engine adds its

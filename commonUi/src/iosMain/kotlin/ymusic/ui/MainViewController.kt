@@ -16,6 +16,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.window.ComposeUIViewController
+import kmphttp.InMemoryCookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -72,7 +73,8 @@ private fun Center(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 private suspend fun buildIosGraph(container: UIView): AppGraph {
-    val httpClient = KmpHttpClient.create {}
+    // A live cookie jar (NOT NO_COOKIES) so the engine carries YouTube's anonymous session cookies.
+    val httpClient = KmpHttpClient.create { cookieJar = InMemoryCookieJar() }
     val engines = DynamicEngineManager(httpClient, appVersion = 1)
     engines.start()
 

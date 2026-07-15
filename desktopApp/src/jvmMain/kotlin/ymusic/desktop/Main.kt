@@ -23,6 +23,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kmphttp.InMemoryCookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.dynamicengine.desktopEngineCacheStore
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.FileSystemDocumentsProvider
 import ymusic.mediascanner.MediaScanner
@@ -87,13 +89,20 @@ fun main() = application {
 }
 
 private suspend fun buildGraph(cefManager: CefManager): AppGraph {
-    val httpClient = KmpHttpClient.create {}
-    val engines = DynamicEngineManager(httpClient, appVersion = 1)
+    val dataDir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
+    // A live cookie jar (NOT NO_COOKIES) so the engine carries YouTube's anonymous session cookies.
+    val httpClient = KmpHttpClient.create { cookieJar = InMemoryCookieJar() }
+    val engines = withContext(Dispatchers.IO) {
+        DynamicEngineManager(
+            httpClient,
+            appVersion = 1,
+            cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
+        )
+    }
     engines.start()
 
     val mediaStore = withContext(Dispatchers.IO) {
-        val dir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
-        BetterMediaStore.create(mediaStoreJdbcDriver(File(dir, "media-store.db").absolutePath))
+        BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
     }
 
     val cefClient = cefManager.createClient()
