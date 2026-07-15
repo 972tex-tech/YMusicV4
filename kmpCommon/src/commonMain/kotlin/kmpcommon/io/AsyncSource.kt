@@ -5,6 +5,7 @@ import okio.Buffer
 import okio.BufferedSink
 import okio.Closeable
 import okio.EOFException
+import okio.Sink
 import okio.use
 
 interface AsyncSource : Closeable {
@@ -190,6 +191,28 @@ suspend fun BufferedSink.writeAll(source: AsyncSource): Long {
         emitCompleteSegments()
     }
     return totalRead
+}
+
+/** Pump this buffered source fully into [sink] (okio's `BufferedSource.readAll` shape), returning the
+ *  byte count. The source-side twin of [BufferedSink.writeAll]; neither end is closed. */
+suspend fun BufferedAsyncSource.readAll(sink: AsyncSink): Long {
+    var total = 0L
+    while (!exhausted()) {
+        val n = buffer.size
+        sink.write(buffer, n)
+        total += n
+    }
+    return total
+}
+
+suspend fun BufferedAsyncSource.readAll(sink: Sink): Long {
+    var total = 0L
+    while (!exhausted()) {
+        val n = buffer.size
+        sink.write(buffer, n)
+        total += n
+    }
+    return total
 }
 
 suspend fun AsyncSource.readUtf8String(): String {
