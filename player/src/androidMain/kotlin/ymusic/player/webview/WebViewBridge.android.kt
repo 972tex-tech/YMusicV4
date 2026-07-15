@@ -36,7 +36,15 @@ private class AndroidWebViewBridge(
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private val webView = WebView(androidContext).apply {
+    // A WebView that always reports itself VISIBLE: Chromium throttles/suspends the media pipeline
+    // when the WebView is occluded or off-window (a small docked surface, another screen on top, the
+    // app backgrounded), which stalls SABR mid-stream — the buffer runs out ~60s in and YouTube shows
+    // "An error occurred". Forcing visibility keeps decoding + segment fetches alive (legacy YMusic
+    // does the same). See [[webview-must-be-realized-to-play]].
+    private val webView = object : WebView(androidContext) {
+        override fun onWindowVisibilityChanged(visibility: Int) = super.onWindowVisibilityChanged(VISIBLE)
+        override fun getWindowVisibility(): Int = VISIBLE
+    }.apply {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
