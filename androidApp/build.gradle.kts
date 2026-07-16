@@ -53,6 +53,15 @@ val copyWebViewJs by tasks.registering(Copy::class) {
     from(rootProject.file("webview-js/dist/webview_ymusic.js"))
     into(layout.projectDirectory.dir("src/main/assets"))
 }
+
+// :commonUi's compose resources: the compose plugin doesn't package them into an Android artifact
+// under AGP 9's com.android.kotlin.multiplatform.library, so the app ships them as assets itself
+// (the Android resource reader resolves "composeResources/<package>/…" from assets). Drop when the
+// compose plugin learns the new AGP KMP plugin.
+val copyComposeResources by tasks.registering(Copy::class) {
+    from(rootProject.file("commonUi/src/commonMain/composeResources"))
+    into(layout.projectDirectory.dir("src/main/assets/composeResources/ymusic.ui.resources"))
+}
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
-    dependsOn(copyWebViewJs)
+    dependsOn(copyWebViewJs, copyComposeResources)
 }
