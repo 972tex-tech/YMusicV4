@@ -1,6 +1,7 @@
 package ymusic.dynamicengine
 
 import kmpcommon.log.Logger
+import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +27,11 @@ import ymusic.quickjs.QuickJsRuntime
  * Today it wires **HTTP** — a global `HttpRequest` builder served directly on a [KmpHttpClient]
  * (streaming responses; on Android the jvm variant of `:kmpHttp:core` resolves, which is OkHttp) —
  * and **cookies**: the bundle's `Cookies.get`/`.set` over the `"cookie/get"` / `"cookie/set"`
- * commands, served on that same client's [KmpHttpClient.cookieJar], so the scraping JS and its own
- * HTTP requests share one cookie jar (configure the client with a persistent jar to keep a login).
+ * commands, served on the app-provided cookie store. The engine JS owns cookie POLICY (the legacy
+ * `YTHttpClientCookieStoreAndHeadersManager` role — building each request's `Cookie` header,
+ * consent/SOCS synthesis, storing `Set-Cookie`s), so [create]'s `client` should carry NO cookie
+ * jar — a jar would inject cookies underneath the JS. Pass the platform store (the one the WebView
+ * player shares) as `cookieJar` so scraping and playback present one identity.
  * When a [CacheStore] is supplied it also wires **cache** — the bundle's `Cache` over `cache/…`,
  * a streaming keyed blob cache (JS owns eviction) for the InnerTube session params. File / SQLite
  * protocols are planned (see `quickjs/HOST_PROTOCOLS.md`).
@@ -84,10 +88,11 @@ class DynamicEngine private constructor(
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
             cacheStore: CacheStore? = null,
+            cookieJar: CookieJar = client.cookieJar,
         ): DynamicEngine = boot(logger) {
             QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
-                it.installCookies(client, logger)
+                it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
             }
         }
@@ -100,10 +105,11 @@ class DynamicEngine private constructor(
             engineBytecode: ByteArray,
             logger: Logger? = null,
             cacheStore: CacheStore? = null,
+            cookieJar: CookieJar = client.cookieJar,
         ): DynamicEngine = boot(logger) {
             QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
-                it.installCookies(client, logger)
+                it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
             }
         }

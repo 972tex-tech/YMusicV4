@@ -4,8 +4,8 @@ import kmpcommon.error.CodedError
 import kmpcommon.error.codedError
 import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.log.Logger
+import kmphttp.CookieJar
 import kmphttp.HttpUrl
-import kmphttp.KmpHttpClient
 import kmphttp.json.JsonReader
 import kmphttp.loadForRequest
 import kmphttp.parseCookie
@@ -30,15 +30,16 @@ import ymusic.quickjs.asAsyncSource
 
 /**
  * Serves the `"cookie/get"` / `"cookie/set"` pipe commands (the host side of the bundle's Cookies
- * client) on the HTTP client's **own** [KmpHttpClient.cookieJar] — the same jar the engine's
- * `HttpRequest`s already read and write. So cookies the scraping JS sets are carried on its later
- * requests, and `Set-Cookie`s from those responses are visible to `Cookies.get`: one jar, no
- * duplicate storage. The app owns it by configuring the client (`kmphttp.InMemoryCookieJar` or a
- * persistent jar); `CookieJar.NO_COOKIES` (the default) simply drops writes and reads back empty.
+ * client) on the app-provided [cookieJar] — the platform cookie store (Android `CookieManager`,
+ * desktop `CefCookieManager`) the WebView player shares. The engine JS owns cookie **policy**: its
+ * HTTP client carries no jar, the bundle reads this store, cooks each request's `Cookie` header
+ * itself (consent/SOCS synthesis included), and writes `Set-Cookie`s back here — so the scraping
+ * requests and the player present one identity, decided entirely by the remotely-updatable JS.
+ * `CookieJar.NO_COOKIES` simply drops writes and reads back empty.
  *
  * Each command is **one-shot** (HOST_PROTOCOLS §0): one pipe = one call, the head is self-framing
  * JSON, no session state. `Set-Cookie` values are parsed with `kmphttp.parseCookie` (OkHttp's
- * grammar — domain/path/expiry), so the host, not the JS, owns cookie policy.
+ * grammar — domain/path/expiry), so the host, not the JS, owns cookie *parsing*.
  * ```
  * cookie/get  JS→K: {"url":…,"logCtx":?}                 K→JS: {"<name>":"<value>",…}   (then EOF)
  * cookie/set  JS→K: {"url":…,"setCookie":[…],"logCtx":?}  K→JS: (no body, clean END)
@@ -48,10 +49,10 @@ import ymusic.quickjs.asAsyncSource
  * jar itself threw — a persistent jar's I/O failure), a [CodedError] from the jar keeping its own
  * code. The bundle's `hostError` adopts the code as-is.
  */
-internal fun QuickJsRuntime.installCookies(client: KmpHttpClient, logger: Logger?) {
+internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?) {
     onAccept("cookie/get") { pipe ->
         serveCookie(pipe, logger, GET_SCOPE) { head ->
-            val cookies = client.cookieJar.loadForRequest(head.requireHttpUrl("url"))
+            val cookies = cookieJar.loadForRequest(head.requireHttpUrl("url"))
             val out = Buffer().writeUtf8(
                 buildJsonObject { for (c in cookies) put(c.name, c.value) }.toString(),
             )
@@ -63,7 +64,7 @@ internal fun QuickJsRuntime.installCookies(client: KmpHttpClient, logger: Logger
             val url = head.requireHttpUrl("url")
             // Unparseable Set-Cookie values are dropped (OkHttp semantics), not an error.
             val cookies = head.requireStringList("setCookie").mapNotNull { parseCookie(url, it) }
-            client.cookieJar.saveFromResponse(url, cookies)
+            cookieJar.saveFromResponse(url, cookies)
         }
     }
 }

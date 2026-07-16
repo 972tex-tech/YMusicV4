@@ -227,15 +227,17 @@ resolves, which is real OkHttp (the typealias layer).
 
 ## 2. Cookies  (`command = "cookie/get"` / `"cookie/set"`)  — *implemented in `:dynamic-engine`*
 
-The engine (JS) reads and writes cookies against the **HTTP client's own** `cookieJar` — the same
-`kmphttp.CookieJar` the engine's `HttpRequest`s already use (`installCookies(client)` reads
-`client.cookieJar`). So a cookie the scraping JS sets is carried on its later requests, and a
-`Set-Cookie` from those responses is visible to `Cookies.get`: **one jar**, no duplicate storage, and
-OkHttp's own domain/path/expiry policy (`kmphttp.parseCookie`) applied on the host. The app owns it by
-configuring the client (`kmphttp.InMemoryCookieJar` or a persistent jar for a durable login);
-`CookieJar.NO_COOKIES` drops writes and reads back empty. Two **one-shot** commands (§0 EOF-delimited),
-one pipe per call — the pipe is the correlation handle, so concurrent reads/writes are just concurrent
-pipes (no request-ids, no session state; the jar is long-lived, the pipes are not).
+The engine (JS) reads and writes cookies against an **app-provided** `kmphttp.CookieJar`
+(`installCookies(cookieJar)`) — the platform cookie store the WebView player shares (Android
+`CookieManager`, desktop `CefCookieManager`). The engine's own HTTP client carries **no jar**: the
+JS owns cookie *policy* — it reads this store, cooks each request's `Cookie` header itself
+(consent/SOCS synthesis included — engine-js `logic/yt/cookies.ts`), and writes response
+`Set-Cookie`s back — so cookie behavior ships in the remotely-updatable bundle, and scraping +
+playback present one identity. The host owns cookie *parsing*: OkHttp's domain/path/expiry grammar
+(`kmphttp.parseCookie`) applies on the way in. `CookieJar.NO_COOKIES` drops writes and reads back
+empty. Two **one-shot** commands (§0 EOF-delimited), one pipe per call — the pipe is the correlation
+handle, so concurrent reads/writes are just concurrent pipes (no request-ids, no session state; the
+jar is long-lived, the pipes are not).
 
 JS client: `Cookies.get(url): Promise<Record<string,string>>` / `Cookies.set(url, setCookie)`
 (`setCookie` = one `Set-Cookie` string or an array of them — a response's whole set), in engine-js

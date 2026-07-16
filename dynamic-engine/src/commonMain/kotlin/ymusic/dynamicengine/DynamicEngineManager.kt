@@ -1,6 +1,7 @@
 package ymusic.dynamicengine
 
 import kmpcommon.log.Logger
+import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,8 @@ class DynamicEngineManager(
     private val baselineJs: String = ENGINE_JS,
     private val cacheStore: CacheStore? = null,
     private val drainTimeoutMs: Long = 30_000L,
+    /** The app-owned cookie store the cookie protocol serves (see [DynamicEngine.create]). */
+    private val cookieJar: CookieJar = client.cookieJar,
 ) {
 
     private class Slot(val engine: DynamicEngine) {
@@ -78,10 +81,10 @@ class DynamicEngineManager(
     suspend fun start(remoteJs: String? = null): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
         val engine = if (remoteJs == null) {
-            DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore)
+            DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar)
         } else {
             try {
-                DynamicEngine.create(client, appVersion, logger, remoteJs, cacheStore)
+                DynamicEngine.create(client, appVersion, logger, remoteJs, cacheStore, cookieJar)
             } catch (e: EngineError) {
                 logger?.log(
                     Logger.Level.WARN,
@@ -89,7 +92,7 @@ class DynamicEngineManager(
                     "${e.code} remote bundle rejected at boot, falling back to baseline: ${e.message}",
                     e,
                 )
-                DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore)
+                DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar)
             }
         }
         activeLock.withLock { active = Slot(engine) }
@@ -104,7 +107,7 @@ class DynamicEngineManager(
      * the outgoing engine. Returns the new bundle's backendVersion.
      */
     suspend fun swap(newJs: String): Int = swapLock.withLock {
-        val fresh = DynamicEngine.create(client, appVersion, logger, newJs, cacheStore) // throws typed on rejection
+        val fresh = DynamicEngine.create(client, appVersion, logger, newJs, cacheStore, cookieJar) // throws typed on rejection
         val old = activeLock.withLock {
             val prev = active
             active = Slot(fresh)
