@@ -71,7 +71,7 @@ class YtSessionTest {
             val page = m.search(query = "a")
             assertEquals(2, homepageHits, "403 forces a re-scrape of the session")
             assertEquals(2, apiHits, "the API call is retried once after the refresh")
-            assertTrue(page.items.isNotEmpty(), "the retry's result is parsed")
+            assertTrue(page.sections.any { it.items.isNotEmpty() }, "the retry's result is parsed")
         } finally {
             m.close()
         }

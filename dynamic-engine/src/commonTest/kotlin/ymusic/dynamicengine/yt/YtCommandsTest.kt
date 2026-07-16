@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -59,21 +60,27 @@ class YtCommandsTest {
             assertTrue(sent.contains(""""query":"son tung mtp""""), sent)
             assertTrue(sent.contains(""""clientName":"WEB""""), sent)
 
-            assertEquals(4, page.items.size, "$page")
-            val video = page.items[0]
+            assertEquals(1, page.sections.size, "search is one flat list section: $page")
+            val section = page.sections[0]
+            assertEquals(YtSection.LAYOUT_LIST, section.layout)
+            val items = section.items
+            assertEquals(4, items.size, "$page")
+            val video = items[0]
             assertEquals(YtFeedItem.KIND_VIDEO, video.kind)
             assertEquals("yuuWdm5tBD0", video.id)
             assertTrue(video.title.contains("COME MY WAY"), video.title)
-            assertEquals("Sơn Tùng M-TP Official", video.byline)
+            assertEquals("Sơn Tùng M-TP Official", video.subtitleLine1)
+            assertEquals("335,929 views · 49 minutes ago", video.subtitleLine2)
             assertEquals("UClyA28-01x4z60eWQ2kiNbA", video.channelId)
             assertEquals("4:13", video.duration)
-            assertNotNull(video.views)
             assertNotNull(video.thumb)
 
-            val channel = page.items.first { it.kind == YtFeedItem.KIND_CHANNEL }
+            val channel = items.first { it.kind == YtFeedItem.KIND_CHANNEL }
             assertTrue(channel.id.startsWith("UC"), channel.id)
+            assertEquals("11.8M subscribers", channel.subtitleLine1)
+            assertEquals("Subscribe", channel.ctaText)
 
-            val mix = page.items.first { it.kind == YtFeedItem.KIND_PLAYLIST }
+            val mix = items.first { it.kind == YtFeedItem.KIND_PLAYLIST }
             assertTrue(mix.id.startsWith("RD"), mix.id)
             assertTrue(mix.title.startsWith("Mix"), mix.title)
             assertNotNull(mix.thumb, "collection thumbnail must resolve")
@@ -97,7 +104,10 @@ class YtCommandsTest {
             assertTrue(sent.contains(""""hl":"vi""""), sent)
             assertTrue(sent.contains(""""visitorData":"vd123""""), sent)
 
-            assertEquals(2, page.items.size, "one direct rich item + one inside the nested shelf: $page")
+            assertEquals(1, page.sections.size, "$page")
+            val section = page.sections[0]
+            assertEquals(YtSection.LAYOUT_GRID, section.layout, "rich-grid feed → grid layout")
+            assertEquals(2, section.items.size, "one direct rich item + one inside the nested shelf: $page")
             assertEquals("browse-cont-token", page.continuation)
             assertEquals(2, page.chips.size)
             assertEquals("All", page.chips[0].title)
@@ -109,20 +119,48 @@ class YtCommandsTest {
     }
 
     @Test
+    fun browse_groups_a_titled_shelf_into_its_own_section() = runTest {
+        val (m, _) = manager { jsonResponse(HOME_SHELF_FIXTURE).build(it) }
+        try {
+            val page = m.browse(browseId = "FEwhat_to_watch")
+
+            assertEquals(2, page.sections.size, "loose grid + titled shelf: $page")
+
+            val grid = page.sections[0]
+            assertNull(grid.header, "the loose grid has no header")
+            assertEquals(YtSection.LAYOUT_GRID, grid.layout)
+            assertEquals(listOf("AAAAAAAAAAA"), grid.items.map { it.id })
+
+            val shelf = page.sections[1]
+            val header = assertNotNull(shelf.header, "the titled shelf carries a header")
+            assertEquals("For you", header.title)
+            assertEquals("shelf-cta-token", header.ctaToken)
+            assertEquals(YtSection.LAYOUT_GRID, shelf.layout)
+            assertEquals(listOf("BBBBBBBBBBB"), shelf.items.map { it.id })
+
+            assertEquals("page-cont", page.continuation)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
     fun watch_next_parses_lockups_and_autoplay() = runTest {
         val (m, _) = manager { jsonResponse(NEXT_FIXTURE).build(it) }
         try {
             val page = m.watchNext(videoId = "yuuWdm5tBD0")
 
-            assertEquals(2, page.items.size, "$page")
-            val first = page.items[0]
+            assertEquals(1, page.sections.size, "$page")
+            val section = page.sections[0]
+            assertEquals(YtSection.LAYOUT_LIST, section.layout)
+            assertEquals(2, section.items.size, "$page")
+            val first = section.items[0]
             assertEquals(YtFeedItem.KIND_VIDEO, first.kind)
             assertEquals("SlQR9iu09bQ", first.id)
             assertTrue(first.title.contains("COME MY WAY"), first.title)
-            assertEquals("Sơn Tùng M-TP Official and Tyga", first.byline)
+            assertEquals("Sơn Tùng M-TP Official and Tyga", first.subtitleLine1)
             assertEquals("3:55", first.duration)
-            assertEquals("38M views", first.views)
-            assertEquals("1 month ago", first.published)
+            assertEquals("38M views · 1 month ago", first.subtitleLine2)
             assertEquals("kV1Nxa9tLuY", page.autoplayVideoId)
             assertNotNull(page.continuation)
         } finally {
