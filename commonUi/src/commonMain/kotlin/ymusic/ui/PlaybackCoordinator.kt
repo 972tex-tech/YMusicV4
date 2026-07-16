@@ -47,7 +47,8 @@ class PlaybackCoordinator(
         scope.launch {
             try {
                 val next = graph.engines.watchNext(videoId = video.id, ctx = graph.ytContext)
-                val related = next.items.filter { it.kind == YtFeedItem.KIND_VIDEO && it.id != video.id }
+                val related = next.sections.flatMap { it.items }
+                    .filter { it.kind == YtFeedItem.KIND_VIDEO && it.id != video.id }
                 remember(related)
                 // The queue may have changed while we fetched — only extend our own load.
                 val current = player.queue.value
@@ -68,7 +69,7 @@ class PlaybackCoordinator(
                 kind = KIND_LOCAL,
                 id = s.uri.toString(),
                 title = s.title,
-                byline = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
+                subtitleLine1 = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
             )
         }
         _metadata.update { it + display.associateBy(YtFeedItem::id) }

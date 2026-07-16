@@ -1,6 +1,7 @@
 package ymusic.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,9 +23,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -36,14 +34,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreItem
 
@@ -54,7 +57,9 @@ private enum class LibraryTab(val label: String) {
     Albums("Albums"),
 }
 
-/** The local library over [AppGraph.mediaStore]: reactive song list + in-memory artist/album groups. */
+/** The local library over [AppGraph.mediaStore]: reactive song list + in-memory artist/album groups.
+ *  Styled with design/final/library.html's chips + section-header + list-row language (the account
+ *  half of that mockup lands with sign-in). */
 @Composable
 fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val store = graph.mediaStore
@@ -74,9 +79,12 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     }.collectAsState(initial = null)
 
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab.ordinal) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             LibraryTab.entries.forEach { t ->
-                Tab(selected = t == tab, onClick = { tab = t }, text = { Text(t.label) })
+                LibraryChip(t.label, selected = t == tab) { tab = t }
             }
         }
         graph.scanLibraryFolder?.let { ScanBar(it) }
@@ -90,7 +98,10 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 )
             }
             else -> when (tab) {
-                LibraryTab.Songs -> SongList(loaded, coordinator)
+                LibraryTab.Songs -> Column(Modifier.fillMaxSize()) {
+                    SectionHeader(YtSectionHeader(title = "Songs", count = "${loaded.size}"))
+                    SongList(loaded, coordinator)
+                }
                 LibraryTab.Artists -> GroupedList(loaded, Icons.Default.Person, "Unknown artist", coordinator) { it.artist }
                 LibraryTab.Albums -> GroupedList(loaded, Icons.Default.Album, "Unknown album", coordinator) { it.album }
             }
@@ -98,7 +109,25 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     }
 }
 
-/** The shell scan action: button + last summary line; disabled while a scan runs. */
+/** The outlined chip from the mockup's quick-action row (`.qa .q`). */
+@Composable
+private fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        style = TextStyle(
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) Color.White else Color(0xFF3A3A3A),
+        ),
+        modifier = Modifier
+            .background(if (selected) DesignColors.Ink else Color.Transparent, RoundedCornerShape(999.dp))
+            .border(1.dp, if (selected) DesignColors.Ink else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 7.dp),
+    )
+}
+
+/** The shell scan action: pill button + last summary line; disabled while a scan runs. */
 @Composable
 private fun ScanBar(scan: suspend () -> String?) {
     val scope = rememberCoroutineScope()
@@ -109,27 +138,30 @@ private fun ScanBar(scan: suspend () -> String?) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedButton(
-            enabled = !running,
-            onClick = {
-                running = true
-                scope.launch {
-                    message = try {
-                        scan()
-                    } catch (e: Exception) {
-                        "Scan failed (${(e as? CodedError)?.code ?: e.message ?: e})"
-                    } finally {
-                        running = false
+        Text(
+            if (running) "Scanning…" else "Scan folder…",
+            style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = Color(0xFF3A3A3A)),
+            modifier = Modifier
+                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+                .clickable(enabled = !running) {
+                    running = true
+                    scope.launch {
+                        message = try {
+                            scan()
+                        } catch (e: Exception) {
+                            "Scan failed (${(e as? CodedError)?.code ?: e.message ?: e})"
+                        } finally {
+                            running = false
+                        }
                     }
                 }
-            },
-        ) { Text(if (running) "Scanning…" else "Scan folder…") }
+                .padding(horizontal = 13.dp, vertical = 7.dp),
+        )
         if (running) CircularProgressIndicator(Modifier.size(20.dp))
         message?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -152,21 +184,21 @@ private fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LibraryThumb(Icons.Default.MusicNote, formatDuration(song.durationMs))
         Column(Modifier.weight(1f)) {
-            Text(song.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(song.title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val sub = listOfNotNull(song.artist, song.album).joinToString(" · ")
             if (sub.isNotEmpty()) {
                 Text(
                     sub,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = ListSubStyle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
         }
@@ -197,17 +229,17 @@ private fun GroupedList(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { group = name }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LibraryThumb(icon, badge = null)
                     Column(Modifier.weight(1f)) {
-                        Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
                             "${members.size} song" + if (members.size == 1) "" else "s",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = ListSubStyle,
+                            modifier = Modifier.padding(top = 3.dp),
                         )
                     }
                 }
@@ -221,7 +253,12 @@ private fun GroupedList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { group = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                Text(selected, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    selected,
+                    style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             SongList(groups.firstOrNull { it.first == selected }?.second.orEmpty(), coordinator)
         }
@@ -232,21 +269,20 @@ private fun GroupedList(
 private fun LibraryThumb(icon: ImageVector, badge: String?) {
     Box(
         modifier = Modifier
-            .size(width = 92.dp, height = 60.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+            .size(56.dp)
+            .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(icon, null, Modifier.size(21.dp), tint = DesignColors.PlaceholderIcon)
         badge?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.labelSmall,
+                style = TextStyle(fontSize = 9.sp, color = Color.White),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(3.dp)
-                    .background(MaterialTheme.colorScheme.scrim, RoundedCornerShape(3.dp))
-                    .padding(horizontal = 3.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
+                    .padding(4.dp)
+                    .background(DesignColors.BadgeInk, RoundedCornerShape(3.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
     }

@@ -12,12 +12,25 @@ import androidx.compose.ui.graphics.Color
 object DesignColors {
     val Accent = Color(0xFFE8732A)
     val Ink = Color(0xFF333333)
+    val InkMuted = Color(0xFF555555)
+    val InkSoft = Color(0xFF666666)
     val InkSecondary = Color(0xFF8A8A8A)
+    val InkFaint = Color(0xFF9A9A9A)
+    val IconDots = Color(0xFF999999)
     val Placeholder = Color(0xFFE3E3E3)
+    val PlaceholderDim = Color(0xFFE0E0E0)
+    val PlaceholderIcon = Color(0xFFB3B3B3)
+    val StackNear = Color(0xFFECECEC)
+    val StackFar = Color(0xFFF3F3F3)
+    val StackTab = Color(0xFFEDEDED)
     val Outline = Color(0xFFCFCFCF)
+    val OutlineSoft = Color(0xFFD8D8D8)
+    val Divider = Color(0xFFE6E6E6)
+    val DividerMini = Color(0xFFE2E2E2)
     val Surface = Color.White
     val SurfaceDim = Color(0xFFFAFAFA)
-    val BadgeScrim = Color(0xCC333333)
+    val BadgeInk = Ink
+    val BadgeScrim = Color(0xB8000000)
     val BrandGreen = Color(0xFF1DB954)
 }
 

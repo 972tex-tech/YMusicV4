@@ -24,5 +24,7 @@ class AppGraph(
     val ytContext: YtContext = YtContext(),
     val mediaStore: BetterMediaStore? = null,
     val scanLibraryFolder: (suspend () -> String?)? = null,
+    /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
+    val appVersion: String? = null,
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 )

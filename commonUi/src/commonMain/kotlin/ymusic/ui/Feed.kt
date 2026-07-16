@@ -1,41 +1,38 @@
 package ymusic.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -43,20 +40,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import ymusic.dynamicengine.yt.YtChip
 import ymusic.dynamicengine.yt.YtFeedItem
-import ymusic.dynamicengine.yt.YtFeedPage
+import ymusic.dynamicengine.yt.YtSection
 
 /** Paged feed loading over any yt page source (browse / search / watch-next continuations). */
 class Pager(
     private val scope: CoroutineScope,
-    private val fetch: suspend (continuation: String?) -> YtFeedPage,
+    private val fetch: suspend (continuation: String?) -> ymusic.dynamicengine.yt.YtFeedPage,
 ) {
     sealed interface State {
         data object Loading : State
 
         data class Failed(val code: String, val detail: String?) : State
 
-        data class Ready(val page: YtFeedPage, val items: List<YtFeedItem>, val loadingMore: Boolean) : State
+        data class Ready(
+            val sections: List<YtSection>,
+            val chips: List<YtChip>,
+            val selectedChipToken: String?,
+            val continuation: String?,
+            val loadingMore: Boolean,
+        ) : State
     }
 
     private val _state = MutableStateFlow<State>(State.Loading)
@@ -64,13 +68,23 @@ class Pager(
 
     private var job: Job? = null
 
-    fun refresh() {
+    /** (Re)load from the top; [chipToken] re-requests the feed filtered by that chip. */
+    fun refresh(chipToken: String? = null) {
         job?.cancel()
+        val previousChips = (_state.value as? State.Ready)?.chips.orEmpty()
         _state.value = State.Loading
         job = scope.launch {
             _state.value = try {
-                val page = fetch(null)
-                State.Ready(page, page.items, loadingMore = false)
+                val page = fetch(chipToken)
+                // A chip-filtered page often carries no chip row of its own — keep the one we came from.
+                val chips = page.chips.ifEmpty { previousChips }
+                State.Ready(
+                    sections = page.sections,
+                    chips = chips,
+                    selectedChipToken = chipToken ?: chips.firstOrNull { it.selected }?.token,
+                    continuation = page.continuation,
+                    loadingMore = false,
+                )
             } catch (e: Exception) {
                 State.Failed((e as? CodedError)?.code ?: "E20030", e.message)
             }
@@ -79,22 +93,39 @@ class Pager(
 
     fun loadMore() {
         val current = _state.value as? State.Ready ?: return
-        val token = current.page.continuation ?: return
+        val token = current.continuation ?: return
         if (current.loadingMore) return
         _state.value = current.copy(loadingMore = true)
         job = scope.launch {
             _state.value = try {
                 val page = fetch(token)
-                State.Ready(page, current.items + page.items, loadingMore = false)
+                current.copy(
+                    sections = appendSections(current.sections, page.sections),
+                    continuation = page.continuation,
+                    loadingMore = false,
+                )
             } catch (e: Exception) {
-                // Keep what we have; surface the failure on the load-more row via state reset.
-                State.Ready(current.page, current.items, loadingMore = false)
+                // Keep what we have; the tail button stays for a retry.
+                current.copy(loadingMore = false)
             }
         }
     }
+
+    private fun appendSections(current: List<YtSection>, more: List<YtSection>): List<YtSection> {
+        // A continuation usually keeps feeding the run it left off in — a header-less incoming
+        // section continues a header-less tail section rather than starting a visual break.
+        val last = current.lastOrNull()
+        val first = more.firstOrNull()
+        if (last == null || first == null || last.header != null || first.header != null) return current + more
+        return current.dropLast(1) + last.copy(items = last.items + first.items) + more.drop(1)
+    }
 }
 
-/** One feed page: list of item rows + a load-more tail; the item tap/queue actions come from [coordinator]. */
+/**
+ * One feed surface (design/final/feed-example.html): filter chips + sections, each rendered as a
+ * list on a phone-portrait width or as a 2/3-column grid on tablet/landscape widths. Item tap /
+ * queue actions come from [coordinator].
+ */
 @Composable
 fun FeedList(
     pager: Pager,
@@ -112,104 +143,149 @@ fun FeedList(
             }
         }
         is Pager.State.Ready -> {
-            if (s.items.isEmpty()) {
-                CenteredBox(modifier) { Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            } else {
-                LazyColumn(modifier = modifier.fillMaxSize()) {
-                    items(s.items, key = { "${it.kind}:${it.id}" }) { item ->
-                        FeedRow(item, coordinator)
-                    }
-                    if (s.page.continuation != null) {
-                        item {
-                            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                                if (s.loadingMore) {
-                                    CircularProgressIndicator(Modifier.size(28.dp))
-                                } else {
-                                    OutlinedButton(onClick = { pager.loadMore() }) { Text("Show more") }
-                                }
-                            }
-                        }
-                    }
+            if (s.sections.all { it.items.isEmpty() }) {
+                Column(modifier) {
+                    FeedChips(s, pager)
+                    CenteredBox { Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
+            } else {
+                FeedSections(s, pager, coordinator, modifier)
             }
         }
     }
 }
 
 @Composable
-private fun FeedRow(item: YtFeedItem, coordinator: PlaybackCoordinator) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = item.kind == YtFeedItem.KIND_VIDEO) { coordinator.playNow(item) }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Thumb(item)
-        Column(Modifier.weight(1f)) {
-            Text(
-                item.title,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val sub = listOfNotNull(item.byline, item.views, item.published, item.subscribers, item.itemCount)
-                .joinToString(" · ")
-            if (sub.isNotEmpty()) {
-                Text(
-                    sub,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+private fun FeedSections(
+    state: Pager.State.Ready,
+    pager: Pager,
+    coordinator: PlaybackCoordinator,
+    modifier: Modifier = Modifier,
+) {
+    // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
+    val expanded = remember { mutableStateMapOf<Int, Boolean>() }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        // design/final/home.html: phone portrait = list, tablet portrait = 2-col, landscape = 3-col.
+        val columns = when {
+            maxWidth < 600.dp -> 1
+            maxWidth > maxHeight -> 3
+            else -> 2
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            item { FeedChips(state, pager) }
+            state.sections.forEachIndexed { index, section ->
+                feedSection(
+                    section = section,
+                    columns = columns,
+                    expanded = expanded[index] ?: !section.collapsible,
+                    onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
+                    coordinator = coordinator,
                 )
             }
-        }
-        if (item.kind == YtFeedItem.KIND_VIDEO) {
-            Box {
-                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More") }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Queue next") },
-                        onClick = { coordinator.playNext(item); menuOpen = false },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Queue last") },
-                        onClick = { coordinator.playLater(item); menuOpen = false },
-                    )
+            if (state.continuation != null) {
+                item {
+                    if (state.loadingMore) {
+                        Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(28.dp))
+                        }
+                    } else {
+                        ShowMoreButton("Show more", expanded = false, onClick = { pager.loadMore() })
+                    }
                 }
             }
         }
     }
 }
 
-/** Thumbnail placeholder — remote image loading lands with the image-loader dependency choice. */
-@Composable
-private fun Thumb(item: YtFeedItem) {
-    Box(
-        modifier = Modifier
-            .size(92.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        val icon = when (item.kind) {
-            YtFeedItem.KIND_CHANNEL -> Icons.Default.Person
-            YtFeedItem.KIND_PLAYLIST -> Icons.Default.PlaylistPlay
-            else -> Icons.Default.QueueMusic
+private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
+    section: YtSection,
+    columns: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    coordinator: PlaybackCoordinator,
+) {
+    if (section.header != null || section.collapsible) {
+        item {
+            SectionHeader(
+                section.header,
+                collapsed = if (section.collapsible) !expanded else null,
+                onToggle = if (section.collapsible) onToggle else null,
+            )
         }
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        item.duration?.let {
+    }
+    val collapsedCount = if (columns == 1) 2 else columns
+    val shown = if (expanded) section.items else section.items.take(collapsedCount)
+    if (columns == 1) {
+        items(shown.size) { i ->
+            val item = shown[i]
+            FeedListItem(
+                item,
+                actions = itemActions(item, coordinator),
+                onClick = itemClick(item, coordinator),
+                small = section.collapsible && !expanded,
+            )
+        }
+    } else {
+        val rows = shown.chunked(columns)
+        items(rows.size) { r ->
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 9.dp),
+                horizontalArrangement = Arrangement.spacedBy(15.dp),
+            ) {
+                rows[r].forEach { item ->
+                    FeedGridCard(
+                        item,
+                        actions = itemActions(item, coordinator),
+                        onClick = itemClick(item, coordinator),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                repeat(columns - rows[r].size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+    if (section.collapsible && section.items.size > collapsedCount) {
+        item {
+            val label = if (expanded) "Show less" else "Show more (${section.items.size - collapsedCount})"
+            ShowMoreButton(label, expanded = expanded, onClick = onToggle)
+        }
+    }
+}
+
+private fun itemClick(item: YtFeedItem, coordinator: PlaybackCoordinator): (() -> Unit)? =
+    if (item.kind == YtFeedItem.KIND_VIDEO) ({ coordinator.playNow(item) }) else null
+
+private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions = ItemActions(
+    if (item.kind == YtFeedItem.KIND_VIDEO) {
+        listOf(
+            "Queue next" to { coordinator.playNext(item) },
+            "Queue last" to { coordinator.playLater(item) },
+        )
+    } else {
+        emptyList()
+    },
+)
+
+/** The feed filter chips ("All / Music / Gaming…"); tapping one reloads the feed through its token. */
+@Composable
+private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
+    if (state.chips.isEmpty()) return
+    LazyRow(
+        Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        items(state.chips) { chip ->
+            val selected = chip.token == state.selectedChipToken
             Text(
-                it,
-                style = MaterialTheme.typography.labelSmall,
+                chip.title,
+                style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
+                maxLines = 1,
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(3.dp)
-                    .background(MaterialTheme.colorScheme.scrim, RoundedCornerShape(3.dp))
-                    .padding(horizontal = 3.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
+                    .background(if (selected) DesignColors.Ink else Color.Transparent, RoundedCornerShape(999.dp))
+                    .border(1.dp, if (selected) DesignColors.Ink else DesignColors.Outline, RoundedCornerShape(999.dp))
+                    .clickable { pager.refresh(chip.token) }
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
             )
         }
     }

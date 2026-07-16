@@ -7,6 +7,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+compose.resources {
+    packageOfResClass = "ymusic.ui.resources"
+    // The shells reuse the brand assets (desktop window icon).
+    publicResClass = true
+}
+
 kotlin {
     jvm {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -52,6 +58,7 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.ui)
+                implementation(compose.components.resources)
                 implementation(Libs.Kotlinx.coroutinesCore)
             }
         }
