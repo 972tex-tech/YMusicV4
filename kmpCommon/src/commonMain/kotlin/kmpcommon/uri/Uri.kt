@@ -527,7 +527,7 @@ class Uri private constructor(
                     isDotDot(segment) -> {
                         // Go up one level - remove last segment if exists
                         if (output.isNotEmpty()) {
-                            output.removeLast()
+                            output.removeAt(output.lastIndex)
                         }
                         endsWithDotOrSlash = true
                     }

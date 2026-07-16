@@ -409,7 +409,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                 STEP_END_OBJ -> {
                     if (!expect('}')) return null
                     expectSeparator = true
-                    val objState = stack.removeLast() as ReaderObjectState
+                    val objState = stack.removeAt(stack.lastIndex) as ReaderObjectState
                     val obj = objState.end()
                     if (stack.isEmpty()) {
                         nextValueStep = STEP_PEEK_NEXT_VALUE
@@ -455,7 +455,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                     if (!expect(']')) return null
 
                     expectSeparator = true
-                    val arrayState = stack.removeLast() as ReaderArrayState
+                    val arrayState = stack.removeAt(stack.lastIndex) as ReaderArrayState
                     val arr = arrayState.end()
                     if (stack.isEmpty()) {
                         nextValueStep = STEP_PEEK_NEXT_VALUE
@@ -569,7 +569,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                 STEP_END_OBJ -> {
                     if (!expect('}')) return null
                     expectSeparator = true
-                    stack.removeLast()
+                    stack.removeAt(stack.lastIndex)
                     if (stack.isEmpty()) {
                         skipStep = STEP_PEEK_NEXT_VALUE
                         return Unit
@@ -611,7 +611,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                 STEP_END_ARRAY -> {
                     if (!expect(']')) return null
                     expectSeparator = true
-                    stack.removeLast()
+                    stack.removeAt(stack.lastIndex)
                     if (stack.isEmpty()) {
                         skipStep = STEP_PEEK_NEXT_VALUE
                         return Unit
