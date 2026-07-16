@@ -33,7 +33,9 @@ class CefManager {
                 root_cache_path = File(root, "jcef-cache").absolutePath
                 cache_path = File(root, "jcef-cache").absolutePath
                 persist_session_cookies = true
-                windowless_rendering_enabled = false
+                // The player's browser renders off-screen (ImageOsrBrowser) into a lightweight
+                // component — see :player WebViewBridge.jvm.kt.
+                windowless_rendering_enabled = true
             }
         }.build()
         app = cefApp

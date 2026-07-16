@@ -58,35 +58,41 @@ import javax.swing.OverlayLayout
  * VLCJ local + JCEF WebView engines, the shared WebView container as the video surface), and runs
  * the shared [App].
  */
-fun main() = application {
-    val cefManager = remember { CefManager() }
-    Window(
-        onCloseRequest = {
-            cefManager.dispose()
-            exitApplication()
-        },
-        title = "YMusic",
-        icon = painterResource(Res.drawable.ymusic_logo),
-        state = rememberWindowState(size = DpSize(480.dp, 860.dp)),
-    ) {
-        var graph by remember { mutableStateOf<AppGraph?>(null) }
-        var error by remember { mutableStateOf<String?>(null) }
+fun main() {
+    // Let Compose blend Swing interop content into its own layers: the OSR WebView and the VLCJ
+    // callback component are both lightweight (Java2D-painted), so with blending they stop
+    // painting over the drawer/popups. Must be set before the first ComposeWindow.
+    System.setProperty("compose.interop.blending", "true")
+    application {
+        val cefManager = remember { CefManager() }
+        Window(
+            onCloseRequest = {
+                cefManager.dispose()
+                exitApplication()
+            },
+            title = "YMusic",
+            icon = painterResource(Res.drawable.ymusic_logo),
+            state = rememberWindowState(size = DpSize(480.dp, 860.dp)),
+        ) {
+            var graph by remember { mutableStateOf<AppGraph?>(null) }
+            var error by remember { mutableStateOf<String?>(null) }
 
-        LaunchedEffect(Unit) {
-            try {
-                graph = buildGraph(cefManager)
-            } catch (t: Throwable) {
-                error = t.message ?: t.toString()
+            LaunchedEffect(Unit) {
+                try {
+                    graph = buildGraph(cefManager)
+                } catch (t: Throwable) {
+                    error = t.message ?: t.toString()
+                }
             }
-        }
 
-        when {
-            error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
-            graph == null -> Booting {
-                CircularProgressIndicator()
-                Text("Starting… (first run downloads the Chromium bundle)")
+            when {
+                error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
+                graph == null -> Booting {
+                    CircularProgressIndicator()
+                    Text("Starting… (first run downloads the Chromium bundle)")
+                }
+                else -> App(graph!!)
             }
-            else -> App(graph!!)
         }
     }
 }
