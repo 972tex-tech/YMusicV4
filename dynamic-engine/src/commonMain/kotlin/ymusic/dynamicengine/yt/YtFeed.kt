@@ -1,7 +1,5 @@
 package ymusic.dynamicengine.yt
 
-import kotlinx.serialization.Serializable
-
 /**
  * A feed entry scraped by the engine bundle — the Kotlin mirror of the `WireFeedItem` shape
  * (engine-js `logic/yt/wire.ts`). A **generic display component**, not a typed record: the UI renders
@@ -10,8 +8,10 @@ import kotlinx.serialization.Serializable
  * channel, the view count, the subscriber total…). [kind] is an open string (see [KIND_VIDEO]…) that
  * picks the thumbnail shape + which structural badge overlays; a newer remote bundle can introduce
  * kinds an older app ignores gracefully.
+ *
+ * Read off the pipe by [readFeedPage] (YtFeedReader.kt), not a reflective deserializer — hence no
+ * `@Serializable` on this or the other result shapes.
  */
-@Serializable
 data class YtFeedItem(
     val kind: String,
     /** videoId / playlistId / channelId, by [kind]. */
@@ -38,7 +38,6 @@ data class YtFeedItem(
 }
 
 /** A feed filter chip (home "All / Music / Gaming…"); [token] re-requests the filtered feed. */
-@Serializable
 data class YtChip(
     val title: String,
     val token: String? = null,
@@ -49,7 +48,6 @@ data class YtChip(
  * The single-line header above a [YtSection] (design: `[circle icon] · title · [count] · [CTA]`).
  * Every part is optional — a bare grid with no header omits it entirely.
  */
-@Serializable
 data class YtSectionHeader(
     val title: String? = null,
     val iconThumb: String? = null,
@@ -64,7 +62,6 @@ data class YtSectionHeader(
  * it responsively by screen width. The app renders each item with the (`item.kind` × [layout]) leaf
  * component — videoType{List,Grid} / channelType{List,Grid} / playlistType{List,Grid}.
  */
-@Serializable
 data class YtSection(
     val header: YtSectionHeader? = null,
     val layout: String = LAYOUT_LIST,
@@ -79,7 +76,6 @@ data class YtSection(
 }
 
 /** One page of any feed surface (browse / search / watch-next); [continuation] fetches the next. */
-@Serializable
 data class YtFeedPage(
     val sections: List<YtSection>,
     val continuation: String? = null,
@@ -89,7 +85,6 @@ data class YtFeedPage(
 )
 
 /** Localization + visitor identity carried on every InnerTube call (docs/innertube/README.md). */
-@Serializable
 data class YtContext(
     val hl: String = "en",
     val gl: String = "US",
