@@ -145,6 +145,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         mediaStore = mediaStore,
         scanLibraryFolder = { scanPickedFolder(mediaStore) },
         appVersion = "dev · jvm",
+        // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
+        surfaceScalesDown = true,
     ) { modifier ->
         SwingPanel(factory = { videoContainer }, modifier = modifier)
     }

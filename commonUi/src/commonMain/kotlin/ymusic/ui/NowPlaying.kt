@@ -74,17 +74,14 @@ internal fun formatMillis(ms: Long): String {
 /**
  * The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing.
  *
- * [surface] is the shared video container rendered as the 36dp art tile — the WebView engine only
- * plays while its surface is realized, so the mini player hosts it whenever Now Playing doesn't.
- * On desktop that surface is a heavyweight AWT child that always paints over Compose; while an
- * overlay sits above it ([surfaceShrunk]) it shrinks to a dot instead of unmounting, which keeps
- * it realized (playback continues) without drawing over the sheet.
+ * [surface] is the shared video container rendered as the 36dp art tile — only passed on platforms
+ * whose surface tolerates thumbnail size ([AppGraph.surfaceScalesDown]); it keeps a WebView source
+ * playing while Now Playing is closed.
  */
 @Composable
 fun MiniPlayer(
     coordinator: PlaybackCoordinator,
     surface: (@Composable (Modifier) -> Unit)? = null,
-    surfaceShrunk: Boolean = false,
     onExpand: () -> Unit,
 ) {
     val status by coordinator.player.status.collectAsState()
@@ -112,7 +109,7 @@ fun MiniPlayer(
                 Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(DesignColors.PlaceholderDim),
                 contentAlignment = Alignment.Center,
             ) {
-                surface?.invoke(if (surfaceShrunk) Modifier.size(1.dp) else Modifier.fillMaxSize())
+                surface?.invoke(Modifier.fillMaxSize())
             }
             Column(Modifier.weight(1f)) {
                 Text(

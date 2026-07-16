@@ -26,5 +26,12 @@ class AppGraph(
     val scanLibraryFolder: (suspend () -> String?)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
+    /**
+     * True when [playerSurface] may be shown at any size (desktop's OSR browser renders a fixed
+     * logical viewport) — the mini player then hosts it as its 36dp art tile. False for a windowed
+     * WebView (Android): the page sizes its streams to the real viewport, so a thumbnail-sized
+     * surface kills playback and the UI must keep a real-size docked preview instead.
+     */
+    val surfaceScalesDown: Boolean = false,
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 )

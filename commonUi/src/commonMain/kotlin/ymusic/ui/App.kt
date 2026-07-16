@@ -139,19 +139,24 @@ fun App(graph: AppGraph) {
                     },
                     bottomBar = {
                         Column {
-                            // Docked video preview: hosts the shared surface while Now Playing is
-                            // closed. It must keep a REAL viewport — a WebView source loads but goes
-                            // black seconds in when its surface is thumbnail-sized (the embed player
-                            // negotiates streams for the tiny viewport), so it cannot collapse into
-                            // the mini player's 36dp art tile.
-                            if (needsSurface && !nowPlayingOpen) {
+                            // While Now Playing is closed the surface must stay hosted somewhere for
+                            // a WebView source to keep playing. Where depends on the platform: a
+                            // scale-tolerant surface (desktop OSR) becomes the mini player's art
+                            // tile; a windowed WebView (Android) keeps a real-size docked preview —
+                            // thumbnail-sized, the page's stream negotiation kills playback.
+                            val hostSurface = needsSurface && !nowPlayingOpen
+                            if (hostSurface && !graph.surfaceScalesDown) {
                                 Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                                     Box(Modifier.width(240.dp).aspectRatio(16f / 9f)) {
                                         graph.playerSurface(Modifier.fillMaxSize())
                                     }
                                 }
                             }
-                            MiniPlayer(coordinator, onExpand = { nowPlayingOpen = true })
+                            MiniPlayer(
+                                coordinator,
+                                surface = if (hostSurface && graph.surfaceScalesDown) graph.playerSurface else null,
+                                onExpand = { nowPlayingOpen = true },
+                            )
                         }
                     },
                 ) { padding ->
