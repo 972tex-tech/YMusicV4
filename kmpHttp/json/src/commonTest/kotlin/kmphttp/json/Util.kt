@@ -1,8 +1,20 @@
 package kmphttp.json
 
+import kmpcommon.io.AsyncSink
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import okio.Buffer
+
+/** An [AsyncSink] that accumulates everything written into [collected] for assertions. */
+class BufferAsyncSink : AsyncSink {
+    val collected = Buffer()
+
+    override suspend fun write(buffer: Buffer, byteCount: Long) = collected.write(buffer, byteCount)
+
+    override suspend fun flush() = Unit
+
+    override fun close() = Unit
+}
 
 fun ByteArray.toJsonReader(): JsonReader {
     val bytes = this
