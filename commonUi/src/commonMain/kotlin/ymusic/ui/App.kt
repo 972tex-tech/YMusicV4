@@ -92,8 +92,8 @@ fun App(graph: AppGraph) {
 
         // The one shared video surface must be *realized* for a WebView (YouTube) source to play at
         // all — a windowed JCEF/WKWebView that is never shown never initializes, so it can't play even
-        // audio-only. Now Playing hosts it while open; otherwise dock it here so playback keeps going
-        // (the same single container just re-parents, which the engines tolerate).
+        // audio-only. Now Playing hosts it while open; otherwise the mini player's art tile does, so
+        // playback keeps going (the same single container just re-parents, which the engines tolerate).
         val queue by graph.player.queue.collectAsState()
         val status by graph.player.status.collectAsState()
         val needsSurface = queue.currentItem is PlayableItem.YtVideoId || status.videoSize != null
@@ -139,9 +139,11 @@ fun App(graph: AppGraph) {
                     },
                     bottomBar = {
                         Column {
-                            // Docked video preview: hosts the shared surface while Now Playing is closed so
-                            // a WebView source keeps playing (see needsSurface). Now Playing takes it over
-                            // when opened.
+                            // Docked video preview: hosts the shared surface while Now Playing is
+                            // closed. It must keep a REAL viewport — a WebView source loads but goes
+                            // black seconds in when its surface is thumbnail-sized (the embed player
+                            // negotiates streams for the tiny viewport), so it cannot collapse into
+                            // the mini player's 36dp art tile.
                             if (needsSurface && !nowPlayingOpen) {
                                 Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                                     Box(Modifier.width(240.dp).aspectRatio(16f / 9f)) {
@@ -149,7 +151,7 @@ fun App(graph: AppGraph) {
                                     }
                                 }
                             }
-                            MiniPlayer(coordinator) { nowPlayingOpen = true }
+                            MiniPlayer(coordinator, onExpand = { nowPlayingOpen = true })
                         }
                     },
                 ) { padding ->

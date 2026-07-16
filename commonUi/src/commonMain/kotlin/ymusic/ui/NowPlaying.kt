@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -70,9 +71,22 @@ internal fun formatMillis(ms: Long): String {
     return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
 }
 
-/** The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing. */
+/**
+ * The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing.
+ *
+ * [surface] is the shared video container rendered as the 36dp art tile — the WebView engine only
+ * plays while its surface is realized, so the mini player hosts it whenever Now Playing doesn't.
+ * On desktop that surface is a heavyweight AWT child that always paints over Compose; while an
+ * overlay sits above it ([surfaceShrunk]) it shrinks to a dot instead of unmounting, which keeps
+ * it realized (playback continues) without drawing over the sheet.
+ */
 @Composable
-fun MiniPlayer(coordinator: PlaybackCoordinator, onExpand: () -> Unit) {
+fun MiniPlayer(
+    coordinator: PlaybackCoordinator,
+    surface: (@Composable (Modifier) -> Unit)? = null,
+    surfaceShrunk: Boolean = false,
+    onExpand: () -> Unit,
+) {
     val status by coordinator.player.status.collectAsState()
     val progress by coordinator.player.progress.collectAsState()
     val queue by coordinator.player.queue.collectAsState()
@@ -94,7 +108,12 @@ fun MiniPlayer(coordinator: PlaybackCoordinator, onExpand: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(Modifier.size(36.dp).background(DesignColors.PlaceholderDim, RoundedCornerShape(8.dp)))
+            Box(
+                Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(DesignColors.PlaceholderDim),
+                contentAlignment = Alignment.Center,
+            ) {
+                surface?.invoke(if (surfaceShrunk) Modifier.size(1.dp) else Modifier.fillMaxSize())
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     coordinator.titleFor(item),
