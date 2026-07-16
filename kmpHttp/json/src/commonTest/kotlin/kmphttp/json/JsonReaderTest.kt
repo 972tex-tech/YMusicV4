@@ -365,62 +365,28 @@ class JsonReaderTest {
         assertEquals("obj", (data[4] as JsonObject)["nested"]?.jsonPrimitive?.content)
     }
 
-    // ==================== Filter tests (skip unknown keys) ====================
+    // ==================== skipValue() — the pull-API way to skip unknown keys ====================
 
     @Test
-    fun testReadWithFilterSkipUnknownKeys() = runTest {
-        val json = """{"id": 123, "unknown1": "skip", "name": "John", "unknown2": 456}"""
-        val filter = JsonStructFilter.excludeAll {
-            except("id")
-            except("name")
+    fun skipValue_skips_unknown_scalars_objects_and_arrays() = runTest {
+        // Unknown keys of every value kind, including a trailing one (skipping the last key must
+        // still leave the object closable with '}', not ',').
+        val json = """{"id": 1, "obj": {"a": 1, "b": 2}, "arr": [1, [2], {"c": 3}], "name": "test", "z": "last"}"""
+        val reader = json.toJsonReader()
+        var id = 0
+        var name = ""
+        reader.beginObject()
+        while (reader.hasNextObjectKey()) {
+            when (reader.nextKey()) {
+                "id" -> id = reader.nextValue().jsonPrimitive.int
+                "name" -> name = reader.nextValue().jsonPrimitive.content
+                else -> reader.skipValue()
+            }
         }
-        val obj = json.toJsonReader().readObject(filter)
+        reader.endObject()
+        reader.expectEof()
 
-        assertEquals(2, obj.size)
-        assertEquals(123, obj["id"]?.jsonPrimitive?.int)
-        assertEquals("John", obj["name"]?.jsonPrimitive?.content)
-    }
-
-    @Test
-    fun testReadWithFilterSkipNestedObjects() = runTest {
-        val json = """{"id": 1, "nested": {"a": 1, "b": 2}, "name": "test"}"""
-        val filter = JsonStructFilter.excludeAll {
-            except("id")
-            except("name")
-        }
-        val obj = json.toJsonReader().readObject(filter)
-
-        assertEquals(2, obj.size)
-        assertEquals(1, obj["id"]?.jsonPrimitive?.int)
-        assertEquals("test", obj["name"]?.jsonPrimitive?.content)
-    }
-
-    @Test
-    fun testReadWithFilterSkipArrays() = runTest {
-        val json = """{"id": 1, "arr": [1, 2, 3], "name": "test"}"""
-        val filter = JsonStructFilter.excludeAll {
-            except("id")
-            except("name")
-        }
-        val obj = json.toJsonReader().readObject(filter)
-
-        assertEquals(2, obj.size)
-        assertEquals(1, obj["id"]?.jsonPrimitive?.int)
-        assertEquals("test", obj["name"]?.jsonPrimitive?.content)
-    }
-
-    @Test
-    fun testReadWithFilterLastKeySkipped() = runTest {
-        // After skipping the last unknown key, expect '}' not ','
-        val json = """{"id": 1, "name": "test", "unknown": "last"}"""
-        val filter = JsonStructFilter.excludeAll {
-            except("id")
-            except("name")
-        }
-        val obj = json.toJsonReader().readObject(filter)
-
-        assertEquals(2, obj.size)
-        assertEquals(1, obj["id"]?.jsonPrimitive?.int)
-        assertEquals("test", obj["name"]?.jsonPrimitive?.content)
+        assertEquals(1, id)
+        assertEquals("test", name)
     }
 }

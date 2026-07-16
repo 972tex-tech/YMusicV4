@@ -3,7 +3,6 @@ package kmphttp.json.benchmark
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import kmphttp.json.JsonReader
-import kmphttp.json.JsonStructFilter
 import kotlinx.benchmark.Benchmark
 import kotlinx.benchmark.BenchmarkTimeUnit
 import kotlinx.benchmark.OutputTimeUnit
@@ -301,12 +300,7 @@ abstract class BaseDecodeBenchmark {
         val source = BufferedAsyncSource(AsyncSource.EMPTY)
         parseToClassJsonBuffer.copyTo(source.buffer)
         val reader = JsonReader(source)
-        val obj = reader.readObject(JsonStructFilter.excludeAll {
-            except("id")
-            except("name")
-            except("email")
-            except("active")
-        })
+        val obj = reader.readObject()
         UserData(obj["id"]!!.jsonPrimitive.int, obj["name"]!!.jsonPrimitive.toString(), obj["email"]!!.jsonPrimitive.toString(), obj["active"]!!.jsonPrimitive.boolean).also {
             check(it.id == 123) { "parseToClass id should be 123, got ${it.id}" }
         }

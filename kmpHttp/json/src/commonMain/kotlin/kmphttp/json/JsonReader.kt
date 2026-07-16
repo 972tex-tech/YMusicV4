@@ -48,8 +48,6 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
         private const val STEP_NEXT_STRING: Byte = 9
         private const val STEP_NEXT_UNQUOTED_LITERAL: Byte = 10
 
-        private const val STEP_SKIP_VALUE: Byte = 11
-
         private fun isWhiteSpace(char: Byte): Boolean {
             return char == ' '.code.toByte()
                 || char == '\n'.code.toByte()
@@ -331,10 +329,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
      * Non-recursive, non-suspend nextValue implementation with predictable state machine code.
      */
     @OptIn(ExperimentalSerializationApi::class)
-    private fun nextValueInternal(
-        filter: JsonStructFilter? = null,
-        expectType: JsonTokenType? = null
-    ): JsonElement? {
+    private fun nextValueInternal(expectType: JsonTokenType? = null): JsonElement? {
         val stack = valueStack
         do {
             when (nextValueStep) {
@@ -355,8 +350,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
 
                 STEP_BEGIN_OBJ -> {
                     if (!expect('{')) return null
-                    val nestedFilter = if (stack.isEmpty()) filter else stack.last().getFilter()
-                    stack.add(ReaderObjectState(nestedFilter))
+                    stack.add(ReaderObjectState())
                     expectSeparator = false
                     nextValueStep = STEP_OBJ_CHECK_NEXT_KEY
                 }
@@ -383,21 +377,11 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
 
                 STEP_OBJ_READ_NEXT_KEY -> {
                     val key = readString() ?: return null
-                    val objState = stack.last() as ReaderObjectState
-                    if (objState.pushKey(key)) {
-                        nextValueStep = if (expect(':')) {
-                            STEP_PEEK_NEXT_VALUE
-                        } else {
-                            STEP_OBJ_READ_COLON
-                        }
+                    (stack.last() as ReaderObjectState).pushKey(key)
+                    nextValueStep = if (expect(':')) {
+                        STEP_PEEK_NEXT_VALUE
                     } else {
-                        checkSkipValueCompleted()
-                        skipStep = if (expect(':')) {
-                            STEP_PEEK_NEXT_VALUE
-                        } else {
-                            STEP_OBJ_READ_COLON
-                        }
-                        nextValueStep = STEP_SKIP_VALUE
+                        STEP_OBJ_READ_COLON
                     }
                 }
 
@@ -420,8 +404,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
 
                 STEP_ARRAY_BEGIN -> {
                     if (!expect('[')) return null
-                    val nestedFilter = if (stack.isEmpty()) filter else stack.last().getFilter()
-                    stack.add(ReaderArrayState(nestedFilter))
+                    stack.add(ReaderArrayState())
                     expectSeparator = false
                     nextValueStep = STEP_ARRAY_CHECK_NEXT_VALUE
                 }
@@ -443,12 +426,7 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                             continue
                         }
                     }
-                    nextValueStep = if ((stack.last() as ReaderArrayState).acceptNextValue()) {
-                        STEP_PEEK_NEXT_VALUE
-                    } else {
-                        checkSkipValueCompleted()
-                        STEP_SKIP_VALUE
-                    }
+                    nextValueStep = STEP_PEEK_NEXT_VALUE
                 }
 
                 STEP_END_ARRAY -> {
@@ -488,15 +466,6 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
                         return jsonLiteral
                     }
                     nextValueStep = stack.last().pushValue(jsonLiteral)
-                }
-
-                STEP_SKIP_VALUE -> {
-                    skipValueInternal() ?: return null
-                    expectSeparator = true
-                    val last = stack.last()
-                    nextValueStep =
-                        if (last is ReaderObjectState) STEP_OBJ_CHECK_NEXT_KEY
-                        else STEP_ARRAY_CHECK_NEXT_VALUE
                 }
 
                 else -> throw IllegalStateException("Invalid nv step $nextValueStep")
@@ -644,27 +613,20 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
         } while (true)
     }
 
-    suspend fun readObject(filter: JsonStructFilter? = null): JsonObject {
-        return nextValue(filter, JsonTokenType.OBJECT) as JsonObject
+    suspend fun readObject(): JsonObject {
+        return nextValue(JsonTokenType.OBJECT) as JsonObject
     }
 
-    suspend fun readArray(filter: JsonStructFilter? = null): JsonArray {
-        return nextValue(filter, JsonTokenType.ARRAY) as JsonArray
+    suspend fun readArray(): JsonArray {
+        return nextValue(JsonTokenType.ARRAY) as JsonArray
     }
 
     suspend fun nextValue(expectType: JsonTokenType? = null): JsonElement {
-        return nextValue(null, expectType)
-    }
-
-    private suspend inline fun nextValue(
-        filter: JsonStructFilter? = null,
-        expectType: JsonTokenType? = null
-    ): JsonElement {
         checkNextValueCompleted()
-        var value = nextValueInternal(filter, expectType)
+        var value = nextValueInternal(expectType)
         while (value == null) {
             tryLoadMore()
-            value = nextValueInternal(filter, expectType)
+            value = nextValueInternal(expectType)
         }
         return value
     }
@@ -779,24 +741,17 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
 
     /** Stack entry for non-recursive parsing */
     sealed interface ReaderState {
-        fun getFilter(): JsonStructFilter?
         fun pushValue(value: JsonElement): Byte
         fun end(): JsonElement
     }
 
-    class ReaderObjectState(private val filter: JsonStructFilter?) : ReaderState {
+    class ReaderObjectState : ReaderState {
         private val map = mutableMapOf<String, JsonElement>()
         private var pendingKey: String? = null
 
-        override fun getFilter(): JsonStructFilter? = filter?.nested(pendingKey ?: "")
-
-        fun pushKey(key: String): Boolean {
+        fun pushKey(key: String) {
             check(this.pendingKey == null)
-            if (filter?.include(key) != false) {
-                this.pendingKey = key
-                return true
-            }
-            return false
+            this.pendingKey = key
         }
 
         override fun pushValue(value: JsonElement): Byte {
@@ -809,18 +764,8 @@ class JsonReader(val source: BufferedAsyncSource, val lenient: Boolean = false) 
         override fun end() = JsonObject(map)
     }
 
-    class ReaderArrayState(private val filter: JsonStructFilter?) : ReaderState {
+    class ReaderArrayState : ReaderState {
         private val list = mutableListOf<JsonElement>()
-        private var index = 0
-
-        override fun getFilter(): JsonStructFilter? = filter?.nested(index.toString())
-
-        /** Returns true if should read value, false if should skip */
-        fun acceptNextValue(): Boolean {
-            val accept = filter?.include(index) != false
-            index++
-            return accept
-        }
 
         override fun pushValue(value: JsonElement): Byte {
             list.add(value)
