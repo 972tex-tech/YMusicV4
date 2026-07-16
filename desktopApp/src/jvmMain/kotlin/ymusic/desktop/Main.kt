@@ -23,7 +23,6 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
-import kmphttp.InMemoryCookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
@@ -90,8 +89,11 @@ fun main() = application {
 
 private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val dataDir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
-    // A live cookie jar (NOT NO_COOKIES) so the engine carries YouTube's anonymous session cookies.
-    val httpClient = KmpHttpClient.create { cookieJar = InMemoryCookieJar() }
+    // Init CEF first: the engine's cookie jar is backed by JCEF's global cookie store, which needs
+    // CefApp initialized before the first request. So the scraping engine and the WebView player
+    // share one cookie store (anonymous visitor identity + on-disk persistence), like Android.
+    val cefClient = cefManager.createClient()
+    val httpClient = KmpHttpClient.create { cookieJar = JcefCookieJar() }
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             httpClient,
@@ -105,7 +107,6 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
     }
 
-    val cefClient = cefManager.createClient()
     // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
     // the WebView adds its browser, the VLCJ engine adds its video component, each toggling its own
     // visibility so only the playing engine's picture shows.
