@@ -22,6 +22,10 @@ class CefManager {
         val cefApp = CefAppBuilder().apply {
             setInstallDir(File(root, "jcef-bundle"))
             setProgressHandler(ConsoleProgressHandler())
+            // Chromium's desktop autoplay policy silently rejects unmuted play() without a user
+            // gesture *inside the browser* — the app's own controls never count as one. Android's
+            // WebView equivalent is mediaPlaybackRequiresUserGesture = false.
+            addJcefArgs("--autoplay-policy=no-user-gesture-required")
             setAppHandler(object : MavenCefAppHandlerAdapter() {
                 override fun onBeforeTerminate(): Boolean = true
             })
