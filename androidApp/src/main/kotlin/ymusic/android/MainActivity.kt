@@ -60,15 +60,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun buildGraph(): AppGraph {
-        // Back the engine's cookie jar with the WebView CookieManager so the scraping HTTP and the
-        // WebView YouTube player share ONE cookie store (as legacy YMusic did) — the anonymous
-        // visitor identity (VISITOR_INFO1_LIVE / YSC / consent) is unified and persists across launches.
-        val httpClient = KmpHttpClient.create { cookieJar = WebViewCookieJar() }
+        // The cookie store is the WebView CookieManager — shared with the WebView YouTube player,
+        // persistent across launches (as legacy YMusic did). The engine's OWN HTTP client carries
+        // NO jar: the engine JS cooks every Cookie header itself against this store (cookie/get|set
+        // protocol), so cookie policy lives in the remotely-updatable bundle.
+        val platformCookies = WebViewCookieJar()
+        val engineClient = KmpHttpClient.create { }
         val engines = DynamicEngineManager(
-            httpClient,
+            engineClient,
             appVersion = 1,
             logger = LogcatLogger(),
             cacheStore = androidEngineCacheStore(applicationContext),
+            cookieJar = platformCookies,
         )
         engines.start()
 
@@ -90,7 +93,9 @@ class MainActivity : ComponentActivity() {
                             WebViewPlayerContext(this, videoContainer),
                             engineJs = js,
                             appVersion = 1,
-                            httpClient = httpClient,
+                            // The embed fetch is a browser-identity request — it rides the platform
+                            // cookie store like the WebView's own traffic (unlike the engine client).
+                            httpClient = KmpHttpClient.create { cookieJar = platformCookies },
                         )
                     }
                 },

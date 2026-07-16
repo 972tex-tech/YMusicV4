@@ -99,16 +99,19 @@ fun main() {
 
 private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val dataDir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
-    // Init CEF first: the engine's cookie jar is backed by JCEF's global cookie store, which needs
-    // CefApp initialized before the first request. So the scraping engine and the WebView player
-    // share one cookie store (anonymous visitor identity + on-disk persistence), like Android.
+    // Init CEF first: the cookie store is JCEF's global one (needs CefApp initialized before the
+    // first access), shared with the WebView player and persisted on disk. The engine's OWN HTTP
+    // client carries NO jar — the engine JS cooks every Cookie header itself against this store
+    // (cookie/get|set protocol) so cookie policy lives in the remotely-updatable bundle.
     val cefClient = cefManager.createClient()
-    val httpClient = KmpHttpClient.create { cookieJar = JcefCookieJar() }
+    val platformCookies = JcefCookieJar()
+    val engineClient = KmpHttpClient.create { }
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
-            httpClient,
+            engineClient,
             appVersion = 1,
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
+            cookieJar = platformCookies,
         )
     }
     engines.start()
@@ -132,7 +135,9 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                         WebViewPlayerContext(cefClient, videoContainer),
                         engineJs = webViewJs,
                         appVersion = 1,
-                        httpClient = httpClient,
+                        // The embed fetch is a browser-identity request — it rides the platform
+                        // cookie store like the WebView's own traffic (unlike the engine client).
+                        httpClient = KmpHttpClient.create { cookieJar = platformCookies },
                     )
                 },
             ),
