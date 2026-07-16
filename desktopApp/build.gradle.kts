@@ -21,6 +21,7 @@ kotlin {
                 implementation(project(":media-scanner"))
                 implementation(compose.desktop.currentOs)
                 implementation(compose.material3)
+                implementation(compose.components.resources)
                 implementation(Libs.Jcef.maven)
                 implementation(project(":kmpHttp:core"))
                 implementation(Libs.Kotlinx.coroutinesCore)

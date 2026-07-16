@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.withContext
 import okio.FileSystem
+import org.jetbrains.compose.resources.painterResource
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
 import ymusic.mediascanner.FfmpegMetadataExtractor
@@ -44,6 +45,8 @@ import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ui.resources.Res
+import ymusic.ui.resources.ymusic_logo
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
@@ -63,6 +66,7 @@ fun main() = application {
             exitApplication()
         },
         title = "YMusic",
+        icon = painterResource(Res.drawable.ymusic_logo),
         state = rememberWindowState(size = DpSize(480.dp, 860.dp)),
     ) {
         var graph by remember { mutableStateOf<AppGraph?>(null) }
@@ -134,6 +138,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         player,
         mediaStore = mediaStore,
         scanLibraryFolder = { scanPickedFolder(mediaStore) },
+        appVersion = "dev · jvm",
     ) { modifier ->
         SwingPanel(factory = { videoContainer }, modifier = modifier)
     }

@@ -97,7 +97,12 @@ class MainActivity : ComponentActivity() {
             ),
         )
 
-        return AppGraph(engines, player) { modifier ->
+        val versionName = packageManager.getPackageInfo(packageName, 0).versionName
+        return AppGraph(
+            engines,
+            player,
+            appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
+        ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the
             // new host before disposing the old one — and Android's addView does NOT auto-detach
