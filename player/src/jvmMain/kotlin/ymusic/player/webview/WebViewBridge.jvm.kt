@@ -3,6 +3,7 @@ package ymusic.player.webview
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.browser.CefMessageRouter
+import org.cef.browser.ImageOsrBrowser
 import org.cef.callback.CefCallback
 import org.cef.callback.CefQueryCallback
 import org.cef.handler.CefLifeSpanHandlerAdapter
@@ -17,6 +18,7 @@ import org.cef.misc.StringRef
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import ymusic.player.WebViewPlayerContext
+import java.awt.Dimension
 import javax.swing.SwingUtilities
 import kotlin.math.min
 
@@ -168,8 +170,12 @@ private class JcefWebViewBridge(
         client.addLifeSpanHandler(lifeSpanHandler)
         client.addMessageRouter(router)
         client.addRequestHandler(requestHandler)
-        browser = client.createBrowser("about:blank", false, false)
+        // Off-screen rendering into a lightweight component: real z-order under Compose, and the
+        // page always sees a real-size viewport regardless of how small the UI draws the surface
+        // (needs windowless_rendering_enabled on CefApp — the shell's CefManager sets it).
+        browser = ImageOsrBrowser(client, "about:blank", Dimension(640, 360))
         container.add(browser.uiComponent)
+        browser.createImmediately()
     }
 
     override fun load(html: String, baseUrl: String) {
