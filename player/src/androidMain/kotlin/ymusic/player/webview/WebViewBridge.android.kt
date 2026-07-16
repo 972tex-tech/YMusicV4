@@ -1,13 +1,23 @@
 package ymusic.player.webview
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import ymusic.player.WebViewPlayerContext
+import java.io.ByteArrayInputStream
+import kotlin.random.Random
 
 /**
  * Android [WebViewBridge]: a `WebView` in the caller's container, the `ymixChannelAndroid` JS
@@ -44,12 +54,29 @@ private class AndroidWebViewBridge(
     private val webView = object : WebView(androidContext) {
         override fun onWindowVisibilityChanged(visibility: Int) = super.onWindowVisibilityChanged(VISIBLE)
         override fun getWindowVisibility(): Int = VISIBLE
+        public override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+            super.onSizeChanged(w, h, ow, oh)
+        }
     }.apply {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
         addJavascriptInterface(JsInterface(mainHandler, sink), "ymixChannelAndroid")
+        // Seed a non-zero, slightly-randomized size (like legacy WebViewYtPlayer) so the page viewport
+        // is never 0×0 before real layout — a 0-size webview reports innerWidth/innerHeight == 0 and gets
+        // throttled/paused — and so it doesn't report a fixed 1024×500 fingerprint. ~300×200 dp + jitter.
+        val density = resources.displayMetrics.density
+        onSizeChanged(
+            ((300f + 20f * Random.nextFloat()) * density).toInt(),
+            ((200f + 10f * Random.nextFloat()) * density).toInt(),
+            0,
+            0,
+        )
+        webViewClient = WebViewClientImpl()
+        webChromeClient = WebChromeClientImpl()
     }
+
+    override val userAgent: String = webView.settings.userAgentString
 
     init {
         // The YouTube embed is cross-origin to googlevideo.com and the auth/session hosts, so its
@@ -92,6 +119,48 @@ private class AndroidWebViewBridge(
         @JavascriptInterface
         fun remoteDebug(scope: String, payload: String) {
             // Diagnostics channel — not part of the MediaEngine surface; ignored for now.
+        }
+    }
+
+    private class WebViewClientImpl : WebViewClient() {
+        override fun shouldOverrideUrlLoading(
+            view: WebView?,
+            request: WebResourceRequest?
+        ): Boolean {
+            return true
+        }
+
+        override fun shouldInterceptRequest(
+            view: WebView,
+            request: WebResourceRequest
+        ): WebResourceResponse? {
+            val url = request.url.toString()
+            if (url.matches(Regex(".*\\.js([?#].*)*$")) && !url.contains("_doNotBlock=42")) {
+                return WebResourceResponse(
+                    "text/plain",
+                    null,
+                    404,
+                    "Not found",
+                    emptyMap(),
+                    ByteArrayInputStream(
+                        byteArrayOf(),
+                    ),
+                )
+            }
+            return super.shouldInterceptRequest(view, request)
+        }
+    }
+
+    private class WebChromeClientImpl : WebChromeClient() {
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+            println("[${consoleMessage.messageLevel()}] ${consoleMessage.message()}\nSource: ${consoleMessage.sourceId()} (${consoleMessage.lineNumber()})")
+            return true
+        }
+
+        override fun getDefaultVideoPoster(): Bitmap? {
+            val dummyPoster = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            dummyPoster.eraseColor(Color.BLACK)
+            return dummyPoster
         }
     }
 }

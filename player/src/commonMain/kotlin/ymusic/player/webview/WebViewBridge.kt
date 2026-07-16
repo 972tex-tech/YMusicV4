@@ -20,6 +20,8 @@ internal interface WebViewBridge {
      */
     val bootPrelude: String get() = ""
 
+    val userAgent: String
+
     /**
      * Load [html] as the document at [baseUrl] (origin) — the injected bundle runs at document-start.
      * The bridge brings its WebView to the front of the shared container here (this engine is becoming

@@ -1,8 +1,13 @@
 package ymusic.player.webview
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSURL
+import platform.WebKit.WKContentRuleListStore
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUserContentController
@@ -37,7 +42,26 @@ internal class AppleWebViewBridge(sink: WebViewMessageSink) : WebViewBridge {
      * macOS WKWebView (window off-screen keeps `visibilityState:"visible"`; 0×0 / occlusion / alpha=0
      * do not).
      */
-    val nativeView: WKWebView = WKWebView(frame = CGRectMake(0.0, 0.0, 320.0, 180.0), configuration = config)
+    // One consistent client identity: set the WKWebView's UA and use the SAME value for the embed fetch,
+    // so the WebView's own requests and the fetch match — BotGuard/attestation requires it. WKWebView
+    // exposes no synchronous default-UA getter in Kotlin/Native, so we control the UA rather than read it.
+    override val userAgent: String = USER_AGENT
+
+    val nativeView: WKWebView =
+        WKWebView(frame = CGRectMake(0.0, 0.0, 320.0, 180.0), configuration = config)
+            .apply { customUserAgent = USER_AGENT }
+
+    init {
+        // Block any *.js the content-script hook didn't route through the transform pipeline (which
+        // appends _doNotBlock=42) — the un-transformed player must not run (matches Android + JCEF).
+        // WKContentRuleList compiles async; it's applied well before the first load().
+        WKContentRuleListStore.defaultStore()?.compileContentRuleListForIdentifier(
+            "ymixBlockUntransformedJs",
+            JS_BLOCK_RULE_JSON,
+        ) { list, _ ->
+            if (list != null) config.userContentController.addContentRuleList(list)
+        }
+    }
 
     override fun load(html: String, baseUrl: String) {
         nativeView.loadHTMLString(html, NSURL(string = baseUrl))
@@ -70,5 +94,24 @@ internal class AppleWebViewBridge(sink: WebViewMessageSink) : WebViewBridge {
         // Matches webkit.messageHandlers.ymixChanelIos in the injected bundle (the single 'n' is the
         // bundle's spelling).
         const val HANDLER_NAME = "ymixChanelIos"
+
+        // A current macOS Safari UA (the active Apple target; iOS is a spike). Both the WKWebView and the
+        // embed fetch use it, so the client identity is consistent for BotGuard/attestation.
+        const val USER_AGENT =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
+                "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+
+        // Content-rule-list JSON: block every *.js, then ignore-previous for any URL carrying
+        // _doNotBlock=42 (the marker the content-script hook appends to its transformed re-fetches).
+        val JS_BLOCK_RULE_JSON: String = buildJsonArray {
+            addJsonObject {
+                putJsonObject("trigger") { put("url-filter", ".*\\.js(\\?.*)*$") }
+                putJsonObject("action") { put("type", "block") }
+            }
+            addJsonObject {
+                putJsonObject("trigger") { put("url-filter", "_doNotBlock=42") }
+                putJsonObject("action") { put("type", "ignore-previous-rules") }
+            }
+        }.toString()
     }
 }

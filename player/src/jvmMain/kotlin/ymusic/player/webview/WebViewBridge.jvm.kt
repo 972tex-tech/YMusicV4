@@ -35,6 +35,18 @@ internal actual fun createWebViewBridge(
 
 private const val EMBED_URL = "https://www.youtube.com/embed"
 
+/** Internal channel the browser posts its `navigator.userAgent` back on (see [JcefWebViewBridge]). */
+private const val UA_CHANNEL = "__ua"
+
+/** Chrome-family fallback (JCEF 126 = Chrome 126) used only until the real UA round-trips from the page. */
+private const val DEFAULT_USER_AGENT =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/126.0.0.0 Safari/537.36"
+
+/** Any `*.js` URL (optionally with `?`/`#` suffix) — blocked unless it carries [DO_NOT_BLOCK]. */
+private val JS_URL_REGEX = Regex(".*\\.js([?#].*)*$")
+private const val DO_NOT_BLOCK = "_doNotBlock=42"
+
 private class JcefWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
@@ -70,7 +82,11 @@ private class JcefWebViewBridge(
                     if (sep >= 0) {
                         val channel = msg.substring(0, sep)
                         val payload = msg.substring(sep + 1)
-                        SwingUtilities.invokeLater { sink.onMessage(channel, payload) }
+                        if (channel == UA_CHANNEL) {
+                            cachedUserAgent = payload
+                        } else {
+                            SwingUtilities.invokeLater { sink.onMessage(channel, payload) }
+                        }
                     }
                     callback?.success("")
                     return true
@@ -90,8 +106,16 @@ private class JcefWebViewBridge(
             requestInitiator: String?,
             disableDefaultHandling: BoolRef?,
         ): CefResourceRequestHandler? {
-            val html = pendingHtml ?: return null
             val url = request?.url ?: return null
+            // Block any *.js the content-script hook didn't route through the transform pipeline (which
+            // appends _doNotBlock=42) — the un-transformed player must not run (matches Android + legacy).
+            if (url.matches(JS_URL_REGEX) && !url.contains(DO_NOT_BLOCK)) {
+                return object : CefResourceRequestHandlerAdapter() {
+                    override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?) =
+                        BlockedResourceHandler()
+                }
+            }
+            val html = pendingHtml ?: return null
             // Only the initial main-frame navigation to the embed URL is served the injected HTML;
             // YouTube's later /watch navigations fall through to the network.
             if (isNavigation && (url == EMBED_URL || url == "$EMBED_URL/")) {
@@ -119,6 +143,16 @@ private class JcefWebViewBridge(
         override fun onAfterCreated(created: CefBrowser?) {
             SwingUtilities.invokeLater {
                 browserCreated = true
+                // Capture the JCEF browser's real UA (about:blank has navigator.userAgent) so the embed
+                // fetch matches the WebView's own requests — BotGuard/attestation needs one consistent
+                // client identity. Round-trips via cefQuery into [UA_CHANNEL]; [DEFAULT_USER_AGENT]
+                // covers the brief window before it lands.
+                browser.executeJavaScript(
+                    "window.cefQuery({request:'$UA_CHANNEL|'+navigator.userAgent," +
+                        "persistent:false,onSuccess:function(){},onFailure:function(){}})",
+                    browser.url ?: EMBED_URL,
+                    0,
+                )
                 pendingUrl?.let { url ->
                     pendingUrl = null
                     browser.loadURL(url)
@@ -126,6 +160,9 @@ private class JcefWebViewBridge(
             }
         }
     }
+
+    @Volatile private var cachedUserAgent: String = DEFAULT_USER_AGENT
+    override val userAgent: String get() = cachedUserAgent
 
     init {
         client.addLifeSpanHandler(lifeSpanHandler)
@@ -194,5 +231,26 @@ private class StringResourceHandler(html: String) : CefResourceHandlerAdapter() 
         offset += n
         bytesRead?.set(n)
         return true
+    }
+}
+
+/** Serves an empty `404` — used to block un-transformed `*.js` (see the request handler). */
+private class BlockedResourceHandler : CefResourceHandlerAdapter() {
+    override fun processRequest(request: CefRequest?, callback: CefCallback?): Boolean {
+        callback?.Continue()
+        return true
+    }
+
+    override fun getResponseHeaders(response: CefResponse?, responseLength: IntRef?, redirectUrl: StringRef?) {
+        response?.let {
+            it.mimeType = "text/plain"
+            it.status = 404
+        }
+        responseLength?.set(0)
+    }
+
+    override fun readResponse(dataOut: ByteArray?, bytesToRead: Int, bytesRead: IntRef?, callback: CefCallback?): Boolean {
+        bytesRead?.set(0)
+        return false
     }
 }

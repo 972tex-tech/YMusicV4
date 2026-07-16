@@ -215,7 +215,9 @@ internal class WebViewPlayerImpl(
     }
 
     private suspend fun fetchEmbedHtml(): String = withContext(Dispatchers.Default) {
-        val resp = httpClient.execute(RequestBuilder().url(EMBED_URL).build())
+        val resp = httpClient.execute(RequestBuilder()
+            .header("User-Agent", bridge.userAgent)
+            .url(EMBED_URL).build())
         try {
             check(resp.isSuccessful) { "HTTP ${resp.code}" }
             resp.body.utf8String()
