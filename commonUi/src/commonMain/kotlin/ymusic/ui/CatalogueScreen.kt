@@ -125,7 +125,67 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        item { CatLabel("Key spacings (dp)") }
+        item {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                spacingTokens.forEach { (value, label) -> SpacingBar(value, label) }
+            }
+        }
+
+        item { CatLabel("Corner radii (dp)") }
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                radiusTokens.forEach { (value, label) -> RadiusBox(value, label) }
+            }
+        }
+
         item { Box(Modifier.height(40.dp)) }
+    }
+}
+
+/** A bar exactly [value] dp wide — the spacing at true size, next to its name. */
+@Composable
+private fun SpacingBar(value: Int, label: String) {
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .width(value.dp)
+                .height(14.dp)
+                .background(DesignColors.Accent.copy(alpha = 0.4f)),
+        )
+        Text(
+            "  $value · $label",
+            style = TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = DesignColors.InkSoft),
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun RadiusBox(value: Int, label: String) {
+    val shape = RoundedCornerShape(if (value == PILL_RADIUS) 999.dp else value.dp)
+    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(width = 64.dp, height = 40.dp)
+                .background(DesignColors.Placeholder, shape)
+                .border(1.dp, DesignColors.Outline, shape),
+        )
+        Text(
+            if (value == PILL_RADIUS) "pill · $label" else "$value · $label",
+            style = TextStyle(fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = DesignColors.InkSoft),
+            modifier = Modifier.padding(top = 3.dp),
+            maxLines = 1,
+        )
     }
 }
 
@@ -223,6 +283,29 @@ private val mockActions = ItemActions(
         "Add to queue" to {},
         "Download" to {},
     ),
+)
+
+// The recurring dp values of the design language (design/final CSS), largest first.
+private val spacingTokens: List<Pair<Int, String>> = listOf(
+    16 to "screen edge padding",
+    15 to "grid gap",
+    14 to "section header top",
+    12 to "list row gap (thumb - text)",
+    9 to "header items gap",
+    8 to "chip gap",
+    7 to "list row vertical / header bottom",
+    3 to "title - subtitle gap",
+)
+
+private const val PILL_RADIUS = -1
+
+private val radiusTokens: List<Pair<Int, String>> = listOf(
+    13 to "logo tile",
+    10 to "list thumb",
+    9 to "grid thumb",
+    8 to "mini art",
+    3 to "badge",
+    PILL_RADIUS to "chips/CTA",
 )
 
 private val colorSwatches: List<Pair<String, Color>> = listOf(
