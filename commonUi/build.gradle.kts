@@ -54,6 +54,7 @@ kotlin {
                 api(project(":dynamic-engine"))
                 api(project(":media-store"))
                 api(project(":image-loader"))
+                api(project(":settings"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material3)

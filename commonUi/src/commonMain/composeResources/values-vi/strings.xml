@@ -1,0 +1,89 @@
+<resources>
+    <string name="section_discover">Khám phá</string>
+    <string name="section_yt_music">YT Music (Beta)</string>
+    <string name="section_library">Thư viện</string>
+    <string name="section_rewind">Danh sách phát Rewind</string>
+    <string name="section_downloads">Trình quản lý tải xuống</string>
+    <string name="section_settings">Cài đặt</string>
+    <string name="section_donate">Ủng hộ</string>
+    <string name="section_facebook">Thích chúng tôi trên Facebook</string>
+    <string name="section_feedback">Phản hồi</string>
+    <string name="coming_soon">%1$s — sẽ có trong bản cập nhật sau</string>
+
+    <string name="tab_home">Trang chủ</string>
+    <string name="tab_music">Âm nhạc</string>
+    <string name="tab_recommended">Đề xuất</string>
+    <string name="tab_top_tracks">Bài hát nổi bật</string>
+    <string name="tab_account_library">Thư viện</string>
+    <string name="discover_needs_account">%1$s phản chiếu tài khoản YouTube của bạn — sẽ có khi đăng nhập</string>
+    <string name="discover_no_anonymous_home">YouTube không cung cấp trang chủ khi chưa đăng nhập — hãy dùng Tìm kiếm, hoặc đăng nhập (sắp có)</string>
+
+    <string name="feed_empty">Không có gì ở đây</string>
+    <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>
+    <string name="retry">Thử lại</string>
+    <string name="show_more">Xem thêm</string>
+    <string name="show_more_n">Xem thêm (%1$d)</string>
+    <string name="show_less">Thu gọn</string>
+    <string name="queue_next">Phát tiếp theo</string>
+    <string name="queue_last">Thêm vào cuối hàng đợi</string>
+    <string name="badge_live">TRỰC TIẾP</string>
+
+    <string name="search_youtube">Tìm kiếm trên YouTube</string>
+    <string name="search_type_to_search">Nhập để tìm kiếm</string>
+    <string name="search_no_results">Không có kết quả</string>
+
+    <string name="library_tab_folders">Thư mục</string>
+    <string name="library_tab_playlists">Danh sách phát</string>
+    <string name="library_tab_songs">Bài hát</string>
+    <string name="library_tab_artists">Nghệ sĩ</string>
+    <string name="library_tab_albums">Album</string>
+    <string name="library_tab_genres">Thể loại</string>
+    <string name="library_unavailable">Nền tảng này chưa hỗ trợ thư viện cục bộ</string>
+    <string name="library_empty">Thư viện của bạn đang trống</string>
+    <string name="library_scan_folder">+  Quét thư mục</string>
+    <string name="library_add_folder">+  Thêm thư mục</string>
+    <string name="library_scanning">Đang quét…</string>
+    <string name="library_scan_failed">Quét thất bại (%1$s)</string>
+    <string name="library_empty_folder">Thư mục trống</string>
+    <string name="library_crumb_root">Thư viện</string>
+    <string name="library_folder">Thư mục</string>
+    <string name="library_no_playlists">Chưa có danh sách phát nào</string>
+    <string name="unknown_artist">Nghệ sĩ không xác định</string>
+    <string name="unknown_album">Album không xác định</string>
+    <string name="unknown_genre">Thể loại không xác định</string>
+    <plurals name="n_songs">
+        <item quantity="other">%1$d bài hát</item>
+    </plurals>
+
+    <string name="audio_only">Chỉ phát âm thanh</string>
+    <string name="captions_off">Tắt phụ đề</string>
+    <string name="up_next">Tiếp theo</string>
+    <string name="remove_from_queue">Xóa khỏi hàng đợi</string>
+    <string name="sleep_off_remaining">Tắt (còn %1$s)</string>
+    <string name="sleep_minutes">%1$d phút</string>
+    <string name="playback_failed">Phát thất bại (%1$s)</string>
+
+
+    <string name="settings_language">Ngôn ngữ</string>
+    <string name="settings_language_system">Theo hệ thống</string>
+
+    <string name="cd_menu">Menu</string>
+    <string name="cd_search">Tìm kiếm</string>
+    <string name="cd_back">Quay lại</string>
+    <string name="cd_clear">Xóa</string>
+    <string name="cd_close">Đóng</string>
+    <string name="cd_more">Thêm</string>
+    <string name="cd_collapse">Thu gọn</string>
+    <string name="cd_expand">Mở rộng</string>
+    <string name="cd_play_pause">Phát/Tạm dừng</string>
+    <string name="cd_next">Bài tiếp theo</string>
+    <string name="cd_previous">Bài trước</string>
+    <string name="cd_download">Tải xuống</string>
+    <string name="cd_rewind10">Tua lùi 10 giây</string>
+    <string name="cd_forward10">Tua tới 10 giây</string>
+    <string name="cd_repeat">Lặp lại</string>
+    <string name="cd_shuffle">Phát ngẫu nhiên</string>
+    <string name="cd_sleep_timer">Hẹn giờ ngủ</string>
+    <string name="cd_send">Gửi</string>
+    <string name="cd_vote">Bình chọn</string>
+</resources>

@@ -34,7 +34,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 import ymusic.ui.resources.Res
+import ymusic.ui.resources.app_name
+import ymusic.ui.resources.badge_premium
 import ymusic.ui.resources.ymusic_logo
 
 /** The drawer's green brand accents (design/final/drawer.html). */
@@ -76,17 +79,17 @@ private fun DrawerHeader(appVersion: String?) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painterResource(Res.drawable.ymusic_logo),
-                contentDescription = "YMusic",
+                contentDescription = stringResource(Res.string.app_name),
                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)),
             )
             Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "YMusic",
+                        stringResource(Res.string.app_name),
                         style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A)),
                     )
                     Text(
-                        "PREMIUM",
+                        stringResource(Res.string.badge_premium),
                         style = TextStyle(
                             fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -141,7 +144,7 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
                 active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = BrandGreenDark)
                 else -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2C2C2C))
             }
-            Text(section.label, style = labelStyle, modifier = Modifier.weight(1f))
+            Text(stringResource(section.label), style = labelStyle, modifier = Modifier.weight(1f))
         }
     }
 }

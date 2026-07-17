@@ -58,19 +58,45 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreBucket
 import ymusic.mediastore.model.MediaStoreItem
 import ymusic.mediastore.model.Playlist
+import ymusic.ui.resources.Res
+import ymusic.ui.resources.cd_back
+import ymusic.ui.resources.library_add_folder
+import ymusic.ui.resources.library_crumb_root
+import ymusic.ui.resources.library_empty
+import ymusic.ui.resources.library_empty_folder
+import ymusic.ui.resources.library_folder
+import ymusic.ui.resources.library_no_playlists
+import ymusic.ui.resources.library_scan_failed
+import ymusic.ui.resources.library_scan_folder
+import ymusic.ui.resources.library_scanning
+import ymusic.ui.resources.library_tab_albums
+import ymusic.ui.resources.library_tab_artists
+import ymusic.ui.resources.library_tab_folders
+import ymusic.ui.resources.library_tab_genres
+import ymusic.ui.resources.library_tab_playlists
+import ymusic.ui.resources.library_tab_songs
+import ymusic.ui.resources.library_unavailable
+import ymusic.ui.resources.n_songs
+import ymusic.ui.resources.unknown_album
+import ymusic.ui.resources.unknown_artist
+import ymusic.ui.resources.unknown_genre
 
-private enum class LibraryTab(val label: String) {
-    Folders("Folders"),
-    Playlists("Playlists"),
-    Songs("Songs"),
-    Artists("Artists"),
-    Albums("Albums"),
-    Genres("Genres"),
+private enum class LibraryTab(val label: StringResource) {
+    Folders(Res.string.library_tab_folders),
+    Playlists(Res.string.library_tab_playlists),
+    Songs(Res.string.library_tab_songs),
+    Artists(Res.string.library_tab_artists),
+    Albums(Res.string.library_tab_albums),
+    Genres(Res.string.library_tab_genres),
 }
 
 /** Everything the tabs render from, reloaded on any items/buckets change. Identity doubles as the
@@ -91,7 +117,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val store = graph.mediaStore
     if (store == null) {
         CenteredBox {
-            Text("No local library configured on this platform", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(Res.string.library_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -127,22 +153,42 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     LibraryTab.entries.forEach { t ->
-                        LibraryChip(t.label, selected = t == tab) { tab = t }
+                        LibraryChip(stringResource(t.label), selected = t == tab) { tab = t }
                     }
                 }
                 when (tab) {
                     LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, scanState)
                     LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
                     LibraryTab.Songs -> Column(Modifier.fillMaxSize()) {
-                        SectionHeader(YtSectionHeader(title = "Songs", count = "${loaded.songs.size}"))
+                        SectionHeader(
+                            YtSectionHeader(
+                                title = stringResource(Res.string.library_tab_songs),
+                                count = "${loaded.songs.size}",
+                            ),
+                        )
                         SongList(loaded.songs, coordinator)
                     }
                     LibraryTab.Artists ->
-                        GroupedList(loaded.songs, Icons.Default.Person, "Unknown artist", coordinator) { it.artist }
+                        GroupedList(
+                            loaded.songs,
+                            Icons.Default.Person,
+                            stringResource(Res.string.unknown_artist),
+                            coordinator,
+                        ) { it.artist }
                     LibraryTab.Albums ->
-                        GroupedList(loaded.songs, Icons.Default.Album, "Unknown album", coordinator) { it.album }
+                        GroupedList(
+                            loaded.songs,
+                            Icons.Default.Album,
+                            stringResource(Res.string.unknown_album),
+                            coordinator,
+                        ) { it.album }
                     LibraryTab.Genres ->
-                        GroupedList(loaded.songs, Icons.Default.Category, "Unknown genre", coordinator) { it.genre }
+                        GroupedList(
+                            loaded.songs,
+                            Icons.Default.Category,
+                            stringResource(Res.string.unknown_genre),
+                            coordinator,
+                        ) { it.genre }
                 }
             }
         }
@@ -154,9 +200,9 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
 private fun EmptyLibrary(scan: (suspend () -> String?)?, state: ScanState) {
     CenteredBox {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Your library is empty", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(Res.string.library_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (scan == null) return@Column
-            ScanPill(scan, state, label = "+  Scan folder")
+            ScanPill(scan, state, label = stringResource(Res.string.library_scan_folder))
             if (state.running) CircularProgressIndicator(Modifier.size(22.dp))
             state.message?.let {
                 Text(it, style = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary))
@@ -189,7 +235,7 @@ private fun FoldersTab(
 
     Column(Modifier.fillMaxSize()) {
         Breadcrumb(path) { depth -> path = path.take(depth) }
-        if (path.isEmpty() && scan != null) ScanBar(scan, scanState, label = "+  Add folder")
+        if (path.isEmpty() && scan != null) ScanBar(scan, scanState, label = stringResource(Res.string.library_add_folder))
         val children = folders
         if (children == null) {
             CenteredBox { CircularProgressIndicator() }
@@ -205,7 +251,7 @@ private fun FoldersTab(
             if (children.isEmpty() && items.isEmpty()) {
                 item {
                     Text(
-                        "Empty folder",
+                        stringResource(Res.string.library_empty_folder),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
                     )
@@ -225,7 +271,7 @@ private fun Breadcrumb(path: List<MediaStoreBucket>, onNavigate: (depth: Int) ->
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CrumbText("Library", last = path.isEmpty()) { onNavigate(0) }
+        CrumbText(stringResource(Res.string.library_crumb_root), last = path.isEmpty()) { onNavigate(0) }
         path.forEachIndexed { i, bucket ->
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -267,7 +313,7 @@ private fun FolderRow(bucket: MediaStoreBucket, onOpen: () -> Unit) {
         LibraryThumb(Icons.Default.Folder, badge = null)
         Column(Modifier.weight(1f)) {
             Text(bucket.displayName, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("Folder", style = ListSubStyle, modifier = Modifier.padding(top = 4.dp))
+            Text(stringResource(Res.string.library_folder), style = ListSubStyle, modifier = Modifier.padding(top = 4.dp))
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DesignColors.InkFaint)
     }
@@ -298,7 +344,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
         when {
             loaded == null -> CenteredBox { CircularProgressIndicator() }
             loaded.isEmpty() -> CenteredBox {
-                Text("No playlists yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(Res.string.library_no_playlists), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(loaded, key = { (p, _) -> p.id }) { (playlist, count) ->
@@ -317,7 +363,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
                         Column(Modifier.weight(1f)) {
                             Text(playlist.name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "$count song" + if (count == 1) "" else "s",
+                                pluralStringResource(Res.plurals.n_songs, count, count),
                                 style = ListSubStyle,
                                 modifier = Modifier.padding(top = 4.dp),
                             )
@@ -370,7 +416,7 @@ private class ScanState {
 private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: String) {
     val scope = rememberCoroutineScope()
     Text(
-        if (state.running) "Scanning…" else label,
+        if (state.running) stringResource(Res.string.library_scanning) else label,
         style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = Color(0xFF3A3A3A)),
         modifier = Modifier
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
@@ -380,7 +426,7 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
                     state.message = try {
                         scan()
                     } catch (e: Exception) {
-                        "Scan failed (${(e as? CodedError)?.code ?: e.message ?: e})"
+                        getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
                     } finally {
                         state.running = false
                     }
@@ -489,7 +535,7 @@ private fun GroupedList(
                     Column(Modifier.weight(1f)) {
                         Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
-                            "${members.size} song" + if (members.size == 1) "" else "s",
+                            pluralStringResource(Res.plurals.n_songs, members.size, members.size),
                             style = ListSubStyle,
                             modifier = Modifier.padding(top = 4.dp),
                         )
@@ -512,7 +558,7 @@ private fun DrillDownHeader(title: String, onBack: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back)) }
         Text(
             title,
             style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),

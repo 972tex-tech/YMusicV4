@@ -47,8 +47,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtSectionHeader
+import ymusic.ui.resources.Res
+import ymusic.ui.resources.badge_live
+import ymusic.ui.resources.cd_collapse
+import ymusic.ui.resources.cd_expand
+import ymusic.ui.resources.cd_more
 
 /**
  * The feed building blocks from design/final/feed-components.html: one SectionHeader + the six
@@ -101,7 +107,7 @@ fun SectionHeader(
         when {
             onToggle != null -> Icon(
                 Icons.Default.KeyboardArrowDown,
-                if (collapsed == false) "Collapse" else "Expand",
+                stringResource(if (collapsed == false) Res.string.cd_collapse else Res.string.cd_expand),
                 Modifier.size(20.dp).rotate(if (collapsed == false) 180f else 0f).clickable(onClick = onToggle),
                 tint = DesignColors.InkSoft,
             )
@@ -290,7 +296,7 @@ private fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
     Box(modifier) {
         Icon(
             Icons.Default.MoreVert,
-            "More",
+            stringResource(Res.string.cd_more),
             Modifier.size(22.dp).clickable { open = true },
             tint = DesignColors.IconDots,
         )
@@ -345,7 +351,7 @@ private fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSize
     val badgeText = TextStyle(fontSize = textSize.sp, color = Color.White)
     when {
         item.live -> Text(
-            "LIVE",
+            stringResource(Res.string.badge_live),
             style = badgeText.copy(fontWeight = FontWeight.Bold),
             modifier = modifier.background(Color(0xFFCC0000), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
         )

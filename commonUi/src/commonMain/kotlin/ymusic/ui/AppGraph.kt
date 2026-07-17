@@ -7,6 +7,8 @@ import ymusic.dynamicengine.yt.YtContext
 import ymusic.imageloader.ImageLoader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.player.Player
+import ymusic.settings.InMemorySettingsStore
+import ymusic.settings.SettingsStore
 
 /**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
@@ -29,6 +31,8 @@ class AppGraph(
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
     val imageLoader: ImageLoader? = null,
+    /** App settings (UI language, hl/gl, …); the in-memory default works but doesn't persist. */
+    val settings: SettingsStore = InMemorySettingsStore(),
     /**
      * True when [playerSurface] may be shown at any size (desktop's OSR browser renders a fixed
      * logical viewport) — the mini player then hosts it as its 36dp art tile. False for a windowed

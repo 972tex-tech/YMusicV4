@@ -40,9 +40,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtChip
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtSection
+import ymusic.ui.resources.Res
+import ymusic.ui.resources.error_generic
+import ymusic.ui.resources.feed_empty
+import ymusic.ui.resources.queue_last
+import ymusic.ui.resources.queue_next
+import ymusic.ui.resources.retry
+import ymusic.ui.resources.show_less
+import ymusic.ui.resources.show_more
+import ymusic.ui.resources.show_more_n
 
 /** Paged feed loading over any yt page source (browse / search / watch-next continuations). */
 class Pager(
@@ -131,15 +141,15 @@ fun FeedList(
     pager: Pager,
     coordinator: PlaybackCoordinator,
     modifier: Modifier = Modifier,
-    emptyMessage: String = "Nothing here",
+    emptyMessage: String = stringResource(Res.string.feed_empty),
 ) {
     val state by pager.state.collectAsState()
     when (val s = state) {
         is Pager.State.Loading -> CenteredBox(modifier) { CircularProgressIndicator() }
         is Pager.State.Failed -> CenteredBox(modifier) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Something went wrong (${s.code})", color = MaterialTheme.colorScheme.error)
-                OutlinedButton(onClick = { pager.refresh() }) { Text("Retry") }
+                Text(stringResource(Res.string.error_generic, s.code), color = MaterialTheme.colorScheme.error)
+                OutlinedButton(onClick = { pager.refresh() }) { Text(stringResource(Res.string.retry)) }
             }
         }
         is Pager.State.Ready -> {
@@ -194,7 +204,7 @@ private fun FeedSections(
                             CircularProgressIndicator(Modifier.size(28.dp))
                         }
                     } else {
-                        ShowMoreButton("Show more", expanded = false, onClick = { pager.loadMore() })
+                        ShowMoreButton(stringResource(Res.string.show_more), expanded = false, onClick = { pager.loadMore() })
                     }
                 }
             }
@@ -257,7 +267,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     }
     if (section.collapsible && section.items.size > collapsedCount) {
         item {
-            val label = if (expanded) "Show less" else "Show more (${section.items.size - collapsedCount})"
+            val label = if (expanded) {
+                stringResource(Res.string.show_less)
+            } else {
+                stringResource(Res.string.show_more_n, section.items.size - collapsedCount)
+            }
             ShowMoreButton(label, expanded = expanded, onClick = onToggle)
         }
     }
@@ -266,11 +280,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
 private fun itemClick(item: YtFeedItem, coordinator: PlaybackCoordinator): (() -> Unit)? =
     if (item.kind == YtFeedItem.KIND_VIDEO) ({ coordinator.playNow(item) }) else null
 
+@Composable
 private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions = ItemActions(
     if (item.kind == YtFeedItem.KIND_VIDEO) {
         listOf(
-            "Queue next" to { coordinator.playNext(item) },
-            "Queue last" to { coordinator.playLater(item) },
+            stringResource(Res.string.queue_next) to { coordinator.playNext(item) },
+            stringResource(Res.string.queue_last) to { coordinator.playLater(item) },
         )
     } else {
         emptyList()

@@ -28,8 +28,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.search
 import ymusic.dynamicengine.yt.searchSuggestions
+import ymusic.ui.resources.Res
+import ymusic.ui.resources.cd_back
+import ymusic.ui.resources.cd_clear
+import ymusic.ui.resources.search_no_results
+import ymusic.ui.resources.search_type_to_search
+import ymusic.ui.resources.search_youtube
 
 /**
  * YouTube search: live suggestions while typing, submitted query → paged results. Result taps play
@@ -75,18 +82,24 @@ fun SearchScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onBack: () -
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back))
+                }
+            },
             title = {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it; submitted = null },
-                    placeholder = { Text("Search YouTube") },
+                    placeholder = { Text(stringResource(Res.string.search_youtube)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = ""; submitted = null }) { Icon(Icons.Default.Close, "Clear") }
+                            IconButton(onClick = { query = ""; submitted = null }) {
+                                Icon(Icons.Default.Close, stringResource(Res.string.cd_clear))
+                            }
                         }
                     },
                 )
@@ -107,8 +120,10 @@ fun SearchScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onBack: () -
                     }
                 }
             }
-            submitted == null -> CenteredBox { Text("Type to search", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            else -> FeedList(pager, coordinator, emptyMessage = "No results")
+            submitted == null -> CenteredBox {
+                Text(stringResource(Res.string.search_type_to_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            else -> FeedList(pager, coordinator, emptyMessage = stringResource(Res.string.search_no_results))
         }
     }
 }

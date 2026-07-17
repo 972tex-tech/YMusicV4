@@ -47,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,48 +57,89 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.intl.Locale
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.browse
 import ymusic.player.PlayableItem
+import ymusic.settings.AppSettings
+import ymusic.settings.flow
+import ymusic.ui.resources.Res
+import ymusic.ui.resources.cd_menu
+import ymusic.ui.resources.cd_search
+import ymusic.ui.resources.coming_soon
+import ymusic.ui.resources.discover_needs_account
+import ymusic.ui.resources.discover_no_anonymous_home
+import ymusic.ui.resources.section_catalogue
+import ymusic.ui.resources.section_discover
+import ymusic.ui.resources.section_donate
+import ymusic.ui.resources.section_downloads
+import ymusic.ui.resources.section_facebook
+import ymusic.ui.resources.section_feedback
+import ymusic.ui.resources.section_library
+import ymusic.ui.resources.section_rewind
+import ymusic.ui.resources.section_settings
+import ymusic.ui.resources.section_yt_music
+import ymusic.ui.resources.tab_account_library
+import ymusic.ui.resources.tab_home
+import ymusic.ui.resources.tab_music
+import ymusic.ui.resources.tab_recommended
+import ymusic.ui.resources.tab_top_tracks
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
-enum class AppSection(val label: String, val icon: ImageVector, val group: Int) {
-    Discover("Discover", Icons.Outlined.OndemandVideo, 0),
-    YtMusic("YT Music (Beta)", Icons.Default.PlayCircleOutline, 0),
-    Library("Library", Icons.Outlined.LibraryMusic, 0),
-    Rewind("Rewind playlist", Icons.Outlined.FastRewind, 1),
-    Downloads("Download manager", Icons.Outlined.FileDownload, 1),
-    Settings("Settings", Icons.Outlined.Settings, 1),
-    Catalogue("UI catalogue", Icons.Outlined.Palette, 1),
-    Donate("Donate", Icons.Outlined.FavoriteBorder, 2),
-    Facebook("Like us on Facebook", Icons.Default.Facebook, 2),
-    Feedback("Feedback", Icons.AutoMirrored.Outlined.Chat, 2),
+enum class AppSection(val label: StringResource, val icon: ImageVector, val group: Int) {
+    Discover(Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
+    YtMusic(Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
+    Library(Res.string.section_library, Icons.Outlined.LibraryMusic, 0),
+    Rewind(Res.string.section_rewind, Icons.Outlined.FastRewind, 1),
+    Downloads(Res.string.section_downloads, Icons.Outlined.FileDownload, 1),
+    Settings(Res.string.section_settings, Icons.Outlined.Settings, 1),
+    Catalogue(Res.string.section_catalogue, Icons.Outlined.Palette, 1),
+    Donate(Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
+    Facebook(Res.string.section_facebook, Icons.Default.Facebook, 2),
+    Feedback(Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
 }
 
 /**
  * The app root: drawer navigation + the persistent mini-player + the Now Playing overlay. The shell
  * calls this with a ready [AppGraph] (engines started, player built, surface injected).
+ *
+ * The UI-language setting is applied here: the default locale is overridden and the whole tree is
+ * rebuilt under `key(tag)` so every `stringResource` re-resolves, with the layout direction derived
+ * from the effective locale (RTL scripts flip the UI). [section] lives above the `key` so a
+ * language switch doesn't navigate away from Settings.
  */
 @Composable
 fun App(graph: AppGraph) {
-    YMusicTheme {
-        CompositionLocalProvider(LocalImageLoader provides graph.imageLoader) {
-            AppRoot(graph)
+    val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
+    val tag = uiLanguage.ifBlank { null }
+    remember(tag) { applyUiLocale(tag) }
+    var section by rememberSaveable { mutableStateOf(AppSection.Discover) }
+    key(tag) {
+        val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
+        CompositionLocalProvider(LocalLayoutDirection provides direction) {
+            YMusicTheme {
+                CompositionLocalProvider(LocalImageLoader provides graph.imageLoader) {
+                    AppRoot(graph, section, onSection = { section = it })
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun AppRoot(graph: AppGraph) {
+private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection) -> Unit) {
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
-        var section by rememberSaveable { mutableStateOf(AppSection.Discover) }
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
         var searching by rememberSaveable { mutableStateOf(false) }
         var nowPlayingOpen by rememberSaveable { mutableStateOf(false) }
@@ -124,7 +166,7 @@ private fun AppRoot(graph: AppGraph) {
                         section = section,
                         appVersion = graph.appVersion,
                         onSelect = { s ->
-                            section = s
+                            onSection(s)
                             searching = false
                             scope.launch { drawer.close() }
                         },
@@ -137,7 +179,9 @@ private fun AppRoot(graph: AppGraph) {
                         if (!searching) {
                             Column(Modifier.statusBarsPadding()) {
                                 DesignAppBar(
-                                    title = if (section == AppSection.Discover) discoverTab.label else section.label,
+                                    title = stringResource(
+                                        if (section == AppSection.Discover) discoverTab.label else section.label,
+                                    ),
                                     onMenu = { scope.launch { drawer.open() } },
                                     onSearch = { searching = true },
                                     inlineContent = if (section == AppSection.Discover && wide) {
@@ -181,6 +225,7 @@ private fun AppRoot(graph: AppGraph) {
                             searching -> SearchScreen(graph, coordinator, onBack = { searching = false })
                             section == AppSection.Discover -> DiscoverFeed(graph, coordinator, discoverTab)
                             section == AppSection.Library -> LibraryScreen(graph, coordinator)
+                            section == AppSection.Settings -> SettingsScreen(graph)
                             section == AppSection.Catalogue -> CatalogueScreen()
                             else -> ComingSoon(section)
                         }
@@ -208,24 +253,34 @@ private fun DesignAppBar(
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Menu, "Menu", Modifier.size(22.dp).clickable(onClick = onMenu), tint = DesignColors.InkMuted)
+        Icon(
+            Icons.Default.Menu,
+            stringResource(Res.string.cd_menu),
+            Modifier.size(22.dp).clickable(onClick = onMenu),
+            tint = DesignColors.InkMuted,
+        )
         Text(title, style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink))
         if (inlineContent != null) {
             Box(Modifier.padding(start = 16.dp)) { inlineContent() }
         }
         Box(Modifier.weight(1f))
-        Icon(Icons.Default.Search, "Search", Modifier.size(22.dp).clickable(onClick = onSearch), tint = DesignColors.InkMuted)
+        Icon(
+            Icons.Default.Search,
+            stringResource(Res.string.cd_search),
+            Modifier.size(22.dp).clickable(onClick = onSearch),
+            tint = DesignColors.InkMuted,
+        )
     }
 }
 
 /** Discover's five feed tabs (design §1). Only Home has an anonymous backing feed today; the rest
  *  light up with accounts (they mirror the signed-in YouTube surfaces). */
-enum class DiscoverTab(val label: String, val icon: ImageVector, val browseId: String?) {
-    Home("Home", Icons.Outlined.Home, "FEwhat_to_watch"),
-    Music("Music", Icons.Outlined.MusicNote, null),
-    Recommended("Recommended", Icons.Default.StarBorder, null),
-    TopTracks("Top tracks", Icons.AutoMirrored.Outlined.TrendingUp, null),
-    Account("Library", Icons.Outlined.Person, null),
+enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val browseId: String?) {
+    Home(Res.string.tab_home, Icons.Outlined.Home, "FEwhat_to_watch"),
+    Music(Res.string.tab_music, Icons.Outlined.MusicNote, null),
+    Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, null),
+    TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, null),
+    Account(Res.string.tab_account_library, Icons.Outlined.Person, null),
 }
 
 /** Icon tabs with the 2dp underline indicator; [underline] off for the inline (app bar) form. */
@@ -243,7 +298,7 @@ private fun DiscoverTabRow(selected: DiscoverTab, underline: Boolean, onSelect: 
             ) {
                 Icon(
                     t.icon,
-                    t.label,
+                    stringResource(t.label),
                     Modifier.padding(top = 7.dp, bottom = 7.dp).size(22.dp),
                     tint = if (active) DesignColors.Ink else DesignColors.InkFaint,
                 )
@@ -268,7 +323,7 @@ private fun DiscoverFeed(graph: AppGraph, coordinator: PlaybackCoordinator, tab:
     if (browseId == null) {
         CenteredBox {
             Text(
-                "${tab.label} mirrors your YouTube account — coming with sign-in",
+                stringResource(Res.string.discover_needs_account, stringResource(tab.label)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -285,7 +340,7 @@ private fun DiscoverFeed(graph: AppGraph, coordinator: PlaybackCoordinator, tab:
         FeedList(
             pager,
             coordinator,
-            emptyMessage = "YouTube serves no anonymous home feed — use Search, or sign in (coming)",
+            emptyMessage = stringResource(Res.string.discover_no_anonymous_home),
         )
     }
 }
@@ -295,7 +350,10 @@ private fun ComingSoon(section: AppSection) {
     CenteredBox {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(section.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${section.label} — coming in a later milestone", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stringResource(Res.string.coming_soon, stringResource(section.label)),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
