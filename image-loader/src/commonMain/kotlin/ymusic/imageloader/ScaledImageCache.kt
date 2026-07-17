@@ -5,6 +5,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okio.FileNotFoundException
 import okio.FileSystem
 import okio.Path
 
@@ -31,9 +32,11 @@ class DiskScaledImageCache(
     private val writeLock = Mutex()
 
     override suspend fun get(key: String): ByteArray? = withContext(Dispatchers.IO) {
-        val path = directory / key
-        if (!fileSystem.exists(path)) return@withContext null
-        fileSystem.read(path) { readByteArray() }
+        try {
+            fileSystem.read(directory / key) { readByteArray() }
+        } catch (_: FileNotFoundException) {
+            null // never written, or deleted by a concurrent put's trim — both are a plain miss
+        }
     }
 
     override suspend fun put(key: String, bytes: ByteArray) = withContext(Dispatchers.IO) {

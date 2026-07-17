@@ -47,9 +47,10 @@ fun AsyncImage(
             placeholder?.invoke(this)
         }
     }
-    val hasSize = sizePx != IntSize.Zero
-    if (url != null && hasSize && loaded == null) {
-        LaunchedEffect(url, hasSize) {
+    if (url != null && sizePx != IntSize.Zero) {
+        // Keyed on the BUCKETED size: a resize into a new bucket re-decodes (a grown view would
+        // otherwise stay blurry forever), while layout jitter within one bucket doesn't relaunch.
+        LaunchedEffect(url, bucketPx(sizePx.width), bucketPx(sizePx.height)) {
             loaded = try {
                 loader.load(url, sizePx.width, sizePx.height)
             } catch (e: CancellationException) {

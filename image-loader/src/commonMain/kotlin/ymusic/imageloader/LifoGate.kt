@@ -39,22 +39,29 @@ internal class LifoGate(permits: Int) {
         try {
             waiter.await()
         } catch (e: CancellationException) {
-            val gotPermit = lock.withLock {
-                // Not in the stack anymore = release() already handed us its permit; pass it on.
-                !waiters.remove(waiter) && waiter.isCompleted
+            // NonCancellable: this cleanup must run even though the job is already cancelled, or the
+            // dead waiter stays in the stack and a later release() grants a permit nobody consumes.
+            withContext(NonCancellable) {
+                lock.withLock { waiters.remove(waiter) }
+                // The complete/completeExceptionally race decides permit ownership exactly once:
+                // losing means release() already granted us its permit — pass it on.
+                if (!waiter.completeExceptionally(e)) release()
             }
-            if (gotPermit) withContext(NonCancellable) { release() }
             throw e
         }
     }
 
     private suspend fun release() {
-        val next = lock.withLock {
-            waiters.removeLastOrNull() ?: run {
-                free++
-                null
-            }
+        while (true) {
+            val next = lock.withLock {
+                waiters.removeLastOrNull() ?: run {
+                    free++
+                    null
+                }
+            } ?: return
+            // complete() losing to the waiter's own completeExceptionally means it cancelled after we
+            // popped it — grant the permit to the next waiter instead.
+            if (next.complete(Unit)) return
         }
-        next?.complete(Unit)
     }
 }

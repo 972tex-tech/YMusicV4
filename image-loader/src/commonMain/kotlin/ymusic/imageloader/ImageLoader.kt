@@ -41,8 +41,8 @@ class ImageLoader(
      * failures — callers showing a placeholder catch and log (see `AsyncImage`).
      */
     suspend fun load(url: String, maxWidth: Int, maxHeight: Int): ImageBitmap {
-        val w = bucket(maxWidth)
-        val h = bucket(maxHeight)
+        val w = bucketPx(maxWidth)
+        val h = bucketPx(maxHeight)
         val key = "$url@${w}x$h"
         memory.get(key)?.let { return it }
         return gate.withPermit {
@@ -99,8 +99,8 @@ class ImageLoader(
 
     private companion object {
         val TAG = listOf("image-loader")
-
-        /** Round the target up to a 64px step: stable cache keys across ±layout-pixel jitter. */
-        fun bucket(px: Int): Int = (((px.coerceAtLeast(1) - 1) / 64) + 1) * 64
     }
 }
+
+/** Round the target up to a 64px step: stable cache keys across ±layout-pixel jitter. */
+internal fun bucketPx(px: Int): Int = (((px.coerceIn(1, 1 shl 20) - 1) / 64) + 1) * 64

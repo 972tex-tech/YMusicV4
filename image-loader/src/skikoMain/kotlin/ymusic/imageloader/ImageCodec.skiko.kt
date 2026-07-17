@@ -16,31 +16,42 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 // Skia has no subsampled decode; decode full then immediately draw down into a target-size raster —
-// the full-size image is released right after (only the scaled bitmap stays resident).
+// the full-size image is closed eagerly (Cleaner-freed native pixels would otherwise pile up during
+// a fast scroll), only the scaled bitmap stays resident.
 internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): ImageBitmap {
-    val image = Image.makeFromEncoded(bytes)
-    val scale = min(maxWidth.toFloat() / image.width, maxHeight.toFloat() / image.height)
-    if (scale >= 1f) return image.toComposeImageBitmap()
-    val w = max(1, (image.width * scale).roundToInt())
-    val h = max(1, (image.height * scale).roundToInt())
-    val bitmap = Bitmap()
-    bitmap.allocPixels(ImageInfo.makeN32Premul(w, h))
-    Canvas(bitmap).drawImageRect(
-        image,
-        Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
-        Rect.makeWH(w.toFloat(), h.toFloat()),
-        SamplingMode.LINEAR,
-        null,
-        true,
-    )
-    image.close()
-    bitmap.setImmutable()
-    return bitmap.asComposeImageBitmap()
+    Image.makeFromEncoded(bytes).use { image ->
+        val scale = min(maxWidth.toFloat() / image.width, maxHeight.toFloat() / image.height)
+        // toComposeImageBitmap() copies the pixels, so the source is safe to close in both branches.
+        if (scale >= 1f) return image.toComposeImageBitmap()
+        val w = max(1, (image.width * scale).roundToInt())
+        val h = max(1, (image.height * scale).roundToInt())
+        val bitmap = Bitmap()
+        try {
+            bitmap.allocPixels(ImageInfo.makeN32Premul(w, h))
+            Canvas(bitmap).use { canvas ->
+                canvas.drawImageRect(
+                    image,
+                    Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
+                    Rect.makeWH(w.toFloat(), h.toFloat()),
+                    SamplingMode.LINEAR,
+                    null,
+                    true,
+                )
+            }
+        } catch (t: Throwable) {
+            bitmap.close()
+            throw t
+        }
+        bitmap.setImmutable()
+        // asComposeImageBitmap wraps WITHOUT copying — the bitmap must stay open.
+        return bitmap.asComposeImageBitmap()
+    }
 }
 
 internal actual fun encodePng(bitmap: ImageBitmap): ByteArray {
-    val image = Image.makeFromBitmap(bitmap.asSkiaBitmap())
-    val data = image.encodeToData(EncodedImageFormat.PNG)
-        ?: throw IllegalStateException("PNG encode failed (${bitmap.width}x${bitmap.height})")
-    return data.bytes
+    Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->
+        val data = image.encodeToData(EncodedImageFormat.PNG)
+            ?: throw IllegalStateException("PNG encode failed (${bitmap.width}x${bitmap.height})")
+        data.use { return it.bytes }
+    }
 }
