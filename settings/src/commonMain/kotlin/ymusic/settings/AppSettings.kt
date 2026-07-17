@@ -20,4 +20,7 @@ object AppSettings {
 
     /** Theme accent placeholder; empty = platform default accent. */
     val themeAccent = StringSetting("theme.accent", "")
+
+    /** UI language override (BCP-47); empty = follow the system locale. */
+    val uiLanguage = StringSetting("app.uiLanguage", "")
 }
