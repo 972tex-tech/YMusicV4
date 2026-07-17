@@ -164,7 +164,14 @@ fun FeedGridCard(
         ChannelGridCard(item, onClick, modifier)
         return
     }
-    Column(modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
+    // clip → clickable → padding: the hover/ripple gets rounded corners and a breathing inset
+    // around the content (grid callers shave the inset off their gaps to keep the visual metrics).
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(GRID_CARD_INSET),
+    ) {
         val isPlaylist = item.kind == YtFeedItem.KIND_PLAYLIST
         if (isPlaylist) {
             // The stacked-playlist edge peeking above the thumbnail.
@@ -208,7 +215,10 @@ fun FeedGridCard(
 @Composable
 private fun ChannelGridCard(item: YtFeedItem, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     Column(
-        modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(GRID_CARD_INSET),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.padding(top = 2.dp)) { CircleThumb(item, 76.dp) }
@@ -310,6 +320,9 @@ private fun SquareThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
 
 /** Grid cells vary with screen width; this is a sane middle target for picking the variant. */
 private val GRID_THUMB_TARGET = 220.dp
+
+/** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
+val GRID_CARD_INSET = 5.dp
 
 /** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. */
 @Composable

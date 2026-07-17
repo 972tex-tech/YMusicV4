@@ -63,8 +63,8 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
         item { CatLabel("FeedGridCard — video · playlist · channel") }
         item {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(15.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 11.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 FeedGridCard(mockVideo, mockActions, onClick = {}, modifier = Modifier.weight(1f))
                 FeedGridCard(mockPlaylist, mockActions, onClick = {}, modifier = Modifier.weight(1f))
@@ -86,8 +86,8 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
         item { FeedListItem(mockVideo.copy(thumbs = mockVideoThumbs), mockActions, onClick = {}) }
         item {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(15.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 11.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 FeedGridCard(mockVideo.copy(thumbs = mockVideoThumbs), mockActions, onClick = {}, modifier = Modifier.weight(1f))
                 FeedGridCard(mockChannel.copy(thumbs = mockAvatarThumbs), ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f))

@@ -229,8 +229,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         val rows = shown.chunked(columns)
         items(rows.size) { r ->
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 9.dp),
-                horizontalArrangement = Arrangement.spacedBy(15.dp),
+                // Design metrics (16 edge / 15 gap / 6+9 vertical) minus GRID_CARD_INSET, which the
+                // cards re-add around themselves as the hover's breathing room.
+                Modifier.fillMaxWidth().padding(start = 11.dp, end = 11.dp, top = 1.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 rows[r].forEach { item ->
                     FeedGridCard(
