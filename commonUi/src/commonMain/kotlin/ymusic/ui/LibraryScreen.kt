@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -97,7 +98,12 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         merge(store.itemsChanges(), store.bucketsChanges())
             .onStart { emit(Unit) }
             .conflate()
-            .map { LibraryContent(loadSongs(store), store.allBuckets().isNotEmpty()) }
+            // A running scan fires change events per file/folder; the pause coalesces the storm to
+            // a few reloads per second (conflate holds the latest while we wait + load).
+            .map {
+                delay(200)
+                LibraryContent(store.allItems(), store.allBuckets().isNotEmpty())
+            }
     }.collectAsState(initial = null)
 
     // Hoisted so a scan started from the empty state keeps its spinner/summary when the first
@@ -525,15 +531,6 @@ private fun LibraryThumb(icon: ImageVector, badge: String?) {
             )
         }
     }
-}
-
-/** All non-deleted items: orphans + every bucket's items, one sorted songs list. */
-private suspend fun loadSongs(store: BetterMediaStore): List<MediaStoreItem> {
-    val items = buildList {
-        addAll(store.itemsInBucket(null))
-        store.allBuckets().forEach { addAll(store.itemsInBucket(it.id)) }
-    }
-    return items.sortedBy { it.title.lowercase() }
 }
 
 private fun formatDuration(ms: Long?): String? {
