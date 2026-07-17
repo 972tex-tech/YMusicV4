@@ -29,6 +29,10 @@ import kotlinx.coroutines.delay
  * [RELOAD_GROWTH_PX] in a dimension warrants a sharper decode (shrinking just downscales), and the
  * reload waits [RESIZE_SETTLE_MS] for the resize to settle — every further size change restarts
  * the wait, so a live window drag triggers one reload at the end, not a stream of them.
+ *
+ * [cacheKey] keys the caches instead of the URL (see [ImageLoader.load]) — pass a stable identity
+ * when the URL carries volatile parts, so a changed URL for the same image neither refetches nor
+ * resets to the placeholder.
  */
 @Composable
 fun AsyncImage(
@@ -37,20 +41,26 @@ fun AsyncImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    cacheKey: String? = null,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
     error: (@Composable BoxScope.() -> Unit)? = null,
 ) {
+    val key = cacheKey ?: url
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
-    var loaded by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    var failed by remember(url) { mutableStateOf(false) }
+    var loaded by remember(key) { mutableStateOf<ImageBitmap?>(null) }
+    var failed by remember(key) { mutableStateOf(false) }
     // The size the showing bitmap was decoded for — the growth-threshold baseline.
-    var loadedFor by remember(url) { mutableStateOf(IntSize.Zero) }
+    var loadedFor by remember(key) { mutableStateOf(IntSize.Zero) }
 
     Box(modifier.onSizeChanged { sizePx = it }) {
         // Synchronous memory-cache peek: an already-cached image draws on its FIRST frame — routing
         // the hit through the effect would flash the placeholder for a frame (list scroll jitter).
         val bitmap = loaded
-            ?: if (url != null && sizePx != IntSize.Zero) loader.peek(url, sizePx.width, sizePx.height) else null
+            ?: if (url != null && sizePx != IntSize.Zero) {
+                loader.peek(url, sizePx.width, sizePx.height, cacheKey = key ?: url)
+            } else {
+                null
+            }
         when {
             bitmap != null -> Image(
                 bitmap,
@@ -73,7 +83,7 @@ fun AsyncImage(
             }
             loadedFor = sizePx
             try {
-                loaded = loader.load(url, sizePx.width, sizePx.height)
+                loaded = loader.load(url, sizePx.width, sizePx.height, cacheKey = key ?: url)
                 failed = false
             } catch (e: CancellationException) {
                 throw e

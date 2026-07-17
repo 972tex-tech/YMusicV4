@@ -115,6 +115,18 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun cacheKeySharesEntriesAcrossChangedUrls() = runTest {
+        val server = FakeImageServer(pngBytes(100, 100))
+        val loader = ImageLoader(server)
+        val stable = "https://img.test/vi/abc/hq720.jpg"
+        val a = loader.load("$stable?sig=1", 64, 64, cacheKey = stable)
+        val b = loader.load("$stable?sig=2", 64, 64, cacheKey = stable)
+        assertEquals(1, server.fetchCount, "a rotated URL with the same cacheKey must hit the cache")
+        assertTrue(a === b)
+        assertTrue(loader.peek("$stable?sig=3", 64, 64, cacheKey = stable) === a)
+    }
+
+    @Test
     fun peekIsSynchronousMemoryHit() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
         val loader = ImageLoader(server)

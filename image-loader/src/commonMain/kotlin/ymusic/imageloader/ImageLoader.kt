@@ -40,18 +40,22 @@ class ImageLoader(
      * enough for composition, so an already-cached image draws on its first frame with no
      * placeholder flash (see `AsyncImage`).
      */
-    fun peek(url: String, maxWidth: Int, maxHeight: Int): ImageBitmap? =
-        memory.peek("$url@${bucketPx(maxWidth)}x${bucketPx(maxHeight)}")
+    fun peek(url: String, maxWidth: Int, maxHeight: Int, cacheKey: String = url): ImageBitmap? =
+        memory.peek("$cacheKey@${bucketPx(maxWidth)}x${bucketPx(maxHeight)}")
 
     /**
      * The image at [url], scaled down to fit [maxWidth]×[maxHeight] pixels (aspect kept, never
      * upscaled). Suspends until loaded; throws [IOException] on a failed fetch and rethrows decode
      * failures — callers showing a placeholder catch and log (see `AsyncImage`).
+     *
+     * [cacheKey] keys the memory + scaled caches instead of the URL — pass a stable identity when
+     * the URL carries volatile parts (rotating signature params, per-session CDN hosts), so a new
+     * URL for the same image still hits the caches. The network fetch always uses the real [url].
      */
-    suspend fun load(url: String, maxWidth: Int, maxHeight: Int): ImageBitmap {
+    suspend fun load(url: String, maxWidth: Int, maxHeight: Int, cacheKey: String = url): ImageBitmap {
         val w = bucketPx(maxWidth)
         val h = bucketPx(maxHeight)
-        val key = "$url@${w}x$h"
+        val key = "$cacheKey@${w}x$h"
         memory.get(key)?.let { return it }
         return gate.withPermit {
             memory.get(key)?.let { return@withPermit it } // raced with an identical load
