@@ -182,8 +182,8 @@ fun FeedGridCard(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 6.dp)
-                        .offset(y = -GRID_CARD_INSET)
-                        .height(GRID_CARD_INSET)
+                        .offset(y = (-4).dp)
+                        .height(4.dp)
                         .background(DesignColors.StackTab, RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)),
                 )
             }
@@ -327,7 +327,7 @@ private fun SquareThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
 private val GRID_THUMB_TARGET = 220.dp
 
 /** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
-val GRID_CARD_INSET = 4.dp
+val GRID_CARD_INSET = 8.dp
 
 /** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. */
 @Composable

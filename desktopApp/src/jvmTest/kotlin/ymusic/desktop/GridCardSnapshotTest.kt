@@ -38,8 +38,8 @@ class GridCardSnapshotTest {
         val scene = ImageComposeScene(width = 600, height = 260) {
             YMusicTheme {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 11.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     FeedGridCard(video, ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f))
                     FeedGridCard(playlist, ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f))

@@ -237,7 +237,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 // the hover's breathing room — visual metrics stay margin/Gutter exactly.
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = margin - GRID_CARD_INSET, end = margin - GRID_CARD_INSET, top = 4.dp, bottom = 4.dp),
+                    .padding(horizontal = margin - GRID_CARD_INSET),
                 horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter - GRID_CARD_INSET * 2),
             ) {
                 rows[r].forEach { item ->
