@@ -249,27 +249,18 @@ private fun DesignAppBar(
     inlineContent: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().background(Color.White).padding(start = 16.dp, end = 16.dp, top = 5.dp, bottom = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(13.dp),
+        // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
+        Modifier.fillMaxWidth().background(Color.White).padding(start = 11.dp, end = 11.dp, top = 0.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            Icons.Default.Menu,
-            stringResource(Res.string.cd_menu),
-            Modifier.size(22.dp).clickable(onClick = onMenu),
-            tint = DesignColors.InkMuted,
-        )
+        ActionIcon(Icons.Default.Menu, stringResource(Res.string.cd_menu), onClick = onMenu)
         Text(title, style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink))
         if (inlineContent != null) {
             Box(Modifier.padding(start = 16.dp)) { inlineContent() }
         }
         Box(Modifier.weight(1f))
-        Icon(
-            Icons.Default.Search,
-            stringResource(Res.string.cd_search),
-            Modifier.size(22.dp).clickable(onClick = onSearch),
-            tint = DesignColors.InkMuted,
-        )
+        ActionIcon(Icons.Default.Search, stringResource(Res.string.cd_search), onClick = onSearch)
     }
 }
 

@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -308,7 +309,8 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
                 style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
                 maxLines = 1,
                 modifier = Modifier
-                    .background(if (selected) DesignColors.Ink else Color.Transparent, RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (selected) DesignColors.Ink else Color.Transparent)
                     .border(1.dp, if (selected) DesignColors.Ink else DesignColors.Outline, RoundedCornerShape(999.dp))
                     .clickable { pager.refresh(chip.token) }
                     .padding(horizontal = 12.dp, vertical = 5.dp),

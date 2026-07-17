@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
@@ -295,8 +296,9 @@ private fun CrumbText(label: String, last: Boolean, onClick: () -> Unit) {
         ),
         maxLines = 1,
         modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
             .clickable(enabled = !last, onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 4.dp),
     )
 }
 
@@ -398,7 +400,8 @@ private fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
             color = if (selected) Color.White else Color(0xFF3A3A3A),
         ),
         modifier = Modifier
-            .background(if (selected) DesignColors.Ink else Color.Transparent, RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) DesignColors.Ink else Color.Transparent)
             .border(1.dp, if (selected) DesignColors.Ink else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 7.dp),
@@ -419,6 +422,7 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
         if (state.running) stringResource(Res.string.library_scanning) else label,
         style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = Color(0xFF3A3A3A)),
         modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
             .clickable(enabled = !state.running) {
                 state.running = true

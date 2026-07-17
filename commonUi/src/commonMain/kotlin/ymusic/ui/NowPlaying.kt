@@ -232,19 +232,15 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     val quality by player.videoQuality.collectAsState()
 
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
+        Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            Icons.Default.KeyboardArrowDown,
-            stringResource(Res.string.cd_close),
-            Modifier.size(22.dp).clickable(onClick = onClose),
-            tint = DesignColors.InkMuted,
-        )
+        ActionIcon(Icons.Default.KeyboardArrowDown, stringResource(Res.string.cd_close), onClick = onClose)
         Box(Modifier.weight(1f))
         // Download lands with M6 (LocalMediaProxy + downloads); the slot is design chrome until then.
-        Icon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), Modifier.size(22.dp), tint = DesignColors.InkMuted)
+        ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = false, onClick = {})
         SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(
@@ -266,6 +262,7 @@ private fun QualityChip(label: String, options: List<Pair<String, String>>, onSe
             label,
             style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
             modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
                 .border(1.dp, Color(0xFFD2D2D2), RoundedCornerShape(6.dp))
                 .clickable { open = true }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -288,12 +285,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var open by remember { mutableStateOf(false) }
 
     Box {
-        Icon(
-            Icons.Default.MoreVert,
-            stringResource(Res.string.cd_more),
-            Modifier.size(22.dp).clickable { open = true },
-            tint = DesignColors.InkMuted,
-        )
+        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
                 text = { Text(stringResource(Res.string.audio_only)) },
@@ -367,24 +359,29 @@ private fun TransportRow(coordinator: PlaybackCoordinator, playing: Boolean, buf
     val player = coordinator.player
     val iconTint = Color(0xFF2B2B2B)
     Row(
+        // The 16dp gap + the ActionIcon hit-insets (5dp each side) keeps the mockup's 26dp glyph gap.
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(26.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
+        ActionIcon(
             Icons.Default.FastRewind,
             stringResource(Res.string.cd_rewind10),
-            Modifier.size(26.dp).clickable { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
+            iconSize = 26.dp,
+            hitSize = 36.dp,
             tint = iconTint,
+            onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
         )
-        Icon(
+        ActionIcon(
             Icons.Default.SkipPrevious,
             stringResource(Res.string.cd_previous),
-            Modifier.size(26.dp).clickable { player.skipPrev() },
+            iconSize = 26.dp,
+            hitSize = 36.dp,
             tint = iconTint,
+            onClick = { player.skipPrev() },
         )
         Box(
-            Modifier.size(64.dp).background(Color(0xFF222222), CircleShape).clickable { player.togglePlay() },
+            Modifier.size(64.dp).clip(CircleShape).background(Color(0xFF222222)).clickable { player.togglePlay() },
             contentAlignment = Alignment.Center,
         ) {
             if (buffering) {
@@ -398,17 +395,21 @@ private fun TransportRow(coordinator: PlaybackCoordinator, playing: Boolean, buf
                 )
             }
         }
-        Icon(
+        ActionIcon(
             Icons.Default.SkipNext,
             stringResource(Res.string.cd_next),
-            Modifier.size(26.dp).clickable { player.skipNext() },
+            iconSize = 26.dp,
+            hitSize = 36.dp,
             tint = iconTint,
+            onClick = { player.skipNext() },
         )
-        Icon(
+        ActionIcon(
             Icons.Default.FastForward,
             stringResource(Res.string.cd_forward10),
-            Modifier.size(26.dp).clickable { player.seekTo(player.progress.value.positionMs + 10_000) },
+            iconSize = 26.dp,
+            hitSize = 36.dp,
             tint = iconTint,
+            onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
         )
     }
 }
@@ -418,7 +419,7 @@ private fun TransportRow(coordinator: PlaybackCoordinator, playing: Boolean, buf
 private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, total: Int, shuffle: Boolean, loopMode: LoopMode) {
     val player = coordinator.player
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -431,27 +432,27 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
             style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkFaint),
         )
         Box(Modifier.weight(1f))
-        Icon(
+        ActionIcon(
             if (loopMode == LoopMode.One) Icons.Default.RepeatOne else Icons.Default.Repeat,
             stringResource(Res.string.cd_repeat),
-            Modifier
-                .size(20.dp)
-                .clickable {
-                    player.setLoopMode(
-                        when (loopMode) {
-                            LoopMode.None -> LoopMode.All
-                            LoopMode.All -> LoopMode.One
-                            LoopMode.One -> LoopMode.None
-                        },
-                    )
-                },
+            iconSize = 20.dp,
             tint = if (loopMode != LoopMode.None) DesignColors.Accent else DesignColors.InkSoft,
+            onClick = {
+                player.setLoopMode(
+                    when (loopMode) {
+                        LoopMode.None -> LoopMode.All
+                        LoopMode.All -> LoopMode.One
+                        LoopMode.One -> LoopMode.None
+                    },
+                )
+            },
         )
-        Icon(
+        ActionIcon(
             Icons.Default.Shuffle,
             stringResource(Res.string.cd_shuffle),
-            Modifier.size(20.dp).clickable { player.setShuffle(!shuffle) },
+            iconSize = 20.dp,
             tint = if (shuffle) DesignColors.Accent else DesignColors.InkSoft,
+            onClick = { player.setShuffle(!shuffle) },
         )
     }
 }
@@ -498,11 +499,11 @@ private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.
             }
         }
         Box {
-            Icon(
+            ActionIcon(
                 Icons.Default.MoreVert,
                 stringResource(Res.string.cd_more),
-                Modifier.size(22.dp).clickable { menuOpen = true },
                 tint = DesignColors.IconDots,
+                onClick = { menuOpen = true },
             )
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
@@ -518,11 +519,11 @@ private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.
 private fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        Icon(
+        ActionIcon(
             Icons.Default.Bedtime,
             stringResource(Res.string.cd_sleep_timer),
-            Modifier.size(22.dp).clickable { open = true },
             tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
+            onClick = { open = true },
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             sleepMs?.let {

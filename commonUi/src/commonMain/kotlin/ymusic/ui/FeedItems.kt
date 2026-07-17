@@ -105,11 +105,13 @@ fun SectionHeader(
             Text(it, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = DesignColors.InkFaint))
         }
         when {
-            onToggle != null -> Icon(
+            onToggle != null -> ActionIcon(
                 Icons.Default.KeyboardArrowDown,
                 stringResource(if (collapsed == false) Res.string.cd_collapse else Res.string.cd_expand),
-                Modifier.size(20.dp).rotate(if (collapsed == false) 180f else 0f).clickable(onClick = onToggle),
+                Modifier.rotate(if (collapsed == false) 180f else 0f),
+                iconSize = 20.dp,
                 tint = DesignColors.InkSoft,
+                onClick = onToggle,
             )
             header?.ctaText != null || header?.ctaToken != null -> Row(verticalAlignment = Alignment.CenterVertically) {
                 header.ctaText?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
@@ -294,11 +296,11 @@ private fun CtaPill(text: String) {
 private fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
-        Icon(
+        ActionIcon(
             Icons.Default.MoreVert,
             stringResource(Res.string.cd_more),
-            Modifier.size(22.dp).clickable { open = true },
             tint = DesignColors.IconDots,
+            onClick = { open = true },
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             actions.entries.forEach { (label, action) ->
