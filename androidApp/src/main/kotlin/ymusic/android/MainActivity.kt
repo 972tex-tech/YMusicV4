@@ -140,6 +140,7 @@ class MainActivity : ComponentActivity() {
             player,
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             imageLoader = imageLoader,
+            settings = PrefsSettingsStore.open(this),
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the

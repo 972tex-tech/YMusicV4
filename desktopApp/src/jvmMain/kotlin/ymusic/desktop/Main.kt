@@ -48,6 +48,7 @@ import ymusic.player.WebViewPlayerContext
 import ymusic.player.createLocalPlayer
 import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
+import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ui.resources.Res
@@ -126,6 +127,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
     }
 
+    val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
+
     // Thumbnails: own client with an HTTP disk cache (no cookies — public CDN images), plus the
     // scaled-image cache so warm starts skip the full-size decode.
     val imageLoader = ImageLoader(
@@ -168,6 +171,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         scanLibraryFolder = { scanPickedFolder(mediaStore) },
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
+        settings = settings,
         // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
         surfaceScalesDown = true,
     ) { modifier ->
