@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.yt.YtContext
+import ymusic.imageloader.ImageLoader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.player.Player
 
@@ -26,6 +27,8 @@ class AppGraph(
     val scanLibraryFolder: (suspend () -> String?)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
+    /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
+    val imageLoader: ImageLoader? = null,
     /**
      * True when [playerSurface] may be shown at any size (desktop's OSR browser renders a fixed
      * logical viewport) — the mini player then hosts it as its 36dp art tile. False for a windowed

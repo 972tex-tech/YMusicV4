@@ -23,15 +23,19 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kmphttp.DefaultPlatformCache
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.withContext
 import okio.FileSystem
+import okio.Path.Companion.toPath
 import org.jetbrains.compose.resources.painterResource
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
+import ymusic.imageloader.DiskScaledImageCache
+import ymusic.imageloader.ImageLoader
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.FileSystemDocumentsProvider
 import ymusic.mediascanner.MediaScanner
@@ -120,6 +124,15 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
     }
 
+    // Thumbnails: own client with an HTTP disk cache (no cookies — public CDN images), plus the
+    // scaled-image cache so warm starts skip the full-size decode.
+    val imageLoader = ImageLoader(
+        client = KmpHttpClient.create {
+            cache = DefaultPlatformCache(File(dataDir, "image-http-cache").absolutePath.toPath(), 128L * 1024 * 1024)
+        },
+        scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
+    )
+
     // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
     // the WebView adds its browser, the VLCJ engine adds its video component, each toggling its own
     // visibility so only the playing engine's picture shows.
@@ -150,6 +163,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         mediaStore = mediaStore,
         scanLibraryFolder = { scanPickedFolder(mediaStore) },
         appVersion = "dev · jvm",
+        imageLoader = imageLoader,
         // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
         surfaceScalesDown = true,
     ) { modifier ->

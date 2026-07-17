@@ -43,6 +43,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +83,15 @@ enum class AppSection(val label: String, val icon: ImageVector, val group: Int) 
 @Composable
 fun App(graph: AppGraph) {
     YMusicTheme {
+        CompositionLocalProvider(LocalImageLoader provides graph.imageLoader) {
+            AppRoot(graph)
+        }
+    }
+}
+
+@Composable
+private fun AppRoot(graph: AppGraph) {
+    run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)

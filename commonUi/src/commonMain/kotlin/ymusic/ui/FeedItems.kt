@@ -83,6 +83,7 @@ fun SectionHeader(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.MusicNote, null, Modifier.size(14.dp), tint = Color(0xFFAAAAAA))
+                ThumbImage(header.iconThumbs, 26.dp, CircleShape)
             }
         }
         Text(
@@ -128,7 +129,7 @@ fun FeedListItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (item.kind == YtFeedItem.KIND_CHANNEL) {
-            CircleThumb(74.dp)
+            CircleThumb(item, 74.dp)
         } else {
             SquareThumb(item, if (small) 66.dp else 92.dp)
         }
@@ -183,6 +184,7 @@ fun FeedGridCard(
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
+            ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(9.dp))
             Badges(item, Modifier.align(Alignment.BottomEnd).padding(6.dp), textSize = 10, iconSize = 11.dp)
         }
         Row(
@@ -209,7 +211,7 @@ private fun ChannelGridCard(item: YtFeedItem, onClick: (() -> Unit)?, modifier: 
         modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.padding(top = 2.dp)) { CircleThumb(76.dp) }
+        Box(Modifier.padding(top = 2.dp)) { CircleThumb(item, 76.dp) }
         Text(
             item.title,
             style = GridTitleStyle,
@@ -279,12 +281,13 @@ private fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun CircleThumb(size: androidx.compose.ui.unit.Dp) {
+private fun CircleThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
     Box(
         Modifier.size(size).background(DesignColors.Placeholder, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Outlined.Person, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
+        ThumbImage(item.thumbs, size, CircleShape)
     }
 }
 
@@ -300,9 +303,13 @@ private fun SquareThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Outlined.Image, null, Modifier.size(if (size < 80.dp) 21.dp else 30.dp), tint = DesignColors.PlaceholderIcon)
+        ThumbImage(item.thumbs, size, RoundedCornerShape(10.dp))
         Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 9, iconSize = 10.dp)
     }
 }
+
+/** Grid cells vary with screen width; this is a sane middle target for picking the variant. */
+private val GRID_THUMB_TARGET = 220.dp
 
 /** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. */
 @Composable

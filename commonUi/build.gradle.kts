@@ -53,6 +53,7 @@ kotlin {
                 api(project(":player"))
                 api(project(":dynamic-engine"))
                 api(project(":media-store"))
+                api(project(":image-loader"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material3)

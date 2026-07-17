@@ -19,10 +19,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import kmphttp.DefaultPlatformCache
 import kmphttp.KmpHttpClient
 import kmphttp.create
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.androidEngineCacheStore
+import ymusic.imageloader.DiskScaledImageCache
+import ymusic.imageloader.ImageLoader
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -102,11 +107,22 @@ class MainActivity : ComponentActivity() {
             ),
         )
 
+        // Thumbnails: own client with an HTTP disk cache (no cookies — public CDN images), plus the
+        // scaled-image cache so warm starts skip the full-size decode.
+        val imageLoader = ImageLoader(
+            client = KmpHttpClient.create {
+                cache = DefaultPlatformCache(cacheDir.resolve("image-http-cache").toOkioPath(), 128L * 1024 * 1024)
+            },
+            scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
+            logger = LogcatLogger(),
+        )
+
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName
         return AppGraph(
             engines,
             player,
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
+            imageLoader = imageLoader,
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the
