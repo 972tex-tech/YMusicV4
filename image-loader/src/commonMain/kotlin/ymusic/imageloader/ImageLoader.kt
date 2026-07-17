@@ -56,9 +56,9 @@ class ImageLoader(
         val w = bucketPx(maxWidth)
         val h = bucketPx(maxHeight)
         val key = "$cacheKey@${w}x$h"
-        memory.get(key)?.let { return it }
+        memory.peek(key)?.let { return it }
         return gate.withPermit {
-            memory.get(key)?.let { return@withPermit it } // raced with an identical load
+            memory.peek(key)?.let { return@withPermit it } // raced with an identical load
             val bitmap = fromScaledCache(key, w, h) ?: fetchAndDecode(url, key, w, h)
             memory.put(key, bitmap)
             bitmap
