@@ -165,13 +165,16 @@ private fun FeedSections(
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // M3 window size classes: compact = list, medium = 2-col, expanded = 3-col + wider margin.
-        val columns = when {
-            maxWidth < 600.dp -> 1
-            maxWidth < 840.dp -> 2
-            else -> 3
-        }
+        // Compact (<600dp) is a list; wider windows fit as many ~240dp grid cards as the width
+        // allows (M3 scales expanded layouts by content size, not a fixed column cap).
         val metrics = gridMetricsFor(maxWidth)
+        val columns = if (maxWidth < 600.dp) {
+            1
+        } else {
+            ((maxWidth - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_TARGET + metrics.gutter))
+                .toInt()
+                .coerceAtLeast(2)
+        }
         LazyColumn(Modifier.fillMaxSize()) {
             item { FeedChips(state, pager) }
             state.sections.forEachIndexed { index, section ->
