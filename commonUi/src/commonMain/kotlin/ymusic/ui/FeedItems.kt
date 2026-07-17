@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ymusic.dynamicengine.yt.YtFeedItem
@@ -127,7 +128,7 @@ fun FeedListItem(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = if (small) 4.dp else 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         if (item.kind == YtFeedItem.KIND_CHANNEL) {
             CircleThumb(item, 74.dp)
@@ -160,9 +161,10 @@ fun FeedGridCard(
     actions: ItemActions,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    inset: Dp = GRID_CARD_INSET,
 ) {
     if (item.kind == YtFeedItem.KIND_CHANNEL) {
-        ChannelGridCard(item, onClick, modifier)
+        ChannelGridCard(item, onClick, modifier, inset)
         return
     }
     // clip → clickable → padding: the hover/ripple gets rounded corners and a breathing inset
@@ -171,9 +173,9 @@ fun FeedGridCard(
         modifier
             .clip(RoundedCornerShape(12.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(GRID_CARD_INSET),
+            .padding(inset),
     ) {
-        // Content is inset GRID_CARD_INSET on all four sides (top==bottom, left==right). The
+        // Content is inset on all four sides (top==bottom, left==right). The
         // playlist stack tab draws OVERLAPPING into the top inset (the mockup's `top:-5px` overlay)
         // — no reserved strip, so every card's thumb sits at the same offset.
         Box(Modifier.fillMaxWidth()) {
@@ -218,12 +220,17 @@ fun FeedGridCard(
 
 /** channel — grid card: centered circle avatar + name + subtitle + CTA pill. */
 @Composable
-private fun ChannelGridCard(item: YtFeedItem, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
+private fun ChannelGridCard(
+    item: YtFeedItem,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    inset: Dp = GRID_CARD_INSET,
+) {
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(GRID_CARD_INSET),
+            .padding(inset),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         CircleThumb(item, 76.dp)

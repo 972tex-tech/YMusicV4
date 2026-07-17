@@ -173,6 +173,10 @@ private fun FeedSections(
             else -> 3
         }
         val margin = if (maxWidth >= 840.dp) DesignSpacing.MarginExpanded else DesignSpacing.MarginCompact
+        // Mobile-class grids run tight (4dp between cards), expanded ones airy (16dp); the hover
+        // inset is half the gutter so card spacing is exactly the gutter with zero row gaps.
+        val gutter = if (maxWidth >= 840.dp) DesignSpacing.Gutter else DesignSpacing.Space4
+        val inset = gutter / 2
         LazyColumn(Modifier.fillMaxSize()) {
             item { FeedChips(state, pager) }
             state.sections.forEachIndexed { index, section ->
@@ -180,6 +184,8 @@ private fun FeedSections(
                     section = section,
                     columns = columns,
                     margin = margin,
+                    gutter = gutter,
+                    inset = inset,
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
@@ -204,6 +210,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
     columns: Int,
     margin: Dp,
+    gutter: Dp,
+    inset: Dp,
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
@@ -233,12 +241,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         val rows = shown.chunked(columns)
         items(rows.size) { r ->
             Row(
-                // M3 margin/gutter minus GRID_CARD_INSET, which each card re-adds around itself as
-                // the hover's breathing room — visual metrics stay margin/Gutter exactly.
+                // Margin/gutter minus the inset each card re-adds around itself as the hover's
+                // breathing room — visual metrics stay margin/gutter exactly.
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = margin - GRID_CARD_INSET),
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter - GRID_CARD_INSET * 2),
+                    .padding(horizontal = margin - inset),
+                horizontalArrangement = Arrangement.spacedBy(gutter - inset * 2),
             ) {
                 rows[r].forEach { item ->
                     FeedGridCard(
@@ -246,6 +254,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                         actions = itemActions(item, coordinator),
                         onClick = itemClick(item, coordinator),
                         modifier = Modifier.weight(1f),
+                        inset = inset,
                     )
                 }
                 repeat(columns - rows[r].size) { Spacer(Modifier.weight(1f)) }
