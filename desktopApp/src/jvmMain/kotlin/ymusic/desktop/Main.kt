@@ -114,6 +114,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         DynamicEngineManager(
             engineClient,
             appVersion = 1,
+            logger = StdoutLogger,
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
             cookieJar = platformCookies,
         )
@@ -131,6 +132,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             cache = DefaultPlatformCache(File(dataDir, "image-http-cache").absolutePath.toPath(), 128L * 1024 * 1024)
         },
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
+        logger = StdoutLogger,
     )
 
     // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
