@@ -36,5 +36,8 @@ internal fun BoxScope.ThumbImage(thumbs: List<YtThumb>, targetDp: Dp, shape: Sha
         contentDescription = null,
         modifier = Modifier.matchParentSize().clip(shape),
         contentScale = ContentScale.Crop,
+        // ytimg URLs rotate their signature query params (?sqp=…&rs=…) across sessions; the path
+        // alone identifies the image, so keying on it keeps the caches warm across rotations.
+        cacheKey = url.substringBefore('?'),
     )
 }
