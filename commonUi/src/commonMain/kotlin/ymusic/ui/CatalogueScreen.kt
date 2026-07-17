@@ -285,17 +285,15 @@ private val mockActions = ItemActions(
     ),
 )
 
-// The layout system (M3 window margins/gutter — DesignSpacing) + the design language's recurring
-// component paddings (design/final CSS), largest first.
+// The spacing scale (DesignSpacing): every layout spacing snaps to one of these steps.
 private val spacingTokens: List<Pair<Int, String>> = listOf(
-    24 to "window margin (expanded >=840dp)",
-    16 to "window margin (compact) / grid gutter",
-    14 to "section header top",
-    12 to "list row gap (thumb - text)",
-    9 to "header items gap",
-    8 to "chip gap",
-    7 to "list row vertical / header bottom",
-    3 to "title - subtitle gap",
+    46 to "space-46",
+    32 to "space-32",
+    24 to "space-24 · window margin (expanded >=840dp)",
+    16 to "space-16 · margin compact / gutter / row gap / header top",
+    8 to "space-8 · row vertical / header gap / chips / text top",
+    4 to "space-4 · title-subtitle / badge inset / hover inset",
+    2 to "space-2 · fine nudges",
 )
 
 private const val PILL_RADIUS = -1

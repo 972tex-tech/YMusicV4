@@ -237,7 +237,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 // the hover's breathing room — visual metrics stay margin/Gutter exactly.
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = margin - GRID_CARD_INSET, end = margin - GRID_CARD_INSET, top = 1.dp, bottom = 4.dp),
+                    .padding(start = margin - GRID_CARD_INSET, end = margin - GRID_CARD_INSET, top = 4.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter - GRID_CARD_INSET * 2),
             ) {
                 rows[r].forEach { item ->
@@ -280,8 +280,8 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     if (state.chips.isEmpty()) return
     LazyRow(
         Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(state.chips) { chip ->
             val selected = chip.token == state.selectedChipToken

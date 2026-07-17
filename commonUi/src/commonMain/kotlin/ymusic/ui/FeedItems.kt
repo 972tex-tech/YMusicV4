@@ -73,8 +73,8 @@ fun SectionHeader(
     onToggle: (() -> Unit)? = null,
 ) {
     Row(
-        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (header != null && header.iconThumbs.isNotEmpty()) {
@@ -124,8 +124,8 @@ fun FeedListItem(
         modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = if (small) 6.dp else 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 16.dp, vertical = if (small) 4.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (item.kind == YtFeedItem.KIND_CHANNEL) {
@@ -142,7 +142,7 @@ fun FeedListItem(
             )
             val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
             if (!small && sub.isNotEmpty()) {
-                Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+                Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
         }
         when {
@@ -173,8 +173,7 @@ fun FeedGridCard(
             .padding(GRID_CARD_INSET),
     ) {
         // Every card reserves the 5dp tab strip above the thumb (the mockup's absolutely-positioned
-        // `top:-5px` tab) and two title lines below it — so video/playlist/channel cards in one grid
-        // row keep their thumbs AND text blocks aligned regardless of tab or title length.
+        // `top:-5px` tab), so a playlist's tab never pushes its thumb below its row neighbors'.
         Box(Modifier.fillMaxWidth()) {
             if (item.kind == YtFeedItem.KIND_PLAYLIST) {
                 Box(
@@ -195,19 +194,19 @@ fun FeedGridCard(
             ) {
                 Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
                 ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(9.dp))
-                Badges(item, Modifier.align(Alignment.BottomEnd).padding(6.dp), textSize = 10, iconSize = 11.dp)
+                Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 10, iconSize = 11.dp)
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(top = 7.dp),
+            Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(item.title, style = GridTitleStyle, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.title, style = GridTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
                 if (sub.isNotEmpty()) {
-                    Text(sub, style = GridSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+                    Text(sub, style = GridSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             if (actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.padding(top = 1.dp))
@@ -234,9 +233,9 @@ private fun ChannelGridCard(item: YtFeedItem, onClick: (() -> Unit)?, modifier: 
             modifier = Modifier.padding(top = 8.dp),
         )
         item.subtitleLine1?.let {
-            Text(it, style = GridSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+            Text(it, style = GridSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
         }
-        item.ctaText?.let { Box(Modifier.padding(top = 7.dp)) { CtaPill(it) } }
+        item.ctaText?.let { Box(Modifier.padding(top = 8.dp)) { CtaPill(it) } }
     }
 }
 
@@ -251,7 +250,7 @@ fun ShowMoreButton(label: String, expanded: Boolean, onClick: () -> Unit, modifi
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
             .clickable(onClick = onClick)
             .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkMuted))
@@ -326,7 +325,7 @@ private fun SquareThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
 private val GRID_THUMB_TARGET = 220.dp
 
 /** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
-val GRID_CARD_INSET = 5.dp
+val GRID_CARD_INSET = 4.dp
 
 /** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. */
 @Composable

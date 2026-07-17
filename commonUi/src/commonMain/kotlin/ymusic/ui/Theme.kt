@@ -36,19 +36,28 @@ object DesignColors {
 }
 
 /**
- * Layout system per M3 grids & spacing (m3.material.io/foundations/layout): window-size-class
- * driven — compact `<600dp` lists, medium `600–839` 2-col, expanded `≥840` 3-col — with the M3
- * margins and gutter. Values sit on the 4dp scale.
+ * The spacing scale: every layout spacing (margins, gaps, paddings between elements) is one of
+ * these steps — component-internal geometry (pill insets, badge chrome, the 5dp stack tab) is
+ * shape, not rhythm, and stays free. Grid columns follow M3 window size classes: compact `<600dp`
+ * lists, medium `600–839` 2-col, expanded `≥840` 3-col.
  */
 object DesignSpacing {
+    val Space2 = 2.dp
+    val Space4 = 4.dp
+    val Space8 = 8.dp
+    val Space16 = 16.dp
+    val Space24 = 24.dp
+    val Space32 = 32.dp
+    val Space46 = 46.dp
+
     /** Window edge margin, compact/medium windows. */
-    val MarginCompact = 16.dp
+    val MarginCompact = Space16
 
     /** Window edge margin, expanded (`≥840dp`) windows. */
-    val MarginExpanded = 24.dp
+    val MarginExpanded = Space24
 
     /** Between grid cards. */
-    val Gutter = 16.dp
+    val Gutter = Space16
 }
 
 private val LightScheme = lightColorScheme(
