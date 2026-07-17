@@ -48,7 +48,7 @@ object DesignSpacing {
     val Space16 = 16.dp
     val Space24 = 24.dp
     val Space32 = 32.dp
-    val Space46 = 46.dp
+    val Space48 = 48.dp
 
     /** Window edge margin, compact/medium windows. */
     val MarginCompact = Space16

@@ -287,7 +287,7 @@ private val mockActions = ItemActions(
 
 // The spacing scale (DesignSpacing): every layout spacing snaps to one of these steps.
 private val spacingTokens: List<Pair<Int, String>> = listOf(
-    46 to "space-46",
+    48 to "space-48",
     32 to "space-32",
     24 to "space-24 · window margin (expanded >=840dp)",
     16 to "space-16 · margin compact / gutter / row gap / header top",

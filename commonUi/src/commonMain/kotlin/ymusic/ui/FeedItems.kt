@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -172,22 +173,23 @@ fun FeedGridCard(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(GRID_CARD_INSET),
     ) {
-        // Every card reserves the 5dp tab strip above the thumb (the mockup's absolutely-positioned
-        // `top:-5px` tab), so a playlist's tab never pushes its thumb below its row neighbors'.
+        // Content is inset GRID_CARD_INSET on all four sides (top==bottom, left==right). The
+        // playlist stack tab draws OVERLAPPING into the top inset (the mockup's `top:-5px` overlay)
+        // — no reserved strip, so every card's thumb sits at the same offset.
         Box(Modifier.fillMaxWidth()) {
             if (item.kind == YtFeedItem.KIND_PLAYLIST) {
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 6.dp)
-                        .height(5.dp)
+                        .offset(y = -GRID_CARD_INSET)
+                        .height(GRID_CARD_INSET)
                         .background(DesignColors.StackTab, RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)),
                 )
             }
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 5.dp)
                     .aspectRatio(16f / 9f)
                     .background(DesignColors.Placeholder, RoundedCornerShape(9.dp)),
                 contentAlignment = Alignment.Center,
@@ -224,7 +226,7 @@ private fun ChannelGridCard(item: YtFeedItem, onClick: (() -> Unit)?, modifier: 
             .padding(GRID_CARD_INSET),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.padding(top = 2.dp)) { CircleThumb(item, 76.dp) }
+        CircleThumb(item, 76.dp)
         Text(
             item.title,
             style = GridTitleStyle,
