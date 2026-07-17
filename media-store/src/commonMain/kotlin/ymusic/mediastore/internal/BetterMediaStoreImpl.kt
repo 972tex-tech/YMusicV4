@@ -189,6 +189,10 @@ internal class BetterMediaStoreImpl(
         rows.executeAsList().map { it.toModel() }
     }
 
+    override suspend fun allItems(): List<MediaStoreItem> = withContext(io) {
+        itemQ.allItems().executeAsList().map { it.toModel() }
+    }
+
     override suspend fun deleteItem(itemId: Long, hard: Boolean): Unit = withContext(io) {
         if (hard) itemQ.hardDeleteItem(itemId) else itemQ.setItemDeleted(now(), itemId)
     }

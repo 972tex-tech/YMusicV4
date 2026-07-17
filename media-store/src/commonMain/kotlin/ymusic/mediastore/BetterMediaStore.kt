@@ -68,6 +68,9 @@ interface BetterMediaStore {
     /** Items in [bucketId], or the orphan items (no bucket) when [bucketId] is null. */
     suspend fun itemsInBucket(bucketId: Long?): List<MediaStoreItem>
 
+    /** Every non-deleted item (orphans + all buckets), title-ordered — one query, not one per bucket. */
+    suspend fun allItems(): List<MediaStoreItem>
+
     /** Remove an item: soft-delete (tombstone) by default, or [hard] to purge it and its links now. */
     suspend fun deleteItem(itemId: Long, hard: Boolean = false)
 

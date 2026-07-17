@@ -95,6 +95,10 @@ WHERE fileSize = ? AND COALESCE(durationMs, 0) / 1000 = ? AND deleted = 0;
 itemsInBucket:
 SELECT * FROM mediaItem WHERE bucketId = ? AND deleted = 0 ORDER BY title;
 
+-- Every non-deleted item regardless of bucket, one library-wide list.
+allItems:
+SELECT * FROM mediaItem WHERE deleted = 0 ORDER BY title COLLATE NOCASE;
+
 -- Orphan items (no bucket yet) — not under any folder.
 orphanItems:
 SELECT * FROM mediaItem WHERE bucketId IS NULL AND deleted = 0 ORDER BY title;
