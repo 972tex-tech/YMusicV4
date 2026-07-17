@@ -26,6 +26,7 @@ data class MediaItemDraft(
     val lastModified: Long,
     val artist: String? = null,
     val album: String? = null,
+    val genre: String? = null,
     val trackNumber: Int? = null,
     val year: Int? = null,
     val durationMs: Long? = null,

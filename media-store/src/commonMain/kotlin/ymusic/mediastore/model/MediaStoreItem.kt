@@ -21,6 +21,7 @@ data class MediaStoreItem(
     val mimeType: String,
     val artist: String?,
     val album: String?,
+    val genre: String?,
     val trackNumber: Int?,
     val year: Int?,
     val durationMs: Long?,

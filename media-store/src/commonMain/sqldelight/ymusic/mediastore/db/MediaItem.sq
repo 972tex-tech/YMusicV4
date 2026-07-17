@@ -11,6 +11,7 @@ CREATE TABLE mediaItem (
     mimeType             TEXT    NOT NULL,
     artist               TEXT,
     album                TEXT,
+    genre                TEXT,
     trackNumber          INTEGER,
     year                 INTEGER,
     durationMs           INTEGER,
@@ -40,10 +41,10 @@ CREATE INDEX mediaItem_youtubeVid ON mediaItem(youtubeVid);
 
 insertItem:
 INSERT INTO mediaItem(
-    bucketId, uri, title, mimeType, artist, album, trackNumber, year, durationMs,
+    bucketId, uri, title, mimeType, artist, album, genre, trackNumber, year, durationMs,
     audioCodec, videoCodec, subtitleCodec, bitrate, width, height, thumbnailStreamIndex,
     youtubeVid, youtubeItags, fileSize, lastModified, deleted, createdAt, updatedAt
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();
@@ -55,7 +56,7 @@ SELECT last_insert_rowid();
 -- un-adopt (re-orphan) an already-filed item.
 updateItem:
 UPDATE mediaItem SET
-    bucketId = COALESCE(:bucketId, bucketId), uri = ?, title = ?, mimeType = ?, artist = ?, album = ?, trackNumber = ?,
+    bucketId = COALESCE(:bucketId, bucketId), uri = ?, title = ?, mimeType = ?, artist = ?, album = ?, genre = ?, trackNumber = ?,
     year = ?, durationMs = ?, audioCodec = ?, videoCodec = ?, subtitleCodec = ?, bitrate = ?,
     width = ?, height = ?, thumbnailStreamIndex = ?, youtubeVid = ?, youtubeItags = ?,
     fileSize = ?, lastModified = ?, deleted = 0, updatedAt = ?

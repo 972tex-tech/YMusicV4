@@ -27,6 +27,7 @@ internal fun DbMediaItem.toModel() = MediaStoreItem(
     mimeType = mimeType,
     artist = artist,
     album = album,
+    genre = genre,
     trackNumber = trackNumber?.toInt(),
     year = year?.toInt(),
     durationMs = durationMs,

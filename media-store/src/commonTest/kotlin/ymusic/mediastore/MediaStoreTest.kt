@@ -153,6 +153,18 @@ class MediaStoreTest {
     }
 
     @Test
+    fun upsertItem_persists_genre() = runTest {
+        val b = bucket("file:///music")
+        val saved = store.upsertItem(
+            b.id,
+            MediaItemDraft(Uri.parse("file:///music/g.mp3"), title = "g",
+                mimeType = "audio/mpeg", fileSize = 5, lastModified = 1_000, genre = "Synthwave"),
+        )
+        assertEquals("Synthwave", saved.genre)
+        assertEquals("Synthwave", store.findItem(saved.id)!!.genre)
+    }
+
+    @Test
     fun upsertItem_inserts_new_when_no_fingerprint_match() = runTest {
         val b = bucket("file:///music")
         val a = item(b.id, "file:///music/a.mp3", fileSize = 1)
