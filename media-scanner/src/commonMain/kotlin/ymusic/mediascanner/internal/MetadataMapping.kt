@@ -59,6 +59,7 @@ internal fun MediaFileMetadata.toMediaItemDraft(file: DocumentInfo.File): MediaI
         lastModified = file.lastModified,
         artist = firstTag { it.artist },
         album = firstTag { it.album },
+        genre = firstTag { it.genre },
         trackNumber = trackNumber,
         year = year,
         durationMs = durationMs,
