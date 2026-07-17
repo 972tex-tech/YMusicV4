@@ -16,12 +16,19 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /**
- * Loads [url] scaled to this box's own measured size and draws it; [placeholder] shows until the
- * bitmap lands (and stays on failure — load errors degrade to the placeholder, logged as a
- * breadcrumb, never thrown into composition). Leaving composition cancels an in-flight load, and
- * because the loader is LIFO, freshly composed items (the ones scrolled into view) load first.
+ * Loads [url] scaled to this box's own measured size and draws it. [placeholder] shows while
+ * loading; [error] (falling back to [placeholder]) shows when the load failed — failures degrade
+ * to the slot, logged as a breadcrumb, never thrown into composition. Leaving composition cancels
+ * an in-flight load, and because the loader is LIFO, freshly composed items (the ones scrolled
+ * into view) load first.
+ *
+ * A resize does NOT naively reload: once a bitmap is showing, only growth of at least
+ * [RELOAD_GROWTH_PX] in a dimension warrants a sharper decode (shrinking just downscales), and the
+ * reload waits [RESIZE_SETTLE_MS] for the resize to settle — every further size change restarts
+ * the wait, so a live window drag triggers one reload at the end, not a stream of them.
  */
 @Composable
 fun AsyncImage(
@@ -31,34 +38,50 @@ fun AsyncImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
+    error: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
     var loaded by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    var failed by remember(url) { mutableStateOf(false) }
+    // The size the showing bitmap was decoded for — the growth-threshold baseline.
+    var loadedFor by remember(url) { mutableStateOf(IntSize.Zero) }
+
     Box(modifier.onSizeChanged { sizePx = it }) {
         val bitmap = loaded
-        if (bitmap != null) {
-            Image(
+        when {
+            bitmap != null -> Image(
                 bitmap,
                 contentDescription,
                 modifier = Modifier.matchParentSize(),
                 contentScale = contentScale,
             )
-        } else {
-            placeholder?.invoke(this)
+            failed -> (error ?: placeholder)?.invoke(this)
+            else -> placeholder?.invoke(this)
         }
     }
+
     if (url != null && sizePx != IntSize.Zero) {
-        // Keyed on the BUCKETED size: a resize into a new bucket re-decodes (a grown view would
-        // otherwise stay blurry forever), while layout jitter within one bucket doesn't relaunch.
-        LaunchedEffect(url, bucketPx(sizePx.width), bucketPx(sizePx.height)) {
-            loaded = try {
-                loader.load(url, sizePx.width, sizePx.height)
+        LaunchedEffect(url, sizePx) {
+            if (loaded != null) {
+                val growsW = sizePx.width - loadedFor.width >= RELOAD_GROWTH_PX
+                val growsH = sizePx.height - loadedFor.height >= RELOAD_GROWTH_PX
+                if (!growsW && !growsH) return@LaunchedEffect
+                delay(RESIZE_SETTLE_MS)
+            }
+            loadedFor = sizePx
+            try {
+                loaded = loader.load(url, sizePx.width, sizePx.height)
+                failed = false
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 loader.logger?.log(Logger.Level.WARN, listOf("image-loader"), "load failed: $url", e)
-                null
+                // A failed sharper re-decode keeps the bitmap already showing.
+                failed = loaded == null
             }
         }
     }
 }
+
+private const val RELOAD_GROWTH_PX = 100
+private const val RESIZE_SETTLE_MS = 400L
