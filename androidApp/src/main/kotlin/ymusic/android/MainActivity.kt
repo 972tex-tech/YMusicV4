@@ -1,5 +1,6 @@
 package ymusic.android
 
+import android.content.ComponentCallbacks2
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -28,6 +29,7 @@ import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.androidEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
+import ymusic.imageloader.defaultMemoryCacheBudget
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -43,6 +45,19 @@ import ymusic.ui.AppGraph
  * MediaSessionService) lands with the system-integration milestone.
  */
 class MainActivity : ComponentActivity() {
+    private var imageLoader: ImageLoader? = null
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val loader = imageLoader ?: return
+        when {
+            // In the background LRU list — decoded thumbnails are pure regenerable weight, drop all.
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> loader.trimMemoryCache(0f)
+            // Running but memory is tight (or UI just hidden) — keep the hot half.
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> loader.trimMemoryCache(0.5f)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -108,14 +123,16 @@ class MainActivity : ComponentActivity() {
         )
 
         // Thumbnails: own client with an HTTP disk cache (no cookies — public CDN images), plus the
-        // scaled-image cache so warm starts skip the full-size decode.
+        // scaled-image cache so warm starts skip the full-size decode. Memory budget scales with the
+        // device's heap class; onTrimMemory (above) sheds it under pressure.
         val imageLoader = ImageLoader(
             client = KmpHttpClient.create {
                 cache = DefaultPlatformCache(cacheDir.resolve("image-http-cache").toOkioPath(), 128L * 1024 * 1024)
             },
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
             logger = LogcatLogger(),
-        )
+            memoryCacheBytes = defaultMemoryCacheBudget(this),
+        ).also { this.imageLoader = it }
 
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName
         return AppGraph(

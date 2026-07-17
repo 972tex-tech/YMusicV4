@@ -36,6 +36,7 @@ import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
+import ymusic.imageloader.defaultMemoryCacheBudget
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.FileSystemDocumentsProvider
 import ymusic.mediascanner.MediaScanner
@@ -133,6 +134,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         },
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = StdoutLogger,
+        memoryCacheBytes = defaultMemoryCacheBudget(),
     )
 
     // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
