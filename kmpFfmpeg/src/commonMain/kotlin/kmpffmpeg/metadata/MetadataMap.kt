@@ -16,6 +16,7 @@ data class MetadataMap(
         val TITLE_KEYS = arrayOf("title", "title-sort")
         val ARTIST_KEYS = arrayOf("artist", "author", "album_artist", "performer", "artist-sort")
         val ALBUM_KEYS = arrayOf("album", "album-sort", "show")
+        val GENRE_KEYS = arrayOf("genre")
         val YEAR_KEYS = arrayOf("year", "date")
         val COMPOSER_KEYS = arrayOf("composer")
         val TRACK_KEYS = arrayOf("track")
@@ -28,6 +29,7 @@ data class MetadataMap(
     val titleKey by lazy { findKey(TITLE_KEYS) }
     val artistKey by lazy { findKey(ARTIST_KEYS) }
     val albumKey by lazy { findKey(ALBUM_KEYS) }
+    val genreKey by lazy { findKey(GENRE_KEYS) }
     val yearKey by lazy { findKey(YEAR_KEYS) }
     val composerKey by lazy { findKey(COMPOSER_KEYS) }
     val trackKey by lazy { findKey(TRACK_KEYS) }
@@ -37,6 +39,7 @@ data class MetadataMap(
     val title get() = all[titleKey]
     val artist get() = all[artistKey]
     val album get() = all[albumKey]
+    val genre get() = all[genreKey]
     val year get() = all[yearKey]
     val composer get() = all[composerKey]
     val track get() = all[trackKey]

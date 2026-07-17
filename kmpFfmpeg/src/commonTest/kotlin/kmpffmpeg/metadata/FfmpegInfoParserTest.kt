@@ -42,7 +42,7 @@ class FfmpegInfoParserTest {
             assertEquals("The Kotlin Quartet", artist)
             assertEquals("Multiplatform Sessions", album)
             assertEquals("2024", year)
-            assertEquals("Synthwave", all["genre"])
+            assertEquals("Synthwave", genre)
         }
 
         assertEquals(1, meta.streams.size)
@@ -113,6 +113,7 @@ class FfmpegInfoParserTest {
         with(meta.container.metadataMap) {
             assertEquals("The Kotlin Quartet", artist) // ARTIST resolved despite case
             assertEquals("Multiplatform Sessions", album)
+            assertEquals("Synthwave", genre)
             assertEquals("2024", year)
         }
         val audio = meta.streams.single() as StreamMetadata.Audio
