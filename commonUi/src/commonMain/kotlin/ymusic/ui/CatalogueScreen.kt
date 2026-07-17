@@ -285,10 +285,11 @@ private val mockActions = ItemActions(
     ),
 )
 
-// The recurring dp values of the design language (design/final CSS), largest first.
+// The layout system (M3 window margins/gutter — DesignSpacing) + the design language's recurring
+// component paddings (design/final CSS), largest first.
 private val spacingTokens: List<Pair<Int, String>> = listOf(
-    16 to "screen edge padding",
-    15 to "grid gap",
+    24 to "window margin (expanded >=840dp)",
+    16 to "window margin (compact) / grid gutter",
     14 to "section header top",
     12 to "list row gap (thumb - text)",
     9 to "header items gap",

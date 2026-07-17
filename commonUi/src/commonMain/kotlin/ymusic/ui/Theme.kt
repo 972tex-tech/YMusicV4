@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /**
  * The wireframe design language (design/final/…html): white surfaces, near-black text (#333),
@@ -32,6 +33,22 @@ object DesignColors {
     val BadgeInk = Ink
     val BadgeScrim = Color(0xB8000000)
     val BrandGreen = Color(0xFF1DB954)
+}
+
+/**
+ * Layout system per M3 grids & spacing (m3.material.io/foundations/layout): window-size-class
+ * driven — compact `<600dp` lists, medium `600–839` 2-col, expanded `≥840` 3-col — with the M3
+ * margins and gutter. Values sit on the 4dp scale.
+ */
+object DesignSpacing {
+    /** Window edge margin, compact/medium windows. */
+    val MarginCompact = 16.dp
+
+    /** Window edge margin, expanded (`≥840dp`) windows. */
+    val MarginExpanded = 24.dp
+
+    /** Between grid cards. */
+    val Gutter = 16.dp
 }
 
 private val LightScheme = lightColorScheme(

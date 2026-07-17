@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
@@ -165,18 +166,20 @@ private fun FeedSections(
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // design/final/home.html: phone portrait = list, tablet portrait = 2-col, landscape = 3-col.
+        // M3 window size classes: compact = list, medium = 2-col, expanded = 3-col + wider margin.
         val columns = when {
             maxWidth < 600.dp -> 1
-            maxWidth > maxHeight -> 3
-            else -> 2
+            maxWidth < 840.dp -> 2
+            else -> 3
         }
+        val margin = if (maxWidth >= 840.dp) DesignSpacing.MarginExpanded else DesignSpacing.MarginCompact
         LazyColumn(Modifier.fillMaxSize()) {
             item { FeedChips(state, pager) }
             state.sections.forEachIndexed { index, section ->
                 feedSection(
                     section = section,
                     columns = columns,
+                    margin = margin,
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
@@ -200,6 +203,7 @@ private fun FeedSections(
 private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
     columns: Int,
+    margin: Dp,
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
@@ -229,10 +233,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         val rows = shown.chunked(columns)
         items(rows.size) { r ->
             Row(
-                // Design metrics (16 edge / 15 gap / 6+9 vertical) minus GRID_CARD_INSET, which the
-                // cards re-add around themselves as the hover's breathing room.
-                Modifier.fillMaxWidth().padding(start = 11.dp, end = 11.dp, top = 1.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                // M3 margin/gutter minus GRID_CARD_INSET, which each card re-adds around itself as
+                // the hover's breathing room — visual metrics stay margin/Gutter exactly.
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = margin - GRID_CARD_INSET, end = margin - GRID_CARD_INSET, top = 1.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter - GRID_CARD_INSET * 2),
             ) {
                 rows[r].forEach { item ->
                     FeedGridCard(

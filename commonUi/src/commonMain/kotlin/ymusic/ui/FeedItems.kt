@@ -172,27 +172,31 @@ fun FeedGridCard(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(GRID_CARD_INSET),
     ) {
-        val isPlaylist = item.kind == YtFeedItem.KIND_PLAYLIST
-        if (isPlaylist) {
-            // The stacked-playlist edge peeking above the thumbnail.
+        // Every card reserves the 5dp tab strip above the thumb (the mockup's absolutely-positioned
+        // `top:-5px` tab) and two title lines below it — so video/playlist/channel cards in one grid
+        // row keep their thumbs AND text blocks aligned regardless of tab or title length.
+        Box(Modifier.fillMaxWidth()) {
+            if (item.kind == YtFeedItem.KIND_PLAYLIST) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp)
+                        .height(5.dp)
+                        .background(DesignColors.StackTab, RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)),
+                )
+            }
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp)
-                    .height(5.dp)
-                    .background(DesignColors.StackTab, RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)),
-            )
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .background(DesignColors.Placeholder, RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
-            ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(9.dp))
-            Badges(item, Modifier.align(Alignment.BottomEnd).padding(6.dp), textSize = 10, iconSize = 11.dp)
+                    .padding(top = 5.dp)
+                    .aspectRatio(16f / 9f)
+                    .background(DesignColors.Placeholder, RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
+                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(9.dp))
+                Badges(item, Modifier.align(Alignment.BottomEnd).padding(6.dp), textSize = 10, iconSize = 11.dp)
+            }
         }
         Row(
             Modifier.fillMaxWidth().padding(top = 7.dp),
@@ -200,7 +204,7 @@ fun FeedGridCard(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(item.title, style = GridTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.title, style = GridTitleStyle, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
                 if (sub.isNotEmpty()) {
                     Text(sub, style = GridSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))

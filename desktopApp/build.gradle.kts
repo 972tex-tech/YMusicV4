@@ -27,6 +27,11 @@ kotlin {
                 implementation(Libs.Kotlinx.coroutinesCore)
             }
         }
+
+        // Headless snapshot renders of shared components (visual dev checks, not assertions).
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 
