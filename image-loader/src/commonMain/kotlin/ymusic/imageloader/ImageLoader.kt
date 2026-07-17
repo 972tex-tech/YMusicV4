@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
+import kotlin.concurrent.Volatile
 
 /**
  * A deliberately simple image loader for Compose: fetch → decode scaled to the view size → cache.
@@ -34,6 +35,23 @@ class ImageLoader(
 ) {
     private val memory = MemoryImageCache(memoryCacheBytes)
     private val gate = LifoGate(parallelism)
+
+    @Volatile private var memoryBudget = memoryCacheBytes
+
+    /** New steady-state memory-cache budget (device class changed, user setting); evicts to it now. */
+    fun setMemoryCacheBudget(bytes: Long) {
+        memoryBudget = bytes
+        memory.setBudget(bytes)
+    }
+
+    /**
+     * Memory pressure (Android `onTrimMemory`, backgrounding): evict now down to [keepFraction] of
+     * the budget — 0 clears — without changing the steady-state budget, so the cache regrows
+     * normally once pressure passes.
+     */
+    fun trimMemoryCache(keepFraction: Float = 0f) {
+        memory.trimTo((memoryBudget * keepFraction.coerceIn(0f, 1f)).toLong())
+    }
 
     /**
      * The memory-cached bitmap for [url] at this target size, or null — non-suspending, cheap

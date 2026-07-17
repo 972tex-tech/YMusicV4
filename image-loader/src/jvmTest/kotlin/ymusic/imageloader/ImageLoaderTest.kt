@@ -137,6 +137,24 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun trimAndBudgetEvictTheMemoryCache() = runTest {
+        val server = FakeImageServer(pngBytes(100, 100))
+        val loader = ImageLoader(server)
+        val url = "https://img.test/a.png"
+        loader.load(url, 64, 64)
+
+        loader.trimMemoryCache(0f) // pressure: clear, budget unchanged
+        assertEquals(null, loader.peek(url, 64, 64))
+        loader.load(url, 64, 64)
+        assertTrue(loader.peek(url, 64, 64) != null, "cache regrows after a transient trim")
+
+        loader.setMemoryCacheBudget(0)
+        assertEquals(null, loader.peek(url, 64, 64))
+        loader.load(url, 64, 64)
+        assertEquals(null, loader.peek(url, 64, 64), "a zero budget keeps nothing")
+    }
+
+    @Test
     fun httpFailureThrows() = runTest {
         val server = FakeImageServer(pngBytes(10, 10), status = 404)
         val loader = ImageLoader(server)
