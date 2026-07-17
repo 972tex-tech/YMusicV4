@@ -31,3 +31,5 @@ build-asan
 
 # built webview-js bundle, copied in by :androidApp copyWebViewJs
 androidApp/src/main/assets/webview_ymusic.js
+# compose resources copied in by :androidApp copyComposeResources (AGP9 KMP-plugin workaround)
+androidApp/src/main/assets/composeResources/
