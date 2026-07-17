@@ -47,6 +47,16 @@ tasks.register<JavaExec>("webviewProbe") {
     args((providers.gradleProperty("probeArgs").orNull ?: "realized").split(" "))
 }
 
+// Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
+tasks.register<JavaExec>("catalogue") {
+    group = "application"
+    description = "Open the UI-component catalogue window (no engines/CEF — fast design loop)."
+    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
+    dependsOn(jvmMainCompilation.compileTaskProvider)
+    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
+    mainClass.set("ymusic.desktop.CatalogueMainKt")
+}
+
 compose.desktop {
     application {
         mainClass = "ymusic.desktop.MainKt"

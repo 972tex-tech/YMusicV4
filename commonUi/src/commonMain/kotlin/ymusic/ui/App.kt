@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.OndemandVideo
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.DrawerValue
@@ -71,6 +72,7 @@ enum class AppSection(val label: String, val icon: ImageVector, val group: Int) 
     Rewind("Rewind playlist", Icons.Outlined.FastRewind, 1),
     Downloads("Download manager", Icons.Outlined.FileDownload, 1),
     Settings("Settings", Icons.Outlined.Settings, 1),
+    Catalogue("UI catalogue", Icons.Outlined.Palette, 1),
     Donate("Donate", Icons.Outlined.FavoriteBorder, 2),
     Facebook("Like us on Facebook", Icons.Default.Facebook, 2),
     Feedback("Feedback", Icons.AutoMirrored.Outlined.Chat, 2),
@@ -175,6 +177,7 @@ private fun AppRoot(graph: AppGraph) {
                             searching -> SearchScreen(graph, coordinator, onBack = { searching = false })
                             section == AppSection.Discover -> DiscoverFeed(graph, coordinator, discoverTab)
                             section == AppSection.Library -> LibraryScreen(graph, coordinator)
+                            section == AppSection.Catalogue -> CatalogueScreen()
                             else -> ComingSoon(section)
                         }
                     }
