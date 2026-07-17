@@ -50,12 +50,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreBucket
@@ -455,16 +457,26 @@ private fun GroupedList(
     keyOf: (MediaStoreItem) -> String?,
 ) {
     var group by remember { mutableStateOf<String?>(null) }
-    val groups = remember(songs) {
-        songs.groupBy { keyOf(it)?.takeIf(String::isNotBlank) ?: unknownLabel }
-            .toList()
-            .sortedBy { (name, _) -> name.lowercase() }
+    // Grouping 10k songs is real CPU work — done off-main, with the previous grouping (or nothing
+    // on first entry) showing until the fresh one lands.
+    var groups by remember { mutableStateOf<List<Pair<String, List<MediaStoreItem>>>?>(null) }
+    LaunchedEffect(songs) {
+        groups = withContext(Dispatchers.Default) {
+            songs.groupBy { keyOf(it)?.takeIf(String::isNotBlank) ?: unknownLabel }
+                .toList()
+                .sortedBy { (name, _) -> name.lowercase() }
+        }
+    }
+    val grouped = groups
+    if (grouped == null) {
+        CenteredBox { CircularProgressIndicator() }
+        return
     }
 
     val selected = group
     if (selected == null) {
         LazyColumn(Modifier.fillMaxSize()) {
-            itemsIndexed(groups, key = { _, (name, _) -> name }) { _, (name, members) ->
+            itemsIndexed(grouped, key = { _, (name, _) -> name }) { _, (name, members) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -488,7 +500,7 @@ private fun GroupedList(
     } else {
         Column(Modifier.fillMaxSize()) {
             DrillDownHeader(selected) { group = null }
-            SongList(groups.firstOrNull { it.first == selected }?.second.orEmpty(), coordinator)
+            SongList(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), coordinator)
         }
     }
 }
