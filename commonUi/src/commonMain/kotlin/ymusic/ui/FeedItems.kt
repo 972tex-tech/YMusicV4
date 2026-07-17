@@ -77,7 +77,7 @@ fun SectionHeader(
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (header?.iconThumb != null) {
+        if (header != null && header.iconThumbs.isNotEmpty()) {
             Box(
                 Modifier.size(26.dp).background(DesignColors.PlaceholderDim, CircleShape),
                 contentAlignment = Alignment.Center,
