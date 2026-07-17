@@ -115,6 +115,10 @@ private fun AppRoot(graph: AppGraph) {
             val wide = maxWidth > maxHeight && maxWidth >= 600.dp
             ModalNavigationDrawer(
                 drawerState = drawer,
+                // Swipe-open is touch-only: with a mouse, the whole-screen drag would claim any
+                // click whose press wanders a pixel (mouse slop ~0.1dp). Open stays possible while
+                // showing so scrim/drag dismiss keeps working on desktop.
+                gesturesEnabled = platformUsesTouch || drawer.isOpen,
                 drawerContent = {
                     AppDrawer(
                         section = section,
