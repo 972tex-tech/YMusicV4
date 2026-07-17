@@ -31,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
@@ -172,20 +171,14 @@ private fun FeedSections(
             maxWidth < 840.dp -> 2
             else -> 3
         }
-        val margin = if (maxWidth >= 840.dp) DesignSpacing.MarginExpanded else DesignSpacing.MarginCompact
-        // Mobile-class grids run tight (4dp between cards), expanded ones airy (16dp); the hover
-        // inset is half the gutter so card spacing is exactly the gutter with zero row gaps.
-        val gutter = if (maxWidth >= 840.dp) DesignSpacing.Gutter else DesignSpacing.Space4
-        val inset = gutter / 2
+        val metrics = gridMetricsFor(maxWidth)
         LazyColumn(Modifier.fillMaxSize()) {
             item { FeedChips(state, pager) }
             state.sections.forEachIndexed { index, section ->
                 feedSection(
                     section = section,
                     columns = columns,
-                    margin = margin,
-                    gutter = gutter,
-                    inset = inset,
+                    metrics = metrics,
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
@@ -209,9 +202,7 @@ private fun FeedSections(
 private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
     columns: Int,
-    margin: Dp,
-    gutter: Dp,
-    inset: Dp,
+    metrics: GridMetrics,
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
@@ -245,8 +236,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 // breathing room — visual metrics stay margin/gutter exactly.
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = margin - inset),
-                horizontalArrangement = Arrangement.spacedBy(gutter - inset * 2),
+                    .padding(horizontal = metrics.margin - metrics.inset),
+                horizontalArrangement = Arrangement.spacedBy(metrics.gutter - metrics.inset * 2),
             ) {
                 rows[r].forEach { item ->
                     FeedGridCard(
@@ -254,7 +245,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                         actions = itemActions(item, coordinator),
                         onClick = itemClick(item, coordinator),
                         modifier = Modifier.weight(1f),
-                        inset = inset,
+                        inset = metrics.inset,
                     )
                 }
                 repeat(columns - rows[r].size) { Spacer(Modifier.weight(1f)) }

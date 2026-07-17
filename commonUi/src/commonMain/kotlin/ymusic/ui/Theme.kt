@@ -56,8 +56,25 @@ object DesignSpacing {
     /** Window edge margin, expanded (`≥840dp`) windows. */
     val MarginExpanded = Space24
 
-    /** Between grid cards. */
+    /** Between grid cards (expanded windows; mobile-class uses [Space8]). */
     val Gutter = Space16
+}
+
+/**
+ * Per-window-class grid metrics. [inset] is each card's hover/ripple breathing room — half the
+ * gutter, so cards sit exactly one gutter apart with zero structural row spacing (callers lay rows
+ * with `margin - inset` edges and `gutter - 2×inset` gaps).
+ */
+class GridMetrics(val margin: androidx.compose.ui.unit.Dp, val gutter: androidx.compose.ui.unit.Dp) {
+    val inset = gutter / 2
+}
+
+fun gridMetricsFor(windowWidth: androidx.compose.ui.unit.Dp): GridMetrics {
+    val expanded = windowWidth >= 840.dp
+    return GridMetrics(
+        margin = if (expanded) DesignSpacing.MarginExpanded else DesignSpacing.MarginCompact,
+        gutter = if (expanded) DesignSpacing.Gutter else DesignSpacing.Space8,
+    )
 }
 
 private val LightScheme = lightColorScheme(

@@ -5,8 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ymusic.dynamicengine.yt.YtFeedItem
@@ -60,15 +63,12 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
         item { FeedListItem(mockChannel, ItemActions(emptyList()), onClick = {}) }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true) }
 
-        item { CatLabel("FeedGridCard — video · playlist · channel") }
+        item { CatLabel("FeedGridCard — video · playlist · channel (metrics follow window width)") }
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.MarginCompact - GRID_CARD_INSET),
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter - GRID_CARD_INSET * 2),
-            ) {
-                FeedGridCard(mockVideo, mockActions, onClick = {}, modifier = Modifier.weight(1f))
-                FeedGridCard(mockPlaylist, mockActions, onClick = {}, modifier = Modifier.weight(1f))
-                FeedGridCard(mockChannel, ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f))
+            CatalogueGridRow { inset ->
+                FeedGridCard(mockVideo, mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
+                FeedGridCard(mockPlaylist, mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
+                FeedGridCard(mockChannel, ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f), inset = inset)
             }
         }
 
@@ -85,12 +85,9 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
         item { CatLabel("Thumbnails — live loader (needs network; placeholder without)") }
         item { FeedListItem(mockVideo.copy(thumbs = mockVideoThumbs), mockActions, onClick = {}) }
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.MarginCompact - GRID_CARD_INSET),
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter - GRID_CARD_INSET * 2),
-            ) {
-                FeedGridCard(mockVideo.copy(thumbs = mockVideoThumbs), mockActions, onClick = {}, modifier = Modifier.weight(1f))
-                FeedGridCard(mockChannel.copy(thumbs = mockAvatarThumbs), ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f))
+            CatalogueGridRow { inset ->
+                FeedGridCard(mockVideo.copy(thumbs = mockVideoThumbs), mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
+                FeedGridCard(mockChannel.copy(thumbs = mockAvatarThumbs), ItemActions(emptyList()), onClick = {}, modifier = Modifier.weight(1f), inset = inset)
             }
         }
 
@@ -186,6 +183,20 @@ private fun RadiusBox(value: Int, label: String) {
             modifier = Modifier.padding(top = 3.dp),
             maxLines = 1,
         )
+    }
+}
+
+/** A grid demo row on the real per-window-class metrics — resize the window to see them adapt. */
+@Composable
+private fun CatalogueGridRow(content: @Composable RowScope.(inset: Dp) -> Unit) {
+    BoxWithConstraints {
+        val metrics = gridMetricsFor(maxWidth)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = metrics.margin - metrics.inset),
+            horizontalArrangement = Arrangement.spacedBy(metrics.gutter - metrics.inset * 2),
+        ) {
+            content(metrics.inset)
+        }
     }
 }
 
