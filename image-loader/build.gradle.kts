@@ -41,6 +41,7 @@ kotlin {
                 implementation(compose.foundation)
                 implementation(compose.ui)
                 implementation(Libs.Kotlinx.coroutinesCore)
+                implementation(Libs.Kotlinx.atomicfu)
                 implementation(Libs.Okio.core)
             }
         }

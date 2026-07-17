@@ -1,50 +1,45 @@
 package ymusic.imageloader
 
 import androidx.compose.ui.graphics.ImageBitmap
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.Volatile
 
 /**
- * In-memory cache of decoded bitmaps, bounded by estimated pixel bytes (w×h×4).
+ * In-memory LRU of decoded bitmaps, bounded by estimated pixel bytes (w×h×4).
  *
- * Reads are **lock-free** — composition peeks every visible item, so a read must not take even an
- * uncontended lock, and strict LRU (reorder-on-read) would force one. Instead reads hit a volatile
- * immutable [snapshot] and set the entry's `accessed` flag, and eviction is CLOCK/second-chance:
- * the sweep re-appends a recently-read head entry (flag cleared) rather than evicting it — LRU-like
- * quality with zero read-side synchronization. The `accessed` race is benign (a lost set = one
- * entry evicted a round early). Writes serialize on a [Mutex] and republish the snapshot (a
- * reference copy of ≤ a few hundred entries — noise next to the decode that precedes every put).
+ * A cache **miss** is lock-free — composition peeks every visible item until its bitmap lands, so
+ * the miss path must not take even an uncontended lock: it's one volatile read of the immutable
+ * [snapshot] plus a hash lookup. A **hit** takes the lock to bump the entry to most-recently-used —
+ * hits are rare per item (`AsyncImage` stops peeking once it holds the bitmap), so exact LRU is
+ * worth a plain critical section there. Recency order lives only in [map]; the snapshot is
+ * lookup-only, so a bump doesn't republish it — only [put] mutations do.
  */
 internal class MemoryImageCache(private val maxBytes: Long) {
-    private class Entry(val bitmap: ImageBitmap) {
-        var accessed = false
-    }
-
-    private val lock = Mutex()
-    private val map = LinkedHashMap<String, Entry>() // insertion-ordered; CLOCK hand = the head
+    private val lock = SynchronizedObject()
+    private val map = LinkedHashMap<String, ImageBitmap>()
     private var totalBytes = 0L
 
-    @Volatile private var snapshot: Map<String, Entry> = emptyMap()
+    @Volatile private var snapshot: Map<String, ImageBitmap> = emptyMap()
 
-    /** Lock-free lookup; marks the entry recently-used for the eviction sweep. */
-    fun peek(key: String): ImageBitmap? = snapshot[key]?.also { it.accessed = true }?.bitmap
+    fun peek(key: String): ImageBitmap? {
+        val hit = snapshot[key] ?: return null
+        synchronized(lock) {
+            map.remove(key)?.let { map[key] = it } // re-insert = most recently used
+        }
+        return hit
+    }
 
-    suspend fun put(key: String, bitmap: ImageBitmap): Unit = lock.withLock {
-        map.remove(key)?.let { totalBytes -= it.bitmap.byteSize() }
-        map[key] = Entry(bitmap)
+    fun put(key: String, bitmap: ImageBitmap): Unit = synchronized(lock) {
+        map.remove(key)?.let { totalBytes -= it.byteSize() }
+        map[key] = bitmap
         totalBytes += bitmap.byteSize()
-        while (totalBytes > maxBytes) {
-            val eldest = map.entries.firstOrNull() ?: break
-            if (eldest.key == key) break // never evict what was just inserted
-            val entry = eldest.value
-            map.remove(eldest.key)
-            if (entry.accessed) {
-                // Second chance: recently read — back to the tail, flag spent.
-                entry.accessed = false
-                map[eldest.key] = entry
-            } else {
-                totalBytes -= entry.bitmap.byteSize()
-            }
+        val it = map.entries.iterator()
+        while (totalBytes > maxBytes && it.hasNext()) {
+            val eldest = it.next()
+            if (eldest.key == key) continue // never evict what was just inserted
+            it.remove()
+            totalBytes -= eldest.value.byteSize()
         }
         snapshot = HashMap(map)
     }
