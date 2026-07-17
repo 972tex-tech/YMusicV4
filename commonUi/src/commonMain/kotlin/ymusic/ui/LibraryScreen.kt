@@ -252,14 +252,14 @@ private fun FolderRow(bucket: MediaStoreBucket, onOpen: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         LibraryThumb(Icons.Default.Folder, badge = null)
         Column(Modifier.weight(1f)) {
             Text(bucket.displayName, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("Folder", style = ListSubStyle, modifier = Modifier.padding(top = 3.dp))
+            Text("Folder", style = ListSubStyle, modifier = Modifier.padding(top = 4.dp))
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DesignColors.InkFaint)
     }
@@ -301,9 +301,9 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
                                 members = null
                                 selected = playlist
                             }
-                            .padding(horizontal = 16.dp, vertical = 7.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top,
                     ) {
                         LibraryThumb(Icons.AutoMirrored.Filled.PlaylistPlay, badge = "$count")
                         Column(Modifier.weight(1f)) {
@@ -311,7 +311,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
                             Text(
                                 "$count song" + if (count == 1) "" else "s",
                                 style = ListSubStyle,
-                                modifier = Modifier.padding(top = 3.dp),
+                                modifier = Modifier.padding(top = 4.dp),
                             )
                         }
                     }
@@ -387,7 +387,7 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
 private fun ScanBar(scan: suspend () -> String?, state: ScanState, label: String) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ScanPill(scan, state, label = label)
@@ -418,9 +418,9 @@ private fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay)
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         LibraryThumb(Icons.Default.MusicNote, formatDuration(song.durationMs))
         Column(Modifier.weight(1f)) {
@@ -432,7 +432,7 @@ private fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
                     style = ListSubStyle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp),
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }
@@ -463,9 +463,9 @@ private fun GroupedList(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { group = name }
-                        .padding(horizontal = 16.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
                     LibraryThumb(icon, badge = null)
                     Column(Modifier.weight(1f)) {
@@ -473,7 +473,7 @@ private fun GroupedList(
                         Text(
                             "${members.size} song" + if (members.size == 1) "" else "s",
                             style = ListSubStyle,
-                            modifier = Modifier.padding(top = 3.dp),
+                            modifier = Modifier.padding(top = 4.dp),
                         )
                     }
                 }

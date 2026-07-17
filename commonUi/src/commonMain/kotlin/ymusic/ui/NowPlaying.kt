@@ -101,7 +101,7 @@ fun MiniPlayer(
             gapSize = 0.dp,
         )
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand).padding(horizontal = 15.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -302,7 +302,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeekBar(player: ymusic.player.Player, positionMs: Long, durationMs: Long) {
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
         Slider(
             value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
             onValueChange = { if (durationMs > 0) player.seekTo((it * durationMs).toLong()) },
@@ -424,9 +424,9 @@ private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.
         Modifier
             .fillMaxWidth()
             .clickable { coordinator.player.playAt(index) }
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         Icon(Icons.Default.DragHandle, null, Modifier.size(18.dp), tint = Color(0xFFC4C4C4))
         Box(

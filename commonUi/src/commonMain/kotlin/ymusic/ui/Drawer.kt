@@ -73,14 +73,14 @@ fun AppDrawer(
 @Composable
 private fun DrawerHeader(appVersion: String?) {
     Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 13.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painterResource(Res.drawable.ymusic_logo),
                 contentDescription = "YMusic",
                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)),
             )
             Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "YMusic",
                         style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A)),
@@ -103,7 +103,7 @@ private fun DrawerHeader(appVersion: String?) {
                     Text(
                         it,
                         style = TextStyle(fontSize = 11.sp, color = DesignColors.InkFaint),
-                        modifier = Modifier.padding(top = 3.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
@@ -118,7 +118,7 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
             Box(
                 Modifier
                     .align(Alignment.CenterStart)
-                    .padding(vertical = 6.dp)
+                    .padding(vertical = 8.dp)
                     .size(width = 3.dp, height = 33.dp)
                     .background(BrandGreen, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)),
             )
