@@ -115,6 +115,16 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun peekIsSynchronousMemoryHit() = runTest {
+        val server = FakeImageServer(pngBytes(100, 100))
+        val loader = ImageLoader(server)
+        assertEquals(null, loader.peek("https://img.test/a.png", 64, 64))
+        val bitmap = loader.load("https://img.test/a.png", 64, 64)
+        assertTrue(loader.peek("https://img.test/a.png", 64, 64) === bitmap)
+        assertEquals(null, loader.peek("https://img.test/a.png", 500, 500), "other sizes stay misses")
+    }
+
+    @Test
     fun httpFailureThrows() = runTest {
         val server = FakeImageServer(pngBytes(10, 10), status = 404)
         val loader = ImageLoader(server)

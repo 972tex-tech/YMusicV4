@@ -16,6 +16,18 @@ internal class MemoryImageCache(private val maxBytes: Long) {
         hit
     }
 
+    /** Non-suspending [get] for composition-time lookups; a contended lock is simply a miss. */
+    fun peek(key: String): ImageBitmap? {
+        if (!lock.tryLock()) return null
+        try {
+            val hit = map.remove(key) ?: return null
+            map[key] = hit
+            return hit
+        } finally {
+            lock.unlock()
+        }
+    }
+
     suspend fun put(key: String, bitmap: ImageBitmap): Unit = lock.withLock {
         map.remove(key)?.let { totalBytes -= it.byteSize() }
         map[key] = bitmap

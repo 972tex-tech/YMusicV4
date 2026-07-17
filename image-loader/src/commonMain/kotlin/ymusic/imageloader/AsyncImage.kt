@@ -47,7 +47,10 @@ fun AsyncImage(
     var loadedFor by remember(url) { mutableStateOf(IntSize.Zero) }
 
     Box(modifier.onSizeChanged { sizePx = it }) {
+        // Synchronous memory-cache peek: an already-cached image draws on its FIRST frame — routing
+        // the hit through the effect would flash the placeholder for a frame (list scroll jitter).
         val bitmap = loaded
+            ?: if (url != null && sizePx != IntSize.Zero) loader.peek(url, sizePx.width, sizePx.height) else null
         when {
             bitmap != null -> Image(
                 bitmap,

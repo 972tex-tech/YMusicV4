@@ -36,6 +36,14 @@ class ImageLoader(
     private val gate = LifoGate(parallelism)
 
     /**
+     * The memory-cached bitmap for [url] at this target size, or null — non-suspending, cheap
+     * enough for composition, so an already-cached image draws on its first frame with no
+     * placeholder flash (see `AsyncImage`).
+     */
+    fun peek(url: String, maxWidth: Int, maxHeight: Int): ImageBitmap? =
+        memory.peek("$url@${bucketPx(maxWidth)}x${bucketPx(maxHeight)}")
+
+    /**
      * The image at [url], scaled down to fit [maxWidth]×[maxHeight] pixels (aspect kept, never
      * upscaled). Suspends until loaded; throws [IOException] on a failed fetch and rethrows decode
      * failures — callers showing a placeholder catch and log (see `AsyncImage`).
