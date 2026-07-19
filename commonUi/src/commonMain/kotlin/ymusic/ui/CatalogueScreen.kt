@@ -109,10 +109,8 @@ private fun CatalogueList() {
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true) }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true, wide = true) }
 
-        item { CatLabel("Breakpoints — the same feed at each band, frames at true width") }
-        item { BreakpointFrame(360.dp) }
-        item { BreakpointFrame(430.dp) }
-        item { BreakpointFrame(520.dp) }
+        item { CatLabel("Breakpoints — adaptive: resize the window, this section switches band live") }
+        item { AdaptiveBandDemo() }
 
         item { CatLabel("FeedGridCard — video · playlist · channel (metrics follow window width)") }
         item {
@@ -378,37 +376,47 @@ private fun RadiusBox(value: Int, label: String) {
 }
 
 /**
- * One feed band at true width: a [width]-wide bordered frame whose content form comes from the
- * REAL [feedLayoutFor] — a moved breakpoint moves these frames with it. Scrolls sideways when the
- * frame is wider than the window.
+ * The feed rendered at the CURRENT window width, band picked by the real [feedLayoutFor] — resize
+ * the window and this section flips square list → 16:9 list → grid (with the real column count)
+ * exactly where the app does.
  */
 @Composable
-private fun BreakpointFrame(width: Dp) {
-    val layout = feedLayoutFor(width)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-    ) {
-        Text(
-            "${width.value.toInt()}dp → $layout",
-            style = TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = DesignColors.InkSoft),
-            modifier = Modifier.padding(bottom = 3.dp),
-        )
-        Box(Modifier.width(width).border(1.dp, DesignColors.Outline)) {
+private fun AdaptiveBandDemo() {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val width = maxWidth
+        val layout = feedLayoutFor(width)
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                "${width.value.toInt()}dp → $layout",
+                style = TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = DesignColors.InkSoft),
+                modifier = Modifier.padding(start = 16.dp, bottom = 3.dp),
+            )
             when (layout) {
-                FeedLayout.SquareList -> Column {
+                FeedLayout.SquareList -> {
                     FeedListItem(mockVideo, mockActions, onClick = {})
                     FeedListItem(mockPlaylist, mockActions, onClick = {})
                 }
-                FeedLayout.WideList -> Column {
+                FeedLayout.WideList -> {
                     FeedListItem(mockVideo, mockActions, onClick = {}, wide = true)
                     FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true)
                 }
-                FeedLayout.Grid -> CatalogueGridRow { inset ->
-                    FeedGridCard(mockVideo, mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
-                    FeedGridCard(mockPlaylist, mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
+                FeedLayout.Grid -> {
+                    val metrics = gridMetricsFor(width)
+                    val columns = ((width - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_TARGET + metrics.gutter))
+                        .toInt()
+                        .coerceAtLeast(2)
+                    val items = listOf(mockVideo, mockPlaylist, mockLive)
+                    CatalogueGridRow { inset ->
+                        repeat(columns) { i ->
+                            FeedGridCard(
+                                items[i % items.size],
+                                mockActions,
+                                onClick = {},
+                                modifier = Modifier.weight(1f),
+                                inset = inset,
+                            )
+                        }
+                    }
                 }
             }
         }
