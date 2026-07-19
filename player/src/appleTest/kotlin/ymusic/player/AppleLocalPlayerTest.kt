@@ -20,7 +20,6 @@ import platform.Foundation.timeIntervalSinceDate
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
-import platform.posix.system
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.test.AfterTest
@@ -126,9 +125,8 @@ class AppleLocalPlayerTest {
 }
 
 /** Generate a video + 2-audio + 2-subtitle MP4 via ffmpeg; false if ffmpeg is not installed. */
-@OptIn(ExperimentalForeignApi::class)
 private fun generateMultiTrack(path: String): Boolean {
-    if (system("command -v ffmpeg >/dev/null 2>&1") != 0) return false
+    if (runShell("command -v ffmpeg >/dev/null 2>&1") != 0) return false
     val en = NSTemporaryDirectory() + "cap_en.srt"
     val es = NSTemporaryDirectory() + "cap_es.srt"
     writeFile(en, "1\n00:00:00,000 --> 00:00:02,000\nHello\n".encodeToByteArray())
@@ -143,7 +141,7 @@ private fun generateMultiTrack(path: String): Boolean {
         "-metadata:s:a:0 language=eng -metadata:s:a:1 language=spa " +
         "-metadata:s:s:0 language=eng -metadata:s:s:1 language=spa " +
         path
-    return system(cmd) == 0
+    return runShell(cmd) == 0
 }
 
 /** Poll [player]'s status until it reaches [target] (or a competing terminal state), with a timeout. */
