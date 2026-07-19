@@ -480,7 +480,7 @@ private fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        LibraryThumb(Icons.Default.MusicNote, formatDuration(song.durationMs))
+        LibraryThumb(Icons.Default.MusicNote, formatDuration(song.durationMs), artUrl = localArtUrl(song))
         Column(Modifier.weight(1f)) {
             Text(song.title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val sub = listOfNotNull(song.artist, song.album).joinToString(" · ")
@@ -535,7 +535,7 @@ private fun GroupedList(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    LibraryThumb(icon, badge = null)
+                    LibraryThumb(icon, badge = null, artUrl = members.firstNotNullOfOrNull(::localArtUrl))
                     Column(Modifier.weight(1f)) {
                         Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
@@ -573,7 +573,7 @@ private fun DrillDownHeader(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun LibraryThumb(icon: ImageVector, badge: String?) {
+private fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = null) {
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -581,6 +581,7 @@ private fun LibraryThumb(icon: ImageVector, badge: String?) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, null, Modifier.size(21.dp), tint = DesignColors.PlaceholderIcon)
+        ArtImage(artUrl, RoundedCornerShape(10.dp))
         badge?.let {
             Text(
                 it,

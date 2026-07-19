@@ -55,6 +55,7 @@ kotlin {
                 api(project(":media-store"))
                 api(project(":image-loader"))
                 api(project(":settings"))
+                api(project(":kmpFfmpeg"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material3)

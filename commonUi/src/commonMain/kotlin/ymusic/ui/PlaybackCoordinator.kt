@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ymusic.dynamicengine.yt.YtFeedItem
+import ymusic.dynamicengine.yt.YtThumb
 import ymusic.dynamicengine.yt.watchNext
 import ymusic.mediastore.model.MediaStoreItem
 import ymusic.player.PlayableItem
@@ -70,6 +71,7 @@ class PlaybackCoordinator(
                 id = s.uri.toString(),
                 title = s.title,
                 subtitleLine1 = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
+                thumbs = localArtUrl(s)?.let { listOf(YtThumb(it)) } ?: emptyList(),
             )
         }
         _metadata.update { it + display.associateBy(YtFeedItem::id) }

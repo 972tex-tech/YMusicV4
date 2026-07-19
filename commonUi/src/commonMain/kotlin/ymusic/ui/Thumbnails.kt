@@ -27,9 +27,15 @@ internal fun List<YtThumb>.thumbUrlFor(targetPx: Int): String? =
  */
 @Composable
 internal fun BoxScope.ThumbImage(thumbs: List<YtThumb>, targetDp: Dp, shape: Shape) {
-    val loader = LocalImageLoader.current ?: return
     val targetPx = with(LocalDensity.current) { targetDp.roundToPx() }
-    val url = thumbs.thumbUrlFor(targetPx) ?: return
+    ArtImage(thumbs.thumbUrlFor(targetPx), shape)
+}
+
+/** One url straight into the thumbnail box — the single-variant sibling of [ThumbImage]. */
+@Composable
+internal fun BoxScope.ArtImage(url: String?, shape: Shape) {
+    if (url == null) return
+    val loader = LocalImageLoader.current ?: return
     AsyncImage(
         loader,
         url,

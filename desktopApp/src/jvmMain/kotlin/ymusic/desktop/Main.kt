@@ -52,6 +52,7 @@ import ymusic.player.createWebViewPlayer
 import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
 import java.awt.FileDialog
@@ -131,15 +132,17 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
 
     // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to the
-    // fetcher's disk cache, decode from file) + local files; scaled results skip the decode.
+    // fetcher's disk cache, decode from file) + local files + ffmpeg-extracted embedded art
+    // (absent ffmpeg just keeps art:// urls unresolved → placeholder boxes).
     val imageLoader = ImageLoader(
-        fetchers = listOf(
+        fetchers = listOfNotNull(
             networkFetcher(
                 KmpHttpClient.create { },
                 FileSystem.SYSTEM,
                 File(dataDir, "image-source-cache").absolutePath.toPath(),
             ),
             fileFetcher(),
+            findFfmpeg()?.let { localArtFetcher(FfmpegMetadataGetter(it)) },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = StdoutLogger,
@@ -220,7 +223,7 @@ private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
     }
 }
 
-private fun findFfmpeg(): String? {
+internal fun findFfmpeg(): String? {
     System.getenv("YMUSIC_FFMPEG")?.let { if (File(it).canExecute()) return it }
     val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator) +
         listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")

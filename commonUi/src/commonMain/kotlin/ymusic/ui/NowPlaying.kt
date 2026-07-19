@@ -129,7 +129,11 @@ fun MiniPlayer(
                 Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(DesignColors.PlaceholderDim),
                 contentAlignment = Alignment.Center,
             ) {
-                surface?.invoke(Modifier.fillMaxSize())
+                if (surface != null) {
+                    surface.invoke(Modifier.fillMaxSize())
+                } else {
+                    ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
+                }
             }
             Column(Modifier.weight(1f)) {
                 Text(
@@ -474,6 +478,7 @@ private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.Image, null, Modifier.size(18.dp), tint = DesignColors.PlaceholderIcon)
+            ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 48.dp, RoundedCornerShape(6.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
