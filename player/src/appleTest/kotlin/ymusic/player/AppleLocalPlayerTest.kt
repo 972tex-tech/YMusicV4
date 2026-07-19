@@ -42,13 +42,14 @@ class AppleLocalPlayerTest {
 
     @Test
     fun loads_plays_pauses_and_seeks() = pumpingMainLoop {
+        if (!canPlayRealMedia) return@pumpingMainLoop
         val path = NSTemporaryDirectory() + "localplayer_test_3s.wav"
         writeFile(path, sineWavPcm16(seconds = 3.0))
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
 
         p.load(PlayableItem.LocalUri(path), playWhenReady = true)
         awaitState(p, PlaybackState.Ready)
-        assertEquals(PlaybackState.Ready, p.status.value.state)
+        assertEquals(PlaybackState.Ready, p.status.value.state, "load failed: ${p.status.value.error}")
         val duration = p.progress.value.durationMs
         assertTrue(duration in 2500L..3500L, "duration should be ~3000ms, was $duration")
 

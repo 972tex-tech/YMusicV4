@@ -99,6 +99,7 @@ internal class AppleLocalPlayer : LocalPlayer {
     val player0: AVPlayer get() = player
 
     init {
+        ensurePlaybackAudioSession()
         scope.launch { tick() }
     }
 
@@ -142,7 +143,9 @@ internal class AppleLocalPlayer : LocalPlayer {
         // A newer load may have replaced this item while we polled — abandon the stale one.
         if (player.currentItem != item) return
         if (item.status == AVPlayerItemStatusFailed) {
-            fail("E60003", item.error?.localizedDescription ?: "unknown AVPlayerItem failure")
+            // NSError.description carries domain/code/underlying error; localizedDescription is
+            // usually just "The operation could not be completed".
+            fail("E60003", item.error?.description ?: item.error?.localizedDescription ?: "unknown AVPlayerItem failure")
             return
         }
 
