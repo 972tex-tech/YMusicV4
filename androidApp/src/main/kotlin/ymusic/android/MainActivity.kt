@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import kmphttp.DefaultPlatformCache
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import okio.FileSystem
@@ -29,6 +28,7 @@ import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.androidEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
+import ymusic.imageloader.ImageSourceCache
 import ymusic.imageloader.defaultMemoryCacheBudget
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
@@ -122,16 +122,16 @@ class MainActivity : ComponentActivity() {
             ),
         )
 
-        // Thumbnails: own client with an HTTP disk cache (no cookies — public CDN images), plus the
-        // scaled-image cache so warm starts skip the full-size decode. Memory budget scales with the
-        // device's heap class; onTrimMemory (above) sheds it under pressure.
+        // Thumbnails: cache-less client (no cookies — public CDN images); the loader owns the bytes
+        // — originals stream to the source cache and decode from file, scaled results skip the
+        // decode. Memory budget scales with the device's heap class; onTrimMemory (above) sheds it
+        // under pressure.
         val imageLoader = ImageLoader(
-            client = KmpHttpClient.create {
-                cache = DefaultPlatformCache(cacheDir.resolve("image-http-cache").toOkioPath(), 128L * 1024 * 1024)
-            },
+            client = KmpHttpClient.create { },
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
             logger = LogcatLogger(),
             memoryCacheBytes = defaultMemoryCacheBudget(this),
+            sourceCache = ImageSourceCache(FileSystem.SYSTEM, cacheDir.resolve("image-source-cache").toOkioPath()),
         ).also { this.imageLoader = it }
 
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName

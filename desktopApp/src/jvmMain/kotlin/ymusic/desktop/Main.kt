@@ -23,7 +23,6 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
-import kmphttp.DefaultPlatformCache
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +35,7 @@ import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
+import ymusic.imageloader.ImageSourceCache
 import ymusic.imageloader.defaultMemoryCacheBudget
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.FileSystemDocumentsProvider
@@ -129,15 +129,14 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
 
     val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
 
-    // Thumbnails: own client with an HTTP disk cache (no cookies — public CDN images), plus the
-    // scaled-image cache so warm starts skip the full-size decode.
+    // Thumbnails: cache-less client (no cookies — public CDN images); the loader owns the bytes —
+    // originals stream to the source cache and decode from file, scaled results skip the decode.
     val imageLoader = ImageLoader(
-        client = KmpHttpClient.create {
-            cache = DefaultPlatformCache(File(dataDir, "image-http-cache").absolutePath.toPath(), 128L * 1024 * 1024)
-        },
+        client = KmpHttpClient.create { },
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = StdoutLogger,
         memoryCacheBytes = defaultMemoryCacheBudget(),
+        sourceCache = ImageSourceCache(FileSystem.SYSTEM, File(dataDir, "image-source-cache").absolutePath.toPath()),
     )
 
     // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
