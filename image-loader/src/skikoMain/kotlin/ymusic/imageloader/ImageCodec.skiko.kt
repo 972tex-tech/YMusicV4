@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import okio.buffer
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.EncodedImageFormat
@@ -52,17 +53,13 @@ internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int
 
 // Skia's codec API is bytes-only (no incremental decode/encode exposed by skiko) — the compressed
 // data passes through a contiguous array here; entries are small pre-scaled PNGs.
-internal actual suspend fun decodeSource(source: kmpcommon.io.AsyncSource): ImageBitmap {
-    val buffer = okio.Buffer()
-    while (source.read(buffer, 64L * 1024) != -1L) {
-        // drain — Skia can't decode incrementally
-    }
-    Image.makeFromEncoded(buffer.readByteArray()).use { image ->
+internal actual fun decodeSource(source: okio.Source): ImageBitmap {
+    Image.makeFromEncoded(source.buffer().readByteArray()).use { image ->
         return image.toComposeImageBitmap()
     }
 }
 
-internal actual suspend fun encodePngToSink(bitmap: ImageBitmap, sink: kmpcommon.io.AsyncSink) {
+internal actual fun encodePngToSink(bitmap: ImageBitmap, sink: okio.Sink) {
     Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->
         val data = image.encodeToData(EncodedImageFormat.PNG)
             ?: throw IllegalStateException("PNG encode failed (${bitmap.width}x${bitmap.height})")

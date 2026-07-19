@@ -2,12 +2,10 @@
 
 package kmphttp.cache
 
-import kmpcommon.io.AsyncSink
-import kmpcommon.io.AsyncSource
 import kmpcommon.nowMs
 import kmpcommon.removeAll
 import kmphttp.internal.DefaultIODispatcher
-import kmphttp.internal.ForwardingAsyncSink
+import kmphttp.internal.ForwardingOkioSink
 import kmphttp.internal.closeQuietly
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -16,8 +14,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okio.FileSystem
 import okio.IOException
 import okio.Path
+import okio.Sink
+import okio.Source
 import okio.use
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicInt
@@ -105,7 +106,7 @@ private class CacheState(
         }
 
         fun hasJournalWriter(): Boolean = journalWriter != null
-        fun setJournalWriter(writer: AsyncSink?) {
+        fun setJournalWriter(writer: Sink?) {
             check(writer == null || !closed) { "Cache closed" }
             journalWriter?.sink?.closeQuietly()
             journalWriter = writer?.let { JournalWriter(it) }
@@ -263,13 +264,13 @@ class DiskLruCache(
     private suspend fun CacheState.StateAccessor.initializeInState() {
         if (isInitialized() || isClosed()) return
 
-        fileSystem.mkdirs(directory)
+        fileSystem.createDirectories(directory)
         try {
             fileSystem.deleteRecursively(tempDir)
         } catch (_: IOException) {
         }
-        fileSystem.mkdirs(tempDir)
-        if (!fileSystem.isDirectory(tempDir)) {
+        fileSystem.createDirectories(tempDir)
+        if (fileSystem.metadataOrNull(tempDir)?.isDirectory != true) {
             throw IOException("Can't create $tempDir directory")
         }
 
@@ -284,7 +285,7 @@ class DiskLruCache(
 
         val journalFileState = if (fileSystem.exists(journalFile)) {
             try {
-                fileSystem.asyncSource(journalFile).use { source ->
+                fileSystem.source(journalFile).use { source ->
                     source.readJournalFile(appVersion, valueCount)
                 }
             } catch (_: IOException) {
@@ -302,7 +303,7 @@ class DiskLruCache(
             }
         }
 
-        val directoryFileNames = fileSystem.listFile(directory).await()
+        val directoryFileNames = fileSystem.list(directory)
             .mapTo(mutableSetOf()) { it.name }
         directoryFileNames.remove(JOURNAL_FILE)
         directoryFileNames.remove(TEMP_DIR)
@@ -320,7 +321,7 @@ class DiskLruCache(
         if (!journalFileState.isComplete) {
             rebuildJournalInState()
         } else {
-            setJournalWriter(fileSystem.asyncSink(journalFile, append = true))
+            setJournalWriter(fileSystem.appendingSink(journalFile))
         }
 
         init(journalFileState)
@@ -408,7 +409,7 @@ class DiskLruCache(
         // close current writer
         setJournalWriter(null)
 
-        fileSystem.asyncSink(journalFileTmp, append = false).use { sink ->
+        fileSystem.sink(journalFileTmp).use { sink ->
             val journalWriter = JournalWriter(sink)
             journalWriter.writeHeader(appVersion, valueCount)
 
@@ -425,7 +426,7 @@ class DiskLruCache(
             fileSystem.atomicMove(journalFileTmp, journalFile)
         }
 
-        setJournalWriter(fileSystem.asyncSink(journalFile, append = true))
+        setJournalWriter(fileSystem.appendingSink(journalFile))
         setJournalOpCount(entriesCount())
         setMostRecentRebuildFailed(false)
     }
@@ -553,7 +554,7 @@ class DiskLruCache(
                         check(!fileSystem.exists(newFilePath))
                         fileSystem.atomicMove(dirtyFile, newFilePath)
 
-                        val fileSize = checkNotNull(fileSystem.fileLength(newFilePath))
+                        val fileSize = checkNotNull(fileSystem.metadataOrNull(newFilePath)?.size)
                         newFileName to fileSize
                     } else {
                         checkNotNull(editor.existingEntry).cleanFiles[i]
@@ -576,11 +577,11 @@ class DiskLruCache(
     }
 
     private suspend fun createSnapshot(entry: FileCacheEntry): Snapshot? {
-        val sources = mutableListOf<AsyncSource>()
+        val sources = mutableListOf<Source>()
         try {
             for (i in 0 until valueCount) {
                 val path = directory / entry.cleanFiles[i].first
-                sources += fileSystem.asyncSource(path)
+                sources += fileSystem.source(path)
             }
             return Snapshot(entry, sources)
         } catch (_: IOException) {
@@ -598,7 +599,7 @@ class DiskLruCache(
 
     inner class Snapshot internal constructor(
         private val entry: FileCacheEntry,
-        private val sources: List<AsyncSource>
+        private val sources: List<Source>
     ) : AutoCloseable {
 
         fun key(): String = entry.key
@@ -631,13 +632,13 @@ class DiskLruCache(
 
         private var done = false
 
-        suspend fun newSink(index: Int): AsyncSink {
+        fun newSink(index: Int): Sink {
             check(!done)
             val dirtyFile = dirtyFiles[index] ?: (tempDir / (newUniqueFileName() + ".tmp")).also {
                 dirtyFiles[index] = it
             }
-            val delegate = fileSystem.asyncSink(dirtyFile, append = false)
-            return object : ForwardingAsyncSink(delegate) {
+            val delegate = fileSystem.sink(dirtyFile)
+            return object : ForwardingOkioSink(delegate) {
                 override fun close() {
                     super.close()
                     if (zombie) {

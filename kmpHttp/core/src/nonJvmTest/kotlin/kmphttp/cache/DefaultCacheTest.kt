@@ -30,14 +30,14 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class, ExperimentalTime::class)
 class DefaultCacheTest {
 
-    private val fileSystem = SystemFileSystem
+    private val fileSystem = okio.FileSystem.SYSTEM
     private val testBaseDir = ".".toPath() / "test-cache"
 
     private fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
     private fun newCacheDir(): Path {
         val dir = testBaseDir / Uuid.random().toString()
-        fileSystem.mkdirs(dir)
+        fileSystem.createDirectories(dir)
         return dir
     }
 

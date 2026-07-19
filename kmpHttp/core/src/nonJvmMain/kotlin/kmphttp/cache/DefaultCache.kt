@@ -2,7 +2,8 @@ package kmphttp.cache
 
 import kmpcommon.io.AsyncSink
 import kmpcommon.io.AsyncSource
-import kmpcommon.io.BufferedAsyncSource
+import kmpcommon.io.asAsyncSink
+import kmpcommon.io.asAsyncSource
 import kmphttp.Headers
 import kmphttp.HeadersBuilder
 import kmphttp.HttpCache
@@ -29,9 +30,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.Buffer
+import okio.BufferedSource
 import okio.ByteString.Companion.encodeUtf8
+import okio.FileSystem
 import okio.IOException
 import okio.Path
+import okio.Sink
+import okio.Source
+import okio.buffer
 import okio.use
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -40,7 +46,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 class DefaultCache(
     directory: Path,
     maxSize: Long,
-    fileSystem: FileSystem = SystemFileSystem
+    fileSystem: FileSystem = FileSystem.SYSTEM
 ) : HttpCache {
 
     internal val cache =
@@ -197,11 +203,11 @@ class DefaultCache(
     @OptIn(ExperimentalAtomicApi::class)
     private class RealCacheRequest private constructor(
         private val editor: DiskLruCache.Editor,
-        private val cacheOut: AsyncSink,
+        private val cacheOut: Sink,
         private val commitScope: CoroutineScope
     ) : CacheRequest {
         companion object {
-            suspend fun create(
+            fun create(
                 editor: DiskLruCache.Editor,
                 commitScope: CoroutineScope
             ): RealCacheRequest {
@@ -211,7 +217,7 @@ class DefaultCache(
         }
 
         private val done = AtomicBoolean(false)
-        private val body: AsyncSink = object : ForwardingAsyncSink(cacheOut) {
+        private val body: AsyncSink = object : ForwardingAsyncSink(cacheOut.asAsyncSink()) {
             override fun close() {
                 super.close()
                 if (done.compareAndSet(false, true)) {
@@ -280,8 +286,8 @@ class DefaultCache(
              * Next is the response status line, followed by the number of HTTP response header lines,
              * followed by those lines.
              */
-            suspend fun create(source: AsyncSource): Entry {
-                val source = BufferedAsyncSource(source)
+            fun create(source: Source): Entry {
+                val source = source.buffer()
                 try {
                     val urlLine = source.readUtf8LineStrict()
                     // Choice here is between failing with a correct RuntimeException
@@ -342,7 +348,7 @@ class DefaultCache(
             response.receivedResponseAtMillis
         )
 
-        suspend fun writeTo(editor: DiskLruCache.Editor) {
+        fun writeTo(editor: DiskLruCache.Editor) {
             val metadata = Buffer()
             metadata.writeUtf8(url.toString()).writeByte('\n'.code)
             metadata.writeUtf8(requestMethod).writeByte('\n'.code)
@@ -421,7 +427,7 @@ class DefaultCache(
         val contentLength: Long
     ) : ResponseBody() {
         private val bodySource: AsyncSource =
-            object : ForwardingAsyncSource(snapshot.getSource(ENTRY_BODY)) {
+            object : ForwardingAsyncSource(snapshot.getSource(ENTRY_BODY).asAsyncSource()) {
                 override fun close() {
                     snapshot.close()
                     super.close()
@@ -450,7 +456,7 @@ class DefaultCache(
                 .md5()
                 .hex()
 
-        internal suspend fun readInt(source: BufferedAsyncSource): Int {
+        internal fun readInt(source: BufferedSource): Int {
             try {
                 val result = source.readDecimalLong()
                 val line = source.readUtf8LineStrict()

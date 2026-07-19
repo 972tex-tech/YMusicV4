@@ -64,3 +64,14 @@ open class ForwardingAsyncSource(
         return delegate.read(sink, byteCount)
     }
 }
+
+/** okio's ForwardingSink is JVM-only; this is the common equivalent. */
+open class ForwardingOkioSink(private val delegate: okio.Sink) : okio.Sink {
+    override fun write(source: Buffer, byteCount: Long) = delegate.write(source, byteCount)
+
+    override fun flush() = delegate.flush()
+
+    override fun timeout(): okio.Timeout = delegate.timeout()
+
+    override fun close() = delegate.close()
+}

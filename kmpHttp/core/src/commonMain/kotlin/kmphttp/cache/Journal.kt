@@ -1,11 +1,11 @@
 package kmphttp.cache
 
-import kmpcommon.io.AsyncSink
-import kmpcommon.io.AsyncSource
-import kmpcommon.io.BufferedAsyncSource
 import okio.Buffer
 import okio.EOFException
 import okio.IOException
+import okio.Sink
+import okio.Source
+import okio.buffer
 import okio.use
 
 internal class FileCacheEntry(
@@ -66,13 +66,11 @@ internal class JournalFileState(
 /**
  * Read a journal file and return its state.
  */
-internal suspend fun AsyncSource.readJournalFile(
+internal fun Source.readJournalFile(
     expectAppVersion: Int,
     expectValueCount: Int
-): JournalFileState = BufferedAsyncSource(this).use { buffer ->
+): JournalFileState = buffer().use { buffer ->
     require(expectValueCount > 0)
-    val x = Buffer()
-    x.readUtf8()
     val magic = buffer.readUtf8LineStrict()
     val version = buffer.readUtf8LineStrict()
     val appVersionString = buffer.readUtf8LineStrict()
@@ -144,8 +142,8 @@ internal suspend fun AsyncSource.readJournalFile(
     )
 }
 
-internal class JournalWriter(val sink: AsyncSink) {
-    suspend fun writeCommit(entry: FileCacheEntry) {
+internal class JournalWriter(val sink: Sink) {
+    fun writeCommit(entry: FileCacheEntry) {
         val buffer = Buffer()
         buffer.writeUtf8(JournalFileState.OP_COMMIT)
         buffer.writeByte(' '.code)
@@ -166,7 +164,7 @@ internal class JournalWriter(val sink: AsyncSink) {
         sink.flush()
     }
 
-    suspend fun writeRead(key: String) {
+    fun writeRead(key: String) {
         val buffer = Buffer()
         buffer.writeUtf8(JournalFileState.OP_READ)
         buffer.writeByte(' '.code)
@@ -177,7 +175,7 @@ internal class JournalWriter(val sink: AsyncSink) {
         sink.flush()
     }
 
-    suspend fun writeRemove(key: String) {
+    fun writeRemove(key: String) {
         val buffer = Buffer()
         buffer.writeUtf8(JournalFileState.OP_REMOVE)
         buffer.writeByte(' '.code)
@@ -188,7 +186,7 @@ internal class JournalWriter(val sink: AsyncSink) {
         sink.flush()
     }
 
-    suspend fun writeHeader(appVersion: Int, valueCount: Int) {
+    fun writeHeader(appVersion: Int, valueCount: Int) {
         val buffer = Buffer()
         buffer.writeUtf8(JournalFileState.MAGIC).writeByte('\n'.code)
         buffer.writeUtf8(JournalFileState.VERSION_1).writeByte('\n'.code)

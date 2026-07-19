@@ -1,10 +1,12 @@
 package kmphttp.cache
 
-import kmpcommon.io.readUtf8String
 import kmphttp.runTestSkipBrowser
 import okio.Buffer
+import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.buffer
+import okio.use
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -21,12 +23,12 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 class DiskLruCacheTest {
 
-    private val fileSystem = SystemFileSystem
+    private val fileSystem = FileSystem.SYSTEM
     private val testBaseDir = ".".toPath() / "test-cache"
 
     private fun newCacheDir(): Path {
         val dir = testBaseDir / Uuid.random().toString()
-        fileSystem.mkdirs(dir)
+        fileSystem.createDirectories(dir)
         return dir
     }
 
@@ -808,15 +810,15 @@ class DiskLruCacheTest {
 
     // region Helpers
 
-    private suspend fun DiskLruCache.Editor.writeString(index: Int, value: String) {
+    private fun DiskLruCache.Editor.writeString(index: Int, value: String) {
         val sink = newSink(index)
         val buffer = Buffer().apply { writeUtf8(value) }
         sink.write(buffer, buffer.size)
         sink.close()
     }
 
-    private suspend fun DiskLruCache.Snapshot.getString(index: Int): String {
-        return getSource(index).readUtf8String()
+    private fun DiskLruCache.Snapshot.getString(index: Int): String {
+        return getSource(index).buffer().use { it.readUtf8() }
     }
 
     // endregion

@@ -2,11 +2,9 @@ package ymusic.imageloader
 
 import androidx.compose.ui.graphics.ImageBitmap
 import kmphttp.cache.DiskLruCache
-import kmphttp.cache.OkioFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
-import okio.Buffer
 import okio.FileSystem
 import okio.Path
 import okio.use
@@ -36,7 +34,7 @@ class DiskScaledImageCache(
     maxBytes: Long = 64L * 1024 * 1024,
 ) : ScaledImageCache {
     private val cache = DiskLruCache(
-        fileSystem = OkioFileSystem(fileSystem),
+        fileSystem = fileSystem,
         directory = directory,
         valueCount = 1,
         maxSize = maxBytes,
