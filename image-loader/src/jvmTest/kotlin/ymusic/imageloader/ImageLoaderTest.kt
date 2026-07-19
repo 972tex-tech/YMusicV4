@@ -116,6 +116,29 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun sourceCacheSharesOneDownloadAcrossSizes() = runTest {
+        val fs = FakeFileSystem()
+        val src = ImageSourceCache(fs, "/src".toPath())
+        val server = FakeImageServer(pngBytes(400, 200))
+        ImageLoader(server, sourceCache = src).load("https://img.test/a.png", 64, 64)
+        assertEquals(1, server.fetchCount)
+
+        // A different size bucket on a cold loader decodes from the on-disk original — no refetch.
+        val warm = ImageLoader(server, sourceCache = src).load("https://img.test/a.png", 200, 200)
+        assertEquals(1, server.fetchCount, "source cache must serve other sizes without a refetch")
+        assertEquals(256, warm.width) // 200 buckets up to 256; 400x200 scaled to fit 256x256
+    }
+
+    @Test
+    fun sourceCachePathRejectsOversizedBody() = runTest {
+        val fs = FakeFileSystem()
+        val src = ImageSourceCache(fs, "/src".toPath())
+        val server = FakeImageServer(pngBytes(400, 200))
+        val loader = ImageLoader(server, sourceCache = src, maxImageBytes = 64)
+        assertFailsWith<IOException> { loader.load("https://img.test/a.png", 64, 64) }
+    }
+
+    @Test
     fun oversizedBodyRejectedInsteadOfBuffered() = runTest {
         val server = FakeImageServer(pngBytes(400, 200))
         val loader = ImageLoader(server, maxImageBytes = 64)

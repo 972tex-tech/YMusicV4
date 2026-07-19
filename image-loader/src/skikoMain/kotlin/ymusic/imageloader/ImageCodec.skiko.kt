@@ -51,13 +51,14 @@ internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int
     }
 }
 
-// Skia's codec API is bytes-only (no incremental decode/encode exposed by skiko) — the compressed
-// data passes through a contiguous array here; entries are small pre-scaled PNGs.
-internal actual fun decodeSource(source: okio.Source): ImageBitmap {
-    Image.makeFromEncoded(source.buffer().readByteArray()).use { image ->
-        return image.toComposeImageBitmap()
-    }
-}
+// Skia's codec API is bytes-only (no incremental decode from a file exposed by skiko) — the
+// compressed data is read into memory, then decoded through the normal clamped path.
+internal actual fun decodeScaledFile(
+    fileSystem: okio.FileSystem,
+    path: okio.Path,
+    maxWidth: Int,
+    maxHeight: Int,
+): DecodedImage = decodeScaled(fileSystem.read(path) { readByteArray() }, maxWidth, maxHeight)
 
 internal actual fun encodePngToSink(bitmap: ImageBitmap, sink: okio.Sink) {
     Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->

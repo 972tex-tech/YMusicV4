@@ -13,15 +13,17 @@ internal class DecodedImage(val bitmap: ImageBitmap, val downscaled: Boolean)
 internal expect fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): DecodedImage
 
 /**
- * Decode an **already-scaled** image read from [source]. Android decodes incrementally off the
- * stream — the compressed data is never fully resident; Skia's codec API is bytes-only, so the
- * skiko actual drains first.
- *
- * WARNING: there is NO size clamp here — the bitmap allocates at the image's full dimensions.
- * Feeding an original (unscaled) image is an OOM waiting to happen; originals go through
- * [decodeScaled], only the scaled-cache's own pre-shrunk entries come through here.
+ * [decodeScaled] straight from a file: same clamp semantics, but the compressed data never enters
+ * the heap whole on Android ([fileSystem] must be the real one there for the two-pass
+ * `BitmapFactory.decodeFile`; any other — e.g. a test fake — falls back to read-bytes + decode).
+ * Skia's codec API is bytes-only, so skiko reads the file into memory first.
  */
-internal expect fun decodeSource(source: okio.Source): ImageBitmap
+internal expect fun decodeScaledFile(
+    fileSystem: okio.FileSystem,
+    path: okio.Path,
+    maxWidth: Int,
+    maxHeight: Int,
+): DecodedImage
 
 /**
  * Encode an already-scaled bitmap as PNG into [sink] (the scaled-image cache's storage format).

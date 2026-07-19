@@ -29,7 +29,7 @@ interface ScaledImageCache {
  * decodes straight off the stream — no intermediate ByteArray; Skia's codec API is bytes-only).
  */
 class DiskScaledImageCache(
-    fileSystem: FileSystem,
+    private val fileSystem: FileSystem,
     directory: Path,
     maxBytes: Long = 64L * 1024 * 1024,
 ) : ScaledImageCache {
@@ -51,7 +51,8 @@ class DiskScaledImageCache(
 
     override suspend fun get(key: String): ImageBitmap? = withContext(Dispatchers.IO) {
         cache.get(key)?.use { snapshot ->
-            decodeSource(snapshot.getSource(0))
+            // Entries are pre-scaled: MAX/MAX clamps to nothing, single effective pass.
+            decodeScaledFile(fileSystem, snapshot.getPath(0), Int.MAX_VALUE, Int.MAX_VALUE).bitmap
         }
     }
 

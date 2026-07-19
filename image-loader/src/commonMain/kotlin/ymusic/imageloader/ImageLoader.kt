@@ -19,8 +19,10 @@ import kotlin.concurrent.Volatile
  *
  * - **Memory**: images decode at (or just above) the requested display size — the full-resolution
  *   original is never kept. Decoded bitmaps live in a bounded in-memory LRU keyed by url + size.
- * - **Network cache is [client]'s job**: pass a client built with a `kmphttp.Cache` and every fetch
- *   gets standard HTTP caching for free; the loader adds no second network cache.
+ * - **[sourceCache]** (recommended) owns the downloaded originals on disk, Coil/Glide-style — the
+ *   body streams to disk and decodes from the file; the [client] should then carry NO http cache.
+ *   Without it, fetches buffer in memory (bounded by [maxImageBytes]) and network caching is the
+ *   client's `kmphttp.Cache`.
  * - **[scaledCache]** (optional) persists the *scaled* image, so a warm start skips both the fetch
  *   and the full-size decode.
  * - **Priority is LIFO** with [parallelism] concurrent loads: the newest request wins, and a
@@ -35,6 +37,13 @@ class ImageLoader(
     parallelism: Int = 4,
     /** Hard cap on a fetched body — a mislinked huge file must fail, not OOM the process. */
     private val maxImageBytes: Long = 32L * 1024 * 1024,
+    /**
+     * Compressed originals on disk (the Coil/Glide model): the network body streams to disk and
+     * decoding happens from the file — the compressed image never sits in the heap whole, and all
+     * size buckets share one download. Give the [client] NO http cache when this is set (double
+     * storage otherwise). Null = the body is buffered in memory (bounded by [maxImageBytes]).
+     */
+    private val sourceCache: ImageSourceCache? = null,
 ) {
     private val memory = MemoryImageCache(memoryCacheBytes)
     private val gate = LifoGate(parallelism)
@@ -80,7 +89,7 @@ class ImageLoader(
         memory.peek(key)?.let { return it }
         return gate.withPermit {
             memory.peek(key)?.let { return@withPermit it } // raced with an identical load
-            val bitmap = fromScaledCache(key) ?: fetchAndDecode(url, key, w, h)
+            val bitmap = fromScaledCache(key) ?: fetchAndDecode(url, cacheKey, key, w, h)
             memory.put(key, bitmap)
             bitmap
         }
@@ -99,21 +108,12 @@ class ImageLoader(
         }
     }
 
-    private suspend fun fetchAndDecode(url: String, key: String, w: Int, h: Int): ImageBitmap {
-        val response = client.execute(RequestBuilder().url(url).build())
-        val bytes = try {
-            if (!response.isSuccessful) throw IOException("image HTTP ${response.code}: $url")
-            val declared = response.body.contentLength()
-            if (declared > maxImageBytes) {
-                throw IOException("image body $declared bytes exceeds the $maxImageBytes-byte cap: $url")
-            }
-            readImageBytes(response.body.asyncSource(), url)
-        } finally {
-            response.close()
-        }
-        val decoded = withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
+    private suspend fun fetchAndDecode(url: String, cacheKey: String, key: String, w: Int, h: Int): ImageBitmap {
+        val decoded = sourceCache?.let { fetchViaSourceCache(it, url, cacheKey, w, h) }
+            ?: fetchInMemory(url, w, h)
         // Only a genuinely downscaled result is worth persisting: an un-shrunk image re-encoded as
-        // PNG is often BIGGER than the original the HTTP cache already holds, and saves no decode.
+        // PNG is often BIGGER than the original the source/HTTP cache already holds, and saves no
+        // decode.
         if (decoded.downscaled) {
             scaledCache?.let { cache ->
                 try {
@@ -126,6 +126,56 @@ class ImageLoader(
             }
         }
         return decoded.bitmap
+    }
+
+    /** Coil/Glide model: original on disk (keyed by URL identity, size-independent) → decode from
+     *  the file. A cached file that fails to open/decode (evicted or corrupted underneath) is
+     *  retried once with a fresh fetch. */
+    private suspend fun fetchViaSourceCache(
+        src: ImageSourceCache,
+        url: String,
+        cacheKey: String,
+        w: Int,
+        h: Int,
+    ): DecodedImage {
+        val srcKey = diskKey(cacheKey)
+        src.filePath(srcKey)?.let { file ->
+            try {
+                return withContext(Dispatchers.Default) { decodeScaledFile(src.fileSystem, file, w, h) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logger?.log(Logger.Level.WARN, TAG, "source cache entry unusable, refetching: ${e.message}", e)
+            }
+        }
+        val response = client.execute(RequestBuilder().url(url).build())
+        val file = try {
+            if (!response.isSuccessful) throw IOException("image HTTP ${response.code}: $url")
+            val declared = response.body.contentLength()
+            if (declared > maxImageBytes) {
+                throw IOException("image body $declared bytes exceeds the $maxImageBytes-byte cap: $url")
+            }
+            src.write(srcKey, response.body.asyncSource(), maxImageBytes, url)
+        } finally {
+            response.close()
+        }
+        return withContext(Dispatchers.Default) { decodeScaledFile(src.fileSystem, file, w, h) }
+    }
+
+    /** No source cache: the body is buffered in memory, bounded by the cap + magic sniff. */
+    private suspend fun fetchInMemory(url: String, w: Int, h: Int): DecodedImage {
+        val response = client.execute(RequestBuilder().url(url).build())
+        val bytes = try {
+            if (!response.isSuccessful) throw IOException("image HTTP ${response.code}: $url")
+            val declared = response.body.contentLength()
+            if (declared > maxImageBytes) {
+                throw IOException("image body $declared bytes exceeds the $maxImageBytes-byte cap: $url")
+            }
+            readImageBytes(response.body.asyncSource(), url)
+        } finally {
+            response.close()
+        }
+        return withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
     }
 
     /**
@@ -160,7 +210,7 @@ class ImageLoader(
 }
 
 /** True when the first bytes carry a known raster-image signature (JPEG/PNG/GIF/BMP/WebP/HEIF). */
-private fun looksLikeImage(b: Buffer): Boolean {
+internal fun looksLikeImage(b: Buffer): Boolean {
     if (b.size < 4) return false
     fun at(i: Long) = b[i].toInt() and 0xff
     return when {
