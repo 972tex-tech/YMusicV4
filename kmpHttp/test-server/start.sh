@@ -41,11 +41,30 @@ JSON
   echo "server-info: ip=${IP} https=${HTTPS_PORT} mtls=${MTLS_PORT}"
 }
 
-# Already up on this IP? (self-signed, so -k). Then we're done — leave it running.
+# Already up on this IP AND serving the current on-disk cert? Then we're done — leave it running.
+# The cert comparison matters: a daemon outlives cert regeneration, and a stale served cert fails
+# every client's trust evaluation as an instant NSURLErrorCancelled/-999.
+disk_fpr="$(openssl x509 -in certs/server.crt -noout -fingerprint -sha256 | cut -d= -f2)"
+served_fpr() {
+  echo | openssl s_client -connect "${IP}:${HTTPS_PORT}" 2>/dev/null \
+    | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2
+}
 if curl -ksS --max-time 3 "https://${IP}:${HTTPS_PORT}/" >/dev/null 2>&1; then
-  echo "test server already running on ${IP}:${HTTPS_PORT}"
-  writeInfo
-  exit 0
+  if [[ "$(served_fpr)" == "$disk_fpr" ]]; then
+    echo "test server already running on ${IP}:${HTTPS_PORT}"
+    writeInfo
+    exit 0
+  fi
+  echo "test server on ${IP}:${HTTPS_PORT} serves a stale cert — restarting it"
+  if [[ -f server.pid ]] && kill -0 "$(cat server.pid)" 2>/dev/null; then
+    kill "$(cat server.pid)" 2>/dev/null || true
+  fi
+  # Fallback for a daemon whose pid file is gone (or from another checkout).
+  lsof -ti "tcp:${HTTPS_PORT}" 2>/dev/null | xargs kill 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    curl -ksS --max-time 1 "https://${IP}:${HTTPS_PORT}/" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
 fi
 
 # Install deps once.
