@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import okio.IOException
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -149,7 +150,9 @@ class ImageLoaderTest {
         val art = pngBytes(400, 200)
         val loader = ImageLoader(
             server,
-            fetchers = listOf(ImageFetcher { url -> if (url.startsWith("art://")) art else null }),
+            fetchers = listOf(
+                ImageFetcher { url -> if (url.startsWith("art://")) Buffer().write(art) else null },
+            ),
         )
         val loaded = loader.load("art:///music/track.mp3", 64, 64)
         assertEquals(0, server.fetchCount, "the fetcher must resolve its own scheme")

@@ -2,6 +2,7 @@ package ymusic.imageloader
 
 import androidx.compose.ui.graphics.ImageBitmap
 import kmpcommon.io.AsyncSource
+import kmpcommon.io.asAsyncSource
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -13,6 +14,7 @@ import okio.Buffer
 import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
 import okio.Path.Companion.toPath
+import okio.use
 import kotlin.concurrent.Volatile
 
 /**
@@ -202,7 +204,10 @@ class ImageLoader(
 
     private suspend fun fetchCustom(url: String, w: Int, h: Int): DecodedImage? {
         for (fetcher in fetchers) {
-            val bytes = fetcher.fetch(url) ?: continue
+            val source = fetcher.fetch(url) ?: continue
+            // The cap applies to fetcher output like any other body (Skia's decode is bytes-only,
+            // so the stream is drained — bounded — before decoding).
+            val bytes = source.use { readImageBytes(it.asAsyncSource(), url) }
             return withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
         }
         return null
