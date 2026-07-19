@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
+import okio.Path.Companion.toPath
 import kotlin.concurrent.Volatile
 
 /**
@@ -44,6 +45,8 @@ class ImageLoader(
      * storage otherwise). Null = the body is buffered in memory (bounded by [maxImageBytes]).
      */
     private val sourceCache: ImageSourceCache? = null,
+    /** Custom url resolvers tried first (e.g. `art://` → ffmpeg-extracted embedded album art). */
+    private val fetchers: List<ImageFetcher> = emptyList(),
 ) {
     private val memory = MemoryImageCache(memoryCacheBytes)
     private val gate = LifoGate(parallelism)
@@ -109,7 +112,11 @@ class ImageLoader(
     }
 
     private suspend fun fetchAndDecode(url: String, cacheKey: String, key: String, w: Int, h: Int): ImageBitmap {
-        val decoded = sourceCache?.let { fetchViaSourceCache(it, url, cacheKey, w, h) }
+        val decoded = fetchCustom(url, w, h)
+            ?: localFilePath(url)?.let { path ->
+                withContext(Dispatchers.Default) { decodeScaledFile(systemFileSystem, path, w, h) }
+            }
+            ?: sourceCache?.let { fetchViaSourceCache(it, url, cacheKey, w, h) }
             ?: fetchInMemory(url, w, h)
         // Only a genuinely downscaled result is worth persisting: an un-shrunk image re-encoded as
         // PNG is often BIGGER than the original the source/HTTP cache already holds, and saves no
@@ -129,8 +136,8 @@ class ImageLoader(
     }
 
     /** Coil/Glide model: original on disk (keyed by URL identity, size-independent) → decode from
-     *  the file. A cached file that fails to open/decode (evicted or corrupted underneath) is
-     *  retried once with a fresh fetch. */
+     *  the file. A VANISHED file (evicted underneath us) refetches; a file that decodes as garbage
+     *  fails as-is — refetching would download the same bytes on every load until LRU evicts it. */
     private suspend fun fetchViaSourceCache(
         src: ImageSourceCache,
         url: String,
@@ -145,7 +152,8 @@ class ImageLoader(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                logger?.log(Logger.Level.WARN, TAG, "source cache entry unusable, refetching: ${e.message}", e)
+                if (src.fileSystem.exists(file)) throw e
+                logger?.log(Logger.Level.WARN, TAG, "source cache entry vanished, refetching: ${e.message}", e)
             }
         }
         val response = client.execute(RequestBuilder().url(url).build())
@@ -178,50 +186,38 @@ class ImageLoader(
         return withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
     }
 
-    /**
-     * Stream the body in with two guards: the size cap re-checked as bytes arrive (Content-Length
-     * can lie or be absent) and an image-magic sniff on the first chunk, so non-image bytes (a
-     * mislinked video, an HTML error page) fail after one segment instead of a full download.
-     */
+    /** Stream the body in with the size cap re-checked as bytes arrive (Content-Length can lie or
+     *  be absent). Whether the bytes ARE an image is the decoder's verdict. */
     private suspend fun readImageBytes(source: AsyncSource, url: String): ByteArray {
         val buffer = Buffer()
-        var sniffed = false
         while (true) {
             val n = source.read(buffer, SEGMENT)
             if (buffer.size > maxImageBytes) {
                 throw IOException("image exceeds the $maxImageBytes-byte cap: $url")
-            }
-            if (!sniffed && (buffer.size >= MAGIC_PREFIX || n == -1L)) {
-                if (!looksLikeImage(buffer)) throw IllegalArgumentException("not an image (magic bytes): $url")
-                sniffed = true
             }
             if (n == -1L) break
         }
         return buffer.readByteArray()
     }
 
+    private suspend fun fetchCustom(url: String, w: Int, h: Int): DecodedImage? {
+        for (fetcher in fetchers) {
+            val bytes = fetcher.fetch(url) ?: continue
+            return withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
+        }
+        return null
+    }
+
+    /** `file://` urls decode straight from disk (no network, no source cache); the path is taken
+     *  verbatim after the scheme — pass unencoded paths. */
+    private fun localFilePath(url: String): okio.Path? =
+        if (url.startsWith("file://")) url.removePrefix("file://").toPath() else null
+
     private fun diskKey(key: String): String = key.encodeUtf8().sha256().hex()
 
     private companion object {
         val TAG = listOf("image-loader")
         const val SEGMENT = 64L * 1024
-        const val MAGIC_PREFIX = 12L
-    }
-}
-
-/** True when the first bytes carry a known raster-image signature (JPEG/PNG/GIF/BMP/WebP/HEIF). */
-internal fun looksLikeImage(b: Buffer): Boolean {
-    if (b.size < 4) return false
-    fun at(i: Long) = b[i].toInt() and 0xff
-    return when {
-        at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF -> true // JPEG
-        at(0) == 0x89 && at(1) == 'P'.code && at(2) == 'N'.code && at(3) == 'G'.code -> true // PNG
-        at(0) == 'G'.code && at(1) == 'I'.code && at(2) == 'F'.code && at(3) == '8'.code -> true // GIF
-        at(0) == 'B'.code && at(1) == 'M'.code -> true // BMP
-        b.size >= 12 && at(0) == 'R'.code && at(1) == 'I'.code && at(2) == 'F'.code && at(3) == 'F'.code &&
-            at(8) == 'W'.code && at(9) == 'E'.code && at(10) == 'B'.code && at(11) == 'P'.code -> true // WebP
-        b.size >= 8 && at(4) == 'f'.code && at(5) == 't'.code && at(6) == 'y'.code && at(7) == 'p'.code -> true // HEIF/AVIF
-        else -> false
     }
 }
 

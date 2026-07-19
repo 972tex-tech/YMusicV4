@@ -36,10 +36,9 @@ class ImageSourceCache(
     }
 
     /**
-     * Streams [body] into the entry and returns the committed file. Guards while streaming: the
-     * byte cap (Content-Length can lie or be absent) and an image-magic sniff on the first segment,
-     * so non-image bytes fail after ~64KB instead of a full download. Nothing is committed on
-     * failure.
+     * Streams [body] into the entry and returns the committed file. The byte cap is enforced while
+     * streaming (Content-Length can lie or be absent); whether the bytes ARE an image is the
+     * decoder's verdict, not ours. Nothing is committed on failure.
      */
     internal suspend fun write(
         key: String,
@@ -52,15 +51,8 @@ class ImageSourceCache(
             editor.newSink(0).use { sink ->
                 val buffer = Buffer()
                 var total = 0L
-                var sniffed = false
                 while (true) {
                     val n = body.read(buffer, SEGMENT)
-                    if (!sniffed && (buffer.size >= MAGIC_PREFIX || n == -1L)) {
-                        if (!looksLikeImage(buffer)) {
-                            throw IllegalArgumentException("not an image (magic bytes): $url")
-                        }
-                        sniffed = true
-                    }
                     if (n == -1L) break
                     total += n
                     if (total > maxImageBytes) {
@@ -68,7 +60,6 @@ class ImageSourceCache(
                     }
                     sink.write(buffer, buffer.size)
                 }
-                sink.write(buffer, buffer.size)
                 sink.flush()
             }
             editor.commit()
@@ -87,6 +78,5 @@ class ImageSourceCache(
 
     private companion object {
         const val SEGMENT = 64L * 1024
-        const val MAGIC_PREFIX = 12L
     }
 }

@@ -130,6 +130,47 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun fileUrlDecodesFromDiskWithoutNetwork() = runTest {
+        val tmp = kotlin.io.path.createTempFile("imgloader", ".png").toFile()
+        try {
+            tmp.writeBytes(pngBytes(400, 200))
+            val server = FakeImageServer(pngBytes(10, 10))
+            val loaded = ImageLoader(server).load("file://${tmp.absolutePath}", 64, 64)
+            assertEquals(0, server.fetchCount, "file:// must not hit the network")
+            assertEquals(64, loaded.width)
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    @Test
+    fun customFetcherResolvesItsScheme() = runTest {
+        val server = FakeImageServer(pngBytes(10, 10))
+        val art = pngBytes(400, 200)
+        val loader = ImageLoader(
+            server,
+            fetchers = listOf(ImageFetcher { url -> if (url.startsWith("art://")) art else null }),
+        )
+        val loaded = loader.load("art:///music/track.mp3", 64, 64)
+        assertEquals(0, server.fetchCount, "the fetcher must resolve its own scheme")
+        assertEquals(64, loaded.width)
+    }
+
+    @Test
+    fun corruptSourceEntryFailsWithoutRefetching() = runTest {
+        val fs = FakeFileSystem()
+        val src = ImageSourceCache(fs, "/src".toPath())
+        val server = FakeImageServer("not an image".encodeToByteArray())
+        val loader = ImageLoader(server, sourceCache = src)
+        assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
+        assertEquals(1, server.fetchCount)
+
+        // The garbage entry is committed; further loads must fail locally, not re-download it.
+        assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
+        assertEquals(1, server.fetchCount, "a decodable-as-garbage entry must not refetch per load")
+    }
+
+    @Test
     fun sourceCachePathRejectsOversizedBody() = runTest {
         val fs = FakeFileSystem()
         val src = ImageSourceCache(fs, "/src".toPath())
