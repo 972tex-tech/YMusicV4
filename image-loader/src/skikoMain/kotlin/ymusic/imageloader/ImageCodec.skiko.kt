@@ -11,10 +11,12 @@ import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.impl.use
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+// `use` here is skiko's (impl.use): kotlin.io.use needs AutoCloseable, absent from Managed on native.
 // Skia has no subsampled decode; decode full then immediately draw down into a target-size raster —
 // the full-size image is closed eagerly (Cleaner-freed native pixels would otherwise pile up during
 // a fast scroll), only the scaled bitmap stays resident.
