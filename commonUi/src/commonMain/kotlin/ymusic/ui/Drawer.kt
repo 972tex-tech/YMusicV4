@@ -40,11 +40,13 @@ import ymusic.ui.resources.app_name
 import ymusic.ui.resources.badge_premium
 import ymusic.ui.resources.ymusic_logo
 
-/** The drawer's green brand accents (design/final/drawer.html). */
+/** Premium brand marks stay green (design/final/drawer.html); the ACTIVE item is accent. */
 private val BrandGreen = DesignColors.BrandGreen
 private val BrandGreenDark = Color(0xFF15803D)
 private val BrandGreenBg = Color(0xFFEAFAF0)
 private val BrandGreenBorder = Color(0xFFCDEED9)
+private val ActiveAccentDark = Color(0xFF8A3D0F)
+private val ActiveAccentBg = Color(0xFFFBE9DD)
 
 /** The navigation drawer (design/final/drawer.html): brand header + three nav sections. */
 @Composable
@@ -116,14 +118,17 @@ private fun DrawerHeader(appVersion: String?) {
 
 @Composable
 private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) BrandGreenBg else Color.Transparent)) {
+    val activeBar = DesignColors.Accent
+    val activeBg = ActiveAccentBg
+    val activeDark = ActiveAccentDark
+    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) activeBg else Color.Transparent)) {
         if (active) {
             Box(
                 Modifier
                     .align(Alignment.CenterStart)
                     .padding(vertical = 8.dp)
                     .size(width = 3.dp, height = 33.dp)
-                    .background(BrandGreen, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)),
+                    .background(activeBar, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)),
             )
         }
         Row(
@@ -136,12 +141,12 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
                 null,
                 Modifier.size(23.dp),
                 tint = when {
-                    active -> BrandGreen
+                    active -> activeBar
                     else -> Color(0xFF3F3F3F)
                 },
             )
             val labelStyle = when {
-                active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = BrandGreenDark)
+                active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = activeDark)
                 else -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2C2C2C))
             }
             Text(stringResource(section.label), style = labelStyle, modifier = Modifier.weight(1f))
