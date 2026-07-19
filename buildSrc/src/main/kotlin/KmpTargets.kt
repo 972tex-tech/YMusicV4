@@ -67,6 +67,22 @@ fun KotlinMultiplatformExtension.withIosTargets(
 }
 
 /**
+ * iOS targets for a **Compose Multiplatform** module: `iosArm64` + `iosSimulatorArm64` only, never
+ * `iosX64`. Compose MP 1.11.1 dropped all x86_64-Apple targets, so a Compose module can't take the
+ * Intel-host iosX64 path the non-Compose helpers use — on an Intel host it builds iOS **only** in
+ * all-targets mode (`-PkmpTargets=all`, cross-compiling arm64 for a real device), never in the
+ * default host mode. On Apple Silicon it configures them normally. Keeps the targets in sync with
+ * both Compose (arm64-only) and the host-gated backend modules' all-mode matrix.
+ */
+fun KotlinMultiplatformExtension.withComposeIosTargets(
+    configure: KotlinNativeTarget.() -> Unit = {}
+) {
+    if (hostOs.isMacOsX && hostIsArm64 || !isHostCompatibleMode) {
+        listOf(iosArm64(), iosSimulatorArm64()).forEach(configure)
+    }
+}
+
+/**
  * macOS-only native targets (host-gated). For modules that only need to run/build on macOS, e.g.
  * the benchmark module. Keeps the configured targets in sync with the host-gated library modules
  * they depend on.
