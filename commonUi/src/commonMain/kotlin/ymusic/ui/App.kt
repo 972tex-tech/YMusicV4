@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +46,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -134,6 +139,10 @@ fun App(graph: AppGraph) {
     }
 }
 
+/** Set true by the active screen while its content is scrolled off the top — the app bar lifts.
+ *  Null outside the app shell (e.g. the standalone catalogue window). */
+internal val LocalAppBarElevated = compositionLocalOf<MutableState<Boolean>?> { null }
+
 @Composable
 private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection) -> Unit) {
     run {
@@ -173,61 +182,66 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     )
                 },
             ) {
-                Scaffold(
-                    containerColor = Color.White,
-                    topBar = {
-                        if (!searching) {
-                            Column(Modifier.statusBarsPadding()) {
-                                DesignAppBar(
-                                    title = stringResource(
-                                        if (section == AppSection.Discover) discoverTab.label else section.label,
-                                    ),
-                                    onMenu = { scope.launch { drawer.open() } },
-                                    onSearch = { searching = true },
-                                    inlineContent = if (section == AppSection.Discover && wide) {
-                                        { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
-                                    } else {
-                                        null
-                                    },
-                                )
-                                if (section == AppSection.Discover && !wide) {
-                                    DiscoverTabRow(discoverTab, underline = true) { discoverTab = it }
-                                    HorizontalDivider(color = DesignColors.Divider)
-                                }
-                            }
-                        }
-                    },
-                    bottomBar = {
-                        Column {
-                            // While Now Playing is closed the surface must stay hosted somewhere for
-                            // a WebView source to keep playing. Where depends on the platform: a
-                            // scale-tolerant surface (desktop OSR) becomes the mini player's art
-                            // tile; a windowed WebView (Android) keeps a real-size docked preview —
-                            // thumbnail-sized, the page's stream negotiation kills playback.
-                            val hostSurface = needsSurface && !nowPlayingOpen
-                            if (hostSurface && !graph.surfaceScalesDown) {
-                                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                                    Box(Modifier.width(240.dp).aspectRatio(16f / 9f)) {
-                                        graph.playerSurface(Modifier.fillMaxSize())
+                val barElevated = remember { mutableStateOf(false) }
+                LaunchedEffect(section, discoverTab, searching) { barElevated.value = false }
+                val barShadow by animateDpAsState(if (barElevated.value) 4.dp else 0.dp)
+                CompositionLocalProvider(LocalAppBarElevated provides barElevated) {
+                    Scaffold(
+                        containerColor = Color.White,
+                        topBar = {
+                            if (!searching) {
+                                Column(Modifier.statusBarsPadding().shadow(barShadow).background(Color.White)) {
+                                    DesignAppBar(
+                                        title = stringResource(
+                                            if (section == AppSection.Discover) discoverTab.label else section.label,
+                                        ),
+                                        onMenu = { scope.launch { drawer.open() } },
+                                        onSearch = { searching = true },
+                                        inlineContent = if (section == AppSection.Discover && wide) {
+                                            { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
+                                        } else {
+                                            null
+                                        },
+                                    )
+                                    if (section == AppSection.Discover && !wide) {
+                                        DiscoverTabRow(discoverTab, underline = true) { discoverTab = it }
+                                        HorizontalDivider(color = DesignColors.Divider)
                                     }
                                 }
                             }
-                            MiniPlayer(
-                                coordinator,
-                                surface = if (hostSurface && graph.surfaceScalesDown) graph.playerSurface else null,
-                                onExpand = { nowPlayingOpen = true },
-                            )
-                        }
-                    },
-                ) { padding ->
-                    Column(Modifier.fillMaxSize().padding(padding)) {
-                        when {
-                            searching -> SearchScreen(graph, coordinator, onBack = { searching = false })
-                            section == AppSection.Discover -> DiscoverFeed(graph, coordinator, discoverTab)
-                            section == AppSection.Library -> LibraryScreen(graph, coordinator)
-                            section == AppSection.Settings -> SettingsScreen(graph)
-                            section == AppSection.Catalogue -> CatalogueScreen()
-                            else -> ComingSoon(section)
+                        },
+                        bottomBar = {
+                            Column {
+                                // While Now Playing is closed the surface must stay hosted somewhere for
+                                // a WebView source to keep playing. Where depends on the platform: a
+                                // scale-tolerant surface (desktop OSR) becomes the mini player's art
+                                // tile; a windowed WebView (Android) keeps a real-size docked preview —
+                                // thumbnail-sized, the page's stream negotiation kills playback.
+                                val hostSurface = needsSurface && !nowPlayingOpen
+                                if (hostSurface && !graph.surfaceScalesDown) {
+                                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                                        Box(Modifier.width(240.dp).aspectRatio(16f / 9f)) {
+                                            graph.playerSurface(Modifier.fillMaxSize())
+                                        }
+                                    }
+                                }
+                                MiniPlayer(
+                                    coordinator,
+                                    surface = if (hostSurface && graph.surfaceScalesDown) graph.playerSurface else null,
+                                    onExpand = { nowPlayingOpen = true },
+                                )
+                            }
+                        },
+                    ) { padding ->
+                        Column(Modifier.fillMaxSize().padding(padding)) {
+                            when {
+                                searching -> SearchScreen(graph, coordinator, onBack = { searching = false })
+                                section == AppSection.Discover -> DiscoverFeed(graph, coordinator, discoverTab)
+                                section == AppSection.Library -> LibraryScreen(graph, coordinator)
+                                section == AppSection.Settings -> SettingsScreen(graph)
+                                section == AppSection.Catalogue -> CatalogueScreen()
+                                else -> ComingSoon(section)
+                            }
                         }
                     }
                 }
