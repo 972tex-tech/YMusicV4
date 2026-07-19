@@ -18,7 +18,7 @@ import okio.use
  * carry no HTTP cache of its own — this replaces it, with LRU-by-size instead of HTTP freshness
  * (right for immutable-per-URL thumbnails).
  */
-class ImageSourceCache(
+internal class ImageSourceCache(
     internal val fileSystem: FileSystem,
     directory: Path,
     maxBytes: Long = 128L * 1024 * 1024,

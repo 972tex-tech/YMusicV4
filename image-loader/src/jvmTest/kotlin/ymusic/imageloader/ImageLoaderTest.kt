@@ -14,7 +14,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
-import okio.Buffer
 import okio.IOException
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -74,7 +73,7 @@ class ImageLoaderTest {
     @Test
     fun decodesScaledDownToTheRequestedSize() = runTest {
         val server = FakeImageServer(pngBytes(400, 200))
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         // Requests bucket up to 64: a 400x200 source into 64x64 → 64x32 (aspect kept).
         val bitmap = loader.load("https://img.test/a.png", 50, 50)
         assertEquals(64, bitmap.width)
@@ -84,7 +83,7 @@ class ImageLoaderTest {
     @Test
     fun smallImagesAreNeverUpscaled() = runTest {
         val server = FakeImageServer(pngBytes(40, 20))
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         val bitmap = loader.load("https://img.test/small.png", 500, 500)
         assertEquals(40, bitmap.width)
         assertEquals(20, bitmap.height)
@@ -93,7 +92,7 @@ class ImageLoaderTest {
     @Test
     fun memoryCacheServesRepeatLoads() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         val first = loader.load("https://img.test/a.png", 64, 64)
         val second = loader.load("https://img.test/a.png", 64, 64)
         assertEquals(1, server.fetchCount, "second load must come from the memory cache")
@@ -105,28 +104,28 @@ class ImageLoaderTest {
         val fs = FakeFileSystem()
         val cache = DiskScaledImageCache(fs, "/img".toPath())
         val serverA = FakeImageServer(pngBytes(400, 200))
-        ImageLoader(serverA, scaledCache = cache).load("https://img.test/a.png", 64, 64)
+        ImageLoader(listOf(networkFetcher(serverA)), scaledCache = cache).load("https://img.test/a.png", 64, 64)
         assertEquals(1, serverA.fetchCount)
 
         // A fresh loader (cold memory cache) over the same disk cache: no fetch, same scaled size.
         val serverB = FakeImageServer(pngBytes(400, 200))
-        val warm = ImageLoader(serverB, scaledCache = cache).load("https://img.test/a.png", 64, 64)
+        val warm = ImageLoader(listOf(networkFetcher(serverB)), scaledCache = cache).load("https://img.test/a.png", 64, 64)
         assertEquals(0, serverB.fetchCount, "scaled cache must serve the warm load")
         assertEquals(64, warm.width)
         assertEquals(32, warm.height)
     }
 
     @Test
-    fun sourceCacheSharesOneDownloadAcrossSizes() = runTest {
+    fun networkFetcherSharesOneDownloadAcrossSizes() = runTest {
         val fs = FakeFileSystem()
-        val src = ImageSourceCache(fs, "/src".toPath())
         val server = FakeImageServer(pngBytes(400, 200))
-        ImageLoader(server, sourceCache = src).load("https://img.test/a.png", 64, 64)
+        val fetcher = networkFetcher(server, fs, "/src".toPath())
+        ImageLoader(listOf(fetcher)).load("https://img.test/a.png", 64, 64)
         assertEquals(1, server.fetchCount)
 
         // A different size bucket on a cold loader decodes from the on-disk original — no refetch.
-        val warm = ImageLoader(server, sourceCache = src).load("https://img.test/a.png", 200, 200)
-        assertEquals(1, server.fetchCount, "source cache must serve other sizes without a refetch")
+        val warm = ImageLoader(listOf(fetcher)).load("https://img.test/a.png", 200, 200)
+        assertEquals(1, server.fetchCount, "the disk cache must serve other sizes without a refetch")
         assertEquals(256, warm.width) // 200 buckets up to 256; 400x200 scaled to fit 256x256
     }
 
@@ -135,9 +134,7 @@ class ImageLoaderTest {
         val tmp = kotlin.io.path.createTempFile("imgloader", ".png").toFile()
         try {
             tmp.writeBytes(pngBytes(400, 200))
-            val server = FakeImageServer(pngBytes(10, 10))
-            val loaded = ImageLoader(server).load("file://${tmp.absolutePath}", 64, 64)
-            assertEquals(0, server.fetchCount, "file:// must not hit the network")
+            val loaded = ImageLoader(listOf(fileFetcher())).load("file://${tmp.absolutePath}", 64, 64)
             assertEquals(64, loaded.width)
         } finally {
             tmp.delete()
@@ -149,9 +146,9 @@ class ImageLoaderTest {
         val server = FakeImageServer(pngBytes(10, 10))
         val art = pngBytes(400, 200)
         val loader = ImageLoader(
-            server,
-            fetchers = listOf(
-                ImageFetcher { url -> if (url.startsWith("art://")) Buffer().write(art) else null },
+            listOf(
+                ImageFetcher { url, _, size -> if (url.startsWith("art://")) decodeScaled(art, size) else null },
+                networkFetcher(server),
             ),
         )
         val loaded = loader.load("art:///music/track.mp3", 64, 64)
@@ -162,9 +159,8 @@ class ImageLoaderTest {
     @Test
     fun corruptSourceEntryFailsWithoutRefetching() = runTest {
         val fs = FakeFileSystem()
-        val src = ImageSourceCache(fs, "/src".toPath())
         val server = FakeImageServer("not an image".encodeToByteArray())
-        val loader = ImageLoader(server, sourceCache = src)
+        val loader = ImageLoader(listOf(networkFetcher(server, fs, "/src".toPath())))
         assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
         assertEquals(1, server.fetchCount)
 
@@ -174,18 +170,17 @@ class ImageLoaderTest {
     }
 
     @Test
-    fun sourceCachePathRejectsOversizedBody() = runTest {
+    fun diskNetworkFetcherRejectsOversizedBody() = runTest {
         val fs = FakeFileSystem()
-        val src = ImageSourceCache(fs, "/src".toPath())
         val server = FakeImageServer(pngBytes(400, 200))
-        val loader = ImageLoader(server, sourceCache = src, maxImageBytes = 64)
+        val loader = ImageLoader(listOf(networkFetcher(server, fs, "/src".toPath(), maxImageBytes = 64)))
         assertFailsWith<IOException> { loader.load("https://img.test/a.png", 64, 64) }
     }
 
     @Test
-    fun oversizedBodyRejectedInsteadOfBuffered() = runTest {
+    fun streamNetworkFetcherRejectsOversizedBody() = runTest {
         val server = FakeImageServer(pngBytes(400, 200))
-        val loader = ImageLoader(server, maxImageBytes = 64)
+        val loader = ImageLoader(listOf(networkFetcher(server, maxImageBytes = 64)))
         assertFailsWith<IOException> { loader.load("https://img.test/huge.png", 64, 64) }
     }
 
@@ -194,20 +189,20 @@ class ImageLoaderTest {
         val fs = FakeFileSystem()
         val cache = DiskScaledImageCache(fs, "/img".toPath())
         val serverA = FakeImageServer(pngBytes(40, 20))
-        ImageLoader(serverA, scaledCache = cache).load("https://img.test/small.png", 64, 64)
+        ImageLoader(listOf(networkFetcher(serverA)), scaledCache = cache).load("https://img.test/small.png", 64, 64)
         assertEquals(1, serverA.fetchCount)
 
         // Nothing was shrunk, so nothing may be persisted: a cold loader must fetch again
         // (the HTTP cache already holds the original; a PNG re-encode would only waste disk).
         val serverB = FakeImageServer(pngBytes(40, 20))
-        ImageLoader(serverB, scaledCache = cache).load("https://img.test/small.png", 64, 64)
+        ImageLoader(listOf(networkFetcher(serverB)), scaledCache = cache).load("https://img.test/small.png", 64, 64)
         assertEquals(1, serverB.fetchCount, "an un-downscaled image must not be served from the scaled cache")
     }
 
     @Test
     fun cacheKeySharesEntriesAcrossChangedUrls() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         val stable = "https://img.test/vi/abc/hq720.jpg"
         val a = loader.load("$stable?sig=1", 64, 64, cacheKey = stable)
         val b = loader.load("$stable?sig=2", 64, 64, cacheKey = stable)
@@ -219,7 +214,7 @@ class ImageLoaderTest {
     @Test
     fun peekIsSynchronousMemoryHit() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         assertEquals(null, loader.peek("https://img.test/a.png", 64, 64))
         val bitmap = loader.load("https://img.test/a.png", 64, 64)
         assertTrue(loader.peek("https://img.test/a.png", 64, 64) === bitmap)
@@ -229,7 +224,7 @@ class ImageLoaderTest {
     @Test
     fun trimAndBudgetEvictTheMemoryCache() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         val url = "https://img.test/a.png"
         loader.load(url, 64, 64)
 
@@ -247,14 +242,14 @@ class ImageLoaderTest {
     @Test
     fun httpFailureThrows() = runTest {
         val server = FakeImageServer(pngBytes(10, 10), status = 404)
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         assertFailsWith<IOException> { loader.load("https://img.test/missing.png", 64, 64) }
     }
 
     @Test
     fun undecodableBodyThrows() = runTest {
         val server = FakeImageServer("not an image".encodeToByteArray())
-        val loader = ImageLoader(server)
+        val loader = ImageLoader(listOf(networkFetcher(server)))
         assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
     }
 
