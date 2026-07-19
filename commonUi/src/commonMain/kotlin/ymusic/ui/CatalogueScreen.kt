@@ -61,7 +61,34 @@ import ymusic.mediastore.model.MediaStoreBucket
  */
 @Composable
 fun CatalogueScreen(modifier: Modifier = Modifier) {
-    LazyColumn(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val width = maxWidth
+        val height = maxHeight
+        val windowClass = when {
+            width < 600.dp -> "compact · square list"
+            width < 840.dp -> "medium · 16:9 list"
+            else -> "expanded · grid"
+        }
+        Column(Modifier.fillMaxSize()) {
+            Text(
+                "${width.value.toInt()} × ${height.value.toInt()} dp — $windowClass",
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = DesignColors.Accent,
+                ),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+            HorizontalDivider(color = DesignColors.Divider)
+            CatalogueList()
+        }
+    }
+}
+
+@Composable
+private fun CatalogueList() {
+    LazyColumn(Modifier.fillMaxSize()) {
         item { CatLabel("SectionHeader — title · icon+count · CTA · collapsible") }
         item { SectionHeader(YtSectionHeader(title = "Recommended")) }
         item { SectionHeader(YtSectionHeader(title = "Sơn Tùng M-TP", iconThumbs = mockAvatarThumbs, count = "500+")) }
