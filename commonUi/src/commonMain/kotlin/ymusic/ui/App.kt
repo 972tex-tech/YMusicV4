@@ -250,7 +250,8 @@ private fun DesignAppBar(
 ) {
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
-        Modifier.fillMaxWidth().background(Color.White).padding(start = 11.dp, end = 11.dp, top = 0.dp, bottom = 2.dp),
+        // The mockup's 5px top margin sits under a status bar; a bare window edge needs its own.
+        Modifier.fillMaxWidth().background(Color.White).padding(start = 11.dp, end = 11.dp, top = 6.dp, bottom = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
