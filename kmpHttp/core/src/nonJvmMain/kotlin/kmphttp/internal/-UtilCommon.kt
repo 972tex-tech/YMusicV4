@@ -1,7 +1,6 @@
 package kmphttp.internal
 
 import okio.ArrayIndexOutOfBoundsException
-import okio.IOException
 
 /**
  * Returns the index of the first character in this string that contains a character in
@@ -132,13 +131,6 @@ internal fun checkOffsetAndCount(
 ) {
     if (offset or count < 0L || offset > arrayLength || arrayLength - offset < count) {
         throw ArrayIndexOutOfBoundsException("length=$arrayLength, offset=$offset, count=$offset")
-    }
-}
-
-internal fun okio.Closeable.closeQuietly() {
-    try {
-        close()
-    } catch (_: IOException) {
     }
 }
 

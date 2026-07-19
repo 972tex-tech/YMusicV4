@@ -669,7 +669,7 @@ class DiskLruCache(
         const val JOURNAL_FILE = "journal"
         const val JOURNAL_FILE_TEMP = "journal.tmp"
         const val JOURNAL_FILE_BACKUP = "journal.bkp"
-        val LEGAL_KEY_PATTERN = "[a-z0-9_-]{1,50}".toRegex()
+        val LEGAL_KEY_PATTERN = "[a-z0-9_-]{1,120}".toRegex()
 
         // Jan 1, 2026 00:00:00 UTC in milliseconds
         private const val EPOCH_2026 = 1767225600000L

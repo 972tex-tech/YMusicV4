@@ -210,7 +210,7 @@ class DiskLruCacheTest {
                 DiskLruCache(fileSystem, directory = cacheDir, valueCount = 2, maxSize = 1024)
             cache.initialize()
 
-            val longKey = "a".repeat(51)
+            val longKey = "a".repeat(121)
             assertFailsWith<IllegalArgumentException> {
                 cache.edit(longKey)
             }

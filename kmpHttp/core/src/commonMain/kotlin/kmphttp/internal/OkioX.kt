@@ -11,6 +11,14 @@ import okio.Path
  * Close resource silently, ignoring exceptions.
  * Use sparingly - only when cleanup failure is acceptable.
  */
+internal fun okio.Closeable.closeQuietly() {
+    try {
+        close()
+    } catch (_: Exception) {
+        // Intentionally ignored during cleanup
+    }
+}
+
 internal fun AutoCloseable.closeQuietly() {
     try {
         close()
