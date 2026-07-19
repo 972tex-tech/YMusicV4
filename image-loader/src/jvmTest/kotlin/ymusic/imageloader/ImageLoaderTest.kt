@@ -169,12 +169,16 @@ class ImageLoaderTest {
     }
 
     @Test
-    fun diskCacheEvictsOldestWhenOverBudget() = runTest {
+    fun diskCacheEvictsLeastRecentlyUsedWhenOverBudget() = runTest {
         val fs = FakeFileSystem()
-        val cache = DiskScaledImageCache(fs, "/img".toPath(), maxBytes = 8)
+        val cache = DiskScaledImageCache(fs, "/img".toPath(), maxBytes = 14)
         cache.put("aa", ByteArray(6))
-        cache.put("bb", ByteArray(6)) // 12 > 8 → "aa" evicted
-        assertEquals(null, cache.get("aa"))
-        assertEquals(6, cache.get("bb")?.size)
+        cache.put("bb", ByteArray(6))
+        cache.get("aa") // refreshes "aa" — LRU, not FIFO: "bb" is now the eviction candidate
+        cache.put("cc", ByteArray(6)) // 18 > 14
+        cache.trimNow()
+        assertEquals(6, cache.get("aa")?.size)
+        assertEquals(null, cache.get("bb"))
+        assertEquals(6, cache.get("cc")?.size)
     }
 }

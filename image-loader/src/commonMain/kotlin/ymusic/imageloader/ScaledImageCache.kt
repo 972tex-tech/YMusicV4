@@ -1,13 +1,14 @@
 package ymusic.imageloader
 
+import kmphttp.cache.DiskLruCache
+import kmphttp.cache.OkioFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okio.FileNotFoundException
+import okio.Buffer
 import okio.FileSystem
 import okio.Path
+import okio.use
 
 /**
  * Optional persistent cache of already-scaled images (PNG), so re-showing a thumbnail skips both
@@ -20,46 +21,51 @@ interface ScaledImageCache {
 }
 
 /**
- * [ScaledImageCache] on an okio [FileSystem]: one file per key under [directory], bounded to
- * [maxBytes] by deleting oldest-written files first (approximate FIFO — good enough for a
- * regenerable cache; true LRU isn't worth tracking reads on disk).
+ * [ScaledImageCache] on kmpHttp's journaled [DiskLruCache]: true LRU (a get refreshes the entry),
+ * incremental size accounting (no directory scans), crash-safe journaled writes, bounded to
+ * [maxBytes].
  */
 class DiskScaledImageCache(
-    private val fileSystem: FileSystem,
-    private val directory: Path,
-    private val maxBytes: Long = 64L * 1024 * 1024,
+    fileSystem: FileSystem,
+    directory: Path,
+    maxBytes: Long = 64L * 1024 * 1024,
 ) : ScaledImageCache {
-    private val writeLock = Mutex()
+    private val cache = DiskLruCache(
+        fileSystem = OkioFileSystem(fileSystem),
+        directory = directory,
+        valueCount = 1,
+        maxSize = maxBytes,
+    )
 
     override suspend fun get(key: String): ByteArray? = withContext(Dispatchers.IO) {
+        cache.get(key)?.use { snapshot ->
+            val buffer = Buffer()
+            val source = snapshot.getSource(0)
+            while (source.read(buffer, SEGMENT) != -1L) {
+                // drain to the end
+            }
+            buffer.readByteArray()
+        }
+    }
+
+    /** Evict down to the budget now instead of waiting for the throttled background cleanup. */
+    suspend fun trimNow() = withContext(Dispatchers.IO) { cache.trimNow() }
+
+    override suspend fun put(key: String, bytes: ByteArray): Unit = withContext(Dispatchers.IO) {
+        val editor = cache.edit(key) ?: return@withContext
         try {
-            fileSystem.read(directory / key) { readByteArray() }
-        } catch (_: FileNotFoundException) {
-            null // never written, or deleted by a concurrent put's trim — both are a plain miss
+            editor.newSink(0).use { sink ->
+                sink.write(Buffer().write(bytes), bytes.size.toLong())
+                sink.flush()
+            }
+            editor.commit()
+        } catch (t: Throwable) {
+            editor.abort()
+            throw t
         }
     }
 
-    override suspend fun put(key: String, bytes: ByteArray) = withContext(Dispatchers.IO) {
-        writeLock.withLock {
-            fileSystem.createDirectories(directory)
-            val tmp = directory / "$key.tmp"
-            fileSystem.write(tmp) { write(bytes) }
-            fileSystem.atomicMove(tmp, directory / key)
-            trim()
-        }
-    }
-
-    private fun trim() {
-        val entries = fileSystem.list(directory).mapNotNull { path ->
-            val meta = fileSystem.metadataOrNull(path) ?: return@mapNotNull null
-            Triple(path, meta.size ?: 0L, meta.lastModifiedAtMillis ?: 0L)
-        }
-        var total = entries.sumOf { it.second }
-        if (total <= maxBytes) return
-        for ((path, size, _) in entries.sortedBy { it.third }) {
-            fileSystem.delete(path)
-            total -= size
-            if (total <= maxBytes) break
-        }
+    private companion object {
+        const val SEGMENT = 64L * 1024
     }
 }
