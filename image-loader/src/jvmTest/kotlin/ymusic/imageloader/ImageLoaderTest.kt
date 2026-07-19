@@ -116,6 +116,13 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun oversizedBodyRejectedInsteadOfBuffered() = runTest {
+        val server = FakeImageServer(pngBytes(400, 200))
+        val loader = ImageLoader(server, maxImageBytes = 64)
+        assertFailsWith<IOException> { loader.load("https://img.test/huge.png", 64, 64) }
+    }
+
+    @Test
     fun unscaledResultIsNotPersisted() = runTest {
         val fs = FakeFileSystem()
         val cache = DiskScaledImageCache(fs, "/img".toPath())

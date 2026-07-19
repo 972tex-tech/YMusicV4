@@ -1,7 +1,7 @@
 package ymusic.imageloader
 
 import androidx.compose.ui.graphics.ImageBitmap
-import kmpcommon.io.BufferedAsyncSource
+import kmpcommon.io.AsyncSource
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -9,6 +9,7 @@ import kmphttp.asyncSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okio.Buffer
 import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
 import kotlin.concurrent.Volatile
@@ -32,6 +33,8 @@ class ImageLoader(
     internal val logger: Logger? = null,
     memoryCacheBytes: Long = 32L * 1024 * 1024,
     parallelism: Int = 4,
+    /** Hard cap on a fetched body — a mislinked huge file must fail, not OOM the process. */
+    private val maxImageBytes: Long = 32L * 1024 * 1024,
 ) {
     private val memory = MemoryImageCache(memoryCacheBytes)
     private val gate = LifoGate(parallelism)
@@ -100,7 +103,11 @@ class ImageLoader(
         val response = client.execute(RequestBuilder().url(url).build())
         val bytes = try {
             if (!response.isSuccessful) throw IOException("image HTTP ${response.code}: $url")
-            BufferedAsyncSource(response.body.asyncSource()).readFully().readByteArray()
+            val declared = response.body.contentLength()
+            if (declared > maxImageBytes) {
+                throw IOException("image body $declared bytes exceeds the $maxImageBytes-byte cap: $url")
+            }
+            readImageBytes(response.body.asyncSource(), url)
         } finally {
             response.close()
         }
@@ -121,10 +128,50 @@ class ImageLoader(
         return decoded.bitmap
     }
 
+    /**
+     * Stream the body in with two guards: the size cap re-checked as bytes arrive (Content-Length
+     * can lie or be absent) and an image-magic sniff on the first chunk, so non-image bytes (a
+     * mislinked video, an HTML error page) fail after one segment instead of a full download.
+     */
+    private suspend fun readImageBytes(source: AsyncSource, url: String): ByteArray {
+        val buffer = Buffer()
+        var sniffed = false
+        while (true) {
+            val n = source.read(buffer, SEGMENT)
+            if (buffer.size > maxImageBytes) {
+                throw IOException("image exceeds the $maxImageBytes-byte cap: $url")
+            }
+            if (!sniffed && (buffer.size >= MAGIC_PREFIX || n == -1L)) {
+                if (!looksLikeImage(buffer)) throw IllegalArgumentException("not an image (magic bytes): $url")
+                sniffed = true
+            }
+            if (n == -1L) break
+        }
+        return buffer.readByteArray()
+    }
+
     private fun diskKey(key: String): String = key.encodeUtf8().sha256().hex()
 
     private companion object {
         val TAG = listOf("image-loader")
+        const val SEGMENT = 64L * 1024
+        const val MAGIC_PREFIX = 12L
+    }
+}
+
+/** True when the first bytes carry a known raster-image signature (JPEG/PNG/GIF/BMP/WebP/HEIF). */
+private fun looksLikeImage(b: Buffer): Boolean {
+    if (b.size < 4) return false
+    fun at(i: Long) = b[i].toInt() and 0xff
+    return when {
+        at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF -> true // JPEG
+        at(0) == 0x89 && at(1) == 'P'.code && at(2) == 'N'.code && at(3) == 'G'.code -> true // PNG
+        at(0) == 'G'.code && at(1) == 'I'.code && at(2) == 'F'.code && at(3) == '8'.code -> true // GIF
+        at(0) == 'B'.code && at(1) == 'M'.code -> true // BMP
+        b.size >= 12 && at(0) == 'R'.code && at(1) == 'I'.code && at(2) == 'F'.code && at(3) == 'F'.code &&
+            at(8) == 'W'.code && at(9) == 'E'.code && at(10) == 'B'.code && at(11) == 'P'.code -> true // WebP
+        b.size >= 8 && at(4) == 'f'.code && at(5) == 't'.code && at(6) == 'y'.code && at(7) == 'p'.code -> true // HEIF/AVIF
+        else -> false
     }
 }
 
