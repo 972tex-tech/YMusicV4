@@ -29,6 +29,7 @@
     <string name="feed_empty">Nothing here</string>
     <string name="error_generic">Something went wrong (%1$s)</string>
     <string name="retry">Retry</string>
+    <string name="reload">Reload</string>
     <string name="show_more">Show more</string>
     <string name="show_more_n">Show more (%1$d)</string>
     <string name="show_less">Show less</string>

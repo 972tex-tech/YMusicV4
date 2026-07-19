@@ -258,6 +258,12 @@ private fun CatalogueList() {
             Breadcrumb(mockCrumbs.take(depth)) { depth = it }
         }
 
+        item { CatLabel("Empty page — message + reload") }
+        item { Box(Modifier.fillMaxWidth().height(200.dp)) { EmptyState("Nothing here") {} } }
+
+        item { CatLabel("Error page — code + retry") }
+        item { Box(Modifier.fillMaxWidth().height(200.dp)) { ErrorState("E20030") {} } }
+
         item { CatLabel("Progress — circular (feed loading) · linear (mini-player)") }
         item {
             Row(

@@ -50,6 +50,7 @@ import ymusic.ui.resources.error_generic
 import ymusic.ui.resources.feed_empty
 import ymusic.ui.resources.queue_last
 import ymusic.ui.resources.queue_next
+import ymusic.ui.resources.reload
 import ymusic.ui.resources.retry
 import ymusic.ui.resources.show_less
 import ymusic.ui.resources.show_more
@@ -147,21 +148,38 @@ fun FeedList(
     val state by pager.state.collectAsState()
     when (val s = state) {
         is Pager.State.Loading -> CenteredBox(modifier) { CircularProgressIndicator() }
-        is Pager.State.Failed -> CenteredBox(modifier) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(Res.string.error_generic, s.code), color = MaterialTheme.colorScheme.error)
-                OutlinedButton(onClick = { pager.refresh() }) { Text(stringResource(Res.string.retry)) }
-            }
-        }
+        is Pager.State.Failed -> ErrorState(s.code, modifier) { pager.refresh() }
         is Pager.State.Ready -> {
             if (s.sections.all { it.items.isEmpty() }) {
                 Column(modifier) {
                     FeedChips(s, pager)
-                    CenteredBox { Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    EmptyState(emptyMessage) { pager.refresh(s.selectedChipToken) }
                 }
             } else {
                 FeedSections(s, pager, coordinator, modifier)
             }
+        }
+    }
+}
+
+/** Full-surface empty page: the message + a reload action. */
+@Composable
+internal fun EmptyState(message: String, modifier: Modifier = Modifier, onReload: () -> Unit) {
+    CenteredBox(modifier) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onReload) { Text(stringResource(Res.string.reload)) }
+        }
+    }
+}
+
+/** Full-surface error page: "Something went wrong (code)" + a retry action. */
+@Composable
+internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: () -> Unit) {
+    CenteredBox(modifier) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(Res.string.error_generic, code), color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = onRetry) { Text(stringResource(Res.string.retry)) }
         }
     }
 }

@@ -21,6 +21,7 @@
     <string name="feed_empty">Không có gì ở đây</string>
     <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>
     <string name="retry">Thử lại</string>
+    <string name="reload">Tải lại</string>
     <string name="show_more">Xem thêm</string>
     <string name="show_more_n">Xem thêm (%1$d)</string>
     <string name="show_less">Thu gọn</string>

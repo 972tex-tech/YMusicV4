@@ -21,6 +21,7 @@
     <string name="feed_empty">لا يوجد شيء هنا</string>
     <string name="error_generic">حدث خطأ ما (%1$s)</string>
     <string name="retry">إعادة المحاولة</string>
+    <string name="reload">إعادة التحميل</string>
     <string name="show_more">عرض المزيد</string>
     <string name="show_more_n">عرض المزيد (%1$d)</string>
     <string name="show_less">عرض أقل</string>
