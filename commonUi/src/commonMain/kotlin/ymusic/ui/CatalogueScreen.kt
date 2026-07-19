@@ -104,10 +104,9 @@ private fun CatalogueList() {
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}) }
         item { FeedListItem(mockChannel, ItemActions(emptyList()), onClick = {}) }
 
-        item { CatLabel("FeedListItem wide — 16:9 list form (400–469dp) · small = collapsed section") }
+        item { CatLabel("FeedListItem wide — 16:9 list form (400–469dp)") }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, wide = true) }
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true) }
-        item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true, wide = true) }
 
         item { CatLabel("Breakpoints — adaptive: resize the window, this section switches band live") }
         item { AdaptiveBandDemo() }

@@ -241,7 +241,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 item,
                 actions = itemActions(item, coordinator),
                 onClick = itemClick(item, coordinator),
-                small = section.collapsible && !expanded,
                 wide = wide,
             )
         }
