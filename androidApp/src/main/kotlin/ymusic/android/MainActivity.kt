@@ -28,8 +28,9 @@ import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.androidEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
-import ymusic.imageloader.ImageSourceCache
 import ymusic.imageloader.defaultMemoryCacheBudget
+import ymusic.imageloader.fileFetcher
+import ymusic.imageloader.networkFetcher
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -122,16 +123,21 @@ class MainActivity : ComponentActivity() {
             ),
         )
 
-        // Thumbnails: cache-less client (no cookies — public CDN images); the loader owns the bytes
-        // — originals stream to the source cache and decode from file, scaled results skip the
-        // decode. Memory budget scales with the device's heap class; onTrimMemory (above) sheds it
-        // under pressure.
+        // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to the
+        // fetcher's disk cache, decode from file) + local files. Memory budget scales with the
+        // device's heap class; onTrimMemory (above) sheds it under pressure.
         val imageLoader = ImageLoader(
-            client = KmpHttpClient.create { },
+            fetchers = listOf(
+                networkFetcher(
+                    KmpHttpClient.create { },
+                    FileSystem.SYSTEM,
+                    cacheDir.resolve("image-source-cache").toOkioPath(),
+                ),
+                fileFetcher(),
+            ),
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
             logger = LogcatLogger(),
             memoryCacheBytes = defaultMemoryCacheBudget(this),
-            sourceCache = ImageSourceCache(FileSystem.SYSTEM, cacheDir.resolve("image-source-cache").toOkioPath()),
         ).also { this.imageLoader = it }
 
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName

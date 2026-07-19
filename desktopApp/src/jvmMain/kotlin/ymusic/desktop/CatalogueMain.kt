@@ -11,6 +11,7 @@ import kmphttp.KmpHttpClient
 import kmphttp.create
 import ymusic.imageloader.ImageLoader
 import ymusic.imageloader.defaultMemoryCacheBudget
+import ymusic.imageloader.networkFetcher
 import ymusic.ui.CatalogueScreen
 import ymusic.ui.LocalImageLoader
 import ymusic.ui.YMusicTheme
@@ -28,7 +29,7 @@ fun main() = application {
     ) {
         val loader = remember {
             ImageLoader(
-                client = KmpHttpClient.create { },
+                fetchers = listOf(networkFetcher(KmpHttpClient.create { })),
                 logger = StdoutLogger,
                 memoryCacheBytes = defaultMemoryCacheBudget(),
             )

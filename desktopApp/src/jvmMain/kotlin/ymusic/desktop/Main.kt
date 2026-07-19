@@ -35,8 +35,9 @@ import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
-import ymusic.imageloader.ImageSourceCache
 import ymusic.imageloader.defaultMemoryCacheBudget
+import ymusic.imageloader.fileFetcher
+import ymusic.imageloader.networkFetcher
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.FileSystemDocumentsProvider
 import ymusic.mediascanner.MediaScanner
@@ -129,14 +130,20 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
 
     val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
 
-    // Thumbnails: cache-less client (no cookies — public CDN images); the loader owns the bytes —
-    // originals stream to the source cache and decode from file, scaled results skip the decode.
+    // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to the
+    // fetcher's disk cache, decode from file) + local files; scaled results skip the decode.
     val imageLoader = ImageLoader(
-        client = KmpHttpClient.create { },
+        fetchers = listOf(
+            networkFetcher(
+                KmpHttpClient.create { },
+                FileSystem.SYSTEM,
+                File(dataDir, "image-source-cache").absolutePath.toPath(),
+            ),
+            fileFetcher(),
+        ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = StdoutLogger,
         memoryCacheBytes = defaultMemoryCacheBudget(),
-        sourceCache = ImageSourceCache(FileSystem.SYSTEM, File(dataDir, "image-source-cache").absolutePath.toPath()),
     )
 
     // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
