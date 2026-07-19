@@ -176,18 +176,16 @@ private fun FeedSections(
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // Compact (<600dp) is a square-thumb list, medium (600–839) a 16:9-thumb list; expanded
-        // (≥840) fits as many ~240dp grid cards as the width allows (M3 scales expanded layouts by
-        // content size, not a fixed column cap).
         val metrics = gridMetricsFor(maxWidth)
-        val wide = maxWidth >= 600.dp
-        val columns = if (maxWidth < 840.dp) {
+        val layout = feedLayoutFor(maxWidth)
+        val columns = if (layout != FeedLayout.Grid) {
             1
         } else {
             ((maxWidth - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_TARGET + metrics.gutter))
                 .toInt()
                 .coerceAtLeast(2)
         }
+        val wide = layout == FeedLayout.WideList
         LazyColumn(Modifier.fillMaxSize()) {
             item { FeedChips(state, pager) }
             state.sections.forEachIndexed { index, section ->
@@ -327,6 +325,17 @@ internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 5.dp),
     )
+}
+
+/** The three feed layout bands a surface width falls into. */
+internal enum class FeedLayout { SquareList, WideList, Grid }
+
+/** The ONE place the feed breakpoints live: square list under 380dp, 16:9 list to 469dp, then as
+ *  many ~[GRID_CARD_TARGET] grid cards as fit. */
+internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
+    width < 380.dp -> FeedLayout.SquareList
+    width < 470.dp -> FeedLayout.WideList
+    else -> FeedLayout.Grid
 }
 
 @Composable

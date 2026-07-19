@@ -64,10 +64,10 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val width = maxWidth
         val height = maxHeight
-        val windowClass = when {
-            width < 600.dp -> "compact · square list"
-            width < 840.dp -> "medium · 16:9 list"
-            else -> "expanded · grid"
+        val windowClass = when (feedLayoutFor(width)) {
+            FeedLayout.SquareList -> "square list (<380)"
+            FeedLayout.WideList -> "16:9 list (380–469)"
+            FeedLayout.Grid -> "grid (≥470)"
         }
         Column(Modifier.fillMaxSize()) {
             Text(
@@ -98,17 +98,21 @@ private fun CatalogueList() {
             SectionHeader(YtSectionHeader(title = "Collapsible"), collapsed = collapsed, onToggle = { collapsed = !collapsed })
         }
 
-        item { CatLabel("FeedListItem — video · live · playlist · channel · small") }
+        item { CatLabel("FeedListItem — square list form (<380dp) · video · live · playlist · channel") }
         item { FeedListItem(mockVideo, mockActions, onClick = {}) }
         item { FeedListItem(mockLive, mockActions, onClick = {}) }
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}) }
         item { FeedListItem(mockChannel, ItemActions(emptyList()), onClick = {}) }
-        item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true) }
 
-        item { CatLabel("FeedListItem wide — the 16:9-thumb list form (medium windows, 600–839dp)") }
+        item { CatLabel("FeedListItem wide — 16:9 list form (380–469dp) · small = collapsed section") }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, wide = true) }
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true) }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true, wide = true) }
+
+        item { CatLabel("Breakpoints — the same feed at each band, frames at true width") }
+        item { BreakpointFrame(360.dp) }
+        item { BreakpointFrame(430.dp) }
+        item { BreakpointFrame(520.dp) }
 
         item { CatLabel("FeedGridCard — video · playlist · channel (metrics follow window width)") }
         item {
@@ -370,6 +374,44 @@ private fun RadiusBox(value: Int, label: String) {
             modifier = Modifier.padding(top = 3.dp),
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * One feed band at true width: a [width]-wide bordered frame whose content form comes from the
+ * REAL [feedLayoutFor] — a moved breakpoint moves these frames with it. Scrolls sideways when the
+ * frame is wider than the window.
+ */
+@Composable
+private fun BreakpointFrame(width: Dp) {
+    val layout = feedLayoutFor(width)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Text(
+            "${width.value.toInt()}dp → $layout",
+            style = TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = DesignColors.InkSoft),
+            modifier = Modifier.padding(bottom = 3.dp),
+        )
+        Box(Modifier.width(width).border(1.dp, DesignColors.Outline)) {
+            when (layout) {
+                FeedLayout.SquareList -> Column {
+                    FeedListItem(mockVideo, mockActions, onClick = {})
+                    FeedListItem(mockPlaylist, mockActions, onClick = {})
+                }
+                FeedLayout.WideList -> Column {
+                    FeedListItem(mockVideo, mockActions, onClick = {}, wide = true)
+                    FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true)
+                }
+                FeedLayout.Grid -> CatalogueGridRow { inset ->
+                    FeedGridCard(mockVideo, mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
+                    FeedGridCard(mockPlaylist, mockActions, onClick = {}, modifier = Modifier.weight(1f), inset = inset)
+                }
+            }
+        }
     }
 }
 

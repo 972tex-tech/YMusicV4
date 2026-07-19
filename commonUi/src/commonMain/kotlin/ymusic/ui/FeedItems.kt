@@ -121,8 +121,9 @@ fun SectionHeader(
     }
 }
 
-/** video / playlist / channel — list form. [small] is the collapsed-section variant (66dp, 1-line);
- *  [wide] swaps the square thumb for 16:9 (medium windows, where the list has room to breathe). */
+/** video / playlist / channel — list form. [wide] swaps the square thumb for 16:9 (the
+ *  [FeedLayout.WideList] band); [small] is the collapsed-section variant (66dp, 1-line), honored
+ *  only in the wide form — the square list has exactly one row size. */
 @Composable
 fun FeedListItem(
     item: YtFeedItem,
@@ -132,28 +133,29 @@ fun FeedListItem(
     small: Boolean = false,
     wide: Boolean = false,
 ) {
+    val compact = small && wide
     Row(
         modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = if (small) 4.dp else 8.dp),
+            .padding(horizontal = 16.dp, vertical = if (compact) 4.dp else 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
         when {
             item.kind == YtFeedItem.KIND_CHANNEL -> CircleThumb(item, 74.dp)
-            wide -> RectThumb(item, width = if (small) 117.dp else 160.dp, height = if (small) 66.dp else 90.dp)
-            else -> RectThumb(item, width = if (small) 66.dp else 92.dp, height = if (small) 66.dp else 92.dp)
+            wide -> RectThumb(item, width = if (compact) 117.dp else 160.dp, height = if (compact) 66.dp else 90.dp)
+            else -> RectThumb(item, width = 92.dp, height = 92.dp)
         }
         Column(Modifier.weight(1f)) {
             Text(
                 item.title,
                 style = ListTitleStyle,
-                maxLines = if (small) 1 else 2,
+                maxLines = if (compact) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
-            if (!small && sub.isNotEmpty()) {
+            if (!compact && sub.isNotEmpty()) {
                 Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
         }

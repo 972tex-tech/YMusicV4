@@ -38,8 +38,8 @@ object DesignColors {
 /**
  * The spacing scale: every layout spacing (margins, gaps, paddings between elements) is one of
  * these steps — component-internal geometry (pill insets, badge chrome, the 5dp stack tab) is
- * shape, not rhythm, and stays free. Grid columns follow M3 window size classes: compact `<600dp`
- * lists, medium `600–839` 2-col, expanded `≥840` 3-col.
+ * shape, not rhythm, and stays free. Feed layout bands live in `feedLayoutFor`: `<380dp` square
+ * list, `380–469` 16:9 list, `≥470` as many ~240dp grid cards as fit.
  */
 object DesignSpacing {
     val Space2 = 2.dp
