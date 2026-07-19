@@ -205,11 +205,11 @@ fun FeedGridCard(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(DesignColors.Placeholder, RoundedCornerShape(7.dp)),
+                    .background(DesignColors.Placeholder, RoundedCornerShape(5.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
-                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(7.dp))
+                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(5.dp))
                 Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 10, iconSize = 11.dp)
             }
         }
@@ -333,11 +333,11 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
         Modifier
             .size(width = width, height = height)
             .then(if (stacked) Modifier.drawBehind { drawPlaylistStack() } else Modifier)
-            .background(DesignColors.Placeholder, RoundedCornerShape(8.dp)),
+            .background(DesignColors.Placeholder, RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Outlined.Image, null, Modifier.size(if (height < 80.dp) 21.dp else 30.dp), tint = DesignColors.PlaceholderIcon)
-        ThumbImage(item.thumbs, width, RoundedCornerShape(8.dp))
+        ThumbImage(item.thumbs, width, RoundedCornerShape(6.dp))
         Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 9, iconSize = 10.dp)
     }
 }
@@ -379,7 +379,7 @@ internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSiz
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlaylistStack() {
     // The two card edges peeking up-right behind a playlist thumb (mockup box-shadow offsets).
-    val r = CornerRadius(8.dp.toPx())
+    val r = CornerRadius(6.dp.toPx())
     fun layer(offsetPx: Float, shrinkPx: Float, color: Color) {
         drawRoundRect(
             color = color,

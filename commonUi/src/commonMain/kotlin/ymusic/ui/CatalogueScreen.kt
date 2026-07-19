@@ -575,8 +575,9 @@ private const val PILL_RADIUS = -1
 
 private val radiusTokens: List<Pair<Int, String>> = listOf(
     13 to "logo tile",
-    8 to "list thumb / mini art",
-    7 to "grid thumb",
+    8 to "mini art",
+    6 to "list thumb",
+    5 to "grid thumb",
     3 to "badge",
     PILL_RADIUS to "chips/CTA",
 )
