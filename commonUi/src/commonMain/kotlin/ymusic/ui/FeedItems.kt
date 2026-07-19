@@ -1,8 +1,11 @@
 package ymusic.ui
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -281,16 +284,20 @@ fun ShowMoreButton(label: String, expanded: Boolean, onClick: () -> Unit, modifi
     }
 }
 
-/** The outlined pill CTA on channel items ("Subscribe"). Real action lands with accounts. */
+/** The outlined pill CTA on channel items ("Subscribe"); hover turns it accent. Real action lands
+ *  with accounts. */
 @Composable
 internal fun CtaPill(text: String, onClick: () -> Unit = {}) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val color = if (hovered) DesignColors.Accent else DesignColors.Ink
     Text(
         text,
-        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
-            .border(1.4.dp, DesignColors.Ink, RoundedCornerShape(999.dp))
+            .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+            .border(1.4.dp, color, RoundedCornerShape(999.dp))
             .padding(horizontal = 12.dp, vertical = 5.dp),
     )
 }

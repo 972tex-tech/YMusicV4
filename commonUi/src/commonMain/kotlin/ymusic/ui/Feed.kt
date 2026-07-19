@@ -351,8 +351,8 @@ internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
         maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DesignColors.Ink else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Ink else DesignColors.Outline, RoundedCornerShape(999.dp))
+            .background(if (selected) DesignColors.Accent else Color.Transparent)
+            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 5.dp),
     )

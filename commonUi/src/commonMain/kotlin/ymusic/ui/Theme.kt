@@ -104,5 +104,16 @@ private val LightScheme = lightColorScheme(
 
 @Composable
 fun YMusicTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = LightScheme, content = content)
+    MaterialTheme(colorScheme = LightScheme) { AccentRipple(DesignColors.Accent, content) }
+}
+
+/** Every hover/press background renders in the accent (at the ripple's own alphas). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun AccentRipple(accent: Color, content: @Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalRippleConfiguration provides
+            androidx.compose.material3.RippleConfiguration(color = accent),
+        content = content,
+    )
 }

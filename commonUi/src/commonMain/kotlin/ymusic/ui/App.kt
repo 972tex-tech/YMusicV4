@@ -291,14 +291,14 @@ internal fun DiscoverTabRow(selected: DiscoverTab, underline: Boolean, onSelect:
                     t.icon,
                     stringResource(t.label),
                     Modifier.padding(top = 7.dp, bottom = 7.dp).size(22.dp),
-                    tint = if (active) DesignColors.Ink else DesignColors.InkFaint,
+                    tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
                 )
                 Box(
                     Modifier
                         .width(34.dp)
                         .height(2.dp)
                         .background(
-                            if (active && underline) DesignColors.Ink else Color.Transparent,
+                            if (active && underline) DesignColors.Accent else Color.Transparent,
                             RoundedCornerShape(2.dp),
                         ),
                 )

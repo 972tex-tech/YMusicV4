@@ -401,8 +401,8 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
         ),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DesignColors.Ink else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Ink else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+            .background(if (selected) DesignColors.Accent else Color.Transparent)
+            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 7.dp),
     )
