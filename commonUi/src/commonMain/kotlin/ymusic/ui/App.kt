@@ -59,9 +59,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +103,7 @@ import ymusic.ui.resources.tab_home
 import ymusic.ui.resources.tab_music
 import ymusic.ui.resources.tab_recommended
 import ymusic.ui.resources.tab_top_tracks
+import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
 enum class AppSection(val label: StringResource, val icon: ImageVector, val group: Int) {
@@ -183,26 +190,56 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 },
             ) {
                 val barElevated = remember { mutableStateOf(false) }
-                LaunchedEffect(section, discoverTab, searching) { barElevated.value = false }
                 val barShadow by animateDpAsState(if (barElevated.value) 4.dp else 0.dp)
+                // Touch platforms scroll the toolbar row away (enter-always) while the tab row
+                // stays pinned; with the tabs inline (wide) the bar carries them, so it stays put.
+                val collapsible = platformUsesTouch && !wide
+                var toolbarHeightPx by remember { mutableStateOf(0) }
+                var toolbarOffsetPx by remember { mutableStateOf(0f) }
+                LaunchedEffect(section, discoverTab, searching, collapsible) {
+                    barElevated.value = false
+                    toolbarOffsetPx = 0f
+                }
+                val collapseConnection = remember(collapsible) {
+                    object : NestedScrollConnection {
+                        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                            if (!collapsible) return Offset.Zero
+                            val previous = toolbarOffsetPx
+                            toolbarOffsetPx = (previous + available.y).coerceIn(-toolbarHeightPx.toFloat(), 0f)
+                            return Offset(0f, toolbarOffsetPx - previous)
+                        }
+                    }
+                }
                 CompositionLocalProvider(LocalAppBarElevated provides barElevated) {
                     Scaffold(
+                        modifier = Modifier.nestedScroll(collapseConnection),
                         containerColor = Color.White,
                         topBar = {
                             if (!searching) {
                                 Column(Modifier.statusBarsPadding().shadow(barShadow).background(Color.White)) {
-                                    DesignAppBar(
-                                        title = stringResource(
-                                            if (section == AppSection.Discover) discoverTab.label else section.label,
-                                        ),
-                                        onMenu = { scope.launch { drawer.open() } },
-                                        onSearch = { searching = true },
-                                        inlineContent = if (section == AppSection.Discover && wide) {
-                                            { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
-                                        } else {
-                                            null
+                                    Box(
+                                        Modifier.clipToBounds().layout { measurable, constraints ->
+                                            val placeable = measurable.measure(constraints)
+                                            toolbarHeightPx = placeable.height
+                                            val height = (placeable.height + toolbarOffsetPx).roundToInt().coerceAtLeast(0)
+                                            layout(placeable.width, height) {
+                                                placeable.place(0, toolbarOffsetPx.roundToInt())
+                                            }
                                         },
-                                    )
+                                    ) {
+                                        DesignAppBar(
+                                            title = stringResource(
+                                                if (section == AppSection.Discover) discoverTab.label else section.label,
+                                            ),
+                                            onMenu = { scope.launch { drawer.open() } },
+                                            onSearch = { searching = true },
+                                            inlineContent = if (section == AppSection.Discover && wide) {
+                                                { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
+                                            } else {
+                                                null
+                                            },
+                                        )
+                                    }
                                     if (section == AppSection.Discover && !wide) {
                                         DiscoverTabRow(discoverTab, underline = true) { discoverTab = it }
                                         HorizontalDivider(color = DesignColors.Divider)
