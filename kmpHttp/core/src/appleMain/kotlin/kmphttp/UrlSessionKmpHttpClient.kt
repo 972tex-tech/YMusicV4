@@ -7,6 +7,7 @@ import kmphttp.cache.CacheInterceptor
 import kmphttp.internal.AsyncChain
 import kmphttp.internal.AsyncSourceInputStream
 import kmphttp.internal.ForwardingUrlSessionDataTaskDelegate
+import kmphttp.internal.KMPHTTP_ERROR_EXCEPTION_KEY
 import kmphttp.internal.SuspendCondition
 import kmphttp.internal.http.BridgeInterceptor
 import kmphttp.internal.http.FollowUpInterceptor
@@ -541,6 +542,9 @@ private val RECOVERABLE_NSURL_ERRORS: Set<Long> = setOf(
 
 @OptIn(UnsafeNumber::class)
 private fun NSError.toIOException(): IOException {
+    // An engine-attached Kotlin exception (e.g. the SslException born at a trust rejection)
+    // propagates as-is — type, message, and birth-site stack intact.
+    (userInfo?.get(KMPHTTP_ERROR_EXCEPTION_KEY) as? IOException)?.let { return it }
     val message = "NSURLSession error: $localizedDescription"
     return if (domain == NSURLErrorDomain && code.toLong() in RECOVERABLE_NSURL_ERRORS) {
         RecoverableIOException(message)
