@@ -607,6 +607,10 @@ class DiskLruCache(
         fun getSource(index: Int) = sources[index]
         fun getLength(index: Int): Long = entry.cleanFiles[index].second
 
+        /** The entry's backing file — immutable once committed (files are unique-named, never
+         *  rewritten in place); an eviction unlinks it, which a later open turns into a miss. */
+        fun getPath(index: Int): Path = directory / entry.cleanFiles[index].first
+
         suspend fun edit(): Editor? {
             return state.withState {
                 if (getEntry(key()) === entry) {
