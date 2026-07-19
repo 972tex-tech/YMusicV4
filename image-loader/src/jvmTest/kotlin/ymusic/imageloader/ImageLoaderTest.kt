@@ -115,6 +115,21 @@ class ImageLoaderTest {
     }
 
     @Test
+    fun unscaledResultIsNotPersisted() = runTest {
+        val fs = FakeFileSystem()
+        val cache = DiskScaledImageCache(fs, "/img".toPath())
+        val serverA = FakeImageServer(pngBytes(40, 20))
+        ImageLoader(serverA, scaledCache = cache).load("https://img.test/small.png", 64, 64)
+        assertEquals(1, serverA.fetchCount)
+
+        // Nothing was shrunk, so nothing may be persisted: a cold loader must fetch again
+        // (the HTTP cache already holds the original; a PNG re-encode would only waste disk).
+        val serverB = FakeImageServer(pngBytes(40, 20))
+        ImageLoader(serverB, scaledCache = cache).load("https://img.test/small.png", 64, 64)
+        assertEquals(1, serverB.fetchCount, "an un-downscaled image must not be served from the scaled cache")
+    }
+
+    @Test
     fun cacheKeySharesEntriesAcrossChangedUrls() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
         val loader = ImageLoader(server)

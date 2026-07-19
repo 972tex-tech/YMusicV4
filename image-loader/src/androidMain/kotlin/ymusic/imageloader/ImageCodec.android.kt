@@ -10,7 +10,7 @@ import java.io.ByteArrayOutputStream
 // inSampleSize decodes at 1/2^n directly — the full-size bitmap is never allocated. The result is
 // the smallest power-of-two subsample still >= the target (up to 2x the request), the platform's
 // standard efficient-decode recipe.
-internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): ImageBitmap {
+internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): DecodedImage {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
@@ -23,7 +23,7 @@ internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int
     val options = BitmapFactory.Options().apply { inSampleSize = sample }
     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         ?: throw IllegalArgumentException("undecodable image (${bytes.size} bytes)")
-    return bitmap.asImageBitmap()
+    return DecodedImage(bitmap.asImageBitmap(), downscaled = sample > 1)
 }
 
 internal actual fun encodePng(bitmap: ImageBitmap): ByteArray {

@@ -94,7 +94,7 @@ class ImageLoader(
             null
         } ?: return null
         return try {
-            withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
+            withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }.bitmap
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -112,17 +112,21 @@ class ImageLoader(
         } finally {
             response.close()
         }
-        val bitmap = withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
-        scaledCache?.let { cache ->
-            try {
-                cache.put(diskKey(key), withContext(Dispatchers.Default) { encodePng(bitmap) })
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                logger?.log(Logger.Level.WARN, TAG, "scaled cache write failed: ${e.message}", e)
+        val decoded = withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }
+        // Only a genuinely downscaled result is worth persisting: an un-shrunk image re-encoded as
+        // PNG is often BIGGER than the original the HTTP cache already holds, and saves no decode.
+        if (decoded.downscaled) {
+            scaledCache?.let { cache ->
+                try {
+                    cache.put(diskKey(key), withContext(Dispatchers.Default) { encodePng(decoded.bitmap) })
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    logger?.log(Logger.Level.WARN, TAG, "scaled cache write failed: ${e.message}", e)
+                }
             }
         }
-        return bitmap
+        return decoded.bitmap
     }
 
     private fun diskKey(key: String): String = key.encodeUtf8().sha256().hex()

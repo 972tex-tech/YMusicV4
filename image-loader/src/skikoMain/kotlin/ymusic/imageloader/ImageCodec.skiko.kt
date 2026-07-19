@@ -20,11 +20,11 @@ import kotlin.math.roundToInt
 // Skia has no subsampled decode; decode full then immediately draw down into a target-size raster —
 // the full-size image is closed eagerly (Cleaner-freed native pixels would otherwise pile up during
 // a fast scroll), only the scaled bitmap stays resident.
-internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): ImageBitmap {
+internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): DecodedImage {
     Image.makeFromEncoded(bytes).use { image ->
         val scale = min(maxWidth.toFloat() / image.width, maxHeight.toFloat() / image.height)
         // toComposeImageBitmap() copies the pixels, so the source is safe to close in both branches.
-        if (scale >= 1f) return image.toComposeImageBitmap()
+        if (scale >= 1f) return DecodedImage(image.toComposeImageBitmap(), downscaled = false)
         val w = max(1, (image.width * scale).roundToInt())
         val h = max(1, (image.height * scale).roundToInt())
         val bitmap = Bitmap()
@@ -46,7 +46,7 @@ internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int
         }
         bitmap.setImmutable()
         // asComposeImageBitmap wraps WITHOUT copying — the bitmap must stay open.
-        return bitmap.asComposeImageBitmap()
+        return DecodedImage(bitmap.asComposeImageBitmap(), downscaled = true)
     }
 }
 
