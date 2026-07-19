@@ -78,6 +78,11 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
         item { FeedListItem(mockChannel, ItemActions(emptyList()), onClick = {}) }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true) }
 
+        item { CatLabel("FeedListItem wide — the 16:9-thumb list form (medium windows, 600–839dp)") }
+        item { FeedListItem(mockVideo, mockActions, onClick = {}, wide = true) }
+        item { FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true) }
+        item { FeedListItem(mockVideo, mockActions, onClick = {}, small = true, wide = true) }
+
         item { CatLabel("FeedGridCard — video · playlist · channel (metrics follow window width)") }
         item {
             CatalogueGridRow { inset ->
@@ -493,9 +498,8 @@ private const val PILL_RADIUS = -1
 
 private val radiusTokens: List<Pair<Int, String>> = listOf(
     13 to "logo tile",
-    10 to "list thumb",
-    9 to "grid thumb",
-    8 to "mini art",
+    8 to "list thumb / mini art",
+    7 to "grid thumb",
     3 to "badge",
     PILL_RADIUS to "chips/CTA",
 )

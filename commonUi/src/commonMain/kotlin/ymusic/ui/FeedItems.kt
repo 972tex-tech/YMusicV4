@@ -121,7 +121,8 @@ fun SectionHeader(
     }
 }
 
-/** video / playlist / channel — list form. [small] is the collapsed-section variant (66dp, 1-line). */
+/** video / playlist / channel — list form. [small] is the collapsed-section variant (66dp, 1-line);
+ *  [wide] swaps the square thumb for 16:9 (medium windows, where the list has room to breathe). */
 @Composable
 fun FeedListItem(
     item: YtFeedItem,
@@ -129,6 +130,7 @@ fun FeedListItem(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     small: Boolean = false,
+    wide: Boolean = false,
 ) {
     Row(
         modifier
@@ -138,10 +140,10 @@ fun FeedListItem(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        if (item.kind == YtFeedItem.KIND_CHANNEL) {
-            CircleThumb(item, 74.dp)
-        } else {
-            SquareThumb(item, if (small) 66.dp else 92.dp)
+        when {
+            item.kind == YtFeedItem.KIND_CHANNEL -> CircleThumb(item, 74.dp)
+            wide -> RectThumb(item, width = if (small) 117.dp else 160.dp, height = if (small) 66.dp else 90.dp)
+            else -> RectThumb(item, width = if (small) 66.dp else 92.dp, height = if (small) 66.dp else 92.dp)
         }
         Column(Modifier.weight(1f)) {
             Text(
@@ -201,11 +203,11 @@ fun FeedGridCard(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(DesignColors.Placeholder, RoundedCornerShape(9.dp)),
+                    .background(DesignColors.Placeholder, RoundedCornerShape(7.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
-                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(9.dp))
+                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(7.dp))
                 Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 10, iconSize = 11.dp)
             }
         }
@@ -321,19 +323,19 @@ private fun CircleThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
     }
 }
 
-/** Square list thumbnail; playlists get the stacked-cards shadow behind it. */
+/** Square/16:9 list thumbnail; playlists get the stacked-cards shadow behind it. */
 @Composable
-private fun SquareThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
+private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
     val stacked = item.kind == YtFeedItem.KIND_PLAYLIST
     Box(
         Modifier
-            .size(size)
+            .size(width = width, height = height)
             .then(if (stacked) Modifier.drawBehind { drawPlaylistStack() } else Modifier)
-            .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
+            .background(DesignColors.Placeholder, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Outlined.Image, null, Modifier.size(if (size < 80.dp) 21.dp else 30.dp), tint = DesignColors.PlaceholderIcon)
-        ThumbImage(item.thumbs, size, RoundedCornerShape(10.dp))
+        Icon(Icons.Outlined.Image, null, Modifier.size(if (height < 80.dp) 21.dp else 30.dp), tint = DesignColors.PlaceholderIcon)
+        ThumbImage(item.thumbs, width, RoundedCornerShape(8.dp))
         Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 9, iconSize = 10.dp)
     }
 }
@@ -375,7 +377,7 @@ internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSiz
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlaylistStack() {
     // The two card edges peeking up-right behind a playlist thumb (mockup box-shadow offsets).
-    val r = CornerRadius(10.dp.toPx())
+    val r = CornerRadius(8.dp.toPx())
     fun layer(offsetPx: Float, shrinkPx: Float, color: Color) {
         drawRoundRect(
             color = color,

@@ -176,10 +176,12 @@ private fun FeedSections(
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // Compact (<600dp) is a list; wider windows fit as many ~240dp grid cards as the width
-        // allows (M3 scales expanded layouts by content size, not a fixed column cap).
+        // Compact (<600dp) is a square-thumb list, medium (600–839) a 16:9-thumb list; expanded
+        // (≥840) fits as many ~240dp grid cards as the width allows (M3 scales expanded layouts by
+        // content size, not a fixed column cap).
         val metrics = gridMetricsFor(maxWidth)
-        val columns = if (maxWidth < 600.dp) {
+        val wide = maxWidth >= 600.dp
+        val columns = if (maxWidth < 840.dp) {
             1
         } else {
             ((maxWidth - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_TARGET + metrics.gutter))
@@ -193,6 +195,7 @@ private fun FeedSections(
                     section = section,
                     columns = columns,
                     metrics = metrics,
+                    wide = wide,
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
@@ -217,6 +220,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
     columns: Int,
     metrics: GridMetrics,
+    wide: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
@@ -240,6 +244,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 actions = itemActions(item, coordinator),
                 onClick = itemClick(item, coordinator),
                 small = section.collapsible && !expanded,
+                wide = wide,
             )
         }
     } else {
