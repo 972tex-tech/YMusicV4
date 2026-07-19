@@ -406,10 +406,7 @@ private fun AdaptiveBandDemo() {
                     FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true)
                 }
                 FeedLayout.Grid -> {
-                    val metrics = gridMetricsFor(width)
-                    val columns = ((width - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_TARGET + metrics.gutter))
-                        .toInt()
-                        .coerceAtLeast(2)
+                    val columns = gridColumnsFor(width)
                     val items = listOf(mockVideo, mockPlaylist, mockLive)
                     CatalogueGridRow { inset ->
                         repeat(columns) { i ->

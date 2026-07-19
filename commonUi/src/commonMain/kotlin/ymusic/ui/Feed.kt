@@ -18,9 +18,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -162,24 +166,40 @@ fun FeedList(
     }
 }
 
-/** Full-surface empty page: the message + a reload action. */
+/** Full-surface empty page: picture + message + an emphasized reload action. */
 @Composable
 internal fun EmptyState(message: String, modifier: Modifier = Modifier, onReload: () -> Unit) {
     CenteredBox(modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+                Icons.Outlined.Inbox,
+                null,
+                Modifier.size(56.dp).padding(bottom = 4.dp),
+                tint = DesignColors.PlaceholderIcon,
+            )
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onReload) { Text(stringResource(Res.string.reload)) }
+            Button(onClick = onReload, modifier = Modifier.padding(top = 8.dp)) {
+                Text(stringResource(Res.string.reload))
+            }
         }
     }
 }
 
-/** Full-surface error page: "Something went wrong (code)" + a retry action. */
+/** Full-surface error page: picture + "Something went wrong (code)" + an emphasized retry action. */
 @Composable
 internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: () -> Unit) {
     CenteredBox(modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+                Icons.Outlined.CloudOff,
+                null,
+                Modifier.size(56.dp).padding(bottom = 4.dp),
+                tint = DesignColors.PlaceholderIcon,
+            )
             Text(stringResource(Res.string.error_generic, code), color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = onRetry) { Text(stringResource(Res.string.retry)) }
+            Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
+                Text(stringResource(Res.string.retry))
+            }
         }
     }
 }
@@ -196,13 +216,7 @@ private fun FeedSections(
     BoxWithConstraints(modifier.fillMaxSize()) {
         val metrics = gridMetricsFor(maxWidth)
         val layout = feedLayoutFor(maxWidth)
-        val columns = if (layout != FeedLayout.Grid) {
-            1
-        } else {
-            ((maxWidth - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_TARGET + metrics.gutter))
-                .toInt()
-                .coerceAtLeast(2)
-        }
+        val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(maxWidth)
         val wide = layout == FeedLayout.WideList
         LazyColumn(Modifier.fillMaxSize()) {
             item { FeedChips(state, pager) }
@@ -347,12 +361,21 @@ internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
 /** The three feed layout bands a surface width falls into. */
 internal enum class FeedLayout { SquareList, WideList, Grid }
 
-/** The ONE place the feed breakpoints live: square list under 400dp, 16:9 list to 469dp, then as
- *  many ~[GRID_CARD_TARGET] grid cards as fit. */
+/** The ONE place the feed breakpoints live: square list under 400dp, 16:9 list to 469dp, then the
+ *  grid ([gridColumnsFor] columns). */
 internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
     width < 400.dp -> FeedLayout.SquareList
     width < 470.dp -> FeedLayout.WideList
     else -> FeedLayout.Grid
+}
+
+/** Max-item-width model: the FEWEST columns (≥2) keeping every card ≤ [GRID_CARD_MAX_WIDTH], with
+ *  the gutter between columns counted. Cards shrink toward the next column, never past the max. */
+internal fun gridColumnsFor(width: androidx.compose.ui.unit.Dp): Int {
+    val metrics = gridMetricsFor(width)
+    return kotlin.math.ceil((width - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_MAX_WIDTH + metrics.gutter))
+        .toInt()
+        .coerceAtLeast(2)
 }
 
 @Composable

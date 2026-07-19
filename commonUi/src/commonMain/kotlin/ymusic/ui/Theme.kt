@@ -39,7 +39,8 @@ object DesignColors {
  * The spacing scale: every layout spacing (margins, gaps, paddings between elements) is one of
  * these steps — component-internal geometry (pill insets, badge chrome, the 5dp stack tab) is
  * shape, not rhythm, and stays free. Feed layout bands live in `feedLayoutFor`: `<400dp` square
- * list, `400–469` 16:9 list, `≥470` as many ~214dp grid cards as fit (3 columns from 690dp).
+ * list, `400–469` 16:9 list, `≥470` grid — the fewest columns keeping cards ≤324dp wide
+ * (`gridColumnsFor`; 3 columns from 690dp).
  */
 object DesignSpacing {
     val Space2 = 2.dp
