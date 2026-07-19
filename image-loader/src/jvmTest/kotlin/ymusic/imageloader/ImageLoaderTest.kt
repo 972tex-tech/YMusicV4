@@ -1,5 +1,6 @@
 package ymusic.imageloader
 
+import androidx.compose.ui.graphics.ImageBitmap
 import kmphttp.AsyncInterceptor
 import kmphttp.Cache
 import kmphttp.CookieJar
@@ -186,14 +187,17 @@ class ImageLoaderTest {
     @Test
     fun diskCacheEvictsLeastRecentlyUsedWhenOverBudget() = runTest {
         val fs = FakeFileSystem()
-        val cache = DiskScaledImageCache(fs, "/img".toPath(), maxBytes = 14)
-        cache.put("aa", ByteArray(6))
-        cache.put("bb", ByteArray(6))
-        cache.get("aa") // refreshes "aa" — LRU, not FIFO: "bb" is now the eviction candidate
-        cache.put("cc", ByteArray(6)) // 18 > 14
+        val warmup = DiskScaledImageCache(fs, "/img".toPath())
+        warmup.put("aa", ImageBitmap(8, 8))
+        warmup.put("bb", ImageBitmap(8, 8))
+        warmup.get("aa") // refreshes "aa" — LRU, not FIFO: "bb" is now the eviction candidate
+        val total = warmup.sizeBytes
+        warmup.close()
+
+        // Reopen one byte under the total: exactly the least-recently-used entry must go.
+        val cache = DiskScaledImageCache(fs, "/img".toPath(), maxBytes = total - 1)
         cache.trimNow()
-        assertEquals(6, cache.get("aa")?.size)
         assertEquals(null, cache.get("bb"))
-        assertEquals(6, cache.get("cc")?.size)
+        assertEquals(8, cache.get("aa")?.width)
     }
 }

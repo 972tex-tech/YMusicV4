@@ -1,5 +1,6 @@
 package ymusic.imageloader
 
+import androidx.compose.ui.graphics.ImageBitmap
 import kmphttp.cache.DiskLruCache
 import kmphttp.cache.OkioFileSystem
 import kotlinx.coroutines.Dispatchers
@@ -11,19 +12,23 @@ import okio.Path
 import okio.use
 
 /**
- * Optional persistent cache of already-scaled images (PNG), so re-showing a thumbnail skips both
- * the network fetch and the full-size decode. Keys are opaque (the loader passes a hash of
- * url + target size). Implementations own their bounds/eviction.
+ * Optional persistent cache of already-scaled images, so re-showing a thumbnail skips both the
+ * network fetch and the full-size decode. The cache owns the storage codec — callers hand it
+ * bitmaps, never bytes. Keys are opaque (the loader passes a hash of url + target size).
+ * Implementations own their bounds/eviction.
  */
 interface ScaledImageCache {
-    suspend fun get(key: String): ByteArray?
-    suspend fun put(key: String, bytes: ByteArray)
+    /** The cached bitmap, or null on a miss. Throws on an undecodable (corrupt) entry. */
+    suspend fun get(key: String): ImageBitmap?
+
+    suspend fun put(key: String, bitmap: ImageBitmap)
 }
 
 /**
  * [ScaledImageCache] on kmpHttp's journaled [DiskLruCache]: true LRU (a get refreshes the entry),
  * incremental size accounting (no directory scans), crash-safe journaled writes, bounded to
- * [maxBytes].
+ * [maxBytes]. Entries are stored as PNG; en/decoding streams through okio [Buffer]s (Android
+ * decodes straight off the stream — no intermediate ByteArray; Skia's codec API is bytes-only).
  */
 class DiskScaledImageCache(
     fileSystem: FileSystem,
@@ -37,25 +42,26 @@ class DiskScaledImageCache(
         maxSize = maxBytes,
     )
 
-    override suspend fun get(key: String): ByteArray? = withContext(Dispatchers.IO) {
-        cache.get(key)?.use { snapshot ->
-            val buffer = Buffer()
-            val source = snapshot.getSource(0)
-            while (source.read(buffer, SEGMENT) != -1L) {
-                // drain to the end
-            }
-            buffer.readByteArray()
-        }
-    }
+    /** Bytes currently accounted by the journal. */
+    val sizeBytes: Long get() = cache.currentSize
 
     /** Evict down to the budget now instead of waiting for the throttled background cleanup. */
     suspend fun trimNow() = withContext(Dispatchers.IO) { cache.trimNow() }
 
-    override suspend fun put(key: String, bytes: ByteArray): Unit = withContext(Dispatchers.IO) {
+    /** Flush the journal and release the cache; the directory stays valid for a new instance. */
+    suspend fun close() = withContext(Dispatchers.IO) { cache.close() }
+
+    override suspend fun get(key: String): ImageBitmap? = withContext(Dispatchers.IO) {
+        cache.get(key)?.use { snapshot ->
+            decodeSource(snapshot.getSource(0))
+        }
+    }
+
+    override suspend fun put(key: String, bitmap: ImageBitmap): Unit = withContext(Dispatchers.IO) {
         val editor = cache.edit(key) ?: return@withContext
         try {
             editor.newSink(0).use { sink ->
-                sink.write(Buffer().write(bytes), bytes.size.toLong())
+                encodePngToSink(bitmap, sink)
                 sink.flush()
             }
             editor.commit()
@@ -63,9 +69,5 @@ class DiskScaledImageCache(
             editor.abort()
             throw t
         }
-    }
-
-    private companion object {
-        const val SEGMENT = 64L * 1024
     }
 }

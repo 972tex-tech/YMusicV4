@@ -77,29 +77,21 @@ class ImageLoader(
         memory.peek(key)?.let { return it }
         return gate.withPermit {
             memory.peek(key)?.let { return@withPermit it } // raced with an identical load
-            val bitmap = fromScaledCache(key, w, h) ?: fetchAndDecode(url, key, w, h)
+            val bitmap = fromScaledCache(key) ?: fetchAndDecode(url, key, w, h)
             memory.put(key, bitmap)
             bitmap
         }
     }
 
-    private suspend fun fromScaledCache(key: String, w: Int, h: Int): ImageBitmap? {
+    private suspend fun fromScaledCache(key: String): ImageBitmap? {
         val cache = scaledCache ?: return null
-        val bytes = try {
+        return try {
             cache.get(diskKey(key))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
+            // A corrupt or unreadable entry falls through to a fresh fetch (which overwrites it).
             logger?.log(Logger.Level.WARN, TAG, "scaled cache read failed: ${e.message}", e)
-            null
-        } ?: return null
-        return try {
-            withContext(Dispatchers.Default) { decodeScaled(bytes, w, h) }.bitmap
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            // A corrupt entry falls through to a fresh fetch (which overwrites it).
-            logger?.log(Logger.Level.WARN, TAG, "scaled cache entry undecodable: ${e.message}", e)
             null
         }
     }
@@ -118,7 +110,7 @@ class ImageLoader(
         if (decoded.downscaled) {
             scaledCache?.let { cache ->
                 try {
-                    cache.put(diskKey(key), withContext(Dispatchers.Default) { encodePng(decoded.bitmap) })
+                    cache.put(diskKey(key), decoded.bitmap)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {

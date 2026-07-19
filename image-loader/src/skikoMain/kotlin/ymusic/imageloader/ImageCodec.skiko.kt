@@ -50,10 +50,24 @@ internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int
     }
 }
 
-internal actual fun encodePng(bitmap: ImageBitmap): ByteArray {
+// Skia's codec API is bytes-only (no incremental decode/encode exposed by skiko) — the compressed
+// data passes through a contiguous array here; entries are small pre-scaled PNGs.
+internal actual suspend fun decodeSource(source: kmpcommon.io.AsyncSource): ImageBitmap {
+    val buffer = okio.Buffer()
+    while (source.read(buffer, 64L * 1024) != -1L) {
+        // drain — Skia can't decode incrementally
+    }
+    Image.makeFromEncoded(buffer.readByteArray()).use { image ->
+        return image.toComposeImageBitmap()
+    }
+}
+
+internal actual suspend fun encodePngToSink(bitmap: ImageBitmap, sink: kmpcommon.io.AsyncSink) {
     Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->
         val data = image.encodeToData(EncodedImageFormat.PNG)
             ?: throw IllegalStateException("PNG encode failed (${bitmap.width}x${bitmap.height})")
-        data.use { return it.bytes }
+        val buffer = okio.Buffer()
+        data.use { buffer.write(it.bytes) }
+        sink.write(buffer, buffer.size)
     }
 }
