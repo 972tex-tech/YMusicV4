@@ -255,7 +255,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 }
 
 @Composable
-private fun QualityChip(label: String, options: List<Pair<String, String>>, onSelect: (String) -> Unit) {
+internal fun QualityChip(label: String, options: List<Pair<String, String>>, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Text(
@@ -516,7 +516,7 @@ private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.
 }
 
 @Composable
-private fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
+internal fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         ActionIcon(

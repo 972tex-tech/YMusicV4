@@ -264,7 +264,7 @@ private fun FoldersTab(
 
 /** `Library › root › sub` — every crumb but the last navigates back up to it. */
 @Composable
-private fun Breadcrumb(path: List<MediaStoreBucket>, onNavigate: (depth: Int) -> Unit) {
+internal fun Breadcrumb(path: List<MediaStoreBucket>, onNavigate: (depth: Int) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -391,7 +391,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
 
 /** The outlined chip from the mockup's quick-action row (`.qa .q`). */
 @Composable
-private fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         label,
         style = TextStyle(

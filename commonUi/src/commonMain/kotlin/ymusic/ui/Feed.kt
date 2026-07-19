@@ -303,20 +303,25 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(state.chips) { chip ->
-            val selected = chip.token == state.selectedChipToken
-            Text(
-                chip.title,
-                style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
-                maxLines = 1,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(if (selected) DesignColors.Ink else Color.Transparent)
-                    .border(1.dp, if (selected) DesignColors.Ink else DesignColors.Outline, RoundedCornerShape(999.dp))
-                    .clickable { pager.refresh(chip.token) }
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-            )
+            FeedChip(chip.title, selected = chip.token == state.selectedChipToken) { pager.refresh(chip.token) }
         }
     }
+}
+
+/** One feed filter pill. */
+@Composable
+internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        title,
+        style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) DesignColors.Ink else Color.Transparent)
+            .border(1.dp, if (selected) DesignColors.Ink else DesignColors.Outline, RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    )
 }
 
 @Composable

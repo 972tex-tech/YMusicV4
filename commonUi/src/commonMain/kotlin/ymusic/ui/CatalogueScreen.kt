@@ -18,7 +18,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,9 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kmpcommon.uri.Uri
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.dynamicengine.yt.YtThumb
+import ymusic.mediastore.model.MediaStoreBucket
 
 /**
  * Development-only component catalogue (a Storybook, not a product screen): every shared UI
@@ -80,6 +95,146 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
                 expanded = expanded,
                 onClick = { expanded = !expanded },
             )
+        }
+
+        item { CatLabel("Typography — the design-language text roles (each specimen in its own style)") }
+        item {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                typeRoles.forEach { (label, style) -> Text(label, style = style, maxLines = 1) }
+                Text(
+                    "Body — M3 bodyLarge · search suggestion rows",
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                )
+            }
+        }
+
+        item { CatLabel("DiscoverTabRow — underline · inline (app-bar) form") }
+        item {
+            var tab by remember { mutableStateOf(DiscoverTab.Home) }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DiscoverTabRow(tab, underline = true) { tab = it }
+                DiscoverTabRow(tab, underline = false) { tab = it }
+            }
+        }
+
+        item { CatLabel("Library tabs — LibraryChip row") }
+        item {
+            var selected by remember { mutableStateOf(0) }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                mockLibraryTabs.forEachIndexed { i, label ->
+                    LibraryChip(label, selected = i == selected) { selected = i }
+                }
+            }
+        }
+
+        item { CatLabel("Chips — FeedChip · QualityChip (dropdown) · CtaPill") }
+        item {
+            var chip by remember { mutableStateOf(0) }
+            var quality by remember { mutableStateOf("1080p") }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                mockFeedChips.forEachIndexed { i, label ->
+                    FeedChip(label, selected = i == chip) { chip = i }
+                }
+                QualityChip(quality, mockQualities) { id -> quality = mockQualities.first { it.first == id }.second }
+                CtaPill("Subscribe")
+            }
+        }
+
+        item { CatLabel("ActionIcon — 22/32 default · 26/36 transport · accent · disabled") }
+        item {
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                ActionIcon(Icons.Default.MoreVert, "more") {}
+                ActionIcon(Icons.Default.PlayArrow, "play", iconSize = 26.dp, hitSize = 36.dp) {}
+                ActionIcon(Icons.Default.Bedtime, "sleep", tint = DesignColors.Accent) {}
+                ActionIcon(Icons.Default.SkipNext, "next", enabled = false, tint = DesignColors.InkFaint) {}
+            }
+        }
+
+        item { CatLabel("Badges — duration · LIVE · playlist count (thumb bottom-right)") }
+        item {
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                listOf(mockVideo, mockLive, mockPlaylist).forEach { item ->
+                    Box(
+                        Modifier
+                            .size(width = 92.dp, height = 52.dp)
+                            .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
+                    ) {
+                        Badges(
+                            item,
+                            Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(4.dp),
+                            textSize = 9,
+                            iconSize = 10.dp,
+                        )
+                    }
+                }
+            }
+        }
+
+        item { CatLabel("Buttons & menus — OutlinedButton · SleepTimerButton (accent = armed)") }
+        item {
+            var sleepMs by remember { mutableStateOf<Long?>(null) }
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                OutlinedButton(onClick = {}) { Text("Retry") }
+                SleepTimerButton(sleepMs) { sleepMs = it }
+            }
+        }
+
+        item { CatLabel("Search field — OutlinedTextField with clear affordance") }
+        item {
+            var query by remember { mutableStateOf("") }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search YouTube") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        ActionIcon(Icons.Default.Close, "clear") { query = "" }
+                    }
+                },
+            )
+        }
+
+        item { CatLabel("Breadcrumb — library folder path (tap a crumb to navigate up)") }
+        item {
+            var depth by remember { mutableStateOf(mockCrumbs.size) }
+            Breadcrumb(mockCrumbs.take(depth)) { depth = it }
+        }
+
+        item { CatLabel("Progress — circular (feed loading) · linear (mini-player)") }
+        item {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(28.dp))
+                LinearProgressIndicator(progress = { 0.4f }, modifier = Modifier.weight(1f))
+            }
         }
 
         item { CatLabel("Thumbnails — live loader (needs network; placeholder without)") }
@@ -294,6 +449,33 @@ private val mockActions = ItemActions(
         "Add to queue" to {},
         "Download" to {},
     ),
+)
+
+private val mockLibraryTabs = listOf("Folders", "Playlists", "Songs", "Artists", "Albums", "Genres")
+
+private val mockFeedChips = listOf("All", "Music", "Podcasts", "Live")
+
+private val mockQualities = listOf("zero" to "Audio only", "720" to "720p", "1080" to "1080p")
+
+private val mockCrumbs = listOf(
+    MediaStoreBucket(1, null, Uri.parse("file:///Music"), "Music", null),
+    MediaStoreBucket(2, 1, Uri.parse("file:///Music/Albums"), "Albums", null),
+    MediaStoreBucket(3, 2, Uri.parse("file:///Music/Albums/m-tp"), "m-tp", "Sơn Tùng M-TP"),
+)
+
+// Specimens carry their own style; sizes in the label. The app has no central type scale —
+// these are the de-facto roles (ListTitleStyle/… live in FeedItems.kt).
+private val typeRoles: List<Pair<String, TextStyle>> = listOf(
+    "Headline — section header · 15 Bold Ink" to
+        TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+    "Title — list item · 13.5 SemiBold (ListTitleStyle)" to ListTitleStyle,
+    "Title — grid card · 12.5 SemiBold (GridTitleStyle)" to GridTitleStyle,
+    "Caption — list subtitle · 11.5 InkSecondary (ListSubStyle)" to ListSubStyle,
+    "Caption — grid subtitle · 11 InkSecondary (GridSubStyle)" to GridSubStyle,
+    "Label — chip · 12.5 Medium" to
+        TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+    "Mono — dev chrome · 11 Bold Monospace" to
+        TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = DesignColors.InkSecondary),
 )
 
 // The spacing scale (DesignSpacing): every layout spacing snaps to one of these steps.

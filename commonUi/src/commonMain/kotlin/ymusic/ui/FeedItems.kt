@@ -282,7 +282,7 @@ fun ShowMoreButton(label: String, expanded: Boolean, onClick: () -> Unit, modifi
 
 /** The outlined pill CTA on channel items ("Subscribe"). Action lands with accounts. */
 @Composable
-private fun CtaPill(text: String) {
+internal fun CtaPill(text: String) {
     Text(
         text,
         style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
@@ -349,7 +349,7 @@ val GRID_CARD_INSET = 8.dp
 
 /** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. */
 @Composable
-private fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSize: androidx.compose.ui.unit.Dp) {
+internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSize: androidx.compose.ui.unit.Dp) {
     val badgeText = TextStyle(fontSize = textSize.sp, color = Color.White)
     when {
         item.live -> Text(

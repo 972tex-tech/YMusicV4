@@ -276,7 +276,7 @@ enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val bro
 
 /** Icon tabs with the 2dp underline indicator; [underline] off for the inline (app bar) form. */
 @Composable
-private fun DiscoverTabRow(selected: DiscoverTab, underline: Boolean, onSelect: (DiscoverTab) -> Unit) {
+internal fun DiscoverTabRow(selected: DiscoverTab, underline: Boolean, onSelect: (DiscoverTab) -> Unit) {
     Row(
         Modifier.padding(start = if (underline) 20.dp else 0.dp),
         horizontalArrangement = Arrangement.spacedBy(if (underline) 24.dp else 20.dp),
