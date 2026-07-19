@@ -330,10 +330,10 @@ internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
 /** The three feed layout bands a surface width falls into. */
 internal enum class FeedLayout { SquareList, WideList, Grid }
 
-/** The ONE place the feed breakpoints live: square list under 380dp, 16:9 list to 469dp, then as
+/** The ONE place the feed breakpoints live: square list under 400dp, 16:9 list to 469dp, then as
  *  many ~[GRID_CARD_TARGET] grid cards as fit. */
 internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
-    width < 380.dp -> FeedLayout.SquareList
+    width < 400.dp -> FeedLayout.SquareList
     width < 470.dp -> FeedLayout.WideList
     else -> FeedLayout.Grid
 }

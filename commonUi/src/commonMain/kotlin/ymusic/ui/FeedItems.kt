@@ -346,7 +346,7 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
 private val GRID_THUMB_TARGET = 220.dp
 
 /** The card width grids aim for — the column count is however many of these fit. */
-val GRID_CARD_TARGET = 240.dp
+val GRID_CARD_TARGET = 200.dp
 
 /** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
 val GRID_CARD_INSET = 8.dp
