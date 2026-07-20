@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -91,7 +93,9 @@ import ymusic.ui.resources.audio_only
 import ymusic.ui.resources.captions_off
 import ymusic.ui.resources.cd_close
 import ymusic.ui.resources.cd_download
+import ymusic.ui.resources.cd_exit_fullscreen
 import ymusic.ui.resources.cd_forward10
+import ymusic.ui.resources.cd_fullscreen
 import ymusic.ui.resources.cd_more
 import ymusic.ui.resources.cd_next
 import ymusic.ui.resources.cd_play_pause
@@ -231,24 +235,52 @@ private fun AudioOnlyShutter(thumbs: List<YtThumb>) {
  * Full Now Playing (design/final/now-playing.html). Layout follows the window's orientation:
  * portrait/tablet = the top-bar · video · meta · seek · transport · queue column; landscape
  * (width > height) = the split — video fills the left with the controls overlaid on it, and a fixed
- * right pane carries the top bar and the queue.
+ * right pane carries the top bar and the queue. Full screen overrides both: video only, edge to
+ * edge, with the auto-hiding overlay.
  */
 @Composable
 fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
+    var fullscreen by remember { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize(), color = Color.White) {
         BoxWithConstraints {
-            if (maxWidth > maxHeight) {
-                LandscapeNowPlaying(graph, coordinator, onClose)
-            } else {
-                PortraitNowPlaying(graph, coordinator, onClose)
+            when {
+                fullscreen -> FullscreenVideo(graph, coordinator, onExit = { fullscreen = false })
+                maxWidth > maxHeight -> LandscapeNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
+                else -> PortraitNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
             }
+        }
+    }
+}
+
+/** The video alone, edge to edge, with the auto-hiding overlay; its full-screen button exits. */
+@Composable
+private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, onExit: () -> Unit) {
+    val player = coordinator.player
+    val status by player.status.collectAsState()
+    val progress by player.progress.collectAsState()
+    val queue by player.queue.collectAsState()
+    val config by player.config.collectAsState()
+    val current = queue.currentItem
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        graph.playerSurface(Modifier.fillMaxSize())
+        if (current != null && noPicture(config.audioOnly, current, status)) {
+            AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
+        }
+        AutoHidingOverlay(playing = status.playWhenReady) {
+            VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
+private fun PortraitNowPlaying(
+    graph: AppGraph,
+    coordinator: PlaybackCoordinator,
+    onClose: () -> Unit,
+    onFullscreen: () -> Unit,
+) {
     val player = coordinator.player
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
@@ -276,9 +308,22 @@ private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator
             androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
                     AutoHidingOverlay(playing = status.playWhenReady) {
-                        VideoOverlayControls(coordinator, status, progress, current, compact = true)
+                        VideoOverlayControls(
+                            coordinator, status, progress, current,
+                            compact = true, onToggleFullscreen = onFullscreen,
+                        )
                     }
                 }
+            }
+            // The bare video's corner button (mockup .vctrl); the overlay carries its own.
+            if (!controlsOnVideo) {
+                ActionIcon(
+                    Icons.Default.Fullscreen,
+                    stringResource(Res.string.cd_fullscreen),
+                    tint = Color(0xFFDCDCDC),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
+                    onClick = onFullscreen,
+                )
             }
         }
 
@@ -326,7 +371,12 @@ private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator
 
 /** Landscape split (mockup `.ls`): video left with overlaid controls; 320dp right pane. */
 @Composable
-private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
+private fun LandscapeNowPlaying(
+    graph: AppGraph,
+    coordinator: PlaybackCoordinator,
+    onClose: () -> Unit,
+    onFullscreen: () -> Unit,
+) {
     val player = coordinator.player
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
@@ -342,7 +392,7 @@ private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinato
                 AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
             }
             AutoHidingOverlay(playing = status.playWhenReady) {
-                VideoOverlayControls(coordinator, status, progress, current)
+                VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
             }
         }
         VerticalDivider(color = Color(0xFFECECEC))
@@ -407,6 +457,8 @@ private fun BoxScope.VideoOverlayControls(
     progress: ymusic.player.Progress,
     current: PlayableItem?,
     compact: Boolean = false,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: () -> Unit,
 ) {
     val player = coordinator.player
     Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.24f)))
@@ -444,12 +496,20 @@ private fun BoxScope.VideoOverlayControls(
     Column(
         Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 11.dp, end = 11.dp, bottom = 8.dp),
     ) {
-        Text(
-            "${formatMillis(progress.positionMs)} / " +
-                if (progress.durationMs > 0) formatMillis(progress.durationMs) else "--:--",
-            style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-            modifier = Modifier.padding(bottom = 2.dp),
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${formatMillis(progress.positionMs)} / " +
+                    if (progress.durationMs > 0) formatMillis(progress.durationMs) else "--:--",
+                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+            )
+            Box(Modifier.weight(1f))
+            ActionIcon(
+                if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
+                tint = Color(0xFFEEEEEE),
+                onClick = onToggleFullscreen,
+            )
+        }
         SeekSlider(player, progress.positionMs, progress.durationMs, trackColor = Color.White.copy(alpha = 0.32f))
     }
 }
