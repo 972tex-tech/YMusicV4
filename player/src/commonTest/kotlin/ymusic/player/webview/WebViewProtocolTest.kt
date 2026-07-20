@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import ymusic.player.PlaybackState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -95,6 +96,20 @@ class WebViewProtocolTest {
         assertTrue(err is WebViewEvent.StateChanged)
         assertEquals(PlaybackState.Error, err.state)
         assertEquals("UNPLAYABLE", err.errorCode)
+        assertTrue(err.errorCanRetry, "absent canRetry defaults true (legacy host behavior)")
+        assertFalse(err.errorNeedReset, "absent needReset defaults false (legacy host behavior)")
+    }
+
+    @Test
+    fun error_retry_flags_come_off_the_wire() {
+        val err = WebViewProtocol.decodeEvent(
+            "s_state_changed",
+            """{"newState":"error","playWhenReady":false,"code":"SIGN_IN","needReset":true,"canRetry":false}""",
+            "s",
+        )
+        assertTrue(err is WebViewEvent.StateChanged)
+        assertFalse(err.errorCanRetry)
+        assertTrue(err.errorNeedReset)
     }
 
     @Test

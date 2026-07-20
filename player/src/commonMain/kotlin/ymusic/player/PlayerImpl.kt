@@ -126,7 +126,21 @@ internal class PlayerImpl(
     override fun play() {
         if (released) return
         playWhenReadyIntent = true
-        _currentEngine.value?.play()
+        // Legacy UniPlayer.play(): when nothing is playable — stopped (Idle) or failed with a
+        // retryable error — play means "load the current item again from where it was", so the play
+        // button doubles as the recovery/retry action. Every engine's load() rebuilds its session,
+        // which also serves a needReset error.
+        val s = _status.value
+        val reloadable = controller.state.currentItem != null && when (s.state) {
+            PlaybackState.Idle -> true
+            PlaybackState.Error -> s.error?.canRetry != false
+            else -> false
+        }
+        if (reloadable) {
+            loadCurrent(_progress.value.positionMs)
+        } else {
+            _currentEngine.value?.play()
+        }
     }
 
     override fun pause() {
@@ -271,7 +285,10 @@ internal class PlayerImpl(
                     bind(null)
                     _status.value = PlaybackStatus(
                         state = PlaybackState.Error,
-                        error = PlayerError("E60050", "queue item needs the WebView engine but none is configured"),
+                        error = PlayerError(
+                            "E60050", "queue item needs the WebView engine but none is configured",
+                            canRetry = false,
+                        ),
                     )
                     return
                 }

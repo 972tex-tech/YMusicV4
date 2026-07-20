@@ -57,6 +57,14 @@ class PlayerFacadeTest {
 
         fun finishTrack() = _status.update { it.copy(state = PlaybackState.Ended, playWhenReady = false) }
 
+        fun failTrack(canRetry: Boolean = true, needReset: Boolean = false) = _status.update {
+            it.copy(
+                state = PlaybackState.Error,
+                playWhenReady = false,
+                error = PlayerError("E60010", "boom", canRetry = canRetry, needReset = needReset),
+            )
+        }
+
         fun tickTo(positionMs: Long) = _progress.update { it.copy(positionMs = positionMs) }
 
         override fun play() = _status.update { it.copy(playWhenReady = true) }
@@ -299,6 +307,52 @@ class PlayerFacadeTest {
         h.player.setQueue(listOf(local(2)), playIndex = 0)
         runCurrent()
         assertEquals(1, h.local.loads.size, "released facade ignores commands")
+    }
+
+    @Test
+    fun play_after_retryable_error_reloads_from_last_position() = runTest {
+        val h = Harness(this)
+        h.player.setQueue(listOf(local(1)), playIndex = 0)
+        runCurrent()
+        h.local.tickTo(12_000)
+        h.local.failTrack(canRetry = true, needReset = true)
+        runCurrent()
+        assertEquals(PlaybackState.Error, h.player.status.value.state)
+
+        h.player.play()
+        runCurrent()
+        assertEquals(2, h.local.loads.size, "play after a retryable error must reload")
+        assertEquals(12_000, h.local.loads.last().startMs, "retry resumes where playback failed")
+        assertEquals(PlaybackState.Ready, h.player.status.value.state)
+    }
+
+    @Test
+    fun play_after_non_retryable_error_does_not_reload() = runTest {
+        val h = Harness(this)
+        h.player.setQueue(listOf(local(1)), playIndex = 0)
+        runCurrent()
+        h.local.failTrack(canRetry = false)
+        runCurrent()
+
+        h.player.play()
+        runCurrent()
+        assertEquals(1, h.local.loads.size, "canRetry=false: play must not spin another load")
+    }
+
+    @Test
+    fun play_after_stop_reloads_current() = runTest {
+        val h = Harness(this)
+        h.player.setQueue(listOf(local(1), local(2)), playIndex = 1)
+        runCurrent()
+        h.player.stop()
+        runCurrent()
+        assertEquals(PlaybackState.Idle, h.player.status.value.state)
+
+        h.player.play()
+        runCurrent()
+        assertEquals(2, h.local.loads.size, "play from Idle reloads the current item")
+        assertEquals(local(2), h.local.loads.last().item)
+        assertEquals(0, h.local.loads.last().startMs)
     }
 
     @Test

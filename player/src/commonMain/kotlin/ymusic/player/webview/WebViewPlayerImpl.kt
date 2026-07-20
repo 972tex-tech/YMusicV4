@@ -92,7 +92,8 @@ internal class WebViewPlayerImpl(
         val boot = bootScript(sessionId)
         scope.launch {
             val html = runCatching { fetchEmbedHtml() }.getOrElse {
-                fail("E60031", "failed to fetch the YouTube embed page: ${it.message}")
+                // The page never came up — the legacy WV_LOAD_ERROR shape: retryable, dead session.
+                fail("E60031", "failed to fetch the YouTube embed page: ${it.message}", needReset = true)
                 return@launch
             }
             withContext(Dispatchers.Main) {
@@ -190,7 +191,10 @@ internal class WebViewPlayerImpl(
                     state = e.state,
                     playWhenReady = e.playWhenReady,
                     error = if (e.state == PlaybackState.Error) {
-                        PlayerError(e.errorCode ?: "E60033", e.errorMessage)
+                        PlayerError(
+                            e.errorCode ?: "E60033", e.errorMessage,
+                            canRetry = e.errorCanRetry, needReset = e.errorNeedReset,
+                        )
                     } else {
                         null
                     },
@@ -210,8 +214,8 @@ internal class WebViewPlayerImpl(
         }
     }
 
-    private fun fail(code: String, message: String) = _status.update {
-        it.copy(state = PlaybackState.Error, playWhenReady = false, error = PlayerError(code, message))
+    private fun fail(code: String, message: String, needReset: Boolean = false) = _status.update {
+        it.copy(state = PlaybackState.Error, playWhenReady = false, error = PlayerError(code, message, needReset = needReset))
     }
 
     private suspend fun fetchEmbedHtml(): String = withContext(Dispatchers.Default) {

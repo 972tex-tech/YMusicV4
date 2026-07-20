@@ -138,6 +138,9 @@ object WebViewProtocol {
                 playWhenReady = obj.bool("playWhenReady"),
                 errorCode = obj.string("code"),
                 errorMessage = obj.string("message"),
+                // Absent flags default like the legacy host: retryable, no reset needed.
+                errorCanRetry = obj.boolOr("canRetry", default = true),
+                errorNeedReset = obj.boolOr("needReset", default = false),
             )
             "progress" -> WebViewEvent.Progress(
                 positionMs = obj.seconds("positionSeconds"),
@@ -205,6 +208,11 @@ object WebViewProtocol {
 
     private fun JsonObject.bool(key: String): Boolean = this[key]?.jsonPrimitive?.content == "true"
 
+    private fun JsonObject.boolOr(key: String, default: Boolean): Boolean {
+        val p = this[key]?.jsonPrimitive ?: return default
+        return if (p is JsonNull) default else p.content == "true"
+    }
+
     /** Seconds (possibly fractional) → whole milliseconds; absent/malformed → 0. */
     private fun JsonObject.seconds(key: String): Long {
         val s = this[key]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
@@ -243,6 +251,8 @@ sealed interface WebViewEvent {
         val playWhenReady: Boolean,
         val errorCode: String?,
         val errorMessage: String?,
+        val errorCanRetry: Boolean = true,
+        val errorNeedReset: Boolean = false,
     ) : WebViewEvent
 
     data class Progress(
