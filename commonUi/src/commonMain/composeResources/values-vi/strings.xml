@@ -87,6 +87,7 @@
     <string name="cd_repeat">Lặp lại</string>
     <string name="cd_shuffle">Phát ngẫu nhiên</string>
     <string name="cd_sleep_timer">Hẹn giờ ngủ</string>
+    <string name="cd_captions">Phụ đề</string>
     <string name="cd_send">Gửi</string>
     <string name="cd_vote">Bình chọn</string>
 </resources>

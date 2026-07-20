@@ -92,6 +92,7 @@
     <string name="cd_repeat">تكرار</string>
     <string name="cd_shuffle">خلط</string>
     <string name="cd_sleep_timer">مؤقت النوم</string>
+    <string name="cd_captions">التسميات التوضيحية</string>
     <string name="cd_send">إرسال</string>
     <string name="cd_vote">تصويت</string>
 </resources>

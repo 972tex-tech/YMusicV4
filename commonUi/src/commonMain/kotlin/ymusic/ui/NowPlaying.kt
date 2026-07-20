@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.ClosedCaptionOff
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Image
@@ -91,6 +93,7 @@ import ymusic.player.PlaybackStatus
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.audio_only
 import ymusic.ui.resources.captions_off
+import ymusic.ui.resources.cd_captions
 import ymusic.ui.resources.cd_close
 import ymusic.ui.resources.cd_download
 import ymusic.ui.resources.cd_exit_fullscreen
@@ -496,13 +499,33 @@ private fun BoxScope.VideoOverlayControls(
     Column(
         Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 11.dp, end = 11.dp, bottom = 8.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 "${formatMillis(progress.positionMs)} / " +
                     if (progress.durationMs > 0) formatMillis(progress.durationMs) else "--:--",
                 style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
             )
             Box(Modifier.weight(1f))
+            val captions by player.captions.collectAsState()
+            val config by player.config.collectAsState()
+            if (captions.tracks.isNotEmpty()) {
+                ActionIcon(
+                    if (config.captionVisible) Icons.Default.ClosedCaption else Icons.Outlined.ClosedCaptionOff,
+                    stringResource(Res.string.cd_captions),
+                    tint = if (config.captionVisible) DesignColors.Accent else Color(0xFFEEEEEE),
+                    onClick = {
+                        // Toggling on with no track chosen picks the first; language choice stays in ⋮.
+                        if (!config.captionVisible && captions.selectedLanguage == null) {
+                            player.selectCaption(captions.tracks.first().languageCode)
+                        }
+                        player.setCaptionVisible(!config.captionVisible)
+                    },
+                )
+            }
             ActionIcon(
                 if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                 stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
