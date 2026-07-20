@@ -4,6 +4,7 @@ import kmphttp.json.JsonReader
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 
 // Hand-parse the wire shapes (yt/wire.ts) straight off the streaming pipe with :kmpHttp:json's pull
 // reader — no reflective deserializer, nothing buffered whole. Unknown keys are skipped and absent
@@ -14,6 +15,9 @@ private suspend fun JsonReader.stringOrNull(): String? = (nextValue() as? JsonPr
 
 /** Read one scalar as a boolean (false for anything non-boolean). */
 private suspend fun JsonReader.boolean(): Boolean = (nextValue() as? JsonPrimitive)?.booleanOrNull ?: false
+
+/** Read one scalar as an int (null for anything non-numeric). */
+private suspend fun JsonReader.intOrNull(): Int? = (nextValue() as? JsonPrimitive)?.intOrNull
 
 private suspend inline fun <T> JsonReader.readArrayOf(element: (JsonReader) -> T): List<T> {
     val out = mutableListOf<T>()
@@ -65,7 +69,7 @@ private suspend fun readSection(r: JsonReader): YtSection {
 
 private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
     var title: String? = null
-    var iconThumb: String? = null
+    var iconThumbs: List<YtThumb> = emptyList()
     var count: String? = null
     var ctaText: String? = null
     var ctaToken: String? = null
@@ -73,7 +77,7 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
             "title" -> title = r.stringOrNull()
-            "iconThumb" -> iconThumb = r.stringOrNull()
+            "iconThumbs" -> iconThumbs = r.readArrayOf { readThumb(it) }
             "count" -> count = r.stringOrNull()
             "ctaText" -> ctaText = r.stringOrNull()
             "ctaToken" -> ctaToken = r.stringOrNull()
@@ -81,7 +85,24 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
         }
     }
     r.endObject()
-    return YtSectionHeader(title, iconThumb, count, ctaText, ctaToken)
+    return YtSectionHeader(title, iconThumbs, count, ctaText, ctaToken)
+}
+
+private suspend fun readThumb(r: JsonReader): YtThumb {
+    var url = ""
+    var w: Int? = null
+    var h: Int? = null
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "url" -> url = r.stringOrNull() ?: ""
+            "w" -> w = r.intOrNull()
+            "h" -> h = r.intOrNull()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtThumb(url, w, h)
 }
 
 private suspend fun readItem(r: JsonReader): YtFeedItem {
@@ -92,7 +113,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     var subtitleLine2: String? = null
     var ctaText: String? = null
     var channelId: String? = null
-    var thumb: String? = null
+    var thumbs: List<YtThumb> = emptyList()
     var duration: String? = null
     var itemCount: String? = null
     var live = false
@@ -106,7 +127,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
             "subtitleLine2" -> subtitleLine2 = r.stringOrNull()
             "ctaText" -> ctaText = r.stringOrNull()
             "channelId" -> channelId = r.stringOrNull()
-            "thumb" -> thumb = r.stringOrNull()
+            "thumbs" -> thumbs = r.readArrayOf { readThumb(it) }
             "duration" -> duration = r.stringOrNull()
             "itemCount" -> itemCount = r.stringOrNull()
             "live" -> live = r.boolean()
@@ -114,7 +135,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
         }
     }
     r.endObject()
-    return YtFeedItem(kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, thumb, duration, itemCount, live)
+    return YtFeedItem(kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, thumbs, duration, itemCount, live)
 }
 
 private suspend fun readChip(r: JsonReader): YtChip {

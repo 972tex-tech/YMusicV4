@@ -73,7 +73,10 @@ class YtCommandsTest {
             assertEquals("335,929 views · 49 minutes ago", video.subtitleLine2)
             assertEquals("UClyA28-01x4z60eWQ2kiNbA", video.channelId)
             assertEquals("4:13", video.duration)
-            assertNotNull(video.thumb)
+            val thumb = video.thumbs.single()
+            assertTrue(thumb.url.startsWith("https://i.ytimg.com/vi/yuuWdm5tBD0/"), thumb.url)
+            assertEquals(720, thumb.w)
+            assertEquals(404, thumb.h)
 
             val channel = items.first { it.kind == YtFeedItem.KIND_CHANNEL }
             assertTrue(channel.id.startsWith("UC"), channel.id)
@@ -83,7 +86,7 @@ class YtCommandsTest {
             val mix = items.first { it.kind == YtFeedItem.KIND_PLAYLIST }
             assertTrue(mix.id.startsWith("RD"), mix.id)
             assertTrue(mix.title.startsWith("Mix"), mix.title)
-            assertNotNull(mix.thumb, "collection thumbnail must resolve")
+            assertTrue(mix.thumbs.isNotEmpty(), "collection thumbnail must resolve: $mix")
 
             assertNotNull(page.continuation, "search page must carry a continuation")
         } finally {

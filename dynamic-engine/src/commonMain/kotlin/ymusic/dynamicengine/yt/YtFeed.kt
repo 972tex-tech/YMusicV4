@@ -12,6 +12,14 @@ package ymusic.dynamicengine.yt
  * Read off the pipe by [readFeedPage] (YtFeedReader.kt), not a reflective deserializer — hence no
  * `@Serializable` on this or the other result shapes.
  */
+/** One thumbnail variant; [w]/[h] in pixels when the source declares them. Lists arrive in source
+ *  order (ascending size) — the app picks the variant nearest its display size. */
+data class YtThumb(
+    val url: String,
+    val w: Int? = null,
+    val h: Int? = null,
+)
+
 data class YtFeedItem(
     val kind: String,
     /** videoId / playlistId / channelId, by [kind]. */
@@ -24,7 +32,7 @@ data class YtFeedItem(
     val ctaText: String? = null,
     /** Channel-link target: tapping the byline/avatar navigates here. */
     val channelId: String? = null,
-    val thumb: String? = null,
+    val thumbs: List<YtThumb> = emptyList(),
     /** Thumbnail badge overlays (structural, fixed position — not subtitle text). */
     val duration: String? = null,
     val itemCount: String? = null,
@@ -50,7 +58,7 @@ data class YtChip(
  */
 data class YtSectionHeader(
     val title: String? = null,
-    val iconThumb: String? = null,
+    val iconThumbs: List<YtThumb> = emptyList(),
     val count: String? = null,
     val ctaText: String? = null,
     val ctaToken: String? = null,
