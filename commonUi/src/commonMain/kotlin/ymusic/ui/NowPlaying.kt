@@ -318,15 +318,21 @@ private fun PortraitNowPlaying(
                     }
                 }
             }
-            // The bare video's corner button (mockup .vctrl); the overlay carries its own.
+            // The bare video's corner controls (mockup .vctrl: CC + full screen); the overlay carries
+            // its own copies for the scrolled state.
             if (!controlsOnVideo) {
-                ActionIcon(
-                    Icons.Default.Fullscreen,
-                    stringResource(Res.string.cd_fullscreen),
-                    tint = Color(0xFFDCDCDC),
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
-                    onClick = onFullscreen,
-                )
+                Row(
+                    Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    CaptionToggle(player, offTint = Color(0xFFDCDCDC))
+                    ActionIcon(
+                        Icons.Default.Fullscreen,
+                        stringResource(Res.string.cd_fullscreen),
+                        tint = Color(0xFFDCDCDC),
+                        onClick = onFullscreen,
+                    )
+                }
             }
         }
 
@@ -510,22 +516,7 @@ private fun BoxScope.VideoOverlayControls(
                 style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
             )
             Box(Modifier.weight(1f))
-            val captions by player.captions.collectAsState()
-            val config by player.config.collectAsState()
-            if (captions.tracks.isNotEmpty()) {
-                ActionIcon(
-                    if (config.captionVisible) Icons.Default.ClosedCaption else Icons.Outlined.ClosedCaptionOff,
-                    stringResource(Res.string.cd_captions),
-                    tint = if (config.captionVisible) DesignColors.Accent else Color(0xFFEEEEEE),
-                    onClick = {
-                        // Toggling on with no track chosen picks the first; language choice stays in ⋮.
-                        if (!config.captionVisible && captions.selectedLanguage == null) {
-                            player.selectCaption(captions.tracks.first().languageCode)
-                        }
-                        player.setCaptionVisible(!config.captionVisible)
-                    },
-                )
-            }
+            CaptionToggle(player, offTint = Color(0xFFEEEEEE))
             ActionIcon(
                 if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                 stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
@@ -534,6 +525,45 @@ private fun BoxScope.VideoOverlayControls(
             )
         }
         SeekSlider(player, progress.positionMs, progress.durationMs, trackColor = Color.White.copy(alpha = 0.32f))
+    }
+}
+
+/**
+ * The video CC control: hidden when the source has no caption tracks. Tapping opens a menu of
+ * Off + every available language (checkmark on the active one); the glyph is accent-filled while
+ * captions are on. Picking a language turns captions on and selects it; Off hides them.
+ */
+@Composable
+private fun CaptionToggle(player: ymusic.player.Player, offTint: Color) {
+    val captions by player.captions.collectAsState()
+    val config by player.config.collectAsState()
+    if (captions.tracks.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+    Box {
+        ActionIcon(
+            if (config.captionVisible) Icons.Default.ClosedCaption else Icons.Outlined.ClosedCaptionOff,
+            stringResource(Res.string.cd_captions),
+            tint = if (config.captionVisible) DesignColors.Accent else offTint,
+            onClick = { open = true },
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val off = !config.captionVisible
+            DropdownMenuItem(
+                text = { Text(if (off) "✓ ${stringResource(Res.string.captions_off)}" else stringResource(Res.string.captions_off)) },
+                onClick = { player.setCaptionVisible(false); open = false },
+            )
+            captions.tracks.forEach { t ->
+                val on = config.captionVisible && t.languageCode == captions.selectedLanguage
+                DropdownMenuItem(
+                    text = { Text(if (on) "✓ ${t.displayName}" else t.displayName) },
+                    onClick = {
+                        player.selectCaption(t.languageCode)
+                        player.setCaptionVisible(true)
+                        open = false
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -613,12 +643,11 @@ internal fun QualityChip(label: String, options: List<Pair<String, String>>, onS
     }
 }
 
-/** The ⋮ menu: audio-only toggle + caption / audio-track selection (capability-driven). */
+/** The ⋮ menu: audio-only toggle + audio-track selection. Captions live on the video CC control. */
 @Composable
 private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
     val config by player.config.collectAsState()
-    val captions by player.captions.collectAsState()
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
 
@@ -630,18 +659,6 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                 trailingIcon = { Switch(checked = config.audioOnly, onCheckedChange = null) },
                 onClick = { player.setAudioOnly(!config.audioOnly) },
             )
-            if (captions.tracks.isNotEmpty()) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.captions_off)) },
-                    onClick = { player.selectCaption(null); open = false },
-                )
-                captions.tracks.forEach { t ->
-                    DropdownMenuItem(
-                        text = { Text(if (t.languageCode == captions.selectedLanguage) "✓ ${t.displayName}" else t.displayName) },
-                        onClick = { player.selectCaption(t.languageCode); open = false },
-                    )
-                }
-            }
             if (audioTracks.tracks.size > 1) {
                 audioTracks.tracks.forEach { t ->
                     DropdownMenuItem(
