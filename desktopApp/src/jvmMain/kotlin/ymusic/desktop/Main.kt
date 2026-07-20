@@ -142,7 +142,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                 File(dataDir, "image-source-cache").absolutePath.toPath(),
             ),
             fileFetcher(),
-            findFfmpeg()?.let { localArtFetcher(FfmpegMetadataGetter(it)) },
+            findFfmpeg()?.let { localArtFetcher(FfmpegMetadataGetter(it), mediaStore) },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = StdoutLogger,
