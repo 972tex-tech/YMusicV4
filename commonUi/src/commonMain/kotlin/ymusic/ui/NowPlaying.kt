@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -627,62 +628,68 @@ private fun TransportRow(
     seekButtons: Boolean = true,
 ) {
     val player = coordinator.player
-    Row(
-        // The 16dp gap + the ActionIcon hit-insets (5dp each side) keeps the mockup's 26dp glyph gap.
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (seekButtons) {
-            ActionIcon(
-                Icons.Default.FastRewind,
-                stringResource(Res.string.cd_rewind10),
-                iconSize = 26.dp,
-                hitSize = 36.dp,
-                tint = iconTint,
-                onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
-            )
-        }
-        ActionIcon(
-            Icons.Default.SkipPrevious,
-            stringResource(Res.string.cd_previous),
-            iconSize = 26.dp,
-            hitSize = 36.dp,
-            tint = iconTint,
-            onClick = { player.skipPrev() },
-        )
-        Box(
-            Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable { player.togglePlay() },
-            contentAlignment = Alignment.Center,
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Row(
+            // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
+            // at phone width) up to the cap, instead of a fixed cluster.
+            Modifier
+                .widthIn(max = if (seekButtons) 480.dp else 320.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (buffering) {
-                CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.dp)
-            } else {
-                Icon(
-                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(Res.string.cd_play_pause),
-                    Modifier.size(26.dp),
-                    tint = Color.White,
+            if (seekButtons) {
+                ActionIcon(
+                    Icons.Default.FastRewind,
+                    stringResource(Res.string.cd_rewind10),
+                    iconSize = 26.dp,
+                    hitSize = 36.dp,
+                    tint = iconTint,
+                    onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
                 )
             }
-        }
-        ActionIcon(
-            Icons.Default.SkipNext,
-            stringResource(Res.string.cd_next),
-            iconSize = 26.dp,
-            hitSize = 36.dp,
-            tint = iconTint,
-            onClick = { player.skipNext() },
-        )
-        if (seekButtons) {
             ActionIcon(
-                Icons.Default.FastForward,
-                stringResource(Res.string.cd_forward10),
+                Icons.Default.SkipPrevious,
+                stringResource(Res.string.cd_previous),
                 iconSize = 26.dp,
                 hitSize = 36.dp,
                 tint = iconTint,
-                onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
+                onClick = { player.skipPrev() },
             )
+            Box(
+                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable { player.togglePlay() },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (buffering) {
+                    CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Icon(
+                        if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        stringResource(Res.string.cd_play_pause),
+                        Modifier.size(26.dp),
+                        tint = Color.White,
+                    )
+                }
+            }
+            ActionIcon(
+                Icons.Default.SkipNext,
+                stringResource(Res.string.cd_next),
+                iconSize = 26.dp,
+                hitSize = 36.dp,
+                tint = iconTint,
+                onClick = { player.skipNext() },
+            )
+            if (seekButtons) {
+                ActionIcon(
+                    Icons.Default.FastForward,
+                    stringResource(Res.string.cd_forward10),
+                    iconSize = 26.dp,
+                    hitSize = 36.dp,
+                    tint = iconTint,
+                    onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
+                )
+            }
         }
     }
 }
