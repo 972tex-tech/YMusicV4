@@ -363,8 +363,8 @@ private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinato
 
 /**
  * Hosts video-overlay [content] with player-style auto-hide: it fades out after a few seconds of
- * playback and a tap/click on the video brings it back (or dismisses it early). While paused the
- * controls stay up — pausing also brings them back.
+ * playback, and a tap/click on the video toggles it in either state. While paused nothing
+ * auto-hides; pausing brings the controls back.
  */
 @Composable
 private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable BoxScope.() -> Unit) {
@@ -373,17 +373,19 @@ private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable Bo
     // The tap catcher sits under the controls: taps on a control hit the control; taps on the bare
     // video (or anywhere while hidden) land here and toggle.
     Box(
-        Modifier.matchParentSize().pointerInput(playing) {
+        Modifier.matchParentSize().pointerInput(Unit) {
             detectTapGestures {
-                visible = if (playing) !visible else true
+                visible = !visible
                 interaction++
             }
         },
     )
+    // Pausing brings the controls back (a transition, not a hold — a tap can still hide them).
+    LaunchedEffect(playing) {
+        if (!playing) visible = true
+    }
     LaunchedEffect(playing, visible, interaction) {
-        if (!playing) {
-            visible = true
-        } else if (visible) {
+        if (playing && visible) {
             delay(OVERLAY_HIDE_DELAY_MS)
             visible = false
         }
