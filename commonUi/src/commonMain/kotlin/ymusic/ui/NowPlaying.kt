@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -64,8 +66,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.stringResource
+import ymusic.dynamicengine.yt.YtThumb
 import ymusic.player.LoopMode
+import ymusic.player.PlayableItem
 import ymusic.player.PlaybackState
+import ymusic.player.PlaybackStatus
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.audio_only
 import ymusic.ui.resources.captions_off
@@ -82,6 +87,7 @@ import ymusic.ui.resources.cd_shuffle
 import ymusic.ui.resources.cd_sleep_timer
 import ymusic.ui.resources.playback_failed
 import ymusic.ui.resources.remove_from_queue
+import ymusic.ui.resources.retry
 import ymusic.ui.resources.sleep_minutes
 import ymusic.ui.resources.sleep_off_remaining
 import ymusic.ui.resources.up_next
@@ -107,6 +113,7 @@ fun MiniPlayer(
     val status by coordinator.player.status.collectAsState()
     val progress by coordinator.player.progress.collectAsState()
     val queue by coordinator.player.queue.collectAsState()
+    val config by coordinator.player.config.collectAsState()
     val item = queue.currentItem ?: return
 
     Column(Modifier.background(DesignColors.SurfaceDim)) {
@@ -131,6 +138,11 @@ fun MiniPlayer(
             ) {
                 if (surface != null) {
                     surface.invoke(Modifier.fillMaxSize())
+                    // No picture to show → cover the (blank) surface with the item's art. The
+                    // surface itself must stay hosted: an unhosted WebView stops playing.
+                    if (noPicture(config.audioOnly, item, status)) {
+                        ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
+                    }
                 } else {
                     ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
                 }
@@ -165,6 +177,41 @@ fun MiniPlayer(
     }
 }
 
+/**
+ * True when the active source has no picture to render — audio-only mode (any engine), or a local
+ * file with no video track. A YouTube source outside audio-only always renders its own picture (the
+ * WebView never reports a videoSize), so it is excluded from the videoSize test.
+ */
+private fun noPicture(audioOnly: Boolean, item: PlayableItem, status: PlaybackStatus): Boolean =
+    audioOnly || (item is PlayableItem.LocalUri && status.videoSize == null)
+
+/**
+ * The legacy `LocalPlayerView` shutter: the item's art + a headphone glyph drawn OVER the video
+ * surface whenever [noPicture]. The surface stays hosted underneath — an unhosted WebView stops
+ * playing even audio.
+ */
+@Composable
+private fun AudioOnlyShutter(thumbs: List<YtThumb>) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().background(Color(0xFF222222)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val tile = (if (maxWidth < maxHeight) maxWidth else maxHeight) * 0.55f
+        Box(
+            Modifier.size(tile).clip(RoundedCornerShape(10.dp)).background(Color(0xFF333333)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Outlined.Headphones,
+                contentDescription = stringResource(Res.string.audio_only),
+                modifier = Modifier.size(tile * 0.4f),
+                tint = Color(0xFF777777),
+            )
+            ThumbImage(thumbs, tile, RoundedCornerShape(10.dp))
+        }
+    }
+}
+
 /** Full Now Playing (design/final/now-playing.html, portrait): top bar · video · meta · seek ·
  *  transport · "Up next" queue. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -174,7 +221,9 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     val queue by player.queue.collectAsState()
+    val config by player.config.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
+    val current = queue.currentItem
 
     Surface(Modifier.fillMaxSize(), color = Color.White) {
         Column(Modifier.fillMaxSize()) {
@@ -183,9 +232,11 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             // Video surface — the shell's shared container; each engine shows/hides its own picture.
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF222222))) {
                 graph.playerSurface(Modifier.fillMaxSize())
+                if (current != null && noPicture(config.audioOnly, current, status)) {
+                    AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
+                }
             }
 
-            val current = queue.currentItem
             Column(
                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -206,12 +257,28 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
                         modifier = Modifier.padding(top = 5.dp),
                     )
                 }
-                status.error?.let {
-                    Text(
-                        stringResource(Res.string.playback_failed, it.code),
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp,
-                    )
+                status.error?.let { err ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            stringResource(Res.string.playback_failed, err.code),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                        )
+                        if (err.canRetry) {
+                            // play() reloads the current item after a retryable error (the facade's port
+                            // of the legacy recovery path), so retry is just play.
+                            Text(
+                                stringResource(Res.string.retry),
+                                color = DesignColors.Accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { player.play() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
                 }
             }
 
