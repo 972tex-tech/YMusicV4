@@ -5,15 +5,18 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -48,6 +51,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +67,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.stringResource
@@ -212,11 +217,27 @@ private fun AudioOnlyShutter(thumbs: List<YtThumb>) {
     }
 }
 
-/** Full Now Playing (design/final/now-playing.html, portrait): top bar · video · meta · seek ·
- *  transport · "Up next" queue. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Full Now Playing (design/final/now-playing.html). Layout follows the window's orientation:
+ * portrait/tablet = the top-bar · video · meta · seek · transport · queue column; landscape
+ * (width > height) = the split — video fills the left with the controls overlaid on it, and a fixed
+ * right pane carries the top bar and the queue.
+ */
 @Composable
 fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
+    Surface(Modifier.fillMaxSize(), color = Color.White) {
+        BoxWithConstraints {
+            if (maxWidth > maxHeight) {
+                LandscapeNowPlaying(graph, coordinator, onClose)
+            } else {
+                PortraitNowPlaying(graph, coordinator, onClose)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
     val player = coordinator.player
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
@@ -225,66 +246,78 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
 
-    Surface(Modifier.fillMaxSize(), color = Color.White) {
-        Column(Modifier.fillMaxSize()) {
-            PlayerTopBar(coordinator, sleepMs, onClose)
+    Column(Modifier.fillMaxSize()) {
+        PlayerTopBar(coordinator, sleepMs, onClose)
 
-            // Video surface — the shell's shared container; each engine shows/hides its own picture.
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF222222))) {
-                graph.playerSurface(Modifier.fillMaxSize())
-                if (current != null && noPicture(config.audioOnly, current, status)) {
-                    AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
-                }
+        // Video surface — the shell's shared container; each engine shows/hides its own picture.
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF222222))) {
+            graph.playerSurface(Modifier.fillMaxSize())
+            if (current != null && noPicture(config.audioOnly, current, status)) {
+                AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
             }
+        }
 
-            Column(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+        Column(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                coordinator.titleFor(current),
+                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222)),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            coordinator.metadataFor(current)?.subtitleLine1?.let {
                 Text(
-                    coordinator.titleFor(current),
-                    style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222)),
+                    it,
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 5.dp),
                 )
-                coordinator.metadataFor(current)?.subtitleLine1?.let {
-                    Text(
-                        it,
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 5.dp),
-                    )
-                }
-                status.error?.let { err ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            stringResource(Res.string.playback_failed, err.code),
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 12.sp,
-                        )
-                        if (err.canRetry) {
-                            // play() reloads the current item after a retryable error (the facade's port
-                            // of the legacy recovery path), so retry is just play.
-                            Text(
-                                stringResource(Res.string.retry),
-                                color = DesignColors.Accent,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { player.play() }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
-                        }
-                    }
-                }
             }
+            status.error?.let { PlaybackErrorRow(player, it) }
+        }
 
-            SeekBar(player, progress.positionMs, progress.durationMs)
-            TransportRow(coordinator, status.playWhenReady, status.state == PlaybackState.Buffering)
+        SeekBar(player, progress.positionMs, progress.durationMs)
+        TransportRow(coordinator, status.playWhenReady, status.state == PlaybackState.Buffering)
 
+        QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
+        HorizontalDivider(color = Color(0xFFF0F0F0))
+        LazyColumn(Modifier.weight(1f)) {
+            itemsIndexed(queue.items) { index, item ->
+                QueueRow(coordinator, index, item, current = index == queue.currentIndex)
+            }
+        }
+    }
+}
+
+/** Landscape split (mockup `.ls`): video left with overlaid controls; 320dp right pane. */
+@Composable
+private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
+    val player = coordinator.player
+    val status by player.status.collectAsState()
+    val progress by player.progress.collectAsState()
+    val queue by player.queue.collectAsState()
+    val config by player.config.collectAsState()
+    val sleepMs by player.sleepTimerMs.collectAsState()
+    val current = queue.currentItem
+
+    Row(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF222222))) {
+            graph.playerSurface(Modifier.fillMaxSize())
+            if (current != null && noPicture(config.audioOnly, current, status)) {
+                AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
+            }
+            VideoOverlayControls(coordinator, status, progress, current)
+        }
+        VerticalDivider(color = Color(0xFFECECEC))
+        Column(Modifier.width(320.dp).fillMaxHeight()) {
+            PlayerTopBar(coordinator, sleepMs, onClose)
+            status.error?.let {
+                Box(Modifier.padding(horizontal = 16.dp)) { PlaybackErrorRow(player, it) }
+            }
             QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
             HorizontalDivider(color = Color(0xFFF0F0F0))
             LazyColumn(Modifier.weight(1f)) {
@@ -292,6 +325,85 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
                     QueueRow(coordinator, index, item, current = index == queue.currentIndex)
                 }
             }
+        }
+    }
+}
+
+/** The controls drawn over the landscape video (mockup scrim/otop/octl/vbottom). */
+@Composable
+private fun BoxScope.VideoOverlayControls(
+    coordinator: PlaybackCoordinator,
+    status: PlaybackStatus,
+    progress: ymusic.player.Progress,
+    current: PlayableItem?,
+) {
+    val player = coordinator.player
+    Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.24f)))
+
+    Column(Modifier.align(Alignment.TopStart).padding(start = 16.dp, end = 16.dp, top = 11.dp)) {
+        Text(
+            coordinator.titleFor(current),
+            style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        coordinator.metadataFor(current)?.subtitleLine1?.let {
+            Text(
+                it,
+                style = TextStyle(fontSize = 11.sp, color = Color(0xFFDADADA)),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+    }
+
+    Box(Modifier.align(Alignment.Center)) {
+        TransportRow(
+            coordinator,
+            status.playWhenReady,
+            status.state == PlaybackState.Buffering,
+            iconTint = Color.White,
+            playBackground = Color.Black.copy(alpha = 0.42f),
+            playSize = 58.dp,
+        )
+    }
+
+    Column(
+        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 11.dp, end = 11.dp, bottom = 8.dp),
+    ) {
+        Text(
+            "${formatMillis(progress.positionMs)} / " +
+                if (progress.durationMs > 0) formatMillis(progress.durationMs) else "--:--",
+            style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+            modifier = Modifier.padding(bottom = 2.dp),
+        )
+        SeekSlider(player, progress.positionMs, progress.durationMs, trackColor = Color.White.copy(alpha = 0.32f))
+    }
+}
+
+/** "Failed (code)" + a Retry action when the error is retryable. */
+@Composable
+private fun PlaybackErrorRow(player: ymusic.player.Player, error: ymusic.player.PlayerError) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            stringResource(Res.string.playback_failed, error.code),
+            color = MaterialTheme.colorScheme.error,
+            fontSize = 12.sp,
+        )
+        if (error.canRetry) {
+            // play() reloads the current item after a retryable error (the facade's port
+            // of the legacy recovery path), so retry is just play.
+            Text(
+                stringResource(Res.string.retry),
+                color = DesignColors.Accent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { player.play() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
         }
     }
 }
@@ -388,34 +500,10 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 }
 
 /** 3dp track, orange fill, 13dp orange thumb; the m:ss / h:mm:ss labels underneath. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeekBar(player: ymusic.player.Player, positionMs: Long, durationMs: Long) {
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
-        Slider(
-            value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-            onValueChange = { if (durationMs > 0) player.seekTo((it * durationMs).toLong()) },
-            enabled = durationMs > 0,
-            modifier = Modifier.fillMaxWidth().height(20.dp),
-            thumb = {
-                Box(
-                    Modifier
-                        .size(13.dp)
-                        .shadow(1.dp, CircleShape)
-                        .background(DesignColors.Accent, CircleShape),
-                )
-            },
-            track = { state ->
-                Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFFDCDCDC), RoundedCornerShape(2.dp))) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth(state.value)
-                            .height(3.dp)
-                            .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
-                    )
-                }
-            },
-        )
+        SeekSlider(player, positionMs, durationMs, trackColor = Color(0xFFDCDCDC))
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
             Text(formatMillis(positionMs), style = timeStyle)
@@ -424,11 +512,49 @@ private fun SeekBar(player: ymusic.player.Player, positionMs: Long, durationMs: 
     }
 }
 
-/** rewind · prev · [64dp play] · next · forward. */
+/** The bare slider (3dp [trackColor] track, orange fill + thumb) — SeekBar's core, reused by the
+ *  landscape video overlay. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TransportRow(coordinator: PlaybackCoordinator, playing: Boolean, buffering: Boolean) {
+private fun SeekSlider(player: ymusic.player.Player, positionMs: Long, durationMs: Long, trackColor: Color) {
+    Slider(
+        value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+        onValueChange = { if (durationMs > 0) player.seekTo((it * durationMs).toLong()) },
+        enabled = durationMs > 0,
+        modifier = Modifier.fillMaxWidth().height(20.dp),
+        thumb = {
+            Box(
+                Modifier
+                    .size(13.dp)
+                    .shadow(1.dp, CircleShape)
+                    .background(DesignColors.Accent, CircleShape),
+            )
+        },
+        track = { state ->
+            Box(Modifier.fillMaxWidth().height(3.dp).background(trackColor, RoundedCornerShape(2.dp))) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(state.value)
+                        .height(3.dp)
+                        .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
+                )
+            }
+        },
+    )
+}
+
+/** rewind · prev · [play circle] · next · forward. Dark-on-white by default; the landscape overlay
+ *  passes white glyphs on a translucent play circle. */
+@Composable
+private fun TransportRow(
+    coordinator: PlaybackCoordinator,
+    playing: Boolean,
+    buffering: Boolean,
+    iconTint: Color = Color(0xFF2B2B2B),
+    playBackground: Color = Color(0xFF222222),
+    playSize: Dp = 64.dp,
+) {
     val player = coordinator.player
-    val iconTint = Color(0xFF2B2B2B)
     Row(
         // The 16dp gap + the ActionIcon hit-insets (5dp each side) keeps the mockup's 26dp glyph gap.
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
@@ -452,7 +578,7 @@ private fun TransportRow(coordinator: PlaybackCoordinator, playing: Boolean, buf
             onClick = { player.skipPrev() },
         )
         Box(
-            Modifier.size(64.dp).clip(CircleShape).background(Color(0xFF222222)).clickable { player.togglePlay() },
+            Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable { player.togglePlay() },
             contentAlignment = Alignment.Center,
         ) {
             if (buffering) {
