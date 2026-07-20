@@ -1,5 +1,8 @@
 package ymusic.ui
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -236,6 +241,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
     val player = coordinator.player
@@ -246,6 +252,11 @@ private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
 
+    // Everything under the video scrolls as one list; once the meta/seek/transport block (item 0)
+    // scrolls away, those controls re-appear overlaid on the video and the queue header pins.
+    val listState = rememberLazyListState()
+    val controlsOnVideo by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+
     Column(Modifier.fillMaxSize()) {
         PlayerTopBar(coordinator, sleepMs, onClose)
 
@@ -255,37 +266,50 @@ private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator
             if (current != null && noPicture(config.audioOnly, current, status)) {
                 AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
             }
-        }
-
-        Column(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                coordinator.titleFor(current),
-                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-            coordinator.metadataFor(current)?.subtitleLine1?.let {
-                Text(
-                    it,
-                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 5.dp),
-                )
+            // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
+            // the top-level overload and cannot be called from Box scope.
+            androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
+                Box(Modifier.fillMaxSize()) {
+                    VideoOverlayControls(coordinator, status, progress, current, compact = true)
+                }
             }
-            status.error?.let { PlaybackErrorRow(player, it) }
         }
 
-        SeekBar(player, progress.positionMs, progress.durationMs)
-        TransportRow(coordinator, status.playWhenReady, status.state == PlaybackState.Buffering)
-
-        QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
-        HorizontalDivider(color = Color(0xFFF0F0F0))
-        LazyColumn(Modifier.weight(1f)) {
+        LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            coordinator.titleFor(current),
+                            style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222)),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                        )
+                        coordinator.metadataFor(current)?.subtitleLine1?.let {
+                            Text(
+                                it,
+                                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 5.dp),
+                            )
+                        }
+                        status.error?.let { PlaybackErrorRow(player, it) }
+                    }
+                    SeekBar(player, progress.positionMs, progress.durationMs)
+                    TransportRow(coordinator, status.playWhenReady, status.state == PlaybackState.Buffering)
+                }
+            }
+            stickyHeader {
+                Column(Modifier.fillMaxWidth().background(Color.White)) {
+                    QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
+                    HorizontalDivider(color = Color(0xFFF0F0F0))
+                }
+            }
             itemsIndexed(queue.items) { index, item ->
                 QueueRow(coordinator, index, item, current = index == queue.currentIndex)
             }
@@ -329,13 +353,15 @@ private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinato
     }
 }
 
-/** The controls drawn over the landscape video (mockup scrim/otop/octl/vbottom). */
+/** The controls drawn over the video (mockup scrim/otop/octl/vbottom): landscape always, portrait
+ *  once the inline controls scroll away. [compact] = prev/play/next only (the portrait overlay). */
 @Composable
 private fun BoxScope.VideoOverlayControls(
     coordinator: PlaybackCoordinator,
     status: PlaybackStatus,
     progress: ymusic.player.Progress,
     current: PlayableItem?,
+    compact: Boolean = false,
 ) {
     val player = coordinator.player
     Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.24f)))
@@ -366,6 +392,7 @@ private fun BoxScope.VideoOverlayControls(
             iconTint = Color.White,
             playBackground = Color.Black.copy(alpha = 0.42f),
             playSize = 58.dp,
+            seekButtons = !compact,
         )
     }
 
@@ -543,8 +570,8 @@ private fun SeekSlider(player: ymusic.player.Player, positionMs: Long, durationM
     )
 }
 
-/** rewind · prev · [play circle] · next · forward. Dark-on-white by default; the landscape overlay
- *  passes white glyphs on a translucent play circle. */
+/** rewind · prev · [play circle] · next · forward. Dark-on-white by default; the video overlay
+ *  passes white glyphs on a translucent play circle, and drops the ±10s pair when compact. */
 @Composable
 private fun TransportRow(
     coordinator: PlaybackCoordinator,
@@ -553,6 +580,7 @@ private fun TransportRow(
     iconTint: Color = Color(0xFF2B2B2B),
     playBackground: Color = Color(0xFF222222),
     playSize: Dp = 64.dp,
+    seekButtons: Boolean = true,
 ) {
     val player = coordinator.player
     Row(
@@ -561,14 +589,16 @@ private fun TransportRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ActionIcon(
-            Icons.Default.FastRewind,
-            stringResource(Res.string.cd_rewind10),
-            iconSize = 26.dp,
-            hitSize = 36.dp,
-            tint = iconTint,
-            onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
-        )
+        if (seekButtons) {
+            ActionIcon(
+                Icons.Default.FastRewind,
+                stringResource(Res.string.cd_rewind10),
+                iconSize = 26.dp,
+                hitSize = 36.dp,
+                tint = iconTint,
+                onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
+            )
+        }
         ActionIcon(
             Icons.Default.SkipPrevious,
             stringResource(Res.string.cd_previous),
@@ -600,14 +630,16 @@ private fun TransportRow(
             tint = iconTint,
             onClick = { player.skipNext() },
         )
-        ActionIcon(
-            Icons.Default.FastForward,
-            stringResource(Res.string.cd_forward10),
-            iconSize = 26.dp,
-            hitSize = 36.dp,
-            tint = iconTint,
-            onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
-        )
+        if (seekButtons) {
+            ActionIcon(
+                Icons.Default.FastForward,
+                stringResource(Res.string.cd_forward10),
+                iconSize = 26.dp,
+                hitSize = 36.dp,
+                tint = iconTint,
+                onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
+            )
+        }
     }
 }
 
