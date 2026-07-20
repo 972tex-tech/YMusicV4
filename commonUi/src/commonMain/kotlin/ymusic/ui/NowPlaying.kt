@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -57,6 +58,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -68,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtThumb
 import ymusic.player.LoopMode
@@ -270,7 +274,9 @@ private fun PortraitNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinator
             // the top-level overload and cannot be called from Box scope.
             androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
-                    VideoOverlayControls(coordinator, status, progress, current, compact = true)
+                    AutoHidingOverlay(playing = status.playWhenReady) {
+                        VideoOverlayControls(coordinator, status, progress, current, compact = true)
+                    }
                 }
             }
         }
@@ -334,7 +340,9 @@ private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinato
             if (current != null && noPicture(config.audioOnly, current, status)) {
                 AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
             }
-            VideoOverlayControls(coordinator, status, progress, current)
+            AutoHidingOverlay(playing = status.playWhenReady) {
+                VideoOverlayControls(coordinator, status, progress, current)
+            }
         }
         VerticalDivider(color = Color(0xFFECECEC))
         Column(Modifier.width(320.dp).fillMaxHeight()) {
@@ -352,6 +360,40 @@ private fun LandscapeNowPlaying(graph: AppGraph, coordinator: PlaybackCoordinato
         }
     }
 }
+
+/**
+ * Hosts video-overlay [content] with player-style auto-hide: it fades out after a few seconds of
+ * playback and a tap/click on the video brings it back (or dismisses it early). While paused the
+ * controls stay up — pausing also brings them back.
+ */
+@Composable
+private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable BoxScope.() -> Unit) {
+    var visible by remember { mutableStateOf(true) }
+    var interaction by remember { mutableStateOf(0) }
+    // The tap catcher sits under the controls: taps on a control hit the control; taps on the bare
+    // video (or anywhere while hidden) land here and toggle.
+    Box(
+        Modifier.matchParentSize().pointerInput(playing) {
+            detectTapGestures {
+                visible = if (playing) !visible else true
+                interaction++
+            }
+        },
+    )
+    LaunchedEffect(playing, visible, interaction) {
+        if (!playing) {
+            visible = true
+        } else if (visible) {
+            delay(OVERLAY_HIDE_DELAY_MS)
+            visible = false
+        }
+    }
+    androidx.compose.animation.AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+        Box(Modifier.fillMaxSize()) { content() }
+    }
+}
+
+private const val OVERLAY_HIDE_DELAY_MS = 3_000L
 
 /** The controls drawn over the video (mockup scrim/otop/octl/vbottom): landscape always, portrait
  *  once the inline controls scroll away. [compact] = prev/play/next only (the portrait overlay). */
