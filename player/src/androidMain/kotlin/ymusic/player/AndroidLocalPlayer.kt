@@ -286,7 +286,7 @@ internal class AndroidLocalPlayer(
             VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
         } else {
             sizes.sortDescending()
-            val options = sizes.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.DEFAULT.options
+            val options = sizes.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.LOCAL_BASE_OPTIONS
             val actual = if (selectedSize > 0) {
                 VideoQualityState.optionForHeight(selectedSize).quality
             } else {

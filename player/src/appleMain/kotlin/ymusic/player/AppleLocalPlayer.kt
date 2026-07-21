@@ -306,7 +306,7 @@ internal class AppleLocalPlayer(
         _videoQuality.value = if (heights.isEmpty()) {
             VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
         } else {
-            val options = heights.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.DEFAULT.options
+            val options = heights.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.LOCAL_BASE_OPTIONS
             val actual = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.optionForHeight(heights.first()).quality
             VideoQualityState(options, actual, preferVideoQuality)
         }

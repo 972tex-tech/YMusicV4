@@ -36,7 +36,7 @@ import javax.swing.SwingUtilities
  */
 internal class JvmLocalPlayer(private val videoContainer: Container? = null) : LocalPlayer {
     private val component: CallbackMediaPlayerComponent = try {
-        CallbackMediaPlayerComponent()
+        CallbackMediaPlayerComponent().apply { isEnabled = false }
     } catch (t: Throwable) {
         throw TechnicalException("E60020", "libVLC not found — install VLC or bundle libVLC", cause = t)
     }
@@ -197,7 +197,16 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
             audioOnly = config.audioOnly
             applyAudioOnly()
             _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
-            _videoQuality.update { it.copy(preferredQuality = quality) }
+            _videoQuality.update {
+                it.copy(
+                    preferredQuality = quality,
+                    actualQuality = when {
+                        audioOnly -> VideoQualityState.AUDIO_ONLY
+                        it.actualQuality == VideoQualityState.AUDIO_ONLY -> VideoQualityState.AUTO
+                        else -> it.actualQuality
+                    },
+                )
+            }
             if (_status.value.state is PlaybackState.Prepared) showSurface(true)
         }
         if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
@@ -227,11 +236,15 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
     private fun populateTracks() {
         val dim = vlc.video().videoDimension()
         _videoQuality.value = if (dim == null || dim.height <= 0) {
-            VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
+            VideoQualityState(
+                options = VideoQualityState.LOCAL_BASE_OPTIONS,
+                actualQuality = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO,
+                preferredQuality = preferVideoQuality,
+            )
         } else {
             val opt = VideoQualityState.optionForHeight(minOf(dim.width, dim.height))
             val actual = if (audioOnly) VideoQualityState.AUDIO_ONLY else opt.quality
-            VideoQualityState(listOf(opt) + VideoQualityState.DEFAULT.options, actual, preferVideoQuality)
+            VideoQualityState(listOf(opt) + VideoQualityState.LOCAL_BASE_OPTIONS, actual, preferVideoQuality)
         }
 
         val subs = vlc.subpictures().trackDescriptions().filter { it.id() != -1 }

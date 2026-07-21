@@ -29,6 +29,12 @@ data class VideoQualityState(
         const val AUDIO_ONLY = "zero"
         val DEFAULT = VideoQualityState(emptyList(), AUTO, AUTO)
 
+        /** Choices every local source with a video track supports, in addition to its resolution tiers. */
+        val LOCAL_BASE_OPTIONS = listOf(
+            VideoQualityOption(AUDIO_ONLY, "Audio-only"),
+            VideoQualityOption(AUTO, "Auto"),
+        )
+
         /** YouTube-style quality tiers keyed by min video dimension (px), ascending. */
         private val LADDER = listOf(
             VideoQualityOption("tiny", "144p") to 144,
