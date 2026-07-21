@@ -160,12 +160,16 @@ static int st_open_container(JStream *s, int is_array) {
         s->stack = ns;
         s->scap = ncap;
     }
-    JSFrame *f = &s->stack[s->sp++];
+    /* Do not publish the frame through sp until its JSValue is initialized. JS_NewObject/Array may
+     * trigger cycle GC; jstream_mark walks [0, sp), so incrementing first makes it mark an
+     * uninitialized container and corrupt the GC refcounts. */
+    JSFrame *f = &s->stack[s->sp];
     f->is_array = is_array;
     f->pending_key = JS_ATOM_NULL;
     f->index = 0;
     f->container = is_array ? JS_NewArray(s->ctx) : JS_NewObject(s->ctx);
-    if (JS_IsException(f->container)) { s->sp--; s->failed = 1; return -1; }
+    if (JS_IsException(f->container)) { s->failed = 1; return -1; }
+    s->sp++;
     s->tstate = is_array ? S_ARR_VALUE_OR_END : S_OBJ_KEY_OR_END;
     return 0;
 }
