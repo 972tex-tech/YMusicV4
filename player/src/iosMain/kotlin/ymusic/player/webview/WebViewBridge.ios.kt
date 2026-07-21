@@ -10,7 +10,10 @@ internal actual fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
 ): WebViewBridge {
-    val bridge = AppleWebViewBridge(sink)
+    val bridge = AppleWebViewBridge(sink) {
+        allowsInlineMediaPlayback = true
+        allowsPictureInPictureMediaPlayback = false
+    }
     val view = bridge.nativeView
     view.setFrame(context.container.bounds)
     view.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)

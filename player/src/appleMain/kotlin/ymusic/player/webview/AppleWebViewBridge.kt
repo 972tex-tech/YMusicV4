@@ -13,6 +13,7 @@ import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUserContentController
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
+import platform.WebKit.WKWebsiteDataStore
 import platform.WebKit.javaScriptEnabled
 import platform.darwin.NSObject
 
@@ -25,13 +26,18 @@ import platform.darwin.NSObject
  * the main thread, as the engine requires.
  */
 @OptIn(ExperimentalForeignApi::class)
-internal class AppleWebViewBridge(sink: WebViewMessageSink) : WebViewBridge {
+internal class AppleWebViewBridge(
+    sink: WebViewMessageSink,
+    configure: WKWebViewConfiguration.() -> Unit = {},
+) : WebViewBridge {
     override val platform: String = "darwin"
 
     private val handler = MessageHandler(sink)
     private val config = WKWebViewConfiguration().apply {
         preferences.javaScriptEnabled = true
+        websiteDataStore = WKWebsiteDataStore.defaultDataStore()
         userContentController.addScriptMessageHandler(handler, HANDLER_NAME)
+        configure()
     }
 
     /**
