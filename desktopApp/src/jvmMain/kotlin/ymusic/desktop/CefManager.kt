@@ -1,12 +1,14 @@
 package ymusic.desktop
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import me.friwi.jcefmaven.CefAppBuilder
 import me.friwi.jcefmaven.MavenCefAppHandlerAdapter
 import me.friwi.jcefmaven.impl.progress.ConsoleProgressHandler
 import org.cef.CefApp
 import org.cef.CefClient
+import org.cef.network.CefCookieManager
 import java.io.File
 
 /**
@@ -42,8 +44,23 @@ class CefManager {
         cefApp.createClient()
     }
 
+    /** Wait until CEF publishes its global request context and persistent cookie store. */
+    suspend fun awaitCookieManager(): CefCookieManager {
+        repeat(COOKIE_MANAGER_ATTEMPTS) {
+            val manager: CefCookieManager? = CefCookieManager.getGlobalManager()
+            if (manager != null) return manager
+            delay(COOKIE_MANAGER_POLL_MS)
+        }
+        error("E20041 CEF cookie manager did not initialize")
+    }
+
     fun dispose() {
         app?.dispose()
         app = null
+    }
+
+    private companion object {
+        const val COOKIE_MANAGER_ATTEMPTS = 200
+        const val COOKIE_MANAGER_POLL_MS = 25L
     }
 }

@@ -24,9 +24,7 @@ import java.util.concurrent.TimeUnit
  * segment fetches go through CEF directly. So the bounded blocking read below is off the hot path.
  * [CefCookieManager.getGlobalManager] requires CefApp to be initialized first — see [Main] ordering.
  */
-class JcefCookieJar : CookieJar {
-
-    private val manager: CefCookieManager get() = CefCookieManager.getGlobalManager()
+class JcefCookieJar(private val manager: CefCookieManager) : CookieJar {
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         val u = url.toString()

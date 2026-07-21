@@ -112,7 +112,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // client carries NO jar — the engine JS cooks every Cookie header itself against this store
     // (cookie/get|set protocol) so cookie policy lives in the remotely-updatable bundle.
     val cefClient = cefManager.createClient()
-    val platformCookies = JcefCookieJar()
+    val platformCookies = JcefCookieJar(cefManager.awaitCookieManager())
     val engineClient = KmpHttpClient.create { }
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
