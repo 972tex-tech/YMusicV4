@@ -90,6 +90,22 @@ class AppleLocalPlayerTest {
         assertTrue(p.status.value.error?.code?.startsWith("E600") == true)
     }
 
+    @Test
+    fun owns_surface_visibility_for_active_source() {
+        val surface = RecordingApplePlayerSurface()
+        val p = AppleLocalPlayer { surface }.also { player = it }
+
+        p.load(PlayableItem.LocalUri(NSTemporaryDirectory() + "surface-test.wav"), playWhenReady = false)
+        assertEquals(listOf(true), surface.visibility)
+
+        p.stop()
+        assertEquals(listOf(true, false), surface.visibility)
+
+        p.release()
+        assertEquals(listOf(true, false, false), surface.visibility)
+        assertTrue(surface.released)
+    }
+
     /**
      * Real multi-track validation of the capability interfaces on AVFoundation — a generated MP4 with
      * a video track, two audio languages, and two subtitle languages. Skipped when ffmpeg is absent.
@@ -122,6 +138,19 @@ class AppleLocalPlayerTest {
             captions.tracks.first().languageCode, p.captions.value.selectedLanguage,
             "caption selection should stick",
         )
+    }
+}
+
+private class RecordingApplePlayerSurface : ApplePlayerSurface {
+    val visibility = mutableListOf<Boolean>()
+    var released = false
+
+    override fun setVisible(visible: Boolean) {
+        visibility += visible
+    }
+
+    override fun release() {
+        released = true
     }
 }
 

@@ -64,8 +64,11 @@ import platform.Foundation.NSURL
  * notification callbacks (the module must work inside plain test processes too).
  */
 @OptIn(ExperimentalForeignApi::class)
-internal class AppleLocalPlayer : LocalPlayer {
+internal class AppleLocalPlayer(
+    createSurface: (AVPlayer) -> ApplePlayerSurface? = { null },
+) : LocalPlayer {
     private val player = AVPlayer()
+    private val surface = createSurface(player)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
@@ -119,6 +122,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         player.setVolume(config.volume.coerceIn(0f, 1f))
         val item = AVPlayerItem(uRL = url)
         player.replaceCurrentItemWithPlayerItem(item)
+        surface?.setVisible(true)
         _status.update {
             it.copy(
                 state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
@@ -191,6 +195,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         player.replaceCurrentItemWithPlayerItem(null)
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
+        surface?.setVisible(false)
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -321,6 +326,8 @@ internal class AppleLocalPlayer : LocalPlayer {
         released = true
         player.pause()
         player.replaceCurrentItemWithPlayerItem(null)
+        surface?.setVisible(false)
+        surface?.release()
         scope.cancel()
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }

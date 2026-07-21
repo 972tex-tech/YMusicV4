@@ -9,7 +9,7 @@ plugins {
 }
 
 kotlin {
-    // LocalPlayerContext is an expect/actual class (Android carries a Context; the rest are empty).
+    // LocalPlayerContext is expect/actual: each UI platform may carry its shared video container.
     targets.all {
         compilations.all {
             compileTaskProvider.configure {

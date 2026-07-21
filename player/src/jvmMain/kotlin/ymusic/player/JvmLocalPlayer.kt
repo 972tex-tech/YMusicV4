@@ -30,8 +30,9 @@ import javax.swing.SwingUtilities
  * filter) — see the module docs.
  *
  * When a [videoContainer] is supplied (the shell's shared video host), the engine adds its video
- * component into it and owns that component's visibility: shown while a non-audio-only source plays,
- * hidden when idle/stopped/audio-only so a co-hosted engine's surface (the WebView) shows through.
+ * component into it and owns that component's visibility: shown whenever this is the active engine,
+ * including audio-only (which disables the video track), and hidden when idle/stopped so a co-hosted
+ * engine's surface (the WebView) shows through. libVLC renders selected captions in this same root.
  */
 internal class JvmLocalPlayer(private val videoContainer: Container? = null) : LocalPlayer {
     private val component: CallbackMediaPlayerComponent = try {
