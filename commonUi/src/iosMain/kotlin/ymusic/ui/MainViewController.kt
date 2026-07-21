@@ -102,7 +102,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val engineJs = loadWebViewJs()
     val player = createPlayer(
         PlayerEngines(
-            local = { createLocalPlayer(LocalPlayerContext()) },
+            local = { createLocalPlayer(LocalPlayerContext(container)) },
             webView = { createWebViewPlayer(WebViewPlayerContext(container), engineJs, appVersion = 1, playerClient) },
         ),
     )
