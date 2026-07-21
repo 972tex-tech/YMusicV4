@@ -362,7 +362,11 @@ private fun PortraitNowPlaying(
                         status.error?.let { PlaybackErrorRow(player, it) }
                     }
                     SeekBar(player, progress.positionMs, progress.durationMs)
-                    TransportRow(coordinator, status.playWhenReady, status.state == PlaybackState.Buffering)
+                    TransportRow(
+                        coordinator,
+                        status.playWhenReady,
+                        (status.state as? PlaybackState.Prepared)?.buffering == true,
+                    )
                 }
             }
             stickyHeader {
@@ -494,7 +498,7 @@ private fun BoxScope.VideoOverlayControls(
         TransportRow(
             coordinator,
             status.playWhenReady,
-            status.state == PlaybackState.Buffering,
+            (status.state as? PlaybackState.Prepared)?.buffering == true,
             iconTint = Color.White,
             playBackground = Color.Black.copy(alpha = 0.42f),
             playSize = 58.dp,
