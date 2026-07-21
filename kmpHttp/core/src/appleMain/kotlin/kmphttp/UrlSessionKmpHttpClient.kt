@@ -387,6 +387,7 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
     private var completeError: IOException? = null
     private var closed = false
     private var task: NSURLSessionDataTask? = null
+    private var taskSuspended = false
 
     /**
      * Attach a task, which will be canceled automatically when close this instance.
@@ -419,10 +420,20 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
                 if (!hotBuffer.exhausted()) {
                     val toRead = minOf(hotBuffer.size, byteCount)
                     sink.write(hotBuffer, toRead)
+                    // Resume as soon as there is room again. Waiting until the buffer is entirely
+                    // empty can deadlock a streaming consumer that needs the next network chunk to
+                    // finish parsing the current value (the large YouTube Home response hit this).
+                    if (taskSuspended && hotBuffer.size < preBufferedSize) {
+                        taskSuspended = false
+                        task?.resume()
+                    }
                     return toRead
                 }
                 if (completed) return -1
-                task?.resume()
+                if (taskSuspended) {
+                    taskSuspended = false
+                    task?.resume()
+                }
                 suspendCondition.pause()
             }
             suspendCondition.await()
@@ -461,7 +472,8 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
         synchronized(hotBufferGuard) {
             if (closed) return
             hotBuffer.write(didReceiveData)
-            if (hotBuffer.size >= preBufferedSize) {
+            if (hotBuffer.size >= preBufferedSize && !taskSuspended) {
+                taskSuspended = true
                 dataTask.suspend()
             }
         }
@@ -481,6 +493,7 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
     }
 
     private fun onComplete(error: NSError?) {
+        var notifyClose = false
         synchronized(hotBufferGuard) {
             completed = true
             if (error != null) {
@@ -488,11 +501,18 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
                     completeError = it
                     httpResponse.completeExceptionally(it)
                 }
-                close()
-            } else {
-                suspendCondition.release()
+                // Do not call close() while holding hotBufferGuard: the lock is non-reentrant.
+                if (!closed) {
+                    closed = true
+                    task = null
+                    taskSuspended = false
+                    hotBuffer.clear()
+                    notifyClose = true
+                }
             }
         }
+        suspendCondition.release()
+        if (notifyClose) onClose()
     }
 
     override fun URLSession(
