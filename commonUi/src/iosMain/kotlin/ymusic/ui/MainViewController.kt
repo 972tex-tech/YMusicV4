@@ -114,7 +114,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         scanLibraryFolder = null,
         imageLoader = imageLoader,
         surfaceScalesDown = true,
-    ) { modifier -> UIKitView(factory = { container }, modifier = modifier) }
+    ) { modifier -> UIKitView(factory = { container }, modifier = modifier, interactive = true) }
 }
 
 /** The built `webview-js` bundle, shipped as an app-bundle resource (see the Xcode project). */
