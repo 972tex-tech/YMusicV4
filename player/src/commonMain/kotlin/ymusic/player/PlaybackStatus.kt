@@ -2,23 +2,33 @@ package ymusic.player
 
 import kmpcommon.error.CodedError
 
-/** Coarse lifecycle of the single loaded file. Transitions are rare (a state flow, not a ticker). */
-enum class PlaybackState {
-    /** Nothing loaded, or [LocalPlayer.stop] / released. */
-    Idle,
+/**
+ * Engine + media lifecycle, preserving the legacy player contract. [readyToLoad] means an ordinary
+ * media load can be sent to the existing initialized engine; it does not mean that media is ready
+ * for playback.
+ */
+sealed class PlaybackState(val readyToLoad: Boolean) {
+    /** The engine does not yet have a usable native/page session. */
+    data class Uninitialized(val isInitializing: Boolean) : PlaybackState(readyToLoad = false)
 
-    /** Loaded and prefetching; not yet renderable. */
-    Buffering,
+    /** A failed load/session. A broken session must be reset before another load. */
+    data class Error(val error: PlayerError) :
+        PlaybackState(readyToLoad = error.canRetry && !error.needReset)
 
-    /** Renderable — playing when [PlaybackStatus.playWhenReady], otherwise paused. */
-    Ready,
+    /** The initialized engine has no media loaded. */
+    data object Idle : PlaybackState(readyToLoad = true)
 
-    /** Reached the end of the file. */
-    Ended,
-
-    /** Playback failed; [PlaybackStatus.error] carries the code. */
-    Error,
+    /** Media is loaded; buffering/ended remain orthogonal to the user's play intent. */
+    data class Prepared(
+        val playWhenReady: Boolean,
+        val buffering: Boolean,
+        val ended: Boolean,
+    ) : PlaybackState(readyToLoad = true)
 }
+
+fun PlaybackState.isPlaying(): Boolean = (this as? PlaybackState.Prepared)?.playWhenReady == true
+
+fun PlaybackState.isEnded(): Boolean = (this as? PlaybackState.Prepared)?.ended == true
 
 /** How the video fills its surface. Mirrors the legacy player's scale modes. */
 enum class ScaleMode { COVER, FILL, CONTAIN }
@@ -104,11 +114,12 @@ data class Progress(
  * The play-head lives in [Progress].
  */
 data class PlaybackStatus(
-    val state: PlaybackState = PlaybackState.Idle,
-    val playWhenReady: Boolean = false,
+    val state: PlaybackState = PlaybackState.Uninitialized(isInitializing = false),
     val volume: Float = 1f,
     val speed: Float = 1f,
     /** Dimensions of the current video track, or null for audio-only / an audio-only file. */
     val videoSize: VideoSize? = null,
-    val error: PlayerError? = null,
-)
+) {
+    val playWhenReady: Boolean get() = state.isPlaying()
+    val error: PlayerError? get() = (state as? PlaybackState.Error)?.error
+}

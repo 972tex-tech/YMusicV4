@@ -39,6 +39,6 @@ fun createWebViewPlayer(
     engineJs: String,
     appVersion: Int,
     httpClient: KmpHttpClient,
-): WebViewPlayer = WebViewPlayerImpl(engineJs, appVersion, httpClient) { sink ->
+): WebViewPlayer = WebViewPlayerImpl(engineJs, appVersion, WebViewPlayerImpl.embedHtmlFetcher(httpClient)) { sink ->
     createWebViewBridge(context, sink)
 }

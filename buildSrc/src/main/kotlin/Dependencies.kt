@@ -112,6 +112,7 @@ object Libs {
     object Media3 {
         const val exoplayer = "androidx.media3:media3-exoplayer:${Versions.media3}"
         const val common = "androidx.media3:media3-common:${Versions.media3}"
+        const val ui = "androidx.media3:media3-ui:${Versions.media3}"
     }
 
     object Vlcj {

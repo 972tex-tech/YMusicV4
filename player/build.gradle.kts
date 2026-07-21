@@ -73,6 +73,7 @@ kotlin {
         androidMain.dependencies {
             implementation(Libs.Media3.exoplayer)
             implementation(Libs.Media3.common)
+            implementation(Libs.Media3.ui)
             implementation(Libs.Kotlinx.coroutinesAndroid)
         }
 

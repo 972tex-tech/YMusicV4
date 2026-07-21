@@ -42,7 +42,7 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
     private val vlc: MediaPlayer get() = component.mediaPlayer()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val _status = MutableStateFlow(PlaybackStatus())
+    private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
 
     private val _progress = MutableStateFlow(Progress())
@@ -102,20 +102,19 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
                 // Re-assert per-load settings once libVLC is actually playing (idempotent).
                 vlc.controls().setRate(desiredSpeed)
                 applyAudioOnly()
-                _status.update { it.copy(state = PlaybackState.Ready, playWhenReady = true, error = null) }
+                _status.update { it.copy(state = PlaybackState.Prepared(true, buffering = false, ended = false)) }
             }
 
             override fun paused(mp: MediaPlayer) =
-                _status.update { it.copy(state = PlaybackState.Ready, playWhenReady = false) }
+                _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = false)) }
 
             override fun finished(mp: MediaPlayer) =
-                _status.update { it.copy(state = PlaybackState.Ended, playWhenReady = false) }
+                _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
 
             override fun error(mp: MediaPlayer) =
                 _status.update {
                     it.copy(
-                        state = PlaybackState.Error, playWhenReady = false,
-                        error = PlayerError("E60021", "libVLC playback error"),
+                        state = PlaybackState.Error(PlayerError("E60021", "libVLC playback error")),
                     )
                 }
 
@@ -136,7 +135,7 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         vlc.audio().setVolume((config.volume.coerceIn(0f, 1f) * 100f).toInt())
         _status.update {
             it.copy(
-                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
+                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false), videoSize = null,
                 volume = config.volume, speed = config.speed,
             )
         }
@@ -146,7 +145,7 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         val options = if (startPositionMs > 0L) arrayOf(":start-time=${startPositionMs / 1000.0}") else emptyArray()
         vlc.media().play(uri, *options)
         if (!playWhenReady) vlc.controls().setPause(true)
-        showSurface(!config.audioOnly)
+        showSurface(true)
     }
 
     override fun play() {
@@ -171,7 +170,7 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         if (released) return
         vlc.controls().stop()
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
+        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
         showSurface(false)
     }
 
@@ -198,7 +197,7 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
             applyAudioOnly()
             _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
             _videoQuality.update { it.copy(preferredQuality = quality) }
-            if (_status.value.state != PlaybackState.Idle) showSurface(!audioOnly)
+            if (_status.value.state is PlaybackState.Prepared) showSurface(true)
         }
         if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
             config.captionVisible != prev.captionVisible
@@ -267,12 +266,12 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         scope.cancel()
         videoContainer?.let { c -> onSwing { c.remove(component) } }
         component.release()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false) }
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
     private suspend fun tick() {
         while (scope.isActive) {
-            if (!released && _status.value.state != PlaybackState.Idle) {
+            if (!released && _status.value.state is PlaybackState.Prepared) {
                 val pos = vlc.status().time().coerceAtLeast(0L)
                 val len = vlc.status().length()
                 _progress.update { it.copy(positionMs = pos, durationMs = if (len > 0L) len else it.durationMs) }

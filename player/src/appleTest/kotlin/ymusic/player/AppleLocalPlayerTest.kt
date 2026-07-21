@@ -48,8 +48,8 @@ class AppleLocalPlayerTest {
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
 
         p.load(PlayableItem.LocalUri(path), playWhenReady = true)
-        awaitState(p, PlaybackState.Ready)
-        assertEquals(PlaybackState.Ready, p.status.value.state, "load failed: ${p.status.value.error}")
+        awaitState(p) { it is PlaybackState.Prepared && !it.buffering }
+        assertTrue(p.status.value.state is PlaybackState.Prepared, "load failed: ${p.status.value.error}")
         val duration = p.progress.value.durationMs
         assertTrue(duration in 2500L..3500L, "duration should be ~3000ms, was $duration")
 
@@ -75,18 +75,18 @@ class AppleLocalPlayerTest {
         // Resume to the natural end.
         p.play()
         var waited = 0
-        while (p.status.value.state != PlaybackState.Ended && waited < 4000) {
+        while (!p.status.value.state.isEnded() && waited < 4000) {
             delay(200); waited += 200
         }
-        assertEquals(PlaybackState.Ended, p.status.value.state, "should reach the end of the file")
+        assertTrue(p.status.value.state.isEnded(), "should reach the end of the file")
     }
 
     @Test
     fun bad_uri_fails_typed() = pumpingMainLoop {
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
         p.load(PlayableItem.LocalUri(NSTemporaryDirectory() + "does_not_exist.wav"), playWhenReady = false)
-        awaitState(p, PlaybackState.Error)
-        assertEquals(PlaybackState.Error, p.status.value.state, "loading a missing file must fail")
+        awaitState(p) { it is PlaybackState.Error }
+        assertTrue(p.status.value.state is PlaybackState.Error, "loading a missing file must fail")
         assertTrue(p.status.value.error?.code?.startsWith("E600") == true)
     }
 
@@ -101,8 +101,8 @@ class AppleLocalPlayerTest {
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
 
         p.load(PlayableItem.LocalUri(path), playWhenReady = false)
-        awaitState(p, PlaybackState.Ready)
-        assertEquals(PlaybackState.Ready, p.status.value.state)
+        awaitState(p) { it is PlaybackState.Prepared && !it.buffering }
+        assertTrue(p.status.value.state is PlaybackState.Prepared)
 
         val audio = p.audioTracks.value
         assertTrue(audio.tracks.size >= 2, "expected ≥2 audio tracks, got ${audio.tracks}")
@@ -146,9 +146,13 @@ private fun generateMultiTrack(path: String): Boolean {
 }
 
 /** Poll [player]'s status until it reaches [target] (or a competing terminal state), with a timeout. */
-private suspend fun awaitState(player: LocalPlayer, target: PlaybackState, timeoutMs: Int = 16_000) {
+private suspend fun awaitState(
+    player: LocalPlayer,
+    timeoutMs: Int = 16_000,
+    predicate: (PlaybackState) -> Boolean,
+) {
     var waited = 0
-    while (player.status.value.state != target && player.status.value.state != PlaybackState.Error && waited < timeoutMs) {
+    while (!predicate(player.status.value.state) && player.status.value.state !is PlaybackState.Error && waited < timeoutMs) {
         delay(50)
         waited += 50
     }

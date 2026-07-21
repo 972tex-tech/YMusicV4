@@ -138,9 +138,7 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
 }
 
 private fun isLoaded(status: PlaybackStatus): Boolean =
-    status.state == PlaybackState.Ready ||
-        status.state == PlaybackState.Buffering ||
-        status.state == PlaybackState.Ended
+    status.state is PlaybackState.Prepared
 
 private fun formatMs(ms: Long): String {
     val totalSeconds = ms / 1000

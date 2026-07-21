@@ -73,6 +73,11 @@ internal class AppleWebViewBridge(
         nativeView.loadHTMLString(html, NSURL(string = baseUrl))
     }
 
+    override fun setVisible(visible: Boolean) {
+        nativeView.hidden = !visible
+        if (visible) nativeView.superview?.addSubview(nativeView)
+    }
+
     override fun evaluate(js: String) {
         nativeView.evaluateJavaScript(js, null)
     }

@@ -175,13 +175,21 @@ private class JcefWebViewBridge(
         // (needs windowless_rendering_enabled on CefApp — the shell's CefManager sets it).
         browser = ImageOsrBrowser(client, "about:blank", Dimension(640, 360))
         container.add(browser.uiComponent)
+        browser.uiComponent.isVisible = false
         browser.createImmediately()
     }
 
     override fun load(html: String, baseUrl: String) {
-        bringToFront() // this engine is becoming active — show its surface over a co-hosted one
         pendingHtml = html
         if (browserCreated) browser.loadURL(baseUrl) else pendingUrl = baseUrl
+    }
+
+    override fun setVisible(visible: Boolean) {
+        val update = {
+            browser.uiComponent.isVisible = visible
+            if (visible) bringToFront()
+        }
+        if (SwingUtilities.isEventDispatchThread()) update() else SwingUtilities.invokeLater(update)
     }
 
     override fun evaluate(js: String) {

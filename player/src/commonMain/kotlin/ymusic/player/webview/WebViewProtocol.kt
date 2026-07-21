@@ -12,7 +12,6 @@ import ymusic.player.AudioTrack
 import ymusic.player.AudioTrackState
 import ymusic.player.CaptionState
 import ymusic.player.CaptionTrack
-import ymusic.player.PlaybackState
 import ymusic.player.VideoQualityOption
 import ymusic.player.VideoQualityState
 
@@ -192,13 +191,13 @@ object WebViewProtocol {
         put("quality", JsonPrimitive(quality))
     }
 
-    private fun mapState(newState: String?): PlaybackState = when (newState) {
-        "idle" -> PlaybackState.Idle
-        "buffering" -> PlaybackState.Buffering
-        "ready" -> PlaybackState.Ready
-        "ended" -> PlaybackState.Ended
-        "error" -> PlaybackState.Error
-        else -> PlaybackState.Idle
+    private fun mapState(newState: String?): WebPlaybackState = when (newState) {
+        "idle" -> WebPlaybackState.Idle
+        "buffering" -> WebPlaybackState.Buffering
+        "ready" -> WebPlaybackState.Ready
+        "ended" -> WebPlaybackState.Ended
+        "error" -> WebPlaybackState.Error
+        else -> WebPlaybackState.Idle
     }
 
     private fun JsonObject.string(key: String): String? {
@@ -247,7 +246,7 @@ sealed interface WebViewEvent {
     data object Connected : WebViewEvent
 
     data class StateChanged(
-        val state: PlaybackState,
+        val state: WebPlaybackState,
         val playWhenReady: Boolean,
         val errorCode: String?,
         val errorMessage: String?,
@@ -268,3 +267,5 @@ sealed interface WebViewEvent {
 
     data class AudioTracksChanged(val state: AudioTrackState) : WebViewEvent
 }
+
+enum class WebPlaybackState { Idle, Buffering, Ready, Ended, Error }

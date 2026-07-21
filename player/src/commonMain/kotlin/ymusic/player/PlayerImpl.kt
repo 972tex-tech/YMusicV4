@@ -126,20 +126,17 @@ internal class PlayerImpl(
     override fun play() {
         if (released) return
         playWhenReadyIntent = true
-        // Legacy UniPlayer.play(): when nothing is playable — stopped (Idle) or failed with a
-        // retryable error — play means "load the current item again from where it was", so the play
-        // button doubles as the recovery/retry action. Every engine's load() rebuilds its session,
-        // which also serves a needReset error.
+        // Legacy UniPlayer.play(): Prepared resumes in-place; every other state goes through the
+        // load path, which initializes/resets the selected engine when required.
         val s = _status.value
-        val reloadable = controller.state.currentItem != null && when (s.state) {
-            PlaybackState.Idle -> true
-            PlaybackState.Error -> s.error?.canRetry != false
-            else -> false
-        }
-        if (reloadable) {
-            loadCurrent(_progress.value.positionMs)
-        } else {
-            _currentEngine.value?.play()
+        when (val state = s.state) {
+            is PlaybackState.Prepared -> _currentEngine.value?.play()
+            is PlaybackState.Error -> if (state.error.canRetry && controller.state.currentItem != null) {
+                loadCurrent(_progress.value.positionMs)
+            }
+            PlaybackState.Idle, is PlaybackState.Uninitialized -> if (controller.state.currentItem != null) {
+                loadCurrent(_progress.value.positionMs)
+            }
         }
     }
 
@@ -284,11 +281,10 @@ internal class PlayerImpl(
                 if (factory == null) {
                     bind(null)
                     _status.value = PlaybackStatus(
-                        state = PlaybackState.Error,
-                        error = PlayerError(
+                        state = PlaybackState.Error(PlayerError(
                             "E60050", "queue item needs the WebView engine but none is configured",
                             canRetry = false,
-                        ),
+                        )),
                     )
                     return
                 }
@@ -311,7 +307,7 @@ internal class PlayerImpl(
         engineJobs += scope.launch {
             engine.status.collect { snapshot ->
                 _status.value = snapshot
-                if (snapshot.state == PlaybackState.Ended) onTrackEnded()
+                if (snapshot.state.isEnded()) onTrackEnded()
             }
         }
         engineJobs += scope.launch { engine.progress.collect { _progress.value = it } }

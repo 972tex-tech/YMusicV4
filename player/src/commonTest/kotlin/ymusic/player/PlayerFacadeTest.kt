@@ -33,7 +33,7 @@ class PlayerFacadeTest {
         var releasedCount = 0
         var lastConfig = PlaybackConfig()
 
-        private val _status = MutableStateFlow(PlaybackStatus())
+        private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
         override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
 
         private val _progress = MutableStateFlow(Progress())
@@ -47,35 +47,42 @@ class PlayerFacadeTest {
             loads += Load(source, startPositionMs, playWhenReady, config)
             lastConfig = config
             _status.value = PlaybackStatus(
-                state = PlaybackState.Ready,
-                playWhenReady = playWhenReady,
+                state = PlaybackState.Prepared(playWhenReady, buffering = false, ended = false),
                 volume = config.volume,
                 speed = config.speed,
             )
             _progress.value = Progress(positionMs = startPositionMs, durationMs = 60_000)
         }
 
-        fun finishTrack() = _status.update { it.copy(state = PlaybackState.Ended, playWhenReady = false) }
+        fun finishTrack() = _status.update {
+            it.copy(state = PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true))
+        }
 
         fun failTrack(canRetry: Boolean = true, needReset: Boolean = false) = _status.update {
             it.copy(
-                state = PlaybackState.Error,
-                playWhenReady = false,
-                error = PlayerError("E60010", "boom", canRetry = canRetry, needReset = needReset),
+                state = PlaybackState.Error(
+                    PlayerError("E60010", "boom", canRetry = canRetry, needReset = needReset),
+                ),
             )
         }
 
         fun tickTo(positionMs: Long) = _progress.update { it.copy(positionMs = positionMs) }
 
-        override fun play() = _status.update { it.copy(playWhenReady = true) }
+        override fun play() = _status.update {
+            val state = it.state as? PlaybackState.Prepared ?: return@update it
+            it.copy(state = state.copy(playWhenReady = true, ended = false))
+        }
 
-        override fun pause() = _status.update { it.copy(playWhenReady = false) }
+        override fun pause() = _status.update {
+            val state = it.state as? PlaybackState.Prepared ?: return@update it
+            it.copy(state = state.copy(playWhenReady = false))
+        }
 
         override fun seekTo(positionMs: Long) = _progress.update { it.copy(positionMs = positionMs) }
 
         override fun stop() {
             stopped++
-            _status.value = PlaybackStatus()
+            _status.value = PlaybackStatus(state = PlaybackState.Idle)
             _progress.value = Progress()
         }
 
@@ -156,7 +163,7 @@ class PlayerFacadeTest {
         h.local.tickTo(7_777)
         runCurrent()
         assertEquals(9_000, h.player.progress.value.positionMs, "old engine's flow must be unbound")
-        assertEquals(PlaybackState.Ready, h.player.status.value.state)
+        assertIs<PlaybackState.Prepared>(h.player.status.value.state)
     }
 
     @Test
@@ -174,7 +181,7 @@ class PlayerFacadeTest {
         runCurrent()
         assertEquals(1, h.player.queue.value.currentIndex, "no next: stays put")
         assertEquals(2, h.local.loads.size, "no reload on exhaustion")
-        assertEquals(PlaybackState.Ended, h.player.status.value.state)
+        assertTrue(assertIs<PlaybackState.Prepared>(h.player.status.value.state).ended)
     }
 
     @Test
@@ -230,7 +237,7 @@ class PlayerFacadeTest {
         val h = Harness(this, webViewFactory = false)
         h.player.setQueue(listOf(yt("a")), playIndex = 0)
         runCurrent()
-        assertEquals(PlaybackState.Error, h.player.status.value.state)
+        assertIs<PlaybackState.Error>(h.player.status.value.state)
         assertEquals("E60050", assertNotNull(h.player.status.value.error).code)
     }
 
@@ -317,13 +324,13 @@ class PlayerFacadeTest {
         h.local.tickTo(12_000)
         h.local.failTrack(canRetry = true, needReset = true)
         runCurrent()
-        assertEquals(PlaybackState.Error, h.player.status.value.state)
+        assertIs<PlaybackState.Error>(h.player.status.value.state)
 
         h.player.play()
         runCurrent()
         assertEquals(2, h.local.loads.size, "play after a retryable error must reload")
         assertEquals(12_000, h.local.loads.last().startMs, "retry resumes where playback failed")
-        assertEquals(PlaybackState.Ready, h.player.status.value.state)
+        assertIs<PlaybackState.Prepared>(h.player.status.value.state)
     }
 
     @Test

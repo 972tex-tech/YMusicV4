@@ -4,7 +4,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import ymusic.player.PlaybackState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,7 +66,7 @@ class WebViewProtocolTest {
             sessionId = "1783842105",
         )
         assertTrue(e is WebViewEvent.StateChanged)
-        assertEquals(PlaybackState.Ready, e.state)
+        assertEquals(WebPlaybackState.Ready, e.state)
         assertEquals(true, e.playWhenReady)
     }
 
@@ -94,7 +93,7 @@ class WebViewProtocolTest {
             "s",
         )
         assertTrue(err is WebViewEvent.StateChanged)
-        assertEquals(PlaybackState.Error, err.state)
+        assertEquals(WebPlaybackState.Error, err.state)
         assertEquals("UNPLAYABLE", err.errorCode)
         assertTrue(err.errorCanRetry, "absent canRetry defaults true (legacy host behavior)")
         assertFalse(err.errorNeedReset, "absent needReset defaults false (legacy host behavior)")

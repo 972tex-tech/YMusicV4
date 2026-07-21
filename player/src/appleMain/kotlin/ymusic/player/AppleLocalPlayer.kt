@@ -68,7 +68,7 @@ internal class AppleLocalPlayer : LocalPlayer {
     private val player = AVPlayer()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val _status = MutableStateFlow(PlaybackStatus())
+    private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
 
     private val _progress = MutableStateFlow(Progress())
@@ -121,7 +121,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         player.replaceCurrentItemWithPlayerItem(item)
         _status.update {
             it.copy(
-                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null,
+                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
                 volume = config.volume, speed = config.speed,
             )
         }
@@ -154,7 +154,11 @@ internal class AppleLocalPlayer : LocalPlayer {
         applyAudioOnly()
         _progress.value = Progress(positionMs = startPositionMs, durationMs = durationMs)
         _status.update {
-            it.copy(state = PlaybackState.Ready, videoSize = if (audioOnly) null else item.videoSize())
+            val play = (it.state as? PlaybackState.Prepared)?.playWhenReady == true
+            it.copy(
+                state = PlaybackState.Prepared(play, buffering = false, ended = false),
+                videoSize = if (audioOnly) null else item.videoSize(),
+            )
         }
         populateTracks(item)
         if (playWhenReady) play()
@@ -163,13 +167,13 @@ internal class AppleLocalPlayer : LocalPlayer {
     override fun play() {
         if (released) return
         player.setRate(desiredSpeed)
-        _status.update { it.copy(playWhenReady = true, state = readyIfEnded(it.state)) }
+        _status.update { it.copy(state = it.state.withPlayWhenReady(true)) }
     }
 
     override fun pause() {
         if (released) return
         player.pause()
-        _status.update { it.copy(playWhenReady = false) }
+        _status.update { it.copy(state = it.state.withPlayWhenReady(false)) }
     }
 
     override fun seekTo(positionMs: Long) {
@@ -177,7 +181,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         val clamped = positionMs.coerceAtLeast(0L)
         player.seekToTime(cmTime(clamped))
         _progress.update { it.copy(positionMs = clamped) }
-        _status.update { it.copy(state = readyIfEnded(it.state)) }
+        _status.update { it.copy(state = it.state.withPlayWhenReady(it.state.isPlaying())) }
         if (_status.value.playWhenReady) player.setRate(desiredSpeed)
     }
 
@@ -186,7 +190,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         player.pause()
         player.replaceCurrentItemWithPlayerItem(null)
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
+        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -201,7 +205,7 @@ internal class AppleLocalPlayer : LocalPlayer {
         }
         if (config.speed != prev.speed) {
             desiredSpeed = config.speed.coerceAtLeast(0.01f)
-            if (_status.value.playWhenReady && _status.value.state == PlaybackState.Ready) {
+            if (_status.value.playWhenReady && _status.value.state is PlaybackState.Prepared) {
                 player.setRate(desiredSpeed)
             }
             _status.update { it.copy(speed = desiredSpeed) }
@@ -318,21 +322,21 @@ internal class AppleLocalPlayer : LocalPlayer {
         player.pause()
         player.replaceCurrentItemWithPlayerItem(null)
         scope.cancel()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false) }
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
     private suspend fun tick() {
         while (scope.isActive) {
             val item = player.currentItem
             val st = _status.value
-            if (item != null && st.state != PlaybackState.Idle && st.state != PlaybackState.Error) {
+            if (item != null && st.state is PlaybackState.Prepared) {
                 val posMs = player.currentTime().toMillisOrUnknown().coerceAtLeast(0L)
                 val prevDur = _progress.value.durationMs
                 val durMs = if (prevDur > 0L) prevDur else item.duration.toMillisOrUnknown()
                 val ended = durMs > 0L && posMs >= durMs - END_EPSILON_MS && player.rate == 0f && st.playWhenReady
                 _progress.update { it.copy(positionMs = if (ended) durMs else posMs, durationMs = durMs) }
                 if (ended) {
-                    _status.update { it.copy(state = PlaybackState.Ended, playWhenReady = false) }
+                    _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
                 }
                 if (!audioOnly) {
                     val vs = item.videoSize()
@@ -344,12 +348,11 @@ internal class AppleLocalPlayer : LocalPlayer {
     }
 
     private fun fail(code: String, message: String) {
-        _status.update { it.copy(state = PlaybackState.Error, playWhenReady = false,
-            error = PlayerError(code, message)) }
+        _status.update { it.copy(state = PlaybackState.Error(PlayerError(code, message))) }
     }
 
-    private fun readyIfEnded(state: PlaybackState) =
-        if (state == PlaybackState.Ended) PlaybackState.Ready else state
+    private fun PlaybackState.withPlayWhenReady(playWhenReady: Boolean): PlaybackState =
+        if (this is PlaybackState.Prepared) copy(playWhenReady = playWhenReady, ended = false) else this
 
     private companion object {
         const val POLL_MS = 20L

@@ -31,6 +31,9 @@ internal interface WebViewBridge {
      */
     fun load(html: String, baseUrl: String)
 
+    /** Show only this engine's root view when it has prepared media (legacy player behavior). */
+    fun setVisible(visible: Boolean)
+
     /** Evaluate [js] in the page (fire-and-forget). */
     fun evaluate(js: String)
 

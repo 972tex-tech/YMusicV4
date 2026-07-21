@@ -36,14 +36,16 @@ import kotlin.random.Random
 internal class WebViewPlayerImpl(
     private val engineJs: String,
     private val appVersion: Int,
-    private val httpClient: KmpHttpClient,
+    private val embedHtml: suspend (userAgent: String) -> String,
     bridgeFactory: (WebViewMessageSink) -> WebViewBridge,
 ) : WebViewPlayer {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val bridge = bridgeFactory(WebViewMessageSink(::onMessage))
 
-    private val _status = MutableStateFlow(PlaybackStatus())
+    private val _status = MutableStateFlow(
+        PlaybackStatus(state = PlaybackState.Uninitialized(isInitializing = false)),
+    )
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
 
     private val _progress = MutableStateFlow(Progress())
@@ -63,35 +65,49 @@ internal class WebViewPlayerImpl(
     private val pending = mutableListOf<String>() // command JSONs queued until the page connects
     private var released = false
 
+    private data class PendingLoad(
+        val source: PlayableItem.YtVideoId,
+        val startPositionMs: Long,
+        val playWhenReady: Boolean,
+        val config: PlaybackConfig,
+    )
+
+    private var pendingLoad: PendingLoad? = null
+
     /** The last-applied config; [setConfig] diffs against it so only changed fields hit the page. */
     private var appliedConfig = PlaybackConfig()
 
     override fun load(source: PlayableItem.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
-        val videoId = source.videoId
+        val request = PendingLoad(source, startPositionMs, playWhenReady, config)
+        when (val state = _status.value.state) {
+            is PlaybackState.Uninitialized -> {
+                pendingLoad = request
+                if (!state.isInitializing) initializePage()
+                return
+            }
+            is PlaybackState.Error -> {
+                if (!state.error.canRetry) return
+                if (state.error.needReset) {
+                    pendingLoad = request
+                    initializePage()
+                    return
+                }
+            }
+            PlaybackState.Idle, is PlaybackState.Prepared -> Unit
+        }
+        sendLoad(request)
+    }
+
+    private fun initializePage() {
         sessionId = (Random.nextLong() and Long.MAX_VALUE).toString()
         connected = false
         pending.clear()
-        appliedConfig = config
-        // Audio-only disables the video *track* (via the JS below), not the WebView: it keeps showing
-        // YouTube's thumbnail, and a hidden/zero-size windowed WebView (JCEF) never initializes and
-        // won't play at all. The bridge brings its view to the front when the page loads; nothing here
-        // toggles surface visibility (each engine owns its own view — see WebViewBridge).
-        _status.update {
-            it.copy(
-                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null, videoSize = null,
-                volume = config.volume, speed = config.speed,
-            )
-        }
-        _progress.value = Progress(positionMs = startPositionMs)
-        // The Load command is the first thing sent once the page connects; config rides along in the
-        // batch so volume/speed/audio-only apply before the first frame.
-        pending.add(
-            WebViewProtocol.encodeLoad(videoId, startPositionMs, playWhenReady, config.volume, config.speed, config.audioOnly),
-        )
+        bridge.setVisible(false)
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
         val boot = bootScript(sessionId)
         scope.launch {
-            val html = runCatching { fetchEmbedHtml() }.getOrElse {
+            val html = runCatching { embedHtml(bridge.userAgent) }.getOrElse {
                 // The page never came up — the legacy WV_LOAD_ERROR shape: retryable, dead session.
                 fail("E60031", "failed to fetch the YouTube embed page: ${it.message}", needReset = true)
                 return@launch
@@ -100,6 +116,21 @@ internal class WebViewPlayerImpl(
                 if (!released) bridge.load(HtmlInjector.inject(html, boot), EMBED_URL)
             }
         }
+    }
+
+    private fun sendLoad(request: PendingLoad) {
+        appliedConfig = request.config
+        _progress.value = Progress(positionMs = request.startPositionMs)
+        command(
+            WebViewProtocol.encodeLoad(
+                request.source.videoId,
+                request.startPositionMs,
+                request.playWhenReady,
+                request.config.volume,
+                request.config.speed,
+                request.config.audioOnly,
+            ),
+        )
     }
 
     override fun play() = command(WebViewProtocol.encodePlay())
@@ -112,11 +143,13 @@ internal class WebViewPlayerImpl(
     }
 
     override fun stop() {
-        command(WebViewProtocol.encodeStop())
+        when (_status.value.state) {
+            is PlaybackState.Uninitialized -> Unit
+            is PlaybackState.Error -> initializePage()
+            PlaybackState.Idle, is PlaybackState.Prepared -> command(WebViewProtocol.encodeStop())
+        }
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null) }
-        // The WebView stays attached/visible (paused on its thumbnail). When another engine takes over
-        // it brings its own surface to the front; when this engine is released the view is detached.
+        bridge.setVisible(false)
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -163,7 +196,7 @@ internal class WebViewPlayerImpl(
         released = true
         scope.cancel()
         bridge.release()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false) }
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
     /** Send a `ymusicAction` command, or queue it until the page connects. Main thread. */
@@ -182,23 +215,30 @@ internal class WebViewPlayerImpl(
         when (val e = WebViewProtocol.decodeEvent(channel, payload, sessionId)) {
             WebViewEvent.Connected -> {
                 connected = true
+                _status.update { it.copy(state = PlaybackState.Idle) }
                 val queued = pending.toList()
                 pending.clear()
                 queued.forEach { bridge.evaluate("window.ymusicAction(${JsonPrimitive(it)})") }
+                pendingLoad?.also {
+                    pendingLoad = null
+                    sendLoad(it)
+                }
             }
             is WebViewEvent.StateChanged -> _status.update {
-                it.copy(
-                    state = e.state,
-                    playWhenReady = e.playWhenReady,
-                    error = if (e.state == PlaybackState.Error) {
+                val state = when (e.state) {
+                    WebPlaybackState.Idle -> PlaybackState.Idle
+                    WebPlaybackState.Buffering -> PlaybackState.Prepared(e.playWhenReady, buffering = true, ended = false)
+                    WebPlaybackState.Ready -> PlaybackState.Prepared(e.playWhenReady, buffering = false, ended = false)
+                    WebPlaybackState.Ended -> PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true)
+                    WebPlaybackState.Error -> PlaybackState.Error(
                         PlayerError(
                             e.errorCode ?: "E60033", e.errorMessage,
                             canRetry = e.errorCanRetry, needReset = e.errorNeedReset,
-                        )
-                    } else {
-                        null
-                    },
-                )
+                        ),
+                    )
+                }
+                bridge.setVisible(state is PlaybackState.Prepared || state is PlaybackState.Error && state.error.code != "E60031")
+                it.copy(state = state)
             }
             is WebViewEvent.Progress -> _progress.update {
                 it.copy(
@@ -215,19 +255,8 @@ internal class WebViewPlayerImpl(
     }
 
     private fun fail(code: String, message: String, needReset: Boolean = false) = _status.update {
-        it.copy(state = PlaybackState.Error, playWhenReady = false, error = PlayerError(code, message, needReset = needReset))
-    }
-
-    private suspend fun fetchEmbedHtml(): String = withContext(Dispatchers.Default) {
-        val resp = httpClient.execute(RequestBuilder()
-            .header("User-Agent", bridge.userAgent)
-            .url(EMBED_URL).build())
-        try {
-            check(resp.isSuccessful) { "HTTP ${resp.code}" }
-            resp.body.utf8String()
-        } finally {
-            resp.close()
-        }
+        bridge.setVisible(false)
+        it.copy(state = PlaybackState.Error(PlayerError(code, message, needReset = needReset)))
     }
 
     /**
@@ -246,7 +275,24 @@ internal class WebViewPlayerImpl(
         append("\n").append(engineJs)
     }
 
-    private companion object {
+    companion object {
+        fun embedHtmlFetcher(httpClient: KmpHttpClient): suspend (String) -> String = { userAgent ->
+            withContext(Dispatchers.Default) {
+                val resp = httpClient.execute(
+                    RequestBuilder()
+                        .header("User-Agent", userAgent)
+                        .url(EMBED_URL)
+                        .build(),
+                )
+                try {
+                    check(resp.isSuccessful) { "HTTP ${resp.code}" }
+                    resp.body.utf8String()
+                } finally {
+                    resp.close()
+                }
+            }
+        }
+
         const val EMBED_URL = "https://www.youtube.com/embed"
     }
 }

@@ -7,13 +7,16 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,7 +42,7 @@ internal class AndroidLocalPlayer(
 ) : LocalPlayer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val _status = MutableStateFlow(PlaybackStatus())
+    private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
 
     private val _progress = MutableStateFlow(Progress())
@@ -65,8 +68,10 @@ internal class AndroidLocalPlayer(
     /** The last-applied config; [setConfig] diffs against it so only changed fields re-touch ExoPlayer. */
     private var appliedConfig = PlaybackConfig()
 
-    /** This engine's own video surface within the shared container; it owns the view's visibility. */
-    private val surfaceView: SurfaceView? = videoContainer?.let { SurfaceView(it.context) }
+    /** Legacy LocalPlayerView shape: one root owns the surface and caption overlay visibility. */
+    private val rootView: FrameLayout? = videoContainer?.let { FrameLayout(it.context) }
+    private val surfaceView: SurfaceView? = rootView?.let { SurfaceView(it.context) }
+    private val subtitleView: SubtitleView? = rootView?.let { SubtitleView(it.context) }
 
     // Audio-track id → its (group, index) for TrackSelectionOverride, refreshed on onTracksChanged.
     private val audioGroups = mutableMapOf<String, Pair<Tracks.Group, Int>>()
@@ -80,8 +85,9 @@ internal class AndroidLocalPlayer(
             override fun onPlayerError(error: PlaybackException) {
                 _status.update {
                     it.copy(
-                        state = PlaybackState.Error, playWhenReady = false,
-                        error = PlayerError("E60010", error.errorCodeName + ": " + error.message),
+                        state = PlaybackState.Error(
+                            PlayerError("E60010", error.errorCodeName + ": " + error.message),
+                        ),
                     )
                 }
             }
@@ -96,13 +102,39 @@ internal class AndroidLocalPlayer(
             }
 
             override fun onTracksChanged(tracks: Tracks) = updateTrackStates(tracks)
+
+            override fun onCues(cueGroup: CueGroup) {
+                subtitleView?.setCues(cueGroup.cues)
+            }
         })
-        surfaceView?.let { sv ->
-            sv.visibility = View.GONE
+        rootView?.let { root ->
+            root.visibility = View.GONE
+            root.setBackgroundColor(android.graphics.Color.BLACK)
+            surfaceView?.let { sv ->
+                root.addView(
+                    sv,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    ),
+                )
+            }
+            subtitleView?.let { captions ->
+                captions.visibility = View.GONE
+                root.addView(
+                    captions,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    ),
+                )
+            }
             videoContainer?.addView(
-                sv,
+                root,
                 ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
             )
+        }
+        surfaceView?.let { sv ->
             sv.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) {
                     if (!released) player.setVideoSurface(holder.surface)
@@ -121,9 +153,9 @@ internal class AndroidLocalPlayer(
     /** Show/hide this engine's `SurfaceView` in the shared container (a no-op without one). When
      *  shown, raise it to the front so this (active) engine's picture covers a co-hosted surface. */
     private fun showSurface(visible: Boolean) {
-        surfaceView?.let { sv ->
-            sv.visibility = if (visible) View.VISIBLE else View.GONE
-            if (visible) sv.bringToFront()
+        rootView?.let { root ->
+            root.visibility = if (visible) View.VISIBLE else View.GONE
+            if (visible) root.bringToFront()
         }
     }
 
@@ -139,9 +171,10 @@ internal class AndroidLocalPlayer(
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, config.audioOnly)
             .build()
+        applyCaptions(config)
         _status.update {
             it.copy(
-                state = PlaybackState.Buffering, playWhenReady = playWhenReady, error = null,
+                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
                 volume = config.volume, speed = config.speed,
             )
         }
@@ -149,7 +182,7 @@ internal class AndroidLocalPlayer(
         player.setMediaItem(MediaItem.fromUri(uri.toPlayableUri()), startPositionMs)
         player.playWhenReady = playWhenReady
         player.prepare()
-        showSurface(!config.audioOnly)
+        showSurface(true)
     }
 
     override fun play() {
@@ -172,7 +205,7 @@ internal class AndroidLocalPlayer(
         player.stop()
         player.clearMediaItems()
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false, videoSize = null, error = null) }
+        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
         showSurface(false)
     }
 
@@ -212,7 +245,7 @@ internal class AndroidLocalPlayer(
             .build()
         _status.update { it.copy(videoSize = if (ao) null else it.videoSize) }
         _videoQuality.update { it.copy(preferredQuality = quality) }
-        if (_status.value.state != PlaybackState.Idle) showSurface(!ao)
+        if (_status.value.state is PlaybackState.Prepared) showSurface(true)
     }
 
     private fun applyCaptions(config: PlaybackConfig) {
@@ -224,6 +257,7 @@ internal class AndroidLocalPlayer(
             .apply { if (!undetermined) setPreferredTextLanguage(lang) }
             .build()
         _captions.update { it.copy(selectedLanguage = if (off) null else lang) }
+        subtitleView?.visibility = if (config.captionVisible) View.VISIBLE else View.GONE
     }
 
     override fun selectAudioTrack(id: String) {
@@ -293,23 +327,22 @@ internal class AndroidLocalPlayer(
         if (released) return
         released = true
         scope.cancel()
-        surfaceView?.let { sv -> videoContainer?.removeView(sv) }
+        rootView?.let { root -> videoContainer?.removeView(root) }
         player.release()
-        _status.update { it.copy(state = PlaybackState.Idle, playWhenReady = false) }
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
     private fun syncFromPlayer(playbackState: Int) {
         val mapped = when (playbackState) {
             Player.STATE_IDLE -> PlaybackState.Idle
-            Player.STATE_BUFFERING -> PlaybackState.Buffering
-            Player.STATE_READY -> PlaybackState.Ready
-            Player.STATE_ENDED -> PlaybackState.Ended
+            Player.STATE_BUFFERING -> PlaybackState.Prepared(player.playWhenReady, buffering = true, ended = false)
+            Player.STATE_READY -> PlaybackState.Prepared(player.playWhenReady, buffering = false, ended = false)
+            Player.STATE_ENDED -> PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true)
             else -> PlaybackState.Idle
         }
         _status.update {
             it.copy(
-                state = if (it.state == PlaybackState.Error) it.state else mapped,
-                playWhenReady = player.playWhenReady,
+                state = if (it.state is PlaybackState.Error) it.state else mapped,
             )
         }
         _progress.update { it.copy(durationMs = durationOrUnknown()) }

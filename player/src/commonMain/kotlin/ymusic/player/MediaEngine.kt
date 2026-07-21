@@ -44,8 +44,8 @@ interface MediaEngine<in S : PlayableItem> {
 
     /**
      * Start loading [source] and return immediately. Readiness is observed through [status]: the
-     * state goes [PlaybackState.Buffering] → [PlaybackState.Ready], or [PlaybackState.Error] (with
-     * [PlaybackStatus.error]) on failure — loading never throws. [startPositionMs] seeks before the
+     * state becomes [PlaybackState.Prepared] (first buffering, then ready), or [PlaybackState.Error]
+     * on failure — loading never throws. [startPositionMs] seeks before the
      * first frame; playback begins as soon as it is ready when [playWhenReady]. A second [load]
      * replaces whatever was loaded before. [S] is the engine's source variant — a mismatched source
      * is a compile error, not a runtime failure.

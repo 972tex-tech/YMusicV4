@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
@@ -90,11 +91,16 @@ private class AndroidWebViewBridge(
             webView,
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+        webView.visibility = View.GONE
     }
 
     override fun load(html: String, baseUrl: String) {
-        webView.bringToFront() // this engine is becoming active — show its surface over a co-hosted one
         webView.loadDataWithBaseURL(baseUrl, html, "text/html", "UTF-8", baseUrl)
+    }
+
+    override fun setVisible(visible: Boolean) {
+        webView.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) webView.bringToFront()
     }
 
     override fun evaluate(js: String) {
