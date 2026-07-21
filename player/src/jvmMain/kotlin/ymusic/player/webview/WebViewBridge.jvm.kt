@@ -18,7 +18,6 @@ import org.cef.misc.StringRef
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import ymusic.player.WebViewPlayerContext
-import java.awt.Dimension
 import javax.swing.SwingUtilities
 import kotlin.math.min
 
@@ -64,7 +63,7 @@ private class JcefWebViewBridge(
             "remoteDebug:function(){}}"
 
     private val client = context.cefClient
-    private val container = context.container
+    private val surface = context.surface
 
     @Volatile private var pendingHtml: String? = null
 
@@ -173,9 +172,7 @@ private class JcefWebViewBridge(
         // Off-screen rendering into a lightweight component: real z-order under Compose, and the
         // page always sees a real-size viewport regardless of how small the UI draws the surface
         // (needs windowless_rendering_enabled on CefApp — the shell's CefManager sets it).
-        browser = ImageOsrBrowser(client, "about:blank", Dimension(640, 360))
-        container.add(browser.uiComponent)
-        browser.uiComponent.isVisible = false
+        browser = ImageOsrBrowser(client, "about:blank", surface)
         browser.createImmediately()
     }
 
@@ -185,30 +182,15 @@ private class JcefWebViewBridge(
     }
 
     override fun setVisible(visible: Boolean) {
-        val update = {
-            browser.uiComponent.isVisible = visible
-            if (visible) bringToFront()
-        }
-        if (SwingUtilities.isEventDispatchThread()) update() else SwingUtilities.invokeLater(update)
+        surface.setVisible(visible)
     }
 
     override fun evaluate(js: String) {
         browser.executeJavaScript(js, browser.url ?: EMBED_URL, 0)
     }
 
-    /** Raise this WebView to the top of the shared OverlayLayout container (the active engine shows). */
-    private fun bringToFront() {
-        val c = browser.uiComponent
-        val move = {
-            if (c.parent === container) container.setComponentZOrder(c, 0)
-            container.revalidate()
-            container.repaint()
-        }
-        if (SwingUtilities.isEventDispatchThread()) move() else SwingUtilities.invokeLater(move)
-    }
-
     override fun release() {
-        container.remove(browser.uiComponent)
+        surface.setVisible(false)
         client.removeRequestHandler()
         client.removeMessageRouter(router)
         client.removeLifeSpanHandler()

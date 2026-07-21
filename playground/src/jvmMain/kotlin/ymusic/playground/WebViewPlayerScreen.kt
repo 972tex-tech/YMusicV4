@@ -1,6 +1,8 @@
 package ymusic.playground
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,23 +24,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kmphttp.KmpHttpClient
 import org.cef.CefClient
+import org.cef.browser.JcefOsrSurface
 import ymusic.player.PlayableItem
 import ymusic.player.PlaybackConfig
 import ymusic.player.VideoQualityState
 import ymusic.player.WebViewPlayer
 import ymusic.player.WebViewPlayerContext
 import ymusic.player.createWebViewPlayer
-import java.awt.BorderLayout
-import javax.swing.JPanel
 
 /**
  * WebView YouTube check: enter a video id, [WebViewPlayer.load] it, drive transport. The player fills
- * the [JPanel] we hand it (container-injection) and a `SwingPanel` shows that panel — the WebView is
- * the video surface.
+ * a Compose-rendered JCEF off-screen surface, which is also the interactive video surface.
  */
 @Composable
 fun WebViewPlayerScreen(
@@ -47,9 +53,9 @@ fun WebViewPlayerScreen(
     httpClient: KmpHttpClient,
     modifier: Modifier = Modifier,
 ) {
-    val container = remember { JPanel(BorderLayout()) }
+    val surface = remember { JcefOsrSurface() }
     val player: WebViewPlayer = remember {
-        createWebViewPlayer(WebViewPlayerContext(cefClient, container), engineJs, appVersion = 1, httpClient = httpClient)
+        createWebViewPlayer(WebViewPlayerContext(cefClient, surface), engineJs, appVersion = 1, httpClient = httpClient)
     }
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
@@ -95,8 +101,7 @@ fun WebViewPlayerScreen(
             )
         }
 
-        // The WebView surface (the player already added its browser into `container`).
-        SwingPanel(factory = { container }, modifier = Modifier.fillMaxWidth().weight(1f))
+        WebViewSurface(surface, Modifier.fillMaxWidth().weight(1f))
 
         Text("${formatMillis(position)} / ${if (duration > 0L) formatMillis(duration) else "--:--"}")
         Slider(
@@ -117,6 +122,71 @@ fun WebViewPlayerScreen(
         Text("Volume ${(config.volume * 100).toInt()}%")
         Slider(value = config.volume, onValueChange = { config = config.copy(volume = it); player.setConfig(config) })
     }
+}
+
+@Composable
+private fun WebViewSurface(surface: JcefOsrSurface, modifier: Modifier) {
+    val frame by surface.frame.collectAsState()
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val bitmap = remember(frame) { frame?.toComposeImageBitmap() }
+
+    Box(modifier.onSizeChanged { size = it }) {
+        bitmap?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().pointerInput(surface, size) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: continue
+                            val point = mapToLogical(change.position, size, surface) ?: continue
+                            when (event.type) {
+                                PointerEventType.Press -> surface.mouse(
+                                    java.awt.event.MouseEvent.MOUSE_PRESSED,
+                                    point.first,
+                                    point.second,
+                                    java.awt.event.MouseEvent.BUTTON1,
+                                    clickCount = 1,
+                                )
+                                PointerEventType.Release -> surface.mouse(
+                                    java.awt.event.MouseEvent.MOUSE_RELEASED,
+                                    point.first,
+                                    point.second,
+                                    java.awt.event.MouseEvent.BUTTON1,
+                                    clickCount = 1,
+                                )
+                                PointerEventType.Scroll -> surface.wheel(
+                                    point.first,
+                                    point.second,
+                                    change.scrollDelta.y.toInt().coerceIn(-1, 1),
+                                )
+                                else -> surface.mouse(
+                                    java.awt.event.MouseEvent.MOUSE_MOVED,
+                                    point.first,
+                                    point.second,
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+private fun mapToLogical(position: Offset, size: IntSize, surface: JcefOsrSurface): Pair<Int, Int>? {
+    if (size.width <= 0 || size.height <= 0) return null
+    val logical = surface.logicalSize
+    val scale = minOf(size.width.toDouble() / logical.width, size.height.toDouble() / logical.height)
+    val left = (size.width - logical.width * scale) / 2.0
+    val top = (size.height - logical.height * scale) / 2.0
+    if (
+        position.x < left || position.x >= left + logical.width * scale ||
+        position.y < top || position.y >= top + logical.height * scale
+    ) return null
+    return ((position.x - left) / scale).toInt() to ((position.y - top) / scale).toInt()
 }
 
 private fun formatMillis(ms: Long): String {
