@@ -57,6 +57,7 @@
     </plurals>
 
     <string name="audio_only">Chỉ phát âm thanh</string>
+    <string name="video_quality_auto">Tự động</string>
     <string name="captions_off">Tắt phụ đề</string>
     <string name="up_next">Tiếp theo</string>
     <string name="remove_from_queue">Xóa khỏi hàng đợi</string>

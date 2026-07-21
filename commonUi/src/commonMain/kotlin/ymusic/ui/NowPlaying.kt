@@ -46,7 +46,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.ClosedCaptionOff
 import androidx.compose.material.icons.outlined.FileDownload
-import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -85,11 +84,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
-import ymusic.dynamicengine.yt.YtThumb
 import ymusic.player.LoopMode
 import ymusic.player.PlayableItem
 import ymusic.player.PlaybackState
 import ymusic.player.PlaybackStatus
+import ymusic.player.VideoQualityOption
+import ymusic.player.VideoQualityState
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.audio_only
 import ymusic.ui.resources.captions_off
@@ -113,6 +113,7 @@ import ymusic.ui.resources.retry
 import ymusic.ui.resources.sleep_minutes
 import ymusic.ui.resources.sleep_off_remaining
 import ymusic.ui.resources.up_next
+import ymusic.ui.resources.video_quality_auto
 
 internal fun formatMillis(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
@@ -135,7 +136,6 @@ fun MiniPlayer(
     val status by coordinator.player.status.collectAsState()
     val progress by coordinator.player.progress.collectAsState()
     val queue by coordinator.player.queue.collectAsState()
-    val config by coordinator.player.config.collectAsState()
     val item = queue.currentItem ?: return
 
     Column(Modifier.background(DesignColors.SurfaceDim)) {
@@ -160,11 +160,6 @@ fun MiniPlayer(
             ) {
                 if (surface != null) {
                     surface.invoke(Modifier.fillMaxSize())
-                    // No picture to show → cover the (blank) surface with the item's art. The
-                    // surface itself must stay hosted: an unhosted WebView stops playing.
-                    if (noPicture(config.audioOnly, item, status)) {
-                        ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
-                    }
                 } else {
                     ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
                 }
@@ -200,41 +195,6 @@ fun MiniPlayer(
 }
 
 /**
- * True when the active source has no picture to render — audio-only mode (any engine), or a local
- * file with no video track. A YouTube source outside audio-only always renders its own picture (the
- * WebView never reports a videoSize), so it is excluded from the videoSize test.
- */
-private fun noPicture(audioOnly: Boolean, item: PlayableItem, status: PlaybackStatus): Boolean =
-    audioOnly || (item is PlayableItem.LocalUri && status.videoSize == null)
-
-/**
- * The legacy `LocalPlayerView` shutter: the item's art + a headphone glyph drawn OVER the video
- * surface whenever [noPicture]. The surface stays hosted underneath — an unhosted WebView stops
- * playing even audio.
- */
-@Composable
-private fun AudioOnlyShutter(thumbs: List<YtThumb>) {
-    BoxWithConstraints(
-        Modifier.fillMaxSize().background(Color(0xFF222222)),
-        contentAlignment = Alignment.Center,
-    ) {
-        val tile = (if (maxWidth < maxHeight) maxWidth else maxHeight) * 0.55f
-        Box(
-            Modifier.size(tile).clip(RoundedCornerShape(10.dp)).background(Color(0xFF333333)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Headphones,
-                contentDescription = stringResource(Res.string.audio_only),
-                modifier = Modifier.size(tile * 0.4f),
-                tint = Color(0xFF777777),
-            )
-            ThumbImage(thumbs, tile, RoundedCornerShape(10.dp))
-        }
-    }
-}
-
-/**
  * Full Now Playing (design/final/now-playing.html). Layout follows the window's orientation:
  * portrait/tablet = the top-bar · video · meta · seek · transport · queue column; landscape
  * (width > height) = the split — video fills the left with the controls overlaid on it, and a fixed
@@ -262,14 +222,10 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     val queue by player.queue.collectAsState()
-    val config by player.config.collectAsState()
     val current = queue.currentItem
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
-        if (current != null && noPicture(config.audioOnly, current, status)) {
-            AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
-        }
         AutoHidingOverlay(playing = status.playWhenReady) {
             VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
         }
@@ -288,7 +244,6 @@ private fun PortraitNowPlaying(
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     val queue by player.queue.collectAsState()
-    val config by player.config.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
 
@@ -303,9 +258,6 @@ private fun PortraitNowPlaying(
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF222222))) {
             graph.playerSurface(Modifier.fillMaxSize())
-            if (current != null && noPicture(config.audioOnly, current, status)) {
-                AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
-            }
             // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
             // the top-level overload and cannot be called from Box scope.
             androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
@@ -394,16 +346,12 @@ private fun LandscapeNowPlaying(
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     val queue by player.queue.collectAsState()
-    val config by player.config.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
 
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF222222))) {
             graph.playerSurface(Modifier.fillMaxSize())
-            if (current != null && noPicture(config.audioOnly, current, status)) {
-                AudioOnlyShutter(coordinator.metadataFor(current)?.thumbs.orEmpty())
-            }
             AutoHidingOverlay(playing = status.playWhenReady) {
                 VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
             }
@@ -602,6 +550,13 @@ private fun PlaybackErrorRow(player: ymusic.player.Player, error: ymusic.player.
 private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClose: () -> Unit) {
     val player = coordinator.player
     val quality by player.videoQuality.collectAsState()
+    val audioOnlyLabel = stringResource(Res.string.audio_only)
+    val autoQualityLabel = stringResource(Res.string.video_quality_auto)
+    fun qualityLabel(option: VideoQualityOption): String = when (option.quality) {
+        VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
+        VideoQualityState.AUTO -> autoQualityLabel
+        else -> option.label
+    }
 
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
@@ -616,9 +571,9 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
         SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(
-                label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.label
+                label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
                     ?: quality.preferredQuality,
-                options = quality.options.map { it.quality to it.label },
+                options = quality.options.map { it.quality to qualityLabel(it) },
                 onSelect = { player.selectVideoQuality(it) },
             )
         }
@@ -627,7 +582,11 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 }
 
 @Composable
-internal fun QualityChip(label: String, options: List<Pair<String, String>>, onSelect: (String) -> Unit) {
+internal fun QualityChip(
+    label: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         Text(
