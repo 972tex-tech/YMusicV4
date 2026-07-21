@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -168,7 +168,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val status by graph.player.status.collectAsState()
         val needsSurface = queue.currentItem is PlayableItem.YtVideoId || status.videoSize != null
 
-        BoxWithConstraints {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
             // design/final/home.html: landscape puts the tab row inline in the app bar.
             val wide = maxWidth > maxHeight && maxWidth >= 600.dp
             ModalNavigationDrawer(
@@ -216,7 +216,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         containerColor = Color.White,
                         topBar = {
                             if (!searching) {
-                                Column(Modifier.statusBarsPadding().shadow(barShadow).background(Color.White)) {
+                                Column(Modifier.shadow(barShadow).background(Color.White)) {
                                     Box(
                                         Modifier.clipToBounds().layout { measurable, constraints ->
                                             val placeable = measurable.measure(constraints)
@@ -283,10 +283,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     }
                 }
             }
-        }
-
-        if (nowPlayingOpen) {
-            NowPlayingScreen(graph, coordinator, onClose = { nowPlayingOpen = false })
+            if (nowPlayingOpen) {
+                NowPlayingScreen(graph, coordinator, onClose = { nowPlayingOpen = false })
+            }
         }
     }
 }

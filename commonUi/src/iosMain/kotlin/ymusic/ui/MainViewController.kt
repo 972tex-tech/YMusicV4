@@ -16,17 +16,25 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.window.ComposeUIViewController
-import kmphttp.InMemoryCookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.cinterop.ExperimentalForeignApi
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import platform.Foundation.NSBundle
+import platform.Foundation.NSCachesDirectory
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.NSUserDomainMask
 import platform.Foundation.stringWithContentsOfFile
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.imageloader.DiskScaledImageCache
+import ymusic.imageloader.ImageLoader
+import ymusic.imageloader.fileFetcher
+import ymusic.imageloader.networkFetcher
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -73,22 +81,40 @@ private fun Center(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 private suspend fun buildIosGraph(container: UIView): AppGraph {
-    // A live cookie jar (NOT NO_COOKIES) so the engine carries YouTube's anonymous session cookies.
-    val httpClient = KmpHttpClient.create { cookieJar = InMemoryCookieJar() }
-    val engines = DynamicEngineManager(httpClient, appVersion = 1)
+    // One live store shared by InnerTube HTTP and WKWebView's own YouTube requests.
+    val cookies = IosWebViewCookieJar()
+    val engineClient = KmpHttpClient.create { }
+    val playerClient = KmpHttpClient.create { cookieJar = cookies }
+    val engines = DynamicEngineManager(engineClient, appVersion = 1, logger = IosLogger, cookieJar = cookies)
     engines.start()
+
+    val cacheRoot = (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
+        .toPath()
+        .resolve("ymusic-images")
+    val imageLoader = ImageLoader(
+        fetchers = listOf(
+            networkFetcher(KmpHttpClient.create { }, FileSystem.SYSTEM, cacheRoot.resolve("source")),
+            fileFetcher(),
+        ),
+        scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheRoot.resolve("scaled")),
+    )
 
     val engineJs = loadWebViewJs()
     val player = createPlayer(
         PlayerEngines(
             local = { createLocalPlayer(LocalPlayerContext()) },
-            webView = { createWebViewPlayer(WebViewPlayerContext(container), engineJs, appVersion = 1, httpClient) },
+            webView = { createWebViewPlayer(WebViewPlayerContext(container), engineJs, appVersion = 1, playerClient) },
         ),
     )
 
-    return AppGraph(engines, player, mediaStore = null, scanLibraryFolder = null) { modifier ->
-        UIKitView(factory = { container }, modifier = modifier)
-    }
+    return AppGraph(
+        engines = engines,
+        player = player,
+        mediaStore = null,
+        scanLibraryFolder = null,
+        imageLoader = imageLoader,
+        surfaceScalesDown = true,
+    ) { modifier -> UIKitView(factory = { container }, modifier = modifier) }
 }
 
 /** The built `webview-js` bundle, shipped as an app-bundle resource (see the Xcode project). */
