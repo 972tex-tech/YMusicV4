@@ -387,7 +387,6 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
     private var completeError: IOException? = null
     private var closed = false
     private var task: NSURLSessionDataTask? = null
-    private var taskSuspended = false
 
     /**
      * Attach a task, which will be canceled automatically when close this instance.
@@ -423,17 +422,11 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
                     // Resume as soon as there is room again. Waiting until the buffer is entirely
                     // empty can deadlock a streaming consumer that needs the next network chunk to
                     // finish parsing the current value (the large YouTube Home response hit this).
-                    if (taskSuspended && hotBuffer.size < preBufferedSize) {
-                        taskSuspended = false
-                        task?.resume()
-                    }
+                    if (hotBuffer.size < preBufferedSize) task?.resume()
                     return toRead
                 }
                 if (completed) return -1
-                if (taskSuspended) {
-                    taskSuspended = false
-                    task?.resume()
-                }
+                task?.resume()
                 suspendCondition.pause()
             }
             suspendCondition.await()
@@ -472,10 +465,7 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
         synchronized(hotBufferGuard) {
             if (closed) return
             hotBuffer.write(didReceiveData)
-            if (hotBuffer.size >= preBufferedSize && !taskSuspended) {
-                taskSuspended = true
-                dataTask.suspend()
-            }
+            if (hotBuffer.size >= preBufferedSize) dataTask.suspend()
         }
         suspendCondition.resume()
     }
@@ -505,7 +495,6 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
                 if (!closed) {
                     closed = true
                     task = null
-                    taskSuspended = false
                     hotBuffer.clear()
                     notifyClose = true
                 }
