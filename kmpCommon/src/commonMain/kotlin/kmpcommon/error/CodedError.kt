@@ -1,7 +1,7 @@
 package kmpcommon.error
 
 /**
- * An error carrying a stable, boundary-crossing **code** (see CLAUDE.md "Error Handling"): either a
+ * An error carrying a stable, boundary-crossing **code** (see AGENTS.md "Error Handling"): either a
  * **well-known category** the UI localizes (`"network"`, `"parse"`, …) or a **site code**
  * (`E12375` — a unique hardcoded literal at exactly one throw/classification site, answered by a
  * global search). The code survives every hop (Kotlin ↔ JS ↔ server) unchanged: tiers that receive

@@ -8,8 +8,8 @@
 #         E4xxxx :kmpFfmpeg | E5xxxx :media-store / :media-scanner | E6xxxx :player
 
 E10001 - (example) kmpCommon CodedErrorTest fixture
-E12345 - (example) doc placeholder in CLAUDE.md minting rule
-E12375 - (example) doc placeholder in CLAUDE.md / CodedError kdoc
+E12345 - (example) doc placeholder in AGENTS.md minting rule
+E12375 - (example) doc placeholder in AGENTS.md / CodedError kdoc
 
 E20001 - uncaught engine script error (engine-js commandHandler classifier fallback)
 E20002 - uncaught host command-handler error (dynamic-engine CommandHandler)

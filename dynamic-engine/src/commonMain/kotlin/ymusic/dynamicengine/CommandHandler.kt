@@ -26,7 +26,7 @@ internal fun interface CommandHandler {
 /**
  * Wrap [handler] in the host error contract → a pipe handler for [DynamicEngine.onAccept]. ENDs on
  * success; on ANY throw, classifies it into the typed [WireError], LOGS it at this birth site
- * through [DynamicEngine.logger] (with full native fidelity — the real [Throwable] — per CLAUDE.md
+ * through [DynamicEngine.logger] (with full native fidelity — the real [Throwable] — per AGENTS.md
  * "Log at the birth site"), and RESETs the pipe with the structured reason so the JS caller's
  * `callHost`/`hostError` rebuild a coded error. The transport's own throw→RESET is only a dumb
  * backstop (message, no code); this is where the `{code, …}` contract is minted on the host side.

@@ -84,7 +84,7 @@ re-mints** (cause chain; the deepest code wins), so a user report is answered by
   "cause": { "name": "…", "message": "…" } }
 ```
 
-Codes come in two kinds (CLAUDE.md "Error Handling"):
+Codes come in two kinds (AGENTS.md "Error Handling"):
 - **Categories** — the small shared vocabulary all tiers classify into, localized by the app:
   `network` (transport; retryable), `parse` (scraped shape not understood → ship new JS), `oom`
   (engine gave out). Open set: an unknown category (newer remote JS/server than this app build)
