@@ -85,7 +85,14 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val cookies = IosWebViewCookieJar()
     val engineClient = KmpHttpClient.create { }
     val playerClient = KmpHttpClient.create { cookieJar = cookies }
-    val engines = DynamicEngineManager(engineClient, appVersion = 1, logger = IosLogger, cookieJar = cookies)
+    val settings = IosSettingsStore()
+    val engines = DynamicEngineManager(
+        engineClient,
+        appVersion = 1,
+        logger = IosLogger,
+        cookieJar = cookies,
+        settings = settings,
+    )
     engines.start()
 
     val cacheRoot = (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
@@ -113,6 +120,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         mediaStore = null,
         scanLibraryFolder = null,
         imageLoader = imageLoader,
+        settings = settings,
         surfaceScalesDown = true,
     ) { modifier -> UIKitView(factory = { container }, modifier = modifier, interactive = true) }
 }

@@ -74,11 +74,14 @@ import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.browse
 import ymusic.player.PlayableItem
+import ymusic.player.VideoQualityState
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
 import ymusic.ui.resources.Res
@@ -133,6 +136,14 @@ fun App(graph: AppGraph) {
     val tag = uiLanguage.ifBlank { null }
     remember(tag) { applyUiLocale(tag) }
     var section by rememberSaveable { mutableStateOf(AppSection.Discover) }
+    LaunchedEffect(graph.player, graph.settings) {
+        val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUDIO_ONLY).value
+        graph.player.selectVideoQuality(quality)
+        graph.player.config
+            .map { it.preferVideoQuality.first }
+            .distinctUntilChanged()
+            .collect { graph.settings.putString(PlaybackQualitySettingKey, it) }
+    }
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides direction) {

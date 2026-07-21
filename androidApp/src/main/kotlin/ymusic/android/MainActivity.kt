@@ -87,12 +87,14 @@ class MainActivity : ComponentActivity() {
         // protocol), so cookie policy lives in the remotely-updatable bundle.
         val platformCookies = WebViewCookieJar()
         val engineClient = KmpHttpClient.create { }
+        val settings = PrefsSettingsStore.open(this)
         val engines = DynamicEngineManager(
             engineClient,
             appVersion = 1,
             logger = LogcatLogger(),
             cacheStore = androidEngineCacheStore(applicationContext),
             cookieJar = platformCookies,
+            settings = settings,
         )
         engines.start()
 
@@ -146,7 +148,7 @@ class MainActivity : ComponentActivity() {
             player,
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             imageLoader = imageLoader,
-            settings = PrefsSettingsStore.open(this),
+            settings = settings,
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the

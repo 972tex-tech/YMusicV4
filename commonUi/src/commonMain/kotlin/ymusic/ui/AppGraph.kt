@@ -10,6 +10,8 @@ import ymusic.player.Player
 import ymusic.settings.InMemorySettingsStore
 import ymusic.settings.SettingsStore
 
+internal const val PlaybackQualitySettingKey = "player.preferVideoQuality"
+
 /**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
  * running engine manager, the player facade, and the platform video surface. [playerSurface] hosts

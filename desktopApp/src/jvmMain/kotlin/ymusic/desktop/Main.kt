@@ -124,6 +124,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val cefClient = cefManager.createClient()
     val platformCookies = JcefCookieJar(cefManager.awaitCookieManager())
     val engineClient = KmpHttpClient.create { }
+    val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             engineClient,
@@ -131,6 +132,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             logger = StdoutLogger,
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
             cookieJar = platformCookies,
+            settings = settings,
         )
     }
     engines.start()
@@ -138,8 +140,6 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val mediaStore = withContext(Dispatchers.IO) {
         BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
     }
-
-    val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
 
     // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to the
     // fetcher's disk cache, decode from file) + local files + ffmpeg-extracted embedded art
