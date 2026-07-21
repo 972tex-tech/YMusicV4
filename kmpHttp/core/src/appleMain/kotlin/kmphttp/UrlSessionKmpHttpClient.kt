@@ -285,14 +285,30 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
         val headerFields = allHeaderFields
         for ((key, value) in headerFields) {
             if (key is String && value is String) {
-                builder.addUnsafeNonAscii(key, value)
+                if (key.equals("Set-Cookie", ignoreCase = true)) {
+                    // NSHTTPURLResponse exposes headers as a dictionary and folds repeated
+                    // Set-Cookie fields into one comma-delimited value. A blind comma split breaks
+                    // Expires=Wed, 21 Oct ...; split only where the next token is a cookie name.
+                    splitCombinedSetCookie(value).forEach {
+                        builder.addUnsafeNonAscii(key, it)
+                    }
+                } else {
+                    builder.addUnsafeNonAscii(key, value)
+                }
             }
         }
         return builder.build()
     }
 
+    private fun splitCombinedSetCookie(value: String): List<String> =
+        value.split(SET_COOKIE_BOUNDARY).map(String::trim).filter(String::isNotEmpty)
+
     private fun currentTimeMillis(): Long {
         return (NSDate().timeIntervalSince1970 * 1000).toLong()
+    }
+
+    private companion object {
+        val SET_COOKIE_BOUNDARY = Regex(",(?=\\s*[!#$%&'*+\\-.^_`|~0-9A-Za-z]+=)")
     }
 
     class Builder : KmpHttpClient.BaseBuilder<UrlSessionKmpHttpClient> {
