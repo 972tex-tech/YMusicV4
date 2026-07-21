@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -26,11 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.painterResource
@@ -40,8 +36,6 @@ import ymusic.ui.resources.app_name
 import ymusic.ui.resources.badge_premium
 import ymusic.ui.resources.ymusic_logo
 
-/** Premium brand marks stay green (design/final/drawer.html); the ACTIVE item is accent. */
-private val BrandGreen = DesignColors.BrandGreen
 private val BrandGreenDark = Color(0xFF15803D)
 private val BrandGreenBg = Color(0xFFEAFAF0)
 private val BrandGreenBorder = Color(0xFFCDEED9)
@@ -118,17 +112,14 @@ private fun DrawerHeader(appVersion: String?) {
 
 @Composable
 private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit) {
-    val activeBar = DesignColors.Accent
-    val activeBg = ActiveAccentBg
-    val activeDark = ActiveAccentDark
-    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) activeBg else Color.Transparent)) {
+    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) ActiveAccentBg else Color.Transparent)) {
         if (active) {
             Box(
                 Modifier
                     .align(Alignment.CenterStart)
                     .padding(vertical = 8.dp)
                     .size(width = 3.dp, height = 33.dp)
-                    .background(activeBar, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)),
+                    .background(DesignColors.Accent, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)),
             )
         }
         Row(
@@ -141,12 +132,12 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
                 null,
                 Modifier.size(23.dp),
                 tint = when {
-                    active -> activeBar
+                    active -> DesignColors.Accent
                     else -> Color(0xFF3F3F3F)
                 },
             )
             val labelStyle = when {
-                active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = activeDark)
+                active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = ActiveAccentDark)
                 else -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2C2C2C))
             }
             Text(stringResource(section.label), style = labelStyle, modifier = Modifier.weight(1f))
