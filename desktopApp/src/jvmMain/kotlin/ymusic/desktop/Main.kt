@@ -1,6 +1,8 @@
 package ymusic.desktop
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -9,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,7 +19,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -30,6 +39,7 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
@@ -149,19 +159,17 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         memoryCacheBytes = defaultMemoryCacheBudget(),
     )
 
-    // One shared video host both engines render into (OverlayLayout = the Swing FrameLayout analog):
-    // the WebView adds its browser, the VLCJ engine adds its video component, each toggling its own
-    // visibility so only the playing engine's picture shows.
-    val videoContainer = JPanel().apply { layout = OverlayLayout(this) }
+    val vlcContainer = JPanel().apply { layout = OverlayLayout(this) }
+    val webViewSurface = JcefOsrSurface()
     val webViewJs = withContext(Dispatchers.IO) { readWebViewJs() }
 
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
-                local = { createLocalPlayer(LocalPlayerContext(videoContainer)) },
+                local = { createLocalPlayer(LocalPlayerContext(vlcContainer)) },
                 webView = {
                     createWebViewPlayer(
-                        WebViewPlayerContext(cefClient, videoContainer),
+                        WebViewPlayerContext(cefClient, webViewSurface),
                         engineJs = webViewJs,
                         appVersion = 1,
                         // The embed fetch is a browser-identity request — it rides the platform
@@ -184,8 +192,74 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
         surfaceScalesDown = true,
     ) { modifier ->
-        SwingPanel(factory = { videoContainer }, modifier = modifier)
+        DesktopPlayerSurface(vlcContainer, webViewSurface, modifier)
     }
+}
+
+@Composable
+private fun DesktopPlayerSurface(vlcContainer: JPanel, webViewSurface: JcefOsrSurface, modifier: Modifier) {
+    val webVisible by webViewSurface.visible.collectAsState()
+    val frame by webViewSurface.frame.collectAsState()
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val bitmap = remember(frame) { frame?.toComposeImageBitmap() }
+
+    Box(modifier.onSizeChanged { size = it }) {
+        if (!webVisible) {
+            SwingPanel(factory = { vlcContainer }, modifier = Modifier.fillMaxSize())
+        }
+        if (webVisible && bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().pointerInput(webViewSurface, size) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: continue
+                            val point = mapToLogical(change.position.x, change.position.y, size, webViewSurface) ?: continue
+                            when (event.type) {
+                                PointerEventType.Press -> webViewSurface.mouse(
+                                    java.awt.event.MouseEvent.MOUSE_PRESSED,
+                                    point.first,
+                                    point.second,
+                                    java.awt.event.MouseEvent.BUTTON1,
+                                    clickCount = 1,
+                                )
+                                PointerEventType.Release -> webViewSurface.mouse(
+                                    java.awt.event.MouseEvent.MOUSE_RELEASED,
+                                    point.first,
+                                    point.second,
+                                    java.awt.event.MouseEvent.BUTTON1,
+                                    clickCount = 1,
+                                )
+                                PointerEventType.Scroll -> webViewSurface.wheel(
+                                    point.first,
+                                    point.second,
+                                    change.scrollDelta.y.toInt().coerceIn(-1, 1),
+                                )
+                                else -> webViewSurface.mouse(
+                                    java.awt.event.MouseEvent.MOUSE_MOVED,
+                                    point.first,
+                                    point.second,
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+private fun mapToLogical(x: Float, y: Float, size: IntSize, surface: JcefOsrSurface): Pair<Int, Int>? {
+    if (size.width <= 0 || size.height <= 0) return null
+    val logical = surface.logicalSize
+    val scale = minOf(size.width.toDouble() / logical.width, size.height.toDouble() / logical.height)
+    val left = (size.width - logical.width * scale) / 2.0
+    val top = (size.height - logical.height * scale) / 2.0
+    if (x < left || x >= left + logical.width * scale || y < top || y >= top + logical.height * scale) return null
+    return ((x - left) / scale).toInt() to ((y - top) / scale).toInt()
 }
 
 /** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */

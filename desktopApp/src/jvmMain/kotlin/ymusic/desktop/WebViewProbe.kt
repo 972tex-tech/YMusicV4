@@ -3,6 +3,7 @@ package ymusic.desktop
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.runBlocking
+import org.cef.browser.JcefOsrSurface
 import ymusic.player.PlayableItem
 import ymusic.player.PlaybackConfig
 import ymusic.player.VideoQualityState
@@ -39,6 +40,7 @@ fun main(args: Array<String>) {
     val cefClient = runBlocking { cef.createClient() }
     val webViewJs = readWebViewJsProbe()
 
+    val surface = JcefOsrSurface()
     val container = JPanel().apply { layout = OverlayLayout(this) }
     var frame: JFrame? = null
     lateinit var player: WebViewPlayer
@@ -61,7 +63,7 @@ fun main(args: Array<String>) {
             }
         }
         player = createWebViewPlayer(
-            WebViewPlayerContext(cefClient, container),
+            WebViewPlayerContext(cefClient, surface),
             engineJs = webViewJs,
             appVersion = 1,
             httpClient = httpClient,
