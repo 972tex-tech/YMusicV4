@@ -21,6 +21,7 @@ kmpHttp/test-server/server.log
 kmpHttp/test-server/server.pid
 kmpHttp/test-server/server-info.json
 plans
+.agent-dashboard/
 
 # quickjs: staged Android JNI libs (built by :quickjs:stageAndroidJni)
 quickjs/src/androidMain/jniLibs/
