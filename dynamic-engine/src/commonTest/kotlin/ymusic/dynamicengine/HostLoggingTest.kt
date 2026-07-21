@@ -43,8 +43,7 @@ class HostLoggingTest {
             engine.probe("""{"url":"https://youtube.com/watch","ctx":["download#a1b2","js:fetchForLinkParser"]}""")
 
             // The failure is logged once, where it's born, with the trail + this protocol's hop.
-            assertEquals(1, log.calls.size, "the transport failure must be logged once at its birth site")
-            val entry = log.calls.single()
+            val entry = log.calls.single { it.level == Logger.Level.WARN }
             assertEquals(Logger.Level.WARN, entry.level)
             assertEquals(listOf("download#a1b2", "js:fetchForLinkParser", "http"), entry.tags)
             assertTrue(entry.message.startsWith("request failed:"), "message was: ${entry.message}")
@@ -61,7 +60,7 @@ class HostLoggingTest {
         val engine = createTestEngine(FakeHttpClient { throw IOException("dns") }, 1, log)
         try {
             engine.probe("""{"url":"https://x/"}""")
-            assertEquals(listOf("http"), log.calls.single().tags)
+            assertEquals(listOf("http"), log.calls.single { it.level == Logger.Level.WARN }.tags)
         } finally {
             engine.close()
         }

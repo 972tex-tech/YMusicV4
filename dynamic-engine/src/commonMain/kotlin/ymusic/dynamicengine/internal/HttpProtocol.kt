@@ -159,6 +159,16 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             }
 
             val exchange = launch {
+                val cookieNames = prepared.request.header("Cookie")
+                    ?.split(';')
+                    ?.mapNotNull { it.substringBefore('=').trim().takeIf(String::isNotEmpty) }
+                    .orEmpty()
+                logger?.log(
+                    Logger.Level.DEBUG,
+                    logCtx,
+                    "${prepared.request.method} ${prepared.request.url.host}${prepared.request.url.encodedPath} " +
+                        "cookies=${cookieNames.joinToString(",")}",
+                )
                 val response = try {
                     client.execute(prepared.request, prepared.redirects, prepared.timeout)
                 } catch (e: IOException) {
@@ -168,6 +178,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     return@launch
                 }
                 try {
+                    logger?.log(Logger.Level.DEBUG, logCtx, "HTTP ${response.code} ${response.request.url.host}")
                     val tmp = Buffer()
                     tmp.writeUtf8(
                         buildJsonObject {
