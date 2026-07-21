@@ -22,6 +22,7 @@ kotlin {
 
     withIosTargets()
     withMacosTargets()
+    withLinuxTargets()
 
     applyDefaultHierarchyTemplate()
 

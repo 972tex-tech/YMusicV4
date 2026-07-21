@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okio.Buffer
 import ymusic.dynamicengine.internal.ENGINE_JS
+import ymusic.settings.SettingsStore
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -40,6 +41,7 @@ class DynamicEngineManager(
     private val drainTimeoutMs: Long = 30_000L,
     /** The app-owned cookie store the cookie protocol serves (see [DynamicEngine.create]). */
     private val cookieJar: CookieJar = client.cookieJar,
+    private val settings: SettingsStore? = null,
 ) {
 
     private class Slot(val engine: DynamicEngine) {
@@ -81,10 +83,10 @@ class DynamicEngineManager(
     suspend fun start(remoteJs: String? = null): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
         val engine = if (remoteJs == null) {
-            DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar)
+            DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar, settings)
         } else {
             try {
-                DynamicEngine.create(client, appVersion, logger, remoteJs, cacheStore, cookieJar)
+                DynamicEngine.create(client, appVersion, logger, remoteJs, cacheStore, cookieJar, settings)
             } catch (e: EngineError) {
                 logger?.log(
                     Logger.Level.WARN,
@@ -92,7 +94,7 @@ class DynamicEngineManager(
                     "${e.code} remote bundle rejected at boot, falling back to baseline: ${e.message}",
                     e,
                 )
-                DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar)
+                DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar, settings)
             }
         }
         activeLock.withLock { active = Slot(engine) }
@@ -107,7 +109,7 @@ class DynamicEngineManager(
      * the outgoing engine. Returns the new bundle's backendVersion.
      */
     suspend fun swap(newJs: String): Int = swapLock.withLock {
-        val fresh = DynamicEngine.create(client, appVersion, logger, newJs, cacheStore, cookieJar) // throws typed on rejection
+        val fresh = DynamicEngine.create(client, appVersion, logger, newJs, cacheStore, cookieJar, settings) // throws typed on rejection
         val old = activeLock.withLock {
             val prev = active
             active = Slot(fresh)

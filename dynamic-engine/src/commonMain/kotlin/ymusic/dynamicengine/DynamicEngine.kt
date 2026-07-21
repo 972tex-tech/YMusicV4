@@ -14,10 +14,12 @@ import ymusic.dynamicengine.internal.ENGINE_JS
 import ymusic.dynamicengine.internal.installCache
 import ymusic.dynamicengine.internal.installCookies
 import ymusic.dynamicengine.internal.installHttp
+import ymusic.dynamicengine.internal.installSettings
 import ymusic.quickjs.Pipe
 import ymusic.quickjs.PipeResetException
 import ymusic.quickjs.QuickJsException
 import ymusic.quickjs.QuickJsRuntime
+import ymusic.settings.SettingsStore
 
 /**
  * A [QuickJsRuntime] pre-wired with the host capabilities a downloadable scraping engine needs. The
@@ -34,7 +36,8 @@ import ymusic.quickjs.QuickJsRuntime
  * player shares) as `cookieJar` so scraping and playback present one identity.
  * When a [CacheStore] is supplied it also wires **cache** — the bundle's `Cache` over `cache/…`,
  * a streaming keyed blob cache (JS owns eviction) for the InnerTube session params. File / SQLite
- * protocols are planned (see `quickjs/HOST_PROTOCOLS.md`).
+ * protocols are planned (see `quickjs/HOST_PROTOCOLS.md`). An app-provided [SettingsStore] wires
+ * the bundle's typed `Settings.get`/`.set` to the same persistent preferences native UI uses.
  *
  * Creation boots the bundle and then drives its `"init"` command as the health check — a pipe
  * round-trip proving the whole stack (open routing, handler dispatch, JSON encode, END) — which
@@ -89,11 +92,13 @@ class DynamicEngine private constructor(
             engineJs: String = ENGINE_JS,
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
+            settings: SettingsStore? = null,
         ): DynamicEngine = boot(logger) {
             QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
                 it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
+                if (settings != null) it.installSettings(settings, logger)
             }
         }
 
@@ -106,11 +111,13 @@ class DynamicEngine private constructor(
             logger: Logger? = null,
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
+            settings: SettingsStore? = null,
         ): DynamicEngine = boot(logger) {
             QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
                 it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
+                if (settings != null) it.installSettings(settings, logger)
             }
         }
 

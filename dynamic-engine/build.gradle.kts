@@ -55,6 +55,7 @@ kotlin {
                 api(project(":kmpHttp:core"))
                 // api: EngineError implements kmpcommon.error.CodedError; call() takes a JsonObject
                 api(project(":kmpCommon"))
+                api(project(":settings"))
                 api(Libs.Kotlinx.serializationJson)
                 // api: SqliteCacheStore's public constructor takes okio FileSystem/Path (blob dir)
                 // and a SqlDelight SqlDriver (the metadata index).

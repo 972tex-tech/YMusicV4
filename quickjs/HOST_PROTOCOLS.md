@@ -313,6 +313,24 @@ Structured RESET (§0 boundary contract), classified at the host:
 
 ---
 
+## 3.5 App settings (`command = "settings/get"` / `"settings/set"`) — *implemented in `:dynamic-engine`*
+
+The app passes its existing typed `SettingsStore` when creating the engine. This is the same live,
+persistent store used by native UI—not a JS-only copy. Both commands are one-shot.
+
+```
+settings/get  JS→K: {"key":"…","type":"string|boolean|int","default":…}
+              K→JS: {"value":…} then EOF
+settings/set  JS→K: {"key":"…","type":"string|boolean|int","value":…}
+              K→JS: empty clean END
+```
+
+`Settings.get(key, defaultValue)` infers the wire type from the default; `Settings.set(key, value)`
+infers it from the value. Numbers must be integers. Missing/invalid fields RESET with `E20060`; a
+store failure RESETs with `E20061` (or preserves the store's own `CodedError`).
+
+---
+
 ## 4. Filesystem — sandboxed, session-based
 
 ### Sandbox: one app-exposed root, relative plain paths
@@ -491,6 +509,10 @@ res.status; res.ok; res.url; res.headers.get(n); await res.json(); await res.tex
 res.stream().read(buf, off, len);
 res.cancel(); res.ignoreResult();  // abort the body / drain it to nowhere (both fire-and-forget)
 
+// App preferences — the same persistent typed store native UI uses
+const region = await Settings.get("app.gl", "US");
+await Settings.set("app.gl", "VN");
+
 // FS — file session (paths are sandbox-relative; a handle is read-only OR write-only)
 const rf = await host.file.open("cache/feed.json", "r");
 let chunk; while ((chunk = await rf.read(65536))) { … }  // Uint8Array, null at EOF
@@ -522,6 +544,7 @@ whatever module wires the host handlers (the engine host, not the binding).
 | HTTP       | `http`   | control pipe + lazy body pipe  | JSON heads; raw EOF-framed bodies; `-1` on control = cancel at any stage |
 | Cookies    | `cookie/get`, `cookie/set` | one-shot, EOF-framed | on `client.cookieJar`; get → name→value object, set → `Set-Cookie[]`, no body; `E20040`/`E20041` |
 | Cache      | `cache/get\|put\|delete\|list` | one-shot, **streamed** values | **scoped** keyed blob store; host-stamped size/updatedAt/lastUsed + custom `meta`; JS owns eviction (scopedCache + evictors); `E20050`/`E20051` |
+| Settings   | `settings/get`, `settings/set` | one-shot, EOF-framed | app's shared typed string/boolean/int store; `E20060`/`E20061` |
 | File I/O   | `file`   | **session**, length-framed     | open(path, r\|w\|a) — read-only *or* write-only → read/seek/size *or* write/flush → close; chunks stream |
 | FS meta    | `fs`     | one-shot, EOF-framed           | list/stat/delete/mkdir/rename/exists; list streams JSONL |
 | SQLite     | `sqlite` | **session**, length-framed     | open(name,version,migrations) → query/exec/begin/commit/close; rows stream JSONL |
