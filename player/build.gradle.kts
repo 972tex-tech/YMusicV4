@@ -77,7 +77,8 @@ kotlin {
 
         androidMain.dependencies {
             implementation(Libs.Media3.exoplayer)
-            implementation(Libs.Media3.common)
+            // api: Media3PlayerAdapter IS a media3 Player — consumers (the app's MediaSession) need the type.
+            api(Libs.Media3.common)
             implementation(Libs.Media3.ui)
             implementation(Libs.Kotlinx.coroutinesAndroid)
         }
