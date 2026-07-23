@@ -397,7 +397,7 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
         style = TextStyle(
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Medium,
-            color = if (selected) Color.White else Color(0xFF3A3A3A),
+            color = if (selected) Color.White else DesignColors.Ink,
         ),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -420,7 +420,7 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
     val scope = rememberCoroutineScope()
     Text(
         if (state.running) stringResource(Res.string.library_scanning) else label,
-        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = Color(0xFF3A3A3A)),
+        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))

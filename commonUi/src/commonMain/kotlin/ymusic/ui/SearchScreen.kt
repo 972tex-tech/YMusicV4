@@ -255,7 +255,7 @@ private fun QueryRow(
             Icons.Default.NorthWest,
             stringResource(Res.string.cd_insert_query),
             iconSize = 17.dp,
-            tint = Color(0xFFB0B0B0),
+            tint = DesignColors.PlaceholderIcon,
             onClick = onInsert,
         )
     }
@@ -297,7 +297,7 @@ private fun FilterDialog(
     onSelect: (YtFilterOption) -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(18.dp), color = Color.White) {
+        Surface(shape = RoundedCornerShape(18.dp), color = DesignColors.SurfaceElevated) {
             Column(
                 Modifier
                     .widthIn(max = 460.dp)

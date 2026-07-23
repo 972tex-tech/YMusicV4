@@ -45,6 +45,7 @@
     <string name="cd_add_to_playlist">إضافة إلى قائمة التشغيل</string>
     <string name="cd_share">مشاركة</string>
     <string name="cd_music_video">موسيقى</string>
+    <string name="cd_album">ألبوم</string>
 
     <string name="library_tab_folders">المجلدات</string>
     <string name="library_tab_playlists">قوائم التشغيل</string>
@@ -86,6 +87,10 @@
 
     <string name="settings_language">اللغة</string>
     <string name="settings_language_system">لغة النظام</string>
+    <string name="settings_theme">المظهر</string>
+    <string name="settings_theme_system">حسب النظام</string>
+    <string name="settings_theme_light">فاتح</string>
+    <string name="settings_theme_dark">داكن</string>
 
     <string name="cd_menu">القائمة</string>
     <string name="cd_search">بحث</string>

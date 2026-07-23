@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Person
@@ -58,6 +59,7 @@ import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.badge_live
+import ymusic.ui.resources.cd_album
 import ymusic.ui.resources.cd_collapse
 import ymusic.ui.resources.cd_expand
 import ymusic.ui.resources.cd_more
@@ -69,10 +71,12 @@ import ymusic.ui.resources.cd_view_all
  * leaf item components (video/playlist/channel × list/grid). All values mirror the mockup CSS.
  */
 
-internal val ListTitleStyle = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 17.5.sp)
-internal val ListSubStyle = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary)
-internal val GridTitleStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 15.6.sp)
-internal val GridSubStyle = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary)
+internal val ListTitleStyle: TextStyle @Composable get() =
+    TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 17.5.sp)
+internal val ListSubStyle: TextStyle @Composable get() = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary)
+internal val GridTitleStyle: TextStyle @Composable get() =
+    TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 15.6.sp)
+internal val GridSubStyle: TextStyle @Composable get() = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary)
 
 /** What the ⋮ overflow offers for an item; empty = no overflow shown. */
 class ItemActions(val entries: List<Pair<String, () -> Unit>>)
@@ -99,7 +103,7 @@ fun SectionHeader(
                 Modifier.size(26.dp).background(DesignColors.PlaceholderDim, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.MusicNote, null, Modifier.size(14.dp), tint = Color(0xFFAAAAAA))
+                Icon(Icons.Outlined.MusicNote, null, Modifier.size(14.dp), tint = DesignColors.PlaceholderIcon)
                 ThumbImage(header.iconThumbs, 26.dp, CircleShape)
             }
         }
@@ -356,10 +360,12 @@ private fun CircleThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
 @Composable
 private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
     val stacked = item.kind == YtFeedItem.KIND_PLAYLIST
+    val stackFar = DesignColors.StackFar
+    val stackNear = DesignColors.StackNear
     Box(
         Modifier
             .size(width = width, height = height)
-            .then(if (stacked) Modifier.drawBehind { drawPlaylistStack() } else Modifier)
+            .then(if (stacked) Modifier.drawBehind { drawPlaylistStack(stackFar, stackNear) } else Modifier)
             .background(DesignColors.Placeholder, RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center,
     ) {
@@ -397,7 +403,11 @@ internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSiz
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                if (item.id.startsWith("RD")) Icons.Default.AllInclusive else Icons.AutoMirrored.Filled.PlaylistPlay,
+                when {
+                    item.id.startsWith("RD") -> Icons.Default.AllInclusive
+                    item.album -> Icons.Outlined.Album
+                    else -> Icons.AutoMirrored.Filled.PlaylistPlay
+                },
                 null,
                 Modifier.size(iconSize),
                 tint = Color.White,
@@ -429,10 +439,19 @@ internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSiz
                 .size(iconSize),
             tint = Color.White,
         )
+        item.album -> Icon(
+            Icons.Outlined.Album,
+            stringResource(Res.string.cd_album),
+            modifier
+                .background(DesignColors.BadgeScrim, RoundedCornerShape(3.dp))
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .size(iconSize),
+            tint = Color.White,
+        )
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlaylistStack() {
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlaylistStack(stackFar: Color, stackNear: Color) {
     // The two card edges peeking up-right behind a playlist thumb (mockup box-shadow offsets).
     val r = CornerRadius(6.dp.toPx())
     fun layer(offsetPx: Float, shrinkPx: Float, color: Color) {
@@ -443,6 +462,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlaylistStack()
             cornerRadius = r,
         )
     }
-    layer(8.dp.toPx(), 2.dp.toPx(), DesignColors.StackFar)
-    layer(4.dp.toPx(), 1.dp.toPx(), DesignColors.StackNear)
+    layer(8.dp.toPx(), 2.dp.toPx(), stackFar)
+    layer(4.dp.toPx(), 1.dp.toPx(), stackNear)
 }

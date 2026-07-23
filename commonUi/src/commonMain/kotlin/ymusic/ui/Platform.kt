@@ -11,3 +11,8 @@ internal expect val platformUsesTouch: Boolean
  *  it instead of finishing the app. No-op on platforms without a system back concept. */
 @Composable
 internal expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
+
+/** Keeps OS chrome legible against the active theme — on Android, flips the status/navigation
+ *  bar icon appearance to contrast the edge-to-edge app background. No-op elsewhere. */
+@Composable
+internal expect fun SyncSystemBars(dark: Boolean)

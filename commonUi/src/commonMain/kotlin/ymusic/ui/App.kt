@@ -125,6 +125,12 @@ fun App(graph: AppGraph) {
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val tag = uiLanguage.ifBlank { null }
     remember(tag) { applyUiLocale(tag) }
+    val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
+    val dark = when (themePref) {
+        "light" -> false
+        "dark" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
     var section by rememberSaveable { mutableStateOf(AppSection.Discover) }
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUDIO_ONLY).value
@@ -137,7 +143,7 @@ fun App(graph: AppGraph) {
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides direction) {
-            YMusicTheme {
+            YMusicTheme(dark = dark) {
                 CompositionLocalProvider(LocalImageLoader provides graph.imageLoader) {
                     AppRoot(graph, section, onSection = { section = it })
                 }
@@ -250,7 +256,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val status by graph.player.status.collectAsState()
         val needsSurface = queue.currentItem is PlayableItem.YtVideoId || status.videoSize != null
 
-        BoxWithConstraints(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(DesignColors.Surface).safeDrawingPadding()) {
             // design/final/home.html: landscape puts the tab row inline in the app bar.
             val wide = maxWidth > maxHeight && maxWidth >= 600.dp
             ModalNavigationDrawer(
@@ -294,7 +300,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 CompositionLocalProvider(LocalAppBarElevated provides barElevated) {
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
-                        containerColor = Color.White,
+                        containerColor = DesignColors.Surface,
                         topBar = {
                             // Search and the detail pages carry their own app bars.
                             if (layers.isEmpty()) {

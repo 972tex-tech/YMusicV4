@@ -60,7 +60,7 @@ class LocaleSnapshotTest {
         )
         val scene = ImageComposeScene(width = 420, height = 760) {
             CompositionLocalProvider(LocalLayoutDirection provides direction) {
-                YMusicTheme {
+                YMusicTheme(dark = false) {
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.height(400.dp).clipToBounds()) {
                             AppDrawer(

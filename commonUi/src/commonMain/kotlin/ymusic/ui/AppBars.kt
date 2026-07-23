@@ -82,17 +82,19 @@ import ymusic.ui.resources.search_youtube
 @Composable
 internal fun ElevatedBarColumn(content: @Composable ColumnScope.() -> Unit) {
     val elevated = LocalAppBarElevated.current?.value == true
-    val shadow by animateDpAsState(if (elevated) 4.dp else 0.dp)
+    val shadow by animateDpAsState(if (elevated) 6.dp else 0.dp)
     val tone by animateColorAsState(if (elevated) DesignColors.SurfaceElevated else DesignColors.Surface)
     Column(Modifier.shadow(shadow).background(tone).zIndex(1f), content = content)
 }
 
-/** The bars' shared metrics row. Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs
- *  keep the bar's visual metrics; the 6dp top stands in for the mockup's under-status-bar margin. */
+/** The bars' shared metrics row. Horizontal paddings/gaps shave the ActionIcon hit-inset (5dp) so
+ *  the glyphs keep the mockups' 16dp margins; vertical paddings are the mockup values unshaved
+ *  (5/7dp, top +1 standing in for the under-status-bar margin) because the title and the search
+ *  pill carry no inset — shaving the bottom made non-icon content sit visibly low in the bar. */
 @Composable
 internal fun AppBarRow(content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 11.dp, end = 11.dp, top = 6.dp, bottom = 2.dp),
+        Modifier.fillMaxWidth().padding(start = 11.dp, end = 11.dp, top = 6.dp, bottom = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -148,7 +150,7 @@ internal fun SearchInputBar(
             Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(999.dp))
-                .background(Color(0xFFF1F1F1))
+                .background(DesignColors.FieldPill)
                 .padding(start = 13.dp, end = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -286,7 +288,8 @@ private const val TabScrollStep = 240f
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */
 @Composable
 private fun TabOverflowHint(towardStart: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val colors = listOf(Color.White, Color.White.copy(alpha = 0f))
+    val surface = DesignColors.Surface
+    val colors = listOf(surface, surface.copy(alpha = 0f))
     Box(
         modifier
             .fillMaxHeight()

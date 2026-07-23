@@ -147,7 +147,7 @@ fun MiniPlayer(
             progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
             modifier = Modifier.fillMaxWidth().height(2.dp),
             color = DesignColors.Accent,
-            trackColor = Color(0xFFEEEEEE),
+            trackColor = DesignColors.Divider,
             drawStopIndicator = {},
             gapSize = 0.dp,
         )
@@ -221,7 +221,7 @@ fun MiniPlayer(
 @Composable
 fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
     var fullscreen by remember { mutableStateOf(false) }
-    Surface(Modifier.fillMaxSize(), color = Color.White) {
+    Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
         BoxWithConstraints {
             when {
                 fullscreen -> FullscreenVideo(graph, coordinator, onExit = { fullscreen = false })
@@ -314,7 +314,7 @@ private fun PortraitNowPlaying(
                     ) {
                         Text(
                             coordinator.titleFor(current),
-                            style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222)),
+                            style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkStrong),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
@@ -339,9 +339,9 @@ private fun PortraitNowPlaying(
                 }
             }
             stickyHeader {
-                Column(Modifier.fillMaxWidth().background(Color.White)) {
+                Column(Modifier.fillMaxWidth().background(DesignColors.Surface)) {
                     QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
-                    HorizontalDivider(color = Color(0xFFF0F0F0))
+                    HorizontalDivider(color = DesignColors.Divider)
                 }
             }
             itemsIndexed(queue.items) { index, item ->
@@ -373,14 +373,14 @@ private fun LandscapeNowPlaying(
                 VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
             }
         }
-        VerticalDivider(color = Color(0xFFECECEC))
+        VerticalDivider(color = DesignColors.Divider)
         Column(Modifier.width(320.dp).fillMaxHeight()) {
             PlayerTopBar(coordinator, sleepMs, onClose)
             status.error?.let {
                 Box(Modifier.padding(horizontal = 16.dp)) { PlaybackErrorRow(player, it) }
             }
             QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
-            HorizontalDivider(color = Color(0xFFF0F0F0))
+            HorizontalDivider(color = DesignColors.Divider)
             LazyColumn(Modifier.weight(1f)) {
                 itemsIndexed(queue.items) { index, item ->
                     QueueRow(coordinator, index, item, current = index == queue.currentIndex)
@@ -466,6 +466,7 @@ private fun BoxScope.VideoOverlayControls(
             (status.state as? PlaybackState.Prepared)?.buffering == true,
             iconTint = Color.White,
             playBackground = Color.Black.copy(alpha = 0.42f),
+            playForeground = Color.White,
             playSize = 58.dp,
             seekButtons = !compact,
         )
@@ -611,7 +612,7 @@ internal fun QualityChip(
             style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .border(1.dp, Color(0xFFD2D2D2), RoundedCornerShape(6.dp))
+                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
                 .clickable { open = true }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
@@ -655,7 +656,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 @Composable
 private fun SeekBar(player: ymusic.player.Player, positionMs: Long, durationMs: Long) {
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
-        SeekSlider(player, positionMs, durationMs, trackColor = Color(0xFFDCDCDC))
+        SeekSlider(player, positionMs, durationMs, trackColor = DesignColors.OutlineSoft)
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
             Text(formatMillis(positionMs), style = timeStyle)
@@ -702,8 +703,9 @@ private fun TransportRow(
     coordinator: PlaybackCoordinator,
     playing: Boolean,
     buffering: Boolean,
-    iconTint: Color = Color(0xFF2B2B2B),
-    playBackground: Color = Color(0xFF222222),
+    iconTint: Color = DesignColors.InkStrong,
+    playBackground: Color = DesignColors.InkStrong,
+    playForeground: Color = DesignColors.OnInk,
     playSize: Dp = 64.dp,
     seekButtons: Boolean = true,
 ) {
@@ -742,13 +744,13 @@ private fun TransportRow(
                 contentAlignment = Alignment.Center,
             ) {
                 if (buffering) {
-                    CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(26.dp), color = playForeground, strokeWidth = 2.dp)
                 } else {
                     Icon(
                         if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                         stringResource(Res.string.cd_play_pause),
                         Modifier.size(26.dp),
-                        tint = Color.White,
+                        tint = playForeground,
                     )
                 }
             }
@@ -828,7 +830,7 @@ private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Icon(Icons.Default.DragHandle, null, Modifier.size(18.dp), tint = Color(0xFFC4C4C4))
+        Icon(Icons.Default.DragHandle, null, Modifier.size(18.dp), tint = DesignColors.Outline)
         Box(
             Modifier.size(48.dp).background(DesignColors.Placeholder, RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center,

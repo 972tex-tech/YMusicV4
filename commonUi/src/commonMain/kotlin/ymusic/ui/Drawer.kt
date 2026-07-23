@@ -36,11 +36,10 @@ import ymusic.ui.resources.app_name
 import ymusic.ui.resources.badge_premium
 import ymusic.ui.resources.ymusic_logo
 
-private val BrandGreenDark = Color(0xFF15803D)
-private val BrandGreenBg = Color(0xFFEAFAF0)
-private val BrandGreenBorder = Color(0xFFCDEED9)
-private val ActiveAccentDark = Color(0xFF8A3D0F)
-private val ActiveAccentBg = Color(0xFFFBE9DD)
+/** The premium badge's green chip (mockup values; dark counterparts keep the same relationships). */
+private val BrandGreenInk: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4ADE80) else Color(0xFF15803D)
+private val BrandGreenBg: Color @Composable get() = if (DesignColors.isDark) Color(0xFF11301C) else Color(0xFFEAFAF0)
+private val BrandGreenBorder: Color @Composable get() = if (DesignColors.isDark) Color(0xFF1D4A2C) else Color(0xFFCDEED9)
 
 /** The navigation drawer (design/final/drawer.html): brand header + three nav sections. */
 @Composable
@@ -51,15 +50,15 @@ fun AppDrawer(
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp),
-        drawerContainerColor = Color.White,
+        drawerContainerColor = DesignColors.Surface,
         drawerShape = RoundedCornerShape(0.dp),
     ) {
         Column(Modifier.fillMaxHeight()) {
             DrawerHeader(appVersion)
-            HorizontalDivider(color = Color(0xFFEEEEEE))
+            HorizontalDivider(color = DesignColors.Divider)
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 AppSection.entries.groupBy { it.group }.entries.forEachIndexed { index, (_, sections) ->
-                    if (index > 0) HorizontalDivider(color = Color(0xFFF0F0F0), modifier = Modifier.padding(vertical = 4.dp))
+                    if (index > 0) HorizontalDivider(color = DesignColors.Divider, modifier = Modifier.padding(vertical = 4.dp))
                     sections.forEach { s ->
                         DrawerItem(s, active = s == section) { onSelect(s) }
                     }
@@ -82,7 +81,7 @@ private fun DrawerHeader(appVersion: String?) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         stringResource(Res.string.app_name),
-                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A)),
+                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.InkStrong),
                     )
                     Text(
                         stringResource(Res.string.badge_premium),
@@ -90,7 +89,7 @@ private fun DrawerHeader(appVersion: String?) {
                             fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
                             letterSpacing = 0.54.sp,
-                            color = BrandGreenDark,
+                            color = BrandGreenInk,
                         ),
                         modifier = Modifier
                             .background(BrandGreenBg, RoundedCornerShape(5.dp))
@@ -112,7 +111,8 @@ private fun DrawerHeader(appVersion: String?) {
 
 @Composable
 private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) ActiveAccentBg else Color.Transparent)) {
+    val scheme = androidx.compose.material3.MaterialTheme.colorScheme
+    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) scheme.primaryContainer else Color.Transparent)) {
         if (active) {
             Box(
                 Modifier
@@ -133,12 +133,12 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
                 Modifier.size(23.dp),
                 tint = when {
                     active -> DesignColors.Accent
-                    else -> Color(0xFF3F3F3F)
+                    else -> DesignColors.Ink
                 },
             )
             val labelStyle = when {
-                active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = ActiveAccentDark)
-                else -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2C2C2C))
+                active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onPrimaryContainer)
+                else -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkStrong)
             }
             Text(stringResource(section.label), style = labelStyle, modifier = Modifier.weight(1f))
         }

@@ -27,23 +27,70 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
 import ymusic.settings.put
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.settings_language
+import ymusic.ui.resources.settings_theme
+import ymusic.ui.resources.settings_theme_dark
+import ymusic.ui.resources.settings_theme_light
+import ymusic.ui.resources.settings_theme_system
 
 @Composable
 fun SettingsScreen(graph: AppGraph) {
     val scope = rememberCoroutineScope()
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
+    val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         LanguageRow(
             current = uiLanguage,
             onSelect = { tag -> scope.launch { graph.settings.put(AppSettings.uiLanguage, tag) } },
         )
+        ThemeRow(
+            current = theme,
+            onSelect = { value -> scope.launch { graph.settings.put(AppSettings.theme, value) } },
+        )
+    }
+}
+
+/** "" = follow system, per [AppSettings.theme]. */
+private val ThemeOptions: List<Pair<String, StringResource>> = listOf(
+    "" to Res.string.settings_theme_system,
+    "light" to Res.string.settings_theme_light,
+    "dark" to Res.string.settings_theme_dark,
+)
+
+@Composable
+private fun ThemeRow(current: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = true }
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(Res.string.settings_theme),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource((ThemeOptions.firstOrNull { it.first == current } ?: ThemeOptions.first()).second),
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            ThemeOptions.forEach { (value, label) ->
+                DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { onSelect(value); open = false })
+            }
+        }
     }
 }
 

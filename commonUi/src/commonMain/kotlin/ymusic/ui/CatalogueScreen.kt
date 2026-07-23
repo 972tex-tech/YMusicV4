@@ -602,7 +602,7 @@ private val mockCrumbs = listOf(
 
 // Specimens carry their own style; sizes in the label. The app has no central type scale —
 // these are the de-facto roles (ListTitleStyle/… live in FeedItems.kt).
-private val typeRoles: List<Pair<String, TextStyle>> = listOf(
+private val typeRoles: List<Pair<String, TextStyle>> @Composable get() = listOf(
     "Headline — section header · 15 Bold Ink" to
         TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
     "Title — list item · 13.5 SemiBold (ListTitleStyle)" to ListTitleStyle,
@@ -637,7 +637,7 @@ private val radiusTokens: List<Pair<Int, String>> = listOf(
     PILL_RADIUS to "chips/CTA",
 )
 
-private val colorSwatches: List<Pair<String, Color>> = listOf(
+private val colorSwatches: List<Pair<String, Color>> @Composable get() = listOf(
     "Accent" to DesignColors.Accent,
     "Ink" to DesignColors.Ink,
     "InkMuted" to DesignColors.InkMuted,

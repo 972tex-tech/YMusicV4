@@ -36,7 +36,7 @@ class GridCardSnapshotTest {
             itemCount = "42",
         )
         val scene = ImageComposeScene(width = 600, height = 260) {
-            YMusicTheme {
+            YMusicTheme(dark = false) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(0.dp),

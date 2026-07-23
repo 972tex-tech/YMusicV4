@@ -205,11 +205,19 @@ fun ChannelDetailScreen(
                 HorizontalDivider(color = DesignColors.Divider)
             }
         }
+        // The channel header (banner · avatar · Subscribe) belongs to the FRONT tab only — content
+        // tabs (Videos / Shorts / …) start directly at their feed. Before tabs load, the page IS
+        // the front tab.
+        val onHomeTab = s.tabs.firstOrNull { it.url == s.url }?.home ?: true
         FeedList(
             s.feed.pager,
             coordinator,
             onOpen = onOpen,
-            topContent = { ChannelHeader(ready?.pageHeader, fallback = item) },
+            topContent = if (onHomeTab) {
+                { ChannelHeader(ready?.pageHeader, fallback = item) }
+            } else {
+                null
+            },
             listState = s.feed.listState,
             onDeeplink = onDeeplink,
         )
@@ -245,7 +253,7 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
                 Modifier.size(64.dp).clip(CircleShape).background(DesignColors.PlaceholderDim),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Person, null, Modifier.size(26.dp), tint = Color(0xFFAAAAAA))
+                Icon(Icons.Outlined.Person, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
                 ThumbImage(header?.thumbs ?: fallback.thumbs, 64.dp, CircleShape)
             }
             Column(Modifier.weight(1f)) {
@@ -269,10 +277,10 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
             // Real action lands with accounts; filled pill per the mockup's channel header.
             Text(
                 stringResource(Res.string.subscribe),
-                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White),
+                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(DesignColors.Ink)
+                    .background(DesignColors.InkStrong)
                     .padding(horizontal = 16.dp, vertical = 7.dp),
             )
         }

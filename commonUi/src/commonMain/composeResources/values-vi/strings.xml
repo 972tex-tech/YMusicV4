@@ -45,6 +45,7 @@
     <string name="cd_add_to_playlist">Thêm vào danh sách phát</string>
     <string name="cd_share">Chia sẻ</string>
     <string name="cd_music_video">Âm nhạc</string>
+    <string name="cd_album">Album</string>
 
     <string name="library_tab_folders">Thư mục</string>
     <string name="library_tab_playlists">Danh sách phát</string>
@@ -81,6 +82,10 @@
 
     <string name="settings_language">Ngôn ngữ</string>
     <string name="settings_language_system">Theo hệ thống</string>
+    <string name="settings_theme">Giao diện</string>
+    <string name="settings_theme_system">Theo hệ thống</string>
+    <string name="settings_theme_light">Sáng</string>
+    <string name="settings_theme_dark">Tối</string>
 
     <string name="cd_menu">Menu</string>
     <string name="cd_search">Tìm kiếm</string>
