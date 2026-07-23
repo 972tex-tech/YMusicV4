@@ -505,7 +505,7 @@ private fun ScanBar(scan: suspend () -> String?, state: ScanState, label: String
 }
 
 @Composable
-private fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator, modifier: Modifier = Modifier) {
+internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator, modifier: Modifier = Modifier) {
     LazyColumn(modifier = modifier.fillMaxSize()) {
         itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
             SongRow(song) { coordinator.playLocal(songs, index) }
@@ -514,7 +514,7 @@ private fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinat
 }
 
 @Composable
-private fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
+internal fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -672,7 +672,7 @@ private fun LibraryGridCard(
 }
 
 @Composable
-private fun DrillDownHeader(title: String, onBack: () -> Unit) {
+internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -689,7 +689,7 @@ private fun DrillDownHeader(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = null) {
+internal fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = null) {
     Box(
         modifier = Modifier
             .size(56.dp)

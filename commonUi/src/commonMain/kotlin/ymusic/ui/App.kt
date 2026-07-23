@@ -180,6 +180,8 @@ internal val LocalRefreshRequests = compositionLocalOf<kotlinx.coroutines.flow.F
 private sealed interface AppLayer {
     class Search(val session: SearchSession) : AppLayer
 
+    class LibrarySearch(val session: LibrarySearchSession) : AppLayer
+
     class Playlist(val session: PlaylistSession) : AppLayer
 
     class Channel(val session: ChannelSession) : AppLayer
@@ -255,6 +257,39 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             }
         }
         val popLayer = { layers.removeAt(layers.lastIndex); Unit }
+        // Library's own search flow (local files, filter-as-you-type) — a different surface from
+        // YouTube search, single-instance within Library's stack the same way.
+        val openLibrarySearch: () -> Unit = {
+            val store = graph.mediaStore
+            if (store != null) {
+                val existing = layers.indexOfFirst { it is AppLayer.LibrarySearch }
+                when {
+                    existing >= 0 && existing == layers.lastIndex -> Unit
+                    existing >= 0 -> layers.add(layers.removeAt(existing))
+                    else -> layers.add(AppLayer.LibrarySearch(LibrarySearchSession(store, scope)))
+                }
+            }
+        }
+        // The "Search "q" online" hand-off: jump to Discover and run q as a YouTube search there,
+        // reusing Discover's single search layer (its stack, not Library's).
+        val searchOnline: (String) -> Unit = { q ->
+            onSection(AppSection.Discover)
+            val discover = sectionLayers.getOrPut(AppSection.Discover) { mutableStateListOf() }
+            val existing = discover.indexOfFirst { it is AppLayer.Search }
+            val layer = if (existing >= 0) {
+                discover.removeAt(existing) as AppLayer.Search
+            } else {
+                AppLayer.Search(SearchSession(graph, scope))
+            }
+            layer.session.apply {
+                field = androidx.compose.ui.text.input.TextFieldValue(q)
+                submitted = q
+                editing = false
+                filterParams = null
+                pager.refresh()
+            }
+            discover.add(layer)
+        }
 
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
         // close first (drawer, Now Playing); the search input steps back to its results; then one
@@ -270,6 +305,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 nowPlayingOpen -> nowPlayingOpen = false
                 top is AppLayer.Search && top.session.editing && top.session.submitted != null ->
                     top.session.editing = false
+                top is AppLayer.LibrarySearch && top.session.drill != null -> top.session.drill = null
                 layers.isNotEmpty() -> popLayer()
                 else -> onSection(AppSection.Discover)
             }
@@ -346,9 +382,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 if (section == AppSection.Discover) discoverTab.label else section.label,
                                             ),
                                             onMenu = { scope.launch { drawer.open() } },
-                                            // YouTube search belongs to Discover; other sections
-                                            // get their own flows (Library: local files) later.
-                                            onSearch = if (section == AppSection.Discover) openSearch else null,
+                                            // Each section's own search flow: YouTube on Discover,
+                                            // local files on Library, none elsewhere.
+                                            onSearch = when {
+                                                section == AppSection.Discover -> openSearch
+                                                section == AppSection.Library && graph.mediaStore != null -> openLibrarySearch
+                                                else -> null
+                                            },
                                             inlineContent = if (section == AppSection.Discover && wide) {
                                                 { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
                                             } else {
@@ -387,6 +427,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         onOpen = openItem,
                                         session = top.session,
                                         onDeeplink = openDeeplink,
+                                    )
+                                }
+                                is AppLayer.LibrarySearch -> key(top) {
+                                    LibrarySearchScreen(
+                                        top.session,
+                                        coordinator,
+                                        onBack = popLayer,
+                                        onSearchOnline = searchOnline,
                                     )
                                 }
                                 is AppLayer.Playlist -> key(top) {

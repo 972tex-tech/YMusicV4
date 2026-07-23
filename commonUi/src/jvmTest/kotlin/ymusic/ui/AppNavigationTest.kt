@@ -3,6 +3,8 @@ package ymusic.ui
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -18,6 +20,7 @@ import ymusic.mediastore.model.BucketDraft
 import ymusic.mediastore.model.MediaItemDraft
 import java.util.Locale
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * The whole app shell (App()) navigation, headless: search overlay → results → tapping a playlist
@@ -208,6 +211,80 @@ class AppNavigationTest {
                 waitUntil(timeoutMillis = 20_000) { browseCalls.get() == 1 }
                 graph.requestRefresh()
                 waitUntil(timeoutMillis = 10_000) { browseCalls.get() == 2 }
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
+
+    @Test
+    fun library_search_filters_locally_and_hands_off_online() {
+        Locale.setDefault(Locale.ENGLISH)
+        val searchJson = checkNotNull(javaClass.classLoader.getResource("yt-search-live.json")).readText()
+        val client = CannedHttp { request, _ ->
+            val url = request.url.toString()
+            when {
+                request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
+                    textResponse(request, HOMEPAGE_FIXTURE, "text/html")
+                url.contains("youtubei/v1/search") -> textResponse(request, searchJson, "application/json")
+                else -> textResponse(request, "{}", "application/json")
+            }
+        }
+        val engines = DynamicEngineManager(client, appVersion = 1)
+        runBlocking { engines.start() }
+        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
+        runBlocking {
+            val root = store.upsertBucket(BucketDraft(Uri.parse("file:///Music"), "Music"))
+            store.upsertItem(
+                root.id,
+                MediaItemDraft(
+                    uri = Uri.parse("file:///Music/tinh-ta.mp3"),
+                    title = "Tinh Ta Bien Bac Dong Xanh",
+                    mimeType = "audio/mpeg",
+                    fileSize = 1L,
+                    lastModified = 1L,
+                    artist = "Bao Anh",
+                ),
+            )
+            store.upsertItem(
+                root.id,
+                MediaItemDraft(
+                    uri = Uri.parse("file:///Music/other.mp3"),
+                    title = "Something Else",
+                    mimeType = "audio/mpeg",
+                    fileSize = 2L,
+                    lastModified = 1L,
+                    artist = "Anh Tu",
+                ),
+            )
+        }
+        try {
+            runComposeUiTest {
+                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {}, mediaStore = store)
+                val section = androidx.compose.runtime.mutableStateOf(AppSection.Library)
+                setContent { App(graph, section) }
+
+                // Library's bar has its OWN search (local files, not YouTube).
+                waitUntilAtLeastOneExists(hasText("Folders"), 20_000)
+                onNodeWithContentDescription("Search").performClick()
+                onNode(hasSetTextAction()).performTextInput("anh")
+
+                // Filter-as-you-type: the matching song, its artist section, and the online CTA.
+                waitUntilAtLeastOneExists(hasText("Tinh Ta Bien Bac Dong Xanh"), 10_000)
+                onNodeWithText("Search “anh” online").assertExists()
+                onNodeWithText("Something Else").assertDoesNotExist()
+
+                // An artist match drills into its songs in place (the song row also carries
+                // "Bao Anh" as its subtitle — the artist ROW is the one with the song count).
+                onNode(hasText("Bao Anh") and hasText("1 song")).performClick()
+                waitUntilAtLeastOneExists(hasText("Tinh Ta Bien Bac Dong Xanh"), 10_000)
+
+                // The online CTA jumps to Discover and runs the query as a YouTube search.
+                // Two Backs while drilled in (input bar + drill header); either exits the drill.
+                onAllNodesWithContentDescription("Back").onFirst().performClick()
+                onNodeWithText("Search “anh” online").performClick()
+                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP"), 20_000)
+                assertEquals(AppSection.Discover, section.value)
             }
         } finally {
             runBlocking { engines.close() }

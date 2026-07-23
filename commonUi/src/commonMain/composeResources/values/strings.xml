@@ -73,6 +73,9 @@
     <string name="library_crumb_root">Library</string>
     <string name="library_folder">Folder</string>
     <string name="library_no_playlists">No playlists yet</string>
+    <string name="library_search_hint">Search your library</string>
+    <string name="library_search_online">Search “%1$s” online</string>
+    <string name="library_search_no_matches">Nothing in your library matches</string>
     <string name="unknown_artist">Unknown artist</string>
     <string name="unknown_album">Unknown album</string>
     <string name="unknown_genre">Unknown genre</string>
