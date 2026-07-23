@@ -67,7 +67,13 @@ class MainActivity : ComponentActivity() {
         val light = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = light, navigationBarStyle = light)
         FreezeWatchdog.start()
+        lifecycle.addObserver(
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                android.util.Log.i("FreezeWatchdog", "lifecycle $event")
+            },
+        )
         setContent {
+            CompositionClockProbe()
             var graph by remember { mutableStateOf<AppGraph?>(null) }
             var error by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(Unit) {
