@@ -144,13 +144,24 @@ object FreezeWatchdog {
     @Volatile private var mainChoreographer: Choreographer? = null
 
     /** Re-post the dispatcher's own frame callback: doFrame -> performFrameDispatch resets the
-     *  stranded scheduledFrameDispatch flag and drains the parked withFrameNanos waiters. */
+     *  stranded scheduledFrameDispatch flag and drains the parked withFrameNanos waiters. Also
+     *  breaks Choreographer's backward-timestamp wait loop (fake vsyncs with stale timestamps
+     *  keep mFrameScheduled=true and never run callbacks): zeroing mLastFrameTimeNanos lets the
+     *  next vsync pass the frameTimeNanos < mLastFrameTimeNanos check and drain the queues. */
     private fun heal(main: Handler): Boolean = try {
         val dispatcher = AndroidUiDispatcher.Main[ContinuationInterceptor] as Any
         val callback = dispatcher.javaClass.getDeclaredField("dispatchCallback")
             .apply { isAccessible = true }
             .get(dispatcher) as Choreographer.FrameCallback
-        main.post { Choreographer.getInstance().postFrameCallback(callback) }
+        main.post {
+            val choreographer = Choreographer.getInstance()
+            runCatching {
+                choreographer.javaClass.getDeclaredField("mLastFrameTimeNanos")
+                    .apply { isAccessible = true }
+                    .setLong(choreographer, 0L)
+            }.onFailure { Log.e(TAG, "mLastFrameTimeNanos reset failed: $it") }
+            choreographer.postFrameCallback(callback)
+        }
         true
     } catch (t: Throwable) {
         Log.e(TAG, "heal failed", t)
