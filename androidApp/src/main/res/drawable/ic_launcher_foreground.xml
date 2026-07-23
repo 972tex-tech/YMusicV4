@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- design/logo/ymusic-icon-flat.svg: the rounded white play, centered on its incenter. Scale maps
+     the SVG's translate(512,512) scale(1.7) in a 1024 viewBox onto the 108dp adaptive canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="54"
+        android:translateY="54"
+        android:scaleX="0.1793"
+        android:scaleY="0.1793">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M -85.34 -76.07 Q -85.34 -138.07 -29.89 -110.35 L 135.36 -27.73 Q 190.81 0 135.36 27.73 L -29.89 110.35 Q -85.34 138.07 -85.34 76.07 L -85.34 -76.07 Z"/>
+    </group>
+</vector>

@@ -1,0 +1,71 @@
+package ymusic.desktop
+
+import androidx.compose.ui.unit.IntSize
+import kmpcommon.uri.Uri
+import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kotlinx.coroutines.runBlocking
+import ymusic.mediastore.BetterMediaStore
+import ymusic.mediastore.mediaStoreJdbcDriver
+import ymusic.mediastore.model.MediaItemDraft
+import ymusic.ui.localArtFetcher
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+
+/** The whole local-art pipeline on real pieces: ffmpeg muxes a cover into an mp3, the store hands
+ *  out the item id, the fetcher resolves id → uri and extracts + decodes the cover. Skipped when no
+ *  ffmpeg binary is on this machine. */
+class LocalArtFetcherTest {
+    @Test
+    fun extractsAndDecodesTheEmbeddedCoverById() {
+        val ffmpeg = findFfmpeg() ?: return // no binary on this machine — nothing to test against
+        val dir = File(System.getProperty("java.io.tmpdir"), "local-art-test-${System.nanoTime()}")
+        dir.mkdirs()
+        try {
+            val cover = File(dir, "cover.png")
+            val tone = File(dir, "tone.mp3")
+            val song = File(dir, "song.mp3")
+            run(ffmpeg, "-y", "-f", "lavfi", "-i", "color=red:s=64x48", "-frames:v", "1", cover.path)
+            run(ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", tone.path)
+            run(
+                ffmpeg, "-y", "-i", tone.path, "-i", cover.path,
+                "-map", "0:a", "-map", "1:v", "-c", "copy",
+                "-id3v2_version", "3", "-disposition:v:0", "attached_pic", song.path,
+            )
+
+            val decoded = runBlocking {
+                val store = BetterMediaStore.create(mediaStoreJdbcDriver(File(dir, "store.db").path))
+                val item = store.upsertItem(
+                    bucketId = null,
+                    draft = MediaItemDraft(
+                        uri = Uri.parse("file://${song.path}"),
+                        title = "song",
+                        mimeType = "audio/mpeg",
+                        fileSize = song.length(),
+                        lastModified = song.lastModified(),
+                        thumbnailStreamIndex = 1,
+                    ),
+                )
+                val fetcher = localArtFetcher(FfmpegMetadataGetter(ffmpeg), store)
+                assertNull(
+                    fetcher.fetch("https://example.com/x.png", "k", IntSize(64, 64)),
+                    "fetcher must decline non-art urls",
+                )
+                fetcher.fetch("art://pic/${item.id}", cacheKey = "k", size = IntSize(64, 64))
+            }
+            assertNotNull(decoded, "fetcher returned null for its own scheme")
+            assertEquals(64, decoded.bitmap.width)
+            assertEquals(48, decoded.bitmap.height)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    private fun run(vararg cmd: String) {
+        val p = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+        val out = p.inputStream.readBytes().decodeToString()
+        check(p.waitFor() == 0) { "command failed: ${cmd.joinToString(" ")}\n$out" }
+    }
+}

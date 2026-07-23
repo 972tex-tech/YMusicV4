@@ -1,0 +1,117 @@
+<resources>
+    <string name="section_discover">استكشاف</string>
+    <string name="section_yt_music">YT Music (تجريبي)</string>
+    <string name="section_library">المكتبة</string>
+    <string name="section_rewind">قائمة تشغيل الاسترجاع</string>
+    <string name="section_downloads">مدير التنزيلات</string>
+    <string name="section_settings">الإعدادات</string>
+    <string name="section_donate">تبرّع</string>
+    <string name="section_facebook">أعجبنا على فيسبوك</string>
+    <string name="section_feedback">ملاحظات</string>
+    <string name="coming_soon">%1$s — قادم في مرحلة لاحقة</string>
+
+    <string name="tab_home">الرئيسية</string>
+    <string name="tab_music">الموسيقى</string>
+    <string name="tab_recommended">مقترحات</string>
+    <string name="tab_top_tracks">أفضل المقاطع</string>
+    <string name="tab_account_library">المكتبة</string>
+    <string name="discover_needs_account">%1$s يعكس حساب YouTube الخاص بك — يأتي مع تسجيل الدخول</string>
+    <string name="discover_no_anonymous_home">لا يقدم YouTube صفحة رئيسية دون تسجيل الدخول — استخدم البحث أو سجّل الدخول (قريبًا)</string>
+
+    <string name="feed_empty">لا يوجد شيء هنا</string>
+    <string name="error_generic">حدث خطأ ما (%1$s)</string>
+    <string name="retry">إعادة المحاولة</string>
+    <string name="reload">إعادة التحميل</string>
+    <string name="show_more">عرض المزيد</string>
+    <string name="show_more_n">عرض المزيد (%1$d)</string>
+    <string name="show_less">عرض أقل</string>
+    <string name="queue_next">التشغيل تاليًا</string>
+    <string name="queue_last">إضافة إلى نهاية قائمة الانتظار</string>
+    <string name="badge_live">مباشر</string>
+
+    <string name="search_youtube">البحث في YouTube</string>
+    <string name="search_type_to_search">اكتب للبحث</string>
+    <string name="search_no_results">لا توجد نتائج</string>
+    <string name="search_clear_history">مسح السجل</string>
+    <string name="search_filter_title">تصفية البحث</string>
+    <string name="cd_filter">تصفية</string>
+    <string name="cd_more_tabs">المزيد من علامات التبويب</string>
+    <string name="cd_view_all">عرض الكل</string>
+    <string name="cd_insert_query">وضع في مربع البحث</string>
+    <string name="cd_remove_from_history">إزالة من السجل</string>
+    <!-- Detail pages -->
+    <string name="detail_playlist">قائمة التشغيل</string>
+    <string name="subscribe">اشتراك</string>
+    <string name="cd_add_to_playlist">إضافة إلى قائمة التشغيل</string>
+    <string name="cd_share">مشاركة</string>
+    <string name="cd_music_video">موسيقى</string>
+    <string name="cd_album">ألبوم</string>
+
+    <string name="library_tab_folders">المجلدات</string>
+    <string name="library_tab_playlists">قوائم التشغيل</string>
+    <string name="library_tab_songs">الأغاني</string>
+    <string name="library_tab_artists">الفنانون</string>
+    <string name="library_tab_albums">الألبومات</string>
+    <string name="library_tab_genres">الأنواع</string>
+    <string name="library_unavailable">لا توجد مكتبة محلية على هذه المنصة</string>
+    <string name="library_empty">مكتبتك فارغة</string>
+    <string name="library_scan_folder">+  فحص مجلد</string>
+    <string name="library_add_folder">+  إضافة مجلد</string>
+    <string name="library_scanning">جارٍ الفحص…</string>
+    <string name="library_scan_failed">فشل الفحص (%1$s)</string>
+    <string name="library_empty_folder">مجلد فارغ</string>
+    <string name="library_crumb_root">المكتبة</string>
+    <string name="library_folder">مجلد</string>
+    <string name="library_no_playlists">لا توجد قوائم تشغيل بعد</string>
+    <string name="unknown_artist">فنان غير معروف</string>
+    <string name="unknown_album">ألبوم غير معروف</string>
+    <string name="unknown_genre">نوع غير معروف</string>
+    <plurals name="n_songs">
+        <item quantity="zero">لا أغاني</item>
+        <item quantity="one">أغنية واحدة</item>
+        <item quantity="two">أغنيتان</item>
+        <item quantity="few">%1$d أغانٍ</item>
+        <item quantity="many">%1$d أغنية</item>
+        <item quantity="other">%1$d أغنية</item>
+    </plurals>
+
+    <string name="audio_only">صوت فقط</string>
+    <string name="video_quality_auto">تلقائي</string>
+    <string name="captions_off">إيقاف الترجمة</string>
+    <string name="up_next">التالي في القائمة</string>
+    <string name="remove_from_queue">إزالة من قائمة الانتظار</string>
+    <string name="sleep_off_remaining">إيقاف (متبقٍ %1$s)</string>
+    <string name="sleep_minutes">%1$d دقيقة</string>
+    <string name="playback_failed">فشل التشغيل (%1$s)</string>
+
+
+    <string name="settings_language">اللغة</string>
+    <string name="settings_language_system">لغة النظام</string>
+    <string name="settings_theme">المظهر</string>
+    <string name="settings_theme_system">حسب النظام</string>
+    <string name="settings_theme_light">فاتح</string>
+    <string name="settings_theme_dark">داكن</string>
+
+    <string name="cd_menu">القائمة</string>
+    <string name="cd_search">بحث</string>
+    <string name="cd_back">رجوع</string>
+    <string name="cd_clear">مسح</string>
+    <string name="cd_close">إغلاق</string>
+    <string name="cd_more">المزيد</string>
+    <string name="cd_collapse">طي</string>
+    <string name="cd_expand">توسيع</string>
+    <string name="cd_play_pause">تشغيل/إيقاف مؤقت</string>
+    <string name="cd_next">التالي</string>
+    <string name="cd_previous">السابق</string>
+    <string name="cd_download">تنزيل</string>
+    <string name="cd_fullscreen">ملء الشاشة</string>
+    <string name="cd_exit_fullscreen">الخروج من ملء الشاشة</string>
+    <string name="cd_rewind10">إرجاع 10 ثوانٍ</string>
+    <string name="cd_forward10">تقديم 10 ثوانٍ</string>
+    <string name="cd_repeat">تكرار</string>
+    <string name="cd_shuffle">خلط</string>
+    <string name="cd_sleep_timer">مؤقت النوم</string>
+    <string name="cd_captions">التسميات التوضيحية</string>
+    <string name="cd_send">إرسال</string>
+    <string name="cd_vote">تصويت</string>
+</resources>

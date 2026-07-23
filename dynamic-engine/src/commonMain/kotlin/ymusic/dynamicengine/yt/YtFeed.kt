@@ -32,16 +32,29 @@ data class YtFeedItem(
     val ctaText: String? = null,
     /** Channel-link target: tapping the byline/avatar navigates here. */
     val channelId: String? = null,
+    /** The app-internal link opening this item's detail surface ("/playlist?…" / "/channel/…").
+     *  Engine-composed and round-tripped back VERBATIM ([extractPlaylistDetail] /
+     *  [extractChannelDetail]) — the query may carry engine-private state the app must not
+     *  interpret. Null = the item has no page. */
+    val url: String? = null,
     val thumbs: List<YtThumb> = emptyList(),
     /** Thumbnail badge overlays (structural, fixed position — not subtitle text). */
     val duration: String? = null,
     val itemCount: String? = null,
     val live: Boolean = false,
+    /** The thumbnail's time-status overlay carried the MUSIC icon — a music video. */
+    val musicVideo: Boolean = false,
+    /** An auto-generated album playlist — rendered with the album mark. */
+    val album: Boolean = false,
+    /** The owner channel's badge (see [OWNER_BADGE_ARTIST]/[OWNER_BADGE_VERIFIED]); null = none. */
+    val ownerBadge: String? = null,
 ) {
     companion object {
         const val KIND_VIDEO = "video"
         const val KIND_PLAYLIST = "playlist"
         const val KIND_CHANNEL = "channel"
+        const val OWNER_BADGE_ARTIST = "artist"
+        const val OWNER_BADGE_VERIFIED = "verified"
     }
 }
 
@@ -49,6 +62,51 @@ data class YtFeedItem(
 data class YtChip(
     val title: String,
     val token: String? = null,
+    val selected: Boolean = false,
+)
+
+/**
+ * One option in a search filter group. [params] is the full search params for re-running the search
+ * with this option applied — the server composes combinations (and, on a [selected] removable
+ * option, its removal). Null on the already-active irremovable option (e.g. the default sort).
+ */
+data class YtFilterOption(
+    val label: String,
+    val params: String? = null,
+    val selected: Boolean = false,
+    val disabled: Boolean = false,
+)
+
+/** A server-provided, titled group of search filters ("Type" / "Duration" / "Upload date" / …). */
+data class YtFilterGroup(
+    val title: String,
+    val options: List<YtFilterOption>,
+)
+
+/**
+ * The page-level header of a detail surface (channel / playlist browse). Subtitle lines are
+ * engine-composed metadata rows rendered verbatim ("@handle", "11.8M subscribers · 221 videos",
+ * "Playlist · 31 videos · 1M views") — same contract as feed items.
+ */
+data class YtPageHeader(
+    val title: String? = null,
+    val subtitleLine1: String? = null,
+    val subtitleLine2: String? = null,
+    /** Channel avatar / playlist hero image, variants in source order. */
+    val thumbs: List<YtThumb> = emptyList(),
+    /** Channel banner variants. */
+    val banner: List<YtThumb> = emptyList(),
+)
+
+/** One browse tab of a channel page (Home / Videos / …). [url] is the app link fetching the channel
+ *  pinned to that tab (round-tripped verbatim through [extractChannelDetail]); [params] is the raw
+ *  server token it embeds — informational, the app never composes browses from it. */
+data class YtPageTab(
+    val title: String,
+    val params: String? = null,
+    val url: String? = null,
+    /** The channel's front (Home) tab — the channel header renders only on it. */
+    val home: Boolean = false,
     val selected: Boolean = false,
 )
 
@@ -62,6 +120,9 @@ data class YtSectionHeader(
     val count: String? = null,
     val ctaText: String? = null,
     val ctaToken: String? = null,
+    /** App-internal navigation for the CTA — "/playlist?list=<id>" or "/channel/<id>[?params=<tab>]".
+     *  Engine-composed; the app parses only this one scheme (see commonUi parseDeeplink). */
+    val ctaDeeplink: String? = null,
 )
 
 /**
@@ -88,6 +149,11 @@ data class YtFeedPage(
     val sections: List<YtSection>,
     val continuation: String? = null,
     val chips: List<YtChip> = emptyList(),
+    /** Search only: the filter submenu groups (fresh pages; continuations omit them). */
+    val filterGroups: List<YtFilterGroup> = emptyList(),
+    /** Detail surfaces only (channel / playlist browse). */
+    val pageHeader: YtPageHeader? = null,
+    val pageTabs: List<YtPageTab> = emptyList(),
     /** Watch-next only: the video autoplay would play next. */
     val autoplayVideoId: String? = null,
 )

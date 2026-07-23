@@ -31,6 +31,9 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
     var sections: List<YtSection> = emptyList()
     var continuation: String? = null
     var chips: List<YtChip> = emptyList()
+    var filterGroups: List<YtFilterGroup> = emptyList()
+    var pageHeader: YtPageHeader? = null
+    var pageTabs: List<YtPageTab> = emptyList()
     var autoplayVideoId: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
@@ -38,12 +41,91 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
             "sections" -> sections = r.readArrayOf { readSection(it) }
             "continuation" -> continuation = r.stringOrNull()
             "chips" -> chips = r.readArrayOf { readChip(it) }
+            "filterGroups" -> filterGroups = r.readArrayOf { readFilterGroup(it) }
+            "pageHeader" -> pageHeader = readPageHeader(r)
+            "pageTabs" -> pageTabs = r.readArrayOf { readPageTab(it) }
             "autoplayVideoId" -> autoplayVideoId = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtFeedPage(sections, continuation, chips, autoplayVideoId)
+    return YtFeedPage(sections, continuation, chips, filterGroups, pageHeader, pageTabs, autoplayVideoId)
+}
+
+private suspend fun readPageHeader(r: JsonReader): YtPageHeader {
+    var title: String? = null
+    var subtitleLine1: String? = null
+    var subtitleLine2: String? = null
+    var thumbs: List<YtThumb> = emptyList()
+    var banner: List<YtThumb> = emptyList()
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "title" -> title = r.stringOrNull()
+            "subtitleLine1" -> subtitleLine1 = r.stringOrNull()
+            "subtitleLine2" -> subtitleLine2 = r.stringOrNull()
+            "thumbs" -> thumbs = r.readArrayOf { readThumb(it) }
+            "banner" -> banner = r.readArrayOf { readThumb(it) }
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtPageHeader(title, subtitleLine1, subtitleLine2, thumbs, banner)
+}
+
+private suspend fun readPageTab(r: JsonReader): YtPageTab {
+    var title = ""
+    var params: String? = null
+    var url: String? = null
+    var home = false
+    var selected = false
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "title" -> title = r.stringOrNull().orEmpty()
+            "params" -> params = r.stringOrNull()
+            "url" -> url = r.stringOrNull()
+            "home" -> home = r.boolean()
+            "selected" -> selected = r.boolean()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtPageTab(title, params, url, home, selected)
+}
+
+private suspend fun readFilterGroup(r: JsonReader): YtFilterGroup {
+    var title = ""
+    var options: List<YtFilterOption> = emptyList()
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "title" -> title = r.stringOrNull().orEmpty()
+            "options" -> options = r.readArrayOf { readFilterOption(it) }
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtFilterGroup(title, options)
+}
+
+private suspend fun readFilterOption(r: JsonReader): YtFilterOption {
+    var label = ""
+    var params: String? = null
+    var selected = false
+    var disabled = false
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "label" -> label = r.stringOrNull().orEmpty()
+            "params" -> params = r.stringOrNull()
+            "selected" -> selected = r.boolean()
+            "disabled" -> disabled = r.boolean()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtFilterOption(label, params, selected, disabled)
 }
 
 private suspend fun readSection(r: JsonReader): YtSection {
@@ -73,6 +155,7 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
     var count: String? = null
     var ctaText: String? = null
     var ctaToken: String? = null
+    var ctaDeeplink: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -81,11 +164,12 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
             "count" -> count = r.stringOrNull()
             "ctaText" -> ctaText = r.stringOrNull()
             "ctaToken" -> ctaToken = r.stringOrNull()
+            "ctaDeeplink" -> ctaDeeplink = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtSectionHeader(title, iconThumbs, count, ctaText, ctaToken)
+    return YtSectionHeader(title, iconThumbs, count, ctaText, ctaToken, ctaDeeplink)
 }
 
 private suspend fun readThumb(r: JsonReader): YtThumb {
@@ -113,10 +197,14 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     var subtitleLine2: String? = null
     var ctaText: String? = null
     var channelId: String? = null
+    var url: String? = null
     var thumbs: List<YtThumb> = emptyList()
     var duration: String? = null
     var itemCount: String? = null
     var live = false
+    var musicVideo = false
+    var album = false
+    var ownerBadge: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -127,15 +215,22 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
             "subtitleLine2" -> subtitleLine2 = r.stringOrNull()
             "ctaText" -> ctaText = r.stringOrNull()
             "channelId" -> channelId = r.stringOrNull()
+            "url" -> url = r.stringOrNull()
             "thumbs" -> thumbs = r.readArrayOf { readThumb(it) }
             "duration" -> duration = r.stringOrNull()
             "itemCount" -> itemCount = r.stringOrNull()
             "live" -> live = r.boolean()
+            "musicVideo" -> musicVideo = r.boolean()
+            "album" -> album = r.boolean()
+            "ownerBadge" -> ownerBadge = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtFeedItem(kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, thumbs, duration, itemCount, live)
+    return YtFeedItem(
+        kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, url, thumbs,
+        duration, itemCount, live, musicVideo, album, ownerBadge,
+    )
 }
 
 private suspend fun readChip(r: JsonReader): YtChip {

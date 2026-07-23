@@ -17,10 +17,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "YMusicV4"
 
-// include(":common")
-// include(":commonUi")
-// include(":androidApp")
+include(":commonUi")
 include(":image-loader")
+include(":desktopApp")
+include(":androidApp")
 include(":kmpCommon")
 include(":kmpHttp:core")
 include(":kmpHttp:json")

@@ -23,4 +23,7 @@ object AppSettings {
 
     /** UI language override (BCP-47); empty = follow the system locale. */
     val uiLanguage = StringSetting("app.uiLanguage", "")
+
+    /** Theme override: "light" | "dark"; empty = follow the system appearance. */
+    val theme = StringSetting("app.theme", "")
 }
