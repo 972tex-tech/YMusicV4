@@ -77,6 +77,7 @@ private suspend fun readPageTab(r: JsonReader): YtPageTab {
     var title = ""
     var params: String? = null
     var url: String? = null
+    var home = false
     var selected = false
     r.beginObject()
     while (r.hasNextObjectKey()) {
@@ -84,12 +85,13 @@ private suspend fun readPageTab(r: JsonReader): YtPageTab {
             "title" -> title = r.stringOrNull().orEmpty()
             "params" -> params = r.stringOrNull()
             "url" -> url = r.stringOrNull()
+            "home" -> home = r.boolean()
             "selected" -> selected = r.boolean()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtPageTab(title, params, url, selected)
+    return YtPageTab(title, params, url, home, selected)
 }
 
 private suspend fun readFilterGroup(r: JsonReader): YtFilterGroup {
@@ -201,6 +203,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     var itemCount: String? = null
     var live = false
     var musicVideo = false
+    var album = false
     var ownerBadge: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
@@ -218,6 +221,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
             "itemCount" -> itemCount = r.stringOrNull()
             "live" -> live = r.boolean()
             "musicVideo" -> musicVideo = r.boolean()
+            "album" -> album = r.boolean()
             "ownerBadge" -> ownerBadge = r.stringOrNull()
             else -> r.skipValue()
         }
@@ -225,7 +229,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     r.endObject()
     return YtFeedItem(
         kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, url, thumbs,
-        duration, itemCount, live, musicVideo, ownerBadge,
+        duration, itemCount, live, musicVideo, album, ownerBadge,
     )
 }
 

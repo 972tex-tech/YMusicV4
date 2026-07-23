@@ -44,6 +44,8 @@ data class YtFeedItem(
     val live: Boolean = false,
     /** The thumbnail's time-status overlay carried the MUSIC icon — a music video. */
     val musicVideo: Boolean = false,
+    /** An auto-generated album playlist — rendered with the album mark. */
+    val album: Boolean = false,
     /** The owner channel's badge (see [OWNER_BADGE_ARTIST]/[OWNER_BADGE_VERIFIED]); null = none. */
     val ownerBadge: String? = null,
 ) {
@@ -103,6 +105,8 @@ data class YtPageTab(
     val title: String,
     val params: String? = null,
     val url: String? = null,
+    /** The channel's front (Home) tab — the channel header renders only on it. */
+    val home: Boolean = false,
     val selected: Boolean = false,
 )
 

@@ -100,6 +100,14 @@ class YtCommandsTest {
             assertEquals(YtSection.LAYOUT_LIST, section.layout)
             val items = section.items
             assertEquals(4, items.size, "$page")
+            // Music-first ranking: the artist-badged video and the Mix bubble above the plain
+            // verified video and the channel row, each group keeping the server's relative order
+            // (server order was video · video · channel · mix).
+            assertEquals(
+                listOf("yuuWdm5tBD0", "RDEMeyKnYmm7ScRhnRO9nwOSNA", "FN7ALfpGxiI", "UClyA28-01x4z60eWQ2kiNbA"),
+                items.map { it.id },
+                "$page",
+            )
             val video = items[0]
             assertEquals(YtFeedItem.KIND_VIDEO, video.kind)
             assertEquals("yuuWdm5tBD0", video.id)
@@ -110,7 +118,7 @@ class YtCommandsTest {
             assertEquals("4:13", video.duration)
             assertEquals(YtFeedItem.OWNER_BADGE_ARTIST, video.ownerBadge, "$video")
             assertTrue(!video.musicVideo, "no MUSIC overlay on this one: $video")
-            assertEquals(YtFeedItem.OWNER_BADGE_VERIFIED, items[1].ownerBadge, "${items[1]}")
+            assertEquals(YtFeedItem.OWNER_BADGE_VERIFIED, items[2].ownerBadge, "${items[2]}")
             val thumb = video.thumbs.single()
             assertTrue(thumb.url.startsWith("https://i.ytimg.com/vi/yuuWdm5tBD0/"), thumb.url)
             assertEquals(720, thumb.w)
@@ -155,6 +163,20 @@ class YtCommandsTest {
             val purchased = page.filterGroups[2].options.single()
             assertTrue(purchased.disabled, "$purchased")
             assertEquals(null, purchased.params)
+
+            // The header chip bar: a chip's endpoint is a fresh search (query+params), wrapped as
+            // an engine-private token so the app's token-only chip pipeline round-trips it.
+            assertEquals(listOf("All", "Shorts"), page.chips.map { it.title }, "$page")
+            assertTrue(page.chips[0].selected, "$page")
+            assertEquals(null, page.chips[0].token, "the active chip has no endpoint")
+            val chipToken = assertNotNull(page.chips[1].token)
+            assertTrue(chipToken.startsWith("ysq1:"), chipToken)
+
+            m.search(continuation = chipToken)
+            val sent3 = assertNotNull(sentBody)
+            assertTrue(sent3.contains(""""query":"son tung mtp""""), sent3)
+            assertTrue(sent3.contains(""""params":"EgIQAQ%3D%3D""""), sent3)
+            assertTrue(!sent3.contains(""""continuation""""), sent3)
         } finally {
             m.close()
         }
@@ -166,7 +188,8 @@ class YtCommandsTest {
         try {
             val page = m.search(query = "bruno mars")
 
-            // Card sections lead the page: artist+Mix, top songs, Albums — then the primary results.
+            // Card sections lead the page: artist+Mix, then Albums (near the top, collapsed behind
+            // the show-more toggle), then top songs — then the primary results.
             assertEquals(4, page.sections.size, "$page")
 
             val lead = page.sections[0].items
@@ -187,7 +210,17 @@ class YtCommandsTest {
             assertEquals("Mix - Bruno Mars", radio.title)
             assertTrue(radio.thumbs.single().url.contains("PMivT7MJ41M"), "seed video thumb: $radio")
 
-            val songs = page.sections[1].items
+            val albums = page.sections[1]
+            assertEquals("Albums", albums.header?.title, "$albums")
+            assertTrue(albums.collapsible, "album row collapses behind the show-more toggle: $albums")
+            // Only the card deep-linking a playlist counts; the plain query refinement is skipped.
+            val album = albums.items.single()
+            assertEquals(YtFeedItem.KIND_PLAYLIST, album.kind)
+            assertTrue(album.id.startsWith("OLAK5uy_"), album.id)
+            assertEquals("24K Magic", album.title)
+            assertTrue(album.album, "OLAK5uy_ playlists carry the album mark: $album")
+
+            val songs = page.sections[2].items
             assertEquals(listOf("kPa7bsKwL-c", "ekr2nIex040"), songs.map { it.id })
             val song = songs[0]
             assertEquals(YtFeedItem.KIND_VIDEO, song.kind)
@@ -195,14 +228,6 @@ class YtCommandsTest {
             assertEquals("4:13", song.duration)
             // watchCardCompactVideoRenderer has no thumbnail — the canonical i.ytimg.com one is used.
             assertTrue(song.thumbs.single().url.contains("/vi/kPa7bsKwL-c/"), "$song")
-
-            val albums = page.sections[2]
-            assertEquals("Albums", albums.header?.title, "$albums")
-            // Only the card deep-linking a playlist counts; the plain query refinement is skipped.
-            val album = albums.items.single()
-            assertEquals(YtFeedItem.KIND_PLAYLIST, album.kind)
-            assertTrue(album.id.startsWith("OLAK5uy_"), album.id)
-            assertEquals("24K Magic", album.title)
 
             val primary = page.sections[3].items
             assertEquals("lY5V4hSLWY8", primary.single().id)
@@ -229,12 +254,15 @@ class YtCommandsTest {
             assertEquals("https://a/av.jpg", header.thumbs.single().url)
             assertEquals("https://a/banner.jpg", header.banner.single().url)
 
-            // Titled tabRenderer tabs only — the expandableTabRenderer search tab is dropped.
+            // Content tabRenderer tabs only — the expandableTabRenderer search tab and the Posts
+            // (community-params) tab are dropped; the params slug, not the localized title, decides.
             // Each carries its own app url (the round-trip currency); params is informational.
             assertEquals(listOf("Home", "Videos"), page.pageTabs.map { it.title }, "$page")
             assertTrue(page.pageTabs[0].selected, "$page")
-            assertEquals("/channel/UCchannelchannelchannel0?params=home-params", page.pageTabs[0].url)
-            assertEquals("/channel/UCchannelchannelchannel0?params=videos-params", page.pageTabs[1].url)
+            assertTrue(page.pageTabs[0].home, "featured-params tab is the channel front: $page")
+            assertTrue(!page.pageTabs[1].home, "$page")
+            assertEquals("/channel/UCchannelchannelchannel0?params=EghmZWF0dXJlZA", page.pageTabs[0].url)
+            assertEquals("/channel/UCchannelchannelchannel0?params=EgZ2aWRlb3M", page.pageTabs[1].url)
 
             assertEquals("Channel video", page.sections.single().items.single().title)
 
@@ -242,7 +270,77 @@ class YtCommandsTest {
             m.extractChannelDetail(page.pageTabs[1].url!!)
             val sent2 = assertNotNull(sentBody)
             assertTrue(sent2.contains(""""browseId":"UCchannelchannelchannel0""""), sent2)
-            assertTrue(sent2.contains(""""params":"videos-params""""), sent2)
+            assertTrue(sent2.contains(""""params":"EgZ2aWRlb3M""""), sent2)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun channel_shorts_tab_parses_shorts_tiles_and_pages_with_a_wrapped_token() = runTest {
+        val (m, _) = manager { jsonResponse(CHANNEL_SHORTS_FIXTURE).build(it) }
+        try {
+            // The shorts-params url flips the engine into Shorts parsing (skipped everywhere
+            // else). The url carries the params the way the engine composed it: the server hands
+            // params out URL-ENCODED ("…%3D%3D"), and the url layer encodes on top ("%253D").
+            val url = "/channel/UCchannelchannelchannel0?params=EgZzaG9ydHPyBgUKA5oBAA%253D%253D"
+            val page = m.extractChannelDetail(url)
+
+            // The browse gets the server's own (still URL-encoded) params back verbatim.
+            val sent = assertNotNull(sentBody)
+            assertTrue(sent.contains(""""params":"EgZzaG9ydHPyBgUKA5oBAA%3D%3D""""), sent)
+
+            val items = page.sections.single().items
+            assertEquals(listOf("AAAAAAAAAAA", "BBBBBBBBBBB"), items.map { it.id }, "$page")
+            val short = items[0]
+            assertEquals(YtFeedItem.KIND_VIDEO, short.kind)
+            assertEquals("First short", short.title)
+            assertEquals("1M views", short.subtitleLine1)
+            assertTrue(short.thumbs.single().url.contains("/vi/AAAAAAAAAAA/"), "$short")
+
+            // The sort bar (chipViewModel generation) parses into chips; on the Shorts tab the
+            // tokens are wrapped like the continuation so sorting stays in Shorts mode.
+            assertEquals(listOf("Latest", "Popular"), page.chips.map { it.title }, "$page")
+            assertTrue(page.chips[0].selected, "$page")
+            assertEquals("ychshorts1:sort-latest", page.chips[0].token)
+            assertEquals("ychshorts1:sort-popular", page.chips[1].token)
+
+            // The continuation is wrapped with engine-private state so paging stays in Shorts mode…
+            val cont = assertNotNull(page.continuation)
+            assertTrue(cont.startsWith("ychshorts1:"), cont)
+            assertTrue(cont.endsWith("shorts-cont"), cont)
+
+            // …and unwraps back to the raw server token on the next call.
+            m.extractChannelDetail(url, continuation = cont)
+            val sent2 = assertNotNull(sentBody)
+            assertTrue(sent2.contains(""""continuation":"shorts-cont""""), sent2)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun channel_playlists_tab_surfaces_the_sort_menu_as_chips() = runTest {
+        val (m, _) = manager { jsonResponse(CHANNEL_PLAYLISTS_FIXTURE).build(it) }
+        try {
+            val url = "/channel/UCchannelchannelchannel0?params=EglwbGF5bGlzdHPyBgQKAkIA"
+            val page = m.extractChannelDetail(url)
+
+            assertEquals("Channel playlist", page.sections.single().items.single().title, "$page")
+
+            // The browse-typed sort menu (sortFilterSubMenuRenderer) becomes chips whose tokens
+            // wrap the sort's browse params (there is no server continuation for a sort).
+            assertEquals(listOf("Date added (newest)", "Last video added"), page.chips.map { it.title }, "$page")
+            assertTrue(page.chips[0].selected, "$page")
+            val sortToken = assertNotNull(page.chips[1].token)
+            assertTrue(sortToken.startsWith("ychp1:"), sortToken)
+
+            // Clicking a sort chip re-browses the channel with the wrapped params — no continuation.
+            m.extractChannelDetail(url, continuation = sortToken)
+            val sent = assertNotNull(sentBody)
+            assertTrue(sent.contains(""""browseId":"UCchannelchannelchannel0""""), sent)
+            assertTrue(sent.contains(""""params":"EglwbGF5bGlzdHMYBCABMAHyBgQKAkIA""""), sent)
+            assertTrue(!sent.contains(""""continuation""""), sent)
         } finally {
             m.close()
         }
@@ -282,7 +380,10 @@ class YtCommandsTest {
         try {
             val page = m.extractHomeFeed()
 
-            assertEquals(3, page.sections.size, "loose grid + two titled shelves: $page")
+            // The fixture also carries a "Shorts" richShelf (shortsLockupViewModel items) — it must
+            // not surface as a section.
+            assertEquals(3, page.sections.size, "loose grid + two titled shelves, Shorts dropped: $page")
+            assertTrue(page.sections.none { it.header?.title == "Shorts" }, "$page")
 
             val grid = page.sections[0]
             assertNull(grid.header, "the loose grid has no header")
