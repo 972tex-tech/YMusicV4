@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -104,13 +105,16 @@ class Pager(
     /** (Re)load from the top; [chipToken] re-requests the feed filtered by that chip. */
     fun refresh(chipToken: String? = null) {
         job?.cancel()
-        val previousChips = (_state.value as? State.Ready)?.chips.orEmpty()
-        val previousFilters = (_state.value as? State.Ready)?.filterGroups.orEmpty()
+        // A CHIP-CLICKED page often carries no chip row/filters of its own — keep the ones we came
+        // from. A plain refresh is a new surface (a channel tab switch): stale chips must NOT leak
+        // into it, or a Playlists tab shows the Videos tab's sort chips and replays their tokens.
+        val carryOver = chipToken != null
+        val previousChips = if (carryOver) (_state.value as? State.Ready)?.chips.orEmpty() else emptyList()
+        val previousFilters = if (carryOver) (_state.value as? State.Ready)?.filterGroups.orEmpty() else emptyList()
         _state.value = State.Loading
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                // A chip-filtered page often carries no chip row of its own — keep the one we came from.
                 val chips = page.chips.ifEmpty { previousChips }
                 State.Ready(
                     sections = page.sections,
@@ -292,6 +296,11 @@ private fun FeedSections(
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (topContent != null) item { topContent() }
             item { FeedChips(state, pager) }
+            if (topContent == null && state.chips.isEmpty()) {
+                // Nothing above the first item (search results, channel content tabs) — the
+                // mockups give the feed a small inset under the app bar (search.html .grid).
+                item { Spacer(Modifier.height(6.dp)) }
+            }
             state.sections.forEachIndexed { index, section ->
                 feedSection(
                     section = section,
