@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
         // icon color must not follow the SYSTEM dark-mode setting — that yields white-on-white.
         val light = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = light, navigationBarStyle = light)
+        FreezeWatchdog.start()
         setContent {
             var graph by remember { mutableStateOf<AppGraph?>(null) }
             var error by remember { mutableStateOf<String?>(null) }
