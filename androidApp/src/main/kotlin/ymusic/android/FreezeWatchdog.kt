@@ -30,6 +30,7 @@ object FreezeWatchdog {
 
     fun start() {
         val main = Handler(Looper.getMainLooper())
+        main.post { mainChoreographer = Choreographer.getInstance() }
         val clockScope = CoroutineScope(AndroidUiDispatcher.Main)
         thread(name = "freeze-watchdog", isDaemon = true) {
             var tick = 0
@@ -65,6 +66,21 @@ object FreezeWatchdog {
                             " ${dispatcherState()} ${compositionClockState()}",
                     )
                 }
+                // The stranded-flag signature (choreographer alive, dispatcher clock dead with its
+                // frame dispatch "scheduled" but the callback gone from the Choreographer queue —
+                // the emulator's "Faking VSYNC due to driver stall" regime eats it): dump the
+                // Choreographer's real queue state, then re-post the dispatcher's own callback —
+                // its doFrame resets the flag and drains the parked waiters.
+                if ((compositionStalled || !clockOk) && choreoOk && looperOk) {
+                    Log.e(TAG, "STRANDED-FLAG suspected; choreographer internals: ${choreographerState()}")
+                    val healed = heal(main)
+                    Log.e(TAG, "HEAL attempted=$healed")
+                    if (healed) {
+                        Thread.sleep(2_000)
+                        val age = android.os.SystemClock.uptimeMillis() - compositionTickUptime
+                        Log.e(TAG, "HEAL result=${if (age < 2_000) "RECOVERED" else "still-stalled"} compositionClockAgeMs=$age")
+                    }
+                }
             }
         }
     }
@@ -94,6 +110,46 @@ object FreezeWatchdog {
             "toRunTrampolined=$trampolined toRunOnFrame=$onFrame"
     } catch (t: Throwable) {
         "dispatcherState failed: $t"
+    }
+
+    /** The main Choreographer's internal queues: is the dispatcher's callback still queued
+     *  (delayed vsync) or gone (consumed without running — the stranded-flag state)? */
+    private fun choreographerState(): String = try {
+        val choreo = mainChoreographer ?: return "choreographer=unset"
+        val cls = choreo.javaClass
+        fun field(name: String): Any? = cls.getDeclaredField(name).apply { isAccessible = true }.get(choreo)
+        val queues = field("mCallbackQueues") as Array<*>
+        val now = android.os.SystemClock.uptimeMillis()
+        val entries = StringBuilder()
+        queues.forEachIndexed { index, queue ->
+            var record = queue!!.javaClass.getDeclaredField("mHead").apply { isAccessible = true }.get(queue)
+            while (record != null) {
+                val recordCls = record.javaClass
+                val due = recordCls.getDeclaredField("dueTime").apply { isAccessible = true }.getLong(record)
+                val action = recordCls.getDeclaredField("action").apply { isAccessible = true }.get(record)
+                entries.append(" q$index:${action?.javaClass?.simpleName}@${due - now}ms")
+                record = recordCls.getDeclaredField("next").apply { isAccessible = true }.get(record)
+            }
+        }
+        "mFrameScheduled=${field("mFrameScheduled")} queued=[$entries ]"
+    } catch (t: Throwable) {
+        "choreographerState failed: $t"
+    }
+
+    @Volatile private var mainChoreographer: Choreographer? = null
+
+    /** Re-post the dispatcher's own frame callback: doFrame -> performFrameDispatch resets the
+     *  stranded scheduledFrameDispatch flag and drains the parked withFrameNanos waiters. */
+    private fun heal(main: Handler): Boolean = try {
+        val dispatcher = AndroidUiDispatcher.Main[ContinuationInterceptor] as Any
+        val callback = dispatcher.javaClass.getDeclaredField("dispatchCallback")
+            .apply { isAccessible = true }
+            .get(dispatcher) as Choreographer.FrameCallback
+        main.post { Choreographer.getInstance().postFrameCallback(callback) }
+        true
+    } catch (t: Throwable) {
+        Log.e(TAG, "heal failed", t)
+        false
     }
 
     /** Reflect whatever clock the composition handed us — a paused PausableMonotonicFrameClock
