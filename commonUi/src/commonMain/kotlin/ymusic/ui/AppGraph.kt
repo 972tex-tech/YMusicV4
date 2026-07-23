@@ -2,6 +2,7 @@ package ymusic.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.MutableSharedFlow
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.yt.YtContext
 import ymusic.imageloader.ImageLoader
@@ -43,4 +44,11 @@ class AppGraph(
      */
     val surfaceScalesDown: Boolean = false,
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
-)
+) {
+    /** App-wide reload signal (desktop F5/Cmd+R): the visible feed surface refetches. */
+    val refreshRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    fun requestRefresh() {
+        refreshRequests.tryEmit(Unit)
+    }
+}

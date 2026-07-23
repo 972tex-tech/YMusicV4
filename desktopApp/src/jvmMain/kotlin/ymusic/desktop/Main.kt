@@ -20,6 +20,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -83,6 +89,7 @@ fun main() {
     System.setProperty("compose.interop.blending", "true")
     application {
         val cefManager = remember { CefManager() }
+        var graph by remember { mutableStateOf<AppGraph?>(null) }
         Window(
             onCloseRequest = {
                 cefManager.dispose()
@@ -91,8 +98,13 @@ fun main() {
             title = "YMusic",
             icon = painterResource(Res.drawable.ymusic_logo),
             state = rememberWindowState(size = DpSize(480.dp, 860.dp)),
+            onPreviewKeyEvent = { event ->
+                val refresh = event.type == KeyEventType.KeyDown &&
+                    (event.key == Key.F5 || ((event.isMetaPressed || event.isCtrlPressed) && event.key == Key.R))
+                if (refresh) graph?.requestRefresh()
+                refresh
+            },
         ) {
-            var graph by remember { mutableStateOf<AppGraph?>(null) }
             var error by remember { mutableStateOf<String?>(null) }
 
             LaunchedEffect(Unit) {

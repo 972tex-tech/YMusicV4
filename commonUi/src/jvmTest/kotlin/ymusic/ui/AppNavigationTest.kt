@@ -182,6 +182,39 @@ class AppNavigationTest {
     }
 
     @Test
+    fun a_refresh_request_refetches_the_visible_feed() {
+        Locale.setDefault(Locale.ENGLISH)
+        val browseCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val client = CannedHttp { request, _ ->
+            val url = request.url.toString()
+            when {
+                request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
+                    textResponse(request, HOMEPAGE_FIXTURE, "text/html")
+                url.contains("youtubei/v1/browse") -> {
+                    browseCalls.incrementAndGet()
+                    textResponse(request, "{}", "application/json")
+                }
+                else -> textResponse(request, "{}", "application/json")
+            }
+        }
+        val engines = DynamicEngineManager(client, appVersion = 1)
+        runBlocking { engines.start() }
+        try {
+            runComposeUiTest {
+                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
+                setContent { App(graph) }
+
+                // Home loads once, then the desktop F5 path (AppGraph.requestRefresh) refetches it.
+                waitUntil(timeoutMillis = 20_000) { browseCalls.get() == 1 }
+                graph.requestRefresh()
+                waitUntil(timeoutMillis = 10_000) { browseCalls.get() == 2 }
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
+
+    @Test
     fun library_keeps_its_tab_and_folder_across_section_switches() {
         Locale.setDefault(Locale.ENGLISH)
         val client = CannedHttp { request, _ ->

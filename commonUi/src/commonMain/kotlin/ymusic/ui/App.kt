@@ -153,7 +153,10 @@ internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.Mutable
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides direction) {
             YMusicTheme(dark = dark) {
-                CompositionLocalProvider(LocalImageLoader provides graph.imageLoader) {
+                CompositionLocalProvider(
+                    LocalImageLoader provides graph.imageLoader,
+                    LocalRefreshRequests provides graph.refreshRequests,
+                ) {
                     AppRoot(graph, section, onSection = { section = it })
                 }
             }
@@ -164,6 +167,10 @@ internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.Mutable
 /** Set true by the active screen while its content is scrolled off the top — the app bar lifts.
  *  Null outside the app shell (e.g. the standalone catalogue window). */
 internal val LocalAppBarElevated = compositionLocalOf<MutableState<Boolean>?> { null }
+
+/** App-wide reload requests (desktop F5/Cmd+R) — the composed feed surface collects and refetches.
+ *  Null outside the app shell. */
+internal val LocalRefreshRequests = compositionLocalOf<kotlinx.coroutines.flow.Flow<Unit>?> { null }
 
 /**
  * One pushed navigation layer. Each layer OWNS its screen state (loaded feed, scroll position,

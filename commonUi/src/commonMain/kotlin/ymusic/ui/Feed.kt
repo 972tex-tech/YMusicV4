@@ -26,16 +26,20 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -215,26 +219,59 @@ fun FeedList(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     val state by pager.state.collectAsState()
-    when (val s = state) {
-        is Pager.State.Loading -> Column(modifier) {
-            topContent?.invoke()
-            CenteredBox { CircularProgressIndicator() }
-        }
-        is Pager.State.Failed -> Column(modifier) {
-            topContent?.invoke()
-            ErrorState(s.code) { pager.refresh() }
-        }
-        is Pager.State.Ready -> {
-            if (s.sections.all { it.items.isEmpty() }) {
-                Column(modifier) {
-                    topContent?.invoke()
-                    FeedChips(s, pager)
-                    EmptyState(emptyMessage) { pager.refresh(s.selectedChipToken) }
+    val reload = {
+        pager.refresh((pager.state.value as? Pager.State.Ready)?.selectedChipToken)
+    }
+    // Desktop F5/Cmd+R: only composed surfaces collect, so the request reaches the visible feed.
+    val refreshRequests = LocalRefreshRequests.current
+    if (refreshRequests != null) {
+        LaunchedEffect(refreshRequests, pager) { refreshRequests.collect { reload() } }
+    }
+    PullToRefreshFeed(refreshing = state is Pager.State.Loading, onRefresh = reload) {
+        when (val s = state) {
+            is Pager.State.Loading -> Column(modifier) {
+                topContent?.invoke()
+                CenteredBox { CircularProgressIndicator() }
+            }
+            is Pager.State.Failed -> Column(modifier) {
+                topContent?.invoke()
+                ErrorState(s.code) { pager.refresh() }
+            }
+            is Pager.State.Ready -> {
+                if (s.sections.all { it.items.isEmpty() }) {
+                    Column(modifier) {
+                        topContent?.invoke()
+                        FeedChips(s, pager)
+                        EmptyState(emptyMessage) { pager.refresh(s.selectedChipToken) }
+                    }
+                } else {
+                    FeedSections(s, pager, coordinator, modifier, onOpen, onPlayItem, topContent, listState, onDeeplink)
                 }
-            } else {
-                FeedSections(s, pager, coordinator, modifier, onOpen, onPlayItem, topContent, listState, onDeeplink)
             }
         }
+    }
+}
+
+/** Touch platforms wrap the feed in Material's pull-to-refresh; desktop reloads via F5/Cmd+R
+ *  instead (a mouse can't over-drag a list), so the wrapper is a no-op there. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, content: @Composable () -> Unit) {
+    if (!platformUsesTouch) {
+        content()
+        return
+    }
+    // The indicator only spins for pull-initiated loads — not the first load or a chip tap.
+    var pulled by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) { if (!refreshing) pulled = false }
+    PullToRefreshBox(
+        isRefreshing = pulled && refreshing,
+        onRefresh = {
+            pulled = true
+            onRefresh()
+        },
+    ) {
+        content()
     }
 }
 
