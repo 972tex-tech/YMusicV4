@@ -9,8 +9,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.runBlocking
 import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.mediastore.BetterMediaStore
+import ymusic.mediastore.mediaStoreJdbcDriver
+import ymusic.mediastore.model.BucketDraft
+import ymusic.mediastore.model.MediaItemDraft
 import java.util.Locale
 import kotlin.test.Test
 
@@ -170,6 +175,68 @@ class AppNavigationTest {
                 section.value = AppSection.Discover
                 waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP"), 10_000)
                 waitUntilAtLeastOneExists(hasText("son tung mtp"), 10_000)
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
+
+    @Test
+    fun library_keeps_its_tab_and_folder_across_section_switches() {
+        Locale.setDefault(Locale.ENGLISH)
+        val client = CannedHttp { request, _ ->
+            val url = request.url.toString()
+            when {
+                request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
+                    textResponse(request, HOMEPAGE_FIXTURE, "text/html")
+                else -> textResponse(request, "{}", "application/json")
+            }
+        }
+        val engines = DynamicEngineManager(client, appVersion = 1)
+        runBlocking { engines.start() }
+        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
+        runBlocking {
+            val root = store.upsertBucket(BucketDraft(Uri.parse("file:///RootFolder"), "RootFolder"))
+            store.upsertBucket(BucketDraft(Uri.parse("file:///RootFolder/SubFolder"), "SubFolder", parentId = root.id))
+            store.upsertItem(
+                root.id,
+                MediaItemDraft(
+                    uri = Uri.parse("file:///RootFolder/song-a.mp3"),
+                    title = "Local Song A",
+                    mimeType = "audio/mpeg",
+                    fileSize = 1L,
+                    lastModified = 1L,
+                ),
+            )
+        }
+        try {
+            runComposeUiTest {
+                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {}, mediaStore = store)
+                val section = androidx.compose.runtime.mutableStateOf(AppSection.Library)
+                setContent { App(graph, section) }
+
+                // Browse into RootFolder — its child folder shows.
+                waitUntilAtLeastOneExists(hasText("RootFolder"), 20_000)
+                onNodeWithText("RootFolder").performClick()
+                waitUntilAtLeastOneExists(hasText("SubFolder"), 10_000)
+
+                // Away to Discover and back: still INSIDE RootFolder, not reset to the root.
+                section.value = AppSection.Discover
+                waitUntilAtLeastOneExists(hasText("Home"), 20_000)
+                section.value = AppSection.Library
+                waitUntilAtLeastOneExists(hasText("SubFolder"), 10_000)
+
+                // Pick the Songs tab, leave, come back: still on Songs.
+                onNodeWithText("Songs").performClick()
+                waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
+                section.value = AppSection.Discover
+                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                section.value = AppSection.Library
+                waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
+
+                // And Folders kept its position through the tab switch too.
+                onNodeWithText("Folders").performClick()
+                waitUntilAtLeastOneExists(hasText("SubFolder"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }

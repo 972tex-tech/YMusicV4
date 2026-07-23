@@ -38,7 +38,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -145,6 +147,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanState)
         else -> {
             var tab by rememberSaveable { mutableStateOf(LibraryTab.Folders) }
+            // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
+            val tabStateHolder = rememberSaveableStateHolder()
             Column(Modifier.fillMaxSize()) {
                 Row(
                     Modifier
@@ -157,39 +161,41 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         LibraryChip(stringResource(t.label), selected = t == tab) { tab = t }
                     }
                 }
-                when (tab) {
-                    LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, scanState)
-                    LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
-                    LibraryTab.Songs -> Column(Modifier.fillMaxSize()) {
-                        SectionHeader(
-                            YtSectionHeader(
-                                title = stringResource(Res.string.library_tab_songs),
-                                count = "${loaded.songs.size}",
-                            ),
-                        )
-                        SongList(loaded.songs, coordinator)
+                tabStateHolder.SaveableStateProvider(tab.name) {
+                    when (tab) {
+                        LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, scanState)
+                        LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
+                        LibraryTab.Songs -> Column(Modifier.fillMaxSize()) {
+                            SectionHeader(
+                                YtSectionHeader(
+                                    title = stringResource(Res.string.library_tab_songs),
+                                    count = "${loaded.songs.size}",
+                                ),
+                            )
+                            SongList(loaded.songs, coordinator)
+                        }
+                        LibraryTab.Artists ->
+                            GroupedList(
+                                loaded.songs,
+                                Icons.Default.Person,
+                                stringResource(Res.string.unknown_artist),
+                                coordinator,
+                            ) { it.artist }
+                        LibraryTab.Albums ->
+                            GroupedList(
+                                loaded.songs,
+                                Icons.Default.Album,
+                                stringResource(Res.string.unknown_album),
+                                coordinator,
+                            ) { it.album }
+                        LibraryTab.Genres ->
+                            GroupedList(
+                                loaded.songs,
+                                Icons.Default.Category,
+                                stringResource(Res.string.unknown_genre),
+                                coordinator,
+                            ) { it.genre }
                     }
-                    LibraryTab.Artists ->
-                        GroupedList(
-                            loaded.songs,
-                            Icons.Default.Person,
-                            stringResource(Res.string.unknown_artist),
-                            coordinator,
-                        ) { it.artist }
-                    LibraryTab.Albums ->
-                        GroupedList(
-                            loaded.songs,
-                            Icons.Default.Album,
-                            stringResource(Res.string.unknown_album),
-                            coordinator,
-                        ) { it.album }
-                    LibraryTab.Genres ->
-                        GroupedList(
-                            loaded.songs,
-                            Icons.Default.Category,
-                            stringResource(Res.string.unknown_genre),
-                            coordinator,
-                        ) { it.genre }
                 }
             }
         }
@@ -224,18 +230,20 @@ private fun FoldersTab(
     scan: (suspend () -> String?)?,
     scanState: ScanState,
 ) {
-    var path by remember { mutableStateOf(listOf<MediaStoreBucket>()) }
+    // (id, displayName) instead of the bucket itself so the browse position survives the section
+    // leaving composition (saveable): coming back from Discover reopens the same folder.
+    var path by rememberSaveable(stateSaver = CrumbPathSaver) { mutableStateOf(listOf<Pair<Long, String>>()) }
     var folders by remember { mutableStateOf<List<MediaStoreBucket>?>(null) }
     var items by remember { mutableStateOf<List<MediaStoreItem>>(emptyList()) }
 
     LaunchedEffect(path, content) {
-        val current = path.lastOrNull()
-        folders = store.childBuckets(current?.id)
-        items = store.itemsInBucket(current?.id)
+        val currentId = path.lastOrNull()?.first
+        folders = store.childBuckets(currentId)
+        items = store.itemsInBucket(currentId)
     }
 
     Column(Modifier.fillMaxSize()) {
-        Breadcrumb(path) { depth -> path = path.take(depth) }
+        Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
         if (path.isEmpty() && scan != null) ScanBar(scan, scanState, label = stringResource(Res.string.library_add_folder))
         val children = folders
         if (children == null) {
@@ -244,7 +252,7 @@ private fun FoldersTab(
         }
         LazyColumn(Modifier.fillMaxSize()) {
             items(children, key = { "b${it.id}" }) { bucket ->
-                FolderRow(bucket) { path = path + bucket }
+                FolderRow(bucket) { path = path + (bucket.id to bucket.displayName) }
             }
             itemsIndexed(items, key = { _, s -> s.id }) { index, song ->
                 SongRow(song) { coordinator.playLocal(items, index) }
@@ -262,9 +270,15 @@ private fun FoldersTab(
     }
 }
 
+/** Saves the folder browse path as a flat [id, name, id, name, …] list. */
+private val CrumbPathSaver = listSaver<List<Pair<Long, String>>, Any>(
+    save = { path -> path.flatMap { (id, name) -> listOf(id, name) } },
+    restore = { flat -> flat.chunked(2).map { (id, name) -> id as Long to name as String } },
+)
+
 /** `Library › root › sub` — every crumb but the last navigates back up to it. */
 @Composable
-internal fun Breadcrumb(path: List<MediaStoreBucket>, onNavigate: (depth: Int) -> Unit) {
+internal fun Breadcrumb(path: List<String>, onNavigate: (depth: Int) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -273,14 +287,14 @@ internal fun Breadcrumb(path: List<MediaStoreBucket>, onNavigate: (depth: Int) -
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CrumbText(stringResource(Res.string.library_crumb_root), last = path.isEmpty()) { onNavigate(0) }
-        path.forEachIndexed { i, bucket ->
+        path.forEachIndexed { i, name ->
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 null,
                 Modifier.size(16.dp),
                 tint = DesignColors.InkFaint,
             )
-            CrumbText(bucket.displayName, last = i == path.lastIndex) { onNavigate(i + 1) }
+            CrumbText(name, last = i == path.lastIndex) { onNavigate(i + 1) }
         }
     }
 }

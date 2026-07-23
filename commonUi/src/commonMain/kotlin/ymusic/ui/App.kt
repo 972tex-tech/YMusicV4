@@ -196,6 +196,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // future search is a different, local-files flow).
         val sectionLayers = remember { mutableMapOf<AppSection, androidx.compose.runtime.snapshots.SnapshotStateList<AppLayer>>() }
         val layers = sectionLayers.getOrPut(section) { mutableStateListOf() }
+        val sectionStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
         // Navigation is url-driven: every openable target carries an engine-composed app link
         // (item.url / tab.url / a shelf CTA's deeplink) that the app routes on and round-trips
         // verbatim — the tapped item itself only seeds the header while the page loads.
@@ -399,20 +400,25 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         onDeeplink = openDeeplink,
                                     )
                                 }
-                                null -> when (section) {
-                                    AppSection.Discover -> DiscoverFeed(
-                                        graph,
-                                        coordinator,
-                                        discoverTab,
-                                        discoverSessions,
-                                        scope,
-                                        onOpen = openItem,
-                                        onDeeplink = openDeeplink,
-                                    )
-                                    AppSection.Library -> LibraryScreen(graph, coordinator)
-                                    AppSection.Settings -> SettingsScreen(graph)
-                                    AppSection.Catalogue -> CatalogueScreen()
-                                    else -> ComingSoon(section)
+                                // Saveable state (tab picks, folder crumbs, scroll positions) is
+                                // kept per section while its content is out of composition —
+                                // Library must come back on the tab and folder it was left on.
+                                null -> sectionStateHolder.SaveableStateProvider(section.name) {
+                                    when (section) {
+                                        AppSection.Discover -> DiscoverFeed(
+                                            graph,
+                                            coordinator,
+                                            discoverTab,
+                                            discoverSessions,
+                                            scope,
+                                            onOpen = openItem,
+                                            onDeeplink = openDeeplink,
+                                        )
+                                        AppSection.Library -> LibraryScreen(graph, coordinator)
+                                        AppSection.Settings -> SettingsScreen(graph)
+                                        AppSection.Catalogue -> CatalogueScreen()
+                                        else -> ComingSoon(section)
+                                    }
                                 }
                             }
                         }

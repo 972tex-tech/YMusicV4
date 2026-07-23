@@ -49,11 +49,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kmpcommon.uri.Uri
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.dynamicengine.yt.YtThumb
-import ymusic.mediastore.model.MediaStoreBucket
 
 /**
  * Development-only component catalogue (a Storybook, not a product screen): every shared UI
@@ -594,11 +592,7 @@ private val mockFeedChips = listOf("All", "Music", "Podcasts", "Live")
 
 private val mockQualities = listOf("zero" to "Audio only", "720" to "720p", "1080" to "1080p")
 
-private val mockCrumbs = listOf(
-    MediaStoreBucket(1, null, Uri.parse("file:///Music"), "Music", null),
-    MediaStoreBucket(2, 1, Uri.parse("file:///Music/Albums"), "Albums", null),
-    MediaStoreBucket(3, 2, Uri.parse("file:///Music/Albums/m-tp"), "m-tp", "Sơn Tùng M-TP"),
-)
+private val mockCrumbs = listOf("Music", "Albums", "Sơn Tùng M-TP")
 
 // Specimens carry their own style; sizes in the label. The app has no central type scale —
 // these are the de-facto roles (ListTitleStyle/… live in FeedItems.kt).
