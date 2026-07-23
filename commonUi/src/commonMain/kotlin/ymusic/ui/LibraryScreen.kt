@@ -6,13 +6,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -366,8 +372,10 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
             loaded.isEmpty() -> CenteredBox {
                 Text(stringResource(Res.string.library_no_playlists), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            else -> LazyColumn(Modifier.fillMaxSize()) {
-                items(loaded, key = { (p, _) -> p.id }) { (playlist, count) ->
+            else -> LibraryBrowseLevel(
+                entries = loaded,
+                key = { (p, _) -> p.id },
+                row = { (playlist, count) ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -389,8 +397,19 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
                             )
                         }
                     }
-                }
-            }
+                },
+                card = { (playlist, count) ->
+                    LibraryGridCard(
+                        icon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                        artUrl = null,
+                        title = playlist.name,
+                        subtitle = pluralStringResource(Res.plurals.n_songs, count, count),
+                    ) {
+                        members = null
+                        selected = playlist.id to playlist.name
+                    }
+                },
+            )
         }
     } else {
         Column(Modifier.fillMaxSize()) {
@@ -550,8 +569,10 @@ private fun GroupedList(
 
     val selected = group
     if (selected == null) {
-        LazyColumn(Modifier.fillMaxSize()) {
-            itemsIndexed(grouped, key = { _, (name, _) -> name }) { _, (name, members) ->
+        LibraryBrowseLevel(
+            entries = grouped,
+            key = { it.first },
+            row = { (name, members) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -570,13 +591,83 @@ private fun GroupedList(
                         )
                     }
                 }
-            }
-        }
+            },
+            card = { (name, members) ->
+                LibraryGridCard(
+                    icon = icon,
+                    artUrl = members.firstNotNullOfOrNull(::localArtUrl),
+                    title = name,
+                    subtitle = pluralStringResource(Res.plurals.n_songs, members.size, members.size),
+                ) { group = name }
+            },
+        )
     } else {
         Column(Modifier.fillMaxSize()) {
             DrillDownHeader(selected) { group = null }
             SongList(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), coordinator)
         }
+    }
+}
+
+/** One browse level (playlists / artists / albums / genres): rows on phone widths, an album-card
+ *  grid on the feed's Grid band (≥470dp) — the legacy Albums tab's large-screen treatment. */
+@Composable
+private fun <T> LibraryBrowseLevel(
+    entries: List<T>,
+    key: (T) -> Any,
+    row: @Composable (T) -> Unit,
+    card: @Composable (T) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (feedLayoutFor(maxWidth) == FeedLayout.Grid) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 150.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                items(entries, key = key) { entry -> card(entry) }
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(entries, key = key) { entry -> row(entry) }
+            }
+        }
+    }
+}
+
+/** The grid form of a browse entry: square art tile (icon placeholder under the art) + title/count. */
+@Composable
+private fun LibraryGridCard(
+    icon: ImageVector,
+    artUrl: String?,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(6.dp),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
+            ArtImage(artUrl, RoundedCornerShape(10.dp))
+        }
+        Text(
+            title,
+            style = GridTitleStyle,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 7.dp),
+        )
+        Text(subtitle, style = GridSubStyle, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
