@@ -140,7 +140,9 @@ private fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit) 
                 Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = DesignColors.OnInk)
             }
         }
-        HorizontalDivider(color = DesignColors.StackNear, modifier = Modifier.padding(horizontal = 16.dp))
+        // 8dp under the divider + the first row's own 8dp = the list's 16dp item rhythm; without
+        // it the first video hugs the divider at half the spacing of every following row.
+        HorizontalDivider(color = DesignColors.StackNear, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
     }
 }
 
