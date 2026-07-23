@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Image
@@ -44,6 +45,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +61,8 @@ import ymusic.ui.resources.badge_live
 import ymusic.ui.resources.cd_collapse
 import ymusic.ui.resources.cd_expand
 import ymusic.ui.resources.cd_more
+import ymusic.ui.resources.cd_music_video
+import ymusic.ui.resources.cd_view_all
 
 /**
  * The feed building blocks from design/final/feed-components.html: one SectionHeader + the six
@@ -82,6 +87,7 @@ fun SectionHeader(
     modifier: Modifier = Modifier,
     collapsed: Boolean? = null,
     onToggle: (() -> Unit)? = null,
+    onCta: (() -> Unit)? = null,
 ) {
     Row(
         modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
@@ -116,9 +122,24 @@ fun SectionHeader(
                 tint = DesignColors.InkSoft,
                 onClick = onToggle,
             )
-            header?.ctaText != null || header?.ctaToken != null -> Row(verticalAlignment = Alignment.CenterVertically) {
-                header.ctaText?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
+            header?.ctaText != null || header?.ctaToken != null || header?.ctaDeeplink != null -> {
+                val cta = if (onCta != null && header.ctaDeeplink != null) onCta else null
+                val label = stringResource(Res.string.cd_view_all)
+                Row(
+                    if (cta != null) {
+                        Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .clickable(onClick = cta)
+                            .semantics { contentDescription = label }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    } else {
+                        Modifier
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    header.ctaText?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
+                }
             }
         }
     }
@@ -210,7 +231,7 @@ fun FeedGridCard(
             ) {
                 Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
                 ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(5.dp))
-                Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 10, iconSize = 11.dp)
+                Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
             }
         }
         Row(
@@ -344,7 +365,7 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
     ) {
         Icon(Icons.Outlined.Image, null, Modifier.size(if (height < 80.dp) 21.dp else 30.dp), tint = DesignColors.PlaceholderIcon)
         ThumbImage(item.thumbs, width, RoundedCornerShape(6.dp))
-        Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 9, iconSize = 10.dp)
+        Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
     }
 }
 
@@ -359,28 +380,54 @@ val GRID_CARD_MAX_WIDTH = 324.dp
 /** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
 val GRID_CARD_INSET = 8.dp
 
-/** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. */
+/** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. A Mix (RD… id, the
+ *  endless YouTube radio) swaps the playlist glyph for the infinity mark. */
 @Composable
 internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSize: androidx.compose.ui.unit.Dp) {
-    val badgeText = TextStyle(fontSize = textSize.sp, color = Color.White)
+    val badgeText = TextStyle(fontSize = textSize.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
     when {
         item.live -> Text(
             stringResource(Res.string.badge_live),
             style = badgeText.copy(fontWeight = FontWeight.Bold),
-            modifier = modifier.background(Color(0xFFCC0000), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+            modifier = modifier.background(Color(0xFFCC0000), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
         )
         item.itemCount != null -> Row(
-            modifier.background(DesignColors.BadgeScrim, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+            modifier.background(DesignColors.BadgeScrim, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (item.id.startsWith("RD")) Icons.Default.AllInclusive else Icons.AutoMirrored.Filled.PlaylistPlay,
+                null,
+                Modifier.size(iconSize),
+                tint = Color.White,
+            )
+            Text(item.itemCount!!, style = badgeText)
+        }
+        item.duration != null -> Row(
+            modifier.background(DesignColors.BadgeInk, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, Modifier.size(iconSize), tint = Color.White)
-            Text(item.itemCount!!, style = badgeText)
+            // YouTube's music-video mark: the note glyph ahead of the duration.
+            if (item.musicVideo) {
+                Icon(
+                    Icons.Outlined.MusicNote,
+                    stringResource(Res.string.cd_music_video),
+                    Modifier.size(iconSize),
+                    tint = Color.White,
+                )
+            }
+            Text(item.duration!!, style = badgeText)
         }
-        item.duration != null -> Text(
-            item.duration!!,
-            style = badgeText,
-            modifier = modifier.background(DesignColors.BadgeInk, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+        item.musicVideo -> Icon(
+            Icons.Outlined.MusicNote,
+            stringResource(Res.string.cd_music_video),
+            modifier
+                .background(DesignColors.BadgeInk, RoundedCornerShape(3.dp))
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .size(iconSize),
+            tint = Color.White,
         )
     }
 }

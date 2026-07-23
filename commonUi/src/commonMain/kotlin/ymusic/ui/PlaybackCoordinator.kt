@@ -63,6 +63,18 @@ class PlaybackCoordinator(
         }
     }
 
+    /** Play [videos] as the whole queue (a playlist page), starting at [startIndex]. */
+    fun playAll(videos: List<YtFeedItem>, startIndex: Int = 0, shuffle: Boolean = false) {
+        val playable = videos.filter { it.kind == YtFeedItem.KIND_VIDEO }
+        if (playable.isEmpty()) return
+        remember(playable)
+        player.setShuffle(shuffle)
+        player.setQueue(
+            playable.map { PlayableItem.YtVideoId(it.id) },
+            playIndex = startIndex.coerceIn(0, playable.size - 1),
+        )
+    }
+
     /** Play local library [songs] as the queue, starting at [index]. */
     fun playLocal(songs: List<MediaStoreItem>, index: Int) {
         val display = songs.map { s ->

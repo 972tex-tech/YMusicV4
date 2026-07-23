@@ -65,5 +65,27 @@ kotlin {
                 implementation(Libs.Kotlinx.coroutinesCore)
             }
         }
+
+        // The system back bridge (PlatformBackHandler) — the only Android-specific dependency.
+        val androidMain by getting {
+            dependencies {
+                implementation(Libs.AndroidX.activityCompose)
+            }
+        }
+
+        /**
+         * Headless Compose UI tests (no window, no input automation): screens mount over a real
+         * DynamicEngineManager driven by a canned HTTP client, so a test exercises Kotlin UI →
+         * engine JS → parser → UI end to end on this desktop JVM.
+         */
+        val jvmTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(Libs.Kotlinx.coroutinesTest)
+                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+                implementation(compose.uiTest)
+                implementation(compose.desktop.currentOs)
+            }
+        }
     }
 }

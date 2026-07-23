@@ -1,6 +1,5 @@
 package ymusic.ui
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.filled.Facebook
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.StarBorder
@@ -59,7 +57,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -68,25 +65,20 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
-import ymusic.dynamicengine.yt.browse
+import ymusic.dynamicengine.yt.extractHomeFeed
 import ymusic.player.PlayableItem
 import ymusic.player.VideoQualityState
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
 import ymusic.ui.resources.Res
-import ymusic.ui.resources.cd_menu
-import ymusic.ui.resources.cd_search
 import ymusic.ui.resources.coming_soon
 import ymusic.ui.resources.discover_needs_account
 import ymusic.ui.resources.discover_no_anonymous_home
@@ -160,6 +152,19 @@ fun App(graph: AppGraph) {
  *  Null outside the app shell (e.g. the standalone catalogue window). */
 internal val LocalAppBarElevated = compositionLocalOf<MutableState<Boolean>?> { null }
 
+/**
+ * One pushed navigation layer. Each layer OWNS its screen state (loaded feed, scroll position,
+ * query…) so lower layers survive intact under pushed ones — back always lands where the user
+ * left, e.g. search results stay loaded while a result's detail page is open above them.
+ */
+private sealed interface AppLayer {
+    class Search(val session: SearchSession) : AppLayer
+
+    class Playlist(val session: PlaylistSession) : AppLayer
+
+    class Channel(val session: ChannelSession) : AppLayer
+}
+
 @Composable
 private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection) -> Unit) {
     run {
@@ -167,8 +172,77 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
-        var searching by rememberSaveable { mutableStateOf(false) }
         var nowPlayingOpen by rememberSaveable { mutableStateOf(false) }
+        // Discover feeds cache per browseId — switching tab or navigating away and back must show
+        // the already-loaded feed at its old scroll position, not reload it.
+        val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
+        // The navigation layer stack: search and detail pages push; back pops one layer.
+        val layers = remember { androidx.compose.runtime.mutableStateListOf<AppLayer>() }
+        // Navigation is url-driven: every openable target carries an engine-composed app link
+        // (item.url / tab.url / a shelf CTA's deeplink) that the app routes on and round-trips
+        // verbatim — the tapped item itself only seeds the header while the page loads.
+        val openItem: (ymusic.dynamicengine.yt.YtFeedItem) -> Unit = { item ->
+            val url = item.url
+            if (url != null) {
+                when (item.kind) {
+                    ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST ->
+                        layers.add(AppLayer.Playlist(PlaylistSession(graph, scope, url, item)))
+                    ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL ->
+                        layers.add(AppLayer.Channel(ChannelSession(graph, scope, item, initialUrl = url)))
+                }
+            }
+        }
+        // Engine-composed deeplinks (a shelf's "View all"): the link decides the surface, the
+        // header title seeds the page while it loads.
+        val openDeeplink: (String, String?) -> Unit = { link, title ->
+            val seed = { kind: String ->
+                ymusic.dynamicengine.yt.YtFeedItem(kind = kind, id = link, title = title.orEmpty(), url = link)
+            }
+            when (val target = parseDeeplink(link)) {
+                is Deeplink.Playlist -> layers.add(
+                    AppLayer.Playlist(
+                        PlaylistSession(graph, scope, target.url, seed(ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST)),
+                    ),
+                )
+                is Deeplink.Channel -> layers.add(
+                    AppLayer.Channel(
+                        ChannelSession(
+                            graph,
+                            scope,
+                            seed(ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL),
+                            initialUrl = target.url,
+                        ),
+                    ),
+                )
+                null -> Unit // an older app meeting a newer bundle's scheme — the CTA is inert
+            }
+        }
+        // Search is single-instance (Android's SINGLE_TOP + BRING_TO_FRONT): reopening search from
+        // anywhere raises the existing layer — with its query, results and scroll — to the top
+        // instead of stacking a fresh one.
+        val openSearch: () -> Unit = {
+            val existing = layers.indexOfFirst { it is AppLayer.Search }
+            when {
+                existing >= 0 && existing == layers.lastIndex -> Unit // already on top
+                existing >= 0 -> layers.add(layers.removeAt(existing))
+                else -> layers.add(AppLayer.Search(SearchSession(graph, scope)))
+            }
+        }
+        val popLayer = { layers.removeAt(layers.lastIndex); Unit }
+
+        // The system back gesture/button walks the same path as the in-app back arrows: overlays
+        // close first (drawer, Now Playing); the search input steps back to its results; otherwise
+        // one navigation layer pops. Disabled with nothing to unwind — the OS then exits the app.
+        PlatformBackHandler(enabled = drawer.isOpen || nowPlayingOpen || layers.isNotEmpty()) {
+            val top = layers.lastOrNull()
+            when {
+                drawer.isOpen -> scope.launch { drawer.close() }
+                nowPlayingOpen -> nowPlayingOpen = false
+                top is AppLayer.Search && top.session.editing && top.session.submitted != null ->
+                    top.session.editing = false
+                else -> popLayer()
+            }
+        }
 
         // The one shared video surface must be *realized* for a WebView (YouTube) source to play at
         // all — a windowed JCEF/WKWebView that is never shown never initializes, so it can't play even
@@ -193,20 +267,19 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         appVersion = graph.appVersion,
                         onSelect = { s ->
                             onSection(s)
-                            searching = false
+                            layers.clear()
                             scope.launch { drawer.close() }
                         },
                     )
                 },
             ) {
                 val barElevated = remember { mutableStateOf(false) }
-                val barShadow by animateDpAsState(if (barElevated.value) 4.dp else 0.dp)
                 // Touch platforms scroll the toolbar row away (enter-always) while the tab row
                 // stays pinned; with the tabs inline (wide) the bar carries them, so it stays put.
                 val collapsible = platformUsesTouch && !wide
                 var toolbarHeightPx by remember { mutableStateOf(0) }
                 var toolbarOffsetPx by remember { mutableStateOf(0f) }
-                LaunchedEffect(section, discoverTab, searching, collapsible) {
+                LaunchedEffect(section, discoverTab, layers.isEmpty(), collapsible) {
                     barElevated.value = false
                     toolbarOffsetPx = 0f
                 }
@@ -225,8 +298,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         modifier = Modifier.nestedScroll(collapseConnection),
                         containerColor = Color.White,
                         topBar = {
-                            if (!searching) {
-                                Column(Modifier.shadow(barShadow).background(Color.White)) {
+                            // Search and the detail pages carry their own app bars.
+                            if (layers.isEmpty()) {
+                                ElevatedBarColumn {
                                     Box(
                                         Modifier.clipToBounds().layout { measurable, constraints ->
                                             val placeable = measurable.measure(constraints)
@@ -242,7 +316,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 if (section == AppSection.Discover) discoverTab.label else section.label,
                                             ),
                                             onMenu = { scope.launch { drawer.open() } },
-                                            onSearch = { searching = true },
+                                            onSearch = openSearch,
                                             inlineContent = if (section == AppSection.Discover && wide) {
                                                 { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
                                             } else {
@@ -281,13 +355,50 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         },
                     ) { padding ->
                         Column(Modifier.fillMaxSize().padding(padding)) {
-                            when {
-                                searching -> SearchScreen(graph, coordinator, onBack = { searching = false })
-                                section == AppSection.Discover -> DiscoverFeed(graph, coordinator, discoverTab)
-                                section == AppSection.Library -> LibraryScreen(graph, coordinator)
-                                section == AppSection.Settings -> SettingsScreen(graph)
-                                section == AppSection.Catalogue -> CatalogueScreen()
-                                else -> ComingSoon(section)
+                            when (val top = layers.lastOrNull()) {
+                                is AppLayer.Search -> key(top) {
+                                    SearchScreen(
+                                        graph,
+                                        coordinator,
+                                        onBack = popLayer,
+                                        onOpen = openItem,
+                                        session = top.session,
+                                        onDeeplink = openDeeplink,
+                                    )
+                                }
+                                is AppLayer.Playlist -> key(top) {
+                                    PlaylistDetailScreen(
+                                        coordinator,
+                                        top.session,
+                                        onBack = popLayer,
+                                        onSearch = openSearch,
+                                    )
+                                }
+                                is AppLayer.Channel -> key(top) {
+                                    ChannelDetailScreen(
+                                        coordinator,
+                                        top.session,
+                                        onBack = popLayer,
+                                        onSearch = openSearch,
+                                        onOpen = openItem,
+                                        onDeeplink = openDeeplink,
+                                    )
+                                }
+                                null -> when (section) {
+                                    AppSection.Discover -> DiscoverFeed(
+                                        graph,
+                                        coordinator,
+                                        discoverTab,
+                                        discoverSessions,
+                                        scope,
+                                        onOpen = openItem,
+                                        onDeeplink = openDeeplink,
+                                    )
+                                    AppSection.Library -> LibraryScreen(graph, coordinator)
+                                    AppSection.Settings -> SettingsScreen(graph)
+                                    AppSection.Catalogue -> CatalogueScreen()
+                                    else -> ComingSoon(section)
+                                }
                             }
                         }
                     }
@@ -300,39 +411,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     }
 }
 
-/** The app bar (design/final/home.html): menu · title · [inline tabs on landscape] · search. */
-@Composable
-private fun DesignAppBar(
-    title: String,
-    onMenu: () -> Unit,
-    onSearch: () -> Unit,
-    inlineContent: (@Composable () -> Unit)? = null,
-) {
-    Row(
-        // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
-        // The mockup's 5px top margin sits under a status bar; a bare window edge needs its own.
-        Modifier.fillMaxWidth().background(Color.White).padding(start = 11.dp, end = 11.dp, top = 6.dp, bottom = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ActionIcon(Icons.Default.Menu, stringResource(Res.string.cd_menu), onClick = onMenu)
-        Text(title, style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink))
-        if (inlineContent != null) {
-            Box(Modifier.padding(start = 16.dp)) { inlineContent() }
-        }
-        Box(Modifier.weight(1f))
-        ActionIcon(Icons.Default.Search, stringResource(Res.string.cd_search), onClick = onSearch)
-    }
-}
-
 /** Discover's five feed tabs (design §1). Only Home has an anonymous backing feed today; the rest
  *  light up with accounts (they mirror the signed-in YouTube surfaces). */
-enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val browseId: String?) {
-    Home(Res.string.tab_home, Icons.Outlined.Home, "FEwhat_to_watch"),
-    Music(Res.string.tab_music, Icons.Outlined.MusicNote, null),
-    Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, null),
-    TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, null),
-    Account(Res.string.tab_account_library, Icons.Outlined.Person, null),
+enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
+    Home(Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
+    Music(Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = false),
+    Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = false),
+    TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = false),
+    Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
 /** Icon tabs with the 2dp underline indicator; [underline] off for the inline (app bar) form. */
@@ -369,10 +455,16 @@ internal fun DiscoverTabRow(selected: DiscoverTab, underline: Boolean, onSelect:
 }
 
 @Composable
-private fun DiscoverFeed(graph: AppGraph, coordinator: PlaybackCoordinator, tab: DiscoverTab) {
-    val scope = rememberCoroutineScope()
-    val browseId = tab.browseId
-    if (browseId == null) {
+private fun DiscoverFeed(
+    graph: AppGraph,
+    coordinator: PlaybackCoordinator,
+    tab: DiscoverTab,
+    sessions: MutableMap<String, FeedSession>,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onOpen: ((ymusic.dynamicengine.yt.YtFeedItem) -> Unit)? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+) {
+    if (!tab.hasFeed) {
         CenteredBox {
             Text(
                 stringResource(Res.string.discover_needs_account, stringResource(tab.label)),
@@ -380,19 +472,28 @@ private fun DiscoverFeed(graph: AppGraph, coordinator: PlaybackCoordinator, tab:
             )
         }
     } else {
-        val pager = remember(browseId) {
-            Pager(scope) { continuation ->
-                graph.engines.browse(
-                    browseId = if (continuation == null) browseId else null,
-                    continuation = continuation,
-                    ctx = graph.ytContext,
-                )
-            }.also { it.refresh() }
+        // Cached per tab (and on the app scope): coming back to the tab — or back from
+        // search / a detail page — shows the feed as it was, no reload.
+        val session = remember(tab) {
+            sessions.getOrPut(tab.name) {
+                FeedSession(scope) { continuation ->
+                    val page = graph.engines.extractHomeFeed(
+                        continuation = continuation,
+                        ctx = graph.ytContext,
+                    )
+                    // Home is a music app's front door: music first (per section — reordering across
+                    // sections would tear shelf headers off their items).
+                    page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
+                }.also { it.pager.refresh() }
+            }
         }
         FeedList(
-            pager,
+            session.pager,
             coordinator,
             emptyMessage = stringResource(Res.string.discover_no_anonymous_home),
+            onOpen = onOpen,
+            listState = session.listState,
+            onDeeplink = onDeeplink,
         )
     }
 }

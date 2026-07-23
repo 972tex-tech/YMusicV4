@@ -32,6 +32,19 @@
     <string name="search_youtube">Tìm kiếm trên YouTube</string>
     <string name="search_type_to_search">Nhập để tìm kiếm</string>
     <string name="search_no_results">Không có kết quả</string>
+    <string name="search_clear_history">Xóa lịch sử</string>
+    <string name="search_filter_title">Lọc tìm kiếm</string>
+    <string name="cd_filter">Bộ lọc</string>
+    <string name="cd_more_tabs">Thêm thẻ</string>
+    <string name="cd_view_all">Xem tất cả</string>
+    <string name="cd_insert_query">Đưa vào ô tìm kiếm</string>
+    <string name="cd_remove_from_history">Xóa khỏi lịch sử</string>
+    <!-- Detail pages -->
+    <string name="detail_playlist">Danh sách phát</string>
+    <string name="subscribe">Đăng ký</string>
+    <string name="cd_add_to_playlist">Thêm vào danh sách phát</string>
+    <string name="cd_share">Chia sẻ</string>
+    <string name="cd_music_video">Âm nhạc</string>
 
     <string name="library_tab_folders">Thư mục</string>
     <string name="library_tab_playlists">Danh sách phát</string>

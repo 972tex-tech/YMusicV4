@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,6 +91,41 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun CatalogueList() {
     LazyColumn(Modifier.fillMaxSize()) {
+        item { CatLabel("App bars — ONE bar language (AppBars.kt): home · search input · search results · detail") }
+        item { DesignAppBar("Home", onMenu = {}, onSearch = {}) }
+        item { BarGap() }
+        item {
+            DesignAppBar("Home", onMenu = {}, onSearch = {}, inlineContent = {
+                DiscoverTabRow(DiscoverTab.Home, underline = false) {}
+            })
+        }
+        item { BarGap() }
+        item {
+            var field by remember { mutableStateOf(TextFieldValue("bảo anh")) }
+            SearchInputBar(field, onValue = { field = it }, onSubmit = {}, onBack = {}, autoFocus = false)
+        }
+        item { BarGap() }
+        item { SearchResultsBar("son tung mtp", onBack = {}, showFilter = true, onFilter = {}, onSearch = {}) }
+        item { BarGap() }
+        item { DetailAppBar("Playlist", onBack = {}, onSearch = {}) }
+        item { BarGap() }
+        item {
+            var active by remember { mutableStateOf<String?>(null) }
+            DetailAppBar("Sơn Tùng M-TP Official", onBack = {}, onSearch = {}) {
+                ChannelTabRow(mockChannelTabs, activeUrl = active) { active = it.url }
+                HorizontalDivider(color = DesignColors.Divider)
+            }
+        }
+
+        item { CatLabel("App bars — ELEVATED (screen scrolled): 4dp shadow + SurfaceElevated tone") }
+        item {
+            CompositionLocalProvider(LocalAppBarElevated provides remember { mutableStateOf(true) }) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+                    DetailAppBar("Scrolled state", onBack = {}, onSearch = {})
+                }
+            }
+        }
+
         item { CatLabel("SectionHeader — title · icon+count · CTA · collapsible") }
         item { SectionHeader(YtSectionHeader(title = "Recommended")) }
         item { SectionHeader(YtSectionHeader(title = "Sơn Tùng M-TP", iconThumbs = mockAvatarThumbs, count = "500+")) }
@@ -439,6 +476,12 @@ private fun CatalogueGridRow(content: @Composable RowScope.(inset: Dp) -> Unit) 
     }
 }
 
+/** A hairline separating stacked bar specimens (they're all white-on-white). */
+@Composable
+private fun BarGap() {
+    HorizontalDivider(color = DesignColors.StackFar, modifier = Modifier.padding(vertical = 4.dp))
+}
+
 /** Dev chrome: monospace caption + divider above each catalogue group. */
 @Composable
 private fun CatLabel(text: String) {
@@ -536,6 +579,16 @@ private val mockActions = ItemActions(
 )
 
 private val mockLibraryTabs = listOf("Folders", "Playlists", "Songs", "Artists", "Albums", "Genres")
+
+private val mockChannelTabs = listOf(
+    ymusic.dynamicengine.yt.YtPageTab("Home", selected = true),
+    ymusic.dynamicengine.yt.YtPageTab("Videos", url = "/channel/UCmock?params=videos"),
+    ymusic.dynamicengine.yt.YtPageTab("Shorts", url = "/channel/UCmock?params=shorts"),
+    ymusic.dynamicengine.yt.YtPageTab("Live", url = "/channel/UCmock?params=live"),
+    ymusic.dynamicengine.yt.YtPageTab("Releases", url = "/channel/UCmock?params=releases"),
+    ymusic.dynamicengine.yt.YtPageTab("Playlists", url = "/channel/UCmock?params=playlists"),
+    ymusic.dynamicengine.yt.YtPageTab("Posts", url = "/channel/UCmock?params=posts"),
+)
 
 private val mockFeedChips = listOf("All", "Music", "Podcasts", "Live")
 

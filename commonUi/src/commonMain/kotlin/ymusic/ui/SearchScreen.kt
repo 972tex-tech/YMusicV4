@@ -1,129 +1,366 @@
 package ymusic.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import ymusic.dynamicengine.yt.YtFilterGroup
+import ymusic.dynamicengine.yt.YtFilterOption
 import ymusic.dynamicengine.yt.search
 import ymusic.dynamicengine.yt.searchSuggestions
 import ymusic.ui.resources.Res
-import ymusic.ui.resources.cd_back
-import ymusic.ui.resources.cd_clear
+import ymusic.ui.resources.cd_insert_query
+import ymusic.ui.resources.cd_remove_from_history
+import ymusic.ui.resources.search_clear_history
+import ymusic.ui.resources.search_filter_title
 import ymusic.ui.resources.search_no_results
 import ymusic.ui.resources.search_type_to_search
-import ymusic.ui.resources.search_youtube
+
+private const val SearchHistoryKey = "search.history"
+private const val HistoryLimit = 20
 
 /**
- * YouTube search: live suggestions while typing, submitted query → paged results. Result taps play
- * through [coordinator] (autoplay queue fill).
+ * The search layer's retained state — query, mode, results and scroll. Hoisted into the app's
+ * layer stack so a detail page pushed above the results doesn't wipe them; popping back shows the
+ * results exactly as left.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+class SearchSession(graph: AppGraph, scope: CoroutineScope) {
+    var field by mutableStateOf(TextFieldValue(""))
+    var submitted by mutableStateOf<String?>(null)
+    var editing by mutableStateOf(true)
+    var filterParams by mutableStateOf<String?>(null)
+    val listState = LazyListState()
+    val pager = Pager(scope) { continuation ->
+        graph.engines.search(
+            query = if (continuation == null) submitted else null,
+            params = if (continuation == null) filterParams else null,
+            continuation = continuation,
+            ctx = graph.ytContext,
+        )
+    }
+}
+
+/**
+ * YouTube search (design/final/search.html), two app-bar modes:
+ * - **input** — back · pill text field; below it the saved history (empty field) or live
+ *   suggestions (typing). Rows submit on tap; the ↖ arrow only inserts the text into the field.
+ * - **results** — back · query title · filter · search; below it the paged result feed. The filter
+ *   icon opens the centered dialog of server-provided filter groups; picking an option re-runs the
+ *   search with that option's params (the server composes the combinations).
+ */
 @Composable
-fun SearchScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onBack: () -> Unit) {
+fun SearchScreen(
+    graph: AppGraph,
+    coordinator: PlaybackCoordinator,
+    onBack: () -> Unit,
+    onOpen: ((ymusic.dynamicengine.yt.YtFeedItem) -> Unit)? = null,
+    session: SearchSession? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+) {
     val scope = rememberCoroutineScope()
-    var query by remember { mutableStateOf("") }
-    var submitted by remember { mutableStateOf<String?>(null) }
+    val s = session ?: remember { SearchSession(graph, scope) }
     var suggestions by remember { mutableStateOf(listOf<String>()) }
-    val pager = remember {
-        Pager(scope) { continuation ->
-            graph.engines.search(
-                query = if (continuation == null) submitted else null,
-                continuation = continuation,
-                ctx = graph.ytContext,
-            )
+    var filterOpen by remember { mutableStateOf(false) }
+
+    val historyRaw by remember(graph) { graph.settings.string(SearchHistoryKey, "") }.collectAsState()
+    val history = remember(historyRaw) { historyRaw.split('\n').filter { it.isNotBlank() } }
+    fun saveHistory(entries: List<String>) {
+        scope.launch {
+            graph.settings.putString(SearchHistoryKey, entries.take(HistoryLimit).joinToString("\n"))
         }
     }
 
-    // Debounced suggestions; cleared once a query is submitted.
-    LaunchedEffect(query, submitted) {
-        if (submitted != null || query.isBlank()) {
+    val pagerState by s.pager.state.collectAsState()
+
+    // Debounced suggestions while typing in input mode.
+    LaunchedEffect(s.editing, s.field.text) {
+        if (!s.editing || s.field.text.isBlank()) {
             suggestions = emptyList()
             return@LaunchedEffect
         }
         delay(250)
         suggestions = try {
-            graph.engines.searchSuggestions(query, graph.ytContext)
+            graph.engines.searchSuggestions(s.field.text, graph.ytContext)
         } catch (e: Exception) {
             emptyList() // suggestions are best-effort sugar; the search box still works
         }
     }
 
+    fun setField(text: String) {
+        s.field = TextFieldValue(text, TextRange(text.length))
+    }
+
     fun submit(q: String) {
-        if (q.isBlank()) return
-        query = q
-        submitted = q
-        pager.refresh()
+        val trimmed = q.trim().replace('\n', ' ')
+        if (trimmed.isEmpty()) return
+        setField(trimmed)
+        s.submitted = trimmed
+        s.filterParams = null
+        s.editing = false
+        saveHistory(listOf(trimmed) + history.filter { it != trimmed })
+        s.pager.refresh()
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back))
+        if (s.editing) {
+            SearchInputBar(
+                s.field,
+                onValue = { s.field = it },
+                onSubmit = ::submit,
+                onBack = { if (s.submitted != null) s.editing = false else onBack() },
+            )
+            when {
+                s.field.text.isBlank() && history.isEmpty() -> CenteredBox {
+                    Text(stringResource(Res.string.search_type_to_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            },
-            title = {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it; submitted = null },
-                    placeholder = { Text(stringResource(Res.string.search_youtube)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = ""; submitted = null }) {
-                                Icon(Icons.Default.Close, stringResource(Res.string.cd_clear))
-                            }
-                        }
-                    },
-                )
-            },
-        )
-        when {
-            submitted == null && suggestions.isNotEmpty() -> {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(suggestions) { s ->
-                        Text(
-                            s,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { submit(s) }
-                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                s.field.text.isBlank() -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(history) { entry ->
+                        QueryRow(
+                            icon = Icons.Outlined.Schedule,
+                            text = AnnotatedString(entry),
+                            onClick = { submit(entry) },
+                            onInsert = { setField(entry) },
+                            onRemove = { saveHistory(history - entry) },
+                        )
+                    }
+                    item { ClearHistoryRow { saveHistory(emptyList()) } }
+                }
+                else -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(suggestions) { sug ->
+                        QueryRow(
+                            icon = Icons.Default.Search,
+                            text = suggestionText(sug, s.field.text),
+                            onClick = { submit(sug) },
+                            onInsert = { setField(sug) },
                         )
                     }
                 }
             }
-            submitted == null -> CenteredBox {
-                Text(stringResource(Res.string.search_type_to_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            val filterGroups = (pagerState as? Pager.State.Ready)?.filterGroups.orEmpty()
+            SearchResultsBar(
+                title = s.submitted.orEmpty(),
+                onBack = onBack,
+                showFilter = filterGroups.isNotEmpty(),
+                onFilter = { filterOpen = true },
+                onSearch = { s.editing = true },
+            )
+            FeedList(
+                s.pager,
+                coordinator,
+                emptyMessage = stringResource(Res.string.search_no_results),
+                onOpen = onOpen,
+                listState = s.listState,
+                onDeeplink = onDeeplink,
+            )
+            if (filterOpen) {
+                FilterDialog(filterGroups, onDismiss = { filterOpen = false }) { option ->
+                    filterOpen = false
+                    option.params?.let {
+                        s.filterParams = it
+                        s.pager.refresh()
+                    }
+                }
             }
-            else -> FeedList(pager, coordinator, emptyMessage = stringResource(Res.string.search_no_results))
         }
     }
+}
+
+/** One history/suggestion row (`.srow`): icon · text · [✕ remove] · ↖ insert-into-field. */
+@Composable
+private fun QueryRow(
+    icon: ImageVector,
+    text: AnnotatedString,
+    onClick: () -> Unit,
+    onInsert: () -> Unit,
+    onRemove: (() -> Unit)? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(19.dp), tint = DesignColors.InkSecondary)
+        Text(
+            text,
+            style = TextStyle(fontSize = 13.5.sp, color = DesignColors.Ink),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (onRemove != null) {
+            ActionIcon(
+                Icons.Default.Close,
+                stringResource(Res.string.cd_remove_from_history),
+                iconSize = 19.dp,
+                tint = DesignColors.InkSecondary,
+                onClick = onRemove,
+            )
+        }
+        ActionIcon(
+            Icons.Default.NorthWest,
+            stringResource(Res.string.cd_insert_query),
+            iconSize = 17.dp,
+            tint = Color(0xFFB0B0B0),
+            onClick = onInsert,
+        )
+    }
+}
+
+/** The centered "Clear history" action under the history rows (`.clearh`). */
+@Composable
+private fun ClearHistoryRow(onClear: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClear).padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Delete, null, Modifier.size(15.dp), tint = DesignColors.InkSoft)
+        Text(
+            stringResource(Res.string.search_clear_history),
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSoft),
+        )
+    }
+}
+
+/** Bold the typed prefix inside a suggestion (the mockup's `<b>bảo anh</b> karaoke`). */
+private fun suggestionText(suggestion: String, typed: String): AnnotatedString {
+    val prefix = typed.trim()
+    if (prefix.isEmpty() || !suggestion.startsWith(prefix, ignoreCase = true)) return AnnotatedString(suggestion)
+    return buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(suggestion.take(prefix.length)) }
+        append(suggestion.drop(prefix.length))
+    }
+}
+
+/** The centered filter dialog (`.dlg`): server filter groups as chip rows; a tap applies/removes
+ *  that option (its params carry the whole resulting filter state). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterDialog(
+    groups: List<YtFilterGroup>,
+    onDismiss: () -> Unit,
+    onSelect: (YtFilterOption) -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(18.dp), color = Color.White) {
+            Column(
+                Modifier
+                    .widthIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+            ) {
+                Text(
+                    stringResource(Res.string.search_filter_title),
+                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                )
+                groups.forEach { group ->
+                    Text(
+                        group.title.uppercase(),
+                        style = TextStyle(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DesignColors.InkSecondary,
+                            letterSpacing = 0.4.sp,
+                        ),
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        group.options.forEach { option ->
+                            FilterPill(option) { onSelect(option) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One filter chip: selected = accent-filled, disabled = faint and inert. */
+@Composable
+private fun FilterPill(option: YtFilterOption, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(999.dp)
+    Text(
+        option.label,
+        style = TextStyle(
+            fontSize = 12.sp,
+            color = when {
+                option.selected -> Color.White
+                option.disabled -> DesignColors.InkFaint
+                else -> DesignColors.InkSoft
+            },
+        ),
+        maxLines = 1,
+        modifier = Modifier
+            .clip(shape)
+            .background(if (option.selected) DesignColors.Accent else Color.Transparent)
+            .border(
+                1.dp,
+                when {
+                    option.selected -> DesignColors.Accent
+                    option.disabled -> DesignColors.OutlineSoft
+                    else -> DesignColors.Outline
+                },
+                shape,
+            )
+            .clickable(enabled = !option.disabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    )
 }

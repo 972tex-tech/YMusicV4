@@ -30,6 +30,7 @@ object DesignColors {
     val DividerMini = Color(0xFFE2E2E2)
     val Surface = Color.White
     val SurfaceDim = Color(0xFFFAFAFA)
+    val SurfaceElevated = Color(0xFFF5F5F5)
     val BadgeInk = Ink
     val BadgeScrim = Color(0xB8000000)
     val BrandGreen = Color(0xFF1DB954)

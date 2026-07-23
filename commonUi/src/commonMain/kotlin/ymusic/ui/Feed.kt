@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -43,12 +44,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtChip
 import ymusic.dynamicengine.yt.YtFeedItem
@@ -64,9 +68,13 @@ import ymusic.ui.resources.show_less
 import ymusic.ui.resources.show_more
 import ymusic.ui.resources.show_more_n
 
-/** Paged feed loading over any yt page source (browse / search / watch-next continuations). */
+/** Paged feed loading over any yt page source (browse / search / watch-next continuations).
+ *  [fetchTimeoutMs] is the watchdog: a wedged engine/HTTP call (seen live: Android CookieManager
+ *  deadlocking against WebView browser-process startup) becomes a Failed page with Retry instead
+ *  of an eternal spinner. */
 class Pager(
     private val scope: CoroutineScope,
+    private val fetchTimeoutMs: Long = 45_000,
     private val fetch: suspend (continuation: String?) -> ymusic.dynamicengine.yt.YtFeedPage,
 ) {
     sealed interface State {
@@ -80,6 +88,11 @@ class Pager(
             val selectedChipToken: String?,
             val continuation: String?,
             val loadingMore: Boolean,
+            /** Search surfaces only: the server's filter submenu (empty elsewhere). */
+            val filterGroups: List<ymusic.dynamicengine.yt.YtFilterGroup> = emptyList(),
+            /** Detail surfaces only (channel / playlist browse). */
+            val pageHeader: ymusic.dynamicengine.yt.YtPageHeader? = null,
+            val pageTabs: List<ymusic.dynamicengine.yt.YtPageTab> = emptyList(),
         ) : State
     }
 
@@ -92,10 +105,11 @@ class Pager(
     fun refresh(chipToken: String? = null) {
         job?.cancel()
         val previousChips = (_state.value as? State.Ready)?.chips.orEmpty()
+        val previousFilters = (_state.value as? State.Ready)?.filterGroups.orEmpty()
         _state.value = State.Loading
         job = scope.launch {
             _state.value = try {
-                val page = fetch(chipToken)
+                val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
                 // A chip-filtered page often carries no chip row of its own — keep the one we came from.
                 val chips = page.chips.ifEmpty { previousChips }
                 State.Ready(
@@ -104,7 +118,14 @@ class Pager(
                     selectedChipToken = chipToken ?: chips.firstOrNull { it.selected }?.token,
                     continuation = page.continuation,
                     loadingMore = false,
+                    filterGroups = page.filterGroups.ifEmpty { previousFilters },
+                    pageHeader = page.pageHeader,
+                    pageTabs = page.pageTabs,
                 )
+            } catch (e: TimeoutCancellationException) {
+                State.Failed(TIMEOUT_CODE, "fetch timed out after ${fetchTimeoutMs}ms")
+            } catch (e: CancellationException) {
+                throw e // a newer refresh took over the state — this coroutine just dies
             } catch (e: Exception) {
                 State.Failed((e as? CodedError)?.code ?: "E20030", e.message)
             }
@@ -118,17 +139,25 @@ class Pager(
         _state.value = current.copy(loadingMore = true)
         job = scope.launch {
             _state.value = try {
-                val page = fetch(token)
+                val page = withTimeout(fetchTimeoutMs) { fetch(token) }
                 current.copy(
                     sections = appendSections(current.sections, page.sections),
                     continuation = page.continuation,
                     loadingMore = false,
                 )
+            } catch (e: CancellationException) {
+                if (e !is TimeoutCancellationException) throw e
+                current.copy(loadingMore = false) // timed out — the tail button stays for a retry
             } catch (e: Exception) {
                 // Keep what we have; the tail button stays for a retry.
                 current.copy(loadingMore = false)
             }
         }
+    }
+
+    companion object {
+        /** The watchdog's error code — the retry page for a hung (not failed) fetch. */
+        const val TIMEOUT_CODE = "E20031"
     }
 
     private fun appendSections(current: List<YtSection>, more: List<YtSection>): List<YtSection> {
@@ -142,9 +171,22 @@ class Pager(
 }
 
 /**
+ * A feed surface's retained state — the loaded pages plus the scroll position. Hoist one of these
+ * above the navigation switch (the app's layer stack, the Discover tab cache) so leaving and
+ * returning to the surface shows it exactly as it was instead of reloading from the top.
+ */
+class FeedSession(scope: CoroutineScope, fetch: suspend (continuation: String?) -> ymusic.dynamicengine.yt.YtFeedPage) {
+    val pager = Pager(scope, fetch = fetch)
+    val listState = LazyListState()
+}
+
+/**
  * One feed surface (design/final/feed-example.html): filter chips + sections, each rendered as a
  * list on a phone-portrait width or as a 2/3-column grid on tablet/landscape widths. Item tap /
- * queue actions come from [coordinator].
+ * queue actions come from [coordinator]; [onOpen] navigates a tapped playlist/channel item (null =
+ * those items aren't tappable); [onPlayItem] overrides the default video tap (playlist context
+ * plays within the whole list instead of an autoplay queue). [topContent] renders above the
+ * sections and scrolls with them (a detail page's header).
  */
 @Composable
 fun FeedList(
@@ -152,19 +194,31 @@ fun FeedList(
     coordinator: PlaybackCoordinator,
     modifier: Modifier = Modifier,
     emptyMessage: String = stringResource(Res.string.feed_empty),
+    onOpen: ((YtFeedItem) -> Unit)? = null,
+    onPlayItem: ((YtFeedItem) -> Unit)? = null,
+    topContent: (@Composable () -> Unit)? = null,
+    listState: LazyListState? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     val state by pager.state.collectAsState()
     when (val s = state) {
-        is Pager.State.Loading -> CenteredBox(modifier) { CircularProgressIndicator() }
-        is Pager.State.Failed -> ErrorState(s.code, modifier) { pager.refresh() }
+        is Pager.State.Loading -> Column(modifier) {
+            topContent?.invoke()
+            CenteredBox { CircularProgressIndicator() }
+        }
+        is Pager.State.Failed -> Column(modifier) {
+            topContent?.invoke()
+            ErrorState(s.code) { pager.refresh() }
+        }
         is Pager.State.Ready -> {
             if (s.sections.all { it.items.isEmpty() }) {
                 Column(modifier) {
+                    topContent?.invoke()
                     FeedChips(s, pager)
                     EmptyState(emptyMessage) { pager.refresh(s.selectedChipToken) }
                 }
             } else {
-                FeedSections(s, pager, coordinator, modifier)
+                FeedSections(s, pager, coordinator, modifier, onOpen, onPlayItem, topContent, listState, onDeeplink)
             }
         }
     }
@@ -214,6 +268,11 @@ private fun FeedSections(
     pager: Pager,
     coordinator: PlaybackCoordinator,
     modifier: Modifier = Modifier,
+    onOpen: ((YtFeedItem) -> Unit)? = null,
+    onPlayItem: ((YtFeedItem) -> Unit)? = null,
+    topContent: (@Composable () -> Unit)? = null,
+    hoistedListState: LazyListState? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
@@ -222,7 +281,7 @@ private fun FeedSections(
         val layout = feedLayoutFor(maxWidth)
         val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(maxWidth)
         val wide = layout == FeedLayout.WideList
-        val listState = rememberLazyListState()
+        val listState = hoistedListState ?: rememberLazyListState()
         LocalAppBarElevated.current?.let { elevated ->
             LaunchedEffect(listState, elevated) {
                 snapshotFlow { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
@@ -231,6 +290,7 @@ private fun FeedSections(
             DisposableEffect(elevated) { onDispose { elevated.value = false } }
         }
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
+            if (topContent != null) item { topContent() }
             item { FeedChips(state, pager) }
             state.sections.forEachIndexed { index, section ->
                 feedSection(
@@ -241,6 +301,9 @@ private fun FeedSections(
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
+                    onOpen = onOpen,
+                    onPlayItem = onPlayItem,
+                    onDeeplink = onDeeplink,
                 )
             }
             if (state.continuation != null) {
@@ -266,13 +329,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
+    onOpen: ((YtFeedItem) -> Unit)? = null,
+    onPlayItem: ((YtFeedItem) -> Unit)? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     if (section.header != null || section.collapsible) {
         item {
+            val deeplink = section.header?.ctaDeeplink
             SectionHeader(
                 section.header,
                 collapsed = if (section.collapsible) !expanded else null,
                 onToggle = if (section.collapsible) onToggle else null,
+                onCta = if (deeplink != null && onDeeplink != null) {
+                    { onDeeplink(deeplink, section.header?.title) }
+                } else {
+                    null
+                },
             )
         }
     }
@@ -284,7 +356,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
             FeedListItem(
                 item,
                 actions = itemActions(item, coordinator),
-                onClick = itemClick(item, coordinator),
+                onClick = itemClick(item, coordinator, onOpen, onPlayItem),
                 wide = wide,
             )
         }
@@ -303,7 +375,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                     FeedGridCard(
                         item,
                         actions = itemActions(item, coordinator),
-                        onClick = itemClick(item, coordinator),
+                        onClick = itemClick(item, coordinator, onOpen, onPlayItem),
                         modifier = Modifier.weight(1f),
                         inset = metrics.inset,
                     )
@@ -324,8 +396,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     }
 }
 
-private fun itemClick(item: YtFeedItem, coordinator: PlaybackCoordinator): (() -> Unit)? =
-    if (item.kind == YtFeedItem.KIND_VIDEO) ({ coordinator.playNow(item) }) else null
+private fun itemClick(
+    item: YtFeedItem,
+    coordinator: PlaybackCoordinator,
+    onOpen: ((YtFeedItem) -> Unit)?,
+    onPlayItem: ((YtFeedItem) -> Unit)?,
+): (() -> Unit)? = when (item.kind) {
+    YtFeedItem.KIND_VIDEO -> ({ onPlayItem?.invoke(item) ?: coordinator.playNow(item) })
+    YtFeedItem.KIND_PLAYLIST, YtFeedItem.KIND_CHANNEL -> onOpen?.let { { it(item) } }
+    else -> null
+}
 
 @Composable
 private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions = ItemActions(
@@ -368,6 +448,27 @@ internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 5.dp),
     )
+}
+
+/**
+ * Music-first ordering for the Home feed (a music app's home): YouTube Mixes (the endless RD…
+ * radios) first, then music videos, then videos from an Official Artist Channel, then verified
+ * channels, then the rest. Every other item type (regular playlists, channels) is PINNED — it
+ * keeps its exact slot while the ranked items reorder through the remaining slots (stable within
+ * each band).
+ */
+internal fun rankMusicFirst(items: List<YtFeedItem>): List<YtFeedItem> {
+    fun band(item: YtFeedItem): Int? = when {
+        item.kind == YtFeedItem.KIND_PLAYLIST && item.id.startsWith("RD") -> 0
+        item.kind != YtFeedItem.KIND_VIDEO -> null // pinned
+        item.musicVideo -> 1
+        item.ownerBadge == YtFeedItem.OWNER_BADGE_ARTIST -> 2
+        item.ownerBadge == YtFeedItem.OWNER_BADGE_VERIFIED -> 3
+        else -> 4
+    }
+    val movable = items.filter { band(it) != null }.sortedBy { band(it) }
+    var next = 0
+    return items.map { item -> if (band(item) == null) item else movable[next++] }
 }
 
 /** The three feed layout bands a surface width falls into. */

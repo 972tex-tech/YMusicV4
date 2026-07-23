@@ -41,6 +41,19 @@
     <string name="search_youtube">Search YouTube</string>
     <string name="search_type_to_search">Type to search</string>
     <string name="search_no_results">No results</string>
+    <string name="search_clear_history">Clear history</string>
+    <string name="search_filter_title">Filter search</string>
+    <string name="cd_filter">Filter</string>
+    <string name="cd_more_tabs">More tabs</string>
+    <string name="cd_view_all">View all</string>
+    <string name="cd_insert_query">Put in search box</string>
+    <string name="cd_remove_from_history">Remove from history</string>
+    <!-- Detail pages -->
+    <string name="detail_playlist">Playlist</string>
+    <string name="subscribe">Subscribe</string>
+    <string name="cd_add_to_playlist">Add to playlist</string>
+    <string name="cd_share">Share</string>
+    <string name="cd_music_video">Music</string>
 
     <!-- Library -->
     <string name="library_tab_folders">Folders</string>

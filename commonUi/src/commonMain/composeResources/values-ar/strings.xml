@@ -32,6 +32,19 @@
     <string name="search_youtube">البحث في YouTube</string>
     <string name="search_type_to_search">اكتب للبحث</string>
     <string name="search_no_results">لا توجد نتائج</string>
+    <string name="search_clear_history">مسح السجل</string>
+    <string name="search_filter_title">تصفية البحث</string>
+    <string name="cd_filter">تصفية</string>
+    <string name="cd_more_tabs">المزيد من علامات التبويب</string>
+    <string name="cd_view_all">عرض الكل</string>
+    <string name="cd_insert_query">وضع في مربع البحث</string>
+    <string name="cd_remove_from_history">إزالة من السجل</string>
+    <!-- Detail pages -->
+    <string name="detail_playlist">قائمة التشغيل</string>
+    <string name="subscribe">اشتراك</string>
+    <string name="cd_add_to_playlist">إضافة إلى قائمة التشغيل</string>
+    <string name="cd_share">مشاركة</string>
+    <string name="cd_music_video">موسيقى</string>
 
     <string name="library_tab_folders">المجلدات</string>
     <string name="library_tab_playlists">قوائم التشغيل</string>
