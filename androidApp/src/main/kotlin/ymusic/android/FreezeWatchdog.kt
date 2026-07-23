@@ -34,6 +34,7 @@ object FreezeWatchdog {
         val clockScope = CoroutineScope(AndroidUiDispatcher.Main)
         thread(name = "freeze-watchdog", isDaemon = true) {
             var tick = 0
+            var consecutiveClockStalls = 0
             while (true) {
                 Thread.sleep(3_000)
                 tick++
@@ -71,14 +72,18 @@ object FreezeWatchdog {
                 // the emulator's "Faking VSYNC due to driver stall" regime eats it): dump the
                 // Choreographer's real queue state, then re-post the dispatcher's own callback —
                 // its doFrame resets the flag and drains the parked waiters.
-                if ((compositionStalled || !clockOk) && choreoOk && looperOk) {
+                consecutiveClockStalls = if (!clockOk) consecutiveClockStalls + 1 else 0
+                // Heal only a PERSISTENT stall — a single missed probe is just the degraded
+                // faked-vsync regime being slow, and it recovers on its own.
+                if ((compositionStalled || consecutiveClockStalls >= 2) && choreoOk && looperOk) {
                     Log.e(TAG, "STRANDED-FLAG suspected; choreographer internals: ${choreographerState()}")
                     val healed = heal(main)
                     Log.e(TAG, "HEAL attempted=$healed")
                     if (healed) {
                         Thread.sleep(2_000)
                         val age = android.os.SystemClock.uptimeMillis() - compositionTickUptime
-                        Log.e(TAG, "HEAL result=${if (age < 2_000) "RECOVERED" else "still-stalled"} compositionClockAgeMs=$age")
+                        Log.e(TAG, "HEAL result=${if (age < 3_000) "RECOVERED" else "still-stalled"} compositionClockAgeMs=$age")
+                        consecutiveClockStalls = 0
                     }
                 }
             }
