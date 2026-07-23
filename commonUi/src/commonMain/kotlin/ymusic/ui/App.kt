@@ -47,6 +47,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -122,6 +123,14 @@ enum class AppSection(val label: StringResource, val icon: ImageVector, val grou
  */
 @Composable
 fun App(graph: AppGraph) {
+    val section = rememberSaveable { mutableStateOf(AppSection.Discover) }
+    App(graph, section)
+}
+
+/** [sectionState] hoisted for tests: flipping it is exactly what a drawer selection does (on touch
+ *  platforms the drawer edge-swipes open over ANY screen, which a headless jvm rig can't drive). */
+@Composable
+internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<AppSection>) {
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val tag = uiLanguage.ifBlank { null }
     remember(tag) { applyUiLocale(tag) }
@@ -131,7 +140,7 @@ fun App(graph: AppGraph) {
         "dark" -> true
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
-    var section by rememberSaveable { mutableStateOf(AppSection.Discover) }
+    var section by sectionState
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUDIO_ONLY).value
         graph.player.selectVideoQuality(quality)
@@ -180,8 +189,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // Discover feeds cache per browseId — switching tab or navigating away and back must show
         // the already-loaded feed at its old scroll position, not reload it.
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
-        // The navigation layer stack: search and detail pages push; back pops one layer.
-        val layers = remember { androidx.compose.runtime.mutableStateListOf<AppLayer>() }
+        // Each section retains its OWN layer stack: the drawer switches sections laterally — no
+        // push, no clear — so Discover's search/results/detail pages survive a trip through
+        // Library and are exactly where the user left them on return. The stacks never mix:
+        // AppLayer.Search is YouTube search and only ever lives in Discover's stack (Library's
+        // future search is a different, local-files flow).
+        val sectionLayers = remember { mutableMapOf<AppSection, androidx.compose.runtime.snapshots.SnapshotStateList<AppLayer>>() }
+        val layers = sectionLayers.getOrPut(section) { mutableStateListOf() }
         // Navigation is url-driven: every openable target carries an engine-composed app link
         // (item.url / tab.url / a shelf CTA's deeplink) that the app routes on and round-trips
         // verbatim — the tapped item itself only seeds the header while the page loads.
@@ -235,16 +249,21 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val popLayer = { layers.removeAt(layers.lastIndex); Unit }
 
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
-        // close first (drawer, Now Playing); the search input steps back to its results; otherwise
-        // one navigation layer pops. Disabled with nothing to unwind — the OS then exits the app.
-        PlatformBackHandler(enabled = drawer.isOpen || nowPlayingOpen || layers.isNotEmpty()) {
+        // close first (drawer, Now Playing); the search input steps back to its results; then one
+        // layer of the CURRENT section's stack pops. A lateral section with nothing left to unwind
+        // steps back to Discover — which restores its own retained stack — and only from Discover's
+        // root is back left to the OS to exit the app.
+        PlatformBackHandler(
+            enabled = drawer.isOpen || nowPlayingOpen || layers.isNotEmpty() || section != AppSection.Discover,
+        ) {
             val top = layers.lastOrNull()
             when {
                 drawer.isOpen -> scope.launch { drawer.close() }
                 nowPlayingOpen -> nowPlayingOpen = false
                 top is AppLayer.Search && top.session.editing && top.session.submitted != null ->
                     top.session.editing = false
-                else -> popLayer()
+                layers.isNotEmpty() -> popLayer()
+                else -> onSection(AppSection.Discover)
             }
         }
 
@@ -271,7 +290,6 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         appVersion = graph.appVersion,
                         onSelect = { s ->
                             onSection(s)
-                            layers.clear()
                             scope.launch { drawer.close() }
                         },
                     )
@@ -320,7 +338,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 if (section == AppSection.Discover) discoverTab.label else section.label,
                                             ),
                                             onMenu = { scope.launch { drawer.open() } },
-                                            onSearch = openSearch,
+                                            // YouTube search belongs to Discover; other sections
+                                            // get their own flows (Library: local files) later.
+                                            onSearch = if (section == AppSection.Discover) openSearch else null,
                                             inlineContent = if (section == AppSection.Discover && wide) {
                                                 { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
                                             } else {

@@ -124,4 +124,55 @@ class AppNavigationTest {
             runBlocking { engines.close() }
         }
     }
+
+    @Test
+    fun each_section_keeps_its_own_stack_across_drawer_switches() {
+        Locale.setDefault(Locale.ENGLISH)
+        val searchJson = checkNotNull(javaClass.classLoader.getResource("yt-search-live.json")).readText()
+        val client = CannedHttp { request, _ ->
+            val url = request.url.toString()
+            when {
+                request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
+                    textResponse(request, HOMEPAGE_FIXTURE, "text/html")
+                url.contains("suggestqueries") ->
+                    textResponse(request, """["son tung",["son tung mtp"]]""", "application/json")
+                url.contains("youtubei/v1/search") -> textResponse(request, searchJson, "application/json")
+                else -> textResponse(request, "{}", "application/json")
+            }
+        }
+        val engines = DynamicEngineManager(client, appVersion = 1)
+        runBlocking { engines.start() }
+        try {
+            runComposeUiTest {
+                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
+                // Hoisted so the test can switch sections the way a drawer tap does — over the
+                // results layer the drawer only opens by touch edge-swipe, which jvm can't drive.
+                val section = androidx.compose.runtime.mutableStateOf(AppSection.Discover)
+                setContent { App(graph, section) }
+
+                // Discover: search → submitted results.
+                onNodeWithContentDescription("Search").performClick()
+                onNode(hasSetTextAction()).performTextInput("son tung")
+                waitUntilAtLeastOneExists(hasText("son tung mtp"), 20_000)
+                onNodeWithText("son tung mtp").performClick()
+                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP"), 20_000)
+
+                // → Library: a lateral switch, NOT a push. Library shows its own surface (no
+                // YouTube results), and no YouTube search action — Library's search is a
+                // different, local-files flow.
+                section.value = AppSection.Library
+                waitUntilAtLeastOneExists(hasText("Library"), 10_000)
+                onNodeWithText("Mix - Sơn Tùng M-TP").assertDoesNotExist()
+                onNodeWithContentDescription("Search").assertDoesNotExist()
+
+                // → Discover: the section restores its RETAINED stack — the search results are
+                // right there, query and all, not a bare Discover feed.
+                section.value = AppSection.Discover
+                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP"), 10_000)
+                waitUntilAtLeastOneExists(hasText("son tung mtp"), 10_000)
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
 }

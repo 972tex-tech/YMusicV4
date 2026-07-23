@@ -119,7 +119,7 @@ internal fun RowScope.AppBarTitle(text: String, fill: Boolean = true) {
 internal fun DesignAppBar(
     title: String,
     onMenu: () -> Unit,
-    onSearch: () -> Unit,
+    onSearch: (() -> Unit)?,
     inlineContent: (@Composable () -> Unit)? = null,
 ) {
     AppBarRow {
@@ -129,7 +129,9 @@ internal fun DesignAppBar(
             Box(Modifier.padding(start = 16.dp)) { inlineContent() }
         }
         Box(Modifier.weight(1f))
-        ActionIcon(Icons.Default.Search, stringResource(Res.string.cd_search), onClick = onSearch)
+        if (onSearch != null) {
+            ActionIcon(Icons.Default.Search, stringResource(Res.string.cd_search), onClick = onSearch)
+        }
     }
 }
 
