@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -74,6 +75,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -159,7 +161,22 @@ fun MiniPlayer(
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
-                    surface.invoke(Modifier.fillMaxSize())
+                    // The video surface renders inside the tile on every platform, but it must be
+                    // LAID OUT at real video size and only scale-TRANSFORMED down to fit: a windowed
+                    // WebView (Android) sized to an actual thumbnail breaks the page's stream
+                    // negotiation, and Chromium backgrounds (and stalls) a page whose visible rect
+                    // is clipped away. The draw-time scale changes neither. 240×135 → ×36/135 draws
+                    // a 64×36 cover crop inside the 36dp tile.
+                    val scale = 36f / 135f
+                    Box(
+                        Modifier
+                            .requiredSize(240.dp, 135.dp)
+                            .graphicsLayer(scaleX = scale, scaleY = scale),
+                    ) {
+                        surface.invoke(Modifier.fillMaxSize())
+                    }
+                    // Taps on the tile expand Now Playing — they must not reach the video page.
+                    Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
                     ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
                 }

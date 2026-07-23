@@ -7,9 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -333,22 +331,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         },
                         bottomBar = {
                             Column {
-                                // While Now Playing is closed the surface must stay hosted somewhere for
-                                // a WebView source to keep playing. Where depends on the platform: a
-                                // scale-tolerant surface (desktop OSR) becomes the mini player's art
-                                // tile; a windowed WebView (Android) keeps a real-size docked preview —
-                                // thumbnail-sized, the page's stream negotiation kills playback.
-                                val hostSurface = needsSurface && !nowPlayingOpen
-                                if (hostSurface && !graph.surfaceScalesDown) {
-                                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                                        Box(Modifier.width(240.dp).aspectRatio(16f / 9f)) {
-                                            graph.playerSurface(Modifier.fillMaxSize())
-                                        }
-                                    }
-                                }
+                                // While Now Playing is closed, the mini player's art tile hosts the
+                                // video surface (all platforms — the tile lays it out at real size
+                                // and scales the drawing, see MiniPlayer) so a WebView source keeps
+                                // playing across the transition.
                                 MiniPlayer(
                                     coordinator,
-                                    surface = if (hostSurface && graph.surfaceScalesDown) graph.playerSurface else null,
+                                    surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
                                     onExpand = { nowPlayingOpen = true },
                                 )
                             }
