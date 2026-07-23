@@ -81,6 +81,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun buildGraph(): AppGraph {
+        // One shared video host (a FrameLayout) both engines render into: the WebView engine adds its
+        // WebView, the local engine adds its SurfaceView, each owning its own view's visibility.
+        // Views must be born on the main thread; EVERYTHING ELSE below runs off it — the first
+        // CookieManager.getInstance() alone initializes the whole WebView provider, which froze the
+        // boot spinner for seconds on a slow device when it ran on main.
+        val videoContainer = FrameLayout(this)
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            buildGraphOffMain(videoContainer)
+        }
+    }
+
+    private suspend fun buildGraphOffMain(videoContainer: FrameLayout): AppGraph {
         // The cookie store is the WebView CookieManager — shared with the WebView YouTube player,
         // persistent across launches (as legacy YMusic did). The engine's OWN HTTP client carries
         // NO jar: the engine JS cooks every Cookie header itself against this store (cookie/get|set
@@ -98,9 +110,6 @@ class MainActivity : ComponentActivity() {
         )
         engines.start()
 
-        // One shared video host (a FrameLayout) both engines render into: the WebView engine adds its
-        // WebView, the local engine adds its SurfaceView, each owning its own view's visibility.
-        val videoContainer = FrameLayout(this)
         // The injected YouTube player script, bundled as an asset (copied from webview-js/dist).
         // Without it the WebView engine is absent and a YouTube item surfaces E60050.
         val webViewJs = runCatching {

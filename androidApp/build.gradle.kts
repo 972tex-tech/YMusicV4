@@ -56,10 +56,12 @@ val copyWebViewJs by tasks.registering(Copy::class) {
 
 // :commonUi's compose resources: the compose plugin doesn't package them into an Android artifact
 // under AGP 9's com.android.kotlin.multiplatform.library, so the app ships them as assets itself
-// (the Android resource reader resolves "composeResources/<package>/…" from assets). Drop when the
-// compose plugin learns the new AGP KMP plugin.
+// (the Android resource reader resolves "composeResources/<package>/…" from assets). Must copy the
+// PREPARED output, not the source dir — the runtime reads the converted strings.commonMain.cvr,
+// never raw strings.xml. Drop when the compose plugin learns the new AGP KMP plugin.
 val copyComposeResources by tasks.registering(Copy::class) {
-    from(rootProject.file("commonUi/src/commonMain/composeResources"))
+    dependsOn(":commonUi:prepareComposeResourcesTaskForCommonMain")
+    from(rootProject.file("commonUi/build/generated/compose/resourceGenerator/preparedResources/commonMain/composeResources"))
     into(layout.projectDirectory.dir("src/main/assets/composeResources/ymusic.ui.resources"))
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
