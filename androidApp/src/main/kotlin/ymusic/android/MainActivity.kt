@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -61,7 +62,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is light-only (commonUi LightScheme paints white behind the bars), so the bar
+        // icon color must not follow the SYSTEM dark-mode setting — that yields white-on-white.
+        val light = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = light, navigationBarStyle = light)
         setContent {
             var graph by remember { mutableStateOf<AppGraph?>(null) }
             var error by remember { mutableStateOf<String?>(null) }
