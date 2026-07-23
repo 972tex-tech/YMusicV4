@@ -150,15 +150,18 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
             val tabStateHolder = rememberSaveableStateHolder()
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    LibraryTab.entries.forEach { t ->
-                        LibraryChip(stringResource(t.label), selected = t == tab) { tab = t }
+                val chipScroll = rememberScrollState()
+                HorizontalOverflowBox(chipScroll) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(chipScroll)
+                            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        LibraryTab.entries.forEach { t ->
+                            LibraryChip(stringResource(t.label), selected = t == tab) { tab = t }
+                        }
                     }
                 }
                 tabStateHolder.SaveableStateProvider(tab.name) {
@@ -341,7 +344,8 @@ private val MediaStoreBucket.displayName: String get() = aliasName?.takeIf(Strin
 
 @Composable
 private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coordinator: PlaybackCoordinator) {
-    var selected by remember { mutableStateOf<Playlist?>(null) }
+    // (id, name) — saveable, so the opened playlist survives the tab leaving composition.
+    var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
     var lists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
     var members by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
 
@@ -350,7 +354,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
         if (open == null) {
             lists = store.playlists().map { it to store.playlistItems(it.id).size }
         } else {
-            members = store.playlistItemDetails(open.id).map { it.mediaItem }
+            members = store.playlistItemDetails(open.first).map { it.mediaItem }
         }
     }
 
@@ -369,7 +373,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
                             .fillMaxWidth()
                             .clickable {
                                 members = null
-                                selected = playlist
+                                selected = playlist.id to playlist.name
                             }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -390,7 +394,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
         }
     } else {
         Column(Modifier.fillMaxSize()) {
-            DrillDownHeader(open.name) { selected = null }
+            DrillDownHeader(open.second) { selected = null }
             val songs = members
             if (songs == null) {
                 CenteredBox { CircularProgressIndicator() }
@@ -400,6 +404,12 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
         }
     }
 }
+
+/** Saves the opened playlist as [id, name] (empty = none open). */
+private val OpenPlaylistSaver = listSaver<Pair<Long, String>?, Any>(
+    save = { open -> open?.let { listOf(it.first, it.second) } ?: emptyList() },
+    restore = { flat -> if (flat.isEmpty()) null else flat[0] as Long to flat[1] as String },
+)
 
 // ---- shared pieces ----
 
@@ -520,7 +530,8 @@ private fun GroupedList(
     coordinator: PlaybackCoordinator,
     keyOf: (MediaStoreItem) -> String?,
 ) {
-    var group by remember { mutableStateOf<String?>(null) }
+    // Saveable: the opened artist/album/genre survives the tab leaving composition.
+    var group by rememberSaveable { mutableStateOf<String?>(null) }
     // Grouping 10k songs is real CPU work — done off-main, with the previous grouping (or nothing
     // on first entry) showing until the fresh one lands.
     var groups by remember { mutableStateOf<List<Pair<String, List<MediaStoreItem>>>?>(null) }

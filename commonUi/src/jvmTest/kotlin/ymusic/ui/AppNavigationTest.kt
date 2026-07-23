@@ -198,7 +198,7 @@ class AppNavigationTest {
         runBlocking {
             val root = store.upsertBucket(BucketDraft(Uri.parse("file:///RootFolder"), "RootFolder"))
             store.upsertBucket(BucketDraft(Uri.parse("file:///RootFolder/SubFolder"), "SubFolder", parentId = root.id))
-            store.upsertItem(
+            val song = store.upsertItem(
                 root.id,
                 MediaItemDraft(
                     uri = Uri.parse("file:///RootFolder/song-a.mp3"),
@@ -206,8 +206,11 @@ class AppNavigationTest {
                     mimeType = "audio/mpeg",
                     fileSize = 1L,
                     lastModified = 1L,
+                    artist = "ArtistX",
                 ),
             )
+            val playlist = store.createPlaylist("MyList")
+            store.addToPlaylist(playlist.id, listOf(song))
         }
         try {
             runComposeUiTest {
@@ -237,6 +240,26 @@ class AppNavigationTest {
                 // And Folders kept its position through the tab switch too.
                 onNodeWithText("Folders").performClick()
                 waitUntilAtLeastOneExists(hasText("SubFolder"), 10_000)
+
+                // Open a playlist; away and back — still inside it (its songs, not the list).
+                onNodeWithText("Playlists").performClick()
+                waitUntilAtLeastOneExists(hasText("MyList"), 10_000)
+                onNodeWithText("MyList").performClick()
+                waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
+                section.value = AppSection.Discover
+                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                section.value = AppSection.Library
+                waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
+
+                // Same for a grouped tab: open an artist, away and back — still inside.
+                onNodeWithText("Artists").performClick()
+                waitUntilAtLeastOneExists(hasText("ArtistX"), 10_000)
+                onNodeWithText("ArtistX").performClick()
+                waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
+                section.value = AppSection.Discover
+                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                section.value = AppSection.Library
+                waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }

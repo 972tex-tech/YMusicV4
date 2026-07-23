@@ -2,6 +2,7 @@ package ymusic.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -237,11 +238,10 @@ internal fun DetailAppBar(
 @Composable
 internal fun ChannelTabRow(tabs: List<YtPageTab>, activeUrl: String?, onSelect: (YtPageTab) -> Unit) {
     val scrollState = rememberScrollState()
-    val scope = rememberCoroutineScope()
     // The page was opened by a link that matches a tab → highlight it; opened by any other link
     // (e.g. a bare channel item) → fall back to the server's selected flag.
     val anyMatch = tabs.any { it.url != null && it.url == activeUrl }
-    Box(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+    HorizontalOverflowBox(scrollState) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(scrollState).padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -268,6 +268,20 @@ internal fun ChannelTabRow(tabs: List<YtPageTab>, activeUrl: String?, onSelect: 
                 }
             }
         }
+    }
+}
+
+/** Hosts a `horizontalScroll(scrollState)` row and overlays the cut-off side(s) with the fade +
+ *  chevron paging affordance (desktop mice can't drag a scrollable row). */
+@Composable
+internal fun HorizontalOverflowBox(
+    scrollState: ScrollState,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    Box(modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        content()
         if (scrollState.maxValue > 0 && scrollState.value > 0) {
             TabOverflowHint(
                 towardStart = true,
