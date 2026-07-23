@@ -255,14 +255,14 @@ class YtCommandsTest {
             assertEquals("https://a/banner.jpg", header.banner.single().url)
 
             // Content tabRenderer tabs only — the expandableTabRenderer search tab and the Posts
-            // (community-params) tab are dropped; the params slug, not the localized title, decides.
-            // Each carries its own app url (the round-trip currency); params is informational.
+            // tab are dropped; the tab's public web url slug, not the localized title, decides.
+            // Each carries its own app url (the round-trip currency) with the slug in the path.
             assertEquals(listOf("Home", "Videos"), page.pageTabs.map { it.title }, "$page")
             assertTrue(page.pageTabs[0].selected, "$page")
             assertTrue(page.pageTabs[0].home, "featured-params tab is the channel front: $page")
             assertTrue(!page.pageTabs[1].home, "$page")
-            assertEquals("/channel/UCchannelchannelchannel0?params=EghmZWF0dXJlZA", page.pageTabs[0].url)
-            assertEquals("/channel/UCchannelchannelchannel0?params=EgZ2aWRlb3M", page.pageTabs[1].url)
+            assertEquals("/channel/UCchannelchannelchannel0/featured?params=EghmZWF0dXJlZA", page.pageTabs[0].url)
+            assertEquals("/channel/UCchannelchannelchannel0/videos?params=EgZ2aWRlb3M", page.pageTabs[1].url)
 
             assertEquals("Channel video", page.sections.single().items.single().title)
 
@@ -280,10 +280,10 @@ class YtCommandsTest {
     fun channel_shorts_tab_parses_shorts_tiles_and_pages_with_a_wrapped_token() = runTest {
         val (m, _) = manager { jsonResponse(CHANNEL_SHORTS_FIXTURE).build(it) }
         try {
-            // The shorts-params url flips the engine into Shorts parsing (skipped everywhere
-            // else). The url carries the params the way the engine composed it: the server hands
-            // params out URL-ENCODED ("…%3D%3D"), and the url layer encodes on top ("%253D").
-            val url = "/channel/UCchannelchannelchannel0?params=EgZzaG9ydHPyBgUKA5oBAA%253D%253D"
+            // The /shorts path slug flips the engine into Shorts parsing (skipped everywhere
+            // else); the params ride verbatim (server hands them out URL-ENCODED, the url layer
+            // encodes on top).
+            val url = "/channel/UCchannelchannelchannel0/shorts?params=EgZzaG9ydHPyBgUKA5oBAA%253D%253D"
             val page = m.extractChannelDetail(url)
 
             // The browse gets the server's own (still URL-encoded) params back verbatim.
@@ -323,7 +323,7 @@ class YtCommandsTest {
     fun channel_playlists_tab_surfaces_the_sort_menu_as_chips() = runTest {
         val (m, _) = manager { jsonResponse(CHANNEL_PLAYLISTS_FIXTURE).build(it) }
         try {
-            val url = "/channel/UCchannelchannelchannel0?params=EglwbGF5bGlzdHPyBgQKAkIA"
+            val url = "/channel/UCchannelchannelchannel0/playlists?params=EglwbGF5bGlzdHPyBgQKAkIA"
             val page = m.extractChannelDetail(url)
 
             assertEquals("Channel playlist", page.sections.single().items.single().title, "$page")
