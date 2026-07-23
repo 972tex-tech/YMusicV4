@@ -41,7 +41,7 @@ class PagerChipsTest {
     }
 
     @Test
-    fun a_chip_click_keeps_the_row_it_came_from() = runTest {
+    fun a_chip_click_keeps_the_row_it_came_from_and_moves_the_selection() = runTest {
         val sortChips = listOf(
             YtChip("Latest", token = "sort-latest", selected = true),
             YtChip("Oldest", token = "sort-oldest"),
@@ -57,7 +57,40 @@ class PagerChipsTest {
 
         pager.refresh(chipToken = "sort-oldest")
         val filtered = pager.awaitReady()
-        assertEquals(sortChips, filtered.chips, "the clicked row survives the reload")
+        assertEquals(
+            listOf(
+                YtChip("Latest", token = "sort-latest"),
+                YtChip("Oldest", token = "sort-oldest", selected = true),
+            ),
+            filtered.chips,
+            "the clicked row survives the reload with the selection moved to the clicked chip",
+        )
         assertEquals("sort-oldest", filtered.selectedChipToken)
+    }
+
+    @Test
+    fun a_fresh_rows_server_marked_selection_beats_the_stale_clicked_token() = runTest {
+        // Live search shape: the chip-filtered response returns its OWN row with FRESH tokens —
+        // the clicked token matches none of them — and marks the applied chip selected instead.
+        val initial = listOf(
+            YtChip("All", selected = true), // the selected search chip carries no endpoint at all
+            YtChip("Videos", token = "videos-old"),
+        )
+        val filteredRow = listOf(
+            YtChip("All", token = "all-fresh"),
+            YtChip("Videos", token = "videos-fresh", selected = true),
+        )
+        var first = true
+        val pager = Pager(backgroundScope) { continuation ->
+            if (first) { first = false; page(initial) } else page(filteredRow)
+        }
+
+        pager.refresh()
+        pager.awaitReady()
+
+        pager.refresh(chipToken = "videos-old")
+        val filtered = pager.awaitReady()
+        assertEquals(filteredRow, filtered.chips)
+        assertEquals("videos-fresh", filtered.selectedChipToken, "retry re-runs the FRESH token")
     }
 }

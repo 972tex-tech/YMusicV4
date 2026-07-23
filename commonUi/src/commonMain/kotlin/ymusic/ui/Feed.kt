@@ -115,11 +115,21 @@ class Pager(
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                val chips = page.chips.ifEmpty { previousChips }
+                // Selection can't ride on token identity across reloads: a chip-filtered page that
+                // DOES return its own row returns fresh tokens (the clicked one matches nothing),
+                // with the applied chip server-marked selected instead. So trust a fresh row's own
+                // marks; only when the row lacks them (carried-over channel sort chips) re-mark it
+                // by the clicked token.
+                val rawChips = page.chips.ifEmpty { previousChips }
+                val chips = when {
+                    page.chips.any { it.selected } -> page.chips
+                    chipToken != null -> rawChips.map { it.copy(selected = it.token == chipToken) }
+                    else -> rawChips
+                }
                 State.Ready(
                     sections = page.sections,
                     chips = chips,
-                    selectedChipToken = chipToken ?: chips.firstOrNull { it.selected }?.token,
+                    selectedChipToken = chips.firstOrNull { it.selected }?.token ?: chipToken,
                     continuation = page.continuation,
                     loadingMore = false,
                     filterGroups = page.filterGroups.ifEmpty { previousFilters },
@@ -438,7 +448,7 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(state.chips) { chip ->
-            FeedChip(chip.title, selected = chip.token == state.selectedChipToken) { pager.refresh(chip.token) }
+            FeedChip(chip.title, selected = chip.selected) { pager.refresh(chip.token) }
         }
     }
 }
