@@ -32,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -135,10 +134,10 @@ private fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit) 
             ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = false, onClick = {})
             Box(Modifier.weight(1f))
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.Ink).clickable(onClick = onShuffle),
+                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(onClick = onShuffle),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = Color.White)
+                Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = DesignColors.OnInk)
             }
         }
         HorizontalDivider(color = DesignColors.StackNear, modifier = Modifier.padding(horizontal = 16.dp))
