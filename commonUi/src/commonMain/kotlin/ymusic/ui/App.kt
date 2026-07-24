@@ -37,6 +37,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -171,6 +173,9 @@ internal val LocalAppBarElevated = compositionLocalOf<MutableState<Boolean>?> { 
 /** App-wide reload requests (desktop F5/Cmd+R) — the composed feed surface collects and refetches.
  *  Null outside the app shell. */
 internal val LocalRefreshRequests = compositionLocalOf<kotlinx.coroutines.flow.Flow<Unit>?> { null }
+
+/** Show a transient message in the app's snackbar. No-op outside the app shell (tests, standalone). */
+internal val LocalSnackbar = compositionLocalOf<(String) -> Unit> { {} }
 
 /**
  * One pushed navigation layer. Each layer OWNS its screen state (loaded feed, scroll position,
@@ -359,10 +364,21 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         }
                     }
                 }
-                CompositionLocalProvider(LocalAppBarElevated provides barElevated) {
+                val snackbarHostState = remember { SnackbarHostState() }
+                val showSnackbar: (String) -> Unit = { message ->
+                    scope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(message)
+                    }
+                }
+                CompositionLocalProvider(
+                    LocalAppBarElevated provides barElevated,
+                    LocalSnackbar provides showSnackbar,
+                ) {
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
                         containerColor = DesignColors.Surface,
+                        snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
                             // Search and the detail pages carry their own app bars.
                             if (layers.isEmpty()) {

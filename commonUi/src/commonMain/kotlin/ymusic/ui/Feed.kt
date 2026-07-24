@@ -55,6 +55,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -106,6 +107,10 @@ class Pager(
     private val _state = MutableStateFlow<State>(State.Loading)
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /** Error codes from a keep-content [reload] (the list stays put) — the UI shows a snackbar. */
+    private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val errors: kotlinx.coroutines.flow.SharedFlow<String> = _errors.asSharedFlow()
+
     private var job: Job? = null
 
     /** (Re)load from the top; [chipToken] re-requests the feed filtered by that chip. */
@@ -132,22 +137,29 @@ class Pager(
         }
     }
 
-    /** Pull-to-refresh: keep the visible list on screen (only the pull indicator spins), reload the
-     *  surface from the top, and swap in the fresh page when it lands. A failed/timed-out reload
-     *  keeps the old data rather than dropping the user onto an error page. */
-    fun reload() {
-        val current = _state.value as? State.Ready ?: return refresh()
+    /** Keep-content reload (pull-to-refresh AND chip taps): the visible list stays on screen with
+     *  only the pull indicator spinning, then the fresh page swaps in when it lands. A failed or
+     *  timed-out reload keeps the old data and emits an error code ([errors], shown as a snackbar)
+     *  instead of dropping the user onto a full-screen error page. [chipToken] filters by that chip;
+     *  null reloads the surface's default top-of-feed. */
+    fun reload(chipToken: String? = null) {
+        val current = _state.value as? State.Ready ?: return refresh(chipToken)
         if (current.refreshing) return
         job?.cancel()
+        val carryOver = chipToken != null
+        val previousChips = if (carryOver) current.chips else emptyList()
+        val previousFilters = if (carryOver) current.filterGroups else emptyList()
         _state.value = current.copy(refreshing = true)
         job = scope.launch {
             _state.value = try {
-                val page = withTimeout(fetchTimeoutMs) { fetch(null) }
-                readyFrom(page, chipToken = null, previousChips = emptyList(), previousFilters = emptyList())
+                val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
+                readyFrom(page, chipToken, previousChips, previousFilters)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
+                _errors.tryEmit(TIMEOUT_CODE)
                 current.copy(refreshing = false)
             } catch (e: Exception) {
+                _errors.tryEmit((e as? CodedError)?.code ?: "E20030")
                 current.copy(refreshing = false)
             }
         }
@@ -258,7 +270,19 @@ fun FeedList(
     if (refreshRequests != null) {
         LaunchedEffect(refreshRequests, pager) { refreshRequests.collect { reload() } }
     }
-    val refreshing = state is Pager.State.Loading || (state as? Pager.State.Ready)?.refreshing == true
+    // A keep-content reload that fails (pull-to-refresh, chip tap) keeps the old list and surfaces
+    // the error as a snackbar instead of blanking the screen.
+    val showSnackbar = LocalSnackbar.current
+    var errorCode by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(pager) { pager.errors.collect { errorCode = it } }
+    errorCode?.let { code ->
+        val message = stringResource(Res.string.error_generic, code)
+        LaunchedEffect(code, message) {
+            showSnackbar(message)
+            errorCode = null
+        }
+    }
+    val refreshing = (state as? Pager.State.Ready)?.refreshing == true
     PullToRefreshFeed(refreshing = refreshing, onRefresh = reload) {
         when (val s = state) {
             is Pager.State.Loading -> Column(modifier) {
@@ -285,7 +309,9 @@ fun FeedList(
 }
 
 /** Touch platforms wrap the feed in Material's pull-to-refresh; desktop reloads via F5/Cmd+R
- *  instead (a mouse can't over-drag a list), so the wrapper is a no-op there. */
+ *  instead (a mouse can't over-drag a list), so the wrapper is a no-op there. The indicator spins
+ *  for any keep-content reload — a pull gesture or a chip tap — but not the first full-screen load
+ *  (that state has no list to pull against and shows its own centered spinner). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, content: @Composable () -> Unit) {
@@ -293,16 +319,7 @@ private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, conten
         content()
         return
     }
-    // The indicator only spins for pull-initiated loads — not the first load or a chip tap.
-    var pulled by remember { mutableStateOf(false) }
-    LaunchedEffect(refreshing) { if (!refreshing) pulled = false }
-    PullToRefreshBox(
-        isRefreshing = pulled && refreshing,
-        onRefresh = {
-            pulled = true
-            onRefresh()
-        },
-    ) {
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh) {
         content()
     }
 }
@@ -517,7 +534,9 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(state.chips) { chip ->
-            FeedChip(chip.title, selected = chip.selected) { pager.refresh(chip.token) }
+            // Keep-content reload: the list stays put with the pull indicator spinning, so a failed
+            // chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
+            FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
         }
     }
 }

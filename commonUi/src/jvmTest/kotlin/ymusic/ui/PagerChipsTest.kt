@@ -1,12 +1,15 @@
 package ymusic.ui
 
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import ymusic.dynamicengine.yt.YtChip
 import ymusic.dynamicengine.yt.YtFeedPage
 import ymusic.dynamicengine.yt.YtSection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -92,5 +95,35 @@ class PagerChipsTest {
         val filtered = pager.awaitReady()
         assertEquals(filteredRow, filtered.chips)
         assertEquals("videos-fresh", filtered.selectedChipToken, "retry re-runs the FRESH token")
+    }
+
+    @Test
+    fun a_failed_keep_content_reload_keeps_the_list_and_emits_an_error() = runTest {
+        // Pull-to-refresh and chip taps both go through reload(): a failure must keep the current
+        // data on screen (never a full-screen error page) and surface the error as an event the UI
+        // shows as a snackbar.
+        val chips = listOf(YtChip("All", token = "all", selected = true))
+        var fail = false
+        val pager = Pager(backgroundScope) {
+            if (fail) throw RuntimeException("boom")
+            page(chips)
+        }
+
+        pager.refresh()
+        assertEquals(chips, pager.awaitReady().chips)
+
+        // Subscribe to the error event BEFORE the failing reload — the flow has no replay, so a late
+        // subscriber would miss it.
+        val awaitError = async { pager.errors.first() }
+        runCurrent()
+
+        fail = true
+        pager.reload(chipToken = "all")
+        assertEquals("E20030", awaitError.await(), "the failure surfaced as an error event")
+
+        val state = pager.state.value
+        assertTrue(state is Pager.State.Ready, "kept the list, not an error page: $state")
+        assertEquals(chips, state.chips, "old data survives a failed reload")
+        assertFalse(state.refreshing, "the pull indicator stops")
     }
 }
