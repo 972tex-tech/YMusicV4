@@ -14,6 +14,12 @@ import ymusic.settings.SettingsStore
 internal const val PlaybackQualitySettingKey = "player.preferVideoQuality"
 
 /**
+ * A shell scan/rescan action: reports the running scanned-file count through [onProgress] while it
+ * works, and returns a user-facing summary line (or null when a folder pick was canceled).
+ */
+typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
+
+/**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
  * running engine manager, the player facade, and the platform video surface. [playerSurface] hosts
  * the **one** shared video container the shell handed to the engines (a Swing panel on desktop, a
@@ -29,12 +35,12 @@ class AppGraph(
     val player: Player,
     val ytContext: YtContext = YtContext(),
     val mediaStore: BetterMediaStore? = null,
-    val scanLibraryFolder: (suspend () -> String?)? = null,
+    val scanLibraryFolder: ScanAction? = null,
     /**
-     * Re-scans the already-added root folders in place (no folder pick), returning a user-facing
-     * summary line. Null when the shell can't scan, or has no notion of persisted roots.
+     * Re-scans the already-added root folders in place (no folder pick). Null when the shell can't
+     * scan, or has no notion of persisted roots.
      */
-    val rescanLibrary: (suspend () -> String?)? = null,
+    val rescanLibrary: ScanAction? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */

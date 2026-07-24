@@ -68,6 +68,7 @@
     <string name="library_add_folder">+  إضافة مجلد</string>
     <string name="library_rescan">إعادة فحص المجلدات</string>
     <string name="library_scanning">جارٍ الفحص…</string>
+    <string name="library_scanning_count">جارٍ فحص %1$d…</string>
     <string name="library_scan_failed">فشل الفحص (%1$s)</string>
     <string name="library_empty_folder">مجلد فارغ</string>
     <string name="library_crumb_root">المكتبة</string>

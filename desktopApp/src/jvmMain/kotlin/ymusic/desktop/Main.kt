@@ -43,6 +43,7 @@ import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -198,8 +199,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         engines,
         player,
         mediaStore = mediaStore,
-        scanLibraryFolder = { scanPickedFolder(mediaStore) },
-        rescanLibrary = { rescanKnownRoots(mediaStore) },
+        scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
+        rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
         settings = settings,
@@ -277,21 +278,22 @@ private fun mapToLogical(x: Float, y: Float, size: IntSize, surface: JcefOsrSurf
 }
 
 /** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
-private suspend fun scanPickedFolder(store: BetterMediaStore): String? {
+private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
     val picked = pickFolder() ?: return null
     val rootUri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
-    return scanUris(store, listOf(rootUri))
+    return scanUris(store, listOf(rootUri), onProgress)
 }
 
 /** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */
-private suspend fun rescanKnownRoots(store: BetterMediaStore): String? {
+private suspend fun rescanKnownRoots(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
     val roots = store.childBuckets(null)
     if (roots.isEmpty()) return "No folders to rescan — add one first"
-    return scanUris(store, roots.map { it.uri })
+    return scanUris(store, roots.map { it.uri }, onProgress)
 }
 
-/** Scans each root [uris] into [store], returning one combined summary line. */
-private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>): String? {
+/** Scans each root [uris] into [store], reporting the running file count through [onProgress] and
+ *  returning one combined summary line. */
+private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String? {
     val ffmpeg = findFfmpeg()
         ?: return "ffmpeg not found — install it (e.g. brew install ffmpeg) to scan metadata"
     val scanner = MediaScanner.create(
@@ -305,7 +307,7 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>): String? 
     var deleted = 0
     var failed = 0
     for (uri in uris) {
-        val progress = scanner.scan(uri).last()
+        val progress = scanner.scan(uri).onEach { onProgress(scanned + it.scanned) }.last()
         progress.errors.forEach { println("scan error at ${it.uri}: ${it.cause}") }
         scanned += progress.scanned
         added += progress.added

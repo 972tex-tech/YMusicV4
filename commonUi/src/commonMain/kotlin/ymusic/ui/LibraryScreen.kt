@@ -91,6 +91,7 @@ import ymusic.ui.resources.library_rescan
 import ymusic.ui.resources.library_scan_failed
 import ymusic.ui.resources.library_scan_folder
 import ymusic.ui.resources.library_scanning
+import ymusic.ui.resources.library_scanning_count
 import ymusic.ui.resources.library_tab_albums
 import ymusic.ui.resources.library_tab_artists
 import ymusic.ui.resources.library_tab_folders
@@ -223,7 +224,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
 
 /** First-open state: nothing indexed yet — just the scan call-to-action. */
 @Composable
-private fun EmptyLibrary(scan: (suspend () -> String?)?, state: ScanState) {
+private fun EmptyLibrary(scan: ScanAction?, state: ScanState) {
     CenteredBox {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(Res.string.library_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -246,8 +247,8 @@ private fun FoldersTab(
     store: BetterMediaStore,
     content: LibraryContent,
     coordinator: PlaybackCoordinator,
-    scan: (suspend () -> String?)?,
-    rescan: (suspend () -> String?)?,
+    scan: ScanAction?,
+    rescan: ScanAction?,
     scanState: ScanState,
 ) {
     // (id, displayName) instead of the bucket itself so the browse position survives the section
@@ -572,33 +573,42 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
-/** Scan-in-flight state, shared by the empty-state CTA and the tab-view scan bar. */
+/** Scan-in-flight state, shared by the empty-state CTA and the tab-view scan bar. [scanned] is the
+ *  running file count while [running] (null before the first progress tick). */
 private class ScanState {
     var running by mutableStateOf(false)
     var message by mutableStateOf<String?>(null)
+    var scanned by mutableStateOf<Int?>(null)
 }
 
-/** Runs a scan action through [state] (running flag + summary/error line); shared by the pill and
- *  the rescan button so both report through the same status line. */
-private fun runScanAction(scope: CoroutineScope, action: suspend () -> String?, state: ScanState) {
+/** Runs a scan action through [state] (running flag + live count + summary/error line); shared by
+ *  the pill and the rescan button so both report through the same status line. */
+private fun runScanAction(scope: CoroutineScope, action: ScanAction, state: ScanState) {
     state.running = true
+    state.scanned = null
     scope.launch {
         state.message = try {
-            action()
+            action { count -> state.scanned = count }
         } catch (e: Exception) {
             getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
         } finally {
             state.running = false
+            state.scanned = null
         }
     }
 }
 
-/** The outlined pill that starts a scan; disabled while one runs. */
+/** The outlined pill that starts a scan; while one runs it shows the live scanned count. */
 @Composable
-private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: String) {
+private fun ScanPill(scan: ScanAction, state: ScanState, label: String) {
     val scope = rememberCoroutineScope()
+    val count = state.scanned
     Text(
-        if (state.running) stringResource(Res.string.library_scanning) else label,
+        when {
+            state.running && count != null -> stringResource(Res.string.library_scanning_count, count)
+            state.running -> stringResource(Res.string.library_scanning)
+            else -> label
+        },
         style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -613,8 +623,8 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
  *  side may be absent (a subfolder has no scan; an empty root has no sort). */
 @Composable
 private fun FoldersToolbar(
-    scan: (suspend () -> String?)?,
-    rescan: (suspend () -> String?)?,
+    scan: ScanAction?,
+    rescan: ScanAction?,
     scanState: ScanState,
     sort: SortState?,
     sortLabels: List<StringResource>,
