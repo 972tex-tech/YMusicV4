@@ -166,10 +166,6 @@ internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.Mutable
     }
 }
 
-/** Set true by the active screen while its content is scrolled off the top — the app bar lifts.
- *  Null outside the app shell (e.g. the standalone catalogue window). */
-internal val LocalAppBarElevated = compositionLocalOf<MutableState<Boolean>?> { null }
-
 /** App-wide reload requests (desktop F5/Cmd+R) — the composed feed surface collects and refetches.
  *  Null outside the app shell. */
 internal val LocalRefreshRequests = compositionLocalOf<kotlinx.coroutines.flow.Flow<Unit>?> { null }
@@ -346,14 +342,15 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     )
                 },
             ) {
-                val barElevated = remember { mutableStateOf(false) }
+                // The shell owns app-bar elevation: content reports its scroll via TrackScroll into
+                // this host, and the bar reads it. (Content never touches the bar directly.)
+                val scrollHost = remember { ScrollHost() }
                 // Touch platforms scroll the toolbar row away (enter-always) while the tab row
                 // stays pinned; with the tabs inline (wide) the bar carries them, so it stays put.
                 val collapsible = platformUsesTouch && !wide
                 var toolbarHeightPx by remember { mutableStateOf(0) }
                 var toolbarOffsetPx by remember { mutableStateOf(0f) }
                 LaunchedEffect(section, discoverTab, layers.isEmpty(), collapsible) {
-                    barElevated.value = false
                     toolbarOffsetPx = 0f
                 }
                 val collapseConnection = remember(collapsible) {
@@ -378,7 +375,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     scanController.summaries.collect { showSnackbar(it) }
                 }
                 CompositionLocalProvider(
-                    LocalAppBarElevated provides barElevated,
+                    LocalScrollHost provides scrollHost,
                     LocalSnackbar provides showSnackbar,
                     LocalScanController provides scanController,
                 ) {

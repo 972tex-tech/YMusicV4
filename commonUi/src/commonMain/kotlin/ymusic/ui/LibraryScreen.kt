@@ -21,8 +21,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -282,6 +284,9 @@ private fun FoldersTab(
     var path by rememberSaveable(stateSaver = CrumbPathSaver) { mutableStateOf(listOf<Pair<Long, String>>()) }
     var folders by remember { mutableStateOf<List<MediaStoreBucket>?>(null) }
     var items by remember { mutableStateOf<List<MediaStoreItem>>(emptyList()) }
+    val folderListState = rememberLazyListState()
+    val folderGridState = rememberLazyGridState()
+    TrackScroll { folderListState.canScrollBackward || folderGridState.canScrollBackward }
 
     // "Show in folder": open the requested bucket by walking its ancestor chain up to a root.
     LaunchedEffect(revealBucket) {
@@ -359,6 +364,7 @@ private fun FoldersTab(
                         columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        state = folderGridState,
                     ) {
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             LibraryGridCard(
@@ -385,7 +391,7 @@ private fun FoldersTab(
                         }
                     }
                 }
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), state = folderListState) {
                     items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                         FolderRow(bucket, folderActions(bucket, onRemove, onExclude, onInclude)) { openFolder(bucket) }
                     }
@@ -716,6 +722,11 @@ private fun FoldersToolbar(
 
 @Composable
 internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator, modifier: Modifier = Modifier) {
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    // Every Library tab funnels its scroll through SongList, LibraryBrowseLevel, or FoldersTab, and
+    // only one is composed at a time — so reporting scroll from these three covers all tabs.
+    TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(modifier.fillMaxSize()) {
         // Same min-width sizing as the Folders tab's songs: as many columns as keep each song
         // ≥ LibrarySongMinWidth, dropping to a single full-width column when that's all that fits.
@@ -723,13 +734,14 @@ internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordina
             LazyVerticalGrid(
                 columns = GridCells.Fixed(librarySongColumns(maxWidth)),
                 modifier = Modifier.fillMaxSize(),
+                state = gridState,
             ) {
                 items(songs.size, key = { songs[it].id }) { index ->
                     SongRow(songs[index], coordinator) { coordinator.playLocal(songs, index) }
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState) {
                 itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
                     SongRow(song, coordinator) { coordinator.playLocal(songs, index) }
                 }
@@ -866,6 +878,9 @@ private fun <T> LibraryBrowseLevel(
     card: @Composable (T) -> Unit,
     sortBar: @Composable () -> Unit = {},
 ) {
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     Column(Modifier.fillMaxSize()) {
         sortBar()
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -874,11 +889,12 @@ private fun <T> LibraryBrowseLevel(
                     columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    state = gridState,
                 ) {
                     items(entries, key = key) { entry -> card(entry) }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     items(entries, key = key) { entry -> row(entry) }
                 }
             }

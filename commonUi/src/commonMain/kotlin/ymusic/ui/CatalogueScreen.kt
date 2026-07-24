@@ -117,7 +117,7 @@ private fun CatalogueList() {
 
         item { CatLabel("App bars — ELEVATED (screen scrolled): 4dp shadow + SurfaceElevated tone") }
         item {
-            CompositionLocalProvider(LocalAppBarElevated provides remember { mutableStateOf(true) }) {
+            CompositionLocalProvider(LocalScrollHost provides remember { ScrollHost(scrolled = true) }) {
                 Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
                     DetailAppBar("Scrolled state", onBack = {}, onSearch = {})
                 }

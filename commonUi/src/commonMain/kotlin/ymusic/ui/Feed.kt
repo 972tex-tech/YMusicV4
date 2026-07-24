@@ -32,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,7 +39,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -382,13 +380,8 @@ private fun FeedSections(
         val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(maxWidth)
         val wide = layout == FeedLayout.WideList
         val listState = hoistedListState ?: rememberLazyListState()
-        LocalAppBarElevated.current?.let { elevated ->
-            LaunchedEffect(listState, elevated) {
-                snapshotFlow { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
-                    .collect { elevated.value = it }
-            }
-            DisposableEffect(elevated) { onDispose { elevated.value = false } }
-        }
+        // Report scroll to the shell (which lifts the app bar); the feed doesn't touch the bar itself.
+        TrackScroll { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (topContent != null) item { topContent() }
             item { FeedChips(state, pager) }

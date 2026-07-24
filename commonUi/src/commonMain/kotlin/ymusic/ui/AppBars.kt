@@ -35,10 +35,15 @@ import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,11 +83,48 @@ import ymusic.ui.resources.search_youtube
  * [ElevatedBarColumn] so the lift behavior is identical everywhere.
  */
 
+/**
+ * The shell's scroll→chrome bridge. Elevation is the *shell's* decision, so content never touches the
+ * app bar: the active screen's scroll container REPORTS its position with [TrackScroll], and the bar
+ * ([ElevatedBarColumn]) READS [scrolled] to lift. Owned and provided by the app shell.
+ */
+@Stable
+internal class ScrollHost(scrolled: Boolean = false) {
+    private val state = mutableStateOf(scrolled)
+
+    /** True while the active content is scrolled away from its top — read by the bar. */
+    val scrolled: Boolean get() = state.value
+
+    // Only the most-recently-attached content drives [scrolled]; the token guard stops a departing
+    // screen from clobbering the one that replaced it (dispose can race the new claim).
+    private var owner: Any? = null
+    fun claim(token: Any) { owner = token }
+    fun report(token: Any, value: Boolean) { if (owner === token) state.value = value }
+    fun release(token: Any) { if (owner === token) { owner = null; state.value = false } }
+}
+
+/** The app shell's [ScrollHost]; null outside the shell. */
+internal val LocalScrollHost = compositionLocalOf<ScrollHost?> { null }
+
+/** Report whether this screen's primary scroll container is scrolled away from its top, so the shell
+ *  can lift the app bar. Resets when the content leaves composition. Content calls this and stays
+ *  ignorant of the app bar — it only states a fact about its own scroll. */
+@Composable
+internal fun TrackScroll(scrolled: () -> Boolean) {
+    val host = LocalScrollHost.current ?: return
+    val token = remember { Any() }
+    DisposableEffect(host, token) {
+        host.claim(token)
+        onDispose { host.release(token) }
+    }
+    LaunchedEffect(host, token) { snapshotFlow(scrolled).collect { host.report(token, it) } }
+}
+
 /** An app-bar surface that lifts while the screen under it is scrolled: shadow + the elevated
  *  tone (elevated white ≠ white). Drawn above siblings so the shadow is never painted over. */
 @Composable
 internal fun ElevatedBarColumn(content: @Composable ColumnScope.() -> Unit) {
-    val elevated = LocalAppBarElevated.current?.value == true
+    val elevated = LocalScrollHost.current?.scrolled == true
     val shadow by animateDpAsState(if (elevated) 6.dp else 0.dp)
     val tone by animateColorAsState(if (elevated) DesignColors.SurfaceElevated else DesignColors.Surface)
     Column(Modifier.shadow(shadow).background(tone).zIndex(1f), content = content)
