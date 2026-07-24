@@ -168,6 +168,15 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     // indexed items flip the screen over to the tabs.
     val scanState = remember { ScanState() }
 
+    // The final scan/rescan summary (or error) surfaces as a snackbar, then clears.
+    val showSnackbar = LocalSnackbar.current
+    LaunchedEffect(scanState.message) {
+        scanState.message?.let {
+            showSnackbar(it)
+            scanState.message = null
+        }
+    }
+
     val loaded = content
     when {
         loaded == null -> CenteredBox { CircularProgressIndicator() }
@@ -257,9 +266,6 @@ private fun EmptyLibrary(scan: ScanAction?, state: ScanState) {
             if (scan == null) return@Column
             ScanPill(scan, state, label = stringResource(Res.string.library_scan_folder))
             if (state.running) CircularProgressIndicator(Modifier.size(22.dp))
-            state.message?.let {
-                Text(it, style = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary))
-            }
         }
     }
 }
@@ -696,16 +702,7 @@ private fun FoldersToolbar(
             }
             if (scanState.running) CircularProgressIndicator(Modifier.size(20.dp))
         }
-        Box(Modifier.weight(1f)) {
-            scanState.message?.let {
-                Text(
-                    it,
-                    style = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+        Spacer(Modifier.weight(1f))
         if (sort != null) SortControl(sortLabels, sort)
     }
 }
