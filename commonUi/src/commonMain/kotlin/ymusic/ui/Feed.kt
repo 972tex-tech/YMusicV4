@@ -93,6 +93,8 @@ class Pager(
             val selectedChipToken: String?,
             val continuation: String?,
             val loadingMore: Boolean,
+            /** Pull-to-refresh in flight: the list stays on screen, only the pull indicator spins. */
+            val refreshing: Boolean = false,
             /** Search surfaces only: the server's filter submenu (empty elsewhere). */
             val filterGroups: List<ymusic.dynamicengine.yt.YtFilterGroup> = emptyList(),
             /** Detail surfaces only (channel / playlist browse). */
@@ -119,27 +121,7 @@ class Pager(
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                // Selection can't ride on token identity across reloads: a chip-filtered page that
-                // DOES return its own row returns fresh tokens (the clicked one matches nothing),
-                // with the applied chip server-marked selected instead. So trust a fresh row's own
-                // marks; only when the row lacks them (carried-over channel sort chips) re-mark it
-                // by the clicked token.
-                val rawChips = page.chips.ifEmpty { previousChips }
-                val chips = when {
-                    page.chips.any { it.selected } -> page.chips
-                    chipToken != null -> rawChips.map { it.copy(selected = it.token == chipToken) }
-                    else -> rawChips
-                }
-                State.Ready(
-                    sections = page.sections,
-                    chips = chips,
-                    selectedChipToken = chips.firstOrNull { it.selected }?.token ?: chipToken,
-                    continuation = page.continuation,
-                    loadingMore = false,
-                    filterGroups = page.filterGroups.ifEmpty { previousFilters },
-                    pageHeader = page.pageHeader,
-                    pageTabs = page.pageTabs,
-                )
+                readyFrom(page, chipToken, previousChips, previousFilters)
             } catch (e: TimeoutCancellationException) {
                 State.Failed(TIMEOUT_CODE, "fetch timed out after ${fetchTimeoutMs}ms")
             } catch (e: CancellationException) {
@@ -148,6 +130,55 @@ class Pager(
                 State.Failed((e as? CodedError)?.code ?: "E20030", e.message)
             }
         }
+    }
+
+    /** Pull-to-refresh: keep the visible list on screen (only the pull indicator spins), reload the
+     *  surface from the top, and swap in the fresh page when it lands. A failed/timed-out reload
+     *  keeps the old data rather than dropping the user onto an error page. */
+    fun reload() {
+        val current = _state.value as? State.Ready ?: return refresh()
+        if (current.refreshing) return
+        job?.cancel()
+        _state.value = current.copy(refreshing = true)
+        job = scope.launch {
+            _state.value = try {
+                val page = withTimeout(fetchTimeoutMs) { fetch(null) }
+                readyFrom(page, chipToken = null, previousChips = emptyList(), previousFilters = emptyList())
+            } catch (e: CancellationException) {
+                if (e !is TimeoutCancellationException) throw e
+                current.copy(refreshing = false)
+            } catch (e: Exception) {
+                current.copy(refreshing = false)
+            }
+        }
+    }
+
+    private fun readyFrom(
+        page: ymusic.dynamicengine.yt.YtFeedPage,
+        chipToken: String?,
+        previousChips: List<YtChip>,
+        previousFilters: List<ymusic.dynamicengine.yt.YtFilterGroup>,
+    ): State.Ready {
+        // Selection can't ride on token identity across reloads: a chip-filtered page that DOES
+        // return its own row returns fresh tokens (the clicked one matches nothing), with the
+        // applied chip server-marked selected instead. So trust a fresh row's own marks; only when
+        // the row lacks them (carried-over channel sort chips) re-mark it by the clicked token.
+        val rawChips = page.chips.ifEmpty { previousChips }
+        val chips = when {
+            page.chips.any { it.selected } -> page.chips
+            chipToken != null -> rawChips.map { it.copy(selected = it.token == chipToken) }
+            else -> rawChips
+        }
+        return State.Ready(
+            sections = page.sections,
+            chips = chips,
+            selectedChipToken = chips.firstOrNull { it.selected }?.token ?: chipToken,
+            continuation = page.continuation,
+            loadingMore = false,
+            filterGroups = page.filterGroups.ifEmpty { previousFilters },
+            pageHeader = page.pageHeader,
+            pageTabs = page.pageTabs,
+        )
     }
 
     fun loadMore() {
@@ -220,14 +251,15 @@ fun FeedList(
 ) {
     val state by pager.state.collectAsState()
     // Pull-to-refresh / F5 reloads the surface from the top: drop any chip filter and take the
-    // server's default first response, not the currently-selected chip's filtered page.
-    val reload = { pager.refresh() }
+    // server's default first response, keeping the current list on screen until the new page lands.
+    val reload = { pager.reload() }
     // Desktop F5/Cmd+R: only composed surfaces collect, so the request reaches the visible feed.
     val refreshRequests = LocalRefreshRequests.current
     if (refreshRequests != null) {
         LaunchedEffect(refreshRequests, pager) { refreshRequests.collect { reload() } }
     }
-    PullToRefreshFeed(refreshing = state is Pager.State.Loading, onRefresh = reload) {
+    val refreshing = state is Pager.State.Loading || (state as? Pager.State.Ready)?.refreshing == true
+    PullToRefreshFeed(refreshing = refreshing, onRefresh = reload) {
         when (val s = state) {
             is Pager.State.Loading -> Column(modifier) {
                 topContent?.invoke()
