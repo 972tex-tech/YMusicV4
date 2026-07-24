@@ -1,6 +1,7 @@
 package ymusic.android
 
 import android.content.ComponentCallbacks2
+import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -8,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,8 +23,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import kmpcommon.uri.Uri
+import kmpffmpeg.AndroidFfInputResolver
+import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kmphttp.KmpHttpClient
 import kmphttp.create
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import ymusic.dynamicengine.DynamicEngineManager
@@ -32,6 +42,11 @@ import ymusic.imageloader.ImageLoader
 import ymusic.imageloader.defaultMemoryCacheBudget
 import ymusic.imageloader.fileFetcher
 import ymusic.imageloader.networkFetcher
+import ymusic.mediascanner.FfmpegMetadataExtractor
+import ymusic.mediascanner.MediaScanner
+import ymusic.mediascanner.SafDocumentsProvider
+import ymusic.mediastore.BetterMediaStore
+import ymusic.mediastore.mediaStoreAndroidDriver
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -40,6 +55,7 @@ import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import java.io.File
 
 /**
  * The Android shell: assembles the [AppGraph] (ExoPlayer local + WebView YouTube engines, the
@@ -48,6 +64,28 @@ import ymusic.ui.AppGraph
  */
 class MainActivity : ComponentActivity() {
     private var imageLoader: ImageLoader? = null
+
+    // Bridges the callback-based SAF folder pick to the shell's suspend ScanAction: launch() fires the
+    // system ACTION_OPEN_DOCUMENT_TREE, the result callback completes the pending deferred.
+    private var pendingPick: CompletableDeferred<Uri?>? = null
+    private val openFolder =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri != null) {
+                // Persist read access so a rescan (and next launch) can reach the folder without re-picking.
+                contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            pendingPick?.complete(treeUri?.let { Uri.parse(it.toString()) })
+            pendingPick = null
+        }
+
+    /** Launches the SAF folder picker and suspends until the user picks a tree (or cancels → null). */
+    private suspend fun pickFolder(): Uri? {
+        pendingPick?.complete(null) // a prior pick still open → abandon it
+        val deferred = CompletableDeferred<Uri?>()
+        pendingPick = deferred
+        withContext(Dispatchers.Main) { openFolder.launch(null) }
+        return deferred.await()
+    }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
@@ -121,6 +159,8 @@ class MainActivity : ComponentActivity() {
         )
         engines.start()
 
+        val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(applicationContext))
+
         // The injected YouTube player script, bundled as an asset (copied from webview-js/dist).
         // Without it the WebView engine is absent and a YouTube item surfaces E60050.
         val webViewJs = runCatching {
@@ -166,6 +206,9 @@ class MainActivity : ComponentActivity() {
         return AppGraph(
             engines,
             player,
+            mediaStore = mediaStore,
+            scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
+            rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             imageLoader = imageLoader,
             settings = settings,
@@ -184,6 +227,48 @@ class MainActivity : ComponentActivity() {
                     host.addView(videoContainer)
                 },
             )
+        }
+    }
+
+    /** SAF folder pick + full scan into [store]; returns the summary line, or null when canceled. */
+    private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
+        val treeUri = pickFolder() ?: return null
+        return scanUris(store, listOf(treeUri), onProgress)
+    }
+
+    /** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */
+    private suspend fun rescanKnownRoots(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
+        val roots = store.childBuckets(null)
+        if (roots.isEmpty()) return "No folders to rescan — add one first"
+        return scanUris(store, roots.map { it.uri }, onProgress)
+    }
+
+    /** Scans each root [uris] into [store] via SAF + the bundled ffmpeg (content:// proxied over ymix),
+     *  reporting the running file count and returning one combined summary line. */
+    private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String {
+        val ffmpeg = File(applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath
+        val scanner = MediaScanner.create(
+            store,
+            SafDocumentsProvider(applicationContext),
+            FfmpegMetadataExtractor(FfmpegMetadataGetter(ffmpeg, AndroidFfInputResolver(contentResolver))),
+        )
+        var scanned = 0
+        var added = 0
+        var updated = 0
+        var deleted = 0
+        var failed = 0
+        for (uri in uris) {
+            val progress = scanner.scan(uri).onEach { onProgress(scanned + it.scanned) }.last()
+            progress.errors.forEach { android.util.Log.w("LibraryScan", "scan error at ${it.uri}", it.cause) }
+            scanned += progress.scanned
+            added += progress.added
+            updated += progress.updated
+            deleted += progress.deleted
+            failed += progress.errors.size
+        }
+        return buildString {
+            append("Scanned $scanned: $added added, $updated updated, $deleted removed")
+            if (failed > 0) append(", $failed failed")
         }
     }
 }

@@ -31,13 +31,33 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // The prebuilt ffmpeg ships as lib/<abi>/libffmpeg.so; legacy packaging extracts it to
+        // nativeLibraryDir as a real on-disk file the media scanner can exec() (mmap'd libs can't be run).
+        jniLibs { useLegacyPackaging = true }
     }
+
+    // Stage the prebuilt ffmpeg into a jniLibs source dir (build output, gitignored) so it packs as a
+    // per-ABI native lib. The metadata scanner execs it from nativeLibraryDir; see MainActivity.scanUris.
+    // stageFfmpeg (below) fills the dir; the merge task depends on it explicitly (the source-set API
+    // can't carry a Provider's task dependency, so a plain File + explicit dependsOn is required).
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
+}
+
+val stageFfmpeg by tasks.registering(Copy::class) {
+    into(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
+    listOf("arm64-v8a", "x86", "x86_64").forEach { abi ->
+        from(rootProject.file("ffmpeg-prebuilt-ymusic/android/$abi/libffmpeg.so")) { into(abi) }
+    }
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {
+    dependsOn(stageFfmpeg)
 }
 
 /** The Android product shell over :commonUi (see MainActivity). Plain Android app module —
  *  AGP 9's built-in Kotlin (com.android.application cannot combine with the KMP plugin). */
 dependencies {
     implementation(project(":commonUi"))
+    implementation(project(":media-scanner")) // pulls :media-store + :kmpFfmpeg (api) for the local Library
     implementation(Libs.AndroidX.coreKtx)
     implementation(Libs.AndroidX.activityCompose)
     implementation(Libs.Kotlinx.coroutinesAndroid)
