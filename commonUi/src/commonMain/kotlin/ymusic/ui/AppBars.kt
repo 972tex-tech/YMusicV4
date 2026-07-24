@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -349,9 +350,10 @@ internal fun HorizontalOverflowBox(
 private const val TabScrollStep = 240f
 
 /** Redirect the vertical mouse wheel to a horizontal [scrollState] — desktop wheels scroll vertically,
- *  so a horizontally-scrolling row (tabs) would otherwise ignore them. No-op on touch, which produces
- *  drags rather than scroll events. */
-internal fun Modifier.horizontalWheelScroll(scrollState: ScrollState): Modifier =
+ *  so a horizontally-scrolling row (tabs, chips) would otherwise ignore them. Works on any
+ *  [ScrollableState] (ScrollState or a LazyRow's LazyListState). No-op on touch, which produces drags
+ *  rather than scroll events. */
+internal fun Modifier.horizontalWheelScroll(scrollState: ScrollableState): Modifier =
     pointerInput(scrollState) {
         awaitPointerEventScope {
             while (true) {

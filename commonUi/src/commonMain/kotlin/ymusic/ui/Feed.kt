@@ -521,8 +521,10 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
 @Composable
 private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     if (state.chips.isEmpty()) return
+    val chipScroll = rememberLazyListState()
     LazyRow(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().horizontalWheelScroll(chipScroll),
+        state = chipScroll,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
