@@ -161,7 +161,9 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             // a few reloads per second (conflate holds the latest while we wait + load).
             .map {
                 delay(200)
-                LibraryContent(store.allItems(), store.allBuckets().isNotEmpty())
+                // childBuckets(null) (roots only, indexed) — NOT allBuckets(), which loads every
+                // bucket row (145k on a Downloads scan) just to test non-empty and stalls the UI.
+                LibraryContent(store.allItems(), store.childBuckets(null).isNotEmpty())
             }
     }.collectAsState(initial = null)
 
