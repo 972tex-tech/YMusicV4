@@ -27,7 +27,7 @@
     <string name="show_less">عرض أقل</string>
     <string name="menu_play">تشغيل</string>
     <string name="menu_show_in_folder">إظهار في المجلد</string>
-    <string name="menu_remove_folder">إزالة المجلد</string>
+    <string name="menu_remove_folder">إزالة من القائمة</string>
     <string name="menu_exclude_folder">استبعاد المجلد</string>
     <string name="menu_include_folder">تضمين المجلد</string>
     <string name="queue_next">التشغيل تاليًا</string>
