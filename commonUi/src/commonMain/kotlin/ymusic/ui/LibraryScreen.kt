@@ -335,7 +335,11 @@ private fun FoldersTab(
         // row stay pinned). Scan actions (root only) sit left of the sort control.
         val header: @Composable () -> Unit = {
             Column {
-                Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
+                // At root the crumb would just read "Library" with nowhere to go — only show the
+                // trail once you've descended into a subfolder.
+                if (path.isNotEmpty()) {
+                    Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
+                }
                 if (showScan || hasContent) {
                     FoldersToolbar(
                         scan = if (showScan) scan else null,
