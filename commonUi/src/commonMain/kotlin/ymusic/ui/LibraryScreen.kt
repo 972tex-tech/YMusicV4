@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -165,8 +166,10 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     }.collectAsState(initial = null)
 
     // Hoisted so a scan started from the empty state keeps its spinner/summary when the first
-    // indexed items flip the screen over to the tabs.
+    // indexed items flip the screen over to the tabs. The scope is hoisted too so switching tabs
+    // (which drops the Folders composable) doesn't cancel an in-flight scan.
     val scanState = remember { ScanState() }
+    val scanScope = rememberCoroutineScope()
 
     // The final scan/rescan summary (or error) surfaces as a snackbar, then clears.
     val showSnackbar = LocalSnackbar.current
@@ -180,7 +183,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val loaded = content
     when {
         loaded == null -> CenteredBox { CircularProgressIndicator() }
-        loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanState)
+        loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanState, scanScope)
         else -> {
             var tab by rememberSaveable { mutableStateOf(LibraryTab.Folders) }
             // A song's "Show in folder" jump: the bucket to open, consumed by the Folders tab once
@@ -217,6 +220,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                 graph.scanLibraryFolder,
                                 graph.rescanLibrary,
                                 scanState,
+                                scanScope,
                                 revealBucket,
                                 onRevealHandled = { revealBucket = null },
                             )
@@ -259,12 +263,12 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
 
 /** First-open state: nothing indexed yet — just the scan call-to-action. */
 @Composable
-private fun EmptyLibrary(scan: ScanAction?, state: ScanState) {
+private fun EmptyLibrary(scan: ScanAction?, state: ScanState, scope: CoroutineScope) {
     CenteredBox {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(Res.string.library_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (scan == null) return@Column
-            ScanPill(scan, state, label = stringResource(Res.string.library_scan_folder))
+            ScanPill(scan, state, scope, label = stringResource(Res.string.library_scan_folder))
             if (state.running) CircularProgressIndicator(Modifier.size(22.dp))
         }
     }
@@ -282,6 +286,7 @@ private fun FoldersTab(
     scan: ScanAction?,
     rescan: ScanAction?,
     scanState: ScanState,
+    scanScope: CoroutineScope,
     revealBucket: Long?,
     onRevealHandled: () -> Unit,
 ) {
@@ -331,6 +336,7 @@ private fun FoldersTab(
                 scan = if (showScan) scan else null,
                 rescan = if (showScan) rescan else null,
                 scanState = scanState,
+                scanScope = scanScope,
                 sort = if (hasContent) sort else null,
                 sortLabels = folderSortOptions.map { it.label },
             )
@@ -636,10 +642,12 @@ private fun runScanAction(scope: CoroutineScope, action: ScanAction, state: Scan
     state.running = true
     state.scanned = null
     scope.launch {
-        state.message = try {
-            action { count -> state.scanned = count }
+        try {
+            state.message = action { count -> state.scanned = count }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
+            state.message = getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
         } finally {
             state.running = false
             state.scanned = null
@@ -647,10 +655,10 @@ private fun runScanAction(scope: CoroutineScope, action: ScanAction, state: Scan
     }
 }
 
-/** The outlined pill that starts a scan; while one runs it shows the live scanned count. */
+/** The outlined pill that starts a scan; while one runs it shows the live scanned count. [scope] is
+ *  hoisted (not composable-local) so the scan survives this pill leaving composition on a tab switch. */
 @Composable
-private fun ScanPill(scan: ScanAction, state: ScanState, label: String) {
-    val scope = rememberCoroutineScope()
+private fun ScanPill(scan: ScanAction, state: ScanState, scope: CoroutineScope, label: String) {
     val count = state.scanned
     Text(
         when {
@@ -675,20 +683,20 @@ private fun FoldersToolbar(
     scan: ScanAction?,
     rescan: ScanAction?,
     scanState: ScanState,
+    scanScope: CoroutineScope,
     sort: SortState?,
     sortLabels: List<StringResource>,
 ) {
-    val scope = rememberCoroutineScope()
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (scan != null) {
-            ScanPill(scan, scanState, label = stringResource(Res.string.library_add_folder))
+            ScanPill(scan, scanState, scanScope, label = stringResource(Res.string.library_add_folder))
             if (rescan != null) {
                 IconButton(
-                    onClick = { runScanAction(scope, rescan, scanState) },
+                    onClick = { runScanAction(scanScope, rescan, scanState) },
                     enabled = !scanState.running,
                     modifier = Modifier.size(32.dp),
                 ) {
