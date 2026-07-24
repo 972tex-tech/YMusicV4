@@ -307,9 +307,10 @@ private fun FoldersTab(
 }
 
 /** Even column count for the Folders grid so 2-wide song rows tile as pairs without a trailing gap;
- *  folders (1-wide) fill the same columns. Min 2. */
+ *  folders (1-wide) fill the same columns. Sized to match the Playlists tab's ~150dp cards (minus
+ *  the grid's 10dp side padding). Min 2. */
 private fun foldersGridColumns(width: androidx.compose.ui.unit.Dp): Int {
-    val fit = (width.value / 172f).toInt().coerceAtLeast(2)
+    val fit = ((width.value - 20f) / 150f).toInt().coerceAtLeast(2)
     return fit - (fit % 2)
 }
 
