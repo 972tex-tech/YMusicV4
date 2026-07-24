@@ -75,7 +75,6 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
-import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreBucket
 import ymusic.mediastore.model.MediaStoreItem
@@ -190,12 +189,6 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         LibraryTab.Songs -> {
                             val sort = rememberSortState("sort.songs")
                             Column(Modifier.fillMaxSize()) {
-                                SectionHeader(
-                                    YtSectionHeader(
-                                        title = stringResource(Res.string.library_tab_songs),
-                                        count = "${loaded.songs.size}",
-                                    ),
-                                )
                                 SortBar(songSortOptions.map { it.label }, sort)
                                 SongList(sort.sort(loaded.songs, songSortOptions), coordinator)
                             }
