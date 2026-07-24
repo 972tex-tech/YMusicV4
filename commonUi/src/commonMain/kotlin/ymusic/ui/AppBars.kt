@@ -53,6 +53,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -121,11 +123,14 @@ internal fun TrackScroll(scrolled: () -> Boolean) {
 }
 
 /** An app-bar surface that lifts while the screen under it is scrolled: shadow + the elevated
- *  tone (elevated white ≠ white). Drawn above siblings so the shadow is never painted over. */
+ *  tone (elevated white ≠ white). Drawn above siblings so the shadow is never painted over.
+ *  [bottomShadow] = false keeps the tone but drops the shadow, for when another elevated surface
+ *  continues directly below (e.g. the Library bar with the tab row beneath it) and should cast the
+ *  single shadow itself. */
 @Composable
-internal fun ElevatedBarColumn(content: @Composable ColumnScope.() -> Unit) {
+internal fun ElevatedBarColumn(bottomShadow: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     val elevated = LocalScrollHost.current?.scrolled == true
-    val shadow by animateDpAsState(if (elevated) 6.dp else 0.dp)
+    val shadow by animateDpAsState(if (elevated && bottomShadow) 6.dp else 0.dp)
     val tone by animateColorAsState(if (elevated) DesignColors.SurfaceElevated else DesignColors.Surface)
     Column(Modifier.shadow(shadow).background(tone).zIndex(1f), content = content)
 }
@@ -342,6 +347,26 @@ internal fun HorizontalOverflowBox(
 }
 
 private const val TabScrollStep = 240f
+
+/** Redirect the vertical mouse wheel to a horizontal [scrollState] — desktop wheels scroll vertically,
+ *  so a horizontally-scrolling row (tabs) would otherwise ignore them. No-op on touch, which produces
+ *  drags rather than scroll events. */
+internal fun Modifier.horizontalWheelScroll(scrollState: ScrollState): Modifier =
+    pointerInput(scrollState) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent()
+                if (event.type == PointerEventType.Scroll) {
+                    val dy = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                    if (dy != 0f && scrollState.dispatchRawDelta(dy * WheelScrollStep) != 0f) {
+                        event.changes.forEach { it.consume() }
+                    }
+                }
+            }
+        }
+    }
+
+private const val WheelScrollStep = 64f
 
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */
 @Composable

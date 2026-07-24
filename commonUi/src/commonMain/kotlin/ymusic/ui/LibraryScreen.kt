@@ -8,14 +8,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -38,6 +41,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -187,19 +191,11 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
             val tabStateHolder = rememberSaveableStateHolder()
             Column(Modifier.fillMaxSize()) {
-                val chipScroll = rememberScrollState()
-                HorizontalOverflowBox(chipScroll) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(chipScroll)
-                            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        LibraryTab.entries.forEach { t ->
-                            LibraryChip(stringResource(t.label), selected = t == tab) { tab = t }
-                        }
-                    }
+                // The tab row is pinned under the app bar and elevates with it (one continuous
+                // surface); each tab's sort/breadcrumb scroll away with the content below.
+                ElevatedBarColumn {
+                    LibraryTabRow(tab) { tab = it }
+                    HorizontalDivider(color = DesignColors.Divider)
                 }
                 CompositionLocalProvider(LocalLibraryReveal provides reveal) {
                     tabStateHolder.SaveableStateProvider(tab.name) {
@@ -217,10 +213,11 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                             LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
                             LibraryTab.Songs -> {
                                 val sort = rememberSortState("sort.songs")
-                                Column(Modifier.fillMaxSize()) {
-                                    SortBar(songSortOptions.map { it.label }, sort)
-                                    SongList(sort.sort(loaded.songs, songSortOptions), coordinator)
-                                }
+                                SongList(
+                                    sort.sort(loaded.songs, songSortOptions),
+                                    coordinator,
+                                    header = { SortBar(songSortOptions.map { it.label }, sort) },
+                                )
                             }
                             LibraryTab.Artists ->
                                 GroupedList(
@@ -286,7 +283,6 @@ private fun FoldersTab(
     var items by remember { mutableStateOf<List<MediaStoreItem>>(emptyList()) }
     val folderListState = rememberLazyListState()
     val folderGridState = rememberLazyGridState()
-    TrackScroll { folderListState.canScrollBackward || folderGridState.canScrollBackward }
 
     // "Show in folder": open the requested bucket by walking its ancestor chain up to a root.
     LaunchedEffect(revealBucket) {
@@ -310,7 +306,6 @@ private fun FoldersTab(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
         val children = folders
         if (children == null) {
             CenteredBox { CircularProgressIndicator() }
@@ -334,30 +329,39 @@ private fun FoldersTab(
         val sort = rememberSortState("sort.folders")
         val sortedFolders = sort.sort(children, folderSortOptions)
         val sortedItems = sort.sort(items, songSortOptions)
-        // Scan actions (root only) and the sort control share one toolbar row: scan left, sort right.
         val showScan = path.isEmpty() && scan != null
         val hasContent = children.isNotEmpty() || items.isNotEmpty()
-        if (showScan || hasContent) {
-            FoldersToolbar(
-                scan = if (showScan) scan else null,
-                rescan = if (showScan) rescan else null,
-                scanController = scanController,
-                sort = if (hasContent) sort else null,
-                sortLabels = folderSortOptions.map { it.label },
-            )
+        // The breadcrumb + scan/sort toolbar scroll away with the content (only the app bar and tab
+        // row stay pinned). Scan actions (root only) sit left of the sort control.
+        val header: @Composable () -> Unit = {
+            Column {
+                Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
+                if (showScan || hasContent) {
+                    FoldersToolbar(
+                        scan = if (showScan) scan else null,
+                        rescan = if (showScan) rescan else null,
+                        scanController = scanController,
+                        sort = if (hasContent) sort else null,
+                        sortLabels = folderSortOptions.map { it.label },
+                    )
+                }
+            }
         }
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            when {
-                children.isEmpty() && items.isEmpty() -> Text(
-                    stringResource(Res.string.library_empty_folder),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
+        TrackScroll { folderListState.canScrollBackward || folderGridState.canScrollBackward }
+        if (children.isEmpty() && items.isEmpty()) {
+            header()
+            Text(
+                stringResource(Res.string.library_empty_folder),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp),
+            )
+        } else {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
                 // Large screens: folders as an album-card grid (max-width cards), this folder's songs
                 // as a wider list below them (see design/final/library.html). Songs are min-width
                 // sized — full-width when tight, splitting as the screen grows — and rendered as
                 // full-width weighted rows so they stay gap-free whatever the folder column count.
-                maxWidth >= LibraryGridMinWidth -> {
+                if (maxWidth >= LibraryGridMinWidth) {
                     val columns = libraryGridColumns(maxWidth)
                     val songsPerRow = librarySongColumns(maxWidth)
                     LazyVerticalGrid(
@@ -366,6 +370,7 @@ private fun FoldersTab(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         state = folderGridState,
                     ) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { header() }
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             LibraryGridCard(
                                 icon = Icons.Default.Folder,
@@ -390,13 +395,15 @@ private fun FoldersTab(
                             }
                         }
                     }
-                }
-                else -> LazyColumn(Modifier.fillMaxSize(), state = folderListState) {
-                    items(sortedFolders, key = { "b${it.id}" }) { bucket ->
-                        FolderRow(bucket, folderActions(bucket, onRemove, onExclude, onInclude)) { openFolder(bucket) }
-                    }
-                    itemsIndexed(sortedItems, key = { _, s -> s.id }) { index, song ->
-                        SongRow(song, coordinator) { coordinator.playLocal(sortedItems, index) }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize(), state = folderListState) {
+                        item { header() }
+                        items(sortedFolders, key = { "b${it.id}" }) { bucket ->
+                            FolderRow(bucket, folderActions(bucket, onRemove, onExclude, onInclude)) { openFolder(bucket) }
+                        }
+                        itemsIndexed(sortedItems, key = { _, s -> s.id }) { index, song ->
+                            SongRow(song, coordinator) { coordinator.playLocal(sortedItems, index) }
+                        }
                     }
                 }
             }
@@ -661,6 +668,51 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
+/** The Library's tab row — the same treatment as [DiscoverTabRow] (2dp underline indicator), with
+ *  text labels instead of icons. The underline tracks each tab's width (via IntrinsicSize) so a
+ *  longer label gets a longer line, and the row scrolls horizontally when the tabs overflow. */
+@Composable
+private fun LibraryTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
+    val scrollState = rememberScrollState()
+    HorizontalOverflowBox(scrollState) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalWheelScroll(scrollState)
+                .horizontalScroll(scrollState)
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LibraryTab.entries.forEach { t ->
+                val active = t == selected
+                Column(
+                    Modifier
+                        .width(IntrinsicSize.Max)
+                        .clickable { onSelect(t) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        stringResource(t.label),
+                        style = TextStyle(
+                            fontSize = 13.sp,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (active) DesignColors.Accent else DesignColors.InkFaint,
+                        ),
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(if (active) DesignColors.Accent else Color.Transparent),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** The outlined pill that starts a scan; while one runs it shows the live scanned count off the
  *  app-level [controller], so the count keeps updating even after the pill leaves composition. */
 @Composable
@@ -721,11 +773,14 @@ private fun FoldersToolbar(
 }
 
 @Composable
-internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator, modifier: Modifier = Modifier) {
+internal fun SongList(
+    songs: List<MediaStoreItem>,
+    coordinator: PlaybackCoordinator,
+    modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
+) {
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
-    // Every Library tab funnels its scroll through SongList, LibraryBrowseLevel, or FoldersTab, and
-    // only one is composed at a time — so reporting scroll from these three covers all tabs.
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(modifier.fillMaxSize()) {
         // Same min-width sizing as the Folders tab's songs: as many columns as keep each song
@@ -736,12 +791,14 @@ internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordina
                 modifier = Modifier.fillMaxSize(),
                 state = gridState,
             ) {
+                if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
                 items(songs.size, key = { songs[it].id }) { index ->
                     SongRow(songs[index], coordinator) { coordinator.playLocal(songs, index) }
                 }
             }
         } else {
             LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                if (header != null) item { header() }
                 itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
                     SongRow(song, coordinator) { coordinator.playLocal(songs, index) }
                 }
@@ -881,22 +938,21 @@ private fun <T> LibraryBrowseLevel(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
-    Column(Modifier.fillMaxSize()) {
-        sortBar()
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            if (maxWidth >= LibraryGridMinWidth) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    state = gridState,
-                ) {
-                    items(entries, key = key) { entry -> card(entry) }
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxSize(), state = listState) {
-                    items(entries, key = key) { entry -> row(entry) }
-                }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxWidth >= LibraryGridMinWidth) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                state = gridState,
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) { sortBar() }
+                items(entries, key = key) { entry -> card(entry) }
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                item { sortBar() }
+                items(entries, key = key) { entry -> row(entry) }
             }
         }
     }

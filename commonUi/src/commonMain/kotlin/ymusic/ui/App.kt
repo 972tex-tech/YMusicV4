@@ -386,7 +386,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         topBar = {
                             // Search and the detail pages carry their own app bars.
                             if (layers.isEmpty()) {
-                                ElevatedBarColumn {
+                                // Library's tab row lives in its own body (it needs the loaded state),
+                                // so the shell bar drops its shadow there and lets that row cast it —
+                                // keeping bar + tabs one continuous elevated surface.
+                                ElevatedBarColumn(bottomShadow = section != AppSection.Library) {
                                     Box(
                                         Modifier.clipToBounds().layout { measurable, constraints ->
                                             val placeable = measurable.measure(constraints)

@@ -17,9 +17,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The Library reports its scroll to the shell's ScrollHost (which lifts the app bar); like the
- * Discover feed, its lists must flag "scrolled" once content moves under the bar and clear it at the
- * top. Regression: the Library never reported its scroll, so the bar stayed flat.
+ * The Library's app bar + tab row are one pinned, elevated surface; scrolling a Library list reports
+ * to the shell's ScrollHost so they lift together (the sort scrolls away as content). Regression: the
+ * Library never reported its scroll, so the bar stayed flat.
  */
 @OptIn(ExperimentalTestApi::class)
 class LibraryToolbarElevationTest {
@@ -62,7 +62,7 @@ class LibraryToolbarElevationTest {
 
                 onNode(hasScrollAction()).performScrollToIndex(40)
                 waitUntil(timeoutMillis = 5_000L) { host.scrolled }
-                assertTrue(host.scrolled, "reports scrolled after scrolling away from the top")
+                assertTrue(host.scrolled, "app bar + tabs lift after scrolling away from the top")
             }
         } finally {
             runBlocking { engines.close() }
