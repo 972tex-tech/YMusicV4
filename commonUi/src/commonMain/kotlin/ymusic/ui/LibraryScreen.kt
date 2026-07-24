@@ -432,12 +432,13 @@ private val songSortOptions = listOf(
     SortOption(Res.string.sort_type, compareBy({ if (it.videoCodec != null) 1 else 0 }, { it.title.lowercase() })),
 )
 
-/** Folders in the Folders tab — same label order as [songSortOptions] so one control drives both
- *  (folders are all one type, so Type falls back to name). */
+/** Folders in the Folders tab — Name / date added, sharing the tab's one sort control with the
+ *  folder's songs ([songSortOptions]). Its label order is the prefix of [songSortOptions], so the
+ *  shared index stays valid for both; folders have no Type distinction, so Type is left off here
+ *  (the control never offers an index past date-added). */
 private val folderSortOptions = listOf(
     SortOption<MediaStoreBucket>(Res.string.sort_name, compareBy { it.displayName.lowercase() }),
     SortOption(Res.string.sort_date_added, compareBy { it.createdAt }),
-    SortOption(Res.string.sort_type, compareBy { it.displayName.lowercase() }),
 )
 
 /** Playlist browse rows (playlist + its song count). */
