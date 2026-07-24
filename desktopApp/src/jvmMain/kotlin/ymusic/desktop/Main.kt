@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kmphttp.KmpHttpClient
@@ -198,6 +199,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         player,
         mediaStore = mediaStore,
         scanLibraryFolder = { scanPickedFolder(mediaStore) },
+        rescanLibrary = { rescanKnownRoots(mediaStore) },
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
         settings = settings,
@@ -277,6 +279,19 @@ private fun mapToLogical(x: Float, y: Float, size: IntSize, surface: JcefOsrSurf
 /** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
 private suspend fun scanPickedFolder(store: BetterMediaStore): String? {
     val picked = pickFolder() ?: return null
+    val rootUri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
+    return scanUris(store, listOf(rootUri))
+}
+
+/** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */
+private suspend fun rescanKnownRoots(store: BetterMediaStore): String? {
+    val roots = store.childBuckets(null)
+    if (roots.isEmpty()) return "No folders to rescan — add one first"
+    return scanUris(store, roots.map { it.uri })
+}
+
+/** Scans each root [uris] into [store], returning one combined summary line. */
+private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>): String? {
     val ffmpeg = findFfmpeg()
         ?: return "ffmpeg not found — install it (e.g. brew install ffmpeg) to scan metadata"
     val scanner = MediaScanner.create(
@@ -284,13 +299,23 @@ private suspend fun scanPickedFolder(store: BetterMediaStore): String? {
         FileSystemDocumentsProvider(FileSystem.SYSTEM),
         FfmpegMetadataExtractor(FfmpegMetadataGetter(ffmpeg)),
     )
-    val rootUri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
-    val progress = scanner.scan(rootUri).last()
-    progress.errors.forEach { println("scan error at ${it.uri}: ${it.cause}") }
+    var scanned = 0
+    var added = 0
+    var updated = 0
+    var deleted = 0
+    var failed = 0
+    for (uri in uris) {
+        val progress = scanner.scan(uri).last()
+        progress.errors.forEach { println("scan error at ${it.uri}: ${it.cause}") }
+        scanned += progress.scanned
+        added += progress.added
+        updated += progress.updated
+        deleted += progress.deleted
+        failed += progress.errors.size
+    }
     return buildString {
-        append("Scanned ${progress.scanned}: ${progress.added} added, ${progress.updated} updated, ")
-        append("${progress.deleted} removed")
-        if (progress.errors.isNotEmpty()) append(", ${progress.errors.size} failed")
+        append("Scanned $scanned: $added added, $updated updated, $deleted removed")
+        if (failed > 0) append(", $failed failed")
     }
 }
 

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kmpcommon.error.CodedError
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -86,6 +88,7 @@ import ymusic.ui.resources.library_empty
 import ymusic.ui.resources.library_empty_folder
 import ymusic.ui.resources.library_folder
 import ymusic.ui.resources.library_no_playlists
+import ymusic.ui.resources.library_rescan
 import ymusic.ui.resources.library_scan_failed
 import ymusic.ui.resources.library_scan_folder
 import ymusic.ui.resources.library_scanning
@@ -174,7 +177,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 }
                 tabStateHolder.SaveableStateProvider(tab.name) {
                     when (tab) {
-                        LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, scanState)
+                        LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, graph.rescanLibrary, scanState)
                         LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
                         LibraryTab.Songs -> Column(Modifier.fillMaxSize()) {
                             SectionHeader(
@@ -239,6 +242,7 @@ private fun FoldersTab(
     content: LibraryContent,
     coordinator: PlaybackCoordinator,
     scan: (suspend () -> String?)?,
+    rescan: (suspend () -> String?)?,
     scanState: ScanState,
 ) {
     // (id, displayName) instead of the bucket itself so the browse position survives the section
@@ -255,7 +259,9 @@ private fun FoldersTab(
 
     Column(Modifier.fillMaxSize()) {
         Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
-        if (path.isEmpty() && scan != null) ScanBar(scan, scanState, label = stringResource(Res.string.library_add_folder))
+        if (path.isEmpty() && scan != null) {
+            ScanBar(scan, rescan, scanState, label = stringResource(Res.string.library_add_folder))
+        }
         val children = folders
         if (children == null) {
             CenteredBox { CircularProgressIndicator() }
@@ -520,6 +526,21 @@ private class ScanState {
     var message by mutableStateOf<String?>(null)
 }
 
+/** Runs a scan action through [state] (running flag + summary/error line); shared by the pill and
+ *  the rescan button so both report through the same status line. */
+private fun runScanAction(scope: CoroutineScope, action: suspend () -> String?, state: ScanState) {
+    state.running = true
+    scope.launch {
+        state.message = try {
+            action()
+        } catch (e: Exception) {
+            getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
+        } finally {
+            state.running = false
+        }
+    }
+}
+
 /** The outlined pill that starts a scan; disabled while one runs. */
 @Composable
 private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: String) {
@@ -530,31 +551,35 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(enabled = !state.running) {
-                state.running = true
-                scope.launch {
-                    state.message = try {
-                        scan()
-                    } catch (e: Exception) {
-                        getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
-                    } finally {
-                        state.running = false
-                    }
-                }
-            }
+            .clickable(enabled = !state.running) { runScanAction(scope, scan, state) }
             .padding(horizontal = 13.dp, vertical = 7.dp),
     )
 }
 
-/** The scan action inside the Folders tab: pill + last summary line. */
+/** The scan action inside the Folders tab: add-folder pill + optional rescan button + summary. */
 @Composable
-private fun ScanBar(scan: suspend () -> String?, state: ScanState, label: String) {
+private fun ScanBar(scan: suspend () -> String?, rescan: (suspend () -> String?)?, state: ScanState, label: String) {
+    val scope = rememberCoroutineScope()
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ScanPill(scan, state, label = label)
+        if (rescan != null) {
+            IconButton(
+                onClick = { runScanAction(scope, rescan, state) },
+                enabled = !state.running,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = stringResource(Res.string.library_rescan),
+                    modifier = Modifier.size(19.dp),
+                    tint = DesignColors.InkSoft,
+                )
+            }
+        }
         if (state.running) CircularProgressIndicator(Modifier.size(20.dp))
         state.message?.let {
             Text(

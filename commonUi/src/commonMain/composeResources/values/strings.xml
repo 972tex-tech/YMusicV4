@@ -67,6 +67,7 @@
     <string name="library_empty">Your library is empty</string>
     <string name="library_scan_folder">+  Scan folder</string>
     <string name="library_add_folder">+  Add folder</string>
+    <string name="library_rescan">Rescan folders</string>
     <string name="library_scanning">Scanning…</string>
     <string name="library_scan_failed">Scan failed (%1$s)</string>
     <string name="library_empty_folder">Empty folder</string>

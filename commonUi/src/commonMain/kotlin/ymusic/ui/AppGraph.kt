@@ -30,6 +30,11 @@ class AppGraph(
     val ytContext: YtContext = YtContext(),
     val mediaStore: BetterMediaStore? = null,
     val scanLibraryFolder: (suspend () -> String?)? = null,
+    /**
+     * Re-scans the already-added root folders in place (no folder pick), returning a user-facing
+     * summary line. Null when the shell can't scan, or has no notion of persisted roots.
+     */
+    val rescanLibrary: (suspend () -> String?)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */

@@ -57,6 +57,7 @@
     <string name="library_empty">Thư viện của bạn đang trống</string>
     <string name="library_scan_folder">+  Quét thư mục</string>
     <string name="library_add_folder">+  Thêm thư mục</string>
+    <string name="library_rescan">Quét lại thư mục</string>
     <string name="library_scanning">Đang quét…</string>
     <string name="library_scan_failed">Quét thất bại (%1$s)</string>
     <string name="library_empty_folder">Thư mục trống</string>
