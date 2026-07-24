@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -270,14 +269,15 @@ private fun FoldersTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
                 )
-                // Large screens: folders as an album-card grid (1 column each), this folder's songs
-                // as a two-wide list below them (2 columns each) — see design/final/library.html.
-                feedLayoutFor(maxWidth) == FeedLayout.Grid -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(foldersGridColumns(maxWidth)),
+                // Large screens: folders as an album-card grid, this folder's songs as a two-column
+                // list below them (see design/final/library.html). The songs are full-width pair
+                // rows, independent of the folder column count, so nothing has to tile against them.
+                maxWidth >= LibraryGridMinWidth -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    items(children, key = { "b${it.id}" }, span = { GridItemSpan(1) }) { bucket ->
+                    items(children, key = { "b${it.id}" }) { bucket ->
                         LibraryGridCard(
                             icon = Icons.Default.Folder,
                             artUrl = null,
@@ -285,12 +285,18 @@ private fun FoldersTab(
                             subtitle = stringResource(Res.string.library_folder),
                         ) { openFolder(bucket) }
                     }
-                    // Break the flow so the first song always starts a fresh row under the folders.
-                    if (children.isNotEmpty() && items.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.size(8.dp)) }
-                    }
-                    itemsIndexed(items, key = { _, s -> s.id }, span = { _, _ -> GridItemSpan(2) }) { index, song ->
-                        SongRow(song) { coordinator.playLocal(items, index) }
+                    // A full-span pair row breaks the flow onto a fresh line below the folders.
+                    items(
+                        items.indices.chunked(2),
+                        key = { items[it.first()].id },
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) { pair ->
+                        Row(Modifier.fillMaxWidth()) {
+                            pair.forEach { i ->
+                                Box(Modifier.weight(1f)) { SongRow(items[i]) { coordinator.playLocal(items, i) } }
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
                 else -> LazyColumn(Modifier.fillMaxSize()) {
@@ -306,12 +312,18 @@ private fun FoldersTab(
     }
 }
 
-/** Even column count for the Folders grid so 2-wide song rows tile as pairs without a trailing gap;
- *  folders (1-wide) fill the same columns. Sized to match the Playlists tab's ~150dp cards (minus
- *  the grid's 10dp side padding). Min 2. */
-private fun foldersGridColumns(width: androidx.compose.ui.unit.Dp): Int {
-    val fit = ((width.value - 20f) / 150f).toInt().coerceAtLeast(2)
-    return fit - (fit % 2)
+/** The width at/above which the Library's browse grids appear (below it, a single-column list). The
+ *  Library sets its own breakpoint rather than borrowing the Discover video feed's. */
+private val LibraryGridMinWidth = 480.dp
+
+/** Library grids size cards by a MAXIMUM width, not an adaptive minimum: the fewest columns that
+ *  keep every card ≤ this width, so cards shrink toward the next column instead of ballooning toward
+ *  double the minimum, and the column count climbs one at a time (no 2→4 jump). */
+private val LibraryCardMaxWidth = 176.dp
+
+private fun libraryGridColumns(width: androidx.compose.ui.unit.Dp): Int {
+    val avail = (width - 20.dp).coerceAtLeast(0.dp) // the grid's 10dp side padding
+    return kotlin.math.ceil(avail / LibraryCardMaxWidth).toInt().coerceAtLeast(2)
 }
 
 /** Saves the folder browse path as a flat [id, name, id, name, …] list. */
@@ -654,9 +666,9 @@ private fun <T> LibraryBrowseLevel(
     card: @Composable (T) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (feedLayoutFor(maxWidth) == FeedLayout.Grid) {
+        if (maxWidth >= LibraryGridMinWidth) {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 150.dp),
+                columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
             ) {
