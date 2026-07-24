@@ -103,6 +103,11 @@ import ymusic.ui.resources.menu_play
 import ymusic.ui.resources.n_songs
 import ymusic.ui.resources.queue_last
 import ymusic.ui.resources.queue_next
+import ymusic.ui.resources.sort_date_added
+import ymusic.ui.resources.sort_date_created
+import ymusic.ui.resources.sort_name
+import ymusic.ui.resources.sort_song_count
+import ymusic.ui.resources.sort_type
 import ymusic.ui.resources.unknown_album
 import ymusic.ui.resources.unknown_artist
 import ymusic.ui.resources.unknown_genre
@@ -182,14 +187,18 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     when (tab) {
                         LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, graph.rescanLibrary, scanState)
                         LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
-                        LibraryTab.Songs -> Column(Modifier.fillMaxSize()) {
-                            SectionHeader(
-                                YtSectionHeader(
-                                    title = stringResource(Res.string.library_tab_songs),
-                                    count = "${loaded.songs.size}",
-                                ),
-                            )
-                            SongList(loaded.songs, coordinator)
+                        LibraryTab.Songs -> {
+                            val sort = rememberSortState("sort.songs")
+                            Column(Modifier.fillMaxSize()) {
+                                SectionHeader(
+                                    YtSectionHeader(
+                                        title = stringResource(Res.string.library_tab_songs),
+                                        count = "${loaded.songs.size}",
+                                    ),
+                                )
+                                SortBar(songSortOptions.map { it.label }, sort)
+                                SongList(sort.sort(loaded.songs, songSortOptions), coordinator)
+                            }
                         }
                         LibraryTab.Artists ->
                             GroupedList(
@@ -271,6 +280,10 @@ private fun FoldersTab(
             return@Column
         }
         val openFolder = { bucket: MediaStoreBucket -> path = path + (bucket.id to bucket.displayName) }
+        val sort = rememberSortState("sort.folders")
+        val sortedFolders = sort.sort(children, folderSortOptions)
+        val sortedItems = sort.sort(items, songSortOptions)
+        if (children.isNotEmpty() || items.isNotEmpty()) SortBar(folderSortOptions.map { it.label }, sort)
         BoxWithConstraints(Modifier.fillMaxSize()) {
             when {
                 children.isEmpty() && items.isEmpty() -> Text(
@@ -290,7 +303,7 @@ private fun FoldersTab(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     ) {
-                        items(children, key = { "b${it.id}" }) { bucket ->
+                        items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             LibraryGridCard(
                                 icon = Icons.Default.Folder,
                                 artUrl = null,
@@ -300,13 +313,13 @@ private fun FoldersTab(
                         }
                         // Full-span rows break the flow onto a fresh line below the folders.
                         items(
-                            items.indices.chunked(songsPerRow),
-                            key = { items[it.first()].id },
+                            sortedItems.indices.chunked(songsPerRow),
+                            key = { sortedItems[it.first()].id },
                             span = { GridItemSpan(maxLineSpan) },
                         ) { group ->
                             Row(Modifier.fillMaxWidth()) {
                                 group.forEach { i ->
-                                    Box(Modifier.weight(1f)) { SongRow(items[i], coordinator) { coordinator.playLocal(items, i) } }
+                                    Box(Modifier.weight(1f)) { SongRow(sortedItems[i], coordinator) { coordinator.playLocal(sortedItems, i) } }
                                 }
                                 repeat(songsPerRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
@@ -314,11 +327,11 @@ private fun FoldersTab(
                     }
                 }
                 else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(children, key = { "b${it.id}" }) { bucket ->
+                    items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                         FolderRow(bucket) { openFolder(bucket) }
                     }
-                    itemsIndexed(items, key = { _, s -> s.id }) { index, song ->
-                        SongRow(song, coordinator) { coordinator.playLocal(items, index) }
+                    itemsIndexed(sortedItems, key = { _, s -> s.id }) { index, song ->
+                        SongRow(song, coordinator) { coordinator.playLocal(sortedItems, index) }
                     }
                 }
             }
@@ -350,6 +363,37 @@ internal fun librarySongColumns(width: androidx.compose.ui.unit.Dp): Int {
     val avail = (width - 20.dp).coerceAtLeast(0.dp)
     return (avail / LibrarySongMinWidth).toInt().coerceAtLeast(1)
 }
+
+// ---- per-tab sort options (label order is shared where two lists sort together) ----
+
+/** Songs, and the songs shown in the Folders tab: name / date added / audio-before-video. */
+private val songSortOptions = listOf(
+    SortOption<MediaStoreItem>(Res.string.sort_name, compareBy { it.title.lowercase() }),
+    SortOption(Res.string.sort_date_added, compareBy { it.createdAt }),
+    SortOption(Res.string.sort_type, compareBy({ if (it.videoCodec != null) 1 else 0 }, { it.title.lowercase() })),
+)
+
+/** Folders in the Folders tab — same label order as [songSortOptions] so one control drives both
+ *  (folders are all one type, so Type falls back to name). */
+private val folderSortOptions = listOf(
+    SortOption<MediaStoreBucket>(Res.string.sort_name, compareBy { it.displayName.lowercase() }),
+    SortOption(Res.string.sort_date_added, compareBy { it.createdAt }),
+    SortOption(Res.string.sort_type, compareBy { it.displayName.lowercase() }),
+)
+
+/** Playlist browse rows (playlist + its song count). */
+private val playlistSortOptions = listOf(
+    SortOption<Pair<Playlist, Int>>(Res.string.sort_name, compareBy { it.first.name.lowercase() }),
+    SortOption(Res.string.sort_date_created, compareBy { it.first.createdAt }),
+    SortOption(Res.string.sort_song_count, compareBy { it.second }),
+)
+
+/** Artist / album / genre groups (name + member songs); "date created" = the group's earliest add. */
+private val groupSortOptions = listOf(
+    SortOption<Pair<String, List<MediaStoreItem>>>(Res.string.sort_name, compareBy { it.first.lowercase() }),
+    SortOption(Res.string.sort_date_created, compareBy { it.second.minOfOrNull { m -> m.createdAt } ?: 0L }),
+    SortOption(Res.string.sort_song_count, compareBy { it.second.size }),
+)
 
 /** Saves the folder browse path as a flat [id, name, id, name, …] list. */
 private val CrumbPathSaver = listSaver<List<Pair<Long, String>>, Any>(
@@ -444,44 +488,48 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
             loaded.isEmpty() -> CenteredBox {
                 Text(stringResource(Res.string.library_no_playlists), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            else -> LibraryBrowseLevel(
-                entries = loaded,
-                key = { (p, _) -> p.id },
-                row = { (playlist, count) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                members = null
-                                selected = playlist.id to playlist.name
+            else -> {
+                val sort = rememberSortState("sort.playlists")
+                LibraryBrowseLevel(
+                    entries = sort.sort(loaded, playlistSortOptions),
+                    key = { (p, _) -> p.id },
+                    sortBar = { SortBar(playlistSortOptions.map { it.label }, sort) },
+                    row = { (playlist, count) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    members = null
+                                    selected = playlist.id to playlist.name
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            LibraryThumb(Icons.AutoMirrored.Filled.PlaylistPlay, badge = "$count")
+                            Column(Modifier.weight(1f)) {
+                                Text(playlist.name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    pluralStringResource(Res.plurals.n_songs, count, count),
+                                    style = ListSubStyle,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
                             }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        LibraryThumb(Icons.AutoMirrored.Filled.PlaylistPlay, badge = "$count")
-                        Column(Modifier.weight(1f)) {
-                            Text(playlist.name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                pluralStringResource(Res.plurals.n_songs, count, count),
-                                style = ListSubStyle,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
                         }
-                    }
-                },
-                card = { (playlist, count) ->
-                    LibraryGridCard(
-                        icon = Icons.AutoMirrored.Filled.PlaylistPlay,
-                        artUrl = null,
-                        title = playlist.name,
-                        subtitle = pluralStringResource(Res.plurals.n_songs, count, count),
-                    ) {
-                        members = null
-                        selected = playlist.id to playlist.name
-                    }
-                },
-            )
+                    },
+                    card = { (playlist, count) ->
+                        LibraryGridCard(
+                            icon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                            artUrl = null,
+                            title = playlist.name,
+                            subtitle = pluralStringResource(Res.plurals.n_songs, count, count),
+                        ) {
+                            members = null
+                            selected = playlist.id to playlist.name
+                        }
+                    },
+                )
+            }
         }
     } else {
         Column(Modifier.fillMaxSize()) {
@@ -686,9 +734,11 @@ private fun GroupedList(
 
     val selected = group
     if (selected == null) {
+        val sort = rememberSortState("sort.group")
         LibraryBrowseLevel(
-            entries = grouped,
+            entries = sort.sort(grouped, groupSortOptions),
             key = { it.first },
+            sortBar = { SortBar(groupSortOptions.map { it.label }, sort) },
             row = { (name, members) ->
                 Row(
                     modifier = Modifier
@@ -734,19 +784,23 @@ private fun <T> LibraryBrowseLevel(
     key: (T) -> Any,
     row: @Composable (T) -> Unit,
     card: @Composable (T) -> Unit,
+    sortBar: @Composable () -> Unit = {},
 ) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth >= LibraryGridMinWidth) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                items(entries, key = key) { entry -> card(entry) }
-            }
-        } else {
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(entries, key = key) { entry -> row(entry) }
+    Column(Modifier.fillMaxSize()) {
+        sortBar()
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            if (maxWidth >= LibraryGridMinWidth) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    items(entries, key = key) { entry -> card(entry) }
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(entries, key = key) { entry -> row(entry) }
+                }
             }
         }
     }

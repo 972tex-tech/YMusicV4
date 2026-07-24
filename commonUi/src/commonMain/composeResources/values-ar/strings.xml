@@ -54,6 +54,14 @@
     <string name="library_tab_artists">الفنانون</string>
     <string name="library_tab_albums">الألبومات</string>
     <string name="library_tab_genres">الأنواع</string>
+    <string name="sort_name">الاسم</string>
+    <string name="sort_date_added">تاريخ الإضافة</string>
+    <string name="sort_date_created">تاريخ الإنشاء</string>
+    <string name="sort_type">النوع</string>
+    <string name="sort_duration">المدة</string>
+    <string name="sort_song_count">عدد الأغاني</string>
+    <string name="cd_sort">فرز</string>
+    <string name="cd_sort_order">ترتيب الفرز</string>
     <string name="library_unavailable">لا توجد مكتبة محلية على هذه المنصة</string>
     <string name="library_empty">مكتبتك فارغة</string>
     <string name="library_scan_folder">+  فحص مجلد</string>
