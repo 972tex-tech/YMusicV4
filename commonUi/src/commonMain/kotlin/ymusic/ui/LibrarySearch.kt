@@ -2,13 +2,17 @@ package ymusic.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Person
@@ -107,32 +111,40 @@ fun LibrarySearchScreen(
                 val unknownAlbum = stringResource(Res.string.unknown_album)
                 val artists = groupMatches(session.all, query, unknownArtist) { it.artist }
                 val albums = groupMatches(session.all, query, unknownAlbum) { it.album }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item {
-                        Text(
-                            stringResource(Res.string.library_search_online, query),
-                            style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSearchOnline(query) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                        )
-                    }
-                    if (songs.isNotEmpty()) {
-                        item { SectionHeader(YtSectionHeader(title = stringResource(Res.string.library_tab_songs), count = "${songs.size}")) }
-                        itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
-                            SongRow(song) { coordinator.playLocal(songs, index) }
-                        }
-                    }
-                    groupSection(Res.string.library_tab_artists, Icons.Default.Person, artists, session)
-                    groupSection(Res.string.library_tab_albums, Icons.Default.Album, albums, session)
-                    if (songs.isEmpty() && artists.isEmpty() && albums.isEmpty()) {
-                        item {
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    // Matched songs get the Library's min-width multi-column sizing on large screens
+                    // (columns == 1 collapses the grid back to the phone-width single-column list); the
+                    // online hand-off, section headers and artist/album rows always span the full width.
+                    val columns = if (maxWidth >= LibraryGridMinWidth) librarySongColumns(maxWidth) else 1
+                    LazyVerticalGrid(columns = GridCells.Fixed(columns), modifier = Modifier.fillMaxSize()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             Text(
-                                stringResource(Res.string.library_search_no_matches),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(16.dp),
+                                stringResource(Res.string.library_search_online, query),
+                                style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSearchOnline(query) }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
                             )
+                        }
+                        if (songs.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                SectionHeader(YtSectionHeader(title = stringResource(Res.string.library_tab_songs), count = "${songs.size}"))
+                            }
+                            items(songs.size, key = { songs[it].id }) { index ->
+                                SongRow(songs[index]) { coordinator.playLocal(songs, index) }
+                            }
+                        }
+                        groupSection(Res.string.library_tab_artists, Icons.Default.Person, artists, session)
+                        groupSection(Res.string.library_tab_albums, Icons.Default.Album, albums, session)
+                        if (songs.isEmpty() && artists.isEmpty() && albums.isEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    stringResource(Res.string.library_search_no_matches),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -153,15 +165,18 @@ private fun groupMatches(
         .toList()
         .sortedBy { (name, _) -> name.lowercase() }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.groupSection(
+private fun LazyGridScope.groupSection(
     title: org.jetbrains.compose.resources.StringResource,
     icon: ImageVector,
     groups: List<Pair<String, List<MediaStoreItem>>>,
     session: LibrarySearchSession,
 ) {
     if (groups.isEmpty()) return
-    item { SectionHeader(YtSectionHeader(title = stringResource(title), count = "${groups.size}")) }
-    itemsIndexed(groups, key = { _, (name, _) -> "$title-$name" }) { _, (name, members) ->
+    item(span = { GridItemSpan(maxLineSpan) }) {
+        SectionHeader(YtSectionHeader(title = stringResource(title), count = "${groups.size}"))
+    }
+    items(groups.size, span = { GridItemSpan(maxLineSpan) }, key = { "$title-${groups[it].first}" }) { i ->
+        val (name, members) = groups[i]
         Row(
             modifier = Modifier
                 .fillMaxWidth()

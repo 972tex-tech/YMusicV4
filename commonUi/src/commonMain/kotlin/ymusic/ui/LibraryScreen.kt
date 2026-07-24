@@ -319,7 +319,7 @@ private fun FoldersTab(
 
 /** The width at/above which the Library's browse grids appear (below it, a single-column list). The
  *  Library sets its own breakpoint rather than borrowing the Discover video feed's. */
-private val LibraryGridMinWidth = 480.dp
+internal val LibraryGridMinWidth = 480.dp
 
 /** Library grids size cards by a MAXIMUM width, not an adaptive minimum: the fewest columns that
  *  keep every card ≤ this width, so cards shrink toward the next column instead of ballooning toward
@@ -337,7 +337,7 @@ private fun libraryGridColumns(width: androidx.compose.ui.unit.Dp): Int {
  *  at the tightest grid (3 folder columns) a song is full width, then splits as the screen grows. */
 private val LibrarySongMinWidth = 360.dp
 
-private fun librarySongColumns(width: androidx.compose.ui.unit.Dp): Int {
+internal fun librarySongColumns(width: androidx.compose.ui.unit.Dp): Int {
     val avail = (width - 20.dp).coerceAtLeast(0.dp)
     return (avail / LibrarySongMinWidth).toInt().coerceAtLeast(1)
 }
@@ -569,9 +569,24 @@ private fun ScanBar(scan: suspend () -> String?, state: ScanState, label: String
 
 @Composable
 internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator, modifier: Modifier = Modifier) {
-    LazyColumn(modifier = modifier.fillMaxSize()) {
-        itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
-            SongRow(song) { coordinator.playLocal(songs, index) }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        // Same min-width sizing as the Folders tab's songs: as many columns as keep each song
+        // ≥ LibrarySongMinWidth, dropping to a single full-width column when that's all that fits.
+        if (maxWidth >= LibraryGridMinWidth) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(librarySongColumns(maxWidth)),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(songs.size, key = { songs[it].id }) { index ->
+                    SongRow(songs[index]) { coordinator.playLocal(songs, index) }
+                }
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
+                    SongRow(song) { coordinator.playLocal(songs, index) }
+                }
+            }
         }
     }
 }
