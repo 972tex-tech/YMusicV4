@@ -48,7 +48,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -63,19 +62,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kmpcommon.error.CodedError
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.mediastore.BetterMediaStore
@@ -91,7 +85,6 @@ import ymusic.ui.resources.library_empty_folder
 import ymusic.ui.resources.library_folder
 import ymusic.ui.resources.library_no_playlists
 import ymusic.ui.resources.library_rescan
-import ymusic.ui.resources.library_scan_failed
 import ymusic.ui.resources.library_scan_folder
 import ymusic.ui.resources.library_scanning
 import ymusic.ui.resources.library_scanning_count
@@ -167,25 +160,13 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             }
     }.collectAsState(initial = null)
 
-    // Hoisted so a scan started from the empty state keeps its spinner/summary when the first
-    // indexed items flip the screen over to the tabs. The scope is hoisted too so switching tabs
-    // (which drops the Folders composable) doesn't cancel an in-flight scan.
-    val scanState = remember { ScanState() }
-    val scanScope = rememberCoroutineScope()
-
-    // The final scan/rescan summary (or error) surfaces as a snackbar, then clears.
-    val showSnackbar = LocalSnackbar.current
-    LaunchedEffect(scanState.message) {
-        scanState.message?.let {
-            showSnackbar(it)
-            scanState.message = null
-        }
-    }
+    // App-level so a scan survives leaving the Library screen and still notifies on completion.
+    val scanController = LocalScanController.current
 
     val loaded = content
     when {
         loaded == null -> CenteredBox { CircularProgressIndicator() }
-        loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanState, scanScope)
+        loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanController)
         else -> {
             var tab by rememberSaveable { mutableStateOf(LibraryTab.Folders) }
             // A song's "Show in folder" jump: the bucket to open, consumed by the Folders tab once
@@ -221,8 +202,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                 coordinator,
                                 graph.scanLibraryFolder,
                                 graph.rescanLibrary,
-                                scanState,
-                                scanScope,
+                                scanController,
                                 revealBucket,
                                 onRevealHandled = { revealBucket = null },
                             )
@@ -265,13 +245,13 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
 
 /** First-open state: nothing indexed yet — just the scan call-to-action. */
 @Composable
-private fun EmptyLibrary(scan: ScanAction?, state: ScanState, scope: CoroutineScope) {
+private fun EmptyLibrary(scan: ScanAction?, controller: ScanController?) {
     CenteredBox {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(Res.string.library_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (scan == null) return@Column
-            ScanPill(scan, state, scope, label = stringResource(Res.string.library_scan_folder))
-            if (state.running) CircularProgressIndicator(Modifier.size(22.dp))
+            if (scan == null || controller == null) return@Column
+            ScanPill(scan, controller, label = stringResource(Res.string.library_scan_folder))
+            if (controller.running) CircularProgressIndicator(Modifier.size(22.dp))
         }
     }
 }
@@ -287,8 +267,7 @@ private fun FoldersTab(
     coordinator: PlaybackCoordinator,
     scan: ScanAction?,
     rescan: ScanAction?,
-    scanState: ScanState,
-    scanScope: CoroutineScope,
+    scanController: ScanController?,
     revealBucket: Long?,
     onRevealHandled: () -> Unit,
 ) {
@@ -337,8 +316,7 @@ private fun FoldersTab(
             FoldersToolbar(
                 scan = if (showScan) scan else null,
                 rescan = if (showScan) rescan else null,
-                scanState = scanState,
-                scanScope = scanScope,
+                scanController = scanController,
                 sort = if (hasContent) sort else null,
                 sortLabels = folderSortOptions.map { it.label },
             )
@@ -630,62 +608,34 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
-/** Scan-in-flight state, shared by the empty-state CTA and the tab-view scan bar. [scanned] is the
- *  running file count while [running] (null before the first progress tick). */
-private class ScanState {
-    var running by mutableStateOf(false)
-    var message by mutableStateOf<String?>(null)
-    var scanned by mutableStateOf<Int?>(null)
-}
-
-/** Runs a scan action through [state] (running flag + live count + summary/error line); shared by
- *  the pill and the rescan button so both report through the same status line. */
-private fun runScanAction(scope: CoroutineScope, action: ScanAction, state: ScanState) {
-    state.running = true
-    state.scanned = null
-    scope.launch {
-        try {
-            state.message = action { count -> state.scanned = count }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            state.message = getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e")
-        } finally {
-            state.running = false
-            state.scanned = null
-        }
-    }
-}
-
-/** The outlined pill that starts a scan; while one runs it shows the live scanned count. [scope] is
- *  hoisted (not composable-local) so the scan survives this pill leaving composition on a tab switch. */
+/** The outlined pill that starts a scan; while one runs it shows the live scanned count off the
+ *  app-level [controller], so the count keeps updating even after the pill leaves composition. */
 @Composable
-private fun ScanPill(scan: ScanAction, state: ScanState, scope: CoroutineScope, label: String) {
-    val count = state.scanned
+private fun ScanPill(scan: ScanAction, controller: ScanController, label: String) {
+    val count = controller.scanned
     Text(
         when {
-            state.running && count != null -> stringResource(Res.string.library_scanning_count, count)
-            state.running -> stringResource(Res.string.library_scanning)
+            controller.running && count != null -> stringResource(Res.string.library_scanning_count, count)
+            controller.running -> stringResource(Res.string.library_scanning)
             else -> label
         },
         style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(enabled = !state.running) { runScanAction(scope, scan, state) }
+            .clickable(enabled = !controller.running) { controller.start(scan) }
             .padding(horizontal = 13.dp, vertical = 7.dp),
     )
 }
 
 /** The Folders tab toolbar: the scan actions (add-folder pill + rescan button, root level only) on
- *  the left, the sort control on the right, the scan summary/error filling the gap between them. Any
- *  side may be absent (a subfolder has no scan; an empty root has no sort). */
+ *  the left, the sort control on the right. Any side may be absent (a subfolder has no scan; an
+ *  empty root has no sort; no scan controller means no scan controls). */
 @Composable
 private fun FoldersToolbar(
     scan: ScanAction?,
     rescan: ScanAction?,
-    scanState: ScanState,
-    scanScope: CoroutineScope,
+    scanController: ScanController?,
     sort: SortState?,
     sortLabels: List<StringResource>,
 ) {
@@ -694,12 +644,12 @@ private fun FoldersToolbar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (scan != null) {
-            ScanPill(scan, scanState, scanScope, label = stringResource(Res.string.library_add_folder))
+        if (scan != null && scanController != null) {
+            ScanPill(scan, scanController, label = stringResource(Res.string.library_add_folder))
             if (rescan != null) {
                 IconButton(
-                    onClick = { runScanAction(scanScope, rescan, scanState) },
-                    enabled = !scanState.running,
+                    onClick = { scanController.start(rescan) },
+                    enabled = !scanController.running,
                     modifier = Modifier.size(32.dp),
                 ) {
                     Icon(
@@ -710,7 +660,7 @@ private fun FoldersToolbar(
                     )
                 }
             }
-            if (scanState.running) CircularProgressIndicator(Modifier.size(20.dp))
+            if (scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
         }
         Spacer(Modifier.weight(1f))
         if (sort != null) SortControl(sortLabels, sort)

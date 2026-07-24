@@ -197,6 +197,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        // App-level so a scan started in Library keeps running (and still notifies) across sections.
+        val scanController = remember { ScanController(scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
         var nowPlayingOpen by rememberSaveable { mutableStateOf(false) }
@@ -371,9 +373,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         snackbarHostState.showSnackbar(message)
                     }
                 }
+                // Scan results are notification-class: show them on whatever screen is open.
+                LaunchedEffect(scanController) {
+                    scanController.summaries.collect { showSnackbar(it) }
+                }
                 CompositionLocalProvider(
                     LocalAppBarElevated provides barElevated,
                     LocalSnackbar provides showSnackbar,
+                    LocalScanController provides scanController,
                 ) {
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
