@@ -41,8 +41,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,6 +102,7 @@ import ymusic.ui.resources.library_tab_playlists
 import ymusic.ui.resources.library_tab_songs
 import ymusic.ui.resources.library_unavailable
 import ymusic.ui.resources.menu_play
+import ymusic.ui.resources.menu_show_in_folder
 import ymusic.ui.resources.n_songs
 import ymusic.ui.resources.queue_last
 import ymusic.ui.resources.queue_next
@@ -129,6 +132,11 @@ private class LibraryContent(
 ) {
     val isEmpty get() = songs.isEmpty() && !hasBuckets
 }
+
+/** A song's "Show in folder" action, provided by [LibraryScreen] over its tabs — jumps to the
+ *  Folders tab and opens the song's bucket. Null outside the Library tabs (e.g. the search screen),
+ *  which hides the menu item. */
+internal val LocalLibraryReveal = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
 
 /** The local library over [AppGraph.mediaStore]: an empty state with the scan action until the first
  *  scan lands, then the Folders/Playlists/Songs/Artists/Albums/Genres tabs. Styled with
@@ -166,6 +174,13 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanState)
         else -> {
             var tab by rememberSaveable { mutableStateOf(LibraryTab.Folders) }
+            // A song's "Show in folder" jump: the bucket to open, consumed by the Folders tab once
+            // it composes, then cleared.
+            var revealBucket by remember { mutableStateOf<Long?>(null) }
+            val reveal: (MediaStoreItem) -> Unit = { item ->
+                item.bucketId?.let { revealBucket = it }
+                tab = LibraryTab.Folders
+            }
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
             val tabStateHolder = rememberSaveableStateHolder()
             Column(Modifier.fillMaxSize()) {
@@ -183,38 +198,49 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         }
                     }
                 }
-                tabStateHolder.SaveableStateProvider(tab.name) {
-                    when (tab) {
-                        LibraryTab.Folders -> FoldersTab(store, loaded, coordinator, graph.scanLibraryFolder, graph.rescanLibrary, scanState)
-                        LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
-                        LibraryTab.Songs -> {
-                            val sort = rememberSortState("sort.songs")
-                            Column(Modifier.fillMaxSize()) {
-                                SortBar(songSortOptions.map { it.label }, sort)
-                                SongList(sort.sort(loaded.songs, songSortOptions), coordinator)
+                CompositionLocalProvider(LocalLibraryReveal provides reveal) {
+                    tabStateHolder.SaveableStateProvider(tab.name) {
+                        when (tab) {
+                            LibraryTab.Folders -> FoldersTab(
+                                store,
+                                loaded,
+                                coordinator,
+                                graph.scanLibraryFolder,
+                                graph.rescanLibrary,
+                                scanState,
+                                revealBucket,
+                                onRevealHandled = { revealBucket = null },
+                            )
+                            LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
+                            LibraryTab.Songs -> {
+                                val sort = rememberSortState("sort.songs")
+                                Column(Modifier.fillMaxSize()) {
+                                    SortBar(songSortOptions.map { it.label }, sort)
+                                    SongList(sort.sort(loaded.songs, songSortOptions), coordinator)
+                                }
                             }
+                            LibraryTab.Artists ->
+                                GroupedList(
+                                    loaded.songs,
+                                    Icons.Default.Person,
+                                    stringResource(Res.string.unknown_artist),
+                                    coordinator,
+                                ) { it.artist }
+                            LibraryTab.Albums ->
+                                GroupedList(
+                                    loaded.songs,
+                                    Icons.Default.Album,
+                                    stringResource(Res.string.unknown_album),
+                                    coordinator,
+                                ) { it.album }
+                            LibraryTab.Genres ->
+                                GroupedList(
+                                    loaded.songs,
+                                    Icons.Default.Category,
+                                    stringResource(Res.string.unknown_genre),
+                                    coordinator,
+                                ) { it.genre }
                         }
-                        LibraryTab.Artists ->
-                            GroupedList(
-                                loaded.songs,
-                                Icons.Default.Person,
-                                stringResource(Res.string.unknown_artist),
-                                coordinator,
-                            ) { it.artist }
-                        LibraryTab.Albums ->
-                            GroupedList(
-                                loaded.songs,
-                                Icons.Default.Album,
-                                stringResource(Res.string.unknown_album),
-                                coordinator,
-                            ) { it.album }
-                        LibraryTab.Genres ->
-                            GroupedList(
-                                loaded.songs,
-                                Icons.Default.Category,
-                                stringResource(Res.string.unknown_genre),
-                                coordinator,
-                            ) { it.genre }
                     }
                 }
             }
@@ -250,12 +276,29 @@ private fun FoldersTab(
     scan: ScanAction?,
     rescan: ScanAction?,
     scanState: ScanState,
+    revealBucket: Long?,
+    onRevealHandled: () -> Unit,
 ) {
     // (id, displayName) instead of the bucket itself so the browse position survives the section
     // leaving composition (saveable): coming back from Discover reopens the same folder.
     var path by rememberSaveable(stateSaver = CrumbPathSaver) { mutableStateOf(listOf<Pair<Long, String>>()) }
     var folders by remember { mutableStateOf<List<MediaStoreBucket>?>(null) }
     var items by remember { mutableStateOf<List<MediaStoreItem>>(emptyList()) }
+
+    // "Show in folder": open the requested bucket by walking its ancestor chain up to a root.
+    LaunchedEffect(revealBucket) {
+        val target = revealBucket ?: return@LaunchedEffect
+        val byId = store.allBuckets().associateBy { it.id }
+        val chain = mutableListOf<Pair<Long, String>>()
+        var id: Long? = target
+        while (id != null) {
+            val bucket = byId[id] ?: break
+            chain.add(0, bucket.id to bucket.displayName)
+            id = bucket.parentId
+        }
+        path = chain
+        onRevealHandled()
+    }
 
     LaunchedEffect(path, content) {
         val currentId = path.lastOrNull()?.first
@@ -719,15 +762,24 @@ internal fun SongRow(song: MediaStoreItem, coordinator: PlaybackCoordinator? = n
     }
 }
 
-/** The song-row overflow menu: play this one, or queue it next / last. */
+/** The song-row overflow menu: play this one, queue it next / last, and (in the Library tabs, for a
+ *  song that lives in a folder) reveal it in the Folders tab. */
 @Composable
-private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator): ItemActions = ItemActions(
-    listOf(
-        stringResource(Res.string.menu_play) to { coordinator.playLocalSingle(song) },
-        stringResource(Res.string.queue_next) to { coordinator.queueLocalNext(song) },
-        stringResource(Res.string.queue_last) to { coordinator.queueLocalLast(song) },
-    ),
-)
+private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator): ItemActions {
+    val play = stringResource(Res.string.menu_play)
+    val next = stringResource(Res.string.queue_next)
+    val last = stringResource(Res.string.queue_last)
+    val showInFolder = stringResource(Res.string.menu_show_in_folder)
+    val reveal = LocalLibraryReveal.current
+    return ItemActions(
+        buildList {
+            add(play to { coordinator.playLocalSingle(song) })
+            add(next to { coordinator.queueLocalNext(song) })
+            add(last to { coordinator.queueLocalLast(song) })
+            if (reveal != null && song.bucketId != null) add(showInFolder to { reveal(song) })
+        },
+    )
+}
 
 /** Group rows (artist/album/genre) with a one-level drill-down into the group's songs. */
 @Composable

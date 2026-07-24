@@ -34,6 +34,7 @@
     <string name="show_more_n">Show more (%1$d)</string>
     <string name="show_less">Show less</string>
     <string name="menu_play">Play</string>
+    <string name="menu_show_in_folder">Show in folder</string>
     <string name="queue_next">Queue next</string>
     <string name="queue_last">Queue last</string>
     <string name="badge_live">LIVE</string>

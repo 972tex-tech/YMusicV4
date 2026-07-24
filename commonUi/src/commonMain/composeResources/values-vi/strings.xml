@@ -26,6 +26,7 @@
     <string name="show_more_n">Xem thêm (%1$d)</string>
     <string name="show_less">Thu gọn</string>
     <string name="menu_play">Phát</string>
+    <string name="menu_show_in_folder">Hiện trong thư mục</string>
     <string name="queue_next">Phát tiếp theo</string>
     <string name="queue_last">Thêm vào cuối hàng đợi</string>
     <string name="badge_live">TRỰC TIẾP</string>
