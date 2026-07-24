@@ -269,33 +269,38 @@ private fun FoldersTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
                 )
-                // Large screens: folders as an album-card grid, this folder's songs as a two-column
-                // list below them (see design/final/library.html). The songs are full-width pair
-                // rows, independent of the folder column count, so nothing has to tile against them.
-                maxWidth >= LibraryGridMinWidth -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                ) {
-                    items(children, key = { "b${it.id}" }) { bucket ->
-                        LibraryGridCard(
-                            icon = Icons.Default.Folder,
-                            artUrl = null,
-                            title = bucket.displayName,
-                            subtitle = stringResource(Res.string.library_folder),
-                        ) { openFolder(bucket) }
-                    }
-                    // A full-span pair row breaks the flow onto a fresh line below the folders.
-                    items(
-                        items.indices.chunked(2),
-                        key = { items[it.first()].id },
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) { pair ->
-                        Row(Modifier.fillMaxWidth()) {
-                            pair.forEach { i ->
-                                Box(Modifier.weight(1f)) { SongRow(items[i]) { coordinator.playLocal(items, i) } }
+                // Large screens: folders as an album-card grid, this folder's songs as a wider list
+                // below them (see design/final/library.html). Songs render as full-width rows that
+                // fit half as many songs as folder columns (a 4-column grid → 2 songs a row, a
+                // 3-column grid → 1) — a comfortable list-row width, decoupled from the card tiling.
+                maxWidth >= LibraryGridMinWidth -> {
+                    val columns = libraryGridColumns(maxWidth)
+                    val songsPerRow = (columns / 2).coerceAtLeast(1)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    ) {
+                        items(children, key = { "b${it.id}" }) { bucket ->
+                            LibraryGridCard(
+                                icon = Icons.Default.Folder,
+                                artUrl = null,
+                                title = bucket.displayName,
+                                subtitle = stringResource(Res.string.library_folder),
+                            ) { openFolder(bucket) }
+                        }
+                        // Full-span rows break the flow onto a fresh line below the folders.
+                        items(
+                            items.indices.chunked(songsPerRow),
+                            key = { items[it.first()].id },
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) { group ->
+                            Row(Modifier.fillMaxWidth()) {
+                                group.forEach { i ->
+                                    Box(Modifier.weight(1f)) { SongRow(items[i]) { coordinator.playLocal(items, i) } }
+                                }
+                                repeat(songsPerRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
-                            if (pair.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
