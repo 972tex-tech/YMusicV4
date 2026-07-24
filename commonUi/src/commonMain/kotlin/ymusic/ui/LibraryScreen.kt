@@ -331,15 +331,11 @@ private fun FoldersTab(
         val sortedItems = sort.sort(items, songSortOptions)
         val showScan = path.isEmpty() && scan != null
         val hasContent = children.isNotEmpty() || items.isNotEmpty()
-        // The breadcrumb + scan/sort toolbar scroll away with the content (only the app bar and tab
-        // row stay pinned). Scan actions (root only) sit left of the sort control.
+        // The scan/sort toolbar scrolls away with the content (only the app bar and tab row stay
+        // pinned). At root the left side holds the scan actions; in a subfolder those are gone, so the
+        // breadcrumb takes their place on the same line as the sort control.
         val header: @Composable () -> Unit = {
-            Column {
-                // At root the crumb would just read "Library" with nowhere to go — only show the
-                // trail once you've descended into a subfolder.
-                if (path.isNotEmpty()) {
-                    Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
-                }
+            if (path.isEmpty()) {
                 if (showScan || hasContent) {
                     FoldersToolbar(
                         scan = if (showScan) scan else null,
@@ -348,6 +344,14 @@ private fun FoldersTab(
                         sort = if (hasContent) sort else null,
                         sortLabels = folderSortOptions.map { it.label },
                     )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Breadcrumb(path.map { it.second }, Modifier.weight(1f)) { depth -> path = path.take(depth) }
+                    SortControl(folderSortOptions.map { it.label }, sort)
                 }
             }
         }
@@ -480,13 +484,16 @@ private val CrumbPathSaver = listSaver<List<Pair<Long, String>>, Any>(
 
 /** `Library › root › sub` — every crumb but the last navigates back up to it. */
 @Composable
-internal fun Breadcrumb(path: List<String>, onNavigate: (depth: Int) -> Unit) {
+internal fun Breadcrumb(
+    path: List<String>,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    onNavigate: (depth: Int) -> Unit,
+) {
     val scrollState = rememberScrollState()
     // Keep the deepest crumb (where you are) visible as the trail grows past the edge.
     LaunchedEffect(path.size) { scrollState.animateScrollTo(scrollState.maxValue) }
     Row(
-        Modifier
-            .fillMaxWidth()
+        modifier
             .horizontalWheelScroll(scrollState)
             .horizontalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp),
