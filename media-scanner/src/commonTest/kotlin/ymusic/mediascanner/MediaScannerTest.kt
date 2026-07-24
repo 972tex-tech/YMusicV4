@@ -267,6 +267,50 @@ class MediaScannerTest {
     }
 
     @Test
+    fun media_less_folders_are_not_indexed() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/songs/a.mp3", 100) // the only media, deep under empty folders
+            createDirectories("/music/empty".toPath())
+            createDirectories("/music/code/node_modules/pkg".toPath())
+            file("/music/code/readme.txt", 10)
+        }
+        scanner(fs).scan(uri("file:///music")).last()
+
+        assertNotNull(store.findBucketByUri(uri("file:///music")), "root kept")
+        assertNotNull(store.findBucketByUri(uri("file:///music/songs")), "media folder kept")
+        assertNull(store.findBucketByUri(uri("file:///music/empty")), "empty folder not indexed")
+        assertNull(store.findBucketByUri(uri("file:///music/code")), "media-less tree not indexed")
+        assertNull(store.findBucketByUri(uri("file:///music/code/node_modules")), "nested media-less tree not indexed")
+        // Only the root + the one media folder — not the whole tree.
+        assertEquals(2, store.allBuckets().size)
+    }
+
+    @Test
+    fun empty_root_is_kept() = runTest {
+        val fs = FakeFileSystem().apply { createDirectories("/music/empty".toPath()) }
+        scanner(fs).scan(uri("file:///music")).last()
+
+        assertNotNull(store.findBucketByUri(uri("file:///music")), "the scan root is kept even when empty")
+        assertNull(store.findBucketByUri(uri("file:///music/empty")))
+        assertEquals(1, store.allBuckets().size)
+    }
+
+    @Test
+    fun folder_pruned_when_it_loses_all_media_but_root_stays() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/albums/a.mp3", 100) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+        assertNotNull(store.findBucketByUri(uri("file:///music/albums")))
+
+        fs.delete("/music/albums/a.mp3".toPath()) // folder still exists on disk, but now media-less
+        s.scan(uri("file:///music")).last()
+
+        assertNotNull(store.findBucketByUri(uri("file:///music")), "root stays")
+        assertNull(store.findBucketByUri(uri("file:///music/albums")), "now-media-less folder pruned")
+        assertNull(store.findItemByUri(uri("file:///music/albums/a.mp3")))
+    }
+
+    @Test
     fun scans_many_files_concurrently_without_loss() = runTest {
         // 60 files across 6 folders, scanned by the default 4-worker pool. Before the store
         // serialized DB access this raced the single JDBC connection and dropped writes.
