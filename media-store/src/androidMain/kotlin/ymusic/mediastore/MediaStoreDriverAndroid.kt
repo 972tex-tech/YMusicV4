@@ -19,6 +19,11 @@ fun mediaStoreAndroidDriver(context: Context, name: String? = "media_store.db"):
         callback = object : AndroidSqliteDriver.Callback(MediaStoreDatabase.Schema) {
             override fun onOpen(db: SupportSQLiteDatabase) {
                 db.setForeignKeyConstraintsEnabled(true)
+                // WAL + synchronous=NORMAL so a scan's many small writes don't fsync a rollback
+                // journal per commit and saturate the store's single DB thread. WAL also lets a read
+                // see the last checkpoint instead of queueing behind the writer.
+                db.query("PRAGMA journal_mode=WAL").use { it.moveToFirst() }
+                db.execSQL("PRAGMA synchronous=NORMAL")
             }
         },
     )

@@ -2,6 +2,8 @@ package ymusic.mediastore
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
+import co.touchlab.sqliter.JournalMode
+import co.touchlab.sqliter.SynchronousFlag
 import ymusic.mediastore.db.MediaStoreDatabase
 
 /**
@@ -18,7 +20,13 @@ fun mediaStoreNativeDriver(name: String = "media_store.db", inMemory: Boolean = 
         onConfiguration = { config ->
             config.copy(
                 inMemory = inMemory,
-                extendedConfig = config.extendedConfig.copy(foreignKeyConstraints = true),
+                // WAL + synchronous=NORMAL so a scan's many small writes don't fsync a rollback
+                // journal per commit and saturate the store's single DB thread (in-memory can't WAL).
+                journalMode = if (inMemory) config.journalMode else JournalMode.WAL,
+                extendedConfig = config.extendedConfig.copy(
+                    foreignKeyConstraints = true,
+                    synchronousFlag = if (inMemory) config.extendedConfig.synchronousFlag else SynchronousFlag.NORMAL,
+                ),
             )
         },
     )
