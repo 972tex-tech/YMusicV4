@@ -219,9 +219,9 @@ fun FeedList(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     val state by pager.state.collectAsState()
-    val reload = {
-        pager.refresh((pager.state.value as? Pager.State.Ready)?.selectedChipToken)
-    }
+    // Pull-to-refresh / F5 reloads the surface from the top: drop any chip filter and take the
+    // server's default first response, not the currently-selected chip's filtered page.
+    val reload = { pager.refresh() }
     // Desktop F5/Cmd+R: only composed surfaces collect, so the request reaches the visible feed.
     val refreshRequests = LocalRefreshRequests.current
     if (refreshRequests != null) {
