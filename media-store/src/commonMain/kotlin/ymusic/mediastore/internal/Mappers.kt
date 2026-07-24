@@ -17,6 +17,7 @@ internal fun DbBucket.toModel() = MediaStoreBucket(
     uri = Uri.parse(uri),
     name = name,
     aliasName = aliasName,
+    createdAt = createdAt,
 )
 
 internal fun DbMediaItem.toModel() = MediaStoreItem(
@@ -42,9 +43,10 @@ internal fun DbMediaItem.toModel() = MediaStoreItem(
     youtubeItags = youtubeItags,
     fileSize = fileSize,
     lastModified = lastModified,
+    createdAt = createdAt,
 )
 
-internal fun DbPlaylist.toModel() = Playlist(id = id, name = name)
+internal fun DbPlaylist.toModel() = Playlist(id = id, name = name, createdAt = createdAt)
 
 internal fun DbPlaylistItem.toModel() = PlaylistItem(
     playlistId = playlistId,

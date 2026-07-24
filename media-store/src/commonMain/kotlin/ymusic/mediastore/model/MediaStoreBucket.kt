@@ -12,4 +12,6 @@ data class MediaStoreBucket(
     val uri: Uri,
     val name: String,
     val aliasName: String?,
+    /** When this folder was first indexed into the store (epoch millis) — the "date added". */
+    val createdAt: Long,
 )

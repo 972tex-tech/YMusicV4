@@ -36,6 +36,8 @@ data class MediaStoreItem(
     val youtubeItags: String?,
     val fileSize: Long,
     val lastModified: Long,
+    /** When this item was first indexed into the store (epoch millis) — the "date added". */
+    val createdAt: Long,
 ) {
     /**
      * Stable content fingerprint used for playlist membership (see PlaylistItem): the YouTube video
