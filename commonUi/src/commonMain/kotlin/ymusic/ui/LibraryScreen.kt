@@ -269,10 +269,10 @@ private fun FoldersTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
                 )
-                // Large screens: folders as an album-card grid, this folder's songs as a wider list
-                // below them (see design/final/library.html). Both are max-width sized; songs get a
-                // larger max, so a song reads as a comfortable list row and there are about half as
-                // many song columns as folder columns. Full-width weighted rows keep them gap-free.
+                // Large screens: folders as an album-card grid (max-width cards), this folder's songs
+                // as a wider list below them (see design/final/library.html). Songs are min-width
+                // sized — full-width when tight, splitting as the screen grows — and rendered as
+                // full-width weighted rows so they stay gap-free whatever the folder column count.
                 maxWidth >= LibraryGridMinWidth -> {
                     val columns = libraryGridColumns(maxWidth)
                     val songsPerRow = librarySongColumns(maxWidth)
@@ -331,13 +331,15 @@ private fun libraryGridColumns(width: androidx.compose.ui.unit.Dp): Int {
     return kotlin.math.ceil(avail / LibraryCardMaxWidth).toInt().coerceAtLeast(2)
 }
 
-/** Song rows in the Folders grid get their OWN max-width — twice a card's, so a song reads as a
- *  comfortable list row (thumb + title + artist) and there are about half as many song columns as
- *  folder columns (a 3-folder-column width → 2 song columns, like a 6-cell grid where folders span 2
- *  and songs span 3). Songs grow with the screen the same way the cards do. */
+/** A song row wants a comfortable list width (thumb + title + artist), so — unlike the cards — it's
+ *  sized by a MINIMUM width: fit as many songs a row as keep each at least this wide, dropping to a
+ *  single full-width song when there's only room for one, rather than cramming two narrow ones. So
+ *  at the tightest grid (3 folder columns) a song is full width, then splits as the screen grows. */
+private val LibrarySongMinWidth = 360.dp
+
 private fun librarySongColumns(width: androidx.compose.ui.unit.Dp): Int {
     val avail = (width - 20.dp).coerceAtLeast(0.dp)
-    return kotlin.math.ceil(avail / (LibraryCardMaxWidth * 2f)).toInt().coerceAtLeast(1)
+    return (avail / LibrarySongMinWidth).toInt().coerceAtLeast(1)
 }
 
 /** Saves the folder browse path as a flat [id, name, id, name, …] list. */
