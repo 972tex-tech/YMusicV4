@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,8 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -259,24 +262,55 @@ private fun FoldersTab(
             CenteredBox { CircularProgressIndicator() }
             return@Column
         }
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(children, key = { "b${it.id}" }) { bucket ->
-                FolderRow(bucket) { path = path + (bucket.id to bucket.displayName) }
-            }
-            itemsIndexed(items, key = { _, s -> s.id }) { index, song ->
-                SongRow(song) { coordinator.playLocal(items, index) }
-            }
-            if (children.isEmpty() && items.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(Res.string.library_empty_folder),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
+        val openFolder = { bucket: MediaStoreBucket -> path = path + (bucket.id to bucket.displayName) }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            when {
+                children.isEmpty() && items.isEmpty() -> Text(
+                    stringResource(Res.string.library_empty_folder),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+                // Large screens: folders as an album-card grid (1 column each), this folder's songs
+                // as a two-wide list below them (2 columns each) — see design/final/library.html.
+                feedLayoutFor(maxWidth) == FeedLayout.Grid -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(foldersGridColumns(maxWidth)),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    items(children, key = { "b${it.id}" }, span = { GridItemSpan(1) }) { bucket ->
+                        LibraryGridCard(
+                            icon = Icons.Default.Folder,
+                            artUrl = null,
+                            title = bucket.displayName,
+                            subtitle = stringResource(Res.string.library_folder),
+                        ) { openFolder(bucket) }
+                    }
+                    // Break the flow so the first song always starts a fresh row under the folders.
+                    if (children.isNotEmpty() && items.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.size(8.dp)) }
+                    }
+                    itemsIndexed(items, key = { _, s -> s.id }, span = { _, _ -> GridItemSpan(2) }) { index, song ->
+                        SongRow(song) { coordinator.playLocal(items, index) }
+                    }
+                }
+                else -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(children, key = { "b${it.id}" }) { bucket ->
+                        FolderRow(bucket) { openFolder(bucket) }
+                    }
+                    itemsIndexed(items, key = { _, s -> s.id }) { index, song ->
+                        SongRow(song) { coordinator.playLocal(items, index) }
+                    }
                 }
             }
         }
     }
+}
+
+/** Even column count for the Folders grid so 2-wide song rows tile as pairs without a trailing gap;
+ *  folders (1-wide) fill the same columns. Min 2. */
+private fun foldersGridColumns(width: androidx.compose.ui.unit.Dp): Int {
+    val fit = (width.value / 172f).toInt().coerceAtLeast(2)
+    return fit - (fit % 2)
 }
 
 /** Saves the folder browse path as a flat [id, name, id, name, …] list. */
