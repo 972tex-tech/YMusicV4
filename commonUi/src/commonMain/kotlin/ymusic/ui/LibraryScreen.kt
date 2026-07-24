@@ -271,9 +271,6 @@ private fun FoldersTab(
 
     Column(Modifier.fillMaxSize()) {
         Breadcrumb(path.map { it.second }) { depth -> path = path.take(depth) }
-        if (path.isEmpty() && scan != null) {
-            ScanBar(scan, rescan, scanState, label = stringResource(Res.string.library_add_folder))
-        }
         val children = folders
         if (children == null) {
             CenteredBox { CircularProgressIndicator() }
@@ -283,7 +280,18 @@ private fun FoldersTab(
         val sort = rememberSortState("sort.folders")
         val sortedFolders = sort.sort(children, folderSortOptions)
         val sortedItems = sort.sort(items, songSortOptions)
-        if (children.isNotEmpty() || items.isNotEmpty()) SortBar(folderSortOptions.map { it.label }, sort)
+        // Scan actions (root only) and the sort control share one toolbar row: scan left, sort right.
+        val showScan = path.isEmpty() && scan != null
+        val hasContent = children.isNotEmpty() || items.isNotEmpty()
+        if (showScan || hasContent) {
+            FoldersToolbar(
+                scan = if (showScan) scan else null,
+                rescan = if (showScan) rescan else null,
+                scanState = scanState,
+                sort = if (hasContent) sort else null,
+                sortLabels = folderSortOptions.map { it.label },
+            )
+        }
         BoxWithConstraints(Modifier.fillMaxSize()) {
             when {
                 children.isEmpty() && items.isEmpty() -> Text(
@@ -607,39 +615,52 @@ private fun ScanPill(scan: suspend () -> String?, state: ScanState, label: Strin
     )
 }
 
-/** The scan action inside the Folders tab: add-folder pill + optional rescan button + summary. */
+/** The Folders tab toolbar: the scan actions (add-folder pill + rescan button, root level only) on
+ *  the left, the sort control on the right, the scan summary/error filling the gap between them. Any
+ *  side may be absent (a subfolder has no scan; an empty root has no sort). */
 @Composable
-private fun ScanBar(scan: suspend () -> String?, rescan: (suspend () -> String?)?, state: ScanState, label: String) {
+private fun FoldersToolbar(
+    scan: (suspend () -> String?)?,
+    rescan: (suspend () -> String?)?,
+    scanState: ScanState,
+    sort: SortState?,
+    sortLabels: List<StringResource>,
+) {
     val scope = rememberCoroutineScope()
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ScanPill(scan, state, label = label)
-        if (rescan != null) {
-            IconButton(
-                onClick = { runScanAction(scope, rescan, state) },
-                enabled = !state.running,
-                modifier = Modifier.size(32.dp),
-            ) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = stringResource(Res.string.library_rescan),
-                    modifier = Modifier.size(19.dp),
-                    tint = DesignColors.InkSoft,
+        if (scan != null) {
+            ScanPill(scan, scanState, label = stringResource(Res.string.library_add_folder))
+            if (rescan != null) {
+                IconButton(
+                    onClick = { runScanAction(scope, rescan, scanState) },
+                    enabled = !scanState.running,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = stringResource(Res.string.library_rescan),
+                        modifier = Modifier.size(19.dp),
+                        tint = DesignColors.InkSoft,
+                    )
+                }
+            }
+            if (scanState.running) CircularProgressIndicator(Modifier.size(20.dp))
+        }
+        Box(Modifier.weight(1f)) {
+            scanState.message?.let {
+                Text(
+                    it,
+                    style = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        if (state.running) CircularProgressIndicator(Modifier.size(20.dp))
-        state.message?.let {
-            Text(
-                it,
-                style = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        if (sort != null) SortControl(sortLabels, sort)
     }
 }
 

@@ -64,16 +64,25 @@ internal class SortState(index: Int = 0, descending: Boolean = false) {
 internal fun rememberSortState(key: String): SortState =
     rememberSaveable(key, saver = SortState.Saver) { SortState() }
 
-/** The sort control: a right-aligned chip naming the current key (tap → menu) + a direction toggle.
- *  Picking the current key in the menu flips direction; picking another selects it ascending. */
+/** A full-width row that right-aligns the [SortControl] — used by tabs where sort is the only
+ *  toolbar. The Folders tab instead drops [SortControl] into its scan row. */
 @Composable
 internal fun SortBar(labels: List<StringResource>, state: SortState, modifier: Modifier = Modifier) {
-    var open by remember { mutableStateOf(false) }
     Row(
         modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(Modifier.weight(1f))
+        SortControl(labels, state)
+    }
+}
+
+/** The sort control: a chip naming the current key (tap → menu) + a direction toggle. Picking the
+ *  current key in the menu flips direction; picking another selects it ascending. */
+@Composable
+internal fun SortControl(labels: List<StringResource>, state: SortState) {
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box {
             Row(
                 Modifier
