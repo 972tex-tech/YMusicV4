@@ -25,6 +25,7 @@
     <string name="show_more">عرض المزيد</string>
     <string name="show_more_n">عرض المزيد (%1$d)</string>
     <string name="show_less">عرض أقل</string>
+    <string name="menu_play">تشغيل</string>
     <string name="queue_next">التشغيل تاليًا</string>
     <string name="queue_last">إضافة إلى نهاية قائمة الانتظار</string>
     <string name="badge_live">مباشر</string>

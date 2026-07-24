@@ -99,7 +99,10 @@ import ymusic.ui.resources.library_tab_genres
 import ymusic.ui.resources.library_tab_playlists
 import ymusic.ui.resources.library_tab_songs
 import ymusic.ui.resources.library_unavailable
+import ymusic.ui.resources.menu_play
 import ymusic.ui.resources.n_songs
+import ymusic.ui.resources.queue_last
+import ymusic.ui.resources.queue_next
 import ymusic.ui.resources.unknown_album
 import ymusic.ui.resources.unknown_artist
 import ymusic.ui.resources.unknown_genre
@@ -303,7 +306,7 @@ private fun FoldersTab(
                         ) { group ->
                             Row(Modifier.fillMaxWidth()) {
                                 group.forEach { i ->
-                                    Box(Modifier.weight(1f)) { SongRow(items[i]) { coordinator.playLocal(items, i) } }
+                                    Box(Modifier.weight(1f)) { SongRow(items[i], coordinator) { coordinator.playLocal(items, i) } }
                                 }
                                 repeat(songsPerRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
@@ -315,7 +318,7 @@ private fun FoldersTab(
                         FolderRow(bucket) { openFolder(bucket) }
                     }
                     itemsIndexed(items, key = { _, s -> s.id }) { index, song ->
-                        SongRow(song) { coordinator.playLocal(items, index) }
+                        SongRow(song, coordinator) { coordinator.playLocal(items, index) }
                     }
                 }
             }
@@ -603,13 +606,13 @@ internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordina
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(songs.size, key = { songs[it].id }) { index ->
-                    SongRow(songs[index]) { coordinator.playLocal(songs, index) }
+                    SongRow(songs[index], coordinator) { coordinator.playLocal(songs, index) }
                 }
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
-                    SongRow(song) { coordinator.playLocal(songs, index) }
+                    SongRow(song, coordinator) { coordinator.playLocal(songs, index) }
                 }
             }
         }
@@ -617,12 +620,12 @@ internal fun SongList(songs: List<MediaStoreItem>, coordinator: PlaybackCoordina
 }
 
 @Composable
-internal fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
+internal fun SongRow(song: MediaStoreItem, coordinator: PlaybackCoordinator? = null, onPlay: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -640,8 +643,19 @@ internal fun SongRow(song: MediaStoreItem, onPlay: () -> Unit) {
                 )
             }
         }
+        if (coordinator != null) MoreMenu(songActions(song, coordinator), Modifier.padding(top = 2.dp))
     }
 }
+
+/** The song-row overflow menu: play this one, or queue it next / last. */
+@Composable
+private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator): ItemActions = ItemActions(
+    listOf(
+        stringResource(Res.string.menu_play) to { coordinator.playLocalSingle(song) },
+        stringResource(Res.string.queue_next) to { coordinator.queueLocalNext(song) },
+        stringResource(Res.string.queue_last) to { coordinator.queueLocalLast(song) },
+    ),
+)
 
 /** Group rows (artist/album/genre) with a one-level drill-down into the group's songs. */
 @Composable

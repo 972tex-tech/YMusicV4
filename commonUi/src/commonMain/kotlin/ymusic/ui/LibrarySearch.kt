@@ -132,7 +132,7 @@ fun LibrarySearchScreen(
                                 SectionHeader(YtSectionHeader(title = stringResource(Res.string.library_tab_songs), count = "${songs.size}"))
                             }
                             items(songs.size, key = { songs[it].id }) { index ->
-                                SongRow(songs[index]) { coordinator.playLocal(songs, index) }
+                                SongRow(songs[index], coordinator) { coordinator.playLocal(songs, index) }
                             }
                         }
                         groupSection(Res.string.library_tab_artists, Icons.Default.Person, artists, session)

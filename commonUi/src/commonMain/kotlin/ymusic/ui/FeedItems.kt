@@ -328,7 +328,7 @@ internal fun CtaPill(text: String, onClick: () -> Unit = {}) {
 }
 
 @Composable
-private fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
+internal fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         ActionIcon(

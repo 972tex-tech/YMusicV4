@@ -77,17 +77,36 @@ class PlaybackCoordinator(
 
     /** Play local library [songs] as the queue, starting at [index]. */
     fun playLocal(songs: List<MediaStoreItem>, index: Int) {
-        val display = songs.map { s ->
-            YtFeedItem(
-                kind = KIND_LOCAL,
-                id = s.uri.toString(),
-                title = s.title,
-                subtitleLine1 = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
-                thumbs = localArtUrl(s)?.let { listOf(YtThumb(it)) } ?: emptyList(),
-            )
-        }
-        _metadata.update { it + display.associateBy(YtFeedItem::id) }
+        _metadata.update { it + songs.map(::localDisplay).associateBy(YtFeedItem::id) }
         player.setQueue(songs.map { PlayableItem.LocalUri(it.uri.toString()) }, playIndex = index)
+    }
+
+    /** Play just [song] now (queue of one). */
+    fun playLocalSingle(song: MediaStoreItem) {
+        player.setQueue(listOf(rememberLocal(song)))
+    }
+
+    /** Queue [song] right after the current item. */
+    fun queueLocalNext(song: MediaStoreItem) {
+        player.addToPlayNext(listOf(rememberLocal(song)))
+    }
+
+    /** Append [song] to the end of the queue. */
+    fun queueLocalLast(song: MediaStoreItem) {
+        player.add(listOf(rememberLocal(song)))
+    }
+
+    private fun localDisplay(s: MediaStoreItem) = YtFeedItem(
+        kind = KIND_LOCAL,
+        id = s.uri.toString(),
+        title = s.title,
+        subtitleLine1 = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
+        thumbs = localArtUrl(s)?.let { listOf(YtThumb(it)) } ?: emptyList(),
+    )
+
+    private fun rememberLocal(song: MediaStoreItem): PlayableItem {
+        _metadata.update { it + (song.uri.toString() to localDisplay(song)) }
+        return PlayableItem.LocalUri(song.uri.toString())
     }
 
     fun playNext(video: YtFeedItem) {
