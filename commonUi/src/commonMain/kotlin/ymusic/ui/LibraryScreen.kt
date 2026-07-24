@@ -477,10 +477,14 @@ private val CrumbPathSaver = listSaver<List<Pair<Long, String>>, Any>(
 /** `Library › root › sub` — every crumb but the last navigates back up to it. */
 @Composable
 internal fun Breadcrumb(path: List<String>, onNavigate: (depth: Int) -> Unit) {
+    val scrollState = rememberScrollState()
+    // Keep the deepest crumb (where you are) visible as the trail grows past the edge.
+    LaunchedEffect(path.size) { scrollState.animateScrollTo(scrollState.maxValue) }
     Row(
         Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .horizontalWheelScroll(scrollState)
+            .horizontalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
