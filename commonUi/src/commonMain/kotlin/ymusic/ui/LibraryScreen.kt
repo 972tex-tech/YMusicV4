@@ -48,12 +48,14 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -68,6 +70,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
@@ -95,7 +98,10 @@ import ymusic.ui.resources.library_tab_genres
 import ymusic.ui.resources.library_tab_playlists
 import ymusic.ui.resources.library_tab_songs
 import ymusic.ui.resources.library_unavailable
+import ymusic.ui.resources.menu_exclude_folder
+import ymusic.ui.resources.menu_include_folder
 import ymusic.ui.resources.menu_play
+import ymusic.ui.resources.menu_remove_folder
 import ymusic.ui.resources.menu_show_in_folder
 import ymusic.ui.resources.n_songs
 import ymusic.ui.resources.queue_last
@@ -305,7 +311,21 @@ private fun FoldersTab(
             CenteredBox { CircularProgressIndicator() }
             return@Column
         }
-        val openFolder = { bucket: MediaStoreBucket -> path = path + (bucket.id to bucket.displayName) }
+        // Excluded folders show but don't open; the three-dot menu removes a root or excludes/includes
+        // a subfolder (each cascades in the store, then the change flow reloads this list).
+        val openFolder = { bucket: MediaStoreBucket -> if (!bucket.excluded) path = path + (bucket.id to bucket.displayName) }
+        val scope = rememberCoroutineScope()
+        val onRemove: (MediaStoreBucket) -> Unit = { b -> scope.launch { store.deleteBucket(b.id) } }
+        val onExclude: (MediaStoreBucket) -> Unit = { b -> scope.launch { store.setBucketExcluded(b.id, true) } }
+        // Excluding deleted the folder's subfolders and tombstoned its items, so re-including clears
+        // the flag and then rescans to bring the contents back (the scan skips the folder until the
+        // flag is cleared, so order matters).
+        val onInclude: (MediaStoreBucket) -> Unit = { b ->
+            scope.launch {
+                store.setBucketExcluded(b.id, false)
+                if (rescan != null && scanController != null) scanController.start(rescan)
+            }
+        }
         val sort = rememberSortState("sort.folders")
         val sortedFolders = sort.sort(children, folderSortOptions)
         val sortedItems = sort.sort(items, songSortOptions)
@@ -346,6 +366,8 @@ private fun FoldersTab(
                                 artUrl = null,
                                 title = bucket.displayName,
                                 subtitle = stringResource(Res.string.library_folder),
+                                dimmed = bucket.excluded,
+                                menu = folderActions(bucket, onRemove, onExclude, onInclude),
                             ) { openFolder(bucket) }
                         }
                         // Full-span rows break the flow onto a fresh line below the folders.
@@ -365,7 +387,7 @@ private fun FoldersTab(
                 }
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(sortedFolders, key = { "b${it.id}" }) { bucket ->
-                        FolderRow(bucket) { openFolder(bucket) }
+                        FolderRow(bucket, folderActions(bucket, onRemove, onExclude, onInclude)) { openFolder(bucket) }
                     }
                     itemsIndexed(sortedItems, key = { _, s -> s.id }) { index, song ->
                         SongRow(song, coordinator) { coordinator.playLocal(sortedItems, index) }
@@ -479,22 +501,46 @@ private fun CrumbText(label: String, last: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FolderRow(bucket: MediaStoreBucket, onOpen: () -> Unit) {
+private fun FolderRow(bucket: MediaStoreBucket, menu: ItemActions, onOpen: () -> Unit) {
+    val contentAlpha = if (bucket.excluded) 0.4f else 1f
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .clickable(enabled = !bucket.excluded, onClick = onOpen)
+            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        LibraryThumb(Icons.Default.Folder, badge = null)
-        Column(Modifier.weight(1f)) {
+        Box(Modifier.alpha(contentAlpha)) { LibraryThumb(Icons.Default.Folder, badge = null) }
+        Column(Modifier.weight(1f).alpha(contentAlpha)) {
             Text(bucket.displayName, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(stringResource(Res.string.library_folder), style = ListSubStyle, modifier = Modifier.padding(top = 4.dp))
         }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DesignColors.InkFaint)
+        MoreMenu(menu, Modifier.padding(top = 2.dp))
     }
+}
+
+/** The folder-row overflow menu: a root folder offers Remove (un-add it); a subfolder offers
+ *  Exclude, or Include when it's already excluded. */
+@Composable
+private fun folderActions(
+    bucket: MediaStoreBucket,
+    onRemove: (MediaStoreBucket) -> Unit,
+    onExclude: (MediaStoreBucket) -> Unit,
+    onInclude: (MediaStoreBucket) -> Unit,
+): ItemActions {
+    val remove = stringResource(Res.string.menu_remove_folder)
+    val exclude = stringResource(Res.string.menu_exclude_folder)
+    val include = stringResource(Res.string.menu_include_folder)
+    return ItemActions(
+        buildList {
+            when {
+                bucket.parentId == null -> add(remove to { onRemove(bucket) })
+                bucket.excluded -> add(include to { onInclude(bucket) })
+                else -> add(exclude to { onExclude(bucket) })
+            }
+        },
+    )
 }
 
 private val MediaStoreBucket.displayName: String get() = aliasName?.takeIf(String::isNotBlank) ?: name
@@ -846,32 +892,44 @@ private fun LibraryGridCard(
     artUrl: String?,
     title: String,
     subtitle: String,
+    dimmed: Boolean = false,
+    menu: ItemActions? = null,
     onClick: () -> Unit,
 ) {
+    // Dim the art + labels for an excluded folder, but keep any overflow menu at full strength so it
+    // stays legible and tappable (that's how the folder gets re-included).
+    val contentAlpha = if (dimmed) 0.4f else 1f
     Column(
         Modifier
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .clickable(enabled = !dimmed, onClick = onClick)
             .padding(6.dp),
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center,
+                .aspectRatio(1f),
         ) {
-            Icon(icon, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
-            ArtImage(artUrl, RoundedCornerShape(10.dp))
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .alpha(contentAlpha)
+                    .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
+                ArtImage(artUrl, RoundedCornerShape(10.dp))
+            }
+            if (menu != null) MoreMenu(menu, Modifier.align(Alignment.TopEnd))
         }
         Text(
             title,
             style = GridTitleStyle,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 7.dp),
+            modifier = Modifier.padding(top = 7.dp).alpha(contentAlpha),
         )
-        Text(subtitle, style = GridSubStyle, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
+        Text(subtitle, style = GridSubStyle, maxLines = 1, modifier = Modifier.padding(top = 3.dp).alpha(contentAlpha))
     }
 }
 

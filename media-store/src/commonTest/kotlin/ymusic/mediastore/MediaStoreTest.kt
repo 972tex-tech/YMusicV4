@@ -135,6 +135,34 @@ class MediaStoreTest {
         assertNotNull(store.findBucket(music.id), "ancestor untouched")
     }
 
+    @Test
+    fun setBucketExcluded_flags_the_folder_deletes_subfolders_and_tombstones_items() = runTest {
+        // music > rock > live, with an item in music, rock, and live.
+        val music = bucket("file:///music")
+        val rock = bucket("file:///music/rock", parentId = music.id)
+        val live = bucket("file:///music/rock/live", parentId = rock.id)
+        item(music.id, "file:///music/a.mp3", fileSize = 1, title = "a")
+        item(rock.id, "file:///music/rock/b.mp3", fileSize = 2, title = "b")
+        val c = item(live.id, "file:///music/rock/live/c.mp3", fileSize = 3, title = "c")
+
+        store.setBucketExcluded(rock.id, true)
+
+        // The folder is flagged and kept; the scan will skip it.
+        assertTrue(store.findBucket(rock.id)!!.excluded, "rock flagged and kept")
+        assertEquals(false, store.findBucket(music.id)!!.excluded, "ancestor untouched")
+        assertEquals(setOf(Uri.parse("file:///music/rock")), store.excludedBucketUris())
+        // Descendant subfolder rows are hard-deleted...
+        assertNull(store.findBucket(live.id), "descendant subfolder row deleted")
+        // ...and the subtree's items are soft-deleted (gone from the library-wide list).
+        assertEquals(listOf("a"), store.allItems().map { it.title }, "only the non-excluded item")
+        assertNull(store.findItem(c.id), "descendant item soft-deleted")
+
+        store.setBucketExcluded(rock.id, false)
+        assertEquals(false, store.findBucket(rock.id)!!.excluded, "re-include clears the flag")
+        // Contents come back on the next scan, not from clearing the flag alone.
+        assertEquals(listOf("a"), store.allItems().map { it.title }, "still hidden until a rescan")
+    }
+
     // ---- items ----
 
     @Test

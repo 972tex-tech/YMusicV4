@@ -311,6 +311,47 @@ class MediaScannerTest {
     }
 
     @Test
+    fun excluded_folder_is_cleaned_up_and_stays_skipped_on_rescan() = runTest {
+        val fs = FakeFileSystem().apply {
+            file("/music/keep/a.mp3", 100)
+            file("/music/skip/b.mp3", 200)
+            file("/music/skip/deep/c.mp3", 300)
+        }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+        val skip = assertNotNull(store.findBucketByUri(uri("file:///music/skip")))
+        store.setBucketExcluded(skip.id, true)
+
+        // Excluding flags + keeps the folder, deletes its subfolder rows, and soft-deletes its items.
+        assertNull(store.findBucketByUri(uri("file:///music/skip/deep")), "subfolder row deleted")
+        assertEquals(0, store.itemsInBucket(skip.id).size, "the folder's items are soft-deleted")
+
+        // Rescan: the excluded folder is not walked (so only the kept file is scanned), stays put, and
+        // its contents are not revived or re-created while it's excluded.
+        val second = s.scan(uri("file:///music")).last()
+        assertEquals(0, second.deleted, "excluded folder must not be pruned")
+        assertEquals(1, second.scanned, "only the kept file is scanned; the excluded folder is skipped")
+        assertNotNull(store.findBucketByUri(uri("file:///music/skip")), "excluded folder kept")
+        assertNull(store.findBucketByUri(uri("file:///music/skip/deep")), "subfolder not re-created")
+        assertEquals(listOf("a.mp3"), store.allItems().map { leaf(it.uri) }, "excluded songs stay hidden")
+    }
+
+    @Test
+    fun scanning_an_excluded_folder_directly_does_nothing() = runTest {
+        val fs = FakeFileSystem().apply { file("/music/skip/b.mp3", 200) }
+        val s = scanner(fs)
+        s.scan(uri("file:///music")).last()
+        val skip = assertNotNull(store.findBucketByUri(uri("file:///music/skip")))
+        store.setBucketExcluded(skip.id, true)
+
+        // Pointing a scan straight at the excluded folder must not revive what exclusion removed.
+        val p = s.scan(uri("file:///music/skip")).last()
+        assertEquals(0, p.scanned, "nothing scanned")
+        assertEquals(0, p.added)
+        assertTrue(store.allItems().isEmpty(), "songs stay hidden")
+    }
+
+    @Test
     fun scans_many_files_concurrently_without_loss() = runTest {
         // 60 files across 6 folders, scanned by the default 4-worker pool. Before the store
         // serialized DB access this raced the single JDBC connection and dropped writes.

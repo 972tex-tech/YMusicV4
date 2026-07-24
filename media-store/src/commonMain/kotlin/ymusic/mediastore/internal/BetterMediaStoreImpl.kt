@@ -63,6 +63,38 @@ internal class BetterMediaStoreImpl(
         bucketQ.setBucketAlias(alias, now(), bucketId)
     }
 
+    override suspend fun setBucketExcluded(bucketId: Long, excluded: Boolean): Unit = withContext(io) {
+        db.transaction {
+            val ts = now()
+            if (excluded) {
+                // Excluding cleans up the subtree: hard-delete the descendant subfolder rows (the tree
+                // under an excluded folder can be huge) but soft-delete their items so playlist links
+                // and a later re-scan can revive them. The excluded folder's own row is kept (flagged)
+                // so it still shows greyed and can be re-included; the scan skips it (excludedBucketUris)
+                // and so never revives or re-creates its contents until it's included again.
+                deleteExcludedDescendants(bucketId, ts)
+                itemQ.setItemsInBucketDeleted(ts, bucketId) // the excluded folder's own direct items
+                bucketQ.setBucketExcluded(1, ts, bucketId)
+            } else {
+                bucketQ.setBucketExcluded(0, ts, bucketId)
+            }
+        }
+    }
+
+    // Post-order: descend first, then orphan+tombstone each descendant's items and hard-delete the
+    // (now item-free) bucket. Orphaning before the delete keeps the items alive past the FK cascade.
+    private fun deleteExcludedDescendants(bucketId: Long, ts: Long) {
+        bucketQ.childBuckets(bucketId).executeAsList().forEach { child ->
+            deleteExcludedDescendants(child.id, ts)
+            itemQ.orphanAndDeleteItemsInBucket(ts, child.id)
+            bucketQ.hardDeleteBucket(child.id)
+        }
+    }
+
+    override suspend fun excludedBucketUris(): Set<Uri> = withContext(io) {
+        bucketQ.excludedBucketUris().executeAsList().mapTo(HashSet()) { Uri.parse(it) }
+    }
+
     override suspend fun findBucket(bucketId: Long): MediaStoreBucket? = withContext(io) {
         bucketQ.findBucketById(bucketId).executeAsOneOrNull()?.toModel()
     }

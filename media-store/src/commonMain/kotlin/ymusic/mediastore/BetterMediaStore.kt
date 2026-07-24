@@ -33,6 +33,18 @@ interface BetterMediaStore {
 
     suspend fun setBucketAlias(bucketId: Long, alias: String?)
 
+    /**
+     * Exclude a folder: flag it, hard-delete its descendant subfolder rows, and soft-delete every
+     * item in its subtree (kept as tombstones for playlist links and later revival). The folder's own
+     * row stays (flagged) so the Folders tab can still show it (greyed) and offer re-inclusion, and
+     * scans skip it (see [excludedBucketUris]). Passing `excluded = false` just clears the flag — the
+     * contents come back on the next scan.
+     */
+    suspend fun setBucketExcluded(bucketId: Long, excluded: Boolean)
+
+    /** URIs of the excluded folders (subtree roots), for the scanner to skip. */
+    suspend fun excludedBucketUris(): Set<Uri>
+
     suspend fun findBucket(bucketId: Long): MediaStoreBucket?
     suspend fun findBucketByUri(uri: Uri): MediaStoreBucket?
 

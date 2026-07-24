@@ -57,7 +57,7 @@ internal class MediaScannerEngine(
     private val semaphore = Semaphore(concurrency)
 
     /**
-     * A folder's bucket, created on first [id] call and only then — so a folder with no media at or
+     * A folder's bucket, created on first [idOrCreate] call and only then — so a folder with no media at or
      * below it never gets a row. Asking for a child's id materializes its whole ancestor chain, which
      * is exactly the set of folders on the path to some media. [materialized] tells the caller after
      * the fact whether the folder ended up with a row (i.e. had media somewhere below it).
@@ -73,11 +73,11 @@ internal class MediaScannerEngine(
         var materialized = false
             private set
 
-        suspend fun id(): Long {
+        suspend fun idOrCreate(): Long {
             cachedId?.let { return it }
             return mutex.withLock {
                 cachedId?.let { return it }
-                val parentId = parent?.id() ?: rootParentId
+                val parentId = parent?.idOrCreate() ?: rootParentId
                 val bucket = store.upsertBucket(BucketDraft(uri = uri, name = name, parentId = parentId))
                 cachedId = bucket.id
                 materialized = true
@@ -91,25 +91,24 @@ internal class MediaScannerEngine(
      *  read (so the parent must NOT prune it, even if it currently looks media-less). */
     private data class FolderScan(val hasMedia: Boolean, val hadError: Boolean)
 
-    override fun scan(rootUri: Uri): Flow<Progress> = channelFlow {
+    override fun scan(uri: Uri): Flow<Progress> = channelFlow {
         val progress = MutableStateFlow(Progress())
         // Forward every progress change to the collector (StateFlow conflates rapid updates).
         val forward = launch { progress.collect { send(it) } }
         try {
-            when (val root = documents.queryDocument(rootUri)) {
+            when (val folder = documents.queryDocument(uri)) {
                 is DocumentInfo.Folder -> {
-                    // Preserve the root's existing parent (if it's already a known sub-folder) so scanning
-                    // a sub-folder directly doesn't orphan it — otherwise upsertBucket would reset parentId
-                    // to null. A genuinely new root has no existing row, so parentId stays null.
-                    val rootParentId = store.findBucketByUri(root.uri)?.parentId
-                    coroutineScope {
-                        val rootBucket = LazyBucket(root.uri, root.name, parent = null, rootParentId)
-                        rootBucket.id() // the scan root is always kept, even when empty
-                        scanFolder(this, root, rootBucket, progress)
+                    val existingEntry = store.findBucketByUri(folder.uri)
+                    if (existingEntry?.excluded != true) {
+                        coroutineScope {
+                            val folderBucket = LazyBucket(folder.uri, folder.name, parent = null, existingEntry?.parentId)
+                            folderBucket.idOrCreate() // the scanned folder is always kept, even when empty
+                            scanFolder(this, folder, folderBucket, progress, store.excludedBucketUris())
+                        }
                     }
                 }
                 // A single media file: index it directly (as an orphan until a folder scan adopts it).
-                is DocumentInfo.File -> scanFile(root, progress)
+                is DocumentInfo.File -> scanFile(folder, progress)
                 is DocumentInfo.Missing -> {} // nothing to scan (also the no-op provider's path)
             }
             forward.cancelAndJoin() // stop the forwarder before the authoritative final send
@@ -160,6 +159,7 @@ internal class MediaScannerEngine(
         folder: DocumentInfo.Folder,
         self: LazyBucket,
         progress: MutableStateFlow<Progress>,
+        excludedUris: Set<Uri>,
     ): FolderScan {
         val children = try {
             semaphore.withPermit { documents.listChildren(folder.uri) }
@@ -182,12 +182,20 @@ internal class MediaScannerEngine(
         coroutineScope {
             // Present media materializes this folder (and its ancestors) and reconciles its items.
             if (mediaFiles.isNotEmpty()) {
-                launch { reconcileItems(this@coroutineScope, self.id(), mediaFiles, progress) }
+                launch { reconcileItems(this@coroutineScope, self.idOrCreate(), mediaFiles, progress) }
             }
             subFolders.map { sub ->
                 async {
-                    val subBucket = LazyBucket(sub.uri, sub.name, parent = self, rootParentId = null)
-                    sub.uri to scanFolder(this@coroutineScope, sub, subBucket, progress)
+                    if (sub.uri in excludedUris) {
+                        // Excluded subtree: don't descend, reconcile, or prune it — but materialize
+                        // this folder so it (and its ancestors) survive an ancestor's prune, which
+                        // would otherwise cascade the excluded subtree away.
+                        self.idOrCreate()
+                        sub.uri to FolderScan(hasMedia = true, hadError = false)
+                    } else {
+                        val subBucket = LazyBucket(sub.uri, sub.name, parent = self, rootParentId = null)
+                        sub.uri to scanFolder(this@coroutineScope, sub, subBucket, progress, excludedUris)
+                    }
                 }
             }.awaitAll().forEach { (uri, result) -> childResults[uri] = result }
         }
@@ -195,13 +203,13 @@ internal class MediaScannerEngine(
 
         // Materialized but no direct media now → drop this folder's stale items (moved/removed).
         if (self.materialized && mediaFiles.isEmpty()) {
-            reconcileItems(scope, self.id(), emptyList(), progress)
+            reconcileItems(scope, self.idOrCreate(), emptyList(), progress)
         }
 
         // Prune child buckets we can account for: vanished from disk, or scanned clean with no media.
         // Never prune a child whose subtree hit an error (we can't confirm it's empty).
         if (self.materialized) {
-            store.childBuckets(self.id()).forEach { child ->
+            store.childBuckets(self.idOrCreate()).forEach { child ->
                 val result = childResults[child.uri]
                 val keep = when {
                     child.uri !in presentSubUris -> false // vanished

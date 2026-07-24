@@ -28,16 +28,18 @@ interface MediaScanner {
     data class ScanError(val uri: Uri, val cause: Throwable)
 
     /**
-     * Scan [rootUri] into the store, emitting running [Progress]:
+     * Scan [uri] into the store, emitting running [Progress]. [uri] may be any directory, not only a
+     * top-level root (a sub-folder can be scanned directly):
      *  - a **folder** is reconciled recursively (new/changed files upserted, vanished ones soft-deleted);
      *  - a single **media file** is indexed on its own as an orphan (no bucket) until a later folder
      *    scan adopts it — re-scanning it never duplicates it or re-orphans an already-filed item;
+     *  - an **excluded** folder is left untouched (scanning it would revive what exclusion removed);
      *  - anything else (unreadable / not media / a no-op provider) emits one empty [Progress].
      *
      * Per-file/folder failures are collected in [Progress.errors] (each with its uri and cause) and
      * don't stop the scan; a fatal failure and cancellation propagate to the collector.
      */
-    fun scan(rootUri: Uri): Flow<Progress>
+    fun scan(uri: Uri): Flow<Progress>
 
     companion object {
         /** Default number of concurrent scan workers. */

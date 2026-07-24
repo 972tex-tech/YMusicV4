@@ -7,6 +7,9 @@ CREATE TABLE bucket (
     name      TEXT    NOT NULL,
     aliasName TEXT,
     deleted   INTEGER NOT NULL DEFAULT 0,   -- soft-delete tombstone (0/1)
+    excluded  INTEGER NOT NULL DEFAULT 0,   -- user-excluded folder (0/1); its subtree is skipped by
+                                            -- scans and hidden from the library, but the row is kept
+                                            -- so the folder still shows (greyed) and can be re-included
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL
 );
@@ -33,6 +36,11 @@ UPDATE bucket SET aliasName = ?, updatedAt = ? WHERE id = ?;
 setBucketDeleted:
 UPDATE bucket SET deleted = ?, updatedAt = ? WHERE id = ?;
 
+-- Set the exclude flag for one bucket. The store applies it over the whole subtree (a folder is
+-- excluded together with its descendants), so item queries can hide a subtree by a single flag.
+setBucketExcluded:
+UPDATE bucket SET excluded = ?, updatedAt = ? WHERE id = ?;
+
 hardDeleteBucket:
 DELETE FROM bucket WHERE id = ?;
 
@@ -54,3 +62,8 @@ SELECT * FROM bucket WHERE parentId IS NULL AND deleted = 0 ORDER BY name;
 
 allBuckets:
 SELECT * FROM bucket WHERE deleted = 0 ORDER BY name;
+
+-- The excluded folders (subtree roots included) the scanner must skip so it doesn't reconcile,
+-- re-add, or prune their contents.
+excludedBucketUris:
+SELECT uri FROM bucket WHERE excluded = 1 AND deleted = 0;

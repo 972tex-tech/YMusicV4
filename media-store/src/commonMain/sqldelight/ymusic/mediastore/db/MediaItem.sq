@@ -68,6 +68,12 @@ UPDATE mediaItem SET deleted = 1, updatedAt = ? WHERE id = ?;
 setItemsInBucketDeleted:
 UPDATE mediaItem SET deleted = 1, updatedAt = ? WHERE bucketId = ? AND deleted = 0;
 
+-- Detach every item from a bucket and tombstone it (regardless of current state), so the bucket can
+-- be hard-deleted without the FK cascade taking the items with it. Used when excluding a folder: the
+-- subfolder rows are removed but their items are kept as tombstones (playlist links, later revival).
+orphanAndDeleteItemsInBucket:
+UPDATE mediaItem SET bucketId = NULL, deleted = 1, updatedAt = ? WHERE bucketId = ?;
+
 -- Hard-purge tombstones older than a cutoff (cascades to playlistItem rows). Returns rows removed.
 purgeDeleted:
 DELETE FROM mediaItem WHERE deleted = 1 AND updatedAt < ?;
@@ -95,7 +101,8 @@ WHERE fileSize = ? AND COALESCE(durationMs, 0) / 1000 = ? AND deleted = 0;
 itemsInBucket:
 SELECT * FROM mediaItem WHERE bucketId = ? AND deleted = 0 ORDER BY title;
 
--- Every non-deleted item regardless of bucket, one library-wide list.
+-- Every non-deleted item regardless of bucket, one library-wide list. Items in an excluded folder
+-- are soft-deleted (see setBucketExcluded), so the deleted filter already hides them.
 allItems:
 SELECT * FROM mediaItem WHERE deleted = 0 ORDER BY title COLLATE NOCASE;
 

@@ -17,6 +17,7 @@ internal fun DbBucket.toModel() = MediaStoreBucket(
     uri = Uri.parse(uri),
     name = name,
     aliasName = aliasName,
+    excluded = excluded != 0L,
     createdAt = createdAt,
 )
 
