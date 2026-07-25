@@ -24,6 +24,19 @@
     <string name="tab_account_library">Library</string>
     <string name="discover_needs_account">%1$s mirrors your YouTube account — coming with sign-in</string>
     <string name="discover_no_anonymous_home">YouTube serves no anonymous home feed — use Search, or sign in (coming)</string>
+    <string name="discover_no_trending">No charts published for this region</string>
+
+    <!-- Trending Music chart sections (titles the engine synthesizes; keyed by header titleKey) -->
+    <string name="chart_trending_music_videos">Trending Music Videos</string>
+    <string name="chart_top_songs">Top Songs</string>
+    <string name="chart_top_songs_daily">Daily Top Songs</string>
+    <string name="chart_top_songs_weekly">Weekly Top Songs</string>
+    <string name="chart_top_music_videos">Top Music Videos</string>
+    <string name="chart_top_music_videos_daily">Daily Top Music Videos</string>
+    <string name="chart_top_music_videos_weekly">Weekly Top Music Videos</string>
+    <string name="chart_top_songs_on_shorts">Top Songs on Shorts</string>
+    <string name="chart_top_songs_on_shorts_daily">Daily Top Songs on Shorts</string>
+    <string name="chart_top_songs_on_shorts_weekly">Weekly Top Songs on Shorts</string>
 
     <!-- Feed -->
     <string name="feed_empty">Nothing here</string>

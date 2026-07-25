@@ -17,6 +17,18 @@
     <string name="tab_account_library">Thư viện</string>
     <string name="discover_needs_account">%1$s phản chiếu tài khoản YouTube của bạn — sẽ có khi đăng nhập</string>
     <string name="discover_no_anonymous_home">YouTube không cung cấp trang chủ khi chưa đăng nhập — hãy dùng Tìm kiếm, hoặc đăng nhập (sắp có)</string>
+    <string name="discover_no_trending">Không có bảng xếp hạng cho khu vực này</string>
+
+    <string name="chart_trending_music_videos">Video âm nhạc thịnh hành</string>
+    <string name="chart_top_songs">Bài hát hàng đầu</string>
+    <string name="chart_top_songs_daily">Bài hát hàng đầu trong ngày</string>
+    <string name="chart_top_songs_weekly">Bài hát hàng đầu trong tuần</string>
+    <string name="chart_top_music_videos">Video âm nhạc hàng đầu</string>
+    <string name="chart_top_music_videos_daily">Video âm nhạc hàng đầu trong ngày</string>
+    <string name="chart_top_music_videos_weekly">Video âm nhạc hàng đầu trong tuần</string>
+    <string name="chart_top_songs_on_shorts">Bài hát hàng đầu trên Shorts</string>
+    <string name="chart_top_songs_on_shorts_daily">Bài hát hàng đầu trên Shorts trong ngày</string>
+    <string name="chart_top_songs_on_shorts_weekly">Bài hát hàng đầu trên Shorts trong tuần</string>
 
     <string name="feed_empty">Không có gì ở đây</string>
     <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>

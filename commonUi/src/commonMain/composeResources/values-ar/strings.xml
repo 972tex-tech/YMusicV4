@@ -17,6 +17,18 @@
     <string name="tab_account_library">المكتبة</string>
     <string name="discover_needs_account">%1$s يعكس حساب YouTube الخاص بك — يأتي مع تسجيل الدخول</string>
     <string name="discover_no_anonymous_home">لا يقدم YouTube صفحة رئيسية دون تسجيل الدخول — استخدم البحث أو سجّل الدخول (قريبًا)</string>
+    <string name="discover_no_trending">لا توجد قوائم رائجة لهذه المنطقة</string>
+
+    <string name="chart_trending_music_videos">فيديوهات موسيقية رائجة</string>
+    <string name="chart_top_songs">أفضل الأغاني</string>
+    <string name="chart_top_songs_daily">أفضل الأغاني اليومية</string>
+    <string name="chart_top_songs_weekly">أفضل الأغاني الأسبوعية</string>
+    <string name="chart_top_music_videos">أفضل الفيديوهات الموسيقية</string>
+    <string name="chart_top_music_videos_daily">أفضل الفيديوهات الموسيقية اليومية</string>
+    <string name="chart_top_music_videos_weekly">أفضل الفيديوهات الموسيقية الأسبوعية</string>
+    <string name="chart_top_songs_on_shorts">أفضل الأغاني على Shorts</string>
+    <string name="chart_top_songs_on_shorts_daily">أفضل الأغاني على Shorts يوميًا</string>
+    <string name="chart_top_songs_on_shorts_weekly">أفضل الأغاني على Shorts أسبوعيًا</string>
 
     <string name="feed_empty">لا يوجد شيء هنا</string>
     <string name="error_generic">حدث خطأ ما (%1$s)</string>

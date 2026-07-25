@@ -65,6 +65,16 @@ import ymusic.ui.resources.cd_expand
 import ymusic.ui.resources.cd_more
 import ymusic.ui.resources.cd_music_video
 import ymusic.ui.resources.cd_view_all
+import ymusic.ui.resources.chart_top_music_videos
+import ymusic.ui.resources.chart_top_music_videos_daily
+import ymusic.ui.resources.chart_top_music_videos_weekly
+import ymusic.ui.resources.chart_top_songs
+import ymusic.ui.resources.chart_top_songs_daily
+import ymusic.ui.resources.chart_top_songs_on_shorts
+import ymusic.ui.resources.chart_top_songs_on_shorts_daily
+import ymusic.ui.resources.chart_top_songs_on_shorts_weekly
+import ymusic.ui.resources.chart_top_songs_weekly
+import ymusic.ui.resources.chart_trending_music_videos
 
 /**
  * The feed building blocks from design/final/feed-components.html: one SectionHeader + the six
@@ -80,6 +90,31 @@ internal val GridSubStyle: TextStyle @Composable get() = TextStyle(fontSize = 11
 
 /** What the ⋮ overflow offers for an item; empty = no overflow shown. */
 class ItemActions(val entries: List<Pair<String, () -> Unit>>)
+
+/**
+ * A header's display title. Scraped titles arrive localized from YouTube and render verbatim; the
+ * ones the engine SYNTHESIZES (the charts feed publishes none of its own) carry a stable
+ * [YtSectionHeader.titleKey] instead, resolved here — falling back to the engine's English text for
+ * a key this build doesn't know, so a newer bundle's chart still shows a title.
+ */
+@Composable
+private fun sectionTitle(header: YtSectionHeader?): String {
+    val key = header?.titleKey ?: return header?.title.orEmpty()
+    val resource = when (key) {
+        "trending_music_videos" -> Res.string.chart_trending_music_videos
+        "top_songs" -> Res.string.chart_top_songs
+        "top_songs_daily" -> Res.string.chart_top_songs_daily
+        "top_songs_weekly" -> Res.string.chart_top_songs_weekly
+        "top_music_videos" -> Res.string.chart_top_music_videos
+        "top_music_videos_daily" -> Res.string.chart_top_music_videos_daily
+        "top_music_videos_weekly" -> Res.string.chart_top_music_videos_weekly
+        "top_songs_on_shorts" -> Res.string.chart_top_songs_on_shorts
+        "top_songs_on_shorts_daily" -> Res.string.chart_top_songs_on_shorts_daily
+        "top_songs_on_shorts_weekly" -> Res.string.chart_top_songs_on_shorts_weekly
+        else -> null
+    }
+    return resource?.let { stringResource(it) } ?: header.title.orEmpty()
+}
 
 /**
  * Single-line section header: `[circle icon] · title · [count] · [CTA / collapse toggle]`, any part
@@ -108,7 +143,7 @@ fun SectionHeader(
             }
         }
         Text(
-            header?.title.orEmpty(),
+            sectionTitle(header),
             style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

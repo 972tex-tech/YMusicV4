@@ -82,6 +82,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.extractHomeFeed
+import ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import ymusic.player.PlayableItem
 import ymusic.player.VideoQualityState
 import ymusic.settings.AppSettings
@@ -90,6 +91,7 @@ import ymusic.ui.resources.Res
 import ymusic.ui.resources.coming_soon
 import ymusic.ui.resources.discover_needs_account
 import ymusic.ui.resources.discover_no_anonymous_home
+import ymusic.ui.resources.discover_no_trending
 import ymusic.ui.resources.section_catalogue
 import ymusic.ui.resources.section_discover
 import ymusic.ui.resources.section_donate
@@ -531,11 +533,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     }
 }
 
-/** Discover's five feed tabs (design §1). Only Home has an anonymous backing feed today; the rest
+/** Discover's five feed tabs (design §1). Home and Music have anonymous backing feeds; the rest
  *  light up with accounts (they mirror the signed-in YouTube surfaces). */
 enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
     Home(Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
-    Music(Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = false),
+    Music(Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
     Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = false),
     TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = false),
     Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
@@ -616,20 +618,28 @@ private fun DiscoverFeed(
         val session = remember(tab) {
             sessions.getOrPut(tab.name) {
                 FeedSession(scope) { continuation ->
-                    val page = graph.engines.extractHomeFeed(
-                        continuation = continuation,
-                        ctx = graph.ytContext,
-                    )
-                    // Home is a music app's front door: music first (per section — reordering across
-                    // sections would tear shelf headers off their items).
-                    page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
+                    when (tab) {
+                        // The region's music charts — one page, so a continuation never arrives.
+                        DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(ctx = graph.ytContext)
+                        else -> {
+                            val page = graph.engines.extractHomeFeed(
+                                continuation = continuation,
+                                ctx = graph.ytContext,
+                            )
+                            // Home is a music app's front door: music first (per section — reordering
+                            // across sections would tear shelf headers off their items).
+                            page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
+                        }
+                    }
                 }.also { it.pager.refresh() }
             }
         }
         FeedList(
             session.pager,
             coordinator,
-            emptyMessage = stringResource(Res.string.discover_no_anonymous_home),
+            emptyMessage = stringResource(
+                if (tab == DiscoverTab.Music) Res.string.discover_no_trending else Res.string.discover_no_anonymous_home,
+            ),
             onOpen = onOpen,
             listState = session.listState,
             onDeeplink = onDeeplink,
