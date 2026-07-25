@@ -550,20 +550,30 @@ class YtCommandsTest {
     }
 
     @Test
-    fun watch_next_ignores_the_end_screen_repeat_of_its_own_related_videos() = runTest {
-        // The watch page's end screen lists the SAME related videos again, as the leaf kind the
-        // embedded player reports (endScreenVideoRenderer) — collecting both would put every
-        // related video in the autoplay queue twice. What prevents it is that the page walk scans
-        // an allow-list of roots (contents + the onResponseReceived* actions) and never the whole
-        // response; this pins that, since the end-screen shape became a leaf kind for the
-        // Recommended harvest.
+    fun watch_next_merges_the_end_screen_deduped_and_music_first() = runTest {
+        // The end screen (under playerOverlays, outside the page walk's scanned roots) is the
+        // better related list and carries the Mix tile the secondary column lacks — so it leads,
+        // its repeat of a column item collapses, and music sorts ahead of plain uploads because
+        // this list becomes the autoplay queue.
         val (m, _) = manager { jsonResponse(NEXT_WITH_OVERLAYS_FIXTURE).build(it) }
         try {
             val page = m.watchNext(videoId = "yuuWdm5tBD0")
 
-            val ids = page.sections.flatMap { it.items }.map { it.id }
-            assertEquals(listOf("N30CFk9fHwg", "aYIhumdzhAo"), ids, "each related video exactly once: $page")
-            assertEquals("N30CFk9fHwg", page.autoplayVideoId)
+            val items = page.sections.flatMap { it.items }
+            assertEquals(
+                listOf("MUSICMUSIC1", "RDAMVMyuuWdm5tBD0", "N30CFk9fHwg", "TALKTALKTAL", "aYIhumdzhAo"),
+                items.map { it.id },
+                "music leads (source order within the group), then the plain uploads: $page",
+            )
+            assertEquals(5, items.size, "the end screen's repeat of N30CFk9fHwg collapsed: $page")
+            assertTrue(items[0].musicVideo, "${items[0]}")
+            assertEquals(YtFeedItem.KIND_PLAYLIST, items[1].kind, "the Mix tile the column never offered")
+            assertEquals(
+                "Repeat of the first related video",
+                items[2].title,
+                "the end screen's copy won the dedupe, not the column's",
+            )
+            assertEquals("MUSICMUSIC1", page.autoplayVideoId)
         } finally {
             m.close()
         }
