@@ -116,6 +116,10 @@ data class YtPageTab(
  */
 data class YtSectionHeader(
     val title: String? = null,
+    /** Set only when the engine SYNTHESIZED [title] (the charts feed publishes none): a stable key
+     *  the app resolves to its own localized string, with [title] as the fallback for a key this
+     *  build doesn't know — an older app meeting a newer bundle. */
+    val titleKey: String? = null,
     val iconThumbs: List<YtThumb> = emptyList(),
     val count: String? = null,
     val ctaText: String? = null,

@@ -375,6 +375,62 @@ class YtCommandsTest {
     }
 
     @Test
+    fun trending_music_maps_every_chart_to_a_titled_section() = runTest {
+        val (m, client) = manager { jsonResponse(CHARTS_FIXTURE).build(it) }
+        try {
+            val page = m.extractTrendingMusicFeed(ctx = YtContext(hl = "vi", gl = "vn"))
+
+            // Charts live on their own host + client; the region rides the context, uppercased.
+            val req = assertNotNull(client.lastRequest)
+            assertTrue(req.url.toString().startsWith("https://charts.youtube.com/youtubei/v1/browse"), "${req.url}")
+            val sent = assertNotNull(sentBody)
+            assertTrue(sent.contains(""""clientName":"WEB_MUSIC_ANALYTICS""""), sent)
+            assertTrue(sent.contains(""""browseId":"FEmusic_analytics_charts_home""""), sent)
+            assertTrue(sent.contains(""""gl":"VN""""), sent)
+            assertTrue(sent.contains(""""hl":"vi""""), sent)
+
+            // Legacy's order and period picks: trending videos, then songs (weekly wins), music
+            // videos (daily wins), songs on Shorts (daily wins).
+            assertEquals(
+                listOf("trending_music_videos", "top_songs_weekly", "top_music_videos_daily", "top_songs_on_shorts_daily"),
+                page.sections.map { it.header?.titleKey },
+                "$page",
+            )
+            assertEquals("Daily Top Music Videos", page.sections[2].header?.title, "the English fallback title")
+            assertTrue(page.sections.all { it.layout == YtSection.LAYOUT_LIST }, "charts are ranked lists")
+            assertNull(page.continuation, "charts publish no continuation")
+
+            val trending = page.sections[0].items[0]
+            assertEquals(YtFeedItem.KIND_VIDEO, trending.kind)
+            assertEquals("PXxbEfhtDiM", trending.id)
+            assertEquals("Lil Baby", trending.subtitleLine1, "the credited artists, not the channel")
+            assertEquals("#1", trending.subtitleLine2, "a trending entry publishes no view count")
+            assertEquals("2:50", trending.duration, "videoDuration seconds → a badge the app renders verbatim")
+            assertEquals("UCM1gEqLPsgej7ZKzu9w8v7A", trending.channelId)
+            assertEquals("https://i.ytimg.com/vi/PXxbEfhtDiM/mqdefault.jpg", trending.thumbs.single().url)
+
+            // A song chart keys on an entity id ("G:…") — the item must carry the VIDEO id.
+            val song = page.sections[1].items[0]
+            assertEquals("fcnDmrtj6Sk", song.id)
+            assertEquals("Shakira, Burna Boy", song.subtitleLine1)
+            assertEquals("#1 · 5.9M", song.subtitleLine2)
+            assertNull(song.duration, "song charts carry no duration")
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun trending_music_fails_typed_when_the_analytics_section_is_gone() = runTest {
+        val (m, _) = manager { jsonResponse("""{"contents":{}}""").build(it) }
+        try {
+            assertFailsWith<EngineError.Parse> { m.extractTrendingMusicFeed() }
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
     fun home_feed_groups_a_titled_shelf_into_its_own_section() = runTest {
         val (m, _) = manager { jsonResponse(HOME_SHELF_FIXTURE).build(it) }
         try {

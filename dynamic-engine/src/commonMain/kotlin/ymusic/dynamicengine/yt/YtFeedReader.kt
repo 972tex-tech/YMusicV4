@@ -151,6 +151,7 @@ private suspend fun readSection(r: JsonReader): YtSection {
 
 private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
     var title: String? = null
+    var titleKey: String? = null
     var iconThumbs: List<YtThumb> = emptyList()
     var count: String? = null
     var ctaText: String? = null
@@ -160,6 +161,7 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
             "title" -> title = r.stringOrNull()
+            "titleKey" -> titleKey = r.stringOrNull()
             "iconThumbs" -> iconThumbs = r.readArrayOf { readThumb(it) }
             "count" -> count = r.stringOrNull()
             "ctaText" -> ctaText = r.stringOrNull()
@@ -169,7 +171,7 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
         }
     }
     r.endObject()
-    return YtSectionHeader(title, iconThumbs, count, ctaText, ctaToken, ctaDeeplink)
+    return YtSectionHeader(title, titleKey, iconThumbs, count, ctaText, ctaToken, ctaDeeplink)
 }
 
 private suspend fun readThumb(r: JsonReader): YtThumb {

@@ -35,6 +35,20 @@ suspend fun DynamicEngineManager.extractHomeFeed(
 }
 
 /**
+ * The Trending Music feed for [ctx]'s region — the charts YouTube publishes there (trending music
+ * videos, top songs, top music videos, top songs on Shorts). One page: charts publish no
+ * continuation. Section titles are engine-synthesized and carry a [YtSectionHeader.titleKey] the app
+ * localizes.
+ */
+suspend fun DynamicEngineManager.extractTrendingMusicFeed(
+    ctx: YtContext = YtContext(),
+): YtFeedPage = feedCommand("yt/trending") { w ->
+    w.beginObject()
+    w.contextField(ctx)
+    w.endObject()
+}
+
+/**
  * A playlist detail page. [url] is an engine-composed app link ("/playlist?list=…", possibly with
  * engine-private query state) from a [YtFeedItem.url] or [YtSectionHeader.ctaDeeplink] — passed back
  * VERBATIM; the engine decides how to serve it (VL browse, Mix watch-panel, …).
