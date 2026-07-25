@@ -25,6 +25,7 @@
     <string name="discover_needs_account">%1$s mirrors your YouTube account — coming with sign-in</string>
     <string name="discover_no_anonymous_home">YouTube serves no anonymous home feed — use Search, or sign in (coming)</string>
     <string name="discover_no_trending">No charts published for this region</string>
+    <string name="discover_no_recommendations">Play a few songs and your recommendations will show up here</string>
 
     <!-- Trending Music chart sections (titles the engine synthesizes; keyed by header titleKey) -->
     <string name="chart_trending_music_videos">Trending Music Videos</string>

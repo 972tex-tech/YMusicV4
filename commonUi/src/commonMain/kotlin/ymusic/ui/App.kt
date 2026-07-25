@@ -83,6 +83,8 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.extractHomeFeed
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
+import ymusic.dynamicengine.yt.getRecommendedFeed
+import ymusic.dynamicengine.yt.handleWebViewPlayNext
 import ymusic.player.PlayableItem
 import ymusic.player.VideoQualityState
 import ymusic.settings.AppSettings
@@ -91,6 +93,7 @@ import ymusic.ui.resources.Res
 import ymusic.ui.resources.coming_soon
 import ymusic.ui.resources.discover_needs_account
 import ymusic.ui.resources.discover_no_anonymous_home
+import ymusic.ui.resources.discover_no_recommendations
 import ymusic.ui.resources.discover_no_trending
 import ymusic.ui.resources.section_catalogue
 import ymusic.ui.resources.section_discover
@@ -203,6 +206,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        // The Recommended feed's raw material: the playing page reports YouTube's related items for
+        // a music video and the engine keeps them. Pure hand-off — the app parses nothing, and a
+        // harvest that fails must never disturb playback.
+        LaunchedEffect(graph) {
+            graph.player.watchNextSeen.collect { seen ->
+                runCatching { graph.engines.handleWebViewPlayNext(seen.videoId, seen.contentsJson) }
+            }
+        }
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
         val scanController = remember { ScanController(scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
@@ -538,7 +549,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
 enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
     Home(Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
     Music(Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
-    Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = false),
+    Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = true),
     TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = false),
     Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
@@ -613,32 +624,45 @@ private fun DiscoverFeed(
             )
         }
     } else {
+        // Recommended is the exception to the session cache below: it costs no network, it grows as
+        // the user plays, and it reshuffles per read — so it is rebuilt on every visit, on a scope
+        // that dies with the tab, instead of being frozen at whatever the first visit loaded.
+        val localScope = rememberCoroutineScope()
+        val recommended = tab == DiscoverTab.Recommended
         // Cached per tab (and on the app scope): coming back to the tab — or back from
         // search / a detail page — shows the feed as it was, no reload.
         val session = remember(tab) {
-            sessions.getOrPut(tab.name) {
-                FeedSession(scope) { continuation ->
-                    when (tab) {
-                        // The region's music charts — one page, so a continuation never arrives.
-                        DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(ctx = graph.ytContext)
-                        else -> {
-                            val page = graph.engines.extractHomeFeed(
-                                continuation = continuation,
-                                ctx = graph.ytContext,
-                            )
-                            // Home is a music app's front door: music first (per section — reordering
-                            // across sections would tear shelf headers off their items).
-                            page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
+            if (recommended) {
+                FeedSession(localScope) { graph.engines.getRecommendedFeed() }.also { it.pager.refresh() }
+            } else {
+                sessions.getOrPut(tab.name) {
+                    FeedSession(scope) { continuation ->
+                        when (tab) {
+                            // The region's music charts — one page, no continuation ever arrives.
+                            DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(ctx = graph.ytContext)
+                            else -> {
+                                val page = graph.engines.extractHomeFeed(
+                                    continuation = continuation,
+                                    ctx = graph.ytContext,
+                                )
+                                // Home is a music app's front door: music first (per section —
+                                // reordering across sections would tear headers off their items).
+                                page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
+                            }
                         }
-                    }
-                }.also { it.pager.refresh() }
+                    }.also { it.pager.refresh() }
+                }
             }
         }
         FeedList(
             session.pager,
             coordinator,
             emptyMessage = stringResource(
-                if (tab == DiscoverTab.Music) Res.string.discover_no_trending else Res.string.discover_no_anonymous_home,
+                when (tab) {
+                    DiscoverTab.Music -> Res.string.discover_no_trending
+                    DiscoverTab.Recommended -> Res.string.discover_no_recommendations
+                    else -> Res.string.discover_no_anonymous_home
+                },
             ),
             onOpen = onOpen,
             listState = session.listState,

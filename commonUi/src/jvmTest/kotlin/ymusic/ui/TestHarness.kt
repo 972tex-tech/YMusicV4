@@ -14,6 +14,7 @@ import kmphttp.ResponseBuilder
 import kmphttp.SslConfig
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -83,6 +84,10 @@ internal class StubPlayer : Player {
     override val audioTracks: StateFlow<AudioTrackState> = MutableStateFlow(AudioTrackState.DEFAULT)
     override val config: StateFlow<PlaybackConfig> = MutableStateFlow(PlaybackConfig())
     override val sleepTimerMs: StateFlow<Long?> = MutableStateFlow(null)
+
+    /** Tests drive the harvest by emitting here — no WebView engine is involved. */
+    val watchNextReports = MutableSharedFlow<ymusic.player.WatchNextSeen>(extraBufferCapacity = 8)
+    override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<ymusic.player.WatchNextSeen> = watchNextReports
 
     var lastQueue: List<PlayableItem>? = null
         private set
