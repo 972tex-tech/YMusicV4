@@ -25,7 +25,10 @@ class YtCommandsTest {
      *  it inside the handler, where it is still readable. */
     private var sentBody: String? = null
 
-    private suspend fun manager(handler: suspend (kmphttp.Request) -> kmphttp.Response): Pair<DynamicEngineManager, FakeHttpClient> {
+    private suspend fun manager(
+        cacheStore: ymusic.dynamicengine.CacheStore? = null,
+        handler: suspend (kmphttp.Request) -> kmphttp.Response,
+    ): Pair<DynamicEngineManager, FakeHttpClient> {
         sentBody = null
         val client = FakeHttpClient { request ->
             val url = request.url.toString()
@@ -37,9 +40,23 @@ class YtCommandsTest {
                 handler(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore)
         m.start()
         return m to client
+    }
+
+    /** A fresh cache store for the surfaces that persist (the Recommended harvest): an in-memory
+     *  SQLite index over a wiped temp blob dir, on a ticking clock so writes order deterministically. */
+    private fun cacheStore(): ymusic.dynamicengine.DiskCacheStore {
+        val dir = okio.FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-recommended-test"
+        okio.FileSystem.SYSTEM.deleteRecursively(dir)
+        var tick = 1_000L
+        return ymusic.dynamicengine.DiskCacheStore(
+            ymusic.dynamicengine.testCacheDriver(),
+            dir,
+            okio.FileSystem.SYSTEM,
+            now = { tick++ },
+        )
     }
 
     private fun jsonResponse(body: String) = CannedResponse.ofText(
@@ -369,6 +386,68 @@ class YtCommandsTest {
             assertEquals("All", page.chips[0].title)
             assertTrue(page.chips[0].selected)
             assertEquals("chip-music-token", page.chips[1].token)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun recommended_is_empty_until_something_has_been_played() = runTest {
+        val (m, client) = manager(cacheStore()) { jsonResponse("{}").build(it) }
+        try {
+            val page = m.getRecommendedFeed()
+            assertEquals(emptyList(), page.sections, "a cold start is an empty feed, not an error")
+            // The whole surface is offline: nothing but the session bootstrap may have been fetched.
+            assertTrue(
+                client.lastRequest?.url?.toString()?.contains("youtubei") != true,
+                "the recommended feed must not call YouTube: ${client.lastRequest?.url}",
+            )
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun recommended_is_built_from_the_watch_next_payloads_the_webview_reported() = runTest {
+        val (m, _) = manager(cacheStore()) { jsonResponse("{}").build(it) }
+        try {
+            m.handleWebViewPlayNext("yuuWdm5tBD0", WATCH_NEXT_ENDSCREEN_FIXTURE)
+            val page = m.getRecommendedFeed()
+
+            val section = page.sections.single()
+            assertNull(section.header, "one plain run of items — the tab's title is header enough")
+            assertEquals(YtSection.LAYOUT_LIST, section.layout)
+            assertNull(page.continuation, "what's on disk IS the feed")
+
+            // Three related videos; the played video itself is not among its own recommendations.
+            assertEquals(3, section.items.size, "$page")
+            assertTrue(section.items.none { it.id == "yuuWdm5tBD0" }, "$page")
+            val first = section.items.first { it.id == "N30CFk9fHwg" }
+            assertEquals(YtFeedItem.KIND_VIDEO, first.kind)
+            assertEquals("Trạm Acoustic", first.subtitleLine1)
+            assertEquals("52:30", first.duration)
+            assertEquals("UCnTSVstwC_7cG6XEPrwvwGw", first.channelId)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun recommended_unions_plays_deduped_and_reshuffles_each_read() = runTest {
+        val (m, _) = manager(cacheStore()) { jsonResponse("{}").build(it) }
+        try {
+            // Two plays reporting the SAME related list: the union must not double up.
+            m.handleWebViewPlayNext("yuuWdm5tBD0", WATCH_NEXT_ENDSCREEN_FIXTURE)
+            m.handleWebViewPlayNext("N30CFk9fHwg", WATCH_NEXT_ENDSCREEN_FIXTURE)
+
+            val ids = m.getRecommendedFeed().sections.single().items.map { it.id }
+            // The second play's own id drops out of ITS payload but stays in the first play's.
+            assertEquals(ids.toSet().size, ids.size, "deduped across plays: $ids")
+            assertEquals(setOf("N30CFk9fHwg", "aYIhumdzhAo", "hmcGrZ42NNg", "yuuWdm5tBD0"), ids.toSet(), "$ids")
+
+            // Reshuffled per read — over enough reads the first slot must not be constant.
+            val firsts = (1..12).map { m.getRecommendedFeed().sections.single().items.first().id }
+            assertTrue(firsts.toSet().size > 1, "the feed reshuffles on every refresh: $firsts")
         } finally {
             m.close()
         }

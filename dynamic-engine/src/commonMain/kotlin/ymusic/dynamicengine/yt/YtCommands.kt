@@ -35,6 +35,32 @@ suspend fun DynamicEngineManager.extractHomeFeed(
 }
 
 /**
+ * Hand the engine the watch-next payload the WebView player's page reported for the music video it
+ * is playing ([contents] is that payload's JSON text, forwarded VERBATIM — the app never parses it).
+ * The engine parses and stores it; it is the only thing feeding [getRecommendedFeed]. Fire and
+ * forget: nothing comes back, and a failure here must never disturb playback.
+ */
+suspend fun DynamicEngineManager.handleWebViewPlayNext(videoId: String, contents: String) {
+    use { engine ->
+        engine.jsonCommand("yt/webview-next", { w ->
+            w.beginObject()
+            w.name("videoId").value(videoId)
+            w.name("contents").value(contents)
+            w.endObject()
+        }) { it.skipValue() }
+    }
+}
+
+/**
+ * The Recommended feed — built entirely from what [handleWebViewPlayNext] harvested, so it needs no
+ * network and returns an empty page until something has been played. Re-shuffled on every call.
+ */
+suspend fun DynamicEngineManager.getRecommendedFeed(): YtFeedPage = feedCommand("yt/recommended") { w ->
+    w.beginObject()
+    w.endObject()
+}
+
+/**
  * The Trending Music feed for [ctx]'s region — the charts YouTube publishes there (trending music
  * videos, top songs, top music videos, top songs on Shorts). One page: charts publish no
  * continuation. Section titles are engine-synthesized and carry a [YtSectionHeader.titleKey] the app
