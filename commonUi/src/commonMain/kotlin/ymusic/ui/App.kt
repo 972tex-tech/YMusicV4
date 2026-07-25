@@ -61,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -582,20 +583,26 @@ internal fun DiscoverTabRow(
     val density = LocalDensity.current
     // Each tab's centre (in the row's space) so the fixed-width indicator can slide between them.
     val centers = remember { mutableStateMapOf<DiscoverTab, Dp>() }
-    Column(Modifier.padding(start = if (underline) 20.dp else 0.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(if (underline) 24.dp else 20.dp)) {
+    // The tab's padding is INSIDE its clickable, so press/hover fills a square around the icon
+    // instead of hugging the glyph's own width. The row's spacing and leading inset are reduced by
+    // that padding, which keeps the icons drawn exactly where they were.
+    Column(Modifier.padding(start = if (underline) 20.dp - TabTouchPadding else 0.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy((if (underline) 24.dp else 20.dp) - TabTouchPadding * 2)) {
             DiscoverTab.entries.forEach { t ->
                 val active = t == selected
                 Box(
                     Modifier.onGloballyPositioned { c ->
                         val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
                         centers[t] = with(density) { (x + c.size.width / 2f).toDp() }
-                    }.clickable { onSelect(t) },
+                    }
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSelect(t) }
+                        .padding(TabTouchPadding),
                 ) {
                     Icon(
                         t.icon,
                         stringResource(t.label),
-                        Modifier.padding(top = 7.dp, bottom = 7.dp).size(22.dp),
+                        Modifier.size(22.dp),
                         tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
                     )
                 }
@@ -620,6 +627,9 @@ internal fun DiscoverTabRow(
 }
 
 private val DiscoverUnderlineWidth = 34.dp
+
+/** Breathing room around a Discover tab icon — the press/hover surface, not a visual gap. */
+private val TabTouchPadding = 7.dp
 
 @Composable
 private fun DiscoverFeed(
