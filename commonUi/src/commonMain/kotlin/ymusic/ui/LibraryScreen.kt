@@ -53,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -125,6 +127,7 @@ import ymusic.ui.resources.sort_type
 import ymusic.ui.resources.unknown_album
 import ymusic.ui.resources.unknown_artist
 import ymusic.ui.resources.unknown_genre
+import kotlin.math.abs
 
 private enum class LibraryTab(val label: StringResource) {
     Folders(Res.string.library_tab_folders),
@@ -195,15 +198,22 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             }
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
             val tabStateHolder = rememberSaveableStateHolder()
+            // Live swipe progress (−1..1) so the underline tracks the drag, not just the commit.
+            var tabDrag by remember { mutableFloatStateOf(0f) }
             Column(Modifier.fillMaxSize()) {
                 // The tab row is pinned under the app bar and elevates with it (one continuous
                 // surface); each tab's sort/breadcrumb scroll away with the content below.
                 ElevatedBarColumn {
-                    LibraryTabRow(tab) { tab = it }
+                    LibraryTabRow(tab, tabDrag) { tab = it }
                     HorizontalDivider(color = DesignColors.Divider)
                 }
                 CompositionLocalProvider(LocalLibraryReveal provides reveal) {
-                    SwipeTabSwitcher(tab, LibraryTab.entries, onSelect = { tab = it }) { current ->
+                    SwipeTabSwitcher(
+                        tab,
+                        LibraryTab.entries,
+                        onSelect = { tab = it },
+                        onDragProgress = { tabDrag = it },
+                    ) { current ->
                         tabStateHolder.SaveableStateProvider(current.name) {
                             when (current) {
                                 LibraryTab.Folders -> FoldersTab(
@@ -692,9 +702,10 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
 
 /** The Library's tab row — the same treatment as [DiscoverTabRow] (2dp underline indicator), with
  *  text labels instead of icons. A single indicator slides + stretches between tabs (each tab reports
- *  its offset/width) so the underline animates rather than snapping; the row scrolls when tabs overflow. */
+ *  its offset/width) so the underline animates rather than snapping; the row scrolls when tabs overflow.
+ *  [dragProgress] (−1..1, from the content swipe) lets the underline track a drag toward its neighbour. */
 @Composable
-private fun LibraryTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
+private fun LibraryTabRow(selected: LibraryTab, dragProgress: Float, onSelect: (LibraryTab) -> Unit) {
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
     // Each tab's (offset, width) in the row's own space — the sliding indicator reads the selected one.
@@ -731,9 +742,17 @@ private fun LibraryTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) 
                     }
                 }
             }
-            val target = bounds[selected]
-            val indicatorX by animateDpAsState(target?.first ?: 0.dp, label = "tabIndicatorX")
-            val indicatorWidth by animateDpAsState(target?.second ?: 0.dp, label = "tabIndicatorWidth")
+            // Interpolate toward the neighbour in the drag direction so the underline follows the swipe;
+            // at rest (dragProgress 0) it just sits on the selected tab. animateDpAsState smooths the
+            // hand-off when the drag releases or commits.
+            val cur = bounds[selected]
+            val i = LibraryTab.entries.indexOf(selected)
+            val neighbor = bounds[LibraryTab.entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, LibraryTab.entries.lastIndex)]]
+            val frac = abs(dragProgress)
+            val targetX = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
+            val targetWidth = if (cur != null && neighbor != null) lerp(cur.second, neighbor.second, frac) else cur?.second ?: 0.dp
+            val indicatorX by animateDpAsState(targetX, label = "tabIndicatorX")
+            val indicatorWidth by animateDpAsState(targetWidth, label = "tabIndicatorWidth")
             Box(
                 Modifier
                     .offset(x = indicatorX)

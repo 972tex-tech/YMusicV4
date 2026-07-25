@@ -403,6 +403,9 @@ internal fun <T> SwipeTabSwitcher(
     entries: List<T>,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
+    // Live drag progress in [-1, 1]: +1 = fully toward the next entry, -1 = fully toward the previous;
+    // 0 at rest. Lets an external indicator (the tab underline) track the drag, then reset on release.
+    onDragProgress: (Float) -> Unit = {},
     content: @Composable (T) -> Unit,
 ) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -423,7 +426,7 @@ internal fun <T> SwipeTabSwitcher(
                 val tracker = VelocityTracker()
                 detectHorizontalDragGestures(
                     onDragStart = { dx = 0f; tracker.resetTracking() },
-                    onDragCancel = { dx = 0f; tracker.resetTracking(); scope.launch { peek.animateTo(0f, PeekSpring) } },
+                    onDragCancel = { dx = 0f; tracker.resetTracking(); onDragProgress(0f); scope.launch { peek.animateTo(0f, PeekSpring) } },
                     onDragEnd = {
                         val flung = abs(tracker.calculateVelocity().x) >= velocity
                         // Swipe left (dx < 0) advances to the next entry; RTL flips it.
@@ -431,12 +434,15 @@ internal fun <T> SwipeTabSwitcher(
                         val next = entries.indexOf(selected) + if (advance) 1 else -1
                         if ((abs(dx) >= distance || flung) && next in entries.indices) onSelect(entries[next])
                         dx = 0f
+                        onDragProgress(0f)
                         // On commit the slide takes over from here; either way settle the peek back to rest.
                         scope.launch { peek.animateTo(0f, PeekSpring) }
                     },
                 ) { change, drag ->
                     dx += drag
                     tracker.addPosition(change.uptimeMillis, change.position)
+                    // Signed progress toward the entry in the drag direction (+ = next), for the indicator.
+                    onDragProgress(((if (rtl) dx else -dx) / distance).coerceIn(-1f, 1f))
                     // Damp the follow, and resist harder when there's no tab that way (first/last).
                     val forward = if (rtl) drag > 0 else drag < 0
                     val hasNext = (entries.indexOf(selected) + if (forward) 1 else -1) in entries.indices
