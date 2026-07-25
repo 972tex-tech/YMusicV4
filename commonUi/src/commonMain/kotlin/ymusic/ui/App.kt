@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -49,7 +51,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,16 +63,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.intl.Locale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -98,6 +105,7 @@ import ymusic.ui.resources.tab_home
 import ymusic.ui.resources.tab_music
 import ymusic.ui.resources.tab_recommended
 import ymusic.ui.resources.tab_top_tracks
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
@@ -197,6 +205,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val scanController = remember { ScanController(scope) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
+        // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
+        var discoverDrag by remember { mutableFloatStateOf(0f) }
         var nowPlayingOpen by rememberSaveable { mutableStateOf(false) }
         // Discover feeds cache per browseId — switching tab or navigating away and back must show
         // the already-loaded feed at its old scroll position, not reload it.
@@ -420,7 +430,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         )
                                     }
                                     if (section == AppSection.Discover && !wide) {
-                                        DiscoverTabRow(discoverTab, underline = true) { discoverTab = it }
+                                        DiscoverTabRow(discoverTab, underline = true, dragProgress = discoverDrag) { discoverTab = it }
                                         HorizontalDivider(color = DesignColors.Divider)
                                     }
                                 }
@@ -483,15 +493,22 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 // Library must come back on the tab and folder it was left on.
                                 null -> sectionStateHolder.SaveableStateProvider(section.name) {
                                     when (section) {
-                                        AppSection.Discover -> DiscoverFeed(
-                                            graph,
-                                            coordinator,
+                                        AppSection.Discover -> SwipeTabSwitcher(
                                             discoverTab,
-                                            discoverSessions,
-                                            scope,
-                                            onOpen = openItem,
-                                            onDeeplink = openDeeplink,
-                                        )
+                                            DiscoverTab.entries,
+                                            onSelect = { discoverTab = it },
+                                            onDragProgress = { discoverDrag = it },
+                                        ) { current ->
+                                            DiscoverFeed(
+                                                graph,
+                                                coordinator,
+                                                current,
+                                                discoverSessions,
+                                                scope,
+                                                onOpen = openItem,
+                                                onDeeplink = openDeeplink,
+                                            )
+                                        }
                                         AppSection.Library -> LibraryScreen(graph, coordinator)
                                         AppSection.Settings -> SettingsScreen(graph)
                                         AppSection.Catalogue -> CatalogueScreen()
@@ -520,38 +537,57 @@ enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val has
     Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
-/** Icon tabs with the 2dp underline indicator; [underline] off for the inline (app bar) form. */
+/** Icon tabs with the 2dp underline indicator; [underline] off for the inline (app bar) form. A single
+ *  indicator slides between tabs (and leans toward the neighbour by [dragProgress], −1..1, from the
+ *  content swipe) instead of the underline snapping tab-to-tab. */
 @Composable
-internal fun DiscoverTabRow(selected: DiscoverTab, underline: Boolean, onSelect: (DiscoverTab) -> Unit) {
-    Row(
-        Modifier.padding(start = if (underline) 20.dp else 0.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (underline) 24.dp else 20.dp),
-    ) {
-        DiscoverTab.entries.forEach { t ->
-            val active = t == selected
-            Column(
-                Modifier.clickable { onSelect(t) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    t.icon,
-                    stringResource(t.label),
-                    Modifier.padding(top = 7.dp, bottom = 7.dp).size(22.dp),
-                    tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                )
+internal fun DiscoverTabRow(
+    selected: DiscoverTab,
+    underline: Boolean,
+    dragProgress: Float = 0f,
+    onSelect: (DiscoverTab) -> Unit,
+) {
+    val density = LocalDensity.current
+    // Each tab's centre (in the row's space) so the fixed-width indicator can slide between them.
+    val centers = remember { mutableStateMapOf<DiscoverTab, Dp>() }
+    Column(Modifier.padding(start = if (underline) 20.dp else 0.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(if (underline) 24.dp else 20.dp)) {
+            DiscoverTab.entries.forEach { t ->
+                val active = t == selected
                 Box(
-                    Modifier
-                        .width(34.dp)
-                        .height(2.dp)
-                        .background(
-                            if (active && underline) DesignColors.Accent else Color.Transparent,
-                            RoundedCornerShape(2.dp),
-                        ),
-                )
+                    Modifier.onGloballyPositioned { c ->
+                        val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                        centers[t] = with(density) { (x + c.size.width / 2f).toDp() }
+                    }.clickable { onSelect(t) },
+                ) {
+                    Icon(
+                        t.icon,
+                        stringResource(t.label),
+                        Modifier.padding(top = 7.dp, bottom = 7.dp).size(22.dp),
+                        tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
+                    )
+                }
             }
+        }
+        if (underline) {
+            val cur = centers[selected]
+            val i = DiscoverTab.entries.indexOf(selected)
+            val neighbor = centers[DiscoverTab.entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, DiscoverTab.entries.lastIndex)]]
+            val frac = abs(dragProgress) * TabIndicatorDragTravel
+            val targetCenter = if (cur != null && neighbor != null) lerp(cur, neighbor, frac) else cur ?: 0.dp
+            val center by animateDpAsState(targetCenter, label = "discoverIndicator")
+            Box(
+                Modifier
+                    .offset(x = center - DiscoverUnderlineWidth / 2)
+                    .width(DiscoverUnderlineWidth)
+                    .height(2.dp)
+                    .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
+            )
         }
     }
 }
+
+private val DiscoverUnderlineWidth = 34.dp
 
 @Composable
 private fun DiscoverFeed(

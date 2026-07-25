@@ -468,6 +468,9 @@ internal fun <T> SwipeTabSwitcher(
     }
 }
 
+/** Fraction of the way to the neighbour a tab underline leans while dragging (the rest lands on commit). */
+internal const val TabIndicatorDragTravel = 0.2f
+
 private val SwipeSwitchDistance = 56.dp
 private val SwipeSwitchVelocity = 400.dp // per second
 private val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the finger

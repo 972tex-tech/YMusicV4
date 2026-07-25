@@ -700,9 +700,6 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
-/** Fraction of the way to the neighbour the underline leans while dragging (the rest lands on commit). */
-private const val TabIndicatorDragTravel = 0.2f
-
 /** The Library's tab row — the same treatment as [DiscoverTabRow] (2dp underline indicator), with
  *  text labels instead of icons. A single indicator slides + stretches between tabs (each tab reports
  *  its offset/width) so the underline animates rather than snapping; the row scrolls when tabs overflow.
