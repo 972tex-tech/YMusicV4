@@ -70,6 +70,7 @@ import ymusic.player.createWebViewPlayer
 import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ui.AppHttpClients
 import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
@@ -137,11 +138,13 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // (cookie/get|set protocol) so cookie policy lives in the remotely-updatable bundle.
     val cefClient = cefManager.createClient()
     val platformCookies = JcefCookieJar(cefManager.awaitCookieManager())
-    val engineClient = KmpHttpClient.create { }
+    // One client stack, one disk cache: the engine (no cookie jar — the scraping JS owns cookie
+    // policy) and the player's embed fetch (platform cookies) share it.
+    val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath())
     val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
-            engineClient,
+            http.engine,
             appVersion = 1,
             logger = StdoutLogger,
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
@@ -188,7 +191,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                         appVersion = 1,
                         // The embed fetch is a browser-identity request — it rides the platform
                         // cookie store like the WebView's own traffic (unlike the engine client).
-                        httpClient = KmpHttpClient.create { cookieJar = platformCookies },
+                        httpClient = http.withCookies(platformCookies),
                     )
                 },
             ),

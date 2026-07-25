@@ -55,6 +55,7 @@ import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ui.AppHttpClients
 import java.io.File
 
 /**
@@ -147,10 +148,11 @@ class MainActivity : ComponentActivity() {
         // NO jar: the engine JS cooks every Cookie header itself against this store (cookie/get|set
         // protocol), so cookie policy lives in the remotely-updatable bundle.
         val platformCookies = WebViewCookieJar()
-        val engineClient = KmpHttpClient.create { }
+        // One client stack, one disk cache, shared by the engine and the player's embed fetch.
+        val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath())
         val settings = PrefsSettingsStore.open(this)
         val engines = DynamicEngineManager(
-            engineClient,
+            http.engine,
             appVersion = 1,
             logger = LogcatLogger(),
             cacheStore = androidEngineCacheStore(applicationContext),
@@ -178,7 +180,7 @@ class MainActivity : ComponentActivity() {
                             appVersion = 1,
                             // The embed fetch is a browser-identity request — it rides the platform
                             // cookie store like the WebView's own traffic (unlike the engine client).
-                            httpClient = KmpHttpClient.create { cookieJar = platformCookies },
+                            httpClient = http.withCookies(platformCookies),
                         )
                     }
                 },

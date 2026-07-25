@@ -84,11 +84,16 @@ private fun Center(content: @Composable () -> Unit) {
 private suspend fun buildIosGraph(container: UIView): AppGraph {
     // One live store shared by InnerTube HTTP and WKWebView's own YouTube requests.
     val cookies = IosWebViewCookieJar()
-    val engineClient = KmpHttpClient.create { }
-    val playerClient = KmpHttpClient.create { cookieJar = cookies }
+    // One client stack, one disk cache, shared by the engine and the player's embed fetch.
+    val http = AppHttpClients(
+        (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
+            .toPath()
+            .resolve("ymusic-http-cache"),
+    )
+    val playerClient = http.withCookies(cookies)
     val settings = IosSettingsStore()
     val engines = DynamicEngineManager(
-        engineClient,
+        http.engine,
         appVersion = 1,
         logger = IosLogger,
         cookieJar = cookies,
