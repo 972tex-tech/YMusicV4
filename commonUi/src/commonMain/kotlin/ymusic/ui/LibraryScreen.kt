@@ -198,48 +198,50 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     HorizontalDivider(color = DesignColors.Divider)
                 }
                 CompositionLocalProvider(LocalLibraryReveal provides reveal) {
-                    tabStateHolder.SaveableStateProvider(tab.name) {
-                        when (tab) {
-                            LibraryTab.Folders -> FoldersTab(
-                                store,
-                                loaded,
-                                coordinator,
-                                graph.scanLibraryFolder,
-                                graph.rescanLibrary,
-                                scanController,
-                                revealBucket,
-                                onRevealHandled = { revealBucket = null },
-                            )
-                            LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
-                            LibraryTab.Songs -> {
-                                val sort = rememberSortState("sort.songs")
-                                SongList(
-                                    sort.sort(loaded.songs, songSortOptions),
+                    SwipeTabSwitcher(tab, LibraryTab.entries, onSelect = { tab = it }) { current ->
+                        tabStateHolder.SaveableStateProvider(current.name) {
+                            when (current) {
+                                LibraryTab.Folders -> FoldersTab(
+                                    store,
+                                    loaded,
                                     coordinator,
-                                    header = { SortBar(songSortOptions.map { it.label }, sort) },
+                                    graph.scanLibraryFolder,
+                                    graph.rescanLibrary,
+                                    scanController,
+                                    revealBucket,
+                                    onRevealHandled = { revealBucket = null },
                                 )
+                                LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
+                                LibraryTab.Songs -> {
+                                    val sort = rememberSortState("sort.songs")
+                                    SongList(
+                                        sort.sort(loaded.songs, songSortOptions),
+                                        coordinator,
+                                        header = { SortBar(songSortOptions.map { it.label }, sort) },
+                                    )
+                                }
+                                LibraryTab.Artists ->
+                                    GroupedList(
+                                        loaded.songs,
+                                        Icons.Default.Person,
+                                        stringResource(Res.string.unknown_artist),
+                                        coordinator,
+                                    ) { it.artist }
+                                LibraryTab.Albums ->
+                                    GroupedList(
+                                        loaded.songs,
+                                        Icons.Default.Album,
+                                        stringResource(Res.string.unknown_album),
+                                        coordinator,
+                                    ) { it.album }
+                                LibraryTab.Genres ->
+                                    GroupedList(
+                                        loaded.songs,
+                                        Icons.Default.Category,
+                                        stringResource(Res.string.unknown_genre),
+                                        coordinator,
+                                    ) { it.genre }
                             }
-                            LibraryTab.Artists ->
-                                GroupedList(
-                                    loaded.songs,
-                                    Icons.Default.Person,
-                                    stringResource(Res.string.unknown_artist),
-                                    coordinator,
-                                ) { it.artist }
-                            LibraryTab.Albums ->
-                                GroupedList(
-                                    loaded.songs,
-                                    Icons.Default.Album,
-                                    stringResource(Res.string.unknown_album),
-                                    coordinator,
-                                ) { it.album }
-                            LibraryTab.Genres ->
-                                GroupedList(
-                                    loaded.songs,
-                                    Icons.Default.Category,
-                                    stringResource(Res.string.unknown_genre),
-                                    coordinator,
-                                ) { it.genre }
                         }
                     }
                 }

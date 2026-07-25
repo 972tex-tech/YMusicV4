@@ -1,12 +1,21 @@
 package ymusic.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +25,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,19 +58,24 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -75,6 +90,7 @@ import ymusic.ui.resources.cd_menu
 import ymusic.ui.resources.cd_more_tabs
 import ymusic.ui.resources.cd_search
 import ymusic.ui.resources.search_youtube
+import kotlin.math.abs
 
 /*
  * The ONE app-bar language, every scenario (see the "App bars" catalogue group):
@@ -369,6 +385,89 @@ internal fun Modifier.horizontalWheelScroll(scrollState: ScrollableState): Modif
     }
 
 private const val WheelScrollStep = 64f
+
+/**
+ * Swipe left/right on the body to step to the adjacent entry, with a slide animation — a lightweight
+ * alternative to HorizontalPager that composes ONLY the current page. A pager keeps its neighbours
+ * alive and eagerly loads their data (memory + jank the user may never see); this composes the outgoing
+ * page only for the ~[SwipeSwitchDurationMs] of the transition, then drops it.
+ *
+ * A horizontal drag past [SwipeSwitchDistance], or a flick past [SwipeSwitchVelocity], commits the
+ * switch; a mostly-vertical drag never crosses horizontal slop, so the scrolling body keeps it. RTL
+ * mirrors both the trigger direction and the slide. It's a discrete gesture (no 1:1 finger tracking) —
+ * that's the trade for not rendering neighbours.
+ */
+@Composable
+internal fun <T> SwipeTabSwitcher(
+    selected: T,
+    entries: List<T>,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable (T) -> Unit,
+) {
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // Live feedback: the page rubber-bands toward the drag so the gesture is visible under the finger,
+    // then springs back if you release short of the commit threshold. Only the current page moves —
+    // still nothing rendered on the side.
+    val peek = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    Box(
+        modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .pointerInput(selected, entries, rtl) {
+                val distance = SwipeSwitchDistance.toPx()
+                val velocity = SwipeSwitchVelocity.toPx()
+                val maxPeek = SwipeSwitchPeek.toPx()
+                var dx = 0f
+                val tracker = VelocityTracker()
+                detectHorizontalDragGestures(
+                    onDragStart = { dx = 0f; tracker.resetTracking() },
+                    onDragCancel = { dx = 0f; tracker.resetTracking(); scope.launch { peek.animateTo(0f, PeekSpring) } },
+                    onDragEnd = {
+                        val flung = abs(tracker.calculateVelocity().x) >= velocity
+                        // Swipe left (dx < 0) advances to the next entry; RTL flips it.
+                        val advance = if (rtl) dx > 0 else dx < 0
+                        val next = entries.indexOf(selected) + if (advance) 1 else -1
+                        if ((abs(dx) >= distance || flung) && next in entries.indices) onSelect(entries[next])
+                        dx = 0f
+                        // On commit the slide takes over from here; either way settle the peek back to rest.
+                        scope.launch { peek.animateTo(0f, PeekSpring) }
+                    },
+                ) { change, drag ->
+                    dx += drag
+                    tracker.addPosition(change.uptimeMillis, change.position)
+                    // Damp the follow, and resist harder when there's no tab that way (first/last).
+                    val forward = if (rtl) drag > 0 else drag < 0
+                    val hasNext = (entries.indexOf(selected) + if (forward) 1 else -1) in entries.indices
+                    val resist = if (hasNext) SwipeSwitchResist else SwipeSwitchResist * 0.3f
+                    val target = (peek.value + drag * resist).coerceIn(-maxPeek, maxPeek)
+                    scope.launch { peek.snapTo(target) }
+                    change.consume()
+                }
+            },
+    ) {
+        AnimatedContent(
+            targetState = selected,
+            transitionSpec = {
+                // The new page enters from the side you're heading toward; the old exits the other way.
+                val advancing = entries.indexOf(targetState) > entries.indexOf(initialState)
+                val sign = if (advancing != rtl) 1 else -1
+                slideInHorizontally(tween(SwipeSwitchDurationMs)) { w -> sign * w }
+                    .togetherWith(slideOutHorizontally(tween(SwipeSwitchDurationMs)) { w -> -sign * w })
+            },
+            label = "tab",
+            modifier = Modifier.graphicsLayer { translationX = peek.value },
+        ) { current -> content(current) }
+    }
+}
+
+private val SwipeSwitchDistance = 56.dp
+private val SwipeSwitchVelocity = 400.dp // per second
+private val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the finger
+private const val SwipeSwitchResist = 0.4f // fraction of the drag the page follows
+private const val SwipeSwitchDurationMs = 220
+private val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */
 @Composable
