@@ -31,6 +31,7 @@ import platform.Foundation.stringWithContentsOfFile
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.dynamicengine.appleEngineCacheStore
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
 import ymusic.imageloader.fileFetcher
@@ -92,6 +93,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         logger = IosLogger,
         cookieJar = cookies,
         settings = settings,
+        cacheStore = appleEngineCacheStore(),
     )
     engines.start()
 
