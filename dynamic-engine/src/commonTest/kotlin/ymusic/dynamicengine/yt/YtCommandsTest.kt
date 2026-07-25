@@ -550,6 +550,26 @@ class YtCommandsTest {
     }
 
     @Test
+    fun watch_next_ignores_the_end_screen_repeat_of_its_own_related_videos() = runTest {
+        // The watch page's end screen lists the SAME related videos again, as the leaf kind the
+        // embedded player reports (endScreenVideoRenderer) — collecting both would put every
+        // related video in the autoplay queue twice. What prevents it is that the page walk scans
+        // an allow-list of roots (contents + the onResponseReceived* actions) and never the whole
+        // response; this pins that, since the end-screen shape became a leaf kind for the
+        // Recommended harvest.
+        val (m, _) = manager { jsonResponse(NEXT_WITH_OVERLAYS_FIXTURE).build(it) }
+        try {
+            val page = m.watchNext(videoId = "yuuWdm5tBD0")
+
+            val ids = page.sections.flatMap { it.items }.map { it.id }
+            assertEquals(listOf("N30CFk9fHwg", "aYIhumdzhAo"), ids, "each related video exactly once: $page")
+            assertEquals("N30CFk9fHwg", page.autoplayVideoId)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
     fun watch_next_parses_lockups_and_autoplay() = runTest {
         val (m, _) = manager { jsonResponse(NEXT_FIXTURE).build(it) }
         try {
