@@ -398,6 +398,7 @@ class YtCommandsTest {
             )
             assertEquals("Daily Top Music Videos", page.sections[2].header?.title, "the English fallback title")
             assertTrue(page.sections.all { it.layout == YtSection.LAYOUT_LIST }, "charts are ranked lists")
+            assertTrue(page.sections.all { it.collapsible }, "a 30–100 entry chart collapses to a teaser")
             assertNull(page.continuation, "charts publish no continuation")
 
             val trending = page.sections[0].items[0]

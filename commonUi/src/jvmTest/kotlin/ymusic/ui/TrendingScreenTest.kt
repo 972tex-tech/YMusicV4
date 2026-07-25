@@ -1,7 +1,10 @@
 package ymusic.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -54,10 +57,49 @@ class TrendingScreenTest {
                 // Its first entry: title, the credited artist, the chart position.
                 waitUntilAtLeastOneExists(hasText("Dead Fresh", substring = true), 10_000)
                 waitUntilAtLeastOneExists(hasText("Lil Baby · #1", substring = true), 10_000)
+                // Collapsed, so every chart's header is on screen at once — the third one included.
+                waitUntilAtLeastOneExists(hasText("Daily Top Music Videos"), 10_000)
 
                 val sent = assertNotNull(chartsRequest.get(), "the charts host was never called")
                 assertTrue(sent.contains(""""clientName":"WEB_MUSIC_ANALYTICS""""), sent)
                 assertTrue(sent.contains(""""browseId":"FEmusic_analytics_charts_home""""), sent)
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
+
+    /** Each chart opens as a teaser: two entries plus a "Show more" that reveals the rest. */
+    @Test
+    fun charts_start_collapsed_and_expand_on_demand() {
+        Locale.setDefault(Locale.ENGLISH)
+        val chartsJson = checkNotNull(javaClass.classLoader.getResource("yt-charts-live.json")).readText()
+        val client = CannedHttp { request, _ ->
+            val url = request.url.toString()
+            when {
+                url.contains("charts.youtube.com") -> textResponse(request, chartsJson, "application/json")
+                request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
+                    textResponse(request, HOMEPAGE_FIXTURE, "text/html")
+                else -> textResponse(request, "{}", "application/json")
+            }
+        }
+        val engines = DynamicEngineManager(client, appVersion = 1)
+        runBlocking { engines.start() }
+        try {
+            runComposeUiTest {
+                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
+                setContent { App(graph) }
+
+                onNodeWithContentDescription("Music").performClick()
+                waitUntilAtLeastOneExists(hasText("Trending Music Videos"), 20_000)
+
+                // The trending chart holds 10 entries in the capture. How many the teaser shows is
+                // the app's responsive call (2 in a list, one row in a grid) — what matters is that
+                // entry #4 is behind the button either way, and comes into view when it's pressed.
+                onAllNodesWithText("Quiet on the Creek", substring = true).assertCountEquals(0)
+                onAllNodesWithText("Show more", substring = true).onFirst().performClick()
+
+                waitUntilAtLeastOneExists(hasText("Quiet on the Creek", substring = true), 10_000)
             }
         } finally {
             runBlocking { engines.close() }
