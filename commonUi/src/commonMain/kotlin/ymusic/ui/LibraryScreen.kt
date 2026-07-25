@@ -700,6 +700,9 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
+/** Fraction of the way to the neighbour the underline leans while dragging (the rest lands on commit). */
+private const val TabIndicatorDragTravel = 0.3f
+
 /** The Library's tab row — the same treatment as [DiscoverTabRow] (2dp underline indicator), with
  *  text labels instead of icons. A single indicator slides + stretches between tabs (each tab reports
  *  its offset/width) so the underline animates rather than snapping; the row scrolls when tabs overflow.
@@ -748,7 +751,9 @@ private fun LibraryTabRow(selected: LibraryTab, dragProgress: Float, onSelect: (
             val cur = bounds[selected]
             val i = LibraryTab.entries.indexOf(selected)
             val neighbor = bounds[LibraryTab.entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, LibraryTab.entries.lastIndex)]]
-            val frac = abs(dragProgress)
+            // Only a partial lean toward the neighbour while dragging (a hint, not a full slide); the
+            // commit animation carries the rest.
+            val frac = abs(dragProgress) * TabIndicatorDragTravel
             val targetX = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
             val targetWidth = if (cur != null && neighbor != null) lerp(cur.second, neighbor.second, frac) else cur?.second ?: 0.dp
             val indicatorX by animateDpAsState(targetX, label = "tabIndicatorX")
