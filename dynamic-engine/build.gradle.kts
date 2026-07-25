@@ -112,16 +112,32 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
         doLast {
             val bundle = config.singleFile.readText()
             check(bundle.isNotBlank()) { "engine-js produced an empty bundle for " + configName }
-            val escaped = bundle
+            fun escape(s: String) = s
                 .replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("${'$'}", "${'$'}{'${'$'}'}").replace("\n", "\\n").replace("\t", "\\t")
+            // A JVM string constant is capped at 65535 UTF-8 BYTES, and the bundle passed that —
+            // so it ships as chunks concatenated at class-init. Chunks are cut on char boundaries
+            // that never split a surrogate pair, and sized in bytes for the worst-case encoding.
+            val chunks = mutableListOf<String>()
+            var start = 0
+            while (start < bundle.length) {
+                var end = minOf(start + 16_000, bundle.length)
+                if (end < bundle.length && bundle[end - 1].isHighSurrogate()) end++
+                chunks += bundle.substring(start, end)
+                start = end
+            }
+            val parts = chunks.mapIndexed { i, chunk ->
+                "private const val ${constName}_$i: String = \"${escape(chunk)}\""
+            }
             val dir = ktDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
             dir.resolve(ktFile).writeText(
                 """
                 |package ymusic.dynamicengine.internal
                 |
                 |// GENERATED — do not edit. The :engine-js "$projectConfig" artifact, embedded at build time.
-                |internal const val $constName: String = "$escaped"
+                |${parts.joinToString("\n|")}
+                |
+                |internal val $constName: String = ${chunks.indices.joinToString(" + ") { "${constName}_$it" }}
                 |""".trimMargin(),
             )
         }
