@@ -15,7 +15,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +71,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
@@ -422,34 +426,48 @@ internal fun <T> SwipeTabSwitcher(
                 val distance = SwipeSwitchDistance.toPx()
                 val velocity = SwipeSwitchVelocity.toPx()
                 val maxPeek = SwipeSwitchPeek.toPx()
-                var dx = 0f
-                val tracker = VelocityTracker()
-                detectHorizontalDragGestures(
-                    onDragStart = { dx = 0f; tracker.resetTracking() },
-                    onDragCancel = { dx = 0f; tracker.resetTracking(); onDragProgress(0f); scope.launch { peek.animateTo(0f, PeekSpring) } },
-                    onDragEnd = {
+                val edge = SwipeEdgeReserve.toPx()
+
+                // Report progress (for the indicator) + rubber-band the page from the total drag.
+                fun reportDrag(dx: Float) {
+                    onDragProgress(((if (rtl) dx else -dx) / distance).coerceIn(-1f, 1f))
+                    val forward = if (rtl) dx > 0 else dx < 0
+                    val hasNext = (entries.indexOf(selected) + if (forward) 1 else -1) in entries.indices
+                    val resist = if (hasNext) SwipeSwitchResist else SwipeSwitchResist * 0.3f
+                    scope.launch { peek.snapTo((dx * resist).coerceIn(-maxPeek, maxPeek)) }
+                }
+
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Leave the screen edges to the OS back gesture and the nav drawer's swipe-to-open,
+                    // which is a whole-screen drag we'd otherwise swallow (see App's ModalNavigationDrawer).
+                    if (down.position.x < edge || down.position.x > size.width - edge) return@awaitEachGesture
+                    var dx = 0f
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
+                    val past = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
+                        dx += over
+                        tracker.addPosition(change.uptimeMillis, change.position)
+                        reportDrag(dx)
+                        change.consume()
+                    }
+                    if (past == null) return@awaitEachGesture // canceled before slop (tap / vertical scroll won)
+                    val completed = horizontalDrag(down.id) { change ->
+                        dx += change.positionChange().x
+                        tracker.addPosition(change.uptimeMillis, change.position)
+                        reportDrag(dx)
+                        change.consume()
+                    }
+                    if (completed) {
                         val flung = abs(tracker.calculateVelocity().x) >= velocity
                         // Swipe left (dx < 0) advances to the next entry; RTL flips it.
                         val advance = if (rtl) dx > 0 else dx < 0
                         val next = entries.indexOf(selected) + if (advance) 1 else -1
                         if ((abs(dx) >= distance || flung) && next in entries.indices) onSelect(entries[next])
-                        dx = 0f
-                        onDragProgress(0f)
-                        // On commit the slide takes over from here; either way settle the peek back to rest.
-                        scope.launch { peek.animateTo(0f, PeekSpring) }
-                    },
-                ) { change, drag ->
-                    dx += drag
-                    tracker.addPosition(change.uptimeMillis, change.position)
-                    // Signed progress toward the entry in the drag direction (+ = next), for the indicator.
-                    onDragProgress(((if (rtl) dx else -dx) / distance).coerceIn(-1f, 1f))
-                    // Damp the follow, and resist harder when there's no tab that way (first/last).
-                    val forward = if (rtl) drag > 0 else drag < 0
-                    val hasNext = (entries.indexOf(selected) + if (forward) 1 else -1) in entries.indices
-                    val resist = if (hasNext) SwipeSwitchResist else SwipeSwitchResist * 0.3f
-                    val target = (peek.value + drag * resist).coerceIn(-maxPeek, maxPeek)
-                    scope.launch { peek.snapTo(target) }
-                    change.consume()
+                    }
+                    onDragProgress(0f)
+                    // On commit the slide takes over from here; either way settle the peek back to rest.
+                    scope.launch { peek.animateTo(0f, PeekSpring) }
                 }
             },
     ) {
@@ -476,6 +494,10 @@ private val SwipeSwitchVelocity = 400.dp // per second
 private val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the finger
 private const val SwipeSwitchResist = 0.4f // fraction of the drag the page follows
 private const val SwipeSwitchDurationMs = 220
+
+// Leave this much of each screen edge to the OS back gesture and the nav drawer's swipe-to-open
+// (both are edge drags that would otherwise be swallowed by the tab swipe).
+private val SwipeEdgeReserve = 20.dp
 private val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */
