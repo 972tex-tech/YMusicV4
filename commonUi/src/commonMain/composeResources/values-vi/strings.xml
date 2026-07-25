@@ -110,6 +110,11 @@
 
     <string name="settings_language">Ngôn ngữ</string>
     <string name="settings_language_system">Theo hệ thống</string>
+    <string name="settings_content_language">Ngôn ngữ nội dung</string>
+    <string name="settings_content_region">Khu vực nội dung</string>
+    <string name="settings_content_auto">Tự động</string>
+    <string name="settings_content_auto_detected">Tự động (%1$s)</string>
+    <string name="settings_content_locale_hint">Nội dung YouTube trả về: tìm kiếm, bảng xếp hạng và văn bản trong nguồn cấp.</string>
     <string name="settings_theme">Giao diện</string>
     <string name="settings_theme_system">Theo hệ thống</string>
     <string name="settings_theme_light">Sáng</string>

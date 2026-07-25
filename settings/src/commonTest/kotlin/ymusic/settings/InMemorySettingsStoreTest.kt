@@ -57,8 +57,8 @@ class InMemorySettingsStoreTest {
     fun appSettingsAccessors() =
         runTest {
             val store = InMemorySettingsStore()
-            assertEquals("en", store.flow(AppSettings.hl).value)
-            assertEquals("US", store.flow(AppSettings.gl).value)
+            assertEquals("", store.flow(AppSettings.hl).value)
+            assertEquals("", store.flow(AppSettings.gl).value)
             assertEquals("", store.flow(AppSettings.themeAccent).value)
 
             store.put(AppSettings.hl, "vi")

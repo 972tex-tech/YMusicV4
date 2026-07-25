@@ -8,8 +8,10 @@ import ymusic.dynamicengine.yt.YtContext
 import ymusic.imageloader.ImageLoader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.player.Player
+import ymusic.settings.AppSettings
 import ymusic.settings.InMemorySettingsStore
 import ymusic.settings.SettingsStore
+import ymusic.settings.flow
 
 internal const val PlaybackQualitySettingKey = "player.preferVideoQuality"
 
@@ -33,7 +35,6 @@ typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
 class AppGraph(
     val engines: DynamicEngineManager,
     val player: Player,
-    val ytContext: YtContext = YtContext(),
     val mediaStore: BetterMediaStore? = null,
     val scanLibraryFolder: ScanAction? = null,
     /**
@@ -56,6 +57,18 @@ class AppGraph(
     val surfaceScalesDown: Boolean = false,
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
+    /**
+     * The `hl`/`gl` every InnerTube call carries, resolved from settings on read so a picker change
+     * reaches callers that hold no composition (playback autoplay, an open detail page's next
+     * continuation). Composables that must RE-RUN on a change read [rememberYtContext] instead.
+     */
+    val ytContext: YtContext
+        get() = resolveYtContext(
+            hl = settings.flow(AppSettings.hl).value,
+            gl = settings.flow(AppSettings.gl).value,
+            glDetected = settings.flow(AppSettings.glDetected).value,
+        )
+
     /** App-wide reload signal (desktop F5/Cmd+R): the visible feed surface refetches. */
     val refreshRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 

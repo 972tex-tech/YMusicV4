@@ -85,10 +85,12 @@ import ymusic.dynamicengine.yt.extractHomeFeed
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import ymusic.dynamicengine.yt.getRecommendedFeed
 import ymusic.dynamicengine.yt.handleWebViewPlayNext
+import ymusic.dynamicengine.yt.ytLocale
 import ymusic.player.PlayableItem
 import ymusic.player.VideoQualityState
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
+import ymusic.settings.put
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.coming_soon
 import ymusic.ui.resources.discover_needs_account
@@ -156,6 +158,12 @@ internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.Mutable
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
     var section by sectionState
+    // Ask YouTube where it thinks this connection is, once per start. Cheap (it rides the cached
+    // InnerTube session) and it only seeds a default — an explicit region pick always wins.
+    LaunchedEffect(graph.engines, graph.settings) {
+        runCatching { graph.engines.ytLocale() }
+            .onSuccess { if (it.gl.isNotBlank()) graph.settings.put(AppSettings.glDetected, it.gl) }
+    }
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUDIO_ONLY).value
         graph.player.selectVideoQuality(quality)
@@ -224,6 +232,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // Discover feeds cache per browseId — switching tab or navigating away and back must show
         // the already-loaded feed at its old scroll position, not reload it.
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
+        // hl/gl decide what every feed CONTAINS and the language of its server-composed text, so a
+        // picker change throws the cached pages away instead of only affecting the next fetch. It
+        // lives here, not in DiscoverFeed: that composable is disposed while a search or detail
+        // layer is open, and a remember there would re-clear the cache on every return.
+        val ytContext = rememberYtContext(graph)
+        remember(ytContext) { discoverSessions.clear() }
         // Each section retains its OWN layer stack: the drawer switches sections laterally — no
         // push, no clear — so Discover's search/results/detail pages survive a trip through
         // Library and are exactly where the user left them on return. The stacks never mix:
@@ -520,6 +534,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 graph,
                                                 coordinator,
                                                 current,
+                                                ytContext,
                                                 discoverSessions,
                                                 scope,
                                                 onOpen = openItem,
@@ -611,6 +626,7 @@ private fun DiscoverFeed(
     graph: AppGraph,
     coordinator: PlaybackCoordinator,
     tab: DiscoverTab,
+    ctx: ymusic.dynamicengine.yt.YtContext,
     sessions: MutableMap<String, FeedSession>,
     scope: kotlinx.coroutines.CoroutineScope,
     onOpen: ((ymusic.dynamicengine.yt.YtFeedItem) -> Unit)? = null,
@@ -631,7 +647,7 @@ private fun DiscoverFeed(
         val recommended = tab == DiscoverTab.Recommended
         // Cached per tab (and on the app scope): coming back to the tab — or back from
         // search / a detail page — shows the feed as it was, no reload.
-        val session = remember(tab) {
+        val session = remember(tab, ctx) {
             if (recommended) {
                 FeedSession(localScope) { graph.engines.getRecommendedFeed() }.also { it.pager.refresh() }
             } else {
@@ -639,11 +655,11 @@ private fun DiscoverFeed(
                     FeedSession(scope) { continuation ->
                         when (tab) {
                             // The region's music charts — one page, no continuation ever arrives.
-                            DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(ctx = graph.ytContext)
+                            DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(ctx = ctx)
                             else -> {
                                 val page = graph.engines.extractHomeFeed(
                                     continuation = continuation,
-                                    ctx = graph.ytContext,
+                                    ctx = ctx,
                                 )
                                 // Home is a music app's front door: music first (per section —
                                 // reordering across sections would tear headers off their items).
