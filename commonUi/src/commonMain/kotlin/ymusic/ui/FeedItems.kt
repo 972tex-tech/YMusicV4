@@ -198,7 +198,9 @@ fun FeedListItem(
         modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            // The trailing inset is the ⋮ button's own touch padding, so the row stops 4dp short of
+            // the edge — same as the Library song row, so the two lists' dots align.
+            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -220,7 +222,8 @@ fun FeedListItem(
             }
         }
         when {
-            item.ctaText != null -> CtaPill(item.ctaText!!)
+            // A pill has no touch padding to absorb the row's trailing inset, so it carries its own.
+            item.ctaText != null -> CtaPill(item.ctaText!!, modifier = Modifier.padding(end = 12.dp))
             actions.entries.isNotEmpty() -> MoreMenu(actions, Modifier.align(Alignment.Top).padding(top = 2.dp))
         }
     }
@@ -347,14 +350,14 @@ fun ShowMoreButton(label: String, expanded: Boolean, onClick: () -> Unit, modifi
 /** The outlined pill CTA on channel items ("Subscribe"); hover turns it accent. Real action lands
  *  with accounts. */
 @Composable
-internal fun CtaPill(text: String, onClick: () -> Unit = {}) {
+internal fun CtaPill(text: String, onClick: () -> Unit = {}, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val color = if (hovered) DesignColors.Accent else DesignColors.Ink
     Text(
         text,
         style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color),
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(999.dp))
             .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
             .border(1.4.dp, color, RoundedCornerShape(999.dp))
