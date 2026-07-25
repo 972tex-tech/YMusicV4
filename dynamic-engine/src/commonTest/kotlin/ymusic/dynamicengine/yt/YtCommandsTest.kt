@@ -732,4 +732,42 @@ class YtCommandsTest {
             m.close()
         }
     }
+
+    @Test
+    fun detected_locale_is_youtubes_own_answer_for_this_connection() = runTest {
+        val (m, client) = manager { jsonResponse("{}").build(it) }
+        try {
+            val locale = m.ytLocale()
+
+            // Straight off the bootstrap homepage's ytcfg — the app asserts no gl to get it, and
+            // asking twice costs nothing beyond the (cached) session.
+            assertEquals("VN", locale.gl)
+            assertEquals("en", locale.hl)
+            assertTrue(locale.regions.isEmpty(), "the cheap call carries no menus")
+            val requests = client.requestCount
+            m.ytLocale()
+            assertEquals(requests, client.requestCount, "the second ask rides the cached session")
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun locale_options_are_youtubes_own_menus_labelled_in_the_asked_language() = runTest {
+        val (m, _) = manager { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
+        try {
+            val locales = m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+
+            assertEquals(listOf("af" to "Afrikaans", "vi" to "Tiếng Việt"), locales.languages.map { it.code to it.label })
+            assertEquals(listOf("US" to "Hoa Kỳ", "VN" to "Việt Nam"), locales.regions.map { it.code to it.label })
+            // The check marks are the server's echo of what the request asserted — they overwrite
+            // the detected pair, so a request YouTube did not honour becomes visible.
+            assertEquals("vi", locales.hl)
+            assertEquals("VN", locales.gl)
+            val sent = assertNotNull(sentBody)
+            assertTrue(sent.contains(""""hl":"vi""""), sent)
+        } finally {
+            m.close()
+        }
+    }
 }

@@ -142,6 +142,27 @@ suspend fun DynamicEngineManager.searchSuggestions(query: String, ctx: YtContext
         }) { readSuggestions(it) }
     }
 
+/**
+ * What YouTube reports for THIS connection: its own IP-derived region and the language it served.
+ * The app asserts nothing to get it, so it is the answer to "where does YouTube think we are" —
+ * unlike [ytLocaleOptions], whose selection merely echoes what the request carried.
+ */
+suspend fun DynamicEngineManager.ytLocale(): YtLocales = use { engine ->
+    engine.jsonCommand("yt/locale", { w ->
+        w.beginObject()
+        w.endObject()
+    }) { readLocales(it) }
+}
+
+/** The content-language / content-region menus YouTube offers, labelled in [ctx]'s language. */
+suspend fun DynamicEngineManager.ytLocaleOptions(ctx: YtContext = YtContext()): YtLocales = use { engine ->
+    engine.jsonCommand("yt/locales", { w ->
+        w.beginObject()
+        w.contextField(ctx)
+        w.endObject()
+    }) { readLocales(it) }
+}
+
 /** Write `"key":value` only when [value] is present — absent optional fields are omitted, not null. */
 private suspend fun JsonWriter.optionalField(key: String, value: String?) {
     if (value != null) name(key).value(value)

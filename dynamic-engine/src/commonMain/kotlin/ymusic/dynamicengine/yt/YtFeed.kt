@@ -168,3 +168,17 @@ data class YtContext(
     val gl: String = "US",
     val visitorData: String? = null,
 )
+
+/** One pickable content language / region: the InnerTube code and YouTube's own label for it. */
+data class YtLocaleOption(val code: String, val label: String)
+
+/**
+ * What YouTube reports for this connection — [gl] is its own IP-derived answer, not an echo of what
+ * the app asked for. [languages] / [regions] are empty unless the pickable menus were requested.
+ */
+data class YtLocales(
+    val hl: String,
+    val gl: String,
+    val languages: List<YtLocaleOption> = emptyList(),
+    val regions: List<YtLocaleOption> = emptyList(),
+)

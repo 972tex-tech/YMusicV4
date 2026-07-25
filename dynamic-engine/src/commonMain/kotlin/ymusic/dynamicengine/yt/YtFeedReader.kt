@@ -265,3 +265,38 @@ internal suspend fun readSuggestions(r: JsonReader): List<String> {
     r.endObject()
     return suggestions
 }
+
+/** The `yt/locale` / `yt/locales` result: `{"hl","gl","languages"?,"regions"?}`. */
+internal suspend fun readLocales(r: JsonReader): YtLocales {
+    var hl = ""
+    var gl = ""
+    var languages: List<YtLocaleOption> = emptyList()
+    var regions: List<YtLocaleOption> = emptyList()
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "hl" -> hl = r.stringOrNull() ?: ""
+            "gl" -> gl = r.stringOrNull() ?: ""
+            "languages" -> languages = r.readArrayOf { readLocaleOption(it) }
+            "regions" -> regions = r.readArrayOf { readLocaleOption(it) }
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtLocales(hl, gl, languages, regions)
+}
+
+private suspend fun readLocaleOption(r: JsonReader): YtLocaleOption {
+    var code = ""
+    var label = ""
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "code" -> code = r.stringOrNull() ?: ""
+            "label" -> label = r.stringOrNull() ?: ""
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtLocaleOption(code, label)
+}

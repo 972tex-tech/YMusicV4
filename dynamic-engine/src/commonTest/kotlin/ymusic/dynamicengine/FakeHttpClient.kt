@@ -30,6 +30,8 @@ class FakeHttpClient(
 
     var lastRequest: Request? = null
         private set
+    var requestCount: Int = 0
+        private set
     var lastOptions: RedirectOptions? = null
         private set
     var lastTimeout: Duration? = null
@@ -46,6 +48,7 @@ class FakeHttpClient(
 
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
         lastRequest = request
+        requestCount++
         lastOptions = options
         lastTimeout = timeout
         return handler(request)
