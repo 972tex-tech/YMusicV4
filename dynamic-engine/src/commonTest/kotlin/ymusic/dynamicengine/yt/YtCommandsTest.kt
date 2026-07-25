@@ -557,23 +557,41 @@ class YtCommandsTest {
         // this list becomes the autoplay queue.
         val (m, _) = manager { jsonResponse(NEXT_WITH_OVERLAYS_FIXTURE).build(it) }
         try {
-            val page = m.watchNext(videoId = "yuuWdm5tBD0")
+            val page = m.watchNext(videoId = "wudOtmP09xU")
 
             val items = page.sections.flatMap { it.items }
             assertEquals(
-                listOf("MUSICMUSIC1", "RDAMVMyuuWdm5tBD0", "N30CFk9fHwg", "TALKTALKTAL", "aYIhumdzhAo"),
+                listOf(
+                    "_KFaLBdT0k4",
+                    "RDEM3QJrf1jib0giOa1iEysOiw",
+                    "ixYtHJOLY-Y",
+                    "PLncXuldPDHBME0DeqYkNSoZaplLWOlguq",
+                    "PLAINVIDEO1",
+                ),
                 items.map { it.id },
-                "music leads (source order within the group), then the plain uploads: $page",
+                "music videos + the Mix lead in source order, then the plain playlist and upload: $page",
             )
-            assertEquals(5, items.size, "the end screen's repeat of N30CFk9fHwg collapsed: $page")
+            assertEquals(5, items.size, "the column's repeat of _KFaLBdT0k4 collapsed: $page")
             assertTrue(items[0].musicVideo, "${items[0]}")
-            assertEquals(YtFeedItem.KIND_PLAYLIST, items[1].kind, "the Mix tile the column never offered")
             assertEquals(
-                "Repeat of the first related video",
-                items[2].title,
+                "劉德華 今天…is the Day 巡迴演唱會 - 4K60FPS ",
+                items[0].title,
                 "the end screen's copy won the dedupe, not the column's",
             )
-            assertEquals("MUSICMUSIC1", page.autoplayVideoId)
+
+            // The Mix tile: only the end screen offers it, and an RDEM mix has no seed in its id —
+            // the seed rides the app link so yt/playlist can materialize the radio.
+            val mix = items[1]
+            assertEquals(YtFeedItem.KIND_PLAYLIST, mix.kind)
+            assertEquals("/playlist?list=RDEM3QJrf1jib0giOa1iEysOiw&v=Cy5KEKvQzFM", mix.url)
+            assertEquals("Andy Lau, 海來阿木, Richie Jen, and more", mix.subtitleLine1)
+            assertEquals("50+ videos", mix.itemCount)
+
+            // A regular playlist tile ranks below the music run but still parses whole.
+            val playlist = items[3]
+            assertEquals("52 videos", playlist.itemCount)
+            assertEquals("Trạm Acoustic", playlist.subtitleLine1)
+            assertEquals("_KFaLBdT0k4", page.autoplayVideoId)
         } finally {
             m.close()
         }
