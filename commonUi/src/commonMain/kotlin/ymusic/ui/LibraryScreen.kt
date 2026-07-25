@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,9 +67,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -686,46 +691,56 @@ internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) 
 }
 
 /** The Library's tab row — the same treatment as [DiscoverTabRow] (2dp underline indicator), with
- *  text labels instead of icons. The underline tracks each tab's width (via IntrinsicSize) so a
- *  longer label gets a longer line, and the row scrolls horizontally when the tabs overflow. */
+ *  text labels instead of icons. A single indicator slides + stretches between tabs (each tab reports
+ *  its offset/width) so the underline animates rather than snapping; the row scrolls when tabs overflow. */
 @Composable
 private fun LibraryTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
     val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    // Each tab's (offset, width) in the row's own space — the sliding indicator reads the selected one.
+    val bounds = remember { mutableStateMapOf<LibraryTab, Pair<Dp, Dp>>() }
     HorizontalOverflowBox(scrollState) {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
                 .horizontalWheelScroll(scrollState)
                 .horizontalScroll(scrollState)
                 .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LibraryTab.entries.forEach { t ->
-                val active = t == selected
-                Column(
-                    Modifier
-                        .width(IntrinsicSize.Max)
-                        .clickable { onSelect(t) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        stringResource(t.label),
-                        style = TextStyle(
-                            fontSize = 13.sp,
-                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                            color = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                        ),
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                    )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LibraryTab.entries.forEach { t ->
+                    val active = t == selected
                     Box(
                         Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(if (active) DesignColors.Accent else Color.Transparent),
-                    )
+                            .onGloballyPositioned { c ->
+                                val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                                bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
+                            }
+                            .clickable { onSelect(t) },
+                    ) {
+                        Text(
+                            stringResource(t.label),
+                            style = TextStyle(
+                                fontSize = 13.sp,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (active) DesignColors.Accent else DesignColors.InkFaint,
+                            ),
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                        )
+                    }
                 }
             }
+            val target = bounds[selected]
+            val indicatorX by animateDpAsState(target?.first ?: 0.dp, label = "tabIndicatorX")
+            val indicatorWidth by animateDpAsState(target?.second ?: 0.dp, label = "tabIndicatorWidth")
+            Box(
+                Modifier
+                    .offset(x = indicatorX)
+                    .width(indicatorWidth)
+                    .height(2.dp)
+                    .background(DesignColors.Accent),
+            )
         }
     }
 }
