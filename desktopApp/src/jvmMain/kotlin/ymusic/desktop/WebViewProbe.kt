@@ -3,7 +3,10 @@ package ymusic.desktop
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.runBlocking
+import org.cef.CefSettings
+import org.cef.browser.CefBrowser
 import org.cef.browser.JcefOsrSurface
+import org.cef.handler.CefDisplayHandlerAdapter
 import ymusic.player.PlayableItem
 import ymusic.player.PlaybackConfig
 import ymusic.player.VideoQualityState
@@ -26,6 +29,9 @@ import kotlin.system.exitProcess
  *                   and playback advances (position > 0).
  *   - `headless`  — the container is never added to a shown window → a *windowed* JCEF browser never
  *                   creates its native browser, so the page never loads and position stays 0.
+ *   - `next`      — the recommended-feed harvest end to end: prints the page-side preconditions the
+ *                   bundle gates on and every watch-next report that survives the bridge, then fails
+ *                   the run if a music video produced none.
  * Run: `./gradlew :desktopApp:webviewProbe -PprobeArgs="realized"` (or `"headless"`). Muted (volume 0)
  * per the test-audio rule; muted also lets YouTube autoplay without a user gesture.
  */
@@ -38,7 +44,23 @@ fun main(args: Array<String>) {
     val httpClient: KmpHttpClient = KmpHttpClient.create {}
     val cef = CefManager()
     val cefClient = runBlocking { cef.createClient() }
-    val webViewJs = readWebViewJsProbe()
+    val webViewJs = readWebViewJsProbe() + if (mode == "next") NEXT_DIAG_JS else ""
+    if (mode == "next") {
+        cefClient.addDisplayHandler(
+            object : CefDisplayHandlerAdapter() {
+                override fun onConsoleMessage(
+                    browser: CefBrowser?,
+                    level: CefSettings.LogSeverity?,
+                    message: String?,
+                    source: String?,
+                    line: Int,
+                ): Boolean {
+                    if (message != null && message.startsWith("[diag]")) println("[page] $message")
+                    return false
+                }
+            },
+        )
+    }
 
     val surface = JcefOsrSurface()
     val container = JPanel().apply { layout = OverlayLayout(this) }
@@ -80,6 +102,21 @@ fun main(args: Array<String>) {
         )
     }
 
+    val harvests = java.util.concurrent.atomic.AtomicInteger()
+    if (mode == "next") {
+        Thread {
+            runBlocking {
+                player.watchNextSeen.collect {
+                    val astral = it.contentsJson.count { c -> c.isHighSurrogate() }
+                    println(
+                        "[probe] watchNextSeen #${harvests.incrementAndGet()} videoId=${it.videoId} " +
+                            "chars=${it.contentsJson.length} astral=$astral",
+                    )
+                }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
     val start = System.currentTimeMillis()
     var maxPos = 0L
     var reparented = false
@@ -115,14 +152,49 @@ fun main(args: Array<String>) {
         println("[probe] REPARENT posBefore=$posBeforeReparent posAfter=$maxPos reloaded=${maxPos < posBeforeReparent}")
     }
     val played = maxPos > 0
-    println("[probe] RESULT mode=$mode maxPos=$maxPos played=$played")
+    val harvested = mode != "next" || harvests.get() > 0
+    println("[probe] RESULT mode=$mode maxPos=$maxPos played=$played harvests=${harvests.get()}")
     SwingUtilities.invokeAndWait {
         player.release()
         frame?.dispose()
     }
     cef.dispose()
-    exitProcess(if (played) 0 else 2)
+    exitProcess(if (played && harvested) 0 else 2)
 }
+
+/**
+ * `next` mode only: reports, every 3s, everything the bundle's watch-next harvest depends on —
+ * whether the movie player exists, whether it exposes `getWatchNextResponse`, what that returns,
+ * and the microformat category the harvest gates on.
+ */
+private val NEXT_DIAG_JS = """
+;(function(){
+  var n = 0;
+  setInterval(function(){
+    try {
+      var mp = document.getElementById('movie_player');
+      if (!mp) { console.log('[diag] no movie_player'); return; }
+      var pr = mp.getPlayerResponse ? mp.getPlayerResponse() : null;
+      var hasFn = typeof mp.getWatchNextResponse;
+      var wn = hasFn === 'function' ? mp.getWatchNextResponse() : undefined;
+      var keys = wn ? Object.keys(wn).join('+') : String(wn);
+      var cat = pr && pr.microformat && pr.microformat.playerMicroformatRenderer
+        ? pr.microformat.playerMicroformatRenderer.category : '(none)';
+      var es = wn && wn.playerOverlays && wn.playerOverlays.playerOverlayRenderer
+        && wn.playerOverlays.playerOverlayRenderer.endScreen
+        && wn.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer
+        ? wn.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results.length : -1;
+      var sec = wn && wn.contents && wn.contents.twoColumnWatchNextResults
+        && wn.contents.twoColumnWatchNextResults.secondaryResults
+        && wn.contents.twoColumnWatchNextResults.secondaryResults.secondaryResults
+        ? wn.contents.twoColumnWatchNextResults.secondaryResults.secondaryResults.results.length : -1;
+      console.log('[diag] #' + (++n) + ' vid=' + (pr && pr.videoDetails ? pr.videoDetails.videoId : '-')
+        + ' getWatchNextResponse=' + hasFn + ' wn=' + keys + ' endScreen=' + es + ' secondary=' + sec
+        + ' cat=' + cat + ' channel=' + (typeof window.ymixChannelAndroid));
+    } catch (e) { console.log('[diag] error ' + e); }
+  }, 3000);
+})();
+"""
 
 /** The built webview-js bundle (same lookup as the shell). */
 private fun readWebViewJsProbe(): String {
