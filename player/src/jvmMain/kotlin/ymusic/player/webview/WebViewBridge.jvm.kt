@@ -56,11 +56,19 @@ private class JcefWebViewBridge(
 
     // Shim the transport the bundle's `postMsg` expects onto JCEF's cefQuery. Channel names carry no
     // '|', so it is a safe separator (same convention as the iOS bridge).
+    //
+    // cefQuery loses characters off the END of a request that carries non-ASCII text (the length it
+    // copies is counted in code points, the buffer in UTF-16 units), so one emoji or accented title
+    // clips the tail off the JSON and the whole message is dropped as unparseable — which is what
+    // silently killed the watch-next harvest here. Escaping every non-ASCII unit keeps the request
+    // pure ASCII; the payloads are all JSON text, where `\uXXXX` decodes back to the same string.
     override val bootPrelude: String =
-        "window.ymixChannelAndroid={postMessage:function(c,m){try{window.cefQuery({" +
-            "request:c+'|'+(typeof m==='string'?m:JSON.stringify(m))," +
-            "persistent:false,onSuccess:function(){},onFailure:function(){}});}catch(e){}}," +
-            "remoteDebug:function(){}}"
+        """window.ymixChannelAndroid={postMessage:function(c,m){try{""" +
+            """var s=(typeof m==='string'?m:JSON.stringify(m)).replace(/[\u0080-\uffff]/g,""" +
+            """function(x){return '\\u'+(x.charCodeAt(0)+65536).toString(16).substring(1);});""" +
+            """window.cefQuery({request:c+'|'+s,""" +
+            """persistent:false,onSuccess:function(){},onFailure:function(){}});}catch(e){}},""" +
+            """remoteDebug:function(){}}"""
 
     private val client = context.cefClient
     private val surface = context.surface
