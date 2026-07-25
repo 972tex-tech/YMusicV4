@@ -221,6 +221,9 @@ private class StringResourceHandler(html: String) : CefResourceHandlerAdapter() 
         response?.let {
             it.mimeType = "text/html"
             it.status = 200
+            // The injected boot script runs before the document's own <meta charset>, so without this
+            // the parser decodes it as windows-1252 and any non-ASCII in the bundle is mojibake.
+            it.setHeaderByName("Content-Type", "text/html; charset=utf-8", true)
         }
         responseLength?.set(data.size)
     }
