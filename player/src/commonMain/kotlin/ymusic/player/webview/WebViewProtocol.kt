@@ -166,6 +166,13 @@ object WebViewProtocol {
                     selectedId = obj.string("selectedTrackId"),
                 ),
             )
+            // The page's watch-next payload for a music video. The host never reads inside it — it
+            // is re-serialized as-is for the scraping engine, which owns every YouTube shape.
+            "next_contents" -> {
+                val videoId = obj.string("videoId")
+                val contents = obj["watchNextContents"] as? kotlinx.serialization.json.JsonArray
+                if (videoId == null || contents == null) null else WebViewEvent.WatchNextSeen(videoId, contents.toString())
+            }
             else -> null
         }
     }
@@ -266,6 +273,13 @@ sealed interface WebViewEvent {
     data class CaptionsChanged(val state: CaptionState) : WebViewEvent
 
     data class AudioTracksChanged(val state: AudioTrackState) : WebViewEvent
+
+    /**
+     * The page reported the watch-next payload of the music video it is playing — the raw JSON array
+     * of related items, opaque here. It feeds the app's Recommended feed; the scraping engine is the
+     * only thing that parses it.
+     */
+    data class WatchNextSeen(val videoId: String, val contentsJson: String) : WebViewEvent
 }
 
 enum class WebPlaybackState { Idle, Buffering, Ready, Ended, Error }

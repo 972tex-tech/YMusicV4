@@ -2,6 +2,7 @@ package ymusic.player
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.random.Random
 
@@ -36,6 +37,14 @@ interface Player {
 
     /** Remaining sleep-timer time (ticked ~1 Hz), or null when no timer is armed. */
     val sleepTimerMs: StateFlow<Long?>
+
+    /**
+     * Watch-next payloads reported by the WebView engine's page while it plays a music video — the
+     * app forwards each to the scraping engine, which builds the Recommended feed out of them. Not
+     * playback state: a side channel that happens to ride the playing page. Empty on engines that
+     * report none.
+     */
+    val watchNextSeen: SharedFlow<WatchNextSeen>
 
     /** Replace the queue and load [playIndex]. An empty [items] clears and stops. */
     fun setQueue(
@@ -129,3 +138,9 @@ fun createPlayer(
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     random: Random = Random.Default,
 ): Player = PlayerImpl(engines, mainDispatcher, random)
+
+/**
+ * One watch-next payload the playing page reported: [contentsJson] is YouTube's related-items array
+ * verbatim. Opaque to the app and to the player — only the scraping engine parses it.
+ */
+data class WatchNextSeen(val videoId: String, val contentsJson: String)

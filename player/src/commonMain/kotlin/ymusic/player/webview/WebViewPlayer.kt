@@ -1,6 +1,8 @@
 package ymusic.player
 
 import kmphttp.KmpHttpClient
+import kotlinx.coroutines.flow.SharedFlow
+import ymusic.player.webview.WebViewEvent
 import ymusic.player.webview.WebViewPlayerImpl
 import ymusic.player.webview.createWebViewBridge
 
@@ -20,7 +22,11 @@ interface WebViewPlayer :
     MediaEngine<PlayableItem.YtVideoId>,
     VideoQualitySelectable,
     CaptionSelectable,
-    AudioTrackSelectable
+    AudioTrackSelectable {
+    /** Watch-next payloads the page reports for the music videos it plays — the Recommended feed's
+     *  raw material, forwarded to the scraping engine by the app (see [Player.watchNextSeen]). */
+    val watchNextSeen: SharedFlow<WebViewEvent.WatchNextSeen>
+}
 
 /**
  * Platform handle the player needs: the host view **container** it injects its WebView into, plus any

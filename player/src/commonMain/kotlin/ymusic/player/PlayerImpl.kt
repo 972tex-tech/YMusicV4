@@ -6,8 +6,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -54,6 +57,9 @@ internal class PlayerImpl(
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
+    private val _watchNextSeen = MutableSharedFlow<WatchNextSeen>(extraBufferCapacity = 8)
+    override val watchNextSeen: SharedFlow<WatchNextSeen> = _watchNextSeen.asSharedFlow()
 
     private val _config = MutableStateFlow(PlaybackConfig())
     override val config: StateFlow<PlaybackConfig> = _config.asStateFlow()
@@ -314,6 +320,12 @@ internal class PlayerImpl(
         bindCapability(engine as? VideoQualitySelectable, _videoQuality, VideoQualityState.DEFAULT) { it.videoQuality }
         bindCapability(engine as? CaptionSelectable, _captions, CaptionState.DEFAULT) { it.captions }
         bindCapability(engine as? AudioTrackSelectable, _audioTracks, AudioTrackState.DEFAULT) { it.audioTracks }
+        // Not a capability state but an event stream, and only the WebView engine has one.
+        (engine as? WebViewPlayer)?.let { webView ->
+            engineJobs += scope.launch {
+                webView.watchNextSeen.collect { _watchNextSeen.tryEmit(WatchNextSeen(it.videoId, it.contentsJson)) }
+            }
+        }
     }
 
     private inline fun <C : Any, S> bindCapability(

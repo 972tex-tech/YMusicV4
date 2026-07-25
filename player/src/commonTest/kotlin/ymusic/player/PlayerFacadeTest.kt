@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -106,7 +107,14 @@ class PlayerFacadeTest {
 
     private class FakeLocal : FakeEngine<PlayableItem.LocalUri>(), LocalPlayer
 
-    private class FakeWebView : FakeEngine<PlayableItem.YtVideoId>(), WebViewPlayer
+    private class FakeWebView : FakeEngine<PlayableItem.YtVideoId>(), WebViewPlayer {
+        /** The harvest side channel — tests emit here to drive the facade's re-exposure. */
+        val reports = kotlinx.coroutines.flow.MutableSharedFlow<ymusic.player.webview.WebViewEvent.WatchNextSeen>(
+            extraBufferCapacity = 4,
+        )
+        override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<ymusic.player.webview.WebViewEvent.WatchNextSeen> =
+            reports
+    }
 
     private class Harness(scope: TestScope, webViewFactory: Boolean = true) {
         val local = FakeLocal()
@@ -146,6 +154,23 @@ class PlayerFacadeTest {
         assertEquals(1, h.webViewBuilds)
         assertEquals(1, h.local.stopped, "switching engines must stop the old one")
         assertEquals(yt("abc"), h.webView.loads.single().item, "yt item routes to the WebView engine")
+    }
+
+    @Test
+    fun the_webview_engines_watch_next_reports_reach_the_facade() = runTest {
+        val h = Harness(this)
+        val seen = mutableListOf<WatchNextSeen>()
+        val job = backgroundScope.launch { h.player.watchNextSeen.collect { seen += it } }
+        runCurrent()
+
+        // Nothing is routed until a YouTube item makes the facade bind the WebView engine.
+        h.player.setQueue(listOf(yt("abc")), playIndex = 0)
+        runCurrent()
+        h.webView.reports.emit(ymusic.player.webview.WebViewEvent.WatchNextSeen("abc", "[]"))
+        runCurrent()
+
+        assertEquals(listOf(WatchNextSeen("abc", "[]")), seen)
+        job.cancel()
     }
 
     @Test

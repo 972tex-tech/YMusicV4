@@ -7,8 +7,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -59,6 +62,11 @@ internal class WebViewPlayerImpl(
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
+    // Buffered and non-suspending: a harvest report must never block the page's message pump, and
+    // dropping one when nothing is listening costs only that play's recommendations.
+    private val _watchNextSeen = MutableSharedFlow<WebViewEvent.WatchNextSeen>(extraBufferCapacity = 8)
+    override val watchNextSeen: SharedFlow<WebViewEvent.WatchNextSeen> = _watchNextSeen.asSharedFlow()
 
     private var sessionId: String = ""
     private var connected = false
@@ -250,6 +258,7 @@ internal class WebViewPlayerImpl(
             is WebViewEvent.QualityChanged -> _videoQuality.value = e.state
             is WebViewEvent.CaptionsChanged -> _captions.value = e.state
             is WebViewEvent.AudioTracksChanged -> _audioTracks.value = e.state
+            is WebViewEvent.WatchNextSeen -> _watchNextSeen.tryEmit(e)
             null -> Unit
         }
     }
