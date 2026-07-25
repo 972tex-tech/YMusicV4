@@ -208,11 +208,14 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     HorizontalDivider(color = DesignColors.Divider)
                 }
                 CompositionLocalProvider(LocalLibraryReveal provides reveal) {
+                    val openDrawer = LocalOpenNavDrawer.current
                     SwipeTabSwitcher(
                         tab,
                         LibraryTab.entries,
                         onSelect = { tab = it },
                         onDragProgress = { tabDrag = it },
+                        leadingEdgeReserve = NavDrawerEdgeReserve,
+                        onLeadingEdgeSwipe = openDrawer,
                     ) { current ->
                         tabStateHolder.SaveableStateProvider(current.name) {
                             when (current) {

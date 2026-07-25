@@ -27,12 +27,14 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -73,12 +75,14 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -128,6 +132,10 @@ internal class ScrollHost(scrolled: Boolean = false) {
 
 /** The app shell's [ScrollHost]; null outside the shell. */
 internal val LocalScrollHost = compositionLocalOf<ScrollHost?> { null }
+
+/** Opens the app's navigation drawer; null outside the shell. Lets content (e.g. the Library tab
+ *  switcher's leading-edge swipe) trigger the drawer without holding its state. */
+internal val LocalOpenNavDrawer = compositionLocalOf<(() -> Unit)?> { null }
 
 /** Report whether this screen's primary scroll container is scrolled away from its top, so the shell
  *  can lift the app bar. Resets when the content leaves composition. Content calls this and stays
@@ -410,9 +418,27 @@ internal fun <T> SwipeTabSwitcher(
     // Live drag progress in [-1, 1]: +1 = fully toward the next entry, -1 = fully toward the previous;
     // 0 at rest. Lets an external indicator (the tab underline) track the drag, then reset on release.
     onDragProgress: (Float) -> Unit = {},
+    // Width of the start-edge zone where a drag toward centre opens the nav drawer (via
+    // [onLeadingEdgeSwipe]) instead of switching tabs. Sits just inside the OS back-gesture inset.
+    leadingEdgeReserve: Dp = 0.dp,
+    // Invoked when a drag begins in the leading-edge zone and heads toward centre (open the drawer).
+    onLeadingEdgeSwipe: (() -> Unit)? = null,
     content: @Composable (T) -> Unit,
 ) {
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val layoutDirection = LocalLayoutDirection.current
+    val rtl = layoutDirection == LayoutDirection.Rtl
+    val density = LocalDensity.current
+    // Yield the system's back-gesture zone at BOTH edges (its full reserved width). Just inside the
+    // start edge, carve a drawer zone where a drag opens the nav drawer.
+    val gestures = WindowInsets.systemGestures
+    val backLeft = gestures.getLeft(density, layoutDirection).toFloat()
+    val backRight = gestures.getRight(density, layoutDirection).toFloat()
+    // Start (leading) side holds the drawer; end (trailing) side is left to the OS back gesture.
+    val backStart = if (rtl) backRight else backLeft
+    val backEnd = if (rtl) backLeft else backRight
+    // Drawer zone spans from the physical start edge inward, past the OS inset (the OS claims the very
+    // edge on gesture-nav; on 3-button nav there's no inset, so this whole zone is the app's).
+    val drawerZone = if (onLeadingEdgeSwipe != null) backStart + with(density) { leadingEdgeReserve.toPx() } else 0f
     // Live feedback: the page rubber-bands toward the drag so the gesture is visible under the finger,
     // then springs back if you release short of the commit threshold. Only the current page moves —
     // still nothing rendered on the side.
@@ -422,11 +448,10 @@ internal fun <T> SwipeTabSwitcher(
         modifier
             .fillMaxSize()
             .clipToBounds()
-            .pointerInput(selected, entries, rtl) {
+            .pointerInput(selected, entries, rtl, backStart, backEnd, drawerZone, onLeadingEdgeSwipe) {
                 val distance = SwipeSwitchDistance.toPx()
                 val velocity = SwipeSwitchVelocity.toPx()
                 val maxPeek = SwipeSwitchPeek.toPx()
-                val edge = SwipeEdgeReserve.toPx()
 
                 // Report progress (for the indicator) + rubber-band the page from the total drag.
                 fun reportDrag(dx: Float) {
@@ -439,9 +464,21 @@ internal fun <T> SwipeTabSwitcher(
 
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    // Leave the screen edges to the OS back gesture and the nav drawer's swipe-to-open,
-                    // which is a whole-screen drag we'd otherwise swallow (see App's ModalNavigationDrawer).
-                    if (down.position.x < edge || down.position.x > size.width - edge) return@awaitEachGesture
+                    val x = down.position.x
+                    val distFromStart = if (rtl) size.width - x else x
+                    val distFromEnd = if (rtl) x else size.width - x
+                    // Trailing edge → leave it to the OS back gesture.
+                    if (distFromEnd < backEnd) return@awaitEachGesture
+                    // Leading (drawer) edge → a drag toward centre opens the nav drawer.
+                    if (drawerZone > 0f && distFromStart < drawerZone) {
+                        var over = 0f
+                        val past = awaitHorizontalTouchSlopOrCancellation(down.id) { change, o -> over = o; change.consume() }
+                        // Toward centre = away from the start edge: rightward in LTR, leftward in RTL.
+                        if (past != null && (if (rtl) over < 0 else over > 0)) onLeadingEdgeSwipe?.invoke()
+                        return@awaitEachGesture
+                    }
+                    // No drawer here → still reserve the leading OS back inset.
+                    if (drawerZone == 0f && distFromStart < backStart) return@awaitEachGesture
                     var dx = 0f
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
@@ -495,9 +532,9 @@ private val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the f
 private const val SwipeSwitchResist = 0.4f // fraction of the drag the page follows
 private const val SwipeSwitchDurationMs = 220
 
-// Leave this much of each screen edge to the OS back gesture and the nav drawer's swipe-to-open
-// (both are edge drags that would otherwise be swallowed by the tab swipe).
-private val SwipeEdgeReserve = 20.dp
+/** Width of the start-edge zone that opens the nav drawer instead of switching tabs (on top of the
+ *  system back-gesture inset). Passed as SwipeTabSwitcher's leadingEdgeReserve on drawer screens. */
+internal val NavDrawerEdgeReserve = 24.dp
 private val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */

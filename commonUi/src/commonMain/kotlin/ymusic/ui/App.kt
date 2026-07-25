@@ -335,16 +335,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         BoxWithConstraints(Modifier.fillMaxSize().background(DesignColors.Surface).safeDrawingPadding()) {
             // design/final/home.html: landscape puts the tab row inline in the app bar.
             val wide = maxWidth > maxHeight && maxWidth >= 600.dp
-            // Discover and Library own horizontal drags (swipe between tabs), so the drawer's
-            // whole-screen swipe-to-open would fight them — there it opens from the menu button only.
-            val tabsOwnSwipe = layers.isEmpty() && (section == AppSection.Discover || section == AppSection.Library)
             ModalNavigationDrawer(
                 drawerState = drawer,
                 // Swipe-open is touch-only: with a mouse, the whole-screen drag would claim any
-                // click whose press wanders a pixel (mouse slop ~0.1dp). Off on the swipe-tab screens
-                // (menu button opens it there). Open stays possible while showing so scrim/drag
-                // dismiss keeps working everywhere.
-                gesturesEnabled = (platformUsesTouch && !tabsOwnSwipe) || drawer.isOpen,
+                // click whose press wanders a pixel (mouse slop ~0.1dp). Open stays possible while
+                // showing so scrim/drag dismiss keeps working on desktop. On the swipe-tab screens the
+                // tab switcher yields a start-edge strip (leadingEdgeReserve) so this still opens there.
+                gesturesEnabled = platformUsesTouch || drawer.isOpen,
                 drawerContent = {
                     AppDrawer(
                         section = section,
@@ -392,6 +389,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     LocalScrollHost provides scrollHost,
                     LocalSnackbar provides showSnackbar,
                     LocalScanController provides scanController,
+                    LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
                 ) {
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
@@ -502,6 +500,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             DiscoverTab.entries,
                                             onSelect = { discoverTab = it },
                                             onDragProgress = { discoverDrag = it },
+                                            leadingEdgeReserve = NavDrawerEdgeReserve,
+                                            onLeadingEdgeSwipe = { scope.launch { drawer.open() } },
                                         ) { current ->
                                             DiscoverFeed(
                                                 graph,
