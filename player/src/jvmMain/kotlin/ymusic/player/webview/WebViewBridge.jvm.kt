@@ -1,6 +1,5 @@
 package ymusic.player.webview
 
-import okio.Buffer
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.browser.CefMessageRouter
@@ -16,12 +15,9 @@ import org.cef.handler.CefResourceRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.misc.IntRef
 import org.cef.misc.StringRef
-import org.cef.network.CefPostDataElement
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import ymusic.player.WebViewPlayerContext
-import java.net.URLDecoder
-import java.util.Vector
 import javax.swing.SwingUtilities
 import kotlin.math.min
 
@@ -48,43 +44,33 @@ private const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/126.0.0.0 Safari/537.36"
 
-/**
- * Same-origin endpoint the page POSTs its messages to (see [JcefWebViewBridge.bootPrelude]). It is
- * served by this bridge and never reaches the network; same-origin so the page needs no CORS grant.
- */
-private const val MSG_PATH = "https://www.youtube.com/__ymix_msg"
-
 /** Any `*.js` URL (optionally with `?`/`#` suffix) — blocked unless it carries [DO_NOT_BLOCK]. */
 private val JS_URL_REGEX = Regex(".*\\.js([?#].*)*$")
 private const val DO_NOT_BLOCK = "_doNotBlock=42"
 
 private class JcefWebViewBridge(
     context: WebViewPlayerContext,
-    private val sink: WebViewMessageSink,
+    sink: WebViewMessageSink,
 ) : WebViewBridge {
     override val platform: String = "jvm"
 
-    // Shim the transport the bundle's `postMsg` expects onto a same-origin POST this bridge's
-    // resource handler claims (MSG_PATH) — NOT cefQuery.
+    // Shim the transport the bundle's `postMsg` expects onto JCEF's cefQuery. Channel names carry no
+    // '|', so it is a safe separator (same convention as the iOS bridge).
     //
-    // Every JCEF channel that hands Java a String goes through NewJNIString -> JNI NewStringUTF,
-    // which wants modified UTF-8 while CefString supplies real UTF-8: each astral character costs
-    // one UTF-16 unit off the END of the message (measured on cefQuery and on console messages
-    // alike, 126.2.0), so a 200 KB payload whose tail is closing JSON braces arrives unparseable.
-    // A POST body never becomes a native String — it comes back as bytes and is decoded here — so
-    // the payload survives whatever is in it. The channel name still crosses as a String, in the
-    // query, which is safe because channel names are ASCII.
-    //
-    // The sends are chained through one promise: parallel fetches would let a state update
-    // overtake the one before it.
+    // Every JCEF channel that hands Java a String funnels through NewJNIString -> JNI
+    // NewStringUTF, which takes modified UTF-8 while CefString supplies real UTF-8: each astral
+    // character costs one UTF-16 unit off the END of the message (126.2.0, measured on cefQuery and
+    // on console messages alike), which clips the closing braces off a 200 KB payload and makes it
+    // unparseable. Escaping keeps the request pure ASCII. It is sound only because every payload
+    // here is JSON text, where `\uXXXX` decodes back to the same string — a raw non-JSON payload
+    // would arrive with the escapes still in it.
     override val bootPrelude: String =
-        """window.__ymixQ=Promise.resolve();""" +
-            """window.ymixChannelAndroid={postMessage:function(c,m){try{""" +
-            """var s=(typeof m==='string'?m:JSON.stringify(m));""" +
-            """window.__ymixQ=window.__ymixQ.then(function(){""" +
-            """return fetch('""" + MSG_PATH + """?c='+encodeURIComponent(c),""" +
-            """{method:'POST',body:s,cache:'no-store'}).catch(function(){});""" +
-            """});}catch(e){}},remoteDebug:function(){}}"""
+        """window.ymixChannelAndroid={postMessage:function(c,m){try{""" +
+            """var s=(typeof m==='string'?m:JSON.stringify(m)).replace(/[\u0080-\uffff]/g,""" +
+            """function(x){return '\\u'+(x.charCodeAt(0)+65536).toString(16).substring(1);});""" +
+            """window.cefQuery({request:c+'|'+s,""" +
+            """persistent:false,onSuccess:function(){},onFailure:function(){}});}catch(e){}},""" +
+            """remoteDebug:function(){}}"""
 
     private val client = context.cefClient
     private val surface = context.surface
@@ -121,30 +107,6 @@ private class JcefWebViewBridge(
         )
     }
 
-    /**
-     * One page message: the channel from the query (ASCII), the payload from the POST body as raw
-     * bytes. [CefPostDataElement.getBytes] is the whole point — nothing here crosses as a native
-     * String, so the astral-character loss that afflicts every String-carrying JCEF channel cannot
-     * touch the payload.
-     */
-    private fun deliver(url: String, request: CefRequest) {
-        val channel = url.substringAfter("?c=", "").substringBefore('&').let(::decodeQueryComponent)
-        if (channel.isEmpty()) return
-        val data = request.postData ?: return
-        val elements = Vector<CefPostDataElement>()
-        data.getElements(elements)
-        val body = Buffer()
-        for (element in elements) {
-            val size = element.bytesCount
-            if (size <= 0) continue
-            val bytes = ByteArray(size)
-            val read = element.getBytes(size, bytes)
-            body.write(bytes, 0, read)
-        }
-        val payload = body.readUtf8()
-        SwingUtilities.invokeLater { sink.onMessage(channel, payload) }
-    }
-
     private val requestHandler = object : CefRequestHandlerAdapter() {
         override fun getResourceRequestHandler(
             browser: CefBrowser?,
@@ -156,13 +118,6 @@ private class JcefWebViewBridge(
             disableDefaultHandling: BoolRef?,
         ): CefResourceRequestHandler? {
             val url = request?.url ?: return null
-            if (url.startsWith(MSG_PATH)) {
-                deliver(url, request)
-                return object : CefResourceRequestHandlerAdapter() {
-                    override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?) =
-                        AcceptedResourceHandler()
-                }
-            }
             // Block any *.js the content-script hook didn't route through the transform pipeline (which
             // appends _doNotBlock=42) — the un-transformed player must not run (matches Android + legacy).
             if (url.matches(JS_URL_REGEX) && !url.contains(DO_NOT_BLOCK)) {
@@ -288,28 +243,6 @@ private class StringResourceHandler(html: String) : CefResourceHandlerAdapter() 
     }
 }
 
-/** Serves an empty `204` — the ack for a delivered page message (see [MSG_PATH]). */
-private class AcceptedResourceHandler : CefResourceHandlerAdapter() {
-    override fun processRequest(request: CefRequest?, callback: CefCallback?): Boolean {
-        callback?.Continue()
-        return true
-    }
-
-    override fun getResponseHeaders(response: CefResponse?, responseLength: IntRef?, redirectUrl: StringRef?) {
-        response?.let {
-            it.mimeType = "text/plain"
-            it.status = 204
-            it.setHeaderByName("Cache-Control", "no-store", true)
-        }
-        responseLength?.set(0)
-    }
-
-    override fun readResponse(dataOut: ByteArray?, bytesToRead: Int, bytesRead: IntRef?, callback: CefCallback?): Boolean {
-        bytesRead?.set(0)
-        return false
-    }
-}
-
 /** Serves an empty `404` — used to block un-transformed `*.js` (see the request handler). */
 private class BlockedResourceHandler : CefResourceHandlerAdapter() {
     override fun processRequest(request: CefRequest?, callback: CefCallback?): Boolean {
@@ -330,7 +263,3 @@ private class BlockedResourceHandler : CefResourceHandlerAdapter() {
         return false
     }
 }
-
-/** Percent-decoding for the channel query value (UTF-8, `+` is a literal plus in a query value). */
-private fun decodeQueryComponent(value: String): String =
-    runCatching { URLDecoder.decode(value.replace("+", "%2B"), "UTF-8") }.getOrDefault(value)
