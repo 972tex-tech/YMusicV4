@@ -1,6 +1,5 @@
 package ymusic.android
 
-import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
@@ -26,27 +25,15 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kmpcommon.uri.Uri
 import kmpffmpeg.AndroidFfInputResolver
 import kmpffmpeg.metadata.FfmpegMetadataGetter
-import kmphttp.KmpHttpClient
-import kmphttp.create
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
-import okio.FileSystem
-import okio.Path.Companion.toOkioPath
-import ymusic.dynamicengine.DynamicEngineManager
-import ymusic.dynamicengine.androidEngineCacheStore
-import ymusic.imageloader.DiskScaledImageCache
-import ymusic.imageloader.ImageLoader
-import ymusic.imageloader.defaultMemoryCacheBudget
-import ymusic.imageloader.fileFetcher
-import ymusic.imageloader.networkFetcher
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.MediaScanner
 import ymusic.mediascanner.SafDocumentsProvider
 import ymusic.mediastore.BetterMediaStore
-import ymusic.mediastore.mediaStoreAndroidDriver
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -55,7 +42,6 @@ import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
-import ymusic.ui.AppHttpClients
 import java.io.File
 
 /**
@@ -64,7 +50,7 @@ import java.io.File
  * MediaSessionService) lands with the system-integration milestone.
  */
 class MainActivity : ComponentActivity() {
-    private var imageLoader: ImageLoader? = null
+    private var player: ymusic.player.Player? = null
 
     // Bridges the callback-based SAF folder pick to the shell's suspend ScanAction: launch() fires the
     // system ACTION_OPEN_DOCUMENT_TREE, the result callback completes the pending deferred.
@@ -88,15 +74,14 @@ class MainActivity : ComponentActivity() {
         return deferred.await()
     }
 
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        val loader = imageLoader ?: return
-        when {
-            // In the background LRU list — decoded thumbnails are pure regenerable weight, drop all.
-            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> loader.trimMemoryCache(0f)
-            // Running but memory is tight (or UI just hidden) — keep the hot half.
-            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> loader.trimMemoryCache(0.5f)
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        // The player is the Activity-scoped half of the graph (its engines render into this
+        // activity's views): recreation builds a fresh one, so release the old engines' WebView /
+        // ExoPlayer instead of stacking one per rotation. Playback continuity across recreation is
+        // the MediaSessionService milestone, not this teardown's job.
+        player?.release()
+        player = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -143,36 +128,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun buildGraphOffMain(videoContainer: FrameLayout): AppGraph {
-        // The cookie store is the WebView CookieManager — shared with the WebView YouTube player,
-        // persistent across launches (as legacy YMusic did). The engine's OWN HTTP client carries
-        // NO jar: the engine JS cooks every Cookie header itself against this store (cookie/get|set
-        // protocol), so cookie policy lives in the remotely-updatable bundle.
-        val platformCookies = WebViewCookieJar()
-        // One client stack, one disk cache, shared by the engine and the player's embed fetch.
-        val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath())
-        val settings = PrefsSettingsStore.open(this)
-        val engines = DynamicEngineManager(
-            http.engine,
-            appVersion = 1,
-            logger = LogcatLogger(),
-            cacheStore = androidEngineCacheStore(applicationContext),
-            cookieJar = platformCookies,
-            settings = settings,
-        )
-        engines.start()
-
-        val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(applicationContext))
-
-        // The injected YouTube player script, bundled as an asset (copied from webview-js/dist).
-        // Without it the WebView engine is absent and a YouTube item surfaces E60050.
-        val webViewJs = runCatching {
-            assets.open("webview_ymusic.js").readBytes().decodeToString()
-        }.getOrNull()
+        // The process half (http/engines/store/settings/images) survives every recreation of this
+        // activity; only the view-bound player is built here, around this activity's container.
+        val shared = (application as YMusicApplication).services.await()
 
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
-                webView = webViewJs?.let { js ->
+                webView = shared.webViewJs?.let { js ->
                     {
                         createWebViewPlayer(
                             WebViewPlayerContext(this, videoContainer),
@@ -180,40 +143,36 @@ class MainActivity : ComponentActivity() {
                             appVersion = 1,
                             // The embed fetch is a browser-identity request — it rides the platform
                             // cookie store like the WebView's own traffic (unlike the engine client).
-                            httpClient = http.withCookies(platformCookies),
+                            httpClient = shared.http.withCookies(shared.cookies),
                         )
                     }
                 },
             ),
-        )
-
-        // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to the
-        // fetcher's disk cache, decode from file) + local files. Memory budget scales with the
-        // device's heap class; onTrimMemory (above) sheds it under pressure.
-        val imageLoader = ImageLoader(
-            fetchers = listOf(
-                networkFetcher(
-                    KmpHttpClient.create { },
-                    FileSystem.SYSTEM,
-                    cacheDir.resolve("image-source-cache").toOkioPath(),
-                ),
-                fileFetcher(),
-            ),
-            scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
-            logger = LogcatLogger(),
-            memoryCacheBytes = defaultMemoryCacheBudget(this),
-        ).also { this.imageLoader = it }
+        ).also { this.player = it }
 
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName
         return AppGraph(
-            engines,
+            shared.engines,
             player,
-            mediaStore = mediaStore,
-            scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
-            rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },
+            mediaStore = shared.mediaStore,
+            scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
+            rescanLibrary = { onProgress -> rescanKnownRoots(shared.mediaStore, onProgress) },
+            deleteFromDisk = { item ->
+                withContext(Dispatchers.IO) {
+                    val uri = android.net.Uri.parse(item.uri.toString())
+                    // Rides the persisted tree permission from the folder pick. An already-gone
+                    // document still clears its library row (matching the desktop shell).
+                    val deleted = try {
+                        android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
+                    } catch (e: java.io.FileNotFoundException) {
+                        true
+                    }
+                    check(deleted) { "Android refused to delete this document" }
+                }
+            },
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
-            imageLoader = imageLoader,
-            settings = settings,
+            imageLoader = shared.imageLoader,
+            settings = shared.settings,
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the
