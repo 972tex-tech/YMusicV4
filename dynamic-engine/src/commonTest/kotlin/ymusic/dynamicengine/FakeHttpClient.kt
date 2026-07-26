@@ -126,3 +126,6 @@ expect suspend fun RequestBody.readAll(): ByteArray
 /** A [CookieJar] whose every operation throws — exercises the cookie protocol's `E20041` jar-failure
  *  path. Built per platform because `CookieJar` is blocking on JVM (OkHttp) and suspend elsewhere. */
 expect fun throwingCookieJar(): CookieJar
+
+/** A jar whose reads NEVER answer — the CookieManager-wedged-against-Chromium-startup shape. */
+expect fun wedgedCookieJar(): CookieJar

@@ -51,8 +51,13 @@ import ymusic.quickjs.asAsyncSource
  */
 internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?) {
     onAccept("cookie/get") { pipe ->
-        serveCookie(pipe, logger, GET_SCOPE) { head ->
-            val cookies = cookieJar.loadForRequest(head.requireHttpUrl("url"))
+        serveCookie(pipe, logger, GET_SCOPE) { head, ctx ->
+            val url = head.requireHttpUrl("url")
+            // Off-thread + deadline: the Android jar is CookieManager, which can block against
+            // Chromium startup — on the engine thread that wedged every command (see hostStoreCall).
+            val cookies = hostStoreCall(logger, ctx, "E20042", "cookie store read") {
+                cookieJar.loadForRequest(url)
+            }
             val out = Buffer().writeUtf8(
                 buildJsonObject { for (c in cookies) put(c.name, c.value) }.toString(),
             )
@@ -60,16 +65,23 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
         }
     }
     onAccept("cookie/set") { pipe ->
-        serveCookie(pipe, logger, SET_SCOPE) { head ->
+        serveCookie(pipe, logger, SET_SCOPE) { head, ctx ->
             val url = head.requireHttpUrl("url")
             // Unparseable Set-Cookie values are dropped (OkHttp semantics), not an error.
             val cookies = head.requireStringList("setCookie").mapNotNull { parseCookie(url, it) }
-            cookieJar.saveFromResponse(url, cookies)
+            hostStoreCall(logger, ctx, "E20042", "cookie store write") {
+                cookieJar.saveFromResponse(url, cookies)
+            }
         }
     }
 }
 
-private suspend fun serveCookie(pipe: Pipe, logger: Logger?, scope: List<String>, handle: suspend (JsonObject) -> Unit) {
+private suspend fun serveCookie(
+    pipe: Pipe,
+    logger: Logger?,
+    scope: List<String>,
+    handle: suspend (JsonObject, List<String>) -> Unit,
+) {
     var logCtx = scope // caller trail + this command; the fallback until the head parses
     try {
         val src = BufferedAsyncSource(pipe.source.asAsyncSource())
@@ -86,7 +98,7 @@ private suspend fun serveCookie(pipe: Pipe, logger: Logger?, scope: List<String>
         }
         logCtx = readLogCtx(head, scope)
         try {
-            handle(head)
+            handle(head, logCtx)
             pipe.sink.close() // clean END (no-op after an in-place RESET)
         } catch (e: CancellationException) {
             throw e

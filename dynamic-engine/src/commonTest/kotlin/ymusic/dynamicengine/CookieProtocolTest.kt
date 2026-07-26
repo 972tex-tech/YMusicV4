@@ -8,6 +8,7 @@ import kmphttp.saveFromResponse
 import kmphttp.toHttpUrl
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
+import ymusic.dynamicengine.internal.hostStoreTimeoutMs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -114,6 +115,28 @@ class CookieProtocolTest {
             assertEquals("E20040|cookie request missing 'url'", e.drive("test/cookie/get-err", """{"url":""}"""))
         } finally {
             e.close()
+        }
+    }
+
+    /** The zombie regression: a store that never answers must cost ONE typed command failure —
+     *  never the engine. The deadline fires off-thread (the wedged call is abandoned), the JS gets
+     *  the classified E20042, and an unrelated command still round-trips afterwards. */
+    @Test
+    fun a_wedged_jar_times_out_typed_and_the_engine_survives() = runTest {
+        hostStoreTimeoutMs = 500
+        try {
+            val e = engineOn(wedgedCookieJar())
+            try {
+                assertEquals(
+                    "E20042|cookie store read did not answer within 500ms",
+                    e.drive("test/cookie/get-err", """{"url":"https://x.example/"}"""),
+                )
+                assertEquals("app=1", e.drive("test/http/versions", "{}"))
+            } finally {
+                e.close()
+            }
+        } finally {
+            hostStoreTimeoutMs = 10_000
         }
     }
 

@@ -25,28 +25,37 @@ import ymusic.quickjs.asAsyncSource
 import ymusic.settings.SettingsStore
 
 internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Logger?) {
+    // Store touches ride hostStoreCall (off the engine thread, deadlined): SharedPreferences'
+    // first read blocks on disk, and on the engine thread that wedges every command (see
+    // hostStoreCall).
     onAccept("settings/get") { pipe ->
-        serveSettings(pipe, logger, GET_SCOPE) { head ->
+        serveSettings(pipe, logger, GET_SCOPE) { head, ctx ->
             val key = head.requireString("key")
-            val value = when (head.requireString("type")) {
-                "string" -> JsonPrimitive(settings.string(key, head.requirePrimitive("default").content).value)
-                "boolean" -> JsonPrimitive(settings.boolean(key, head.requirePrimitive("default").booleanOrNull ?: badDefault()).value)
-                "int" -> JsonPrimitive(settings.int(key, head.requirePrimitive("default").intOrNull ?: badDefault()).value)
-                else -> throw SettingsRequestError("settings request has an invalid 'type'")
+            val type = head.requireString("type")
+            val value = hostStoreCall(logger, ctx, "E20062", "settings store read") {
+                when (type) {
+                    "string" -> JsonPrimitive(settings.string(key, head.requirePrimitive("default").content).value)
+                    "boolean" -> JsonPrimitive(settings.boolean(key, head.requirePrimitive("default").booleanOrNull ?: badDefault()).value)
+                    "int" -> JsonPrimitive(settings.int(key, head.requirePrimitive("default").intOrNull ?: badDefault()).value)
+                    else -> throw SettingsRequestError("settings request has an invalid 'type'")
+                }
             }
             val out = Buffer().writeUtf8(buildJsonObject { put("value", value) }.toString())
             pipe.sink.send(out, out.size)
         }
     }
     onAccept("settings/set") { pipe ->
-        serveSettings(pipe, logger, SET_SCOPE) { head ->
+        serveSettings(pipe, logger, SET_SCOPE) { head, ctx ->
             val key = head.requireString("key")
             val value = head.requirePrimitive("value")
-            when (head.requireString("type")) {
-                "string" -> settings.putString(key, value.content)
-                "boolean" -> settings.putBoolean(key, value.booleanOrNull ?: badValue())
-                "int" -> settings.putInt(key, value.intOrNull ?: badValue())
-                else -> throw SettingsRequestError("settings request has an invalid 'type'")
+            val type = head.requireString("type")
+            hostStoreCall(logger, ctx, "E20062", "settings store write") {
+                when (type) {
+                    "string" -> settings.putString(key, value.content)
+                    "boolean" -> settings.putBoolean(key, value.booleanOrNull ?: badValue())
+                    "int" -> settings.putInt(key, value.intOrNull ?: badValue())
+                    else -> throw SettingsRequestError("settings request has an invalid 'type'")
+                }
             }
         }
     }
@@ -56,7 +65,7 @@ private suspend fun serveSettings(
     pipe: Pipe,
     logger: Logger?,
     scope: List<String>,
-    handle: suspend (JsonObject) -> Unit,
+    handle: suspend (JsonObject, List<String>) -> Unit,
 ) {
     var logCtx = scope
     try {
@@ -73,7 +82,7 @@ private suspend fun serveSettings(
         }
         logCtx = readLogCtx(head, scope)
         try {
-            handle(head)
+            handle(head, logCtx)
             pipe.sink.close()
         } catch (e: CancellationException) {
             throw e

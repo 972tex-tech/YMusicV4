@@ -68,3 +68,15 @@ actual fun throwingCookieJar(): kmphttp.CookieJar = object : kmphttp.CookieJar {
     override fun loadForRequest(url: kmphttp.HttpUrl): List<kmphttp.Cookie> =
         throw RuntimeException("cookie jar unavailable")
 }
+
+actual fun wedgedCookieJar(): kmphttp.CookieJar = object : kmphttp.CookieJar {
+    override fun saveFromResponse(url: kmphttp.HttpUrl, cookies: List<kmphttp.Cookie>): Unit = block()
+
+    override fun loadForRequest(url: kmphttp.HttpUrl): List<kmphttp.Cookie> = block()
+
+    // The real wedge is a BLOCKED thread, not a suspension — park the (daemon) IO worker for good.
+    private fun <T> block(): T {
+        java.util.concurrent.CountDownLatch(1).await()
+        throw IllegalStateException("unreachable")
+    }
+}

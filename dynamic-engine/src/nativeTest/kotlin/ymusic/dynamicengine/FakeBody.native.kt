@@ -61,3 +61,11 @@ actual fun throwingCookieJar(): kmphttp.CookieJar = object : kmphttp.CookieJar {
     override suspend fun loadForRequest(url: kmphttp.HttpUrl): List<kmphttp.Cookie> =
         throw RuntimeException("cookie jar unavailable")
 }
+
+actual fun wedgedCookieJar(): kmphttp.CookieJar = object : kmphttp.CookieJar {
+    override suspend fun saveFromResponse(url: kmphttp.HttpUrl, cookies: List<kmphttp.Cookie>): Unit =
+        kotlinx.coroutines.awaitCancellation()
+
+    override suspend fun loadForRequest(url: kmphttp.HttpUrl): List<kmphttp.Cookie> =
+        kotlinx.coroutines.awaitCancellation()
+}
