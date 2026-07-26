@@ -209,7 +209,10 @@ fun FeedListItem(
             wide -> RectThumb(item, width = 160.dp, height = 90.dp)
             else -> RectThumb(item, width = 92.dp, height = 92.dp)
         }
-        Column(Modifier.weight(1f)) {
+        // A row with no trailing control (playlist/channel rows: no ⋮, no pill) has nothing to
+        // absorb that inset, so the text restores the full 16dp itself.
+        val bare = item.ctaText == null && actions.entries.isEmpty()
+        Column(Modifier.weight(1f).padding(end = if (bare) 12.dp else 0.dp)) {
             Text(
                 item.title,
                 style = ListTitleStyle,
