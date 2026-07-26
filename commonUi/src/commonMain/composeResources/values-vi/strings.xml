@@ -142,4 +142,9 @@
     <string name="cd_captions">Phụ đề</string>
     <string name="cd_send">Gửi</string>
     <string name="cd_vote">Bình chọn</string>
+    <string name="menu_remove_from_disk">Xóa khỏi ổ đĩa</string>
+    <string name="delete_from_disk_title">Xóa tệp?</string>
+    <string name="delete_from_disk_message">“%1$s” sẽ bị xóa vĩnh viễn khỏi thiết bị này. Không thể hoàn tác.</string>
+    <string name="delete_from_disk_confirm">Xóa</string>
+    <string name="dialog_cancel">Hủy</string>
 </resources>

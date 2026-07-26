@@ -41,12 +41,14 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -94,6 +96,10 @@ import ymusic.mediastore.model.MediaStoreItem
 import ymusic.mediastore.model.Playlist
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.cd_back
+import ymusic.ui.resources.delete_from_disk_confirm
+import ymusic.ui.resources.delete_from_disk_message
+import ymusic.ui.resources.delete_from_disk_title
+import ymusic.ui.resources.dialog_cancel
 import ymusic.ui.resources.library_add_folder
 import ymusic.ui.resources.library_crumb_root
 import ymusic.ui.resources.library_empty
@@ -115,6 +121,7 @@ import ymusic.ui.resources.menu_exclude_folder
 import ymusic.ui.resources.menu_include_folder
 import ymusic.ui.resources.menu_play
 import ymusic.ui.resources.menu_remove_folder
+import ymusic.ui.resources.menu_remove_from_disk
 import ymusic.ui.resources.menu_show_in_folder
 import ymusic.ui.resources.n_songs
 import ymusic.ui.resources.queue_last
@@ -151,6 +158,10 @@ private class LibraryContent(
  *  Folders tab and opens the song's bucket. Null outside the Library tabs (e.g. the search screen),
  *  which hides the menu item. */
 internal val LocalLibraryReveal = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
+
+/** A song's "Remove from disk" REQUEST — opens [LibraryScreen]'s confirm dialog; nothing is
+ *  deleted until the user confirms there. Null (no shell delete hook) hides the menu item. */
+internal val LocalLibraryDelete = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
 
 /** The local library over [AppGraph.mediaStore]: an empty state with the scan action until the first
  *  scan lands, then the Folders/Playlists/Songs/Artists/Albums/Genres tabs. Styled with
@@ -196,6 +207,21 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 item.bucketId?.let { revealBucket = it }
                 tab = LibraryTab.Folders
             }
+            // "Remove from disk": the menu only REQUESTS; the deletion runs from the dialog's
+            // confirm, and the store row goes only after the file did (itemsChanges reloads the UI).
+            var confirmDelete by remember { mutableStateOf<MediaStoreItem?>(null) }
+            val requestDelete: ((MediaStoreItem) -> Unit)? =
+                graph.deleteFromDisk?.let { { item -> confirmDelete = item } }
+            confirmDelete?.let { doomed ->
+                DeleteFromDiskDialog(
+                    doomed,
+                    onDismiss = { confirmDelete = null },
+                    delete = {
+                        graph.deleteFromDisk!!.invoke(doomed)
+                        store.deleteItem(doomed.id, hard = true)
+                    },
+                )
+            }
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
             val tabStateHolder = rememberSaveableStateHolder()
             // Live swipe progress (−1..1) so the underline tracks the drag, not just the commit.
@@ -207,7 +233,10 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     LibraryTabRow(tab, tabDrag) { tab = it }
                     HorizontalDivider(color = DesignColors.Divider)
                 }
-                CompositionLocalProvider(LocalLibraryReveal provides reveal) {
+                CompositionLocalProvider(
+                    LocalLibraryReveal provides reveal,
+                    LocalLibraryDelete provides requestDelete,
+                ) {
                     val openDrawer = LocalOpenNavDrawer.current
                     SwipeTabSwitcher(
                         tab,
@@ -594,6 +623,59 @@ private fun folderActions(
 
 private val MediaStoreBucket.displayName: String get() = aliasName?.takeIf(String::isNotBlank) ?: name
 
+/** The irreversible-delete gate: names the file, says it cannot be undone, and runs [delete] only
+ *  on explicit confirm. A failed delete keeps the dialog open with the error (the row stays — the
+ *  store is only touched after the file is gone). */
+@Composable
+private fun DeleteFromDiskDialog(
+    item: MediaStoreItem,
+    onDismiss: () -> Unit,
+    delete: suspend () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var busy by remember(item) { mutableStateOf(false) }
+    var error by remember(item) { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(Res.string.delete_from_disk_title)) },
+        text = {
+            Column {
+                Text(stringResource(Res.string.delete_from_disk_message, item.title))
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        try {
+                            delete()
+                            onDismiss()
+                        } catch (t: Throwable) {
+                            error = t.message ?: t.toString()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text(stringResource(Res.string.delete_from_disk_confirm), color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+        },
+    )
+}
+
 // ---- playlists ----
 
 @Composable
@@ -899,13 +981,16 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
     val next = stringResource(Res.string.queue_next)
     val last = stringResource(Res.string.queue_last)
     val showInFolder = stringResource(Res.string.menu_show_in_folder)
+    val removeFromDisk = stringResource(Res.string.menu_remove_from_disk)
     val reveal = LocalLibraryReveal.current
+    val requestDelete = LocalLibraryDelete.current
     return ItemActions(
         buildList {
             add(play to { coordinator.playLocalSingle(song) })
             add(next to { coordinator.queueLocalNext(song) })
             add(last to { coordinator.queueLocalLast(song) })
             if (reveal != null && song.bucketId != null) add(showInFolder to { reveal(song) })
+            if (requestDelete != null) add(removeFromDisk to { requestDelete(song) })
         },
     )
 }

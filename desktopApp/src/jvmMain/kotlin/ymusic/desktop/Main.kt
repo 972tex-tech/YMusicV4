@@ -204,6 +204,13 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         mediaStore = mediaStore,
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
         rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },
+        deleteFromDisk = { item ->
+            withContext(Dispatchers.IO) {
+                check(item.uri.scheme.contentEquals("file")) { "not a local file: ${item.uri}" }
+                // mustExist=false: an already-gone file still clears its library row.
+                FileSystem.SYSTEM.delete(item.uri.path.toString().toPath(), mustExist = false)
+            }
+        },
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
         settings = settings,

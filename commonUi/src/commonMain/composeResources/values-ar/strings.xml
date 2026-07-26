@@ -147,4 +147,9 @@
     <string name="cd_captions">التسميات التوضيحية</string>
     <string name="cd_send">إرسال</string>
     <string name="cd_vote">تصويت</string>
+    <string name="menu_remove_from_disk">حذف من القرص</string>
+    <string name="delete_from_disk_title">حذف الملف؟</string>
+    <string name="delete_from_disk_message">سيتم حذف "%1$s" نهائيًا من هذا الجهاز. لا يمكن التراجع عن ذلك.</string>
+    <string name="delete_from_disk_confirm">حذف</string>
+    <string name="dialog_cancel">إلغاء</string>
 </resources>

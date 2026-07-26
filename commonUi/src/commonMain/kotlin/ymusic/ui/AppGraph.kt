@@ -42,6 +42,13 @@ class AppGraph(
      * scan, or has no notion of persisted roots.
      */
     val rescanLibrary: ScanAction? = null,
+    /**
+     * Permanently deletes the item's FILE from storage (okio delete on desktop, SAF
+     * DocumentsContract on Android) — the destructive half of the Library's "Remove from disk";
+     * the UI removes the media-store row only after this returns. Throws on failure (surfaced in
+     * the confirm dialog). Null hides the menu action entirely.
+     */
+    val deleteFromDisk: (suspend (ymusic.mediastore.model.MediaStoreItem) -> Unit)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */

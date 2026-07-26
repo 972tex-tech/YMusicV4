@@ -160,4 +160,9 @@
     <string name="cd_captions">Captions</string>
     <string name="cd_send">Send</string>
     <string name="cd_vote">Vote</string>
+    <string name="menu_remove_from_disk">Remove from disk</string>
+    <string name="delete_from_disk_title">Delete file?</string>
+    <string name="delete_from_disk_message">“%1$s” will be permanently deleted from this device. This cannot be undone.</string>
+    <string name="delete_from_disk_confirm">Delete</string>
+    <string name="dialog_cancel">Cancel</string>
 </resources>
