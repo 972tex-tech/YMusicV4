@@ -298,16 +298,34 @@ val generateTestEngineJs by tasks.registering {
     inputs.files(testEngineJs)
     outputs.dir(testEngineJsKtDir)
     doLast {
-        val escaped = testEngineJs.singleFile.readText()
+        fun escape(s: String) = s
             .replace("\\", "\\\\").replace("\"", "\\\"")
             .replace("\$", "\${'\$'}").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
+        val bundle = testEngineJs.singleFile.readText()
+        // A JVM string constant is capped at 65535 UTF-8 BYTES, and the test bundle passed that —
+        // so it ships as chunks concatenated at class-init (same scheme as :dynamic-engine's
+        // embedBundle). Chunks are cut on char boundaries that never split a surrogate pair, and
+        // sized in bytes for the worst-case encoding.
+        val chunks = mutableListOf<String>()
+        var start = 0
+        while (start < bundle.length) {
+            var end = minOf(start + 16_000, bundle.length)
+            if (end < bundle.length && bundle[end - 1].isHighSurrogate()) end++
+            chunks += bundle.substring(start, end)
+            start = end
+        }
+        val parts = chunks.mapIndexed { i, chunk ->
+            "private const val TEST_ENGINE_JS_$i: String = \"${escape(chunk)}\""
+        }
         val dir = testEngineJsKtDir.get().asFile.resolve("ymusic/quickjs").apply { mkdirs() }
         dir.resolve("TestEngineJs.kt").writeText(
             """
             |package ymusic.quickjs
             |
             |// GENERATED — do not edit. The :engine-js bundle, for tests only.
-            |internal const val TEST_ENGINE_JS: String = "$escaped"
+            |${parts.joinToString("\n|")}
+            |
+            |internal val TEST_ENGINE_JS: String = ${chunks.indices.joinToString(" + ") { "TEST_ENGINE_JS_$it" }}
             |""".trimMargin(),
         )
     }
