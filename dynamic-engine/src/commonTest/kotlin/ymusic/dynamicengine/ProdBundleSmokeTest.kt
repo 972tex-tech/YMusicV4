@@ -3,6 +3,7 @@ package ymusic.dynamicengine
 import kmpcommon.io.BufferedAsyncSource
 import kmphttp.json.JsonReader
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import okio.Buffer
@@ -19,9 +20,12 @@ import kotlin.test.assertIs
  *  mangled artifact itself boots and serves. */
 class ProdBundleSmokeTest {
 
+    private suspend fun createProdEngine(client: kmphttp.KmpHttpClient): DynamicEngine =
+        withContext(testEngineDispatcher) { DynamicEngine.create(client, 1, testEngineDispatcher) }
+
     @Test
     fun ping_echoes_through_the_mangled_bundle() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), 1)
+        val e = createProdEngine(FakeHttpClient(CannedResponse.ofText("")))
         try {
             val pipe = e.openPipe("ping")
             val msg = Buffer().writeUtf8("hello, mangled world")
@@ -38,7 +42,7 @@ class ProdBundleSmokeTest {
 
     @Test
     fun http_fetch_streams_head_and_body() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("payload bytes", status = 200)), 1)
+        val e = createProdEngine(FakeHttpClient(CannedResponse.ofText("payload bytes", status = 200)))
         try {
             val pipe = e.openPipe("http/fetch")
             val head = Buffer().writeUtf8("""{"url":"https://example.com/x"}""")
@@ -60,7 +64,7 @@ class ProdBundleSmokeTest {
      *  classified `{code:"network"}` RESET and decodes to the typed error. */
     @Test
     fun http_fetch_failure_resets_with_the_network_code() = runTest {
-        val e = DynamicEngine.create(FakeHttpClient { throw IOException("connect refused") }, 1)
+        val e = createProdEngine(FakeHttpClient { throw IOException("connect refused") })
         try {
             val pipe = e.openPipe("http/fetch")
             val head = Buffer().writeUtf8("""{"url":"https://example.com/x"}""")

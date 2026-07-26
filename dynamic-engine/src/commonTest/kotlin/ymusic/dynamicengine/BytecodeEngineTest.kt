@@ -1,6 +1,7 @@
 package ymusic.dynamicengine
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import okio.Buffer
 import ymusic.dynamicengine.internal.ENGINE_TEST_JS
 import kotlin.test.Test
@@ -27,7 +28,9 @@ class BytecodeEngineTest {
     @Test
     fun versions_reach_the_bytecode_bundle() = runTest {
         val bc = DynamicEngine.compile(ENGINE_TEST_JS)
-        val e = DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), appVersion = 42, engineBytecode = bc)
+        val e = withContext(testEngineDispatcher) {
+            DynamicEngine.create(FakeHttpClient(CannedResponse.ofText("")), appVersion = 42, engineBytecode = bc, dispatcher = testEngineDispatcher)
+        }
         try {
             assertEquals("app=42", e.scenario("versions"))
         } finally {
@@ -39,7 +42,9 @@ class BytecodeEngineTest {
     fun http_protocol_works_from_bytecode() = runTest {
         val bc = DynamicEngine.compile(ENGINE_TEST_JS)
         val client = FakeHttpClient(CannedResponse.ofText("Hello, world!"))
-        val e = DynamicEngine.create(client, appVersion = 1, engineBytecode = bc)
+        val e = withContext(testEngineDispatcher) {
+            DynamicEngine.create(client, appVersion = 1, engineBytecode = bc, dispatcher = testEngineDispatcher)
+        }
         try {
             assertEquals("Hello, world!", e.scenario("get-text"))
         } finally {

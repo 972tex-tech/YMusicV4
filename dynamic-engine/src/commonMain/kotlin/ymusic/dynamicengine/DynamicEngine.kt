@@ -3,13 +3,9 @@ package ymusic.dynamicengine
 import kmpcommon.log.Logger
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okio.Buffer
 import ymusic.dynamicengine.internal.ENGINE_JS
 import ymusic.dynamicengine.internal.installCache
 import ymusic.dynamicengine.internal.installCookies
@@ -79,22 +75,30 @@ class DynamicEngine private constructor(
          * eval, so the bundle's top-level code can already call it), and health-check via
          * `"init"`.
          *
+         * NOT a suspend function on purpose: the whole boot — native engine, bundle eval, init
+         * round-trip (the C layer pumps JS microtasks inside each call, so init has answered
+         * before `open` returns) — runs synchronously on the current thread, which the CALLER
+         * must ensure is [dispatcher]'s (`withContext(dispatcher) { create(...) }`). [dispatcher]
+         * is the engine's JS confinement thread for its whole life — single-threaded, caller-owned
+         * (see [QuickJsRuntime.newDispatcher]), closed by the caller after [close], never here.
+         *
          * [appVersion] is the host app's version code. [engineJs] defaults to the build-time
          * baseline; the app passes a remotely-fetched bundle here, and falls back to the default
          * when that fails to load (a bad push must not brick the engine — a failure here is a
          * typed [EngineError], `E20020` load / `E20021` health check). [logger] receives
          * host-protocol birth-site failures (null = logging off).
          */
-        suspend fun create(
+        fun create(
             client: KmpHttpClient,
             appVersion: Int,
+            dispatcher: CoroutineDispatcher,
             logger: Logger? = null,
             engineJs: String = ENGINE_JS,
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
         ): DynamicEngine = boot(logger) {
-            QuickJsRuntime.create(engineJs, appVersion, onLog = logger?.let(::jsLog)) {
+            QuickJsRuntime.create(engineJs, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
                 it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
@@ -103,17 +107,19 @@ class DynamicEngine private constructor(
         }
 
         /** Create from [compile]d bytecode of a bundle — `versions.app` is only known here, so it
-         *  can never be baked into the precompiled blob; C installs it before the bytecode runs. */
-        suspend fun create(
+         *  can never be baked into the precompiled blob; C installs it before the bytecode runs.
+         *  Same synchronous contract as the [String] overload: call ON [dispatcher]. */
+        fun create(
             client: KmpHttpClient,
             appVersion: Int,
             engineBytecode: ByteArray,
+            dispatcher: CoroutineDispatcher,
             logger: Logger? = null,
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
         ): DynamicEngine = boot(logger) {
-            QuickJsRuntime.create(engineBytecode, appVersion, onLog = logger?.let(::jsLog)) {
+            QuickJsRuntime.create(engineBytecode, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
                 it.installHttp(client, logger)
                 it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
@@ -126,7 +132,7 @@ class DynamicEngine private constructor(
          *  a remote bundle), persist, and create from the bytes on later launches. */
         suspend fun compile(engineJs: String): ByteArray = QuickJsRuntime.compile(engineJs)
 
-        private suspend fun boot(logger: Logger?, createRuntime: suspend () -> QuickJsRuntime): DynamicEngine {
+        private fun boot(logger: Logger?, createRuntime: () -> QuickJsRuntime): DynamicEngine {
             val runtime = try {
                 createRuntime()
             } catch (e: QuickJsException) {
@@ -135,38 +141,23 @@ class DynamicEngine private constructor(
             try {
                 return DynamicEngine(runtime, logger, healthCheck(runtime))
             } catch (t: Throwable) {
-                runCatching { runtime.close() }
+                runCatching { runtime.closeNow() }
                 throw t
             }
         }
 
-        private const val INIT_TIMEOUT_MS = 10_000L
-
         /** Drive the bundle's `"init"` command; returns its self-reported backendVersion.
-         *  Refused / RESET / malformed / timed out → `E20021` (the RESET's own code wins). */
-        private suspend fun healthCheck(runtime: QuickJsRuntime): Int {
+         *  Refused / RESET / malformed / not-synchronous → `E20021` (the RESET's own code wins).
+         *  No timeout: init either completed inside the open call (see [QuickJsRuntime.openReadNow])
+         *  or never will — a bundle whose init parks is broken, and a bundle stuck in a busy loop
+         *  would defeat a wall-clock deadline on this thread anyway. */
+        private fun healthCheck(runtime: QuickJsRuntime): Int {
             val body = try {
-                // Dispatchers.Default: the deadline must be wall-clock — a caller on a virtual-time
-                // test dispatcher would otherwise skip straight to the timeout.
-                withContext(Dispatchers.Default) {
-                    withTimeoutOrNull(INIT_TIMEOUT_MS) {
-                        val pipe = runtime.openPipe("init")
-                        try {
-                            val buf = Buffer()
-                            while (pipe.source.receive(buf, 4096L) != -1L) { /* to EOF */ }
-                            buf.readUtf8()
-                        } finally {
-                            pipe.sink.close()
-                            pipe.source.close()
-                        }
-                    }
-                } ?: throw EngineError.Technical("E20021", "engine init timed out", null, null, null, null)
+                runtime.openReadNow("init")
             } catch (e: EngineError) {
                 throw e
             } catch (e: PipeResetException) {
                 throw decodeEngineError(e.reason, e) // the bundle classified its own failure — keep its code
-            } catch (e: CancellationException) {
-                throw e
             } catch (e: Throwable) {
                 throw EngineError.Technical("E20021", "engine init failed: ${e.message}", null, null, null, e)
             }

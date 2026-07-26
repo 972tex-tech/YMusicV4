@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okio.Buffer
 import ymusic.dynamicengine.internal.ENGINE_JS
+import ymusic.quickjs.QuickJsRuntime
 import ymusic.settings.SettingsStore
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicInt
@@ -68,6 +69,15 @@ class DynamicEngineManager(
 
     private val swapLock = Mutex() // serializes start/swap/close end to end
 
+    // The ONE JS thread every engine this manager boots is confined to, across swaps — created
+    // engines run on it for life (DynamicEngine.create's synchronous contract), so it outlives
+    // each engine and closes with the manager.
+    private val engineDispatcher = QuickJsRuntime.newDispatcher()
+
+    private suspend fun createEngine(js: String): DynamicEngine = withContext(engineDispatcher) {
+        DynamicEngine.create(client, appVersion, engineDispatcher, logger, js, cacheStore, cookieJar, settings)
+    }
+
     /** Whether the last retirement drained inside the deadline (vs. force-closed). Test seam. */
     internal var lastRetirementDrained: Boolean = true
 
@@ -83,10 +93,10 @@ class DynamicEngineManager(
     suspend fun start(remoteJs: String? = null): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
         val engine = if (remoteJs == null) {
-            DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar, settings)
+            createEngine(baselineJs)
         } else {
             try {
-                DynamicEngine.create(client, appVersion, logger, remoteJs, cacheStore, cookieJar, settings)
+                createEngine(remoteJs)
             } catch (e: EngineError) {
                 logger?.log(
                     Logger.Level.WARN,
@@ -94,7 +104,7 @@ class DynamicEngineManager(
                     "${e.code} remote bundle rejected at boot, falling back to baseline: ${e.message}",
                     e,
                 )
-                DynamicEngine.create(client, appVersion, logger, baselineJs, cacheStore, cookieJar, settings)
+                createEngine(baselineJs)
             }
         }
         activeLock.withLock { active = Slot(engine) }
@@ -109,7 +119,7 @@ class DynamicEngineManager(
      * the outgoing engine. Returns the new bundle's backendVersion.
      */
     suspend fun swap(newJs: String): Int = swapLock.withLock {
-        val fresh = DynamicEngine.create(client, appVersion, logger, newJs, cacheStore, cookieJar, settings) // throws typed on rejection
+        val fresh = createEngine(newJs) // throws typed on rejection
         val old = activeLock.withLock {
             val prev = active
             active = Slot(fresh)
@@ -138,10 +148,11 @@ class DynamicEngineManager(
         }
     }
 
-    /** Close the current engine (no drain — app teardown). */
+    /** Close the current engine and its JS thread (no drain — app teardown; terminal). */
     suspend fun close(): Unit = swapLock.withLock {
-        val slot = activeLock.withLock { val s = active; active = null; s } ?: return@withLock
-        slot.engine.close()
+        val slot = activeLock.withLock { val s = active; active = null; s }
+        slot?.engine?.close()
+        engineDispatcher.close()
     }
 
     private suspend fun retire(slot: Slot) {

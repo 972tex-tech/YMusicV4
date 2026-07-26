@@ -4,6 +4,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CloseableCoroutineDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -53,7 +54,11 @@ fun interface AcceptRegistration {
 @OptIn(ExperimentalAtomicApi::class)
 class QuickJsRuntime private constructor(
     private val engine: NativeEngine,
-    private val engineDispatcher: CloseableCoroutineDispatcher,
+    private val engineDispatcher: CoroutineDispatcher,
+    /** Non-null when [create] spawned the dispatcher itself; [close] then also closes it. A
+     *  caller-provided dispatcher (the non-suspend [create]) outlives the runtime — engines can
+     *  share one JS thread across swaps — so the caller owns its lifecycle. */
+    private val ownedDispatcher: CloseableCoroutineDispatcher?,
     private val logHandler: ((level: Int, message: String) -> Unit)?,
 ) {
 
@@ -166,6 +171,43 @@ class QuickJsRuntime private constructor(
                 runCatching { impl.closeRead() }
             }
             throw t
+        }
+    }
+
+    /**
+     * BOOT PATH, engine-thread-only: open [command] with no arguments (END immediately) and return
+     * the peer's whole response, which must have completed **synchronously** — the native layer
+     * pumps microtasks inside every JS entry, so a handler that only computes and writes (no
+     * timers, no host round-trips) has written and ENDed by the time `open` returns. A handler
+     * that parked instead throws [QuickJsException]: coroutines queued on the engine dispatcher
+     * cannot run while the caller occupies its thread, so waiting would deadlock, and a boot
+     * handler that needs them is a bundle defect. Throws [PipeResetException] on a RESET (the
+     * peer's own failure classification).
+     */
+    fun openReadNow(command: String): String {
+        if (closed.load()) throw QuickJsException("runtime closed")
+        val id = nextId
+        nextId += 2
+        val impl = PipeImpl(id, command)
+        pipes[id] = impl
+        val rc = try {
+            engine.open(id, command)
+        } catch (e: Throwable) {
+            pipes.remove(id)
+            notifyIfIdle()
+            throw e
+        }
+        if (rc < 0) {
+            pipes.remove(id)
+            notifyIfIdle()
+            throw QuickJsException("open(\"$command\") refused: no JS handler")
+        }
+        try {
+            impl.closeWriteNow(null)
+            return impl.takeCompletedNow()
+                ?: throw QuickJsException("\"$command\" did not complete synchronously")
+        } finally {
+            impl.closeReadDirect()
         }
     }
 
@@ -482,21 +524,39 @@ class QuickJsRuntime private constructor(
                 // peer-END + our-still-open-write, the `closed` recheck is what stops closeWrite from
                 // reaching a destroyed engine when it lands behind teardown.
                 if (closed.load()) return@withContext
-                if (!weEnded) {
-                    weEnded = true
-                    val w = writer
-                    // A send parked at the cap has undelivered bytes: an END-close that must abort
-                    // it delivers a RESET instead — a clean END would truncate the peer's stream. A
-                    // RESET-close passes its own reason through. Either way the parked send is
-                    // force-failed (never left hung) with SendClosedException — self-caused (our
-                    // close), NOT the peer-caused BrokenPipeException; weEnded is set so the send's
-                    // catch won't re-RESET.
-                    val effectiveReason = reason ?: if (w != null) "closed while a send was in progress" else null
-                    engine.closeWrite(id, effectiveReason)
-                    if (w != null) { writer = null; w.resumeWithException(SendClosedException("send aborted by close()")) }
-                    maybeReap()
-                }
+                closeWriteNow(reason)
             }
+        }
+
+        /** The engine-thread body of [closeWrite]; also the boot path's direct (non-suspend) close. */
+        fun closeWriteNow(reason: String?) {
+            if (weEnded) return
+            weEnded = true
+            val w = writer
+            // A send parked at the cap has undelivered bytes: an END-close that must abort
+            // it delivers a RESET instead — a clean END would truncate the peer's stream. A
+            // RESET-close passes its own reason through. Either way the parked send is
+            // force-failed (never left hung) with SendClosedException — self-caused (our
+            // close), NOT the peer-caused BrokenPipeException; weEnded is set so the send's
+            // catch won't re-RESET.
+            val effectiveReason = reason ?: if (w != null) "closed while a send was in progress" else null
+            engine.closeWrite(id, effectiveReason)
+            if (w != null) { writer = null; w.resumeWithException(SendClosedException("send aborted by close()")) }
+            maybeReap()
+        }
+
+        /** Boot path (engine thread): the peer's whole response — null while its stream is still
+         *  open, the bytes once it ENDed; throws [PipeResetException] on a RESET. No drain
+         *  bookkeeping: a boot response is far below [PIPE_CAP], so the peer never parked. */
+        fun takeCompletedNow(): String? {
+            resetReason?.let { throw PipeResetException(it) }
+            if (!writeEnded) return null
+            return inbound.readUtf8()
+        }
+
+        /** Boot path (engine thread): close the read end, reaping the pipe. */
+        fun closeReadDirect() {
+            closeReadNow(null)
         }
 
         suspend fun closeRead() {
@@ -580,7 +640,27 @@ class QuickJsRuntime private constructor(
             yield() // let the failed continuations unwind while the engine is still alive
             engine.destroy()
         }
-        engineDispatcher.close()
+        ownedDispatcher?.close()
+    }
+
+    /**
+     * BOOT-FAILURE twin of [close]: non-suspend, engine-thread-only, and only for a runtime that
+     * never escaped its create call. No yield before destroy — nothing can be parked, because the
+     * boot held the engine thread the whole time (handlers were queued, never started). NEVER
+     * closes the dispatcher, owned or not: this runs ON the engine thread, and a native worker's
+     * close() blocks until the worker terminates — which it can't while executing this very block.
+     * The suspend [create] wrapper closes its owned dispatcher off-thread after the failure
+     * propagates; [close] remains the owned dispatcher's normal reclaim.
+     */
+    fun closeNow() {
+        if (!closed.compareAndSet(expectedValue = false, newValue = true)) return
+        scope.cancel()
+        val cause = QuickJsException("runtime closed")
+        val open = pipes.values.toList()
+        pipes.clear()
+        notifyIfIdle()
+        for (p in open) p.failPending(cause)
+        engine.destroy()
     }
 
     companion object {
@@ -621,11 +701,81 @@ class QuickJsRuntime private constructor(
             configure: (QuickJsRuntime) -> Unit = {},
         ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
 
+        /**
+         * The synchronous primitive the suspend overloads wrap: create on a CALLER-OWNED
+         * [dispatcher]. The contract is the caller's to honor — [dispatcher] must be
+         * single-threaded (QuickJS is not thread-safe), the call must run ON it (everything here
+         * executes on the current thread), and the caller closes it after [close], which leaves a
+         * caller-owned dispatcher alone (engines may share one JS thread across their lifetimes).
+         */
+        fun create(
+            script: String,
+            appVersion: Int,
+            dispatcher: CoroutineDispatcher,
+            onLog: ((level: Int, message: String) -> Unit)? = null,
+            configure: (QuickJsRuntime) -> Unit = {},
+        ): QuickJsRuntime = bootOn(dispatcher, null, appVersion, onLog, configure) { it.evalEngine(script) }
+
+        /** The [ByteArray] twin of the synchronous [create]. */
+        fun create(
+            bytecode: ByteArray,
+            appVersion: Int,
+            dispatcher: CoroutineDispatcher,
+            onLog: ((level: Int, message: String) -> Unit)? = null,
+            configure: (QuickJsRuntime) -> Unit = {},
+        ): QuickJsRuntime = bootOn(dispatcher, null, appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
+
+        /** A fresh single-thread engine dispatcher for the synchronous [create]; the caller owns
+         *  it — close it once every runtime confined to it is closed. */
+        fun newDispatcher(): CloseableCoroutineDispatcher = newEngineDispatcher()
+
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
          *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding
          *  the whole script in the bytecode); line-number debug info is kept for stack traces. */
         suspend fun compile(script: String, filename: String = "<engine>"): ByteArray =
             withContext(Dispatchers.Default) { NativeEngine.compile(script, filename) }
+
+        /** The whole boot, synchronously on the current thread — which MUST be [dispatcher]'s.
+         *  A boot failure tears the runtime down via [closeNow] and rethrows; a caller-owned
+         *  dispatcher is never closed here. */
+        private fun bootOn(
+            dispatcher: CoroutineDispatcher,
+            ownedDispatcher: CloseableCoroutineDispatcher?,
+            appVersion: Int,
+            onLog: ((level: Int, message: String) -> Unit)?,
+            configure: (QuickJsRuntime) -> Unit,
+            eval: (NativeEngine) -> Unit,
+        ): QuickJsRuntime {
+            var rtRef: QuickJsRuntime? = null
+            val callbacks = object : EngineCallbacks {
+                override fun onOpen(id: Int, command: String): Int = rtRef?.onOpen(id, command) ?: -1
+                override fun onWrite(id: Int, chunk: NativeChunk): Int = rtRef?.onWrite(id, chunk) ?: -1
+                override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
+                override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
+                override fun onDrain(id: Int) { rtRef?.onDrain(id) }
+                override fun onLog(level: Int, message: String) { rtRef?.onLog(level, message) }
+            }
+            val engine = NativeEngine.create(appVersion, callbacks)
+            val rt = try {
+                QuickJsRuntime(engine, dispatcher, ownedDispatcher, onLog)
+            } catch (t: Throwable) {
+                runCatching { engine.destroy() }
+                throw t
+            }
+            rtRef = rt
+            try {
+                rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
+                configure(rt) // register the host-served commands the bundle's boot may open
+                eval(engine)
+            } catch (t: Throwable) {
+                // Full close, not the bare teardown: pipes may have opened during the failed boot
+                // (their handlers never ran — the boot held the thread — so closeNow's no-yield
+                // teardown is exactly right).
+                runCatching { rt.closeNow() }
+                throw t
+            }
+            return rt
+        }
 
         private suspend fun create(
             appVersion: Int,
@@ -634,41 +784,22 @@ class QuickJsRuntime private constructor(
             eval: (NativeEngine) -> Unit,
         ): QuickJsRuntime {
             val dispatcher = newEngineDispatcher()
-            var engine: NativeEngine? = null
-            var owned = false // rt took over engine + dispatcher; its close() is the teardown
+            var rt: QuickJsRuntime? = null
             try {
-                var rtRef: QuickJsRuntime? = null
-                val callbacks = object : EngineCallbacks {
-                    override fun onOpen(id: Int, command: String): Int = rtRef?.onOpen(id, command) ?: -1
-                    override fun onWrite(id: Int, chunk: NativeChunk): Int = rtRef?.onWrite(id, chunk) ?: -1
-                    override fun onCloseWrite(id: Int, reason: String?) { rtRef?.onCloseWrite(id, reason) }
-                    override fun onCloseRead(id: Int) { rtRef?.onCloseRead(id) }
-                    override fun onDrain(id: Int) { rtRef?.onDrain(id) }
-                    override fun onLog(level: Int, message: String) { rtRef?.onLog(level, message) }
-                }
-                // Assign INSIDE the block: prompt-cancellation throws a CancellationException on the
-                // way back out of a withContext whose body already completed, so `engine = <result>`
-                // would never run and the catch would see null and leak the freshly-created engine.
-                // Assigned in-block, the engine is visible to the catch on that path.
-                withContext(dispatcher) { engine = NativeEngine.create(appVersion, callbacks) }
-                val rt = QuickJsRuntime(engine!!, dispatcher, onLog)
-                rtRef = rt
-                owned = true
-                rt.installTimers() // host-scheduled setTimeout/setInterval (reserves those commands)
-                try {
-                    configure(rt) // register the host-served commands the bundle's boot may open
-                    withContext(dispatcher) { eval(rt.engine) }
-                } catch (t: Throwable) {
-                    // Full close, not the bare teardown: pipes may have opened during the failed boot.
-                    runCatching { rt.close() }
-                    throw t
-                }
-                return rt
+                // Assign INSIDE the block: prompt-cancellation throws a CancellationException on
+                // the way back out of a withContext whose body already completed, so a
+                // `rt = withContext(...)` result would be lost and the runtime leaked. Assigned
+                // in-block, the catch can close it on that path.
+                withContext(dispatcher) { rt = bootOn(dispatcher, dispatcher, appVersion, onLog, configure, eval) }
+                return rt!!
             } catch (t: Throwable) {
-                // A partial create must free the engine thread (and the native engine, if it got
-                // that far) — otherwise each failed/retried create() leaks a dispatcher thread.
-                if (!owned) {
-                    engine?.let { e -> runCatching { withContext(dispatcher + NonCancellable) { e.destroy() } } }
+                val made = rt
+                if (made != null) {
+                    // Boot succeeded but the result was discarded at the cancellation boundary:
+                    // close() (its teardown hop is NonCancellable) also closes the owned dispatcher.
+                    runCatching { made.close() }
+                } else {
+                    // bootOn's own failure path already destroyed the engine; the thread remains.
                     dispatcher.close()
                 }
                 throw t

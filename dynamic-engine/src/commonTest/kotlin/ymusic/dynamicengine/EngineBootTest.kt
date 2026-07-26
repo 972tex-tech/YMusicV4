@@ -1,6 +1,7 @@
 package ymusic.dynamicengine
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -22,11 +23,14 @@ class EngineBootTest {
     @Test
     fun a_broken_bundle_fails_typed_as_E20020() = runTest {
         val err = assertFailsWith<EngineError.Technical> {
-            DynamicEngine.create(
-                FakeHttpClient(CannedResponse.ofText("")),
-                appVersion = 1,
-                engineJs = "throw new Error('corrupt download')",
-            )
+            withContext(testEngineDispatcher) {
+                DynamicEngine.create(
+                    FakeHttpClient(CannedResponse.ofText("")),
+                    appVersion = 1,
+                    dispatcher = testEngineDispatcher,
+                    engineJs = "throw new Error('corrupt download')",
+                )
+            }
         }
         assertEquals("E20020", err.code)
     }
@@ -34,11 +38,14 @@ class EngineBootTest {
     @Test
     fun a_bundle_without_init_fails_the_health_check_as_E20021() = runTest {
         val err = assertFailsWith<EngineError.Technical> {
-            DynamicEngine.create(
-                FakeHttpClient(CannedResponse.ofText("")),
-                appVersion = 1,
-                engineJs = "1", // evals fine, serves nothing — the init open is refused
-            )
+            withContext(testEngineDispatcher) {
+                DynamicEngine.create(
+                    FakeHttpClient(CannedResponse.ofText("")),
+                    appVersion = 1,
+                    dispatcher = testEngineDispatcher,
+                    engineJs = "1", // evals fine, serves nothing — the init open is refused
+                )
+            }
         }
         assertEquals("E20021", err.code)
     }
