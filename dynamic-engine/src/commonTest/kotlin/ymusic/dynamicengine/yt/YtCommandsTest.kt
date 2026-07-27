@@ -767,13 +767,38 @@ class YtCommandsTest {
             val sent = assertNotNull(sentBody)
             assertTrue(sent.contains(""""hl":"vi""""), sent)
 
-            // The menus are cached per asserted hl/gl pair: the same ask is free, a different
-            // assertion is a new key (its labels/echo would differ) and refetches.
+            // One cached copy, tagged with the pair it was fetched under: the same ask is free, a
+            // changed pair re-fetches (its labels and echo would differ).
             val requests = client.requestCount
             m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
             assertEquals(requests, client.requestCount, "the repeat ask must ride the cached menus")
             m.ytLocaleOptions(YtContext(hl = "en", gl = "US"))
-            assertEquals(requests + 1, client.requestCount, "a new hl/gl pair must refetch")
+            assertEquals(requests + 1, client.requestCount, "a changed hl/gl pair must refetch")
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun locale_options_fall_back_to_the_cached_menus_when_the_refetch_fails() = runTest {
+        var offline = false
+        val (m, _) = manager {
+            if (offline) throw okio.IOException("connect refused")
+            jsonResponse(ACCOUNT_MENU_FIXTURE).build(it)
+        }
+        try {
+            m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            offline = true
+
+            // The changed pair forces a re-fetch; its failure serves the held copy — year-stable
+            // lists in yesterday's language beat an error dialog on the settings screen.
+            val locales = m.ytLocaleOptions(YtContext(hl = "en", gl = "US"))
+            assertEquals(listOf("af", "vi"), locales.languages.map { it.code })
+            assertEquals(listOf("US", "VN"), locales.regions.map { it.code })
+            // But the held copy's check marks echo the OLD assertion (vi/VN) — applying them would
+            // read as "the server refused what you just picked". The detected pair stays live.
+            assertEquals("en", locales.hl)
+            assertEquals("VN", locales.gl)
         } finally {
             m.close()
         }
