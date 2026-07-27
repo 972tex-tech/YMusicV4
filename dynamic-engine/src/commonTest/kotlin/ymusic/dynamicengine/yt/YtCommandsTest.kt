@@ -370,11 +370,13 @@ class YtCommandsTest {
             val page = m.extractHomeFeed(ctx = YtContext(hl = "vi", gl = "VN", visitorData = "vd123"))
 
             val req = assertNotNull(client.lastRequest)
+            assertTrue(req.url.toString().startsWith("https://www.youtube.com/youtubei/v1/browse"), "${req.url}")
             assertEquals("vd123", req.headers["X-Goog-Visitor-Id"])
             val sent = assertNotNull(sentBody)
             // The front-door browseId is the ENGINE's knowledge — the app never sent one.
             assertTrue(sent.contains(""""browseId":"FEwhat_to_watch""""), sent)
             assertTrue(sent.contains(""""hl":"vi""""), sent)
+            assertTrue(sent.contains(""""gl":"VN""""), sent)
             assertTrue(sent.contains(""""visitorData":"vd123""""), sent)
 
             assertEquals(1, page.sections.size, "$page")
