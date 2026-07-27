@@ -47,7 +47,7 @@ class PlaybackCoordinator(
         player.setQueue(listOf(PlayableItem.YtVideoId(video.id)))
         scope.launch {
             try {
-                val next = graph.engines.watchNext(videoId = video.id, ctx = graph.ytContext)
+                val next = graph.engines.watchNext(videoId = video.id)
                 val related = next.sections.flatMap { it.items }
                     .filter { it.kind == YtFeedItem.KIND_VIDEO && it.id != video.id }
                 remember(related)

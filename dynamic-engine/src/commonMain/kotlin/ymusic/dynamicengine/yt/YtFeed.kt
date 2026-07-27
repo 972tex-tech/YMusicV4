@@ -162,23 +162,20 @@ data class YtFeedPage(
     val autoplayVideoId: String? = null,
 )
 
-/** Localization + visitor identity carried on every InnerTube call (docs/innertube/README.md). */
-data class YtContext(
-    val hl: String = "en",
-    val gl: String = "US",
-    val visitorData: String? = null,
-)
-
 /** One pickable content language / region: the InnerTube code and YouTube's own label for it. */
 data class YtLocaleOption(val code: String, val label: String)
 
 /**
- * What YouTube reports for this connection — [gl] is its own IP-derived answer, not an echo of what
- * the app asked for. [languages] / [regions] are empty unless the pickable menus were requested.
+ * The Settings pickers' whole world: [hl]/[gl] are the user's pick ("" = automatic), [autoHl]/
+ * [autoGl] what automatic resolves to right now (device language; the connection's IP-derived
+ * region), and [languages]/[regions] the menus YouTube offers, labelled in the effective language.
+ * The locale itself lives in the ENGINE — the app only displays this and reports picks.
  */
 data class YtLocales(
-    val hl: String,
-    val gl: String,
+    val hl: String = "",
+    val gl: String = "",
+    val autoHl: String = "en",
+    val autoGl: String = "US",
     val languages: List<YtLocaleOption> = emptyList(),
     val regions: List<YtLocaleOption> = emptyList(),
 )

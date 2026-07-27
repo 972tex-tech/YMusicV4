@@ -270,6 +270,8 @@ internal suspend fun readSuggestions(r: JsonReader): List<String> {
 internal suspend fun readLocales(r: JsonReader): YtLocales {
     var hl = ""
     var gl = ""
+    var autoHl = "en"
+    var autoGl = "US"
     var languages: List<YtLocaleOption> = emptyList()
     var regions: List<YtLocaleOption> = emptyList()
     r.beginObject()
@@ -277,13 +279,15 @@ internal suspend fun readLocales(r: JsonReader): YtLocales {
         when (r.nextKey()) {
             "hl" -> hl = r.stringOrNull() ?: ""
             "gl" -> gl = r.stringOrNull() ?: ""
+            "autoHl" -> autoHl = r.stringOrNull() ?: "en"
+            "autoGl" -> autoGl = r.stringOrNull() ?: "US"
             "languages" -> languages = r.readArrayOf { readLocaleOption(it) }
             "regions" -> regions = r.readArrayOf { readLocaleOption(it) }
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtLocales(hl, gl, languages, regions)
+    return YtLocales(hl, gl, autoHl, autoGl, languages, regions)
 }
 
 private suspend fun readLocaleOption(r: JsonReader): YtLocaleOption {

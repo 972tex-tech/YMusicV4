@@ -12,15 +12,8 @@ suspend fun SettingsStore.put(
 ) = putString(setting.key, value)
 
 object AppSettings {
-    /** InnerTube `hl` — content language (BCP-47); empty = follow the device locale. */
-    val hl = StringSetting("app.hl", "")
-
-    /** InnerTube `gl` — content region (ISO 3166-1 alpha-2); empty = follow [glDetected]. */
-    val gl = StringSetting("app.gl", "")
-
-    /** The region YouTube itself last reported for this connection; empty = never asked. Not a
-     *  user preference — the app writes it, [gl] overrides it. */
-    val glDetected = StringSetting("app.gl.detected", "")
+    // The CONTENT locale (YouTube hl/gl) is deliberately absent: it lives in the engine
+    // (yt/locale/apply + the engine's own ladder), not in app settings.
 
     /** Theme accent placeholder; empty = platform default accent. */
     val themeAccent = StringSetting("theme.accent", "")

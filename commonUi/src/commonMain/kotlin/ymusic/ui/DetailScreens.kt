@@ -60,7 +60,7 @@ import ymusic.ui.resources.subscribe
  */
 class PlaylistSession(graph: AppGraph, scope: CoroutineScope, val url: String, val item: YtFeedItem) {
     val feed = FeedSession(scope) { continuation ->
-        graph.engines.extractPlaylistDetail(url, continuation = continuation, ctx = graph.ytContext)
+        graph.engines.extractPlaylistDetail(url, continuation = continuation)
     }
 
     init {
@@ -163,7 +163,7 @@ class ChannelSession(
     /** The last non-empty tab row — survives a tab-switch reload (Loading has no page yet). */
     var tabs by mutableStateOf(listOf<YtPageTab>())
     val feed = FeedSession(scope) { continuation ->
-        graph.engines.extractChannelDetail(url, continuation = continuation, ctx = graph.ytContext)
+        graph.engines.extractChannelDetail(url, continuation = continuation)
     }
 
     init {

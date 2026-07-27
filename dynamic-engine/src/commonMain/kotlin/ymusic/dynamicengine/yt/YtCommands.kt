@@ -26,11 +26,9 @@ import ymusic.quickjs.asBufferedSource
 /** The Discover home feed (first page or a page's [YtFeedPage.continuation]). */
 suspend fun DynamicEngineManager.extractHomeFeed(
     continuation: String? = null,
-    ctx: YtContext = YtContext(),
 ): YtFeedPage = feedCommand("yt/home") { w ->
     w.beginObject()
     w.optionalField("continuation", continuation)
-    w.contextField(ctx)
     w.endObject()
 }
 
@@ -61,16 +59,13 @@ suspend fun DynamicEngineManager.getRecommendedFeed(): YtFeedPage = feedCommand(
 }
 
 /**
- * The Trending Music feed for [ctx]'s region — the charts YouTube publishes there (trending music
- * videos, top songs, top music videos, top songs on Shorts). One page: charts publish no
- * continuation. Section titles are engine-synthesized and carry a [YtSectionHeader.titleKey] the app
- * localizes.
+ * The Trending Music feed — the charts YouTube publishes for the engine-resolved region (the user's
+ * pick, else the connection's detected region): trending music videos, top songs, top music videos,
+ * top songs on Shorts. One page: charts publish no continuation. Section titles are
+ * engine-synthesized and carry a [YtSectionHeader.titleKey] the app localizes.
  */
-suspend fun DynamicEngineManager.extractTrendingMusicFeed(
-    ctx: YtContext = YtContext(),
-): YtFeedPage = feedCommand("yt/trending") { w ->
+suspend fun DynamicEngineManager.extractTrendingMusicFeed(): YtFeedPage = feedCommand("yt/trending") { w ->
     w.beginObject()
-    w.contextField(ctx)
     w.endObject()
 }
 
@@ -82,12 +77,10 @@ suspend fun DynamicEngineManager.extractTrendingMusicFeed(
 suspend fun DynamicEngineManager.extractPlaylistDetail(
     url: String,
     continuation: String? = null,
-    ctx: YtContext = YtContext(),
 ): YtFeedPage = feedCommand("yt/playlist") { w ->
     w.beginObject()
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
-    w.contextField(ctx)
     w.endObject()
 }
 
@@ -96,12 +89,10 @@ suspend fun DynamicEngineManager.extractPlaylistDetail(
 suspend fun DynamicEngineManager.extractChannelDetail(
     url: String,
     continuation: String? = null,
-    ctx: YtContext = YtContext(),
 ): YtFeedPage = feedCommand("yt/channel") { w ->
     w.beginObject()
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
-    w.contextField(ctx)
     w.endObject()
 }
 
@@ -109,13 +100,11 @@ suspend fun DynamicEngineManager.search(
     query: String? = null,
     params: String? = null,
     continuation: String? = null,
-    ctx: YtContext = YtContext(),
 ): YtFeedPage = feedCommand("yt/search") { w ->
     w.beginObject()
     w.optionalField("query", query)
     w.optionalField("params", params)
     w.optionalField("continuation", continuation)
-    w.contextField(ctx)
     w.endObject()
 }
 
@@ -123,36 +112,21 @@ suspend fun DynamicEngineManager.search(
 suspend fun DynamicEngineManager.watchNext(
     videoId: String? = null,
     continuation: String? = null,
-    ctx: YtContext = YtContext(),
 ): YtFeedPage = feedCommand("yt/next") { w ->
     w.beginObject()
     w.optionalField("videoId", videoId)
     w.optionalField("continuation", continuation)
-    w.contextField(ctx)
     w.endObject()
 }
 
-suspend fun DynamicEngineManager.searchSuggestions(query: String, ctx: YtContext = YtContext()): List<String> =
+suspend fun DynamicEngineManager.searchSuggestions(query: String): List<String> =
     use { engine ->
         engine.jsonCommand("yt/suggest", { w ->
             w.beginObject()
             w.name("query").value(query)
-            w.contextField(ctx)
             w.endObject()
         }) { readSuggestions(it) }
     }
-
-/**
- * What YouTube reports for THIS connection: its own IP-derived region and the language it served.
- * The app asserts nothing to get it, so it is the answer to "where does YouTube think we are" —
- * unlike [ytLocaleOptions], whose selection merely echoes what the request carried.
- */
-suspend fun DynamicEngineManager.ytLocale(): YtLocales = use { engine ->
-    engine.jsonCommand("yt/locale", { w ->
-        w.beginObject()
-        w.endObject()
-    }) { readLocales(it) }
-}
 
 /**
  * Sync the user's locale OVERRIDE into the shared cookie identity (the legacy `YTPrefsUpdateTask`
@@ -176,17 +150,16 @@ suspend fun DynamicEngineManager.applyYtLocale(hl: String, gl: String): Unit = u
 }
 
 /**
- * The content-language / content-region menus YouTube offers, labelled in [ctx]'s language. The
- * engine keeps ONE cached copy (in-memory + [ymusic.dynamicengine.CacheStore]) tagged with the
- * hl/gl it was fetched under: it re-fetches only when the asked pair changed or the copy is over a
- * week old, and a failed re-fetch falls back to the cached copy (possibly old or in the previous
- * language) instead of erroring. The detected hl/gl in the result stays live off the session,
- * never the cache.
+ * The Settings pickers' one read: the user's pick ([YtLocales.hl]/[YtLocales.gl], "" = automatic),
+ * what automatic currently resolves to ([YtLocales.autoHl]/[YtLocales.autoGl]), and the menus
+ * YouTube offers labelled in the effective language. The engine keeps ONE cached copy of the menus
+ * (in-memory + [ymusic.dynamicengine.CacheStore]) tagged with the pair it was fetched under: it
+ * re-fetches only when the effective pair changed or the copy is over a week old, and a failed
+ * re-fetch falls back to the cached copy instead of erroring.
  */
-suspend fun DynamicEngineManager.ytLocaleOptions(ctx: YtContext = YtContext()): YtLocales = use { engine ->
+suspend fun DynamicEngineManager.ytLocaleOptions(): YtLocales = use { engine ->
     engine.jsonCommand("yt/locales", { w ->
         w.beginObject()
-        w.contextField(ctx)
         w.endObject()
     }) { readLocales(it) }
 }
@@ -211,15 +184,6 @@ suspend fun DynamicEngineManager.embedPage(userAgent: String): String = use { en
 /** Write `"key":value` only when [value] is present — absent optional fields are omitted, not null. */
 private suspend fun JsonWriter.optionalField(key: String, value: String?) {
     if (value != null) name(key).value(value)
-}
-
-/** The `ctx` object carried on every InnerTube call (localization + visitor identity). */
-private suspend fun JsonWriter.contextField(ctx: YtContext) {
-    name("ctx").beginObject()
-    name("hl").value(ctx.hl)
-    name("gl").value(ctx.gl)
-    ctx.visitorData?.let { name("visitorData").value(it) }
-    endObject()
 }
 
 private suspend fun DynamicEngineManager.feedCommand(

@@ -3,15 +3,13 @@ package ymusic.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import ymusic.dynamicengine.DynamicEngineManager
-import ymusic.dynamicengine.yt.YtContext
 import ymusic.imageloader.ImageLoader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.player.Player
-import ymusic.settings.AppSettings
 import ymusic.settings.InMemorySettingsStore
 import ymusic.settings.SettingsStore
-import ymusic.settings.flow
 
 internal const val PlaybackQualitySettingKey = "player.preferVideoQuality"
 
@@ -53,7 +51,7 @@ class AppGraph(
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
     val imageLoader: ImageLoader? = null,
-    /** App settings (UI language, hl/gl, …); the in-memory default works but doesn't persist. */
+    /** App settings (UI language, theme, …); the in-memory default works but doesn't persist. */
     val settings: SettingsStore = InMemorySettingsStore(),
     /**
      * True when [playerSurface] may be shown at any size (desktop's OSR browser renders a fixed
@@ -65,16 +63,10 @@ class AppGraph(
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
     /**
-     * The `hl`/`gl` every InnerTube call carries, resolved from settings on read so a picker change
-     * reaches callers that hold no composition (playback autoplay, an open detail page's next
-     * continuation). Composables that must RE-RUN on a change read [rememberYtContext] instead.
+     * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
+     * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.
      */
-    val ytContext: YtContext
-        get() = resolveYtContext(
-            hl = settings.flow(AppSettings.hl).value,
-            gl = settings.flow(AppSettings.gl).value,
-            glDetected = settings.flow(AppSettings.glDetected).value,
-        )
+    val localeEpoch = MutableStateFlow(0)
 
     /** App-wide reload signal (desktop F5/Cmd+R): the visible feed surface refetches. */
     val refreshRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)

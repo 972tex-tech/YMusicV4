@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 import ymusic.dynamicengine.internal.ENGINE_JS
 import ymusic.dynamicengine.internal.installCache
 import ymusic.dynamicengine.internal.installCookies
+import ymusic.dynamicengine.internal.installDevice
 import ymusic.dynamicengine.internal.installHttp
 import ymusic.dynamicengine.internal.installSettings
 import ymusic.quickjs.Pipe
@@ -140,6 +141,7 @@ class DynamicEngine private constructor(
                 it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
                 if (settings != null) it.installSettings(settings, logger)
+                it.installDevice(logger)
             }
         }
 
@@ -161,6 +163,7 @@ class DynamicEngine private constructor(
                 it.installCookies(cookieJar, logger)
                 if (cacheStore != null) it.installCache(cacheStore, logger)
                 if (settings != null) it.installSettings(settings, logger)
+                it.installDevice(logger)
             }
         }
 

@@ -49,7 +49,6 @@ import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtLocaleOption
 import ymusic.dynamicengine.yt.YtLocales
 import ymusic.dynamicengine.yt.applyYtLocale
-import ymusic.dynamicengine.yt.ytLocale
 import ymusic.dynamicengine.yt.ytLocaleOptions
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
@@ -71,18 +70,24 @@ fun SettingsScreen(graph: AppGraph) {
     val scope = rememberCoroutineScope()
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
-    val contentLanguage by remember(graph) { graph.settings.flow(AppSettings.hl) }.collectAsState()
-    val contentRegion by remember(graph) { graph.settings.flow(AppSettings.gl) }.collectAsState()
-    val ctx = rememberYtContext(graph)
-    // The pickable menus are YouTube's own, labelled in the language we currently ask for — so they
-    // are re-fetched when that changes. Until they land (or if the fetch fails) the rows still show
-    // the active choice; they just can't offer alternatives.
-    var options by remember { mutableStateOf(YtLocales("", "")) }
+    // The content locale LIVES in the engine; this screen has exactly two jobs: ask the engine for
+    // the menus + the current pick (one call, when the screen opens and again after a pick), and
+    // report a pick with applyYtLocale. Until the reply lands (or if it fails) the rows still show
+    // Automatic; they just can't offer alternatives yet.
+    var options by remember { mutableStateOf(YtLocales()) }
     var loadingOptions by remember { mutableStateOf(true) }
-    LaunchedEffect(graph.engines, ctx) {
+    var localeRevision by remember { mutableStateOf(0) }
+    LaunchedEffect(graph.engines, localeRevision) {
         loadingOptions = true
-        runCatching { graph.engines.ytLocaleOptions(ctx) }.onSuccess { options = it }
+        runCatching { graph.engines.ytLocaleOptions() }.onSuccess { options = it }
         loadingOptions = false
+    }
+    fun pickLocale(hl: String, gl: String) {
+        scope.launch {
+            runCatching { graph.engines.applyYtLocale(hl, gl) }
+            localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
+            graph.localeEpoch.value++ // locale-shaped caches (Discover feeds) refetch
+        }
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
@@ -96,29 +101,19 @@ fun SettingsScreen(graph: AppGraph) {
         )
         ContentLocaleRow(
             title = stringResource(Res.string.settings_content_language),
-            current = contentLanguage,
-            automatic = ctx.hl,
+            current = options.hl,
+            automatic = options.autoHl,
             options = options.languages,
             loading = loadingOptions,
-            onSelect = { code ->
-                scope.launch {
-                    graph.settings.put(AppSettings.hl, code)
-                    applyContentLocale(graph, hl = code, gl = contentRegion)
-                }
-            },
+            onSelect = { code -> pickLocale(hl = code, gl = options.gl) },
         )
         ContentLocaleRow(
             title = stringResource(Res.string.settings_content_region),
-            current = contentRegion,
-            automatic = ctx.gl,
+            current = options.gl,
+            automatic = options.autoGl,
             options = options.regions,
             loading = loadingOptions,
-            onSelect = { code ->
-                scope.launch {
-                    graph.settings.put(AppSettings.gl, code)
-                    applyContentLocale(graph, hl = contentLanguage, gl = code)
-                }
-            },
+            onSelect = { code -> pickLocale(hl = options.hl, gl = code) },
         )
         Text(
             stringResource(Res.string.settings_content_locale_hint),
@@ -126,15 +121,6 @@ fun SettingsScreen(graph: AppGraph) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
     }
-}
-
-/** The pick crosses into the shared cookie identity (PREF hl/gl — the WebView player follows
- *  cookies, not per-request context), then detection refreshes under the new identity, so a revert
- *  to automatic restores the IP-derived region immediately. Called ONLY on an actual pick. */
-private suspend fun applyContentLocale(graph: AppGraph, hl: String, gl: String) {
-    runCatching { graph.engines.applyYtLocale(hl, gl) }
-    runCatching { graph.engines.ytLocale() }
-        .onSuccess { if (it.gl.isNotBlank()) graph.settings.put(AppSettings.glDetected, it.gl) }
 }
 
 /**

@@ -11,13 +11,11 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import kotlinx.coroutines.runBlocking
 import ymusic.dynamicengine.DynamicEngineManager
-import ymusic.settings.AppSettings
+import ymusic.dynamicengine.yt.applyYtLocale
 import ymusic.settings.InMemorySettingsStore
-import ymusic.settings.put
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -70,11 +68,10 @@ class ContentLocaleTest {
                 waitUntil(timeoutMillis = 10_000) { charts.isNotEmpty() }
 
                 // The device is en-US and the user picked nothing, yet the charts come from VN:
-                // the ytcfg's GL is YouTube's own IP-derived answer and outranks the device for the
-                // region. The language still follows the device — YouTube only echoes back the
-                // Accept-Language we sent it.
+                // the ENGINE's ladder puts YouTube's own IP-derived answer (the ytcfg GL) above
+                // the device for the region, while the language follows the device. The app
+                // asserted nothing — no setting, no context parameter.
                 waitUntil(timeoutMillis = 10_000) { charts.last().contains(""""gl":"VN"""") }
-                assertEquals("VN", settings.string(AppSettings.glDetected.key, "").value)
                 assertTrue(charts.last().contains(""""hl":"en""""), charts.last())
             }
         } finally {
@@ -123,9 +120,13 @@ class ContentLocaleTest {
                 waitUntilAtLeastOneExists(hasText("Afrikaans"), 10_000)
                 onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
 
+                // Picking reports to the ENGINE (yt/locale/apply) — no app setting is written.
+                // The dialog closes and the row re-reads the pick from the engine.
                 onNodeWithText("Afrikaans").performClick()
-                waitUntil(timeoutMillis = 10_000) { settings.string(AppSettings.hl.key, "").value == "af" }
-                onNodeWithText("Cancel").assertDoesNotExist()
+                waitUntil(timeoutMillis = 10_000) {
+                    onAllNodes(hasText("Cancel")).fetchSemanticsNodes().isEmpty()
+                }
+                waitUntilAtLeastOneExists(hasText("Afrikaans"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }
@@ -149,7 +150,10 @@ class ContentLocaleTest {
                 waitUntil(timeoutMillis = 10_000) { charts.isNotEmpty() }
                 val before = charts.size
 
-                runBlocking { settings.put(AppSettings.gl, "JP") }
+                // What the Settings pickers do on a pick: report it to the engine, then announce
+                // "the locale changed" — the app never holds the value itself.
+                runBlocking { graph.engines.applyYtLocale(hl = "", gl = "JP") }
+                graph.localeEpoch.value++
 
                 waitUntil(timeoutMillis = 10_000) { charts.size > before }
                 assertTrue(charts.last().contains(""""gl":"JP""""), charts.last())

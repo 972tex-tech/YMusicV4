@@ -371,17 +371,19 @@ class YtCommandsTest {
     fun home_feed_parses_rich_grid_chips_and_nested_shelves() = runTest {
         val (m, client) = manager { jsonResponse(BROWSE_FIXTURE).build(it) }
         try {
-            val page = m.extractHomeFeed(ctx = YtContext(hl = "vi", gl = "VN", visitorData = "vd123"))
+            m.applyYtLocale(hl = "vi", gl = "VN") // pin the locale: the ENGINE resolves it, not the caller
+            val page = m.extractHomeFeed()
 
             val req = assertNotNull(client.lastRequest)
             assertTrue(req.url.toString().startsWith("https://www.youtube.com/youtubei/v1/browse"), "${req.url}")
-            assertEquals("vd123", req.headers["X-Goog-Visitor-Id"])
+            assertEquals("CgtzZXNzaW9uVGVzdA%3D%3D", req.headers["X-Goog-Visitor-Id"])
             val sent = assertNotNull(sentBody)
-            // The front-door browseId is the ENGINE's knowledge — the app never sent one.
+            // The front-door browseId is the ENGINE's knowledge — the app never sent one; the
+            // locale and the visitor identity are the engine's too (its ladder / its session).
             assertTrue(sent.contains(""""browseId":"FEwhat_to_watch""""), sent)
             assertTrue(sent.contains(""""hl":"vi""""), sent)
             assertTrue(sent.contains(""""gl":"VN""""), sent)
-            assertTrue(sent.contains(""""visitorData":"vd123""""), sent)
+            assertTrue(sent.contains(""""visitorData":"CgtzZXNzaW9uVGVzdA%3D%3D""""), sent)
 
             assertEquals(1, page.sections.size, "$page")
             val section = page.sections[0]
@@ -463,9 +465,11 @@ class YtCommandsTest {
     fun trending_music_maps_every_chart_to_a_titled_section() = runTest {
         val (m, client) = manager { jsonResponse(CHARTS_FIXTURE).build(it) }
         try {
-            val page = m.extractTrendingMusicFeed(ctx = YtContext(hl = "vi", gl = "vn"))
+            m.applyYtLocale(hl = "vi", gl = "vn")
+            val page = m.extractTrendingMusicFeed()
 
-            // Charts live on their own host + client; the region rides the context, uppercased.
+            // Charts live on their own host + client; the region rides the engine's own locale
+            // ladder, uppercased.
             val req = assertNotNull(client.lastRequest)
             assertTrue(req.url.toString().startsWith("https://charts.youtube.com/youtubei/v1/browse"), "${req.url}")
             val sent = assertNotNull(sentBody)
@@ -740,19 +744,16 @@ class YtCommandsTest {
     }
 
     @Test
-    fun detected_locale_is_youtubes_own_answer_for_this_connection() = runTest {
-        val (m, client) = manager { jsonResponse("{}").build(it) }
+    fun the_automatic_region_is_youtubes_own_answer_for_this_connection() = runTest {
+        val (m, _) = manager { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
         try {
-            val locale = m.ytLocale()
+            val locales = m.ytLocaleOptions()
 
-            // Straight off the bootstrap homepage's ytcfg — the app asserts no gl to get it, and
-            // asking twice costs nothing beyond the (cached) session.
-            assertEquals("VN", locale.gl)
-            assertEquals("en", locale.hl)
-            assertTrue(locale.regions.isEmpty(), "the cheap call carries no menus")
-            val requests = client.requestCount
-            m.ytLocale()
-            assertEquals(requests, client.requestCount, "the second ask rides the cached session")
+            // No pick was ever applied: the pick halves are blank, and the automatic region is
+            // straight off the bootstrap homepage's ytcfg — the engine asserts no gl to get it.
+            assertEquals("", locales.hl)
+            assertEquals("", locales.gl)
+            assertEquals("VN", locales.autoGl)
         } finally {
             m.close()
         }
@@ -762,24 +763,25 @@ class YtCommandsTest {
     fun locale_options_are_youtubes_own_menus_labelled_in_the_asked_language() = runTest {
         val (m, client) = manager { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
         try {
-            val locales = m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            m.applyYtLocale(hl = "vi", gl = "VN")
+            val locales = m.ytLocaleOptions()
 
             assertEquals(listOf("af" to "Afrikaans", "vi" to "Tiếng Việt"), locales.languages.map { it.code to it.label })
             assertEquals(listOf("US" to "Hoa Kỳ", "VN" to "Việt Nam"), locales.regions.map { it.code to it.label })
-            // The check marks are the server's echo of what the request asserted — they overwrite
-            // the detected pair, so a request YouTube did not honour becomes visible.
+            // The pick halves are the engine's own state, echoed back for the check marks.
             assertEquals("vi", locales.hl)
             assertEquals("VN", locales.gl)
             val sent = assertNotNull(sentBody)
             assertTrue(sent.contains(""""hl":"vi""""), sent)
 
-            // One cached copy, tagged with the pair it was fetched under: the same ask is free, a
-            // changed pair re-fetches (its labels and echo would differ).
+            // One cached copy, tagged with the effective pair it was fetched under: the same ask
+            // is free; a new pick changes the pair, so the menus (and the respun session) refetch.
             val requests = client.requestCount
-            m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            m.ytLocaleOptions()
             assertEquals(requests, client.requestCount, "the repeat ask must ride the cached menus")
-            m.ytLocaleOptions(YtContext(hl = "en", gl = "US"))
-            assertEquals(requests + 1, client.requestCount, "a changed hl/gl pair must refetch")
+            m.applyYtLocale(hl = "en", gl = "US")
+            m.ytLocaleOptions()
+            assertEquals(requests + 2, client.requestCount, "a new pick must re-scrape the session and refetch the menus")
         } finally {
             m.close()
         }
@@ -789,28 +791,28 @@ class YtCommandsTest {
     fun applying_a_locale_override_rides_pref_into_every_cookie_and_respins_the_session() = runTest {
         val (m, client) = manager { jsonResponse("{}").build(it) }
         try {
-            m.ytLocale() // bootstrap: the homepage scrape under the automatic identity
+            m.search(query = "seed") // bootstrap: the homepage scrape under the automatic identity
             val before = client.requestCount
 
             // The override lands in PREF and the cached session dies with the old identity: the
-            // next ask re-scrapes, and its request already carries the new cookie.
+            // next command re-scrapes (homepage + its own POST), both carrying the new cookie.
             m.applyYtLocale(hl = "vi", gl = "JP")
-            m.ytLocale()
-            assertEquals(before + 1, client.requestCount, "a changed apply must drop the cached session")
+            m.search(query = "seed")
+            assertEquals(before + 2, client.requestCount, "a changed apply must drop the cached session")
             val cookie = assertNotNull(client.lastRequest).headers["Cookie"].orEmpty()
             assertTrue(cookie.contains("PREF="), cookie)
             assertTrue(cookie.contains("hl=vi"), cookie)
             assertTrue(cookie.contains("gl=JP"), cookie)
 
-            // Re-applying the same pick is free: no cookie write, no session drop, no request.
+            // Re-applying the same pick is free: no cookie write, no session drop.
             m.applyYtLocale(hl = "vi", gl = "JP")
             val settled = client.requestCount
-            m.ytLocale()
-            assertEquals(settled, client.requestCount, "an unchanged apply must keep the session")
+            m.search(query = "seed")
+            assertEquals(settled + 1, client.requestCount, "an unchanged apply must keep the session")
 
             // Reverting to automatic strips the keys, so the bootstrap answers un-asserted again.
             m.applyYtLocale(hl = "", gl = "")
-            m.ytLocale()
+            m.search(query = "seed")
             val reverted = assertNotNull(client.lastRequest).headers["Cookie"].orEmpty()
             assertTrue(!reverted.contains("hl=vi") && !reverted.contains("gl=JP"), reverted)
         } finally {
@@ -877,18 +879,19 @@ class YtCommandsTest {
             jsonResponse(ACCOUNT_MENU_FIXTURE).build(it)
         }
         try {
-            m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            m.applyYtLocale(hl = "vi", gl = "VN")
+            m.ytLocaleOptions()
             offline = true
 
-            // The changed pair forces a re-fetch; its failure serves the held copy — year-stable
-            // lists in yesterday's language beat an error dialog on the settings screen.
-            val locales = m.ytLocaleOptions(YtContext(hl = "en", gl = "US"))
+            // A new pick forces a re-fetch (new labels); its failure serves the held copy —
+            // year-stable lists in yesterday's language beat an error dialog on the settings
+            // screen — while the pick halves stay the engine's own (new) state.
+            m.applyYtLocale(hl = "en", gl = "US")
+            val locales = m.ytLocaleOptions()
             assertEquals(listOf("af", "vi"), locales.languages.map { it.code })
             assertEquals(listOf("US", "VN"), locales.regions.map { it.code })
-            // But the held copy's check marks echo the OLD assertion (vi/VN) — applying them would
-            // read as "the server refused what you just picked". The detected pair stays live.
             assertEquals("en", locales.hl)
-            assertEquals("VN", locales.gl)
+            assertEquals("US", locales.gl)
         } finally {
             m.close()
         }
@@ -899,17 +902,20 @@ class YtCommandsTest {
         val store = cacheStore()
         val (m, client) = manager(cacheStore = store) { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
         try {
-            m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            m.applyYtLocale(hl = "vi", gl = "VN")
+            m.ytLocaleOptions()
         } finally {
             m.close()
         }
 
         assertTrue(client.requestCount >= 2, "the first engine must scrape live: session + account_menu")
 
+        // A fresh engine on the same store re-seeds EVERYTHING from the host Cache: the applied
+        // pick, the session, and the menus — zero requests, no apply call.
         val (m2, client2) = manager(cacheStore = store) { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
         try {
             val bootstrapOnly = client2.requestCount
-            val locales = m2.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            val locales = m2.ytLocaleOptions()
             assertEquals(
                 bootstrapOnly,
                 client2.requestCount,

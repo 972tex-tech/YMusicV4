@@ -89,7 +89,6 @@ class SearchSession(graph: AppGraph, scope: CoroutineScope) {
             query = if (continuation == null) submitted else null,
             params = if (continuation == null) filterParams else null,
             continuation = continuation,
-            ctx = graph.ytContext,
         )
     }
 }
@@ -134,7 +133,7 @@ fun SearchScreen(
         }
         delay(250)
         suggestions = try {
-            graph.engines.searchSuggestions(s.field.text, graph.ytContext)
+            graph.engines.searchSuggestions(s.field.text)
         } catch (e: Exception) {
             emptyList() // suggestions are best-effort sugar; the search box still works
         }
