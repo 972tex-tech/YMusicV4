@@ -12,6 +12,9 @@ import kmphttp.parseCookie
 import kmphttp.saveFromResponse
 import kmphttp.toHttpUrlOrNull
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -51,13 +54,12 @@ import ymusic.quickjs.asAsyncSource
  */
 internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?) {
     onAccept("cookie/get") { pipe ->
-        serveCookie(pipe, logger, GET_SCOPE) { head, ctx ->
+        serveCookie(pipe, logger, GET_SCOPE) { head ->
             val url = head.requireHttpUrl("url")
-            // Off-thread + deadline: the Android jar is CookieManager, which can block against
-            // Chromium startup — on the engine thread that wedged every command (see hostStoreCall).
-            val cookies = hostStoreCall(logger, ctx, "E20042", "cookie store read") {
-                cookieJar.loadForRequest(url)
-            }
+            // The jar call leaves the engine thread (the engine-thread rule, AGENTS.md): the
+            // Android jar is CookieManager, which can block against Chromium startup — on the
+            // engine thread that wedged every pipe, timer and command at once.
+            val cookies = withContext(Dispatchers.IO) { cookieJar.loadForRequest(url) }
             val out = Buffer().writeUtf8(
                 buildJsonObject { for (c in cookies) put(c.name, c.value) }.toString(),
             )
@@ -65,13 +67,11 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
         }
     }
     onAccept("cookie/set") { pipe ->
-        serveCookie(pipe, logger, SET_SCOPE) { head, ctx ->
+        serveCookie(pipe, logger, SET_SCOPE) { head ->
             val url = head.requireHttpUrl("url")
             // Unparseable Set-Cookie values are dropped (OkHttp semantics), not an error.
             val cookies = head.requireStringList("setCookie").mapNotNull { parseCookie(url, it) }
-            hostStoreCall(logger, ctx, "E20042", "cookie store write") {
-                cookieJar.saveFromResponse(url, cookies)
-            }
+            withContext(Dispatchers.IO) { cookieJar.saveFromResponse(url, cookies) }
         }
     }
 }
@@ -80,7 +80,7 @@ private suspend fun serveCookie(
     pipe: Pipe,
     logger: Logger?,
     scope: List<String>,
-    handle: suspend (JsonObject, List<String>) -> Unit,
+    handle: suspend (JsonObject) -> Unit,
 ) {
     var logCtx = scope // caller trail + this command; the fallback until the head parses
     try {
@@ -98,7 +98,7 @@ private suspend fun serveCookie(
         }
         logCtx = readLogCtx(head, scope)
         try {
-            handle(head, logCtx)
+            handle(head)
             pipe.sink.close() // clean END (no-op after an in-place RESET)
         } catch (e: CancellationException) {
             throw e

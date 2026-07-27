@@ -6,9 +6,12 @@ import kmphttp.loadForRequest
 import kmphttp.parseCookie
 import kmphttp.saveFromResponse
 import kmphttp.toHttpUrl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import okio.Buffer
-import ymusic.dynamicengine.internal.hostStoreTimeoutMs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -118,25 +121,22 @@ class CookieProtocolTest {
         }
     }
 
-    /** The zombie regression: a store that never answers must cost ONE typed command failure —
-     *  never the engine. The deadline fires off-thread (the wedged call is abandoned), the JS gets
-     *  the classified E20042, and an unrelated command still round-trips afterwards. */
+    /** The zombie regression: a store that never answers parks ONLY its own command — the jar
+     *  call rides Dispatchers.IO (the engine-thread rule, AGENTS.md), so the engine thread stays
+     *  free and an unrelated command still round-trips while the cookie command is wedged. */
     @Test
-    fun a_wedged_jar_times_out_typed_and_the_engine_survives() = runTest {
-        hostStoreTimeoutMs = 500
+    fun a_wedged_jar_blocks_only_its_command_never_the_engine() = runTest {
+        val e = engineOn(wedgedCookieJar())
         try {
-            val e = engineOn(wedgedCookieJar())
-            try {
-                assertEquals(
-                    "E20042|cookie store read did not answer within 500ms",
-                    e.drive("test/cookie/get-err", """{"url":"https://x.example/"}"""),
-                )
-                assertEquals("app=1", e.drive("test/http/versions", "{}"))
-            } finally {
-                e.close()
+            val wedged = launch(Dispatchers.Default) {
+                runCatching { e.drive("test/cookie/get", """{"url":"https://x.example/"}""") }
             }
+            // Real time, not virtual: let the cookie command reach the parked jar call first.
+            withContext(Dispatchers.Default) { delay(200) }
+            assertEquals("app=1", e.drive("test/http/versions", "{}"))
+            wedged.cancel()
         } finally {
-            hostStoreTimeoutMs = 10_000
+            e.close()
         }
     }
 

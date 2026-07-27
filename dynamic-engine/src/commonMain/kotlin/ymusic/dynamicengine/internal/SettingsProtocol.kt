@@ -6,6 +6,9 @@ import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.log.Logger
 import kmphttp.json.JsonReader
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -25,14 +28,14 @@ import ymusic.quickjs.asAsyncSource
 import ymusic.settings.SettingsStore
 
 internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Logger?) {
-    // Store touches ride hostStoreCall (off the engine thread, deadlined): SharedPreferences'
-    // first read blocks on disk, and on the engine thread that wedges every command (see
-    // hostStoreCall).
+    // Store touches leave the engine thread (the engine-thread rule, AGENTS.md):
+    // SharedPreferences' first read blocks on disk, and on the engine thread that wedges every
+    // command at once.
     onAccept("settings/get") { pipe ->
-        serveSettings(pipe, logger, GET_SCOPE) { head, ctx ->
+        serveSettings(pipe, logger, GET_SCOPE) { head ->
             val key = head.requireString("key")
             val type = head.requireString("type")
-            val value = hostStoreCall(logger, ctx, "E20062", "settings store read") {
+            val value = withContext(Dispatchers.IO) {
                 when (type) {
                     "string" -> JsonPrimitive(settings.string(key, head.requirePrimitive("default").content).value)
                     "boolean" -> JsonPrimitive(settings.boolean(key, head.requirePrimitive("default").booleanOrNull ?: badDefault()).value)
@@ -45,11 +48,11 @@ internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Log
         }
     }
     onAccept("settings/set") { pipe ->
-        serveSettings(pipe, logger, SET_SCOPE) { head, ctx ->
+        serveSettings(pipe, logger, SET_SCOPE) { head ->
             val key = head.requireString("key")
             val value = head.requirePrimitive("value")
             val type = head.requireString("type")
-            hostStoreCall(logger, ctx, "E20062", "settings store write") {
+            withContext(Dispatchers.IO) {
                 when (type) {
                     "string" -> settings.putString(key, value.content)
                     "boolean" -> settings.putBoolean(key, value.booleanOrNull ?: badValue())
@@ -65,7 +68,7 @@ private suspend fun serveSettings(
     pipe: Pipe,
     logger: Logger?,
     scope: List<String>,
-    handle: suspend (JsonObject, List<String>) -> Unit,
+    handle: suspend (JsonObject) -> Unit,
 ) {
     var logCtx = scope
     try {
@@ -82,7 +85,7 @@ private suspend fun serveSettings(
         }
         logCtx = readLogCtx(head, scope)
         try {
-            handle(head, logCtx)
+            handle(head)
             pipe.sink.close()
         } catch (e: CancellationException) {
             throw e

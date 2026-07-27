@@ -8,6 +8,9 @@ import kmpcommon.io.readAll
 import kmpcommon.log.Logger
 import kmphttp.json.JsonReader
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -48,15 +51,13 @@ import ymusic.quickjs.asAsyncSource
  * head) and `E20051` (the store threw), a [CodedError] from the store keeping its own code.
  */
 internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
-    // Every store touch goes through hostStoreCall (off the engine thread, deadlined): SQLite
-    // behind a lock or slow disk on the engine thread would wedge every command (see hostStoreCall).
-    // cache/put wraps the store's PULL of the body too — bodies here are small session params that
-    // arrive in one chunk, so the deadline still measures the store, not the peer's write pace.
+    // Every store touch leaves the engine thread (the engine-thread rule, AGENTS.md): SQLite
+    // behind a lock or slow disk on the engine thread would wedge every command at once.
     onAccept("cache/get") { pipe ->
-        serve(pipe, logger, GET_SCOPE) { head, _, ctx ->
+        serve(pipe, logger, GET_SCOPE) { head, _ ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
-            val entry = hostStoreCall(logger, ctx, "E20052", "cache store get") { store.get(scope, key) }
+            val entry = withContext(Dispatchers.IO) { store.get(scope, key) }
             if (entry == null) {
                 pipe.sink.writeJson(buildJsonObject { put("hit", false) })
             } else {
@@ -66,27 +67,25 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
         }
     }
     onAccept("cache/put") { pipe ->
-        serve(pipe, logger, PUT_SCOPE) { head, body, ctx ->
+        serve(pipe, logger, PUT_SCOPE) { head, body ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             val custom = head.readCustom()
-            val meta = hostStoreCall(logger, ctx, "E20052", "cache store put") {
-                store.put(scope, key, custom, body)
-            }
+            val meta = withContext(Dispatchers.IO) { store.put(scope, key, custom, body) }
             pipe.sink.writeJson(metaJson(meta, hit = null))
         }
     }
     onAccept("cache/delete") { pipe ->
-        serve(pipe, logger, DELETE_SCOPE) { head, _, ctx ->
+        serve(pipe, logger, DELETE_SCOPE) { head, _ ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
-            hostStoreCall(logger, ctx, "E20052", "cache store delete") { store.delete(scope, key) }
+            withContext(Dispatchers.IO) { store.delete(scope, key) }
         }
     }
     onAccept("cache/list") { pipe ->
-        serve(pipe, logger, LIST_SCOPE) { head, _, ctx ->
+        serve(pipe, logger, LIST_SCOPE) { head, _ ->
             val scope = head.requireString("scope")
-            val listed = hostStoreCall(logger, ctx, "E20052", "cache store list") { store.list(scope) }
+            val listed = withContext(Dispatchers.IO) { store.list(scope) }
             pipe.sink.writeJson(buildJsonArray { for (m in listed) add(metaJson(m, hit = null)) })
         }
     }
@@ -98,7 +97,7 @@ private suspend fun serve(
     pipe: Pipe,
     logger: Logger?,
     scope: List<String>,
-    handle: suspend (JsonObject, AsyncSource, List<String>) -> Unit,
+    handle: suspend (JsonObject, AsyncSource) -> Unit,
 ) {
     var logCtx = scope
     try {
@@ -116,7 +115,7 @@ private suspend fun serve(
         }
         logCtx = readLogCtx(head, scope)
         try {
-            handle(head, src, logCtx)
+            handle(head, src)
             pipe.sink.close() // END
         } catch (e: CancellationException) {
             throw e
