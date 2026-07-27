@@ -5,6 +5,7 @@ import kmphttp.loadForRequest
 import kmphttp.parseCookie
 import kmphttp.saveFromResponse
 import kmphttp.toHttpUrlOrNull
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import ymusic.dynamicengine.CannedResponse
@@ -1150,6 +1151,102 @@ class YtCommandsTest {
             assertEquals("page-cont", page.continuation)
         } finally {
             m2.close()
+        }
+    }
+
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    @Test
+    fun a_home_load_settles_an_in_flight_scrape_and_serves_its_fresher_page() = runTest {
+        // An entry is already kept (its payload pages with "browse-cont-token") but a scrape is
+        // MID-FLIGHT when home loads: the consume must wait for it and serve the page it fetched
+        // ("page-cont"), not the stale entry — and never start a scrape of its own.
+        val store = cacheStore()
+        store.put("yt-session", "homepage", emptyMap(), okio.Buffer().writeUtf8(BROWSE_FIXTURE).asAsyncSource())
+
+        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
+        var browseHits = 0
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                homepageHits.addAndFetch(1)
+                gate.await()
+                CannedResponse.ofText(HOMEPAGE_WITH_FEED_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                if (url.contains("/browse")) browseHits++
+                jsonResponse(SEARCH_FIXTURE).build(request)
+            }
+        }
+        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = store)
+        m.start()
+        try {
+            val search = backgroundScope.launch { runCatching { m.search(query = "seed") } } // kicks the scrape
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
+                }
+            }
+            val home = backgroundScope.async { m.extractHomeFeed() }
+            // While the scrape is held open, home must be PARKED on it — answering now could only
+            // mean it served the stale entry instead of settling the scrape.
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.delay(300)
+            }
+            assertTrue(!home.isCompleted, "home must wait for the running scrape, not serve the stale entry")
+            gate.complete(Unit)
+            val page = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(30_000) { home.await() }
+            }
+            search.join()
+            assertEquals("page-cont", page.continuation, "the just-scraped page must win over the stale entry")
+            assertEquals(1, homepageHits.load(), "the home load must settle the running scrape, not start one")
+            assertEquals(0, browseHits)
+        } finally {
+            m.close()
+        }
+    }
+
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    @Test
+    fun a_home_load_fails_fast_when_the_settled_scrape_crashes_with_no_session() = runTest {
+        // Cold start, offline: home parks on the scrape another command started; when it crashes
+        // with no session anywhere, home must rethrow THAT error — never spend a second doomed
+        // scrape reaching the same failure.
+        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                homepageHits.addAndFetch(1)
+                gate.await()
+                throw okio.IOException("connect refused")
+            } else {
+                jsonResponse(SEARCH_FIXTURE).build(request)
+            }
+        }
+        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore())
+        m.start()
+        try {
+            val search = backgroundScope.launch { runCatching { m.search(query = "seed") } }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
+                }
+            }
+            val home = backgroundScope.async { runCatching { m.extractHomeFeed() } }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.delay(300) // let home reach and park on the held scrape
+            }
+            gate.complete(Unit)
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(30_000) { home.await() }
+            }
+            search.join()
+            assertTrue(result.isFailure, "$result")
+            assertTrue(result.exceptionOrNull() is EngineError.Network, "${result.exceptionOrNull()}")
+            assertEquals(1, homepageHits.load(), "the crash must rethrow — no second scrape gets spent")
+        } finally {
+            m.close()
         }
     }
 
