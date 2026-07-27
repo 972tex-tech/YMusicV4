@@ -1,5 +1,6 @@
 package ymusic.dynamicengine.yt
 
+import kmpcommon.io.asAsyncSource
 import kmphttp.loadForRequest
 import kmphttp.parseCookie
 import kmphttp.saveFromResponse
@@ -960,6 +961,55 @@ class YtCommandsTest {
                 }
             }
             assertEquals(1, homepageHits.load(), "concurrent commands must share one scrape")
+        } finally {
+            m.close()
+        }
+    }
+
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    @Test
+    fun a_stale_session_answers_immediately_while_revalidating_in_background() = runTest {
+        // A held session must answer at ANY age — consumers never wait on freshness. Plant an
+        // over-window record, gate the homepage SHUT, and the search must still complete on the
+        // stale identity; the re-scrape fires in the background (stale-while-revalidate).
+        val store = cacheStore()
+        store.put(
+            "yt-session",
+            "web",
+            emptyMap(),
+            okio.Buffer().writeUtf8(
+                """{"clientName":"1","clientVersion":"2.20200101.00.00","visitorData":"c3RhbGU%3D","fetchedAt":1000}""",
+            ).asAsyncSource(),
+        )
+
+        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var visitorHeader: String? = null
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                homepageHits.addAndFetch(1)
+                gate.await() // the revalidation scrape is held open — the command must not need it
+                CannedResponse.ofText(HOMEPAGE_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                visitorHeader = request.headers["X-Goog-Visitor-Id"]
+                jsonResponse(SEARCH_FIXTURE).build(request)
+            }
+        }
+        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = store)
+        m.start()
+        try {
+            val page = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(30_000) { m.search(query = "quick") }
+            }
+            assertTrue(page.sections.isNotEmpty(), "$page")
+            assertEquals("c3RhbGU%3D", visitorHeader, "the search must ride the stale identity")
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
+                }
+            }
+            gate.complete(Unit)
         } finally {
             m.close()
         }
