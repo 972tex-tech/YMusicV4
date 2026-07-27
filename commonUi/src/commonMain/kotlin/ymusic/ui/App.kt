@@ -82,7 +82,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
-import ymusic.dynamicengine.yt.applyYtLocale
 import ymusic.dynamicengine.yt.extractHomeFeed
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import ymusic.dynamicengine.yt.getRecommendedFeed
@@ -91,7 +90,6 @@ import ymusic.player.PlayableItem
 import ymusic.player.VideoQualityState
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
-import ymusic.settings.put
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.coming_soon
 import ymusic.ui.resources.discover_needs_account
@@ -150,18 +148,11 @@ fun App(graph: AppGraph) {
 @Composable
 internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<AppSection>) {
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
-    // ONE language, decided ONCE: an unseeded install (blank setting) resolves the device language
-    // against the supported list and persists it — as the app language AND as the content language
-    // (hl, reported to the engine). From then on the setting is a concrete tag; later
-    // device-language changes are deliberately ignored.
+    // ONE language, decided ONCE: the shell seeded the setting before the engine started
+    // (ensureAppLanguage), so this is a concrete tag — the blank fallback only covers unseeded
+    // test graphs. The engine pulls the same key for its hl default; no push happens here.
     val tag = uiLanguage.ifBlank { defaultUiLanguageTag() }
     remember(tag) { applyUiLocale(tag) }
-    LaunchedEffect(graph, uiLanguage) {
-        if (uiLanguage.isBlank()) {
-            graph.settings.put(AppSettings.uiLanguage, tag)
-            runCatching { graph.engines.applyYtLocale(hl = tag, gl = "") }
-        }
-    }
     val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
     val dark = when (themePref) {
         "light" -> false

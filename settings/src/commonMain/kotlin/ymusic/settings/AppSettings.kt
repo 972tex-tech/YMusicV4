@@ -11,6 +11,19 @@ suspend fun SettingsStore.put(
     value: String,
 ) = putString(setting.key, value)
 
+/**
+ * The app language, seeded on first ask: a blank read resolves [default], PERSISTS it, and returns
+ * it — from then on the key is never blank and is the single source of truth for every reader (the
+ * UI and the engine's settings pull alike). Shells call this once before starting the engine.
+ */
+suspend fun SettingsStore.ensureUiLanguage(default: () -> String): String {
+    val held = string(AppSettings.uiLanguage.key, "").value
+    if (held.isNotBlank()) return held
+    val resolved = default()
+    putString(AppSettings.uiLanguage.key, resolved)
+    return resolved
+}
+
 object AppSettings {
     // The CONTENT locale (YouTube hl/gl) is deliberately absent: it lives in the engine
     // (yt/locale/apply + the engine's own ladder), not in app settings.

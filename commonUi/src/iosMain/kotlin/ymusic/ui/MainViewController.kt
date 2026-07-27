@@ -91,6 +91,9 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
             .resolve("ymusic-http-cache"),
     )
     val settings = IosSettingsStore()
+    // First launch decides the app language (device if supported, else English) and persists it —
+    // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
+    ensureAppLanguage(settings)
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 1,

@@ -72,6 +72,7 @@ import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ui.AppHttpClients
+import ymusic.ui.ensureAppLanguage
 import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
@@ -143,6 +144,9 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // policy) and the player's embed fetch (platform cookies) share it.
     val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath())
     val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
+    // First launch decides the app language (device if supported, else English) and persists it —
+    // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
+    ensureAppLanguage(settings)
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             http.engine,

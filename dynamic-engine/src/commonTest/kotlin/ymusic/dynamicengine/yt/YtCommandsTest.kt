@@ -31,6 +31,7 @@ class YtCommandsTest {
 
     private suspend fun manager(
         cacheStore: ymusic.dynamicengine.CacheStore? = null,
+        settings: ymusic.settings.SettingsStore? = null,
         handler: suspend (kmphttp.Request) -> kmphttp.Response,
     ): Pair<DynamicEngineManager, FakeHttpClient> {
         sentBody = null
@@ -44,7 +45,7 @@ class YtCommandsTest {
                 handler(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore)
+        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore, settings = settings)
         m.start()
         return m to client
     }
@@ -738,6 +739,22 @@ class YtCommandsTest {
         val (m, _) = manager { jsonResponse(SEARCH_FIXTURE).build(it) }
         try {
             assertFailsWith<EngineError.Parse> { m.search() }
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun the_app_language_is_pulled_from_host_settings_as_the_hl_default() = runTest {
+        // The shell seeds "app.uiLanguage" BEFORE the engine starts (single source of truth); the
+        // engine pulls it itself — no apply call, no push — as its hl until an explicit pick.
+        val settings = ymusic.settings.InMemorySettingsStore()
+        settings.putString("app.uiLanguage", "vi")
+        val (m, _) = manager(settings = settings) { jsonResponse("{}").build(it) }
+        try {
+            m.search(query = "anything")
+            val sent = assertNotNull(sentBody)
+            assertTrue(sent.contains(""""hl":"vi""""), sent)
         } finally {
             m.close()
         }

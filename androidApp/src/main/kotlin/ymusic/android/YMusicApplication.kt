@@ -21,6 +21,7 @@ import ymusic.imageloader.networkFetcher
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.mediaStoreAndroidDriver
 import ymusic.ui.AppHttpClients
+import ymusic.ui.ensureAppLanguage
 
 /**
  * The PROCESS-scoped half of the app graph: everything that must exist exactly once no matter how
@@ -62,6 +63,9 @@ class YMusicApplication : Application() {
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
         val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath())
         val settings = PrefsSettingsStore.open(this)
+        // First launch decides the app language (device if supported, else English) and persists
+        // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
+        ensureAppLanguage(settings)
         val engines = DynamicEngineManager(
             http.engine,
             appVersion = 1,

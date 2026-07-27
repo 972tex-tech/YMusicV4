@@ -1,5 +1,8 @@
 package ymusic.ui
 
+import ymusic.settings.SettingsStore
+import ymusic.settings.ensureUiLanguage
+
 /**
  * A language the in-app picker offers. [nativeName] is the language's own name for itself — it must
  * read correctly whatever locale the UI currently shows, so it is not a translated resource.
@@ -33,6 +36,14 @@ internal fun defaultUiLanguageTag(): String {
     val device = systemLanguageTag().substringBefore('-').substringBefore('_').lowercase()
     return UiLanguages.firstOrNull { it.tag == device }?.tag ?: "en"
 }
+
+/**
+ * Seed the app language if unset (see [defaultUiLanguageTag]) and return the concrete tag. Shells
+ * call this BEFORE starting the engine, so the settings key is the single source of truth every
+ * reader sees non-blank — the UI and the engine's own settings pull (its hl default) alike.
+ */
+suspend fun ensureAppLanguage(settings: SettingsStore): String =
+    settings.ensureUiLanguage(::defaultUiLanguageTag)
 
 /** Right-to-left scripts by primary subtag — the fixed ISO set, no platform lookup needed. */
 private val RTL_LANGUAGES = setOf("ar", "fa", "he", "iw", "ur", "ug", "ps", "sd", "yi", "dv", "ckb")
