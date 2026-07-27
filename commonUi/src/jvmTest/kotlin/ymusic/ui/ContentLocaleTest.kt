@@ -1,6 +1,8 @@
 package ymusic.ui
 
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -83,12 +85,16 @@ class ContentLocaleTest {
     @Test
     fun the_content_language_picker_is_a_dialog_listing_youtubes_menu() {
         Locale.setDefault(Locale.US)
+        // Held until the dialog is open, so the fetch-in-flight state is observable.
+        val menuGate = java.util.concurrent.CompletableFuture<Unit>()
         val engines = DynamicEngineManager(
             CannedHttp { request, _ ->
                 val url = request.url.toString()
                 when {
-                    url.contains("account/account_menu") ->
+                    url.contains("account/account_menu") -> {
+                        menuGate.get(20, java.util.concurrent.TimeUnit.SECONDS)
                         textResponse(request, ACCOUNT_MENU_FIXTURE, "application/json")
+                    }
                     request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
                         textResponse(request, HOMEPAGE_IN_VN, "text/html")
                     else -> textResponse(request, "{}", "application/json")
@@ -105,12 +111,17 @@ class ContentLocaleTest {
                     App(graph, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(AppSection.Settings) })
                 }
 
-                // The 80-entry menu opens as a dialog off the row (a dropdown can't hold it), and
-                // an alternative is only offered once YouTube's menu has landed.
+                // The 80-entry menu opens as a dialog off the row (a dropdown can't hold it).
+                // While the fetch is still in flight there is nothing to offer beyond Automatic,
+                // and the dialog must say so with a spinner instead of looking complete.
                 waitUntilAtLeastOneExists(hasText("Content language"), 20_000)
                 onNodeWithText("Content language").performClick()
+                waitUntilAtLeastOneExists(hasText("Cancel"), 10_000)
+                onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertExists()
+
+                menuGate.complete(Unit)
                 waitUntilAtLeastOneExists(hasText("Afrikaans"), 10_000)
-                onNodeWithText("Cancel").assertExists()
+                onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
 
                 onNodeWithText("Afrikaans").performClick()
                 waitUntil(timeoutMillis = 10_000) { settings.string(AppSettings.hl.key, "").value == "af" }

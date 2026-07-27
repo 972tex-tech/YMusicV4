@@ -9,14 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,8 +70,11 @@ fun SettingsScreen(graph: AppGraph) {
     // are re-fetched when that changes. Until they land (or if the fetch fails) the rows still show
     // the active choice; they just can't offer alternatives.
     var options by remember { mutableStateOf(YtLocales("", "")) }
+    var loadingOptions by remember { mutableStateOf(true) }
     LaunchedEffect(graph.engines, ctx) {
+        loadingOptions = true
         runCatching { graph.engines.ytLocaleOptions(ctx) }.onSuccess { options = it }
+        loadingOptions = false
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
@@ -84,6 +91,7 @@ fun SettingsScreen(graph: AppGraph) {
             current = contentLanguage,
             automatic = ctx.hl,
             options = options.languages,
+            loading = loadingOptions,
             onSelect = { code -> scope.launch { graph.settings.put(AppSettings.hl, code) } },
         )
         ContentLocaleRow(
@@ -91,6 +99,7 @@ fun SettingsScreen(graph: AppGraph) {
             current = contentRegion,
             automatic = ctx.gl,
             options = options.regions,
+            loading = loadingOptions,
             onSelect = { code -> scope.launch { graph.settings.put(AppSettings.gl, code) } },
         )
         Text(
@@ -113,6 +122,7 @@ private fun ContentLocaleRow(
     current: String,
     automatic: String,
     options: List<YtLocaleOption>,
+    loading: Boolean,
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -141,18 +151,26 @@ private fun ContentLocaleRow(
             title = title,
             entries = listOf(YtLocaleOption("", autoLabel)) + options,
             current = current,
+            loading = loading,
             onSelect = { code -> onSelect(code); open = false },
             onDismiss = { open = false },
         )
     }
 }
 
-/** A scrollable single-choice dialog, opened on the row that shows the current choice. */
+/**
+ * A scrollable single-choice dialog, opened on the row that shows the current choice. While the
+ * menus are still being fetched and there is nothing to offer beyond Automatic, a spinner says so
+ * (a stale-but-usable list from the previous locale is shown instead of the spinner). The scroll
+ * region sits between the fixed title and buttons, so its edges get dividers whenever content
+ * continues past them — without that, a cut-off list is indistinguishable from a complete one.
+ */
 @Composable
 private fun LocalePickerDialog(
     title: String,
     entries: List<YtLocaleOption>,
     current: String,
+    loading: Boolean,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -164,22 +182,40 @@ private fun LocalePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
-                items(entries, key = { it.code }) { option ->
-                    val selected = isCurrent(option.code)
-                    Text(
-                        option.label,
-                        style = TextStyle(
-                            fontSize = 14.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) DesignColors.Accent else DesignColors.Ink,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(option.code) }
-                            .padding(horizontal = 4.dp, vertical = 12.dp),
-                    )
+            Column {
+                HorizontalDivider(
+                    color = if (listState.canScrollBackward) DesignColors.Divider else Color.Transparent,
+                )
+                LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(entries, key = { it.code }) { option ->
+                        val selected = isCurrent(option.code)
+                        Text(
+                            option.label,
+                            style = TextStyle(
+                                fontSize = 14.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(option.code) }
+                                .padding(horizontal = 4.dp, vertical = 12.dp),
+                        )
+                    }
+                    if (loading && entries.size <= 1) {
+                        item("loading") {
+                            Box(
+                                Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
+                            }
+                        }
+                    }
                 }
+                HorizontalDivider(
+                    color = if (listState.canScrollForward) DesignColors.Divider else Color.Transparent,
+                )
             }
         },
         confirmButton = {},
