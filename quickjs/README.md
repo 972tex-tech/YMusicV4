@@ -54,4 +54,7 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **Tests** — embed the real bundle (`TEST_ENGINE_JS`, generated from the `:engine-js` artifact); pipe_stress evals
   the built bundle too.
 
+- **JS support & perf** — what the vendored engine does/doesn't support and what's slow:
+  [`JS_FEATURES.md`](JS_FEATURES.md) (pinned by `JsFeatureMatrixTest`).
+
 - **Design** — [`PIPE_STREAMING.md`](PIPE_STREAMING.md).
