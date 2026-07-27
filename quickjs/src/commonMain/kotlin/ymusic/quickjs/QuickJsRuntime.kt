@@ -707,8 +707,23 @@ class QuickJsRuntime private constructor(
         ): QuickJsRuntime = bootOn(dispatcher, appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
 
         /** A fresh single-thread engine dispatcher for the synchronous [create]; the caller owns
-         *  it — close it once every runtime confined to it is closed. */
-        fun newDispatcher(): CloseableCoroutineDispatcher = newEngineDispatcher()
+         *  it — close it once every runtime confined to it is closed.
+         *
+         *  [onSlowStint] (with [slowStintMs] > 0) arms a watchdog over **stints** — one continuous
+         *  resume-to-suspend stretch ON the engine thread. That is the unit that actually blocks
+         *  the engine (a command's wall time includes suspensions — HTTP awaits, store hops —
+         *  during which the thread serves everyone else, so command duration proves nothing).
+         *  The callback runs on the engine thread itself: keep it cheap. A throwing callback
+         *  propagates out of the stint — strict (fail-fast debug) setups throw deliberately to
+         *  make the stall unmissable. */
+        fun newDispatcher(
+            slowStintMs: Long = 0L,
+            onSlowStint: ((millis: Long) -> Unit)? = null,
+        ): CloseableCoroutineDispatcher {
+            val raw = newEngineDispatcher()
+            if (onSlowStint == null || slowStintMs <= 0L) return raw
+            return slowStintDispatcher(raw, slowStintMs, onSlowStint)
+        }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
          *  (`Function.prototype.toString` yields a `[native code]` placeholder instead of embedding

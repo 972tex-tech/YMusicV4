@@ -43,6 +43,10 @@ class DynamicEngineManager(
     /** The app-owned cookie store the cookie protocol serves (see [DynamicEngine.create]). */
     private val cookieJar: CookieJar = client.cookieJar,
     private val settings: SettingsStore? = null,
+    /** Fail-fast on engine-thread stalls (debug builds): a stint over the budget THROWS on the
+     *  engine thread after logging, instead of only logging — StrictMode's penaltyDeath, so a
+     *  stall is unmissable in development. Release builds keep the log-only watchdog. */
+    private val strictStints: Boolean = false,
 ) {
 
     private class Slot(val engine: DynamicEngine) {
@@ -71,8 +75,23 @@ class DynamicEngineManager(
 
     // The ONE JS thread every engine this manager boots is confined to, across swaps — created
     // engines run on it for life (DynamicEngine.create's synchronous contract), so it outlives
-    // each engine and closes with the manager.
-    private val engineDispatcher = QuickJsRuntime.newDispatcher()
+    // each engine and closes with the manager. The stint watchdog reports anything that holds the
+    // thread too long in one stretch (remote bundles regress in the field — this is how we see it).
+    private val engineDispatcher = QuickJsRuntime.newDispatcher(
+        slowStintMs = if (logger != null || strictStints) SLOW_STINT_MS else 0L,
+        onSlowStint = if (logger == null && !strictStints) {
+            null
+        } else {
+            { ms ->
+                val message = "engine thread held for ${ms}ms by one stint (budget ${SLOW_STINT_MS}ms) — " +
+                    "every pipe, timer and command stalled with it"
+                runCatching {
+                    logger?.log(if (strictStints) Logger.Level.ERROR else Logger.Level.WARN, listOf("engine-stint"), message, null)
+                }
+                if (strictStints) throw IllegalStateException(message)
+            }
+        },
+    )
 
     // Boot + gate: the manager is the accept/reject seam for bundles, so IT drives the health
     // check — create itself just boots. A failed check closes the half-born engine here.
@@ -200,5 +219,10 @@ class DynamicEngineManager(
                 pipe.source.close()
             }
         }
+    }
+
+    private companion object {
+        /** One stint at/over this holds the engine thread long enough to feel: log it. */
+        const val SLOW_STINT_MS = 50L
     }
 }

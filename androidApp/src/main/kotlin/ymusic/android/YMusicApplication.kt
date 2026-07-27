@@ -69,6 +69,8 @@ class YMusicApplication : Application() {
             cacheStore = androidEngineCacheStore(this),
             cookieJar = cookies,
             settings = settings,
+            // Debug builds crash on an engine-thread stall (StrictMode-style); release only logs.
+            strictStints = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
         )
         engines.start()
 
