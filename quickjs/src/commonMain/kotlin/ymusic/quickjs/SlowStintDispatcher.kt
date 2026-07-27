@@ -4,29 +4,51 @@ import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlin.time.TimeSource
 
 /**
- * Wrap [delegate] so every dispatched stint is timed, reporting the ones at or over [thresholdMs]
- * (see [QuickJsRuntime.newDispatcher]). The engine thread is a main thread (AGENTS.md): one long
- * synchronous stint — a runaway regex, an unchunked loop over a big document, a blocking platform
- * call that skipped its `withContext(IO)` hop — stalls every pipe, timer and command at once, and
- * nothing but per-stint timing can see it (a command's wall time includes suspensions, so it
- * proves nothing). Platform split only because the JVM's CloseableCoroutineDispatcher is
- * ExecutorCoroutineDispatcher-based.
+ * Wrap [delegate] with the engine-thread watchdog (see [QuickJsRuntime.newDispatcher]). Two
+ * complementary checks:
+ *
+ *  - **stint** ([onSlowStint]): one dispatched task held the thread for [stintMs]+ in one
+ *    continuous stretch — blames the CULPRIT (an unchunked loop, a runaway regex, a blocking call
+ *    that skipped its `withContext(IO)` hop).
+ *  - **queue wait** ([onSlowWait]): a task waited [waitMs]+ between dispatch and running — the
+ *    VICTIM's view, catching cumulative congestion no single stint shows (ten 20ms stints
+ *    back-to-back delay the next task 200ms).
+ *
+ * The engine thread is a main thread (AGENTS.md): while it is held, every pipe, timer and command
+ * stalls. Command wall time can't see any of this — it includes suspensions during which the
+ * thread serves everyone else. Platform split only because the JVM's CloseableCoroutineDispatcher
+ * is ExecutorCoroutineDispatcher-based.
  */
 internal expect fun slowStintDispatcher(
     delegate: CloseableCoroutineDispatcher,
-    thresholdMs: Long,
-    onSlowStint: (millis: Long) -> Unit,
+    stintMs: Long,
+    onSlowStint: ((millis: Long) -> Unit)?,
+    waitMs: Long,
+    onSlowWait: ((millis: Long) -> Unit)?,
 ): CloseableCoroutineDispatcher
 
-/** The shared stint clock: run [block], report to [onSlowStint] when it held for [thresholdMs]+.
- *  The callback's exceptions propagate out of the stint on the engine thread — deliberate: a
- *  strict (fail-fast debug) callback throws to make the stall unmissable. */
-internal inline fun runStintTimed(thresholdMs: Long, noinline onSlowStint: (Long) -> Unit, block: () -> Unit) {
+/** The shared watchdog clock around one dispatched task: queue wait since [enqueued], then the
+ *  stint. Callback exceptions propagate on the engine thread — deliberate: the strict (fail-fast
+ *  debug) callbacks throw to make a stall unmissable. */
+internal inline fun runWatched(
+    enqueued: TimeSource.Monotonic.ValueTimeMark,
+    stintMs: Long,
+    noinline onSlowStint: ((Long) -> Unit)?,
+    waitMs: Long,
+    noinline onSlowWait: ((Long) -> Unit)?,
+    block: () -> Unit,
+) {
+    if (onSlowWait != null) {
+        val waited = enqueued.elapsedNow().inWholeMilliseconds
+        if (waited >= waitMs) onSlowWait(waited)
+    }
     val mark = TimeSource.Monotonic.markNow()
     try {
         block()
     } finally {
-        val ms = mark.elapsedNow().inWholeMilliseconds
-        if (ms >= thresholdMs) onSlowStint(ms)
+        if (onSlowStint != null) {
+            val ms = mark.elapsedNow().inWholeMilliseconds
+            if (ms >= stintMs) onSlowStint(ms)
+        }
     }
 }

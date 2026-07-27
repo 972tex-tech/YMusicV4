@@ -43,9 +43,11 @@ class DynamicEngineManager(
     /** The app-owned cookie store the cookie protocol serves (see [DynamicEngine.create]). */
     private val cookieJar: CookieJar = client.cookieJar,
     private val settings: SettingsStore? = null,
-    /** Fail-fast on engine-thread stalls (debug builds): a stint over the budget THROWS on the
-     *  engine thread after logging, instead of only logging — StrictMode's penaltyDeath, so a
-     *  stall is unmissable in development. Release builds keep the log-only watchdog. */
+    /** Fail-fast on engine-thread stalls (debug builds only): a task that held the thread 50ms+
+     *  in one stretch logs ERROR and THROWS on the engine thread (StrictMode's penaltyDeath — a
+     *  definite bug, unmissable in development); a task that waited 50ms+ for the thread only
+     *  logs WARN (congestion, possibly just load). When false (release), no watchdog is armed at
+     *  all: zero overhead, zero output. */
     private val strictStints: Boolean = false,
 ) {
 
@@ -75,20 +77,37 @@ class DynamicEngineManager(
 
     // The ONE JS thread every engine this manager boots is confined to, across swaps — created
     // engines run on it for life (DynamicEngine.create's synchronous contract), so it outlives
-    // each engine and closes with the manager. The stint watchdog reports anything that holds the
-    // thread too long in one stretch (remote bundles regress in the field — this is how we see it).
+    // each engine and closes with the manager. [strictStints] (debug builds) arms the watchdog:
+    // a task that HELD the thread 50ms+ in one stretch (the culprit — a definite bug) logs ERROR
+    // and throws on the engine thread, so the stall is unmissable in development; a task that
+    // WAITED 50ms+ for the thread (the victim — cumulative congestion, possibly just load) only
+    // logs WARN. Release arms nothing: zero overhead, zero output.
     private val engineDispatcher = QuickJsRuntime.newDispatcher(
-        slowStintMs = if (logger != null || strictStints) SLOW_STINT_MS else 0L,
-        onSlowStint = if (logger == null && !strictStints) {
+        slowStintMs = if (strictStints) SLOW_STINT_MS else 0L,
+        onSlowStint = if (!strictStints) {
             null
         } else {
             { ms ->
-                val message = "engine thread held for ${ms}ms by one stint (budget ${SLOW_STINT_MS}ms) — " +
-                    "every pipe, timer and command stalled with it"
+                val message = "engine thread held for ${ms}ms by one task (budget ${SLOW_STINT_MS}ms) — " +
+                    "every pipe, timer and command stalls while the thread is held"
+                runCatching { logger?.log(Logger.Level.ERROR, listOf("engine-stint"), message, null) }
+                throw IllegalStateException(message)
+            }
+        },
+        slowWaitMs = if (strictStints) SLOW_STINT_MS else 0L,
+        onSlowWait = if (!strictStints) {
+            null
+        } else {
+            { ms ->
                 runCatching {
-                    logger?.log(if (strictStints) Logger.Level.ERROR else Logger.Level.WARN, listOf("engine-stint"), message, null)
+                    logger?.log(
+                        Logger.Level.WARN,
+                        listOf("engine-stint"),
+                        "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
+                            "the thread was congested, though no single task held it over budget",
+                        null,
+                    )
                 }
-                if (strictStints) throw IllegalStateException(message)
             }
         },
     )

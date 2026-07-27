@@ -3,6 +3,7 @@ package ymusic.quickjs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -41,6 +42,29 @@ class SlowStintDispatcherTest {
             }
             val ms = withContext(Dispatchers.Default) { withTimeout(5_000) { hit.await() } }
             assertTrue(ms >= 50L, "stint of ${ms}ms should be at/over the 50ms budget")
+        } finally {
+            dispatcher.close()
+        }
+    }
+
+    @Test
+    fun a_task_queued_behind_a_busy_thread_trips_the_wait_watchdog() = runTest {
+        val wait = CompletableDeferred<Long>()
+        val dispatcher = QuickJsRuntime.newDispatcher(slowWaitMs = 50L, onSlowWait = { wait.complete(it) })
+        try {
+            withContext(Dispatchers.Default) {
+                val busy = launch(dispatcher) {
+                    val mark = TimeSource.Monotonic.markNow()
+                    @Suppress("ControlFlowWithEmptyBody")
+                    while (mark.elapsedNow() < 80.milliseconds) {
+                    }
+                }
+                val victim = launch(dispatcher) { /* just needs the thread */ }
+                val ms = withTimeout(5_000) { wait.await() }
+                assertTrue(ms >= 50L, "queued task waited ${ms}ms; expected 50ms+")
+                busy.join()
+                victim.join()
+            }
         } finally {
             dispatcher.close()
         }

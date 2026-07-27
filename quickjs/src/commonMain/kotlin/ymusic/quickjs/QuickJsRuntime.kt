@@ -710,19 +710,26 @@ class QuickJsRuntime private constructor(
          *  it — close it once every runtime confined to it is closed.
          *
          *  [onSlowStint] (with [slowStintMs] > 0) arms a watchdog over **stints** — one continuous
-         *  resume-to-suspend stretch ON the engine thread. That is the unit that actually blocks
-         *  the engine (a command's wall time includes suspensions — HTTP awaits, store hops —
-         *  during which the thread serves everyone else, so command duration proves nothing).
-         *  The callback runs on the engine thread itself: keep it cheap. A throwing callback
-         *  propagates out of the stint — strict (fail-fast debug) setups throw deliberately to
-         *  make the stall unmissable. */
+         *  resume-to-suspend stretch ON the engine thread, the unit that actually blocks the
+         *  engine (a command's wall time includes suspensions — HTTP awaits, store hops — during
+         *  which the thread serves everyone else, so command duration proves nothing).
+         *  [onSlowWait] (with [slowWaitMs] > 0) watches the victim's side instead: a task that sat
+         *  in the queue for [slowWaitMs]+ before running, which also catches cumulative congestion
+         *  no single stint shows. Both callbacks run on the engine thread itself: keep them cheap.
+         *  A throwing callback propagates out of the task — strict (fail-fast debug) setups throw
+         *  deliberately to make the stall unmissable. Nothing armed = the raw dispatcher, zero
+         *  overhead. */
         fun newDispatcher(
             slowStintMs: Long = 0L,
             onSlowStint: ((millis: Long) -> Unit)? = null,
+            slowWaitMs: Long = 0L,
+            onSlowWait: ((millis: Long) -> Unit)? = null,
         ): CloseableCoroutineDispatcher {
             val raw = newEngineDispatcher()
-            if (onSlowStint == null || slowStintMs <= 0L) return raw
-            return slowStintDispatcher(raw, slowStintMs, onSlowStint)
+            val stint = onSlowStint.takeIf { slowStintMs > 0L }
+            val wait = onSlowWait.takeIf { slowWaitMs > 0L }
+            if (stint == null && wait == null) return raw
+            return slowStintDispatcher(raw, slowStintMs, stint, slowWaitMs, wait)
         }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
