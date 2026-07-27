@@ -10,3 +10,5 @@ internal actual fun applyUiLocale(tag: String?) {
     // Framework-side integration (LocaleManager per-app locales on API 33+) can layer on later.
     Locale.setDefault(tag?.let(Locale::forLanguageTag) ?: systemDefault)
 }
+
+internal actual fun systemLanguageTag(): String = systemDefault.language

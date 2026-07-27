@@ -8,3 +8,5 @@ private val systemDefault: Locale = Locale.getDefault()
 internal actual fun applyUiLocale(tag: String?) {
     Locale.setDefault(tag?.let(Locale::forLanguageTag) ?: systemDefault)
 }
+
+internal actual fun systemLanguageTag(): String = systemDefault.language

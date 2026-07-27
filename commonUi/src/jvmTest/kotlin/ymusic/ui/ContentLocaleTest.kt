@@ -80,7 +80,7 @@ class ContentLocaleTest {
     }
 
     @Test
-    fun the_content_language_picker_is_a_dialog_listing_youtubes_menu() {
+    fun the_content_region_picker_is_a_dialog_listing_youtubes_menu() {
         Locale.setDefault(Locale.US)
         // Held until the dialog is open, so the fetch-in-flight state is observable.
         val menuGate = java.util.concurrent.CompletableFuture<Unit>()
@@ -108,25 +108,25 @@ class ContentLocaleTest {
                     App(graph, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(AppSection.Settings) })
                 }
 
-                // The 80-entry menu opens as a dialog off the row (a dropdown can't hold it).
+                // The ~100-entry menu opens as a dialog off the row (a dropdown can't hold it).
                 // While the fetch is still in flight there is nothing to offer beyond Automatic,
                 // and the dialog must say so with a spinner instead of looking complete.
-                waitUntilAtLeastOneExists(hasText("Content language"), 20_000)
-                onNodeWithText("Content language").performClick()
+                waitUntilAtLeastOneExists(hasText("Content region"), 20_000)
+                onNodeWithText("Content region").performClick()
                 waitUntilAtLeastOneExists(hasText("Cancel"), 10_000)
                 onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertExists()
 
                 menuGate.complete(Unit)
-                waitUntilAtLeastOneExists(hasText("Afrikaans"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Hoa Kỳ"), 10_000)
                 onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
 
                 // Picking reports to the ENGINE (yt/locale/apply) — no app setting is written.
                 // The dialog closes and the row re-reads the pick from the engine.
-                onNodeWithText("Afrikaans").performClick()
+                onNodeWithText("Hoa Kỳ").performClick()
                 waitUntil(timeoutMillis = 10_000) {
                     onAllNodes(hasText("Cancel")).fetchSemanticsNodes().isEmpty()
                 }
-                waitUntilAtLeastOneExists(hasText("Afrikaans"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Hoa Kỳ"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }

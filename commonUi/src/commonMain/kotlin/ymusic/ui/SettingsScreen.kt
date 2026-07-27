@@ -56,7 +56,6 @@ import ymusic.settings.put
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.dialog_cancel
 import ymusic.ui.resources.settings_content_auto_detected
-import ymusic.ui.resources.settings_content_language
 import ymusic.ui.resources.settings_content_locale_hint
 import ymusic.ui.resources.settings_content_region
 import ymusic.ui.resources.settings_language
@@ -71,9 +70,11 @@ fun SettingsScreen(graph: AppGraph) {
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
     // The content locale LIVES in the engine; this screen has exactly two jobs: ask the engine for
-    // the menus + the current pick (one call, when the screen opens and again after a pick), and
-    // report a pick with applyYtLocale. Until the reply lands (or if it fails) the rows still show
-    // Automatic; they just can't offer alternatives yet.
+    // the region menu + the current pick (one call, when the screen opens and again after a pick),
+    // and report picks with applyYtLocale. There is ONE language: the app language doubles as the
+    // content language (hl, resolved from the picker's supported list), so only the region has its
+    // own YouTube-served picker. Until the reply lands (or if it fails) the region row still shows
+    // Automatic; it just can't offer alternatives yet.
     var options by remember { mutableStateOf(YtLocales()) }
     var loadingOptions by remember { mutableStateOf(true) }
     var localeRevision by remember { mutableStateOf(0) }
@@ -93,19 +94,16 @@ fun SettingsScreen(graph: AppGraph) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         LanguageRow(
             current = uiLanguage,
-            onSelect = { tag -> scope.launch { graph.settings.put(AppSettings.uiLanguage, tag) } },
+            onSelect = { tag ->
+                scope.launch {
+                    graph.settings.put(AppSettings.uiLanguage, tag)
+                    pickLocale(hl = resolvedUiLanguageTag(tag), gl = options.gl)
+                }
+            },
         )
         ThemeRow(
             current = theme,
             onSelect = { value -> scope.launch { graph.settings.put(AppSettings.theme, value) } },
-        )
-        ContentLocaleRow(
-            title = stringResource(Res.string.settings_content_language),
-            current = options.hl,
-            automatic = options.autoHl,
-            options = options.languages,
-            loading = loadingOptions,
-            onSelect = { code -> pickLocale(hl = code, gl = options.gl) },
         )
         ContentLocaleRow(
             title = stringResource(Res.string.settings_content_region),
