@@ -82,6 +82,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import ymusic.dynamicengine.yt.applyYtLocale
 import ymusic.dynamicengine.yt.extractHomeFeed
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import ymusic.dynamicengine.yt.getRecommendedFeed
@@ -159,9 +160,15 @@ internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.Mutable
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
     var section by sectionState
-    // Ask YouTube where it thinks this connection is, once per start. Cheap (it rides the cached
-    // InnerTube session) and it only seeds a default — an explicit region pick always wins.
-    LaunchedEffect(graph.engines, graph.settings) {
+    // Keep the shared cookie identity in step with the locale pick (PREF hl/gl — the WebView
+    // player follows cookies, not per-request context), then ask YouTube where it thinks this
+    // connection is. Unchanged settings make the apply a free no-op, so the start-up run only
+    // seeds the detected default; a real change re-scrapes under the new identity, and reverting
+    // to automatic restores the IP-derived region on the spot.
+    val contentHl by remember(graph) { graph.settings.flow(AppSettings.hl) }.collectAsState()
+    val contentGl by remember(graph) { graph.settings.flow(AppSettings.gl) }.collectAsState()
+    LaunchedEffect(graph.engines, graph.settings, contentHl, contentGl) {
+        runCatching { graph.engines.applyYtLocale(contentHl, contentGl) }
         runCatching { graph.engines.ytLocale() }
             .onSuccess { if (it.gl.isNotBlank()) graph.settings.put(AppSettings.glDetected, it.gl) }
     }

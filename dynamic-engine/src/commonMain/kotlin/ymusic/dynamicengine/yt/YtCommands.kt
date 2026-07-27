@@ -155,6 +155,24 @@ suspend fun DynamicEngineManager.ytLocale(): YtLocales = use { engine ->
 }
 
 /**
+ * Sync the user's locale OVERRIDE into the shared cookie identity (the legacy `YTPrefsUpdateTask`
+ * role): `hl=`/`gl=` are written into the `PREF` cookie so cookie-identified page fetches — the
+ * WebView player's embed page above all — follow the pick, and the sticky `s_gl` echo is deleted.
+ * Blank means "automatic": the key is removed, so the bootstrap homepage answers with YouTube's
+ * IP-derived region again. The engine also drops its bootstrapped session, so the next call
+ * re-scrapes under the new identity. Call whenever the Settings pick changes; InnerTube calls
+ * assert the pair per request regardless (this covers everything that does NOT).
+ */
+suspend fun DynamicEngineManager.applyYtLocale(hl: String, gl: String): Unit = use { engine ->
+    engine.jsonCommand("yt/locale/apply", { w ->
+        w.beginObject()
+        w.name("hl").value(hl)
+        w.name("gl").value(gl)
+        w.endObject()
+    }) { it.skipValue() }
+}
+
+/**
  * The content-language / content-region menus YouTube offers, labelled in [ctx]'s language. The
  * engine keeps ONE cached copy (in-memory + [ymusic.dynamicengine.CacheStore]) tagged with the
  * hl/gl it was fetched under: it re-fetches only when the asked pair changed or the copy is over a

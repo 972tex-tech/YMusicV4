@@ -782,6 +782,39 @@ class YtCommandsTest {
     }
 
     @Test
+    fun applying_a_locale_override_rides_pref_into_every_cookie_and_respins_the_session() = runTest {
+        val (m, client) = manager { jsonResponse("{}").build(it) }
+        try {
+            m.ytLocale() // bootstrap: the homepage scrape under the automatic identity
+            val before = client.requestCount
+
+            // The override lands in PREF and the cached session dies with the old identity: the
+            // next ask re-scrapes, and its request already carries the new cookie.
+            m.applyYtLocale(hl = "vi", gl = "JP")
+            m.ytLocale()
+            assertEquals(before + 1, client.requestCount, "a changed apply must drop the cached session")
+            val cookie = assertNotNull(client.lastRequest).headers["Cookie"].orEmpty()
+            assertTrue(cookie.contains("PREF="), cookie)
+            assertTrue(cookie.contains("hl=vi"), cookie)
+            assertTrue(cookie.contains("gl=JP"), cookie)
+
+            // Re-applying the same pick is free: no cookie write, no session drop, no request.
+            m.applyYtLocale(hl = "vi", gl = "JP")
+            val settled = client.requestCount
+            m.ytLocale()
+            assertEquals(settled, client.requestCount, "an unchanged apply must keep the session")
+
+            // Reverting to automatic strips the keys, so the bootstrap answers un-asserted again.
+            m.applyYtLocale(hl = "", gl = "")
+            m.ytLocale()
+            val reverted = assertNotNull(client.lastRequest).headers["Cookie"].orEmpty()
+            assertTrue(!reverted.contains("hl=vi") && !reverted.contains("gl=JP"), reverted)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
     fun locale_options_fall_back_to_the_cached_menus_when_the_refetch_fails() = runTest {
         var offline = false
         val (m, _) = manager {
