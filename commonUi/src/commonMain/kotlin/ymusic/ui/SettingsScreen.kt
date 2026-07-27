@@ -189,7 +189,7 @@ private fun LocalePickerDialog(
     )
     BasicAlertDialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(4.dp),
             color = DesignColors.Surface,
             modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
         ) {
