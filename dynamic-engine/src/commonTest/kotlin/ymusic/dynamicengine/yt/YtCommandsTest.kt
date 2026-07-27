@@ -925,6 +925,76 @@ class YtCommandsTest {
         }
     }
 
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    @Test
+    fun concurrent_commands_join_one_session_scrape() = runTest {
+        // The homepage scrape is heavy (BotGuard bait when bursty): hold the first scrape open and
+        // fire a second command — it must JOIN the in-flight scrape, never start its own.
+        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                homepageHits.addAndFetch(1)
+                gate.await()
+                CannedResponse.ofText(HOMEPAGE_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                jsonResponse("{}").build(request)
+            }
+        }
+        val m = DynamicEngineManager(client, appVersion = 1)
+        m.start()
+        try {
+            val first = backgroundScope.launch { runCatching { m.search(query = "a") } }
+            val second = backgroundScope.launch { runCatching { m.search(query = "b") } }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
+                }
+            }
+            gate.complete(Unit)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(30_000) {
+                    first.join()
+                    second.join()
+                }
+            }
+            assertEquals(1, homepageHits.load(), "concurrent commands must share one scrape")
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun a_failed_session_refresh_serves_the_stale_session() = runTest {
+        var offline = false
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                if (offline) throw okio.IOException("connect refused")
+                CannedResponse.ofText(HOMEPAGE_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                sentBody = request.body?.readAll()?.decodeToString()
+                jsonResponse("{}").build(request)
+            }
+        }
+        val m = DynamicEngineManager(client, appVersion = 1)
+        m.start()
+        try {
+            m.search(query = "seed") // bootstrap succeeds
+            offline = true
+
+            // A region pick forces a refresh; its failure must NOT break anything — the stale
+            // session (carrying the stamped pick) keeps serving every surface.
+            m.applyYtLocale(gl = "JP")
+            m.search(query = "seed")
+            val sent = assertNotNull(sentBody)
+            assertTrue(sent.contains(""""gl":"JP""""), sent)
+        } finally {
+            m.close()
+        }
+    }
+
     @Test
     fun locale_options_menus_survive_an_engine_restart_via_the_cache_store() = runTest {
         val store = cacheStore()
