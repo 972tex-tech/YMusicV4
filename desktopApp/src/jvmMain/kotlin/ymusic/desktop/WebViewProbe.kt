@@ -70,9 +70,10 @@ fun main(args: Array<String>) {
         exitProcess(if (html.contains("INJECT_JS_HERE")) 0 else 2)
     }
     val cef = CefManager()
-    // A scratch profile per run: Chromium's per-profile singleton lock means sharing the app's
-    // jcef-cache silently yields to a running app instance and the probe browser never comes up.
-    val probeProfile = java.nio.file.Files.createTempDirectory("ymusic-probe-jcef").toFile()
+    // The probe's own persistent profile, distinct from the app's jcef-cache: Chromium's
+    // per-profile singleton lock means sharing the app's dir silently yields to a running app
+    // instance and the probe browser never comes up.
+    val probeProfile = File(System.getProperty("user.home"), ".ymusic/jcef-probe-cache")
     val cefClient = runBlocking { cef.createClient(cacheDir = probeProfile) }
     val webViewJs = readWebViewJsProbe() + if (mode.startsWith("next")) NEXT_DIAG_JS else ""
     if (mode.startsWith("next")) {
