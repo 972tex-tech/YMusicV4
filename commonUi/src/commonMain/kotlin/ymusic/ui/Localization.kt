@@ -1,9 +1,5 @@
 package ymusic.ui
 
-import org.jetbrains.compose.resources.StringResource
-import ymusic.ui.resources.Res
-import ymusic.ui.resources.settings_language_system
-
 /**
  * A language the in-app picker offers. [nativeName] is the language's own name for itself — it must
  * read correctly whatever locale the UI currently shows, so it is not a translated resource.
@@ -17,8 +13,6 @@ val UiLanguages: List<UiLanguage> = listOf(
     UiLanguage("ar", "العربية"),
 )
 
-val UiLanguageSystem: StringResource get() = Res.string.settings_language_system
-
 /**
  * Points the platform's default locale at [tag] (null = restore the system locale), which is where
  * compose-resources resolves `stringResource` from. The caller must rebuild the composition (a
@@ -30,12 +24,12 @@ internal expect fun applyUiLocale(tag: String?)
 internal expect fun systemLanguageTag(): String
 
 /**
- * The language the app is actually showing for the [override] setting ("" = system): the override,
- * else the device language when we ship its translation, else English (the base). This is ALSO the
- * content language — the app has one language, and picking it reports hl to the engine.
+ * The app language for an unseeded install: the device language when we ship its translation, else
+ * English (the base). Resolved and PERSISTED once on first launch — the app language is a concrete
+ * tag from then on (it doubles as the content language hl), and later device-language changes are
+ * deliberately ignored.
  */
-internal fun resolvedUiLanguageTag(override: String): String {
-    if (override.isNotBlank()) return override
+internal fun defaultUiLanguageTag(): String {
     val device = systemLanguageTag().substringBefore('-').substringBefore('_').lowercase()
     return UiLanguages.firstOrNull { it.tag == device }?.tag ?: "en"
 }

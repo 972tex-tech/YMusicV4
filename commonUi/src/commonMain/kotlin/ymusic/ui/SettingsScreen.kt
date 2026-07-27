@@ -93,11 +93,11 @@ fun SettingsScreen(graph: AppGraph) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         LanguageRow(
-            current = uiLanguage,
+            current = uiLanguage.ifBlank { defaultUiLanguageTag() },
             onSelect = { tag ->
                 scope.launch {
                     graph.settings.put(AppSettings.uiLanguage, tag)
-                    pickLocale(hl = resolvedUiLanguageTag(tag), gl = options.gl)
+                    pickLocale(hl = tag, gl = options.gl)
                 }
             },
         )
@@ -289,10 +289,10 @@ private fun ThemeRow(current: String, onSelect: (String) -> Unit) {
     }
 }
 
+/** ONE language, always a concrete pick (the first launch seeded it) — no "system" entry. */
 @Composable
 private fun LanguageRow(current: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val systemLabel = stringResource(UiLanguageSystem)
     Row(
         Modifier
             .fillMaxWidth()
@@ -309,11 +309,10 @@ private fun LanguageRow(current: String, onSelect: (String) -> Unit) {
         // Anchored to the value text — see ThemeRow.
         Box {
             Text(
-                UiLanguages.firstOrNull { it.tag == current }?.nativeName ?: systemLabel,
+                UiLanguages.firstOrNull { it.tag == current }?.nativeName ?: current,
                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
             )
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                DropdownMenuItem(text = { Text(systemLabel) }, onClick = { onSelect(""); open = false })
                 UiLanguages.forEach { lang ->
                     DropdownMenuItem(text = { Text(lang.nativeName) }, onClick = { onSelect(lang.tag); open = false })
                 }

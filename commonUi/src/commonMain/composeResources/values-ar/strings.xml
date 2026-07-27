@@ -114,7 +114,6 @@
 
 
     <string name="settings_language">اللغة</string>
-    <string name="settings_language_system">لغة النظام</string>
     <string name="settings_content_language">لغة المحتوى</string>
     <string name="settings_content_region">منطقة المحتوى</string>
     <string name="settings_content_auto">تلقائي</string>

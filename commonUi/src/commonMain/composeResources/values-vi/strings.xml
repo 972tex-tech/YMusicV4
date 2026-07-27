@@ -109,7 +109,6 @@
 
 
     <string name="settings_language">Ngôn ngữ</string>
-    <string name="settings_language_system">Theo hệ thống</string>
     <string name="settings_content_language">Ngôn ngữ nội dung</string>
     <string name="settings_content_region">Khu vực nội dung</string>
     <string name="settings_content_auto">Tự động</string>
