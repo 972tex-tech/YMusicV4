@@ -1026,4 +1026,96 @@ class YtCommandsTest {
             m2.close()
         }
     }
+
+    /** A client whose homepage GET serves [homepage] and whose InnerTube POSTs serve
+     *  [BROWSE_FIXTURE], counting each side. */
+    private class CountingClient(homepage: String) {
+        var homepageHits = 0
+        var browseHits = 0
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                homepageHits++
+                CannedResponse.ofText(homepage, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                browseHits++
+                CannedResponse.ofText(
+                    BROWSE_FIXTURE,
+                    headers = listOf("Content-Type" to "application/json"),
+                ).build(request)
+            }
+        }
+    }
+
+    @Test
+    fun the_first_home_load_rides_the_bootstrap_homepage_not_browse() = runTest {
+        val counting = CountingClient(HOMEPAGE_WITH_FEED_FIXTURE)
+        val m = DynamicEngineManager(counting.client, appVersion = 1, cacheStore = cacheStore())
+        m.start()
+        try {
+            // The session bootstrap's page IS the first answer: one fetch, zero /browse.
+            val first = m.extractHomeFeed()
+            assertEquals(1, counting.homepageHits)
+            assertEquals(0, counting.browseHits, "the first home load must not browse")
+            assertEquals(3, first.sections.size, "$first")
+            assertEquals("page-cont", first.continuation)
+
+            // The kept page is single-use — every later load browses normally.
+            val second = m.extractHomeFeed()
+            assertEquals(1, counting.homepageHits)
+            assertEquals(1, counting.browseHits)
+            assertEquals("browse-cont-token", second.continuation)
+
+            m.extractHomeFeed(continuation = "page-cont")
+            assertEquals(2, counting.browseHits)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun a_restart_re_scrapes_the_homepage_for_the_first_home_load() = runTest {
+        val store = cacheStore()
+        val first = CountingClient(HOMEPAGE_WITH_FEED_FIXTURE)
+        val m = DynamicEngineManager(first.client, appVersion = 1, cacheStore = store)
+        m.start()
+        try {
+            m.extractHomeFeed() // consumes the kept bootstrap page
+        } finally {
+            m.close()
+        }
+        assertEquals(1, first.homepageHits)
+        assertEquals(0, first.browseHits)
+
+        // The next run's session is still fresh off the store, but its kept page was consumed:
+        // the first home load forces ONE re-scrape and serves from that — still no /browse.
+        val second = CountingClient(HOMEPAGE_WITH_FEED_FIXTURE)
+        second.client.cookieJar = first.client.cookieJar
+        val m2 = DynamicEngineManager(second.client, appVersion = 1, cacheStore = store)
+        m2.start()
+        try {
+            val page = m2.extractHomeFeed()
+            assertEquals(1, second.homepageHits, "one forced re-scrape replaces the /browse call")
+            assertEquals(0, second.browseHits)
+            assertEquals("page-cont", page.continuation)
+        } finally {
+            m2.close()
+        }
+    }
+
+    @Test
+    fun a_homepage_without_initial_data_falls_back_to_browse_directly() = runTest {
+        val counting = CountingClient(HOMEPAGE_FIXTURE) // ytcfg only, no ytInitialData
+        val m = DynamicEngineManager(counting.client, appVersion = 1, cacheStore = cacheStore())
+        m.start()
+        try {
+            val page = m.extractHomeFeed()
+            // The page was there, just payload-less: /browse answers, no second scrape is spent.
+            assertEquals(1, counting.homepageHits, "a payload-less page must not trigger a re-scrape")
+            assertEquals(1, counting.browseHits)
+            assertEquals("browse-cont-token", page.continuation)
+        } finally {
+            m.close()
+        }
+    }
 }

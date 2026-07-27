@@ -23,7 +23,11 @@ import ymusic.quickjs.asBufferedSource
  * (de)serializer touches the wire.
  */
 
-/** The Discover home feed (first page or a page's [YtFeedPage.continuation]). */
+/**
+ * The Discover home feed (first page or a page's [YtFeedPage.continuation]). The engine serves the
+ * FIRST fresh load after start from its session bootstrap's own youtube.com homepage (the page's
+ * inline data is the same browse answer) — one fetch bootstraps both — and browses normally after.
+ */
 suspend fun DynamicEngineManager.extractHomeFeed(
     continuation: String? = null,
 ): YtFeedPage = feedCommand("yt/home") { w ->
