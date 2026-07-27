@@ -255,28 +255,30 @@ private val ThemeOptions: List<Pair<String, StringResource>> = listOf(
 @Composable
 private fun ThemeRow(current: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { open = true }
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stringResource(Res.string.settings_theme),
-                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                modifier = Modifier.weight(1f),
-            )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(Res.string.settings_theme),
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            modifier = Modifier.weight(1f),
+        )
+        // The menu anchors to the value text, so it drops on the right under the current choice —
+        // anchored to the row it would open at the far-away left edge of the screen.
+        Box {
             Text(
                 stringResource((ThemeOptions.firstOrNull { it.first == current } ?: ThemeOptions.first()).second),
                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
             )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            ThemeOptions.forEach { (value, label) ->
-                DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { onSelect(value); open = false })
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                ThemeOptions.forEach { (value, label) ->
+                    DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { onSelect(value); open = false })
+                }
             }
         }
     }
@@ -286,29 +288,30 @@ private fun ThemeRow(current: String, onSelect: (String) -> Unit) {
 private fun LanguageRow(current: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val systemLabel = stringResource(UiLanguageSystem)
-    Box {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { open = true }
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stringResource(Res.string.settings_language),
-                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                modifier = Modifier.weight(1f),
-            )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(Res.string.settings_language),
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            modifier = Modifier.weight(1f),
+        )
+        // Anchored to the value text — see ThemeRow.
+        Box {
             Text(
                 UiLanguages.firstOrNull { it.tag == current }?.nativeName ?: systemLabel,
                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
             )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text(systemLabel) }, onClick = { onSelect(""); open = false })
-            UiLanguages.forEach { lang ->
-                DropdownMenuItem(text = { Text(lang.nativeName) }, onClick = { onSelect(lang.tag); open = false })
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                DropdownMenuItem(text = { Text(systemLabel) }, onClick = { onSelect(""); open = false })
+                UiLanguages.forEach { lang ->
+                    DropdownMenuItem(text = { Text(lang.nativeName) }, onClick = { onSelect(lang.tag); open = false })
+                }
             }
         }
     }
