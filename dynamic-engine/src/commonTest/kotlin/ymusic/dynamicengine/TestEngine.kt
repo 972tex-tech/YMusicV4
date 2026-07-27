@@ -21,4 +21,5 @@ internal suspend fun createTestEngine(
     settings: SettingsStore? = null,
 ): DynamicEngine = withContext(testEngineDispatcher) {
     DynamicEngine.create(client, appVersion, testEngineDispatcher, logger, ENGINE_TEST_JS, cacheStore, settings = settings)
+        .also { it.healthCheck() }
 }

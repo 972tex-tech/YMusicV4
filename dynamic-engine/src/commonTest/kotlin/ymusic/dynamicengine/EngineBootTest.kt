@@ -14,7 +14,7 @@ class EngineBootTest {
     fun a_healthy_boot_reports_the_bundle_backend_version() = runTest {
         val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
         try {
-            assertTrue(e.backendVersion >= 1, "backendVersion=${e.backendVersion}")
+            assertTrue((e.backendVersion ?: 0) >= 1, "backendVersion=${e.backendVersion}")
         } finally {
             e.close()
         }
@@ -39,12 +39,18 @@ class EngineBootTest {
     fun a_bundle_without_init_fails_the_health_check_as_E20021() = runTest {
         val err = assertFailsWith<EngineError.Technical> {
             withContext(testEngineDispatcher) {
-                DynamicEngine.create(
+                // evals fine, serves nothing — create succeeds; the health check's init open is refused
+                val e = DynamicEngine.create(
                     FakeHttpClient(CannedResponse.ofText("")),
                     appVersion = 1,
                     dispatcher = testEngineDispatcher,
-                    engineJs = "1", // evals fine, serves nothing — the init open is refused
+                    engineJs = "1",
                 )
+                try {
+                    e.healthCheck()
+                } finally {
+                    e.close()
+                }
             }
         }
         assertEquals("E20021", err.code)

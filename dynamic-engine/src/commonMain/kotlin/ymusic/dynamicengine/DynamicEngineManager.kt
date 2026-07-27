@@ -74,8 +74,17 @@ class DynamicEngineManager(
     // each engine and closes with the manager.
     private val engineDispatcher = QuickJsRuntime.newDispatcher()
 
+    // Boot + gate: the manager is the accept/reject seam for bundles, so IT drives the health
+    // check — create itself just boots. A failed check closes the half-born engine here.
     private suspend fun createEngine(js: String): DynamicEngine = withContext(engineDispatcher) {
-        DynamicEngine.create(client, appVersion, engineDispatcher, logger, js, cacheStore, cookieJar, settings)
+        val engine = DynamicEngine.create(client, appVersion, engineDispatcher, logger, js, cacheStore, cookieJar, settings)
+        try {
+            engine.healthCheck()
+        } catch (t: Throwable) {
+            runCatching { engine.closeNow() }
+            throw t
+        }
+        engine
     }
 
     /** Whether the last retirement drained inside the deadline (vs. force-closed). Test seam. */
@@ -108,7 +117,7 @@ class DynamicEngineManager(
             }
         }
         activeLock.withLock { active = Slot(engine) }
-        engine.backendVersion
+        checkNotNull(engine.backendVersion) // createEngine health-checked
     }
 
     /**
@@ -132,7 +141,7 @@ class DynamicEngineManager(
             null,
         )
         if (old != null) retire(old)
-        fresh.backendVersion
+        checkNotNull(fresh.backendVersion) // createEngine health-checked
     }
 
     /** Run a task on the engine that is current NOW — pinned for the whole block, so a concurrent

@@ -21,7 +21,7 @@ import kotlin.test.assertIs
 class ProdBundleSmokeTest {
 
     private suspend fun createProdEngine(client: kmphttp.KmpHttpClient): DynamicEngine =
-        withContext(testEngineDispatcher) { DynamicEngine.create(client, 1, testEngineDispatcher) }
+        withContext(testEngineDispatcher) { DynamicEngine.create(client, 1, testEngineDispatcher).also { it.healthCheck() } }
 
     @Test
     fun ping_echoes_through_the_mangled_bundle() = runTest {

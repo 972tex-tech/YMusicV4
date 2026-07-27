@@ -35,10 +35,9 @@ import ymusic.settings.SettingsStore
  * protocols are planned (see `quickjs/HOST_PROTOCOLS.md`). An app-provided [SettingsStore] wires
  * the bundle's typed `Settings.get`/`.set` to the same persistent preferences native UI uses.
  *
- * Creation boots the bundle and then drives its `"init"` command as the health check — a pipe
- * round-trip proving the whole stack (open routing, handler dispatch, JSON encode, END) — which
- * reports [backendVersion], the bundle's self-declared revision, for swap logs and per-revision
- * error attribution.
+ * Creation just boots the bundle. [healthCheck] is the separate gate — driving the bundle's
+ * `"init"` command and recording [backendVersion] — that callers who accept/reject bundles (the
+ * manager's start/swap) run right after create.
  *
  * The pipe/command plumbing is **internal**: callers don't open pipes or register handlers, they
  * call a task method (`getHomeFeed()`, …) that drives the engine JS over pipes under the hood and
@@ -48,9 +47,43 @@ import ymusic.settings.SettingsStore
 class DynamicEngine private constructor(
     private val runtime: QuickJsRuntime,
     internal val logger: Logger?,
-    /** The bundle's self-declared revision (its `BACKEND_VERSION`), from the `"init"` check. */
-    val backendVersion: Int,
 ) {
+
+    /** The bundle's self-declared revision (its `BACKEND_VERSION`); null until [healthCheck] ran. */
+    var backendVersion: Int? = null
+        private set
+
+    /**
+     * Drive the bundle's `"init"` command — the health check proving the whole stack (open
+     * routing, handler dispatch, JSON encode, END) — and record [backendVersion]. Deliberately a
+     * separate step, not part of [create]: create just boots, the CALLER decides whether/when to
+     * gate on health (and closes the engine if this throws). Same synchronous, engine-thread-only
+     * contract as create (see [QuickJsRuntime.openReadNow]). Refused / RESET / malformed /
+     * not-synchronous → `E20021` (a RESET's own code wins). No timeout: init either completed
+     * inside the open call or never will.
+     */
+    fun healthCheck(): Int {
+        val body = try {
+            runtime.openReadNow("init")
+        } catch (e: EngineError) {
+            throw e
+        } catch (e: PipeResetException) {
+            throw decodeEngineError(e.reason, e) // the bundle classified its own failure — keep its code
+        } catch (e: Throwable) {
+            throw EngineError.Technical("E20021", "engine init failed: ${e.message}", null, null, null, e)
+        }
+        val head = try {
+            initJson.decodeFromString<InitHead>(body)
+        } catch (e: Exception) {
+            throw EngineError.Technical(
+                "E20021",
+                "engine init returned a malformed head: ${body.take(200)}",
+                null, null, null, e,
+            )
+        }
+        backendVersion = head.backendVersion
+        return head.backendVersion
+    }
 
     /** Evaluate [script] synchronously (load engine code / register `ymix.onAccept` handlers). */
     internal suspend fun load(script: String, filename: String = "<engine>"): String? = runtime.load(script, filename)
@@ -65,15 +98,19 @@ class DynamicEngine private constructor(
     /** Suspend until nothing is in flight in either direction (see [QuickJsRuntime.awaitIdle]). */
     internal suspend fun awaitIdle() = runtime.awaitIdle()
 
-    /** Free the runtime and its engine thread. Idempotent-safe to call once when done. */
+    /** Free the runtime (never the caller-owned dispatcher). Idempotent-safe to call once. */
     suspend fun close() = runtime.close()
+
+    /** Boot-failure teardown (engine-thread-only, e.g. after [healthCheck] threw) — see
+     *  [QuickJsRuntime.closeNow]. */
+    internal fun closeNow() = runtime.closeNow()
 
     companion object {
         /**
          * Create an engine running [engineJs] — the single :engine-js bundle (transport + protocol
-         * layers + scraping logic) — wire the `"http"` handler onto [client] (before the boot
-         * eval, so the bundle's top-level code can already call it), and health-check via
-         * `"init"`.
+         * layers + scraping logic) and wire the `"http"` handler onto [client] (before the boot
+         * eval, so the bundle's top-level code can already call it). Create just BOOTS — drive
+         * [healthCheck] afterwards if the caller gates on it (the manager does).
          *
          * NOT a suspend function on purpose: the whole boot — native engine, bundle eval, init
          * round-trip (the C layer pumps JS microtasks inside each call, so init has answered
@@ -85,7 +122,7 @@ class DynamicEngine private constructor(
          * [appVersion] is the host app's version code. [engineJs] defaults to the build-time
          * baseline; the app passes a remotely-fetched bundle here, and falls back to the default
          * when that fails to load (a bad push must not brick the engine — a failure here is a
-         * typed [EngineError], `E20020` load / `E20021` health check). [logger] receives
+         * typed [EngineError], `E20020`). [logger] receives
          * host-protocol birth-site failures (null = logging off).
          */
         fun create(
@@ -138,39 +175,7 @@ class DynamicEngine private constructor(
             } catch (e: QuickJsException) {
                 throw EngineError.Technical("E20020", "engine bundle failed to load: ${e.message}", null, null, null, e)
             }
-            try {
-                return DynamicEngine(runtime, logger, healthCheck(runtime))
-            } catch (t: Throwable) {
-                runCatching { runtime.closeNow() }
-                throw t
-            }
-        }
-
-        /** Drive the bundle's `"init"` command; returns its self-reported backendVersion.
-         *  Refused / RESET / malformed / not-synchronous → `E20021` (the RESET's own code wins).
-         *  No timeout: init either completed inside the open call (see [QuickJsRuntime.openReadNow])
-         *  or never will — a bundle whose init parks is broken, and a bundle stuck in a busy loop
-         *  would defeat a wall-clock deadline on this thread anyway. */
-        private fun healthCheck(runtime: QuickJsRuntime): Int {
-            val body = try {
-                runtime.openReadNow("init")
-            } catch (e: EngineError) {
-                throw e
-            } catch (e: PipeResetException) {
-                throw decodeEngineError(e.reason, e) // the bundle classified its own failure — keep its code
-            } catch (e: Throwable) {
-                throw EngineError.Technical("E20021", "engine init failed: ${e.message}", null, null, null, e)
-            }
-            val head = try {
-                initJson.decodeFromString<InitHead>(body)
-            } catch (e: Exception) {
-                throw EngineError.Technical(
-                    "E20021",
-                    "engine init returned a malformed head: ${body.take(200)}",
-                    null, null, null, e,
-                )
-            }
-            return head.backendVersion
+            return DynamicEngine(runtime, logger)
         }
 
         private val initJson = Json { ignoreUnknownKeys = true }
