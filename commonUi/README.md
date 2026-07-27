@@ -2,4 +2,28 @@
 
 Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) — read this before working inside the module.
 
-the shared Compose Multiplatform app UI (jvm + android; iOS later): drawer navigation (Discover/YT Music/Library/Downloads/Settings), Discover feed tabs + search (live suggestions, paged results) over `:dynamic-engine`'s `yt` task methods, LibraryScreen over `:media-store` flows, the persistent mini-player + full Now Playing (transport, sleep timer, capability selectors, queue). Shells construct `AppGraph` (engines + `Player` facade + optional mediaStore/scan callback + the platform `playerSurface(modifier)` composable, which hosts the one shared video container the shell handed the engines) — nothing platform-specific in common. `PlaybackCoordinator` = play-now-with-watch-next-autoplay + display metadata for queue items. Thumbnails render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null keeps placeholder boxes). **Localized** via compose-resources: every user-facing string lives in `commonMain/composeResources/values*/strings.xml` (en base + vi + ar; plurals + `%1$s` args; brand marks untranslated by omission — missing keys fall back to base) — never hardcode UI text (dev-only CatalogueScreen exempt). The `AppSettings.uiLanguage` setting drives `applyUiLocale` (expect/actual; JVM/Android set the default locale, iOS = next launch) and `App` rebuilds under `key(tag)` with `LocalLayoutDirection` derived from the effective locale (RTL mirrors the whole UI); `SettingsScreen` hosts the picker. Visual check: `:desktopApp:jvmTest` LocaleSnapshotTest renders en/vi/ar PNGs.
+The shared Compose Multiplatform app UI (jvm + android; iOS later).
+
+- **Screens** — drawer navigation (Discover/YT Music/Library/Downloads/Settings); Discover feed tabs + search
+  (live suggestions, paged results) over `:dynamic-engine`'s `yt` task methods; LibraryScreen over `:media-store`
+  flows; the persistent mini-player + full Now Playing (transport, sleep timer, capability selectors, queue).
+
+- **AppGraph** — shells construct `AppGraph` (engines + `Player` facade + optional mediaStore/scan callback + the
+  platform `playerSurface(modifier)` composable, which hosts the one shared video container the shell handed the
+  engines) — nothing platform-specific in common.
+
+- **PlaybackCoordinator** — play-now-with-watch-next-autoplay + display metadata for queue items.
+
+- **Thumbnails** — render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null
+  keeps placeholder boxes).
+
+- **Localization** — **localized** via compose-resources: every user-facing string lives in
+  `commonMain/composeResources/values*/strings.xml` (en base + vi + ar; plurals + `%1$s` args; brand marks
+  untranslated by omission — missing keys fall back to base) — never hardcode UI text (dev-only CatalogueScreen
+  exempt).
+  - The `AppSettings.uiLanguage` setting drives `applyUiLocale` (expect/actual; JVM/Android set the default locale,
+    iOS = next launch).
+  - `App` rebuilds under `key(tag)` with `LocalLayoutDirection` derived from the effective locale (RTL mirrors the
+    whole UI).
+  - `SettingsScreen` hosts the picker.
+  - Visual check: `:desktopApp:jvmTest` LocaleSnapshotTest renders en/vi/ar PNGs.
