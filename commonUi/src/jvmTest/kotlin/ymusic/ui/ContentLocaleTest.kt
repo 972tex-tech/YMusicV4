@@ -3,6 +3,7 @@ package ymusic.ui
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
@@ -73,6 +74,47 @@ class ContentLocaleTest {
                 waitUntil(timeoutMillis = 10_000) { charts.last().contains(""""gl":"VN"""") }
                 assertEquals("VN", settings.string(AppSettings.glDetected.key, "").value)
                 assertTrue(charts.last().contains(""""hl":"en""""), charts.last())
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
+
+    @Test
+    fun the_content_language_picker_is_a_dialog_listing_youtubes_menu() {
+        Locale.setDefault(Locale.US)
+        val engines = DynamicEngineManager(
+            CannedHttp { request, _ ->
+                val url = request.url.toString()
+                when {
+                    url.contains("account/account_menu") ->
+                        textResponse(request, ACCOUNT_MENU_FIXTURE, "application/json")
+                    request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
+                        textResponse(request, HOMEPAGE_IN_VN, "text/html")
+                    else -> textResponse(request, "{}", "application/json")
+                }
+            },
+            appVersion = 1,
+        )
+        runBlocking { engines.start() }
+        try {
+            runComposeUiTest {
+                val settings = InMemorySettingsStore()
+                val graph = AppGraph(engines = engines, player = StubPlayer(), settings = settings, playerSurface = {})
+                setContent {
+                    App(graph, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(AppSection.Settings) })
+                }
+
+                // The 80-entry menu opens as a dialog off the row (a dropdown can't hold it), and
+                // an alternative is only offered once YouTube's menu has landed.
+                waitUntilAtLeastOneExists(hasText("Content language"), 20_000)
+                onNodeWithText("Content language").performClick()
+                waitUntilAtLeastOneExists(hasText("Afrikaans"), 10_000)
+                onNodeWithText("Cancel").assertExists()
+
+                onNodeWithText("Afrikaans").performClick()
+                waitUntil(timeoutMillis = 10_000) { settings.string(AppSettings.hl.key, "").value == "af" }
+                onNodeWithText("Cancel").assertDoesNotExist()
             }
         } finally {
             runBlocking { engines.close() }

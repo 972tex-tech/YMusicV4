@@ -7,12 +7,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,6 +43,7 @@ import ymusic.settings.AppSettings
 import ymusic.settings.flow
 import ymusic.settings.put
 import ymusic.ui.resources.Res
+import ymusic.ui.resources.dialog_cancel
 import ymusic.ui.resources.settings_content_auto_detected
 import ymusic.ui.resources.settings_content_language
 import ymusic.ui.resources.settings_content_locale_hint
@@ -98,6 +105,7 @@ fun SettingsScreen(graph: AppGraph) {
  * A content-language / content-region picker. [current] is the user's stored override ("" = follow
  * the automatic pick); [automatic] is the code that pick currently resolves to, shown next to the
  * automatic entry so it is never a mystery which region the feeds are actually coming from.
+ * The menus run to ~100 entries, so picking happens in a dialog, not a dropdown.
  */
 @Composable
 private fun ContentLocaleRow(
@@ -110,35 +118,75 @@ private fun ContentLocaleRow(
     var open by remember { mutableStateOf(false) }
     fun labelOf(code: String) = options.firstOrNull { it.code.equals(code, ignoreCase = true) }?.label ?: code
     val autoLabel = stringResource(Res.string.settings_content_auto_detected, labelOf(automatic))
-    Box {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { open = true }
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                title,
-                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                if (current.isBlank()) autoLabel else labelOf(current),
-                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-            )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text(autoLabel) }, onClick = { onSelect(""); open = false })
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option.label) },
-                    onClick = { onSelect(option.code); open = false },
-                )
-            }
-        }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            if (current.isBlank()) autoLabel else labelOf(current),
+            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+        )
     }
+    if (open) {
+        LocalePickerDialog(
+            title = title,
+            entries = listOf(YtLocaleOption("", autoLabel)) + options,
+            current = current,
+            onSelect = { code -> onSelect(code); open = false },
+            onDismiss = { open = false },
+        )
+    }
+}
+
+/** A scrollable single-choice dialog, opened on the row that shows the current choice. */
+@Composable
+private fun LocalePickerDialog(
+    title: String,
+    entries: List<YtLocaleOption>,
+    current: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    fun isCurrent(code: String) = if (code.isEmpty()) current.isBlank() else code.equals(current, ignoreCase = true)
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = entries.indexOfFirst { isCurrent(it.code) }.coerceAtLeast(0),
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
+                items(entries, key = { it.code }) { option ->
+                    val selected = isCurrent(option.code)
+                    Text(
+                        option.label,
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(option.code) }
+                            .padding(horizontal = 4.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+        },
+    )
 }
 
 /** "" = follow system, per [AppSettings.theme]. */
