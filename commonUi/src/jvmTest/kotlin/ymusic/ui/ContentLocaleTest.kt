@@ -45,8 +45,17 @@ class ContentLocaleTest {
                     "application/json",
                 )
             }
-            request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
-                textResponse(request, HOMEPAGE_IN_VN, "text/html")
+            request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") -> {
+                // Echo a PREF gl pick back in the ytcfg, as the live server does — YouTube owns
+                // the working region value and the session parses this answer.
+                val picked = Regex("""gl=(\w+)""").find(request.headers["Cookie"].orEmpty())?.groupValues?.get(1)
+                val page = if (picked == null) {
+                    HOMEPAGE_IN_VN
+                } else {
+                    HOMEPAGE_IN_VN.replace(""""GL":"VN"""", """"GL":"${picked.uppercase()}"""")
+                }
+                textResponse(request, page, "text/html")
+            }
             else -> textResponse(request, "{}", "application/json")
         }
     }
@@ -152,7 +161,7 @@ class ContentLocaleTest {
 
                 // What the Settings pickers do on a pick: report it to the engine, then announce
                 // "the locale changed" — the app never holds the value itself.
-                runBlocking { graph.engines.applyYtLocale(hl = "", gl = "JP") }
+                runBlocking { graph.engines.applyYtLocale(gl = "JP") }
                 graph.localeEpoch.value++
 
                 waitUntil(timeoutMillis = 10_000) { charts.size > before }

@@ -83,9 +83,9 @@ fun SettingsScreen(graph: AppGraph) {
         runCatching { graph.engines.ytLocaleOptions() }.onSuccess { options = it }
         loadingOptions = false
     }
-    fun pickLocale(hl: String, gl: String) {
+    fun pickLocale(gl: String) {
         scope.launch {
-            runCatching { graph.engines.applyYtLocale(hl, gl) }
+            runCatching { graph.engines.applyYtLocale(gl) }
             localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
             graph.localeEpoch.value++ // locale-shaped caches (Discover feeds) refetch
         }
@@ -96,8 +96,9 @@ fun SettingsScreen(graph: AppGraph) {
             current = uiLanguage.ifBlank { defaultUiLanguageTag() },
             onSelect = { tag ->
                 scope.launch {
+                    // Persist FIRST: apply is only the notify — the engine re-pulls this setting.
                     graph.settings.put(AppSettings.uiLanguage, tag)
-                    pickLocale(hl = tag, gl = options.gl)
+                    pickLocale(gl = options.gl)
                 }
             },
         )
@@ -111,7 +112,7 @@ fun SettingsScreen(graph: AppGraph) {
             automatic = options.autoGl,
             options = options.regions,
             loading = loadingOptions,
-            onSelect = { code -> pickLocale(hl = options.hl, gl = code) },
+            onSelect = { code -> pickLocale(gl = code) },
         )
         Text(
             stringResource(Res.string.settings_content_locale_hint),

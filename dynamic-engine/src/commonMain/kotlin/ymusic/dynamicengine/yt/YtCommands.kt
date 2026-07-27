@@ -129,29 +129,27 @@ suspend fun DynamicEngineManager.searchSuggestions(query: String): List<String> 
     }
 
 /**
- * Sync the user's locale OVERRIDE into the shared cookie identity (the legacy `YTPrefsUpdateTask`
- * role): `hl=`/`gl=` are written into the `PREF` cookie so cookie-identified page fetches — the
- * WebView player's embed page above all — follow the pick, and the sticky `s_gl` echo is deleted.
- * Blank means "automatic": the key is removed, so the bootstrap homepage answers with YouTube's
- * IP-derived region again. The engine also drops its bootstrapped session, so the next call
- * re-scrapes under the new identity — and it keeps the pair in memory (persisted to the host
- * Cache, from which a freshly-booted bundle re-seeds itself), re-asserting it on every cooked
- * YouTube request because the shared store's WebView pages can rewrite PREF underneath it.
- * Call ONLY when the user changes the pick — never on start; InnerTube calls assert the pair per
- * request regardless (this covers everything that does NOT).
+ * The locale-changed notification (the legacy `YTPrefsUpdateTask` role). [gl] is the region pick,
+ * blank = automatic (the slot leaves PREF, so the bootstrap homepage answers with YouTube's
+ * IP-derived region again) — PREF itself, the persistent WebView-shared cookie store, is the
+ * pick's one record. There is no hl argument — the app language IS the content language, and the
+ * engine re-pulls it from host settings on every notify (only the hl slot is re-asserted on every
+ * cooked request; the gl slot is YouTube's to control). On a real change the engine deletes the
+ * sticky `s_gl` echo and refreshes its session under the new identity: the re-parsed ytcfg GL
+ * becomes the working region value — YouTube outranks the pick. Call when the user picks a region
+ * OR a language (after persisting the language setting) — never on start.
  */
-suspend fun DynamicEngineManager.applyYtLocale(hl: String, gl: String): Unit = use { engine ->
+suspend fun DynamicEngineManager.applyYtLocale(gl: String): Unit = use { engine ->
     engine.jsonCommand("yt/locale/apply", { w ->
         w.beginObject()
-        w.name("hl").value(hl)
         w.name("gl").value(gl)
         w.endObject()
     }) { it.skipValue() }
 }
 
 /**
- * The Settings pickers' one read: the user's pick ([YtLocales.hl]/[YtLocales.gl], "" = automatic),
- * what automatic currently resolves to ([YtLocales.autoHl]/[YtLocales.autoGl]), and the menus
+ * The Settings region picker's one read: the pick ([YtLocales.gl], "" = automatic), what automatic
+ * currently resolves to ([YtLocales.autoGl] — the session's IP-derived echo), and the menus
  * YouTube offers labelled in the effective language. The engine keeps ONE cached copy of the menus
  * (in-memory + [ymusic.dynamicengine.CacheStore]) tagged with the pair it was fetched under: it
  * re-fetches only when the effective pair changed or the copy is over a week old, and a failed
