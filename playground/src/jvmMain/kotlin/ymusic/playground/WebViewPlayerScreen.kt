@@ -55,7 +55,7 @@ fun WebViewPlayerScreen(
 ) {
     val surface = remember { JcefOsrSurface() }
     val player: WebViewPlayer = remember {
-        createWebViewPlayer(WebViewPlayerContext(cefClient, surface), engineJs, appVersion = 1, httpClient = httpClient)
+        createWebViewPlayer(WebViewPlayerContext(cefClient, surface), engineJs, appVersion = 1, labEmbedHtml(httpClient))
     }
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()

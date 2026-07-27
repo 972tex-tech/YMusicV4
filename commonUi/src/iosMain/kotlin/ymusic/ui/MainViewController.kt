@@ -32,6 +32,7 @@ import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.appleEngineCacheStore
+import ymusic.dynamicengine.yt.embedPage
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
 import ymusic.imageloader.fileFetcher
@@ -84,13 +85,11 @@ private fun Center(content: @Composable () -> Unit) {
 private suspend fun buildIosGraph(container: UIView): AppGraph {
     // One live store shared by InnerTube HTTP and WKWebView's own YouTube requests.
     val cookies = IosWebViewCookieJar()
-    // One client stack, one disk cache, shared by the engine and the player's embed fetch.
     val http = AppHttpClients(
         (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
             .toPath()
             .resolve("ymusic-http-cache"),
     )
-    val playerClient = http.withCookies(cookies)
     val settings = IosSettingsStore()
     val engines = DynamicEngineManager(
         http.engine,
@@ -117,7 +116,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val player = createPlayer(
         PlayerEngines(
             local = { createLocalPlayer(LocalPlayerContext(container)) },
-            webView = { createWebViewPlayer(WebViewPlayerContext(container), engineJs, appVersion = 1, playerClient) },
+            webView = { createWebViewPlayer(WebViewPlayerContext(container), engineJs, appVersion = 1, { ua -> engines.embedPage(ua) }) },
         ),
     )
 

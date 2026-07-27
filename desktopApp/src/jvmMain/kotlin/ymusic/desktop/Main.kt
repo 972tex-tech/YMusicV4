@@ -51,6 +51,7 @@ import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
+import ymusic.dynamicengine.yt.embedPage
 import ymusic.imageloader.DiskScaledImageCache
 import ymusic.imageloader.ImageLoader
 import ymusic.imageloader.defaultMemoryCacheBudget
@@ -189,9 +190,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                         WebViewPlayerContext(cefClient, webViewSurface),
                         engineJs = webViewJs,
                         appVersion = 1,
-                        // The embed fetch is a browser-identity request — it rides the platform
-                        // cookie store like the WebView's own traffic (unlike the engine client).
-                        httpClient = http.withCookies(platformCookies),
+                        embedHtml = { ua -> engines.embedPage(ua) },
                     )
                 },
             ),

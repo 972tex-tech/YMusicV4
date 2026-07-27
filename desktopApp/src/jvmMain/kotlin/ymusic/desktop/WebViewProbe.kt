@@ -7,6 +7,8 @@ import org.cef.CefSettings
 import org.cef.browser.CefBrowser
 import org.cef.browser.JcefOsrSurface
 import org.cef.handler.CefDisplayHandlerAdapter
+import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.dynamicengine.yt.embedPage
 import ymusic.player.PlayableItem
 import ymusic.player.PlaybackConfig
 import ymusic.player.VideoQualityState
@@ -42,6 +44,9 @@ fun main(args: Array<String>) {
     println("[probe] mode=$mode realized=$realized videoId=$videoId")
 
     val httpClient: KmpHttpClient = KmpHttpClient.create {}
+    // The embed page now comes from the scraping engine (yt/embed) — boot the baseline bundle.
+    val engines = DynamicEngineManager(httpClient, appVersion = 1)
+    runBlocking { engines.start() }
     val cef = CefManager()
     val cefClient = runBlocking { cef.createClient() }
     val webViewJs = readWebViewJsProbe() + if (mode == "next") NEXT_DIAG_JS else ""
@@ -88,7 +93,7 @@ fun main(args: Array<String>) {
             WebViewPlayerContext(cefClient, surface),
             engineJs = webViewJs,
             appVersion = 1,
-            httpClient = httpClient,
+            embedHtml = { ua -> engines.embedPage(ua) },
         )
         // Muted (position advancing is the "is it playing" signal). `audioonly` exercises the
         // music-default path: audio-only must still play (the WebView stays shown on its thumbnail —

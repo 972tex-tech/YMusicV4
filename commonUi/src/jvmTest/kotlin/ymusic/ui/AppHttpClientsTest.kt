@@ -1,14 +1,11 @@
 package ymusic.ui
 
-import kmphttp.Cookie
 import kmphttp.CookieJar
-import kmphttp.HttpUrl
 import okio.FileSystem
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertSame
 
 /**
  * The app's clients must all sit on ONE disk cache: a second `KmpHttpClient.create {}` silently
@@ -23,24 +20,11 @@ class AppHttpClientsTest {
         FileSystem.SYSTEM.deleteRecursively(dir, mustExist = false)
     }
 
-    private object NoJar : CookieJar {
-        override fun loadForRequest(url: HttpUrl): List<Cookie> = emptyList()
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = Unit
-    }
-
     @Test
     fun the_engine_client_is_cached_and_carries_no_cookie_jar() {
         val http = AppHttpClients(dir)
         assertNotNull(http.engine.cache, "the engine client must have a disk cache")
         assertEquals(CookieJar.NO_COOKIES, http.engine.cookieJar, "cookie policy lives in the engine JS")
-    }
-
-    @Test
-    fun a_cookie_carrying_client_reuses_the_same_cache_instance() {
-        val http = AppHttpClients(dir)
-        val player = http.withCookies(NoJar)
-        assertSame(http.engine.cache, player.cache, "one cache, one directory")
-        assertSame(NoJar, player.cookieJar)
     }
 
     /** The wiring is only worth anything if a second GET is served from disk: a local server counts

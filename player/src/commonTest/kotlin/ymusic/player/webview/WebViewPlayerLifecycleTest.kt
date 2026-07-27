@@ -34,7 +34,11 @@ class WebViewPlayerLifecycleTest {
     @Test
     fun initialized_page_is_reused_for_subsequent_video_loads() = runTest(dispatcher) {
         lateinit var bridge: FakeBridge
-        val player = WebViewPlayerImpl("window.testBundle=true", 1, { "<html><head></head><body></body></html>" }) { sink ->
+        val player = WebViewPlayerImpl(
+            "window.testBundle=true",
+            1,
+            { "<html><head><script>\nINJECT_JS_HERE\n</script></head><body></body></html>" },
+        ) { sink ->
             FakeBridge(sink).also { bridge = it }
         }
 

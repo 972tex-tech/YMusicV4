@@ -1,7 +1,6 @@
 package ymusic.ui
 
 import kmphttp.Cache
-import kmphttp.CookieJar
 import kmphttp.DefaultPlatformCache
 import kmphttp.KmpHttpClient
 import kmphttp.create
@@ -12,12 +11,11 @@ import okio.Path
 const val DefaultHttpCacheBytes: Long = 32L * 1024 * 1024
 
 /**
- * The app's HTTP stack: ONE disk cache under [cacheDir], shared by every client a shell builds.
- *
- * Two clients exist because the engine must carry **no** cookie jar (the scraping JS owns cookie
- * policy) while the player's embed fetch rides the platform cookie store. They differ in nothing
- * else, so [withCookies] derives from [engine] — a second `KmpHttpClient.create {}` would silently
- * drop the cache, and a second [Cache] over the same directory would corrupt it.
+ * The app's HTTP stack: ONE disk cache under [cacheDir], and ONE client on it — the [engine]
+ * client, which carries **no** cookie jar (the scraping JS owns cookie policy; even the player's
+ * embed page now comes through the engine's `yt/embed`). A second `KmpHttpClient.create {}` would
+ * silently drop the cache, and a second [Cache] over the same directory would corrupt it — derive
+ * any variant from [engine] via `newBuilder()`.
  *
  * Thumbnails stay out of this: `:image-loader` streams originals into its own disk cache and decodes
  * from the file, so an HTTP cache in front of it would store every image twice.
@@ -33,6 +31,4 @@ class AppHttpClients(
     }
 
     val engine: KmpHttpClient = KmpHttpClient.create { cache = diskCache }
-
-    fun withCookies(jar: CookieJar): KmpHttpClient = engine.newBuilder().also { it.cookieJar = jar }.build()
 }

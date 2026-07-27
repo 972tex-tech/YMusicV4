@@ -1,8 +1,5 @@
 package ymusic.player.webview
 
-import kmphttp.KmpHttpClient
-import kmphttp.RequestBuilder
-import kmphttp.utf8String
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -120,8 +117,12 @@ internal class WebViewPlayerImpl(
                 fail("E60031", "failed to fetch the YouTube embed page: ${it.message}", needReset = true)
                 return@launch
             }
+            if (!html.contains(INJECT_PLACEHOLDER)) {
+                fail("E60031", "embed page has no $INJECT_PLACEHOLDER slot", needReset = true)
+                return@launch
+            }
             withContext(Dispatchers.Main) {
-                if (!released) bridge.load(HtmlInjector.inject(html, boot), EMBED_URL)
+                if (!released) bridge.load(html.replaceFirst(INJECT_PLACEHOLDER, boot), EMBED_URL)
             }
         }
     }
@@ -285,23 +286,9 @@ internal class WebViewPlayerImpl(
     }
 
     companion object {
-        fun embedHtmlFetcher(httpClient: KmpHttpClient): suspend (String) -> String = { userAgent ->
-            withContext(Dispatchers.Default) {
-                val resp = httpClient.execute(
-                    RequestBuilder()
-                        .header("User-Agent", userAgent)
-                        .url(EMBED_URL)
-                        .build(),
-                )
-                try {
-                    check(resp.isSuccessful) { "HTTP ${resp.code}" }
-                    resp.body.utf8String()
-                } finally {
-                    resp.close()
-                }
-            }
-        }
-
         const val EMBED_URL = "https://www.youtube.com/embed"
+
+        /** The boot-script slot in the engine-served embed HTML (engine-js `logic/yt/embed.ts`). */
+        const val INJECT_PLACEHOLDER = "INJECT_JS_HERE"
     }
 }

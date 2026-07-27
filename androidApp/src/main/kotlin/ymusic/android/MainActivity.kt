@@ -30,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
+import ymusic.dynamicengine.yt.embedPage
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.MediaScanner
 import ymusic.mediascanner.SafDocumentsProvider
@@ -141,9 +142,7 @@ class MainActivity : ComponentActivity() {
                             WebViewPlayerContext(this, videoContainer),
                             engineJs = js,
                             appVersion = 1,
-                            // The embed fetch is a browser-identity request — it rides the platform
-                            // cookie store like the WebView's own traffic (unlike the engine client).
-                            httpClient = shared.http.withCookies(shared.cookies),
+                            embedHtml = { ua -> shared.engines.embedPage(ua) },
                         )
                     }
                 },

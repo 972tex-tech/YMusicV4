@@ -1,6 +1,5 @@
 package ymusic.player
 
-import kmphttp.KmpHttpClient
 import kotlinx.coroutines.flow.SharedFlow
 import ymusic.player.webview.WebViewEvent
 import ymusic.player.webview.WebViewPlayerImpl
@@ -37,14 +36,16 @@ expect class WebViewPlayerContext
 /**
  * Build a [WebViewPlayer]. [engineJs] is the built `webview-js` bundle (the remote-updatable seam —
  * caller supplies it, bundled or fetched). [appVersion] is exposed to the bundle as `mainAppVer`.
- * [httpClient] fetches the YouTube embed HTML that gets the injected bundle (the unified
- * fetch→inject→load path).
+ * [embedHtml] serves the YouTube embed page for the given User-Agent (the WebView's own, passed
+ * verbatim) with the `INJECT_JS_HERE` placeholder where the player splices its boot script —
+ * normally the scraping engine's `yt/embed` command (`DynamicEngineManager.embedPage`), so the
+ * fetch shares the engine's cookie identity and the HTML rewrite stays remotely updatable.
  */
 fun createWebViewPlayer(
     context: WebViewPlayerContext,
     engineJs: String,
     appVersion: Int,
-    httpClient: KmpHttpClient,
-): WebViewPlayer = WebViewPlayerImpl(engineJs, appVersion, WebViewPlayerImpl.embedHtmlFetcher(httpClient)) { sink ->
+    embedHtml: suspend (userAgent: String) -> String,
+): WebViewPlayer = WebViewPlayerImpl(engineJs, appVersion, embedHtml) { sink ->
     createWebViewBridge(context, sink)
 }
