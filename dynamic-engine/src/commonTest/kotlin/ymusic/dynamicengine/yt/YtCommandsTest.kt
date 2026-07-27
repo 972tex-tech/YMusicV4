@@ -767,15 +767,15 @@ class YtCommandsTest {
     }
 
     @Test
-    fun the_automatic_region_is_youtubes_own_answer_for_this_connection() = runTest {
+    fun the_working_region_is_youtubes_own_answer_for_this_connection() = runTest {
         val (m, _) = manager { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
         try {
             val locales = m.ytLocaleOptions()
 
-            // No pick was ever applied: the pick halves are blank, and the automatic region is
-            // straight off the bootstrap homepage's ytcfg — the engine asserts no gl to get it.
-            assertEquals("", locales.gl)
-            assertEquals("VN", locales.autoGl)
+            // No pick was ever applied: the working region is straight off the bootstrap
+            // homepage's ytcfg — the engine asserts no gl to get it, and there is no separate
+            // "automatic" state; this concrete value IS what the picker shows as current.
+            assertEquals("VN", locales.gl)
         } finally {
             m.close()
         }
@@ -790,8 +790,8 @@ class YtCommandsTest {
 
             assertEquals(listOf("af" to "Afrikaans", "vi" to "Tiếng Việt"), locales.languages.map { it.code to it.label })
             assertEquals(listOf("US" to "Hoa Kỳ", "VN" to "Việt Nam"), locales.regions.map { it.code to it.label })
-            // The pick is the engine's own state, echoed back for the check mark; the language
-            // came from the settings pull and labelled the menus.
+            // The working region is the session's parse (the fixture's echo); the language came
+            // from the settings pull and labelled the menus.
             assertEquals("VN", locales.gl)
             val sent = assertNotNull(sentBody)
             assertTrue(sent.contains(""""hl":"vi""""), sent)
@@ -900,7 +900,8 @@ class YtCommandsTest {
     @Test
     fun locale_options_fall_back_to_the_cached_menus_when_the_refetch_fails() = runTest {
         var offline = false
-        val (m, _) = manager(settings = viSettings()) {
+        val settings = viSettings()
+        val (m, _) = manager(settings = settings) {
             if (offline) throw okio.IOException("connect refused")
             jsonResponse(ACCOUNT_MENU_FIXTURE).build(it)
         }
@@ -909,14 +910,16 @@ class YtCommandsTest {
             m.ytLocaleOptions()
             offline = true
 
-            // A new pick forces a re-fetch (new labels); its failure serves the held copy —
-            // year-stable lists in yesterday's language beat an error dialog on the settings
-            // screen — while the pick halves stay the engine's own (new) state.
-            m.applyYtLocale(gl = "US")
+            // A language change moves the effective pair, forcing a menus re-fetch (new labels);
+            // its failure serves the held copy — year-stable lists in yesterday's language beat
+            // an error dialog on the settings screen. The working region is untouched: the
+            // session's parse (the fixture's echo) survives, YouTube's answer as always.
+            settings.putString("app.uiLanguage", "en")
+            m.applyYtLocale(gl = "VN")
             val locales = m.ytLocaleOptions()
             assertEquals(listOf("af", "vi"), locales.languages.map { it.code })
             assertEquals(listOf("US", "VN"), locales.regions.map { it.code })
-            assertEquals("US", locales.gl)
+            assertEquals("VN", locales.gl)
         } finally {
             m.close()
         }

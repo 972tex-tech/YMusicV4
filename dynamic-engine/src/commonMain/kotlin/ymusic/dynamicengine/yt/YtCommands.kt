@@ -148,12 +148,11 @@ suspend fun DynamicEngineManager.applyYtLocale(gl: String): Unit = use { engine 
 }
 
 /**
- * The Settings region picker's one read: the pick ([YtLocales.gl], "" = automatic), what automatic
- * currently resolves to ([YtLocales.autoGl] — the session's IP-derived echo), and the menus
- * YouTube offers labelled in the effective language. The engine keeps ONE cached copy of the menus
- * (in-memory + [ymusic.dynamicengine.CacheStore]) tagged with the pair it was fetched under: it
- * re-fetches only when the effective pair changed or the copy is over a week old, and a failed
- * re-fetch falls back to the cached copy instead of erroring.
+ * The Settings region picker's one read: the WORKING region ([YtLocales.gl] — the session's parsed
+ * answer, YouTube's own) and the menus YouTube offers labelled in the effective language. The
+ * engine keeps ONE cached copy of the menus (in-memory + [ymusic.dynamicengine.CacheStore]) tagged
+ * with the pair it was fetched under: it re-fetches only when the effective pair changed or the
+ * copy is over a week old, and a failed re-fetch falls back to the cached copy instead of erroring.
  */
 suspend fun DynamicEngineManager.ytLocaleOptions(): YtLocales = use { engine ->
     engine.jsonCommand("yt/locales", { w ->

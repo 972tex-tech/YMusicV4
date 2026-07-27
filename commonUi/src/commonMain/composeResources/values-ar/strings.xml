@@ -116,8 +116,6 @@
     <string name="settings_language">اللغة</string>
     <string name="settings_content_language">لغة المحتوى</string>
     <string name="settings_content_region">منطقة المحتوى</string>
-    <string name="settings_content_auto">تلقائي</string>
-    <string name="settings_content_auto_detected">تلقائي (%1$s)</string>
     <string name="settings_content_locale_hint">ما يقدمه يوتيوب: البحث والقوائم ونصوص الموجز.</string>
     <string name="settings_theme">المظهر</string>
     <string name="settings_theme_system">حسب النظام</string>

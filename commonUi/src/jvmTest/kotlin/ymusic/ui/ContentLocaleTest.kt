@@ -101,8 +101,16 @@ class ContentLocaleTest {
                         menuGate.get(20, java.util.concurrent.TimeUnit.SECONDS)
                         textResponse(request, ACCOUNT_MENU_FIXTURE, "application/json")
                     }
-                    request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
-                        textResponse(request, HOMEPAGE_IN_VN, "text/html")
+                    request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") -> {
+                        // Echo a PREF gl pick back in the ytcfg, as the live server does.
+                        val picked = Regex("""gl=(\w+)""").find(request.headers["Cookie"].orEmpty())?.groupValues?.get(1)
+                        val page = if (picked == null) {
+                            HOMEPAGE_IN_VN
+                        } else {
+                            HOMEPAGE_IN_VN.replace(""""GL":"VN"""", """"GL":"${picked.uppercase()}"""")
+                        }
+                        textResponse(request, page, "text/html")
+                    }
                     else -> textResponse(request, "{}", "application/json")
                 }
             },

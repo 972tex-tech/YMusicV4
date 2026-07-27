@@ -166,15 +166,14 @@ data class YtFeedPage(
 data class YtLocaleOption(val code: String, val label: String)
 
 /**
- * The Settings region picker's whole world: [gl] is the user's pick ("" = automatic), [autoGl]
- * what automatic resolves to right now (the session's IP-derived echo), and [regions] the menu
- * YouTube offers, labelled in the effective language. The locale itself lives in the ENGINE — the
- * app only displays this and reports picks. (No language here: the app language IS the content
- * language, picked in the app's own language row.)
+ * The Settings region picker's whole world: [gl] is the WORKING region (the session's parsed
+ * answer — YouTube's own, whether IP-derived or following a pick) and [regions] the menu YouTube
+ * offers, labelled in the effective language. The locale itself lives in the ENGINE — the app only
+ * displays this and reports picks. (No language here: the app language IS the content language,
+ * picked in the app's own language row.)
  */
 data class YtLocales(
     val gl: String = "",
-    val autoGl: String = "US",
     val languages: List<YtLocaleOption> = emptyList(),
     val regions: List<YtLocaleOption> = emptyList(),
 )

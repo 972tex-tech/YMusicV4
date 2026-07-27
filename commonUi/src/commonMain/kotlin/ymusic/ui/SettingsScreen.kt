@@ -55,7 +55,6 @@ import ymusic.settings.flow
 import ymusic.settings.put
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.dialog_cancel
-import ymusic.ui.resources.settings_content_auto_detected
 import ymusic.ui.resources.settings_content_locale_hint
 import ymusic.ui.resources.settings_content_region
 import ymusic.ui.resources.settings_language
@@ -109,7 +108,6 @@ fun SettingsScreen(graph: AppGraph) {
         ContentLocaleRow(
             title = stringResource(Res.string.settings_content_region),
             current = options.gl,
-            automatic = options.autoGl,
             options = options.regions,
             loading = loadingOptions,
             onSelect = { code -> pickLocale(gl = code) },
@@ -123,23 +121,21 @@ fun SettingsScreen(graph: AppGraph) {
 }
 
 /**
- * A content-language / content-region picker. [current] is the user's stored override ("" = follow
- * the automatic pick); [automatic] is the code that pick currently resolves to, shown next to the
- * automatic entry so it is never a mystery which region the feeds are actually coming from.
- * The menus run to ~100 entries, so picking happens in a dialog, not a dropdown.
+ * The content-region picker. [current] is the WORKING region — YouTube's own answer, whether
+ * IP-derived or following a pick, so there is no separate "automatic" entry: the row always shows
+ * a concrete region and selecting one is a plain write. The menu runs to ~100 entries, so picking
+ * happens in a dialog, not a dropdown.
  */
 @Composable
 private fun ContentLocaleRow(
     title: String,
     current: String,
-    automatic: String,
     options: List<YtLocaleOption>,
     loading: Boolean,
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     fun labelOf(code: String) = options.firstOrNull { it.code.equals(code, ignoreCase = true) }?.label ?: code
-    val autoLabel = stringResource(Res.string.settings_content_auto_detected, labelOf(automatic))
     Row(
         Modifier
             .fillMaxWidth()
@@ -154,14 +150,14 @@ private fun ContentLocaleRow(
             modifier = Modifier.weight(1f),
         )
         Text(
-            if (current.isBlank()) autoLabel else labelOf(current),
+            labelOf(current),
             style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
         )
     }
     if (open) {
         LocalePickerDialog(
             title = title,
-            entries = listOf(YtLocaleOption("", autoLabel)) + options,
+            entries = options,
             current = current,
             loading = loading,
             onSelect = { code -> onSelect(code); open = false },
@@ -189,7 +185,7 @@ private fun LocalePickerDialog(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    fun isCurrent(code: String) = if (code.isEmpty()) current.isBlank() else code.equals(current, ignoreCase = true)
+    fun isCurrent(code: String) = code.equals(current, ignoreCase = true)
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = entries.indexOfFirst { isCurrent(it.code) }.coerceAtLeast(0),
     )
