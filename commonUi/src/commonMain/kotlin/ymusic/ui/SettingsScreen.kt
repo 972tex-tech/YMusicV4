@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +34,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -162,8 +165,9 @@ private fun ContentLocaleRow(
  * A scrollable single-choice dialog, opened on the row that shows the current choice. While the
  * menus are still being fetched and there is nothing to offer beyond Automatic, a spinner says so
  * (a stale-but-usable list from the previous locale is shown instead of the spinner). The scroll
- * region sits between the fixed title and buttons, so its edges get dividers whenever content
- * continues past them — without that, a cut-off list is indistinguishable from a complete one.
+ * region sits between the fixed title and buttons, so it gets its own surface tone — the chrome
+ * must not blend into the list into one flat color — plus edge dividers whenever content continues
+ * past an edge, so a cut-off list is never mistaken for a complete one.
  */
 @Composable
 private fun LocalePickerDialog(
@@ -180,9 +184,14 @@ private fun LocalePickerDialog(
     )
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = DesignColors.SurfaceElevated,
         title = { Text(title) },
         text = {
-            Column {
+            Column(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DesignColors.Surface),
+            ) {
                 HorizontalDivider(
                     color = if (listState.canScrollBackward) DesignColors.Divider else Color.Transparent,
                 )
