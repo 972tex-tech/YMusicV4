@@ -55,10 +55,6 @@ fun interface AcceptRegistration {
 class QuickJsRuntime private constructor(
     private val engine: NativeEngine,
     private val engineDispatcher: CoroutineDispatcher,
-    /** Non-null when [create] spawned the dispatcher itself; [close] then also closes it. A
-     *  caller-provided dispatcher (the non-suspend [create]) outlives the runtime — engines can
-     *  share one JS thread across swaps — so the caller owns its lifecycle. */
-    private val ownedDispatcher: CloseableCoroutineDispatcher?,
     private val logHandler: ((level: Int, message: String) -> Unit)?,
 ) {
 
@@ -120,7 +116,11 @@ class QuickJsRuntime private constructor(
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
      *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]
-     *  unregisters it — a no-op once a newer registration has replaced this one. */
+     *  unregisters it — a no-op once a newer registration has replaced this one.
+     *
+     *  [handler] runs ON the engine thread — treat it like a UI main thread: any I/O or
+     *  potentially-blocking platform call hops off with `withContext(Dispatchers.IO)`, because one
+     *  blocking call here wedges all JS, every pipe and every timer silently. */
     fun onAccept(command: String, handler: suspend (Pipe) -> Unit): AcceptRegistration {
         synchronized(acceptsLock) { accepts[command] = handler }
         return AcceptRegistration {
@@ -640,17 +640,14 @@ class QuickJsRuntime private constructor(
             yield() // let the failed continuations unwind while the engine is still alive
             engine.destroy()
         }
-        ownedDispatcher?.close()
     }
 
     /**
      * BOOT-FAILURE twin of [close]: non-suspend, engine-thread-only, and only for a runtime that
      * never escaped its create call. No yield before destroy — nothing can be parked, because the
-     * boot held the engine thread the whole time (handlers were queued, never started). NEVER
-     * closes the dispatcher, owned or not: this runs ON the engine thread, and a native worker's
-     * close() blocks until the worker terminates — which it can't while executing this very block.
-     * The suspend [create] wrapper closes its owned dispatcher off-thread after the failure
-     * propagates; [close] remains the owned dispatcher's normal reclaim.
+     * boot held the engine thread the whole time (handlers were queued, never started). The
+     * caller-owned dispatcher is never touched (a native worker's close() from its own thread
+     * would deadlock waiting for itself to terminate).
      */
     fun closeNow() {
         if (!closed.compareAndSet(expectedValue = false, newValue = true)) return
@@ -685,28 +682,12 @@ class QuickJsRuntime private constructor(
          * global (`{app: appVersion}`) the bundle branches on for backward compatibility — the
          * host ships as one app build, so the app version identifies its whole surface.
          */
-        suspend fun create(
-            script: String,
-            appVersion: Int = 0,
-            onLog: ((level: Int, message: String) -> Unit)? = null,
-            configure: (QuickJsRuntime) -> Unit = {},
-        ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngine(script) }
-
-        /** The [ByteArray] twin, from [compile]d bytecode (same contract — `versions` is
-         *  installed at create, so the version is never baked into the blob). */
-        suspend fun create(
-            bytecode: ByteArray,
-            appVersion: Int = 0,
-            onLog: ((level: Int, message: String) -> Unit)? = null,
-            configure: (QuickJsRuntime) -> Unit = {},
-        ): QuickJsRuntime = create(appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
-
         /**
-         * The synchronous primitive the suspend overloads wrap: create on a CALLER-OWNED
-         * [dispatcher]. The contract is the caller's to honor — [dispatcher] must be
-         * single-threaded (QuickJS is not thread-safe), the call must run ON it (everything here
-         * executes on the current thread), and the caller closes it after [close], which leaves a
-         * caller-owned dispatcher alone (engines may share one JS thread across their lifetimes).
+         * The ONE way to boot a runtime: synchronously, on a CALLER-OWNED [dispatcher]. The
+         * contract is the caller's to honor — [dispatcher] must be single-threaded (QuickJS is not
+         * thread-safe), the call must run ON it (everything here executes on the current thread),
+         * and the caller closes it after [close] (engines may share one JS thread across their
+         * lifetimes; [close] never touches it).
          */
         fun create(
             script: String,
@@ -714,7 +695,7 @@ class QuickJsRuntime private constructor(
             dispatcher: CoroutineDispatcher,
             onLog: ((level: Int, message: String) -> Unit)? = null,
             configure: (QuickJsRuntime) -> Unit = {},
-        ): QuickJsRuntime = bootOn(dispatcher, null, appVersion, onLog, configure) { it.evalEngine(script) }
+        ): QuickJsRuntime = bootOn(dispatcher, appVersion, onLog, configure) { it.evalEngine(script) }
 
         /** The [ByteArray] twin of the synchronous [create]. */
         fun create(
@@ -723,7 +704,7 @@ class QuickJsRuntime private constructor(
             dispatcher: CoroutineDispatcher,
             onLog: ((level: Int, message: String) -> Unit)? = null,
             configure: (QuickJsRuntime) -> Unit = {},
-        ): QuickJsRuntime = bootOn(dispatcher, null, appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
+        ): QuickJsRuntime = bootOn(dispatcher, appVersion, onLog, configure) { it.evalEngineBytecode(bytecode) }
 
         /** A fresh single-thread engine dispatcher for the synchronous [create]; the caller owns
          *  it — close it once every runtime confined to it is closed. */
@@ -740,7 +721,6 @@ class QuickJsRuntime private constructor(
          *  dispatcher is never closed here. */
         private fun bootOn(
             dispatcher: CoroutineDispatcher,
-            ownedDispatcher: CloseableCoroutineDispatcher?,
             appVersion: Int,
             onLog: ((level: Int, message: String) -> Unit)?,
             configure: (QuickJsRuntime) -> Unit,
@@ -757,7 +737,7 @@ class QuickJsRuntime private constructor(
             }
             val engine = NativeEngine.create(appVersion, callbacks)
             val rt = try {
-                QuickJsRuntime(engine, dispatcher, ownedDispatcher, onLog)
+                QuickJsRuntime(engine, dispatcher, onLog)
             } catch (t: Throwable) {
                 runCatching { engine.destroy() }
                 throw t
@@ -775,35 +755,6 @@ class QuickJsRuntime private constructor(
                 throw t
             }
             return rt
-        }
-
-        private suspend fun create(
-            appVersion: Int,
-            onLog: ((level: Int, message: String) -> Unit)?,
-            configure: (QuickJsRuntime) -> Unit,
-            eval: (NativeEngine) -> Unit,
-        ): QuickJsRuntime {
-            val dispatcher = newEngineDispatcher()
-            var rt: QuickJsRuntime? = null
-            try {
-                // Assign INSIDE the block: prompt-cancellation throws a CancellationException on
-                // the way back out of a withContext whose body already completed, so a
-                // `rt = withContext(...)` result would be lost and the runtime leaked. Assigned
-                // in-block, the catch can close it on that path.
-                withContext(dispatcher) { rt = bootOn(dispatcher, dispatcher, appVersion, onLog, configure, eval) }
-                return rt!!
-            } catch (t: Throwable) {
-                val made = rt
-                if (made != null) {
-                    // Boot succeeded but the result was discarded at the cancellation boundary:
-                    // close() (its teardown hop is NonCancellable) also closes the owned dispatcher.
-                    runCatching { made.close() }
-                } else {
-                    // bootOn's own failure path already destroyed the engine; the thread remains.
-                    dispatcher.close()
-                }
-                throw t
-            }
         }
     }
 }
