@@ -48,6 +48,8 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtLocaleOption
 import ymusic.dynamicengine.yt.YtLocales
+import ymusic.dynamicengine.yt.applyYtLocale
+import ymusic.dynamicengine.yt.ytLocale
 import ymusic.dynamicengine.yt.ytLocaleOptions
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
@@ -98,7 +100,12 @@ fun SettingsScreen(graph: AppGraph) {
             automatic = ctx.hl,
             options = options.languages,
             loading = loadingOptions,
-            onSelect = { code -> scope.launch { graph.settings.put(AppSettings.hl, code) } },
+            onSelect = { code ->
+                scope.launch {
+                    graph.settings.put(AppSettings.hl, code)
+                    applyContentLocale(graph, hl = code, gl = contentRegion)
+                }
+            },
         )
         ContentLocaleRow(
             title = stringResource(Res.string.settings_content_region),
@@ -106,7 +113,12 @@ fun SettingsScreen(graph: AppGraph) {
             automatic = ctx.gl,
             options = options.regions,
             loading = loadingOptions,
-            onSelect = { code -> scope.launch { graph.settings.put(AppSettings.gl, code) } },
+            onSelect = { code ->
+                scope.launch {
+                    graph.settings.put(AppSettings.gl, code)
+                    applyContentLocale(graph, hl = contentLanguage, gl = code)
+                }
+            },
         )
         Text(
             stringResource(Res.string.settings_content_locale_hint),
@@ -114,6 +126,15 @@ fun SettingsScreen(graph: AppGraph) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
     }
+}
+
+/** The pick crosses into the shared cookie identity (PREF hl/gl — the WebView player follows
+ *  cookies, not per-request context), then detection refreshes under the new identity, so a revert
+ *  to automatic restores the IP-derived region immediately. Called ONLY on an actual pick. */
+private suspend fun applyContentLocale(graph: AppGraph, hl: String, gl: String) {
+    runCatching { graph.engines.applyYtLocale(hl, gl) }
+    runCatching { graph.engines.ytLocale() }
+        .onSuccess { if (it.gl.isNotBlank()) graph.settings.put(AppSettings.glDetected, it.gl) }
 }
 
 /**

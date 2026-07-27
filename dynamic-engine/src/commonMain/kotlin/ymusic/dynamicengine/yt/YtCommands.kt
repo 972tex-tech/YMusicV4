@@ -160,8 +160,11 @@ suspend fun DynamicEngineManager.ytLocale(): YtLocales = use { engine ->
  * WebView player's embed page above all — follow the pick, and the sticky `s_gl` echo is deleted.
  * Blank means "automatic": the key is removed, so the bootstrap homepage answers with YouTube's
  * IP-derived region again. The engine also drops its bootstrapped session, so the next call
- * re-scrapes under the new identity. Call whenever the Settings pick changes; InnerTube calls
- * assert the pair per request regardless (this covers everything that does NOT).
+ * re-scrapes under the new identity — and it keeps the pair in memory (persisted to the host
+ * Cache, from which a freshly-booted bundle re-seeds itself), re-asserting it on every cooked
+ * YouTube request because the shared store's WebView pages can rewrite PREF underneath it.
+ * Call ONLY when the user changes the pick — never on start; InnerTube calls assert the pair per
+ * request regardless (this covers everything that does NOT).
  */
 suspend fun DynamicEngineManager.applyYtLocale(hl: String, gl: String): Unit = use { engine ->
     engine.jsonCommand("yt/locale/apply", { w ->

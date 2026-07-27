@@ -1,5 +1,9 @@
 package ymusic.dynamicengine.yt
 
+import kmphttp.loadForRequest
+import kmphttp.parseCookie
+import kmphttp.saveFromResponse
+import kmphttp.toHttpUrlOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import ymusic.dynamicengine.CannedResponse
@@ -811,6 +815,57 @@ class YtCommandsTest {
             assertTrue(!reverted.contains("hl=vi") && !reverted.contains("gl=JP"), reverted)
         } finally {
             m.close()
+        }
+    }
+
+    @Test
+    fun a_pref_clobbered_behind_the_engines_back_is_repaired_on_the_next_request() = runTest {
+        val (m, client) = manager { jsonResponse("{}").build(it) }
+        try {
+            m.applyYtLocale(hl = "vi", gl = "JP")
+
+            // The store is shared with the WebView: one of its pages rewrites PREF underneath us.
+            val url = checkNotNull("https://www.youtube.com/".toHttpUrlOrNull())
+            client.cookieJar.saveFromResponse(
+                url,
+                listOf(checkNotNull(parseCookie(url, "PREF=hl=en&gl=US; Domain=.youtube.com; Path=/"))),
+            )
+
+            // The applied pair lives in engine memory — the very next cooked request re-asserts it
+            // (in its own Cookie header AND back into the store), no re-apply needed.
+            m.search(query = "anything")
+            val cookie = assertNotNull(client.lastRequest).headers["Cookie"].orEmpty()
+            assertTrue(cookie.contains("hl=vi"), cookie)
+            assertTrue(cookie.contains("gl=JP"), cookie)
+            assertTrue(!cookie.contains("gl=US"), cookie)
+            val stored = client.cookieJar.loadForRequest(url).first { it.name == "PREF" }.value
+            assertTrue(stored.contains("gl=JP") && !stored.contains("gl=US"), stored)
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun a_fresh_engine_reseeds_the_applied_locale_from_the_cache_store() = runTest {
+        val store = cacheStore()
+        val (m, _) = manager(cacheStore = store) { jsonResponse("{}").build(it) }
+        try {
+            m.applyYtLocale(hl = "vi", gl = "JP")
+        } finally {
+            m.close()
+        }
+
+        // A fresh engine (app restart or a remote bundle swap) with a fresh cookie jar and NO
+        // apply call: the pair rides the host Cache, so its first cooked request already asserts
+        // the pick. The app only calls apply when the user changes it.
+        val (m2, client2) = manager(cacheStore = store) { jsonResponse("{}").build(it) }
+        try {
+            m2.search(query = "anything")
+            val cookie = assertNotNull(client2.lastRequest).headers["Cookie"].orEmpty()
+            assertTrue(cookie.contains("hl=vi"), cookie)
+            assertTrue(cookie.contains("gl=JP"), cookie)
+        } finally {
+            m2.close()
         }
     }
 
