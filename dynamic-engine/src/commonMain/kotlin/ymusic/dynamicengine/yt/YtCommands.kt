@@ -163,6 +163,23 @@ suspend fun DynamicEngineManager.ytLocaleOptions(ctx: YtContext = YtContext()): 
     }) { readLocales(it) }
 }
 
+/**
+ * The YouTube `/embed` page for the WebView player, fetched and rewritten by the engine: the fetch
+ * rides the engine's cooked cookie identity (one identity with all scraping), and the HTML splice
+ * (CSP stripped, script preloads defanged, the boot-script slot inserted first in `<head>`) is
+ * remotely updatable. The one header exception: [userAgent] must be the WebView's OWN UA, carried
+ * verbatim — the page has to look loaded by the WebView that runs it (playback-identity rule).
+ * The returned HTML holds the `INJECT_JS_HERE` placeholder where the caller splices its boot
+ * script (session globals + the `webview_ymusic.js` bundle, which stays app-side).
+ */
+suspend fun DynamicEngineManager.embedPage(userAgent: String): String = use { engine ->
+    engine.jsonCommand("yt/embed", { w ->
+        w.beginObject()
+        w.name("userAgent").value(userAgent)
+        w.endObject()
+    }) { readEmbedHtml(it) }
+}
+
 /** Write `"key":value` only when [value] is present — absent optional fields are omitted, not null. */
 private suspend fun JsonWriter.optionalField(key: String, value: String?) {
     if (value != null) name(key).value(value)
