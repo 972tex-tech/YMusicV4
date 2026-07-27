@@ -61,12 +61,15 @@ heavy transforms are not. Micro-timings from this repo's runtime (jvmTest, Intel
 
 Guidance, in the order it matters for this codebase:
 
-- **RegExp is the engine's weakest area** (a backtracking interpreter with no optimizer — upstream
-  V8-benchmark scores show RegExp at roughly *a third* of QuickJS's own average). Over multi-MB
-  documents prefer `indexOf`/`slice` scanning (the `scan.ts` / `session.ts` pattern); keep regexes
-  for short strings. There is **no backtracking timeout** — a catastrophic pattern hangs the engine
-  thread, which is the module's "main thread" (AGENTS.md): every pipe, timer and command stalls
-  with it. Keep patterns anchored and bounded.
+- **RegExp is the engine's weakest area** (a backtracking interpreter with no optimizer and no
+  literal prefiltering — it tries every position; V8 extracts a required literal and skips to
+  candidates). Over multi-MB documents pin the regex to `indexOf` hits with engine-js's
+  `anchoredExec(s, literal, stickyRe, offset)` (`logic/yt/scan.ts`): sticky (`/y`) means "match
+  exactly here, zero scanning", and `offset` handles a fixed-width prefix before the literal.
+  Measured on a 2.2MB decoy-heavy haystack: the 7-regex session scrape dropped from 118ms to 11ms
+  (10.5×). There is **no backtracking timeout** — a catastrophic pattern hangs the engine thread,
+  which is the module's "main thread" (AGENTS.md): every pipe, timer and command stalls with it.
+  Keep patterns anchored and bounded.
 - **Build big strings with `join` or stream them**: repeated `+=` reallocates; for pipe output,
   write chunks instead of materializing the whole string at all.
 - **Higher-order array chains cost an interpreted call per element.** Irrelevant at feed size
