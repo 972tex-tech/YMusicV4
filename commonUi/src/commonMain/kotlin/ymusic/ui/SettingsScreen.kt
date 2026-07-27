@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,17 +12,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,12 +37,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -164,11 +167,13 @@ private fun ContentLocaleRow(
 /**
  * A scrollable single-choice dialog, opened on the row that shows the current choice. While the
  * menus are still being fetched and there is nothing to offer beyond Automatic, a spinner says so
- * (a stale-but-usable list from the previous locale is shown instead of the spinner). The scroll
- * region sits between the fixed title and buttons, so it gets its own surface tone — the chrome
- * must not blend into the list into one flat color — plus edge dividers whenever content continues
- * past an edge, so a cut-off list is never mistaken for a complete one.
+ * (a stale-but-usable list from the previous locale is shown instead of the spinner). Custom
+ * layout, not [AlertDialog]'s slots (those inset the content into a floating panel): the list is
+ * full-bleed on [DesignPalette.Surface], and the fixed title/button bars sit on
+ * [DesignPalette.SurfaceElevated] behind a divider, casting a shadow onto the list while content
+ * continues past their edge — the ElevatedBarColumn idiom.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun LocalePickerDialog(
     title: String,
@@ -182,20 +187,23 @@ private fun LocalePickerDialog(
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = entries.indexOfFirst { isCurrent(it.code) }.coerceAtLeast(0),
     )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = DesignColors.SurfaceElevated,
-        title = { Text(title) },
-        text = {
-            Column(
-                Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(DesignColors.Surface),
-            ) {
-                HorizontalDivider(
-                    color = if (listState.canScrollBackward) DesignColors.Divider else Color.Transparent,
-                )
-                LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = DesignColors.Surface,
+            modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
+        ) {
+            Column {
+                val topShadow by animateDpAsState(if (listState.canScrollBackward) 6.dp else 0.dp)
+                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(DesignColors.SurfaceElevated)) {
+                    Text(
+                        title,
+                        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    )
+                    HorizontalDivider(color = DesignColors.Divider)
+                }
+                LazyColumn(state = listState, modifier = Modifier.weight(1f, fill = false).heightIn(max = 420.dp)) {
                     items(entries, key = { it.code }) { option ->
                         val selected = isCurrent(option.code)
                         Text(
@@ -208,7 +216,7 @@ private fun LocalePickerDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onSelect(option.code) }
-                                .padding(horizontal = 4.dp, vertical = 12.dp),
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
                         )
                     }
                     if (loading && entries.size <= 1) {
@@ -222,16 +230,19 @@ private fun LocalePickerDialog(
                         }
                     }
                 }
-                HorizontalDivider(
-                    color = if (listState.canScrollForward) DesignColors.Divider else Color.Transparent,
-                )
+                val bottomShadow by animateDpAsState(if (listState.canScrollForward) 6.dp else 0.dp)
+                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(bottomShadow).background(DesignColors.SurfaceElevated)) {
+                    HorizontalDivider(color = DesignColors.Divider)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+                    }
+                }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
-        },
-    )
+        }
+    }
 }
 
 /** "" = follow system, per [AppSettings.theme]. */
