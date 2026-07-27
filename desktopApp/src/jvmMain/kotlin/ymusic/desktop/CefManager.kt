@@ -18,8 +18,11 @@ import java.io.File
 class CefManager {
     private var app: CefApp? = null
 
-    /** Build/initialize CefApp (blocking, off the UI thread) and return a fresh client. */
-    suspend fun createClient(): CefClient = withContext(Dispatchers.IO) {
+    /** Build/initialize CefApp (blocking, off the UI thread) and return a fresh client.
+     *  [cacheDir] overrides Chromium's profile (user-data) dir — Chromium holds a singleton lock
+     *  per profile, so a second process on the same dir (a probe next to the running app) never
+     *  creates its browser; probes must pass their own scratch profile. */
+    suspend fun createClient(cacheDir: File? = null): CefClient = withContext(Dispatchers.IO) {
         val root = File(System.getProperty("user.home"), ".ymusic")
         val cefApp = CefAppBuilder().apply {
             setInstallDir(File(root, "jcef-bundle"))
@@ -32,8 +35,9 @@ class CefManager {
                 override fun onBeforeTerminate(): Boolean = true
             })
             cefSettings.apply {
-                root_cache_path = File(root, "jcef-cache").absolutePath
-                cache_path = File(root, "jcef-cache").absolutePath
+                val profile = cacheDir ?: File(root, "jcef-cache")
+                root_cache_path = profile.absolutePath
+                cache_path = profile.absolutePath
                 persist_session_cookies = true
                 // The player's browser renders off-screen (ImageOsrBrowser) into a lightweight
                 // component — see :player WebViewBridge.jvm.kt.

@@ -2,6 +2,7 @@ package ymusic.desktop
 
 import kmphttp.KmpHttpClient
 import kmphttp.create
+import kmphttp.utf8String
 import kotlinx.coroutines.runBlocking
 import org.cef.CefSettings
 import org.cef.browser.CefBrowser
@@ -34,6 +35,10 @@ import kotlin.system.exitProcess
  *   - `next`      — the recommended-feed harvest end to end: prints the page-side preconditions the
  *                   bundle gates on and every watch-next report that survives the bridge, then fails
  *                   the run if a music video produced none.
+ *   - `nextdirect` — `next`, but the embed page comes from a direct fetch + local rewrite instead of
+ *                   the engine's `yt/embed` (A/B isolation when the engine-served page is suspect).
+ *   - `embed`     — no WebView at all: just the engine's `yt/embed` round trip (length, timing, slot).
+ * Args: `mode [videoId] [windowSeconds]` — use a 75s+ window to clear the ~48s attestation check.
  * Run: `./gradlew :desktopApp:webviewProbe -PprobeArgs="realized"` (or `"headless"`). Muted (volume 0)
  * per the test-audio rule; muted also lets YouTube autoplay without a user gesture.
  */
@@ -41,16 +46,36 @@ fun main(args: Array<String>) {
     val mode = args.getOrNull(0) ?: "realized"
     val realized = mode != "headless"
     val videoId = args.getOrNull(1) ?: "dQw4w9WgXcQ"
+    // Optional third arg: the watch window in seconds (default 30; use 75+ to clear the ~48s
+    // googlevideo attestation window when verifying playback identity end to end).
+    val windowMs = (args.getOrNull(2)?.toLongOrNull() ?: 30L) * 1000L
     println("[probe] mode=$mode realized=$realized videoId=$videoId")
 
     val httpClient: KmpHttpClient = KmpHttpClient.create {}
     // The embed page now comes from the scraping engine (yt/embed) — boot the baseline bundle.
-    val engines = DynamicEngineManager(httpClient, appVersion = 1)
+    val probeLogger = object : kmpcommon.log.Logger {
+        override fun log(level: kmpcommon.log.Logger.Level, tags: List<String>, message: String, error: Throwable?) {
+            println("[engine] $level ${tags.joinToString("/")}: $message" + (error?.let { " (${it.message})" } ?: ""))
+        }
+    }
+    val engines = DynamicEngineManager(httpClient, appVersion = 1, logger = probeLogger)
     runBlocking { engines.start() }
+    if (mode == "embed") {
+        // Diagnostic: just the engine's yt/embed round trip — no WebView at all.
+        val t0 = System.currentTimeMillis()
+        val html = runBlocking { engines.embedPage("Mozilla/5.0 (probe) AppleWebKit/537.36") }
+        println("[probe] EMBED ${html.length} chars in ${System.currentTimeMillis() - t0}ms slot=${html.contains("INJECT_JS_HERE")}")
+        println("[probe] EMBED head: " + html.take(700).replace('\n', ' '))
+        runBlocking { engines.close() }
+        exitProcess(if (html.contains("INJECT_JS_HERE")) 0 else 2)
+    }
     val cef = CefManager()
-    val cefClient = runBlocking { cef.createClient() }
-    val webViewJs = readWebViewJsProbe() + if (mode == "next") NEXT_DIAG_JS else ""
-    if (mode == "next") {
+    // A scratch profile per run: Chromium's per-profile singleton lock means sharing the app's
+    // jcef-cache silently yields to a running app instance and the probe browser never comes up.
+    val probeProfile = java.nio.file.Files.createTempDirectory("ymusic-probe-jcef").toFile()
+    val cefClient = runBlocking { cef.createClient(cacheDir = probeProfile) }
+    val webViewJs = readWebViewJsProbe() + if (mode.startsWith("next")) NEXT_DIAG_JS else ""
+    if (mode.startsWith("next")) {
         cefClient.addDisplayHandler(
             object : CefDisplayHandlerAdapter() {
                 override fun onConsoleMessage(
@@ -93,7 +118,11 @@ fun main(args: Array<String>) {
             WebViewPlayerContext(cefClient, surface),
             engineJs = webViewJs,
             appVersion = 1,
-            embedHtml = { ua -> engines.embedPage(ua) },
+            embedHtml = if (mode == "nextdirect") {
+                directProbeEmbedHtml(httpClient)
+            } else {
+                { ua -> engines.embedPage(ua) }
+            },
         )
         // Muted (position advancing is the "is it playing" signal). `audioonly` exercises the
         // music-default path: audio-only must still play (the WebView stays shown on its thumbnail —
@@ -108,7 +137,7 @@ fun main(args: Array<String>) {
     }
 
     val harvests = java.util.concurrent.atomic.AtomicInteger()
-    if (mode == "next") {
+    if (mode.startsWith("next")) {
         Thread {
             runBlocking {
                 player.watchNextSeen.collect {
@@ -126,7 +155,7 @@ fun main(args: Array<String>) {
     var maxPos = 0L
     var reparented = false
     var posBeforeReparent = -1L
-    while (System.currentTimeMillis() - start < 30_000) {
+    while (System.currentTimeMillis() - start < windowMs) {
         val s = player.status.value
         val p = player.progress.value
         if (p.positionMs > maxPos) maxPos = p.positionMs
@@ -157,7 +186,7 @@ fun main(args: Array<String>) {
         println("[probe] REPARENT posBefore=$posBeforeReparent posAfter=$maxPos reloaded=${maxPos < posBeforeReparent}")
     }
     val played = maxPos > 0
-    val harvested = mode != "next" || harvests.get() > 0
+    val harvested = !mode.startsWith("next") || harvests.get() > 0
     println("[probe] RESULT mode=$mode maxPos=$maxPos played=$played harvests=${harvests.get()}")
     SwingUtilities.invokeAndWait {
         player.release()
@@ -206,4 +235,26 @@ private fun readWebViewJsProbe(): String {
     val candidates = listOf("webview-js/dist/webview_ymusic.js", "../webview-js/dist/webview_ymusic.js")
     candidates.map(::File).firstOrNull { it.exists() }?.let { return it.readText() }
     error("webview_ymusic.js not found (cwd=${System.getProperty("user.dir")}); run `npm run build` in webview-js/")
+}
+
+// A/B diagnostic (`nextdirect`): the pre-engine embed path — direct fetch + local rewrite, the same
+// slot contract — to isolate whether a failure comes from the engine-served page or elsewhere.
+private fun directProbeEmbedHtml(httpClient: KmpHttpClient): suspend (String) -> String = { userAgent ->
+    val resp = httpClient.execute(
+        kmphttp.RequestBuilder().header("User-Agent", userAgent).url("https://www.youtube.com/embed").build(),
+    )
+    val html = try {
+        check(resp.isSuccessful) { "HTTP ${resp.code}" }
+        resp.body.utf8String()
+    } finally {
+        resp.close()
+    }
+    val cspMeta = Regex("""(<meta[^>]*http-equiv=["'])content-security-policy(["'])""", RegexOption.IGNORE_CASE)
+    val scriptPreload = Regex("""(<link\b[^>]*\bas=["'])script(["'])""", RegexOption.IGNORE_CASE)
+    val rewritten = html
+        .let { cspMeta.replace(it) { m -> "${m.groupValues[1]}content-security-policy-disabled${m.groupValues[2]}" } }
+        .let { scriptPreload.replace(it) { m -> "${m.groupValues[1]}script-blocked${m.groupValues[2]}" } }
+    val head = Regex("""<head\b[^>]*>""", RegexOption.IGNORE_CASE).find(rewritten)
+    val at = head!!.range.last + 1
+    rewritten.substring(0, at) + "<script>\nINJECT_JS_HERE\n</script>" + rewritten.substring(at)
 }
