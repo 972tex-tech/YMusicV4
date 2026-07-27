@@ -754,7 +754,7 @@ class YtCommandsTest {
 
     @Test
     fun locale_options_are_youtubes_own_menus_labelled_in_the_asked_language() = runTest {
-        val (m, _) = manager { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
+        val (m, client) = manager { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
         try {
             val locales = m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
 
@@ -766,8 +766,44 @@ class YtCommandsTest {
             assertEquals("VN", locales.gl)
             val sent = assertNotNull(sentBody)
             assertTrue(sent.contains(""""hl":"vi""""), sent)
+
+            // The menus are cached per asserted hl/gl pair: the same ask is free, a different
+            // assertion is a new key (its labels/echo would differ) and refetches.
+            val requests = client.requestCount
+            m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            assertEquals(requests, client.requestCount, "the repeat ask must ride the cached menus")
+            m.ytLocaleOptions(YtContext(hl = "en", gl = "US"))
+            assertEquals(requests + 1, client.requestCount, "a new hl/gl pair must refetch")
         } finally {
             m.close()
+        }
+    }
+
+    @Test
+    fun locale_options_menus_survive_an_engine_restart_via_the_cache_store() = runTest {
+        val store = cacheStore()
+        val (m, client) = manager(cacheStore = store) { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
+        try {
+            m.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+        } finally {
+            m.close()
+        }
+
+        assertTrue(client.requestCount >= 2, "the first engine must scrape live: session + account_menu")
+
+        val (m2, client2) = manager(cacheStore = store) { jsonResponse(ACCOUNT_MENU_FIXTURE).build(it) }
+        try {
+            val bootstrapOnly = client2.requestCount
+            val locales = m2.ytLocaleOptions(YtContext(hl = "vi", gl = "VN"))
+            assertEquals(
+                bootstrapOnly,
+                client2.requestCount,
+                "the fresh engine must serve the menus from the persisted cache",
+            )
+            assertEquals(listOf("US" to "Hoa Kỳ", "VN" to "Việt Nam"), locales.regions.map { it.code to it.label })
+            assertEquals("VN", locales.gl)
+        } finally {
+            m2.close()
         }
     }
 }

@@ -154,7 +154,12 @@ suspend fun DynamicEngineManager.ytLocale(): YtLocales = use { engine ->
     }) { readLocales(it) }
 }
 
-/** The content-language / content-region menus YouTube offers, labelled in [ctx]'s language. */
+/**
+ * The content-language / content-region menus YouTube offers, labelled in [ctx]'s language. The
+ * engine caches the menus per asserted hl/gl pair (7 days, in-memory + [ymusic.dynamicengine.CacheStore]) — the lists
+ * barely ever change, and a locale change is a new key, so it refetches with fresh labels. The
+ * detected hl/gl in the result stays live off the session, never the cache.
+ */
 suspend fun DynamicEngineManager.ytLocaleOptions(ctx: YtContext = YtContext()): YtLocales = use { engine ->
     engine.jsonCommand("yt/locales", { w ->
         w.beginObject()
