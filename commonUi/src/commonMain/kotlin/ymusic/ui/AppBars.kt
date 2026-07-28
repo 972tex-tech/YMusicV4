@@ -62,6 +62,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
@@ -77,6 +78,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -178,16 +180,23 @@ internal fun AppBarRow(content: @Composable RowScope.() -> Unit) {
     )
 }
 
-/** The bar-title text role; [fill] claims the remaining row width (off when inline content follows). */
+/** The bar-title text role; [fill] claims the remaining row width (off when inline content follows).
+ *  [reserveWidthOf] pads the slot to the widest of these labels so trailing inline content keeps a
+ *  fixed position while the title text changes underneath it. */
 @Composable
-internal fun RowScope.AppBarTitle(text: String, fill: Boolean = true) {
-    Text(
-        text,
-        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = if (fill) Modifier.weight(1f) else Modifier,
-    )
+internal fun RowScope.AppBarTitle(text: String, fill: Boolean = true, reserveWidthOf: List<String> = emptyList()) {
+    val style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink)
+    val modifier = if (fill) Modifier.weight(1f) else Modifier
+    if (reserveWidthOf.isEmpty()) {
+        Text(text, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+    } else {
+        Box(modifier, contentAlignment = Alignment.CenterStart) {
+            for (label in reserveWidthOf) {
+                Text(label, style = style, maxLines = 1, modifier = Modifier.alpha(0f).clearAndSetSemantics {})
+            }
+            Text(text, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 /** The home shell's app bar (design/final/home.html): menu · title · [inline tabs on landscape] ·
@@ -197,11 +206,12 @@ internal fun DesignAppBar(
     title: String,
     onMenu: () -> Unit,
     onSearch: (() -> Unit)?,
+    titleReserveWidthOf: List<String> = emptyList(),
     inlineContent: (@Composable () -> Unit)? = null,
 ) {
     AppBarRow {
         ActionIcon(Icons.Default.Menu, stringResource(Res.string.cd_menu), onClick = onMenu)
-        AppBarTitle(title, fill = false)
+        AppBarTitle(title, fill = false, reserveWidthOf = titleReserveWidthOf)
         if (inlineContent != null) {
             Box(Modifier.padding(start = 16.dp)) { inlineContent() }
         }

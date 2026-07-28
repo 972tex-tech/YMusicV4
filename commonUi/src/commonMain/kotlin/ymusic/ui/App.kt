@@ -448,6 +448,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 section == AppSection.Library && graph.mediaStore != null -> openLibrarySearch
                                                 else -> null
                                             },
+                                            // Inline tabs sit right after the title, so the slot
+                                            // reserves the widest tab label — the tabs must not
+                                            // shift when switching tabs re-titles the bar.
+                                            titleReserveWidthOf = if (section == AppSection.Discover && wide) {
+                                                DiscoverTab.entries.map { stringResource(it.label) }
+                                            } else {
+                                                emptyList()
+                                            },
                                             inlineContent = if (section == AppSection.Discover && wide) {
                                                 { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
                                             } else {
