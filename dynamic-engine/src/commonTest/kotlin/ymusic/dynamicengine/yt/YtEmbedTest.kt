@@ -26,9 +26,11 @@ class YtEmbedTest {
     @Test
     fun embed_page_rides_the_callers_ua_and_carries_the_inject_slot() = runTest {
         var userAgent: String? = null
+        var accept: String? = null
         var cookieHeader: String? = null
         val client = FakeHttpClient { request ->
             userAgent = request.header("User-Agent")
+            accept = request.header("Accept")
             cookieHeader = request.header("Cookie")
             CannedResponse.ofText(embedFixture, headers = listOf("Content-Type" to "text/html")).build(request)
         }
@@ -38,6 +40,7 @@ class YtEmbedTest {
             val html = m.embedPage("Mozilla/5.0 (Linux; Android 14) SomeWebView/1.0")
             // The WebView's UA verbatim — never the engine's desktop scraping UA.
             assertEquals("Mozilla/5.0 (Linux; Android 14) SomeWebView/1.0", userAgent)
+            assertEquals("text/html", accept)
             // The cookie path is the engine's cooked one: consent is synthesized even from empty.
             assertTrue(cookieHeader.orEmpty().contains("SOCS="), "cooked Cookie header, got: $cookieHeader")
             // The boot-script slot, first in <head>, before YouTube's own tags.
