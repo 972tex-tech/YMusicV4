@@ -1,12 +1,16 @@
 package ymusic.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -24,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -67,9 +72,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,7 +92,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.stringResource
 import ymusic.player.LoopMode
 import ymusic.player.PlayableItem
@@ -98,6 +108,7 @@ import ymusic.ui.resources.captions_off
 import ymusic.ui.resources.cd_captions
 import ymusic.ui.resources.cd_close
 import ymusic.ui.resources.cd_download
+import ymusic.ui.resources.cd_drag_to_reorder
 import ymusic.ui.resources.cd_exit_fullscreen
 import ymusic.ui.resources.cd_forward10
 import ymusic.ui.resources.cd_fullscreen
@@ -268,6 +279,8 @@ private fun PortraitNowPlaying(
     // scrolls away, those controls re-appear overlaid on the video and the queue header pins.
     val listState = rememberLazyListState()
     val controlsOnVideo by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+    // Queue rows sit after the controls item and the sticky header in this list.
+    val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
 
     Column(Modifier.fillMaxSize()) {
         PlayerTopBar(coordinator, sleepMs, onClose)
@@ -339,13 +352,20 @@ private fun PortraitNowPlaying(
                 }
             }
             stickyHeader {
-                Column(Modifier.fillMaxWidth().background(DesignColors.Surface)) {
+                // Pinned (= item 0 scrolled away, the same condition that overlays the controls):
+                // the header lifts off the scrolling queue with a shadow and an elevated fill.
+                val pinned = controlsOnVideo
+                val headerShadow by animateDpAsState(if (pinned) 4.dp else 0.dp)
+                val headerColor by animateColorAsState(
+                    if (pinned) DesignColors.SurfaceElevated else DesignColors.Surface,
+                )
+                Column(Modifier.fillMaxWidth().shadow(headerShadow).background(headerColor)) {
                     QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
                     HorizontalDivider(color = DesignColors.Divider)
                 }
             }
             itemsIndexed(queue.items) { index, item ->
-                QueueRow(coordinator, index, item, current = index == queue.currentIndex)
+                QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState)
             }
         }
     }
@@ -381,9 +401,11 @@ private fun LandscapeNowPlaying(
             }
             QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
             HorizontalDivider(color = DesignColors.Divider)
-            LazyColumn(Modifier.weight(1f)) {
+            val queueListState = rememberLazyListState()
+            val dragState = rememberQueueDragState(queueListState, indexOffset = 0, player)
+            LazyColumn(state = queueListState, modifier = Modifier.weight(1f)) {
                 itemsIndexed(queue.items) { index, item ->
-                    QueueRow(coordinator, index, item, current = index == queue.currentIndex)
+                    QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState)
                 }
             }
         }
@@ -819,18 +841,151 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
     }
 }
 
+/**
+ * Drag-to-reorder for the queue lists. A drag on a row's handle starts it; rows swap live through
+ * `player.move` whenever the dragged row's center crosses a neighbour, and the list autoscrolls
+ * while the row is held past either viewport edge. [indexOffset] maps queue indices to lazy-item
+ * indices (the portrait list carries the controls item and the sticky header before the rows).
+ */
+private class QueueDragState(
+    private val listState: LazyListState,
+    private val indexOffset: Int,
+    private val onMove: (Int, Int) -> Unit,
+) {
+    var draggingIndex by mutableStateOf<Int?>(null)
+        private set
+    var dragOffset by mutableFloatStateOf(0f)
+        private set
+
+    /** Pixels the dragged row overhangs the viewport — the autoscroll loop's speed input. */
+    var autoscroll by mutableFloatStateOf(0f)
+        private set
+
+    fun start(index: Int) {
+        draggingIndex = index
+        dragOffset = 0f
+    }
+
+    fun drag(deltaY: Float) {
+        dragOffset += deltaY
+        swapIfCrossed()
+        val info = draggedItem() ?: return
+        val layout = listState.layoutInfo
+        val top = info.offset + dragOffset
+        val bottom = top + info.size
+        autoscroll = when {
+            bottom > layout.viewportEndOffset -> bottom - layout.viewportEndOffset
+            top < layout.viewportStartOffset -> top - layout.viewportStartOffset
+            else -> 0f
+        }
+    }
+
+    /** The autoscroll loop reports what the list scrolled; keeps the row under the pointer. */
+    fun scrolledBy(consumed: Float) {
+        dragOffset += consumed
+        swapIfCrossed()
+    }
+
+    /** The list hit its end — stop the loop until the next drag event re-evaluates. */
+    fun stopAutoscroll() {
+        autoscroll = 0f
+    }
+
+    fun end() {
+        draggingIndex = null
+        dragOffset = 0f
+        autoscroll = 0f
+    }
+
+    private fun draggedItem() = draggingIndex?.let { dragged ->
+        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == dragged + indexOffset }
+    }
+
+    private fun swapIfCrossed() {
+        val from = draggingIndex ?: return
+        val info = draggedItem() ?: return
+        val center = info.offset + dragOffset + info.size / 2f
+        val target = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+            it.index != info.index && it.index >= indexOffset &&
+                center >= it.offset && center < it.offset + it.size
+        } ?: return
+        onMove(from, target.index - indexOffset)
+        // The moved row is laid out at the target's old slot next frame; fold the base-position
+        // change into the translation so it stays under the pointer.
+        dragOffset += info.offset - target.offset
+        draggingIndex = target.index - indexOffset
+    }
+}
+
 @Composable
-private fun QueueRow(coordinator: PlaybackCoordinator, index: Int, item: ymusic.player.PlayableItem, current: Boolean) {
+private fun rememberQueueDragState(
+    listState: LazyListState,
+    indexOffset: Int,
+    player: ymusic.player.Player,
+): QueueDragState {
+    val state = remember(listState, player) {
+        QueueDragState(listState, indexOffset) { from, to -> player.move(from, to) }
+    }
+    LaunchedEffect(state) {
+        while (true) {
+            snapshotFlow { state.autoscroll }.first { it != 0f }
+            while (state.autoscroll != 0f) {
+                val step = (state.autoscroll * 0.12f).coerceIn(-24f, 24f)
+                val consumed = listState.scrollBy(step)
+                if (consumed == 0f) {
+                    state.stopAutoscroll()
+                    break
+                }
+                state.scrolledBy(consumed)
+                withFrameNanos {}
+            }
+        }
+    }
+    return state
+}
+
+@Composable
+private fun QueueRow(
+    coordinator: PlaybackCoordinator,
+    index: Int,
+    item: ymusic.player.PlayableItem,
+    current: Boolean,
+    dragState: QueueDragState,
+) {
     var menuOpen by remember { mutableStateOf(false) }
+    val dragging = dragState.draggingIndex == index
     Row(
         Modifier
             .fillMaxWidth()
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer { translationY = if (dragging) dragState.dragOffset else 0f }
+            .then(
+                if (dragging) Modifier.shadow(4.dp).background(DesignColors.SurfaceElevated)
+                else Modifier,
+            )
             .clickable { coordinator.player.playAt(index) }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Icon(Icons.Default.DragHandle, null, Modifier.size(18.dp), tint = DesignColors.Outline)
+        Icon(
+            Icons.Default.DragHandle,
+            stringResource(Res.string.cd_drag_to_reorder),
+            Modifier
+                .align(Alignment.CenterVertically)
+                .size(18.dp)
+                .pointerInput(dragState, index) {
+                    detectDragGestures(
+                        onDragStart = { dragState.start(index) },
+                        onDragEnd = dragState::end,
+                        onDragCancel = dragState::end,
+                    ) { change, amount ->
+                        change.consume()
+                        dragState.drag(amount.y)
+                    }
+                },
+            tint = DesignColors.Outline,
+        )
         Box(
             Modifier.size(48.dp).background(DesignColors.Placeholder, RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center,

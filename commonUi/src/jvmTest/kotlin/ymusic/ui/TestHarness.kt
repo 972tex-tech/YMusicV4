@@ -94,7 +94,10 @@ internal val ACCOUNT_MENU_FIXTURE = """
 internal class StubPlayer : Player {
     override val status: StateFlow<PlaybackStatus> = MutableStateFlow(PlaybackStatus())
     override val progress: StateFlow<Progress> = MutableStateFlow(Progress())
-    override val queue: StateFlow<QueueState> = MutableStateFlow(QueueState())
+
+    /** Tests seed the queue here; [move] reorders it live so reorder UIs see their swaps land. */
+    val queueState = MutableStateFlow(QueueState())
+    override val queue: StateFlow<QueueState> = queueState
     override val videoQuality: StateFlow<VideoQualityState> = MutableStateFlow(VideoQualityState.DEFAULT)
     override val captions: StateFlow<CaptionState> = MutableStateFlow(CaptionState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = MutableStateFlow(AudioTrackState.DEFAULT)
@@ -111,6 +114,7 @@ internal class StubPlayer : Player {
         private set
     var lastShuffle: Boolean? = null
         private set
+    val moves = mutableListOf<Pair<Int, Int>>()
 
     override fun setQueue(items: List<PlayableItem>, playIndex: Int, startPositionMs: Long, playWhenReady: Boolean) {
         lastQueue = items
@@ -121,7 +125,12 @@ internal class StubPlayer : Player {
 
     override fun addToPlayNext(items: List<PlayableItem>) {}
 
-    override fun move(from: Int, to: Int) {}
+    override fun move(from: Int, to: Int) {
+        moves += from to to
+        queueState.value = queueState.value.copy(
+            items = queueState.value.items.toMutableList().also { it.add(to, it.removeAt(from)) },
+        )
+    }
 
     override fun removeAt(index: Int) {}
 

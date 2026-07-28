@@ -155,6 +155,7 @@
     <string name="cd_shuffle">Shuffle</string>
     <string name="cd_sleep_timer">Sleep timer</string>
     <string name="cd_captions">Captions</string>
+    <string name="cd_drag_to_reorder">Drag to reorder</string>
     <string name="cd_send">Send</string>
     <string name="cd_vote">Vote</string>
     <string name="menu_remove_from_disk">Remove from disk</string>
