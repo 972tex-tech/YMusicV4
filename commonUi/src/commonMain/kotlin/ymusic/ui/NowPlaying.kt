@@ -1005,7 +1005,7 @@ private fun QueueRow(
                 overflow = TextOverflow.Ellipsis,
             )
             val meta = coordinator.metadataFor(item)
-            val sub = listOfNotNull(meta?.subtitleLine1, meta?.duration).joinToString(" · ")
+            val sub = listOfNotNull(meta?.duration, meta?.subtitleLine1).joinToString(" · ")
             if (sub.isNotEmpty()) {
                 Text(
                     sub,
