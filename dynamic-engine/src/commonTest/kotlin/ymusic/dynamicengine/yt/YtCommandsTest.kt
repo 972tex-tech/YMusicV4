@@ -1250,6 +1250,70 @@ class YtCommandsTest {
         }
     }
 
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    @Test
+    fun a_failed_settle_with_a_stale_session_browses_without_rescraping() = runTest {
+        // The revalidation home settles on CRASHES, but a stale session survives: home must fall
+        // through to /browse on it — a scrape just ran and failed, so a forced refresh could only
+        // repeat it.
+        val store = cacheStore()
+        store.put(
+            "yt-session",
+            "web",
+            emptyMap(),
+            okio.Buffer().writeUtf8(
+                """{"clientName":"1","clientVersion":"2.20200101.00.00","visitorData":"c3RhbGU%3D","fetchedAt":1000}""",
+            ).asAsyncSource(),
+        )
+
+        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
+        var browseHits = 0
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        // Held SHUT for the whole test: any scrape after the failed settle parks here, so if home
+        // AWAITED one (a forced refresh) it could never complete. A background fire-and-forget
+        // kick (stale-while-revalidate on the /browse call) parks here harmlessly.
+        val laterScrapes = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                if (homepageHits.addAndFetch(1) == 1) {
+                    gate.await()
+                    throw okio.IOException("connect refused")
+                }
+                laterScrapes.await()
+                throw okio.IOException("connect refused")
+            } else {
+                if (url.contains("/browse")) browseHits++
+                jsonResponse(BROWSE_FIXTURE).build(request)
+            }
+        }
+        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = store)
+        m.start()
+        try {
+            m.search(query = "seed") // rides the stale session; kicks the background revalidation
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
+                }
+            }
+            val home = backgroundScope.async { m.extractHomeFeed() }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.delay(300) // let home park on the held revalidation
+            }
+            gate.complete(Unit)
+            // Home must complete WITHOUT any later scrape answering — the settled failure is not
+            // repeated as a forced refresh; /browse on the stale session is the answer.
+            val page = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(30_000) { home.await() }
+            }
+            assertEquals("browse-cont-token", page.continuation, "$page")
+            assertEquals(1, browseHits)
+        } finally {
+            laterScrapes.complete(Unit)
+            m.close()
+        }
+    }
+
     @Test
     fun a_homepage_without_initial_data_falls_back_to_browse_directly() = runTest {
         val counting = CountingClient(HOMEPAGE_FIXTURE) // ytcfg only, no ytInitialData
