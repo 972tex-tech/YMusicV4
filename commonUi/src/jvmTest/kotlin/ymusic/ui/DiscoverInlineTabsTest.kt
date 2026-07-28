@@ -39,7 +39,7 @@ class DiscoverInlineTabsTest {
                             onMenu = {},
                             onSearch = {},
                             titleReserveWidthOf = DiscoverTab.entries.map { stringResource(it.label) },
-                            inlineContent = { DiscoverTabRow(tab, underline = false) { tab = it } },
+                            inlineContent = { DiscoverTabRow(tab, inline = true) { tab = it } },
                         )
                     }
                 }

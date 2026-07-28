@@ -94,7 +94,7 @@ private fun CatalogueList() {
         item { BarGap() }
         item {
             DesignAppBar("Home", onMenu = {}, onSearch = {}, inlineContent = {
-                DiscoverTabRow(DiscoverTab.Home, underline = false) {}
+                DiscoverTabRow(DiscoverTab.Home, inline = true) {}
             })
         }
         item { BarGap() }
@@ -180,12 +180,12 @@ private fun CatalogueList() {
             }
         }
 
-        item { CatLabel("DiscoverTabRow — underline · inline (app-bar) form") }
+        item { CatLabel("DiscoverTabRow — standalone · inline (app-bar) form") }
         item {
             var tab by remember { mutableStateOf(DiscoverTab.Home) }
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DiscoverTabRow(tab, underline = true) { tab = it }
-                DiscoverTabRow(tab, underline = false) { tab = it }
+                DiscoverTabRow(tab) { tab = it }
+                DiscoverTabRow(tab, inline = true) { tab = it }
             }
         }
 

@@ -457,14 +457,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 emptyList()
                                             },
                                             inlineContent = if (section == AppSection.Discover && wide) {
-                                                { DiscoverTabRow(discoverTab, underline = false) { discoverTab = it } }
+                                                { DiscoverTabRow(discoverTab, inline = true, dragProgress = discoverDrag) { discoverTab = it } }
                                             } else {
                                                 null
                                             },
                                         )
                                     }
                                     if (section == AppSection.Discover && !wide) {
-                                        DiscoverTabRow(discoverTab, underline = true, dragProgress = discoverDrag) { discoverTab = it }
+                                        DiscoverTabRow(discoverTab, dragProgress = discoverDrag) { discoverTab = it }
                                         HorizontalDivider(color = DesignColors.Divider)
                                     }
                                 }
@@ -574,13 +574,13 @@ enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val has
     Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
-/** Icon tabs with the 2dp underline indicator; [underline] off for the inline (app bar) form. A single
- *  indicator slides between tabs (and leans toward the neighbour by [dragProgress], −1..1, from the
- *  content swipe) instead of the underline snapping tab-to-tab. */
+/** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (tighter gap, no leading
+ *  inset). A single indicator slides between tabs (and leans toward the neighbour by [dragProgress],
+ *  −1..1, from the content swipe) instead of the underline snapping tab-to-tab. */
 @Composable
 internal fun DiscoverTabRow(
     selected: DiscoverTab,
-    underline: Boolean,
+    inline: Boolean = false,
     dragProgress: Float = 0f,
     onSelect: (DiscoverTab) -> Unit,
 ) {
@@ -590,8 +590,8 @@ internal fun DiscoverTabRow(
     // The tab's padding is INSIDE its clickable, so press/hover fills a square around the icon
     // instead of hugging the glyph's own width. The row's spacing and leading inset are reduced by
     // that padding, which keeps the icons drawn exactly where they were.
-    Column(Modifier.padding(start = if (underline) 20.dp - TabTouchPadding else 0.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy((if (underline) 24.dp else 20.dp) - TabTouchPadding * 2)) {
+    Column(Modifier.padding(start = if (inline) 0.dp else 20.dp - TabTouchPadding)) {
+        Row(horizontalArrangement = Arrangement.spacedBy((if (inline) 20.dp else 24.dp) - TabTouchPadding * 2)) {
             DiscoverTab.entries.forEach { t ->
                 val active = t == selected
                 Box(
@@ -612,21 +612,19 @@ internal fun DiscoverTabRow(
                 }
             }
         }
-        if (underline) {
-            val cur = centers[selected]
-            val i = DiscoverTab.entries.indexOf(selected)
-            val neighbor = centers[DiscoverTab.entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, DiscoverTab.entries.lastIndex)]]
-            val frac = abs(dragProgress) * TabIndicatorDragTravel
-            val targetCenter = if (cur != null && neighbor != null) lerp(cur, neighbor, frac) else cur ?: 0.dp
-            val center by animateDpAsState(targetCenter, label = "discoverIndicator")
-            Box(
-                Modifier
-                    .offset(x = center - DiscoverUnderlineWidth / 2)
-                    .width(DiscoverUnderlineWidth)
-                    .height(2.dp)
-                    .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
-            )
-        }
+        val cur = centers[selected]
+        val i = DiscoverTab.entries.indexOf(selected)
+        val neighbor = centers[DiscoverTab.entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, DiscoverTab.entries.lastIndex)]]
+        val frac = abs(dragProgress) * TabIndicatorDragTravel
+        val targetCenter = if (cur != null && neighbor != null) lerp(cur, neighbor, frac) else cur ?: 0.dp
+        val center by animateDpAsState(targetCenter, label = "discoverIndicator")
+        Box(
+            Modifier
+                .offset(x = center - DiscoverUnderlineWidth / 2)
+                .width(DiscoverUnderlineWidth)
+                .height(2.dp)
+                .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
+        )
     }
 }
 
