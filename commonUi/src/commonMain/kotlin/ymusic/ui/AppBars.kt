@@ -231,6 +231,7 @@ internal fun SearchInputBar(
     onSubmit: (String) -> Unit,
     onBack: () -> Unit,
     autoFocus: Boolean = true,
+    placeholder: String = stringResource(Res.string.search_youtube),
 ) = ElevatedBarColumn {
     val focusRequester = remember { FocusRequester() }
     AppBarRow {
@@ -257,7 +258,7 @@ internal fun SearchInputBar(
                     Box {
                         if (value.text.isEmpty()) {
                             Text(
-                                stringResource(Res.string.search_youtube),
+                                placeholder,
                                 style = TextStyle(fontSize = 13.5.sp, color = DesignColors.InkFaint),
                                 maxLines = 1,
                             )

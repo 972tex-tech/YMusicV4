@@ -41,6 +41,7 @@ import ymusic.dynamicengine.yt.YtSectionHeader
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreItem
 import ymusic.ui.resources.Res
+import ymusic.ui.resources.library_search_field_hint
 import ymusic.ui.resources.library_search_hint
 import ymusic.ui.resources.library_search_no_matches
 import ymusic.ui.resources.library_search_online
@@ -94,6 +95,7 @@ fun LibrarySearchScreen(
             onSubmit = {},
             onBack = { if (session.drill != null) session.drill = null else onBack() },
             autoFocus = session.drill == null,
+            placeholder = stringResource(Res.string.library_search_field_hint),
         )
         val drill = session.drill
         val query = session.field.text.trim()
