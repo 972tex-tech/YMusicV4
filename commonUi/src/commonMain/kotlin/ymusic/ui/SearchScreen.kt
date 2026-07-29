@@ -57,9 +57,13 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import ymusic.dynamicengine.yt.YtFeedPage
 import ymusic.dynamicengine.yt.YtFilterGroup
 import ymusic.dynamicengine.yt.YtFilterOption
+import ymusic.dynamicengine.yt.musicSearch
+import ymusic.dynamicengine.yt.musicSearchSuggestions
 import ymusic.dynamicengine.yt.search
 import ymusic.dynamicengine.yt.searchSuggestions
 import ymusic.ui.resources.Res
@@ -69,6 +73,8 @@ import ymusic.ui.resources.search_clear_history
 import ymusic.ui.resources.search_filter_title
 import ymusic.ui.resources.search_no_results
 import ymusic.ui.resources.search_type_to_search
+import ymusic.ui.resources.search_youtube
+import ymusic.ui.resources.ytmusic_search_hint
 
 private const val SearchHistoryKey = "search.history"
 private const val HistoryLimit = 20
@@ -77,18 +83,47 @@ private const val HistoryLimit = 20
  * The search layer's retained state — query, mode, results and scroll. Hoisted into the app's
  * layer stack so a detail page pushed above the results doesn't wipe them; popping back shows the
  * results exactly as left.
+ *
+ * Engine-agnostic: the actual search + suggest calls are injected ([youtube] = YouTube via
+ * `yt/search`, [music] = YouTube Music via `ytmusic/search`), so the whole search UI — history,
+ * live suggestions, the filter dialog — is shared across both surfaces. [hint] labels the input box.
  */
-class SearchSession(graph: AppGraph, scope: CoroutineScope) {
+class SearchSession(
+    scope: CoroutineScope,
+    val hint: StringResource,
+    private val onSuggest: suspend (String) -> List<String>,
+    private val onSearch: suspend (query: String?, params: String?, continuation: String?) -> YtFeedPage,
+) {
     var field by mutableStateOf(TextFieldValue(""))
     var submitted by mutableStateOf<String?>(null)
     var editing by mutableStateOf(true)
     var filterParams by mutableStateOf<String?>(null)
     val listState = LazyListState()
     val pager = Pager(scope) { continuation ->
-        graph.engines.search(
-            query = if (continuation == null) submitted else null,
-            params = if (continuation == null) filterParams else null,
-            continuation = continuation,
+        onSearch(
+            if (continuation == null) submitted else null,
+            if (continuation == null) filterParams else null,
+            continuation,
+        )
+    }
+
+    suspend fun suggest(query: String): List<String> = onSuggest(query)
+
+    companion object {
+        /** YouTube search (the Discover surface): `yt/search` + `yt/suggest`. */
+        fun youtube(graph: AppGraph, scope: CoroutineScope) = SearchSession(
+            scope,
+            Res.string.search_youtube,
+            onSuggest = { graph.engines.searchSuggestions(it) },
+            onSearch = { q, p, c -> graph.engines.search(query = q, params = p, continuation = c) },
+        )
+
+        /** YouTube Music search (the YT Music surface): `ytmusic/search` + `ytmusic/suggest`. */
+        fun music(graph: AppGraph, scope: CoroutineScope) = SearchSession(
+            scope,
+            Res.string.ytmusic_search_hint,
+            onSuggest = { graph.engines.musicSearchSuggestions(it) },
+            onSearch = { q, p, c -> graph.engines.musicSearch(query = q, params = p, continuation = c) },
         )
     }
 }
@@ -111,7 +146,7 @@ fun SearchScreen(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
-    val s = session ?: remember { SearchSession(graph, scope) }
+    val s = session ?: remember { SearchSession.youtube(graph, scope) }
     var suggestions by remember { mutableStateOf(listOf<String>()) }
     var filterOpen by remember { mutableStateOf(false) }
 
@@ -133,7 +168,7 @@ fun SearchScreen(
         }
         delay(250)
         suggestions = try {
-            graph.engines.searchSuggestions(s.field.text)
+            s.suggest(s.field.text)
         } catch (e: Exception) {
             emptyList() // suggestions are best-effort sugar; the search box still works
         }
@@ -161,6 +196,7 @@ fun SearchScreen(
                 onValue = { s.field = it },
                 onSubmit = ::submit,
                 onBack = { if (s.submitted != null) s.editing = false else onBack() },
+                placeholder = stringResource(s.hint),
             )
             when {
                 s.field.text.isBlank() && history.isEmpty() -> CenteredBox {

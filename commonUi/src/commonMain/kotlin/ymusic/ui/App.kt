@@ -203,6 +203,8 @@ private sealed interface AppLayer {
     class Playlist(val session: PlaylistSession) : AppLayer
 
     class Channel(val session: ChannelSession) : AppLayer
+
+    class MusicBrowse(val session: MusicBrowseSession) : AppLayer
 }
 
 @Composable
@@ -228,13 +230,18 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // Discover feeds cache per browseId — switching tab or navigating away and back must show
         // the already-loaded feed at its old scroll position, not reload it.
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
+        // YT Music's per-tab feed cache — same lifetime/locale rules as Discover's above.
+        val ytMusicSessions = remember { mutableMapOf<YtMusicTab, FeedSession>() }
         // The content locale decides what every feed CONTAINS and the language of its
         // server-composed text — but it lives in the ENGINE, so the app only hears "it changed"
         // ([AppGraph.localeEpoch], bumped by the Settings pickers) and throws the cached pages
         // away. It lives here, not in DiscoverFeed: that composable is disposed while a search or
         // detail layer is open, and a remember there would re-clear the cache on every return.
         val localeEpoch by graph.localeEpoch.collectAsState()
-        remember(localeEpoch) { discoverSessions.clear() }
+        remember(localeEpoch) {
+            discoverSessions.clear()
+            ytMusicSessions.clear()
+        }
         // Each section retains its OWN layer stack: the drawer switches sections laterally — no
         // push, no clear — so Discover's search/results/detail pages survive a trip through
         // Library and are exactly where the user left them on return. The stacks never mix:
@@ -249,11 +256,18 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val openItem: (ymusic.dynamicengine.yt.YtFeedItem) -> Unit = { item ->
             val url = item.url
             if (url != null) {
-                when (item.kind) {
-                    ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST ->
-                        layers.add(AppLayer.Playlist(PlaylistSession(graph, scope, url, item)))
-                    ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL ->
-                        layers.add(AppLayer.Channel(ChannelSession(graph, scope, item, initialUrl = url)))
+                // Music album/artist/playlist cards carry an engine-composed "/ytmusic/browse?…" link
+                // served by the WEB_REMIX music client — a different surface from the WEB
+                // playlist/channel pages, so it routes to its own detail layer.
+                if (url.startsWith(MusicBrowsePrefix)) {
+                    layers.add(AppLayer.MusicBrowse(MusicBrowseSession(graph, scope, url, item)))
+                } else {
+                    when (item.kind) {
+                        ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST ->
+                            layers.add(AppLayer.Playlist(PlaylistSession(graph, scope, url, item)))
+                        ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL ->
+                            layers.add(AppLayer.Channel(ChannelSession(graph, scope, item, initialUrl = url)))
+                    }
                 }
             }
         }
@@ -263,7 +277,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             val seed = { kind: String ->
                 ymusic.dynamicengine.yt.YtFeedItem(kind = kind, id = link, title = title.orEmpty(), url = link)
             }
-            when (val target = parseDeeplink(link)) {
+            if (link.startsWith(MusicBrowsePrefix)) {
+                layers.add(
+                    AppLayer.MusicBrowse(
+                        MusicBrowseSession(graph, scope, link, seed(ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST)),
+                    ),
+                )
+            } else when (val target = parseDeeplink(link)) {
                 is Deeplink.Playlist -> layers.add(
                     AppLayer.Playlist(
                         PlaylistSession(graph, scope, target.url, seed(ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST)),
@@ -290,7 +310,17 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             when {
                 existing >= 0 && existing == layers.lastIndex -> Unit // already on top
                 existing >= 0 -> layers.add(layers.removeAt(existing))
-                else -> layers.add(AppLayer.Search(SearchSession(graph, scope)))
+                else -> layers.add(AppLayer.Search(SearchSession.youtube(graph, scope)))
+            }
+        }
+        // YT Music's search (its own stack): a music SearchSession over ytmusic/search, single-instance
+        // the same way.
+        val openMusicSearch: () -> Unit = {
+            val existing = layers.indexOfFirst { it is AppLayer.Search }
+            when {
+                existing >= 0 && existing == layers.lastIndex -> Unit
+                existing >= 0 -> layers.add(layers.removeAt(existing))
+                else -> layers.add(AppLayer.Search(SearchSession.music(graph, scope)))
             }
         }
         val popLayer = { layers.removeAt(layers.lastIndex); Unit }
@@ -316,7 +346,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             val layer = if (existing >= 0) {
                 discover.removeAt(existing) as AppLayer.Search
             } else {
-                AppLayer.Search(SearchSession(graph, scope))
+                AppLayer.Search(SearchSession.youtube(graph, scope))
             }
             layer.session.apply {
                 field = androidx.compose.ui.text.input.TextFieldValue(q)
@@ -445,6 +475,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             // local files on Library, none elsewhere.
                                             onSearch = when {
                                                 section == AppSection.Discover -> openSearch
+                                                section == AppSection.YtMusic -> openMusicSearch
                                                 section == AppSection.Library && graph.mediaStore != null -> openLibrarySearch
                                                 else -> null
                                             },
@@ -522,6 +553,16 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         onDeeplink = openDeeplink,
                                     )
                                 }
+                                is AppLayer.MusicBrowse -> key(top) {
+                                    MusicDetailScreen(
+                                        coordinator,
+                                        top.session,
+                                        onBack = popLayer,
+                                        onSearch = openMusicSearch,
+                                        onOpen = openItem,
+                                        onDeeplink = openDeeplink,
+                                    )
+                                }
                                 // Saveable state (tab picks, folder crumbs, scroll positions) is
                                 // kept per section while its content is out of composition —
                                 // Library must come back on the tab and folder it was left on.
@@ -546,6 +587,15 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 onDeeplink = openDeeplink,
                                             )
                                         }
+                                        AppSection.YtMusic -> YtMusicScreen(
+                                            graph,
+                                            coordinator,
+                                            ytMusicSessions,
+                                            localeEpoch,
+                                            scope,
+                                            onOpen = openItem,
+                                            onDeeplink = openDeeplink,
+                                        )
                                         AppSection.Library -> LibraryScreen(graph, coordinator)
                                         AppSection.Settings -> SettingsScreen(graph)
                                         AppSection.Catalogue -> CatalogueScreen()

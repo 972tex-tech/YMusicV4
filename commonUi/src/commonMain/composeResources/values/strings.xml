@@ -27,6 +27,16 @@
     <string name="discover_no_trending">No charts published for this region</string>
     <string name="discover_no_recommendations">Play a few songs and your recommendations will show up here</string>
 
+    <!-- YT Music (Beta) -->
+    <string name="ytmusic_tab_home">Home</string>
+    <string name="ytmusic_tab_explore">Explore</string>
+    <string name="ytmusic_tab_library">Library</string>
+    <string name="ytmusic_search_hint">Search songs, albums, artists</string>
+    <string name="ytmusic_home_empty">No music to show right now — pull to refresh</string>
+    <string name="ytmusic_explore_empty">Nothing to explore right now — pull to refresh</string>
+    <string name="ytmusic_search_empty">No results</string>
+    <string name="ytmusic_library_signin">Your YouTube Music library — playlists, likes and uploads — arrives with sign-in</string>
+
     <!-- Trending Music chart sections (titles the engine synthesizes; keyed by header titleKey) -->
     <string name="chart_trending_music_videos">Trending Music Videos</string>
     <string name="chart_top_songs">Top Songs</string>
