@@ -183,11 +183,11 @@ suspend fun DynamicEngineManager.embedPage(userAgent: String): String = use { en
 }
 
 /** Write `"key":value` only when [value] is present — absent optional fields are omitted, not null. */
-private suspend fun JsonWriter.optionalField(key: String, value: String?) {
+internal suspend fun JsonWriter.optionalField(key: String, value: String?) {
     if (value != null) name(key).value(value)
 }
 
-private suspend fun DynamicEngineManager.feedCommand(
+internal suspend fun DynamicEngineManager.feedCommand(
     command: String,
     writeArgs: suspend (JsonWriter) -> Unit,
 ): YtFeedPage = use { engine -> engine.jsonCommand(command, writeArgs) { readFeedPage(it) } }
