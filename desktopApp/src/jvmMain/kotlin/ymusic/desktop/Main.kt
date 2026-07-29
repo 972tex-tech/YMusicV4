@@ -1,6 +1,7 @@
 package ymusic.desktop
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -63,6 +64,7 @@ import ymusic.mediascanner.MediaScanner
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.mediaStoreJdbcDriver
 import ymusic.player.LocalPlayerContext
+import ymusic.player.LocalVideoSurface
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
 import ymusic.player.createLocalPlayer
@@ -79,8 +81,6 @@ import ymusic.ui.resources.ymusic_logo
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
-import javax.swing.JPanel
-import javax.swing.OverlayLayout
 
 /**
  * The desktop shell: boots JCEF + the scraping engine, assembles the [AppGraph] (player facade over
@@ -88,9 +88,9 @@ import javax.swing.OverlayLayout
  * the shared [App].
  */
 fun main() {
-    // Let Compose blend Swing interop content into its own layers: the OSR WebView and the VLCJ
-    // callback component are both lightweight (Java2D-painted), so with blending they stop
-    // painting over the drawer/popups. Must be set before the first ComposeWindow.
+    // Both video engines (JCEF WebView + VLCJ local) now render off-screen and paint through a plain
+    // Compose Image, so the app hosts no Swing interop on the hot path. Blending is kept as a harmless
+    // safety net for any incidental lightweight interop; it must be set before the first ComposeWindow.
     System.setProperty("compose.interop.blending", "true")
     application {
         val cefManager = remember { CefManager() }
@@ -181,14 +181,14 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         memoryCacheBytes = defaultMemoryCacheBudget(),
     )
 
-    val vlcContainer = JPanel().apply { layout = OverlayLayout(this) }
+    val localSurface = LocalVideoSurface()
     val webViewSurface = JcefOsrSurface()
     val webViewJs = withContext(Dispatchers.IO) { readWebViewJs() }
 
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
-                local = { createLocalPlayer(LocalPlayerContext(vlcContainer)) },
+                local = { createLocalPlayer(LocalPlayerContext(localSurface)) },
                 webView = {
                     createWebViewPlayer(
                         WebViewPlayerContext(cefClient, webViewSurface),
@@ -220,24 +220,40 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
         surfaceScalesDown = true,
     ) { modifier ->
-        DesktopPlayerSurface(vlcContainer, webViewSurface, modifier)
+        DesktopPlayerSurface(localSurface, webViewSurface, modifier)
     }
 }
 
 @Composable
-private fun DesktopPlayerSurface(vlcContainer: JPanel, webViewSurface: JcefOsrSurface, modifier: Modifier) {
+private fun DesktopPlayerSurface(localSurface: LocalVideoSurface, webViewSurface: JcefOsrSurface, modifier: Modifier) {
     val webVisible by webViewSurface.visible.collectAsState()
-    val frame by webViewSurface.frame.collectAsState()
+    val localVisible by localSurface.visible.collectAsState()
+    val webFrame by webViewSurface.frame.collectAsState()
+    val localFrame by localSurface.frame.collectAsState()
     var size by remember { mutableStateOf(IntSize.Zero) }
-    val bitmap = remember(frame) { frame?.toComposeImageBitmap() }
+    val webBitmap = remember(webFrame) { webFrame?.toComposeImageBitmap() }
+    // Both engines render off-screen: the local (VLCJ) picture is a plain Compose Image with no pointer
+    // capture, so menus/popups drawn over it receive mouse input — the SwingPanel that used to host it
+    // was an AWT interop hole that swallowed those clicks.
+    val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
 
     Box(modifier.onSizeChanged { size = it }) {
-        if (!webVisible) {
-            SwingPanel(factory = { vlcContainer }, modifier = Modifier.fillMaxSize())
+        if (!webVisible && localVisible) {
+            // Active local engine with no frame yet (pre-first-frame or audio-only) shows black, as the
+            // old SwingPanel did; once a frame arrives the letterboxed picture paints over it.
+            Box(Modifier.fillMaxSize().background(Color.Black))
+            if (localBitmap != null) {
+                Image(
+                    bitmap = localBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
-        if (webVisible && bitmap != null) {
+        if (webVisible && webBitmap != null) {
             Image(
-                bitmap = bitmap,
+                bitmap = webBitmap,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize().pointerInput(webViewSurface, size) {

@@ -15,28 +15,56 @@ import kotlinx.coroutines.launch
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
-import java.awt.Component
-import java.awt.Container
-import javax.swing.SwingUtilities
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormat
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCallback
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
+import java.awt.image.BufferedImage
+import java.awt.image.DataBufferInt
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * libVLC backend via VLCJ, for JVM desktop. Per the `LocalPlayer` contract the caller drives it on
  * the main (UI) thread; libVLC/VLCJ is itself thread-safe, so the position ticker runs on a
- * background dispatcher. Uses a **callback** media-player component so video renders into a
- * lightweight Swing component that a Compose `SwingPanel` can host (see the playground
- * `PlayerSurface`); audio plays regardless. Requires libVLC to be discoverable at runtime
- * (a VLC install or bundled libVLC) — [createLocalPlayer] throws a `E60020` [TechnicalException]
- * when it is not. `setSpeed` shifts pitch here (libVLC has no pitch-preserving tempo without a
- * filter) — see the module docs.
+ * background dispatcher. Requires libVLC to be discoverable at runtime (a VLC install or bundled
+ * libVLC) — [createLocalPlayer] throws a `E60020` [TechnicalException] when it is not. `setSpeed`
+ * shifts pitch here (libVLC has no pitch-preserving tempo without a filter) — see the module docs.
  *
- * When a [videoContainer] is supplied (the shell's shared video host), the engine adds its video
- * component into it and owns that component's visibility: shown whenever this is the active engine,
- * including audio-only (which disables the video track), and hidden when idle/stopped so a co-hosted
- * engine's surface (the WebView) shows through. libVLC renders selected captions in this same root.
+ * Video renders **off-screen**: a `CallbackMediaPlayerComponent` decodes into a native buffer that
+ * our [RenderCallback] copies into a [BufferedImage] published on a [LocalVideoSurface] (the twin of
+ * the WebView's `JcefOsrSurface`). No AWT component is hosted, so the shell paints the picture as a
+ * plain Compose `Image` and popups over the video receive mouse input — unlike a `SwingPanel`, whose
+ * interop region swallows the clicks. The engine owns the surface's visibility: shown whenever this is
+ * the active engine (including audio-only, which disables the video track and shows a black box) and
+ * hidden when idle/stopped so a co-hosted engine (the WebView) shows through. libVLC renders selected
+ * captions into the decoded picture.
  */
-internal class JvmLocalPlayer(private val videoContainer: Container? = null) : LocalPlayer {
+internal class JvmLocalPlayer(private val videoSurface: LocalVideoSurface? = null) : LocalPlayer {
+    /** Copies each RV32 frame into a fresh RGB image and publishes it (mirrors JCEF's `onPaint`). */
+    private val renderCallback = RenderCallback { _, buffers, format ->
+        val surface = videoSurface ?: return@RenderCallback
+        val w = format.width
+        val h = format.height
+        if (w <= 0 || h <= 0) return@RenderCallback
+        val image = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        val pixels = (image.raster.dataBuffer as DataBufferInt).data
+        // RV32 is little-endian BGRA; read as ints it lands as 0xAARRGGBB, matching TYPE_INT_RGB.
+        buffers[0].order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(pixels, 0, minOf(pixels.size, w * h))
+        surface.publish(image)
+    }
+
+    private val bufferFormatCallback = object : BufferFormatCallback {
+        override fun getBufferFormat(sourceWidth: Int, sourceHeight: Int): BufferFormat =
+            RV32BufferFormat(sourceWidth, sourceHeight)
+
+        override fun allocatedBuffers(buffers: Array<ByteBuffer>) = Unit
+    }
+
     private val component: CallbackMediaPlayerComponent = try {
-        CallbackMediaPlayerComponent().apply { isEnabled = false }
+        // imagePainter/videoSurfaceComponent = null: we never host or paint the AWT component; the
+        // render callback is the only sink. lockedBuffers = true so the buffer is stable while copied.
+        CallbackMediaPlayerComponent(null, null, null, true, null, renderCallback, bufferFormatCallback, null)
     } catch (t: Throwable) {
         throw TechnicalException("E60020", "libVLC not found — install VLC or bundle libVLC", cause = t)
     }
@@ -71,33 +99,15 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
 
     @Volatile private var lastSpuId = -1
 
-    /** The AWT video component for the desktop `PlayerSurface` to embed. */
-    val videoComponent: Component get() = component
+    /** The off-screen frame/visibility endpoint the shell renders as a Compose `Image` (a no-op without one). */
+    val surface: LocalVideoSurface? get() = videoSurface
 
-    /** Run [block] on the Swing EDT (container/visibility mutations must not race the toolkit). */
-    private fun onSwing(block: () -> Unit) {
-        if (SwingUtilities.isEventDispatchThread()) block() else SwingUtilities.invokeLater(block)
-    }
-
-    /** Show/hide this engine's video component within the shared container (a no-op without one).
-     *  When shown, it is raised to the front so this (active) engine's picture covers a co-hosted one. */
+    /** Mark this engine's surface shown/hidden so the shell knows which co-hosted picture to display. */
     private fun showSurface(visible: Boolean) {
-        val container = videoContainer ?: return
-        onSwing {
-            component.isVisible = visible
-            if (visible && component.parent === container) container.setComponentZOrder(component, 0)
-            container.revalidate()
-            container.repaint()
-        }
+        videoSurface?.setVisible(visible)
     }
 
     init {
-        videoContainer?.let { c ->
-            onSwing {
-                component.isVisible = false
-                c.add(component)
-            }
-        }
         vlc.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             override fun playing(mp: MediaPlayer) {
                 // Re-assert per-load settings once libVLC is actually playing (idempotent).
@@ -269,6 +279,8 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         val video = vlc.video()
         if (audioOnly) {
             video.setTrack(-1)
+            // No more render callbacks arrive; drop the stale last frame so the surface goes black.
+            videoSurface?.clearFrame()
         } else {
             video.trackDescriptions().firstOrNull { it.id() != -1 }?.let { video.setTrack(it.id()) }
         }
@@ -278,8 +290,8 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
         if (released) return
         released = true
         scope.cancel()
-        videoContainer?.let { c -> onSwing { c.remove(component) } }
         component.release()
+        videoSurface?.setVisible(false)
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
@@ -305,5 +317,6 @@ internal class JvmLocalPlayer(private val videoContainer: Container? = null) : L
     }
 }
 
-/** The AWT video component of a JVM `LocalPlayer`, or null for a non-JVM/non-VLCJ player. */
-fun LocalPlayer.awtVideoComponent(): Component? = (this as? JvmLocalPlayer)?.videoComponent
+/** The off-screen video surface of a JVM `LocalPlayer`, or null for a non-JVM/non-VLCJ player (or one
+ *  created without a surface). The shell renders its [LocalVideoSurface.frame] as a Compose `Image`. */
+fun LocalPlayer.localVideoSurface(): LocalVideoSurface? = (this as? JvmLocalPlayer)?.surface

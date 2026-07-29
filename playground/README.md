@@ -5,7 +5,8 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **What it is** — a Compose Multiplatform demo app to hand-check `:player`.
   - Shared `PlayerScreen` (open file → play/pause/seek/±10s/volume/speed, an **Audio-only ↔ Video toggle**, and a
     `PlayerSurface` video area that shows the picture in video mode) in `commonMain`, reused across targets.
-  - `PlayerSurface` is `expect`/`actual`; the Desktop `actual` is a `SwingPanel` over `LocalPlayer.awtVideoComponent()`.
+  - `PlayerSurface` is `expect`/`actual`; the Desktop `actual` paints `LocalPlayer.localVideoSurface()`'s off-screen
+    frames as a Compose `Image` (no `SwingPanel` — VLCJ renders off-screen, like the JCEF WebView).
 
 - **Run (Desktop-only today)** — currently wired for **Desktop (JVM)** only.
   - The runnable check on this host: `./gradlew :playground:run` opens a window and plays video+audio via the VLCJ

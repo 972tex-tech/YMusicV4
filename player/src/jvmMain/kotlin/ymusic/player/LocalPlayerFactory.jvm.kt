@@ -1,13 +1,12 @@
 package ymusic.player
 
-import java.awt.Container
-
 /**
- * [videoContainer] is the shared video host the shell hands to the player (the same Swing panel the
- * JCEF WebView engine gets): the VLCJ engine adds its own video component into it and manages that
- * component's visibility. Null when local video is never shown (the playground drives the component
- * directly via [LocalPlayer.awtVideoComponent]).
+ * [videoSurface] is the off-screen frame endpoint the shell renders as a Compose `Image` (the twin of
+ * the JCEF WebView's `JcefOsrSurface`): the VLCJ engine copies each decoded frame into it and owns its
+ * visibility. When omitted, the factory creates one anyway so the picture is always reachable via
+ * [LocalPlayer.localVideoSurface] (the playground drives its own surface that way).
  */
-actual class LocalPlayerContext(val videoContainer: Container? = null)
+actual class LocalPlayerContext(val videoSurface: LocalVideoSurface? = null)
 
-actual fun createLocalPlayer(context: LocalPlayerContext): LocalPlayer = JvmLocalPlayer(context.videoContainer)
+actual fun createLocalPlayer(context: LocalPlayerContext): LocalPlayer =
+    JvmLocalPlayer(context.videoSurface ?: LocalVideoSurface())

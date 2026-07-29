@@ -68,12 +68,12 @@ The cross-platform playback layer.
   - `AppGraph.playerSurface(modifier)` hosts the one container, and the shell keeps it hosted **persistently while
     a source needs it** (docked above the mini-player when Now Playing is closed, handed to the big video box when
     open — the same container re-parents, which the engines tolerate), never only inside the on-demand Now Playing.
-  - (The JVM `LocalPlayer.awtVideoComponent()` accessor remains for the playground, which drives one engine
-    directly; Apple `player0: AVPlayer` for the SwiftUI spike's `AVPlayerLayer`.)
+  - (The JVM `LocalPlayer.localVideoSurface()` accessor exposes the off-screen `LocalVideoSurface` for the
+    playground, which renders one engine directly; Apple `player0: AVPlayer` for the SwiftUI spike's `AVPlayerLayer`.)
 
 - **Pure-common surface** — `LocalPlayer` interface + `Progress`/`PlaybackStatus`/`PlaybackState`/`PlayerError`/
   `VideoSize` model + `expect LocalPlayerContext` (Android carries a `Context` + optional video `ViewGroup`; JVM an
-  optional `Container`; empty on Apple) + `createLocalPlayer(context)` factory.
+  optional off-screen `LocalVideoSurface`; empty on Apple) + `createLocalPlayer(context)` factory.
 
 - **State flows** — state is **split by cadence into two flows**: `progress: StateFlow<Progress>`
   (position/duration/buffered — the ~5 Hz ticker writes ONLY this) and `status: StateFlow<PlaybackStatus>`
