@@ -268,6 +268,58 @@ internal suspend fun readSuggestions(r: JsonReader): List<String> {
     return suggestions
 }
 
+/** The `yt/account` result — the signed-in account card (absent fields default). */
+internal suspend fun readAccount(r: JsonReader): YtAccountInfo {
+    var signedIn = false
+    var name: String? = null
+    var email: String? = null
+    var handle: String? = null
+    var channelId: String? = null
+    var thumbs: List<YtThumb> = emptyList()
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "signedIn" -> signedIn = r.boolean()
+            "name" -> name = r.stringOrNull()
+            "email" -> email = r.stringOrNull()
+            "handle" -> handle = r.stringOrNull()
+            "channelId" -> channelId = r.stringOrNull()
+            "thumbs" -> thumbs = r.readArrayOf { readThumb(it) }
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtAccountInfo(signedIn, name, email, handle, channelId, thumbs)
+}
+
+/** The `yt/login/status` result — the cookie-only sign-in gate: `{"signedIn":bool}`. */
+internal suspend fun readSignedIn(r: JsonReader): Boolean {
+    var signedIn = false
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "signedIn" -> signedIn = r.boolean()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return signedIn
+}
+
+/** The `yt/login/url` result: `{"url":"…"}`. */
+internal suspend fun readLoginUrl(r: JsonReader): String {
+    var url = ""
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "url" -> url = r.stringOrNull() ?: ""
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return url
+}
+
 /** The `yt/locale` / `yt/locales` result: `{"hl","gl","languages"?,"regions"?}`. */
 internal suspend fun readLocales(r: JsonReader): YtLocales {
     var gl = ""

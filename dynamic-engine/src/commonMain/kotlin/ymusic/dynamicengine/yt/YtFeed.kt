@@ -171,6 +171,21 @@ data class YtFeedPage(
     val autoplayVideoId: String? = null,
 )
 
+/**
+ * The signed-in user's account card (engine `yt/account`, from account_menu's
+ * activeAccountHeaderRenderer). [signedIn] is the cookie-gate truth; the rest is display metadata
+ * (absent fields simply not shown). [channelId] is the user's own channel ("UC…"), the My-channel
+ * link target.
+ */
+data class YtAccountInfo(
+    val signedIn: Boolean,
+    val name: String? = null,
+    val email: String? = null,
+    val handle: String? = null,
+    val channelId: String? = null,
+    val thumbs: List<YtThumb> = emptyList(),
+)
+
 /** One pickable content language / region: the InnerTube code and YouTube's own label for it. */
 data class YtLocaleOption(val code: String, val label: String)
 
