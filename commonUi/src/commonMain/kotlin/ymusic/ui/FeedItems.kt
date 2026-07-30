@@ -397,7 +397,7 @@ private fun TagPill(label: String, accent: String?, onClick: () -> Unit) {
         modifier = Modifier
             .clip(shape)
             .background(DesignColors.SurfaceElevated)
-            .border(1.5.dp, border, shape)
+            .border(1.dp, border, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
