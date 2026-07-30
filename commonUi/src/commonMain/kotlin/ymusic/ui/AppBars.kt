@@ -32,9 +32,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemGestures
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -56,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,6 +79,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -87,6 +91,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
@@ -164,6 +169,84 @@ internal fun ElevatedBarColumn(bottomShadow: Boolean = true, content: @Composabl
     val shadow by animateDpAsState(if (elevated && bottomShadow) 6.dp else 0.dp)
     val tone by animateColorAsState(if (elevated) DesignColors.SurfaceElevated else DesignColors.Surface)
     Column(Modifier.shadow(shadow).background(tone).zIndex(1f), content = content)
+}
+
+/**
+ * The shared section tab row (design: a 2dp accent underline that slides AND stretches between tabs).
+ * A single indicator reads each tab's (offset, width) via [onGloballyPositioned] and animates, so it
+ * glides rather than snapping; [dragProgress] (−1..1 from the content swipe) leans it toward the
+ * neighbour in the drag direction. The row scrolls when the tabs overflow. [label] renders one tab's
+ * content (text or icon) given its active state. Sit it inside an [ElevatedBarColumn] + a
+ * [HorizontalDivider] so it reads as one continuous surface with the app bar (see Library / YT Music).
+ */
+@Composable
+internal fun <T> UnderlineTabRow(
+    selected: T,
+    entries: List<T>,
+    dragProgress: Float,
+    onSelect: (T) -> Unit,
+    label: @Composable (tab: T, active: Boolean) -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    // Each tab's (offset, width) in the row's own space — the sliding indicator reads the selected one.
+    val bounds = remember { mutableStateMapOf<T, Pair<Dp, Dp>>() }
+    HorizontalOverflowBox(scrollState) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .horizontalWheelScroll(scrollState)
+                .horizontalScroll(scrollState)
+                .padding(horizontal = 12.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                entries.forEach { t ->
+                    val active = t == selected
+                    Box(
+                        Modifier
+                            .onGloballyPositioned { c ->
+                                val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                                bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
+                            }
+                            .clickable { onSelect(t) },
+                    ) { label(t, active) }
+                }
+            }
+            // Interpolate toward the neighbour in the drag direction so the underline follows the swipe;
+            // at rest (dragProgress 0) it sits on the selected tab. animateDpAsState smooths the
+            // hand-off when the drag releases or commits.
+            val cur = bounds[selected]
+            val i = entries.indexOf(selected)
+            val neighbor = bounds[entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, entries.lastIndex)]]
+            val frac = abs(dragProgress) * TabIndicatorDragTravel
+            val targetX = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
+            val targetWidth = if (cur != null && neighbor != null) lerp(cur.second, neighbor.second, frac) else cur?.second ?: 0.dp
+            val indicatorX by animateDpAsState(targetX, label = "tabIndicatorX")
+            val indicatorWidth by animateDpAsState(targetWidth, label = "tabIndicatorWidth")
+            Box(
+                Modifier
+                    .offset(x = indicatorX)
+                    .width(indicatorWidth)
+                    .height(2.dp)
+                    .background(DesignColors.Accent),
+            )
+        }
+    }
+}
+
+/** A text tab label for [UnderlineTabRow] — accent + semibold when active, faint otherwise. */
+@Composable
+internal fun TabLabel(text: String, active: Boolean) {
+    Text(
+        text,
+        style = TextStyle(
+            fontSize = 13.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (active) DesignColors.Accent else DesignColors.InkFaint,
+        ),
+        maxLines = 1,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+    )
 }
 
 /** The bars' shared metrics row. Horizontal paddings/gaps shave the ActionIcon hit-inset (5dp) so

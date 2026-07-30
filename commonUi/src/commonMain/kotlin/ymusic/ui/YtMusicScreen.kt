@@ -1,36 +1,19 @@
 package ymusic.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Explore
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -51,10 +34,10 @@ import ymusic.ui.resources.ytmusic_tab_library
 internal const val MusicBrowsePrefix = "/ytmusic/browse"
 
 /** The YT Music (Beta) top tabs. Home/Explore are anonymous WEB_REMIX feeds; Library needs sign-in. */
-enum class YtMusicTab(val label: StringResource, val icon: ImageVector) {
-    Home(Res.string.ytmusic_tab_home, Icons.Outlined.Home),
-    Explore(Res.string.ytmusic_tab_explore, Icons.Outlined.Explore),
-    Library(Res.string.ytmusic_tab_library, Icons.Outlined.LibraryMusic),
+enum class YtMusicTab(val label: StringResource) {
+    Home(Res.string.ytmusic_tab_home),
+    Explore(Res.string.ytmusic_tab_explore),
+    Library(Res.string.ytmusic_tab_library),
 }
 
 /**
@@ -79,10 +62,25 @@ fun YtMusicScreen(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(YtMusicTab.Home) }
+    // Live swipe progress (−1..1) so the underline tracks the drag, not just the commit — same as
+    // Discover / Library.
+    var tabDrag by remember { mutableFloatStateOf(0f) }
+    val openDrawer = LocalOpenNavDrawer.current
     Column(Modifier.fillMaxSize()) {
-        YtMusicTabRow(tab) { tab = it }
-        HorizontalDivider(color = DesignColors.Divider)
-        SwipeTabSwitcher(tab, YtMusicTab.entries, onSelect = { tab = it }) { current ->
+        // The tab row is pinned under the app bar and elevates with it (one continuous surface),
+        // exactly like Library's — the shell app bar drops its own bottom shadow for this section.
+        ElevatedBarColumn {
+            YtMusicTabRow(tab, tabDrag) { tab = it }
+            HorizontalDivider(color = DesignColors.Divider)
+        }
+        SwipeTabSwitcher(
+            tab,
+            YtMusicTab.entries,
+            onSelect = { tab = it },
+            onDragProgress = { tabDrag = it },
+            leadingEdgeReserve = NavDrawerEdgeReserve,
+            onLeadingEdgeSwipe = openDrawer,
+        ) { current ->
             if (current == YtMusicTab.Library) {
                 CenteredBox {
                     Text(
@@ -116,40 +114,12 @@ fun YtMusicScreen(
     }
 }
 
-/** The three music tabs as an icon+label row with the accent underline on the active one. */
+/** The music tab row — the shared [UnderlineTabRow] (2dp sliding underline) with text labels, the
+ *  same treatment as Library's. */
 @Composable
-private fun YtMusicTabRow(selected: YtMusicTab, onSelect: (YtMusicTab) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-        YtMusicTab.entries.forEach { t ->
-            val active = t == selected
-            Column(
-                Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onSelect(t) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        t.icon,
-                        null,
-                        Modifier.size(18.dp),
-                        tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                    )
-                    Text(
-                        stringResource(t.label),
-                        style = TextStyle(
-                            fontSize = 13.sp,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                            color = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                        ),
-                    )
-                }
-            }
-        }
+private fun YtMusicTabRow(selected: YtMusicTab, dragProgress: Float, onSelect: (YtMusicTab) -> Unit) {
+    UnderlineTabRow(selected, YtMusicTab.entries, dragProgress, onSelect) { t, active ->
+        TabLabel(stringResource(t.label), active)
     }
 }
 

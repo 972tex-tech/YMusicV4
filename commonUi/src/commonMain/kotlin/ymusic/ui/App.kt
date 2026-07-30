@@ -455,7 +455,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 // Library's tab row lives in its own body (it needs the loaded state),
                                 // so the shell bar drops its shadow there and lets that row cast it —
                                 // keeping bar + tabs one continuous elevated surface.
-                                ElevatedBarColumn(bottomShadow = section != AppSection.Library) {
+                                ElevatedBarColumn(bottomShadow = section != AppSection.Library && section != AppSection.YtMusic) {
                                     Box(
                                         Modifier.clipToBounds().layout { measurable, constraints ->
                                             val placeable = measurable.measure(constraints)
