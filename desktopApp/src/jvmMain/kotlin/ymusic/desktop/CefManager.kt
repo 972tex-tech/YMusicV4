@@ -31,6 +31,13 @@ class CefManager {
             // gesture *inside the browser* — the app's own controls never count as one. Android's
             // WebView equivalent is mediaPlaybackRequiresUserGesture = false.
             addJcefArgs("--autoplay-policy=no-user-gesture-required")
+            // Google refuses sign-in from a browser it fingerprints as embedded/automated ("this
+            // browser may not be secure"). Drop the AutomationControlled Blink flag (sets
+            // navigator.webdriver=false, removes the automation signal) — the main tell beyond UA.
+            addJcefArgs("--disable-blink-features=AutomationControlled")
+            // Stop Chromium emitting Sec-CH-UA client hints, which otherwise carry its REAL engine
+            // version and mismatch our spoofed Chrome user_agent below — itself a bot tell.
+            addJcefArgs("--disable-features=UserAgentClientHint")
             setAppHandler(object : MavenCefAppHandlerAdapter() {
                 override fun onBeforeTerminate(): Boolean = true
             })
