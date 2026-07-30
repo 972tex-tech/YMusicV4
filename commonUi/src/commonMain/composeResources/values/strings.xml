@@ -194,4 +194,8 @@
     <string name="signin_unavailable">Sign-in isn\'t available on this device yet</string>
     <string name="account_sign_out">Sign out</string>
     <string name="cd_account_avatar">Account picture</string>
+    <string name="account_my_channel">My channel</string>
+    <string name="account_watch_later">Watch later</string>
+    <string name="account_liked_videos">Liked videos</string>
+    <string name="account_library_empty">Your library is empty</string>
 </resources>

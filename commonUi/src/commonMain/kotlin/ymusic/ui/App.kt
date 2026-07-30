@@ -82,6 +82,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import ymusic.dynamicengine.yt.extractAccountLibrary
 import ymusic.dynamicengine.yt.extractHomeFeed
 import ymusic.dynamicengine.yt.extractMusicBrowse
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
@@ -756,8 +757,27 @@ private fun DiscoverFeed(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     if (tab == DiscoverTab.Account) {
-        // The user/library tab: the sign-in preface when logged out, the account card when in.
-        if (signedIn) SignedInAccount(account, onSignOut) else LoginPreface(onLogin)
+        // The user/library tab: the sign-in preface when logged out, the account library when in.
+        if (signedIn) {
+            // Cached like the other tabs (cleared with them on a locale/login epoch change).
+            val session = remember(tab, localeEpoch, loginEpoch) {
+                sessions.getOrPut(tab.name) {
+                    FeedSession(scope) { continuation ->
+                        graph.engines.extractAccountLibrary(continuation = continuation)
+                    }.also { it.pager.refresh() }
+                }
+            }
+            AccountLibraryScreen(
+                session,
+                coordinator,
+                account,
+                onSignOut = onSignOut,
+                onOpen = onOpen,
+                onDeeplink = onDeeplink,
+            )
+        } else {
+            LoginPreface(onLogin)
+        }
     } else if (!tab.hasFeed) {
         CenteredBox {
             Text(

@@ -54,8 +54,6 @@ import ymusic.dynamicengine.yt.ytLoginUrl
 import ymusic.dynamicengine.yt.ytLogout
 import ymusic.dynamicengine.yt.ytRefreshSession
 import ymusic.ui.resources.Res
-import ymusic.ui.resources.account_sign_out
-import ymusic.ui.resources.cd_account_avatar
 import ymusic.ui.resources.cd_back
 import ymusic.ui.resources.signin_button
 import ymusic.ui.resources.signin_enables
@@ -324,55 +322,5 @@ private val LOGIN_FEATURES = listOf(
     Res.string.signin_feature_more,
 )
 
-/** The signed-in Discover "Account" tab — the account card (avatar · name · email) + sign out. The
- *  library grid (playlists / subscriptions / watch later) lands in a follow-up feed command. */
-@Composable
-internal fun SignedInAccount(account: YtAccountInfo?, onSignOut: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Row(
-            Modifier.fillMaxWidth().padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Box(
-                Modifier.size(56.dp).background(DesignColors.Placeholder, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                val thumbs = account?.thumbs ?: emptyList()
-                if (thumbs.isNotEmpty()) {
-                    ThumbImage(thumbs, 56.dp, CircleShape)
-                } else {
-                    Icon(Icons.Filled.PlayArrow, stringResource(Res.string.cd_account_avatar), tint = DesignColors.OnInk)
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    account?.name.orEmpty(),
-                    style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                account?.email?.let { email ->
-                    Text(
-                        email,
-                        style = TextStyle(fontSize = 14.sp, color = DesignColors.InkMuted),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        HorizontalDivider(color = DesignColors.Divider)
-        AccountRow(stringResource(Res.string.account_sign_out), onSignOut)
-    }
-}
-
-@Composable
-private fun AccountRow(label: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = TextStyle(fontSize = 16.sp, color = DesignColors.Ink))
-    }
-}
+// The signed-in Account tab is AccountLibraryScreen (AccountLibrary.kt) — the account card plus
+// the engine's library feed.

@@ -37,6 +37,19 @@ suspend fun DynamicEngineManager.extractHomeFeed(
 }
 
 /**
+ * The signed-in Library feed (youtube.com's "/feed/you"): the account's own shelves — history,
+ * playlists, Watch later, Liked videos — with per-shelf View-all CTAs as engine-composed app links.
+ * Call only behind the sign-in gate; an anonymous browse answers a nudge page, not an error.
+ */
+suspend fun DynamicEngineManager.extractAccountLibrary(
+    continuation: String? = null,
+): YtFeedPage = feedCommand("yt/library") { w ->
+    w.beginObject()
+    w.optionalField("continuation", continuation)
+    w.endObject()
+}
+
+/**
  * Hand the engine the watch-next payload the WebView player's page reported for the music video it
  * is playing ([contents] is that payload's JSON text, forwarded VERBATIM — the app never parses it).
  * The engine parses and stores it; it is the only thing feeding [getRecommendedFeed]. Fire and
