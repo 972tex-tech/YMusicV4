@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtFeedItem
+import ymusic.dynamicengine.yt.YtFeedPage
 import ymusic.dynamicengine.yt.YtPageHeader
 import ymusic.dynamicengine.yt.YtPageTab
 import ymusic.dynamicengine.yt.extractChannelDetail
@@ -158,14 +159,17 @@ class ChannelSession(
     scope: CoroutineScope,
     val item: YtFeedItem,
     initialUrl: String,
+    // Defaults to the WEB channel page; a YT Music artist reuses this whole screen but fetches its
+    // page via ytmusic/browse instead (it returns no pageTabs, so the tab row simply never shows).
+    fetch: suspend (url: String, continuation: String?) -> YtFeedPage = { url, continuation ->
+        graph.engines.extractChannelDetail(url, continuation = continuation)
+    },
 ) {
     var url by mutableStateOf(initialUrl)
 
     /** The last non-empty tab row — survives a tab-switch reload (Loading has no page yet). */
     var tabs by mutableStateOf(listOf<YtPageTab>())
-    val feed = FeedSession(scope) { continuation ->
-        graph.engines.extractChannelDetail(url, continuation = continuation)
-    }
+    val feed = FeedSession(scope) { continuation -> fetch(url, continuation) }
 
     init {
         feed.pager.refresh()

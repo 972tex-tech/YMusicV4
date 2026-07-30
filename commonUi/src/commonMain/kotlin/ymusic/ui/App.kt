@@ -83,6 +83,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.extractHomeFeed
+import ymusic.dynamicengine.yt.extractMusicBrowse
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import ymusic.dynamicengine.yt.getRecommendedFeed
 import ymusic.dynamicengine.yt.handleWebViewPlayNext
@@ -260,7 +261,20 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 // served by the WEB_REMIX music client — a different surface from the WEB
                 // playlist/channel pages, so it routes to its own detail layer.
                 if (url.startsWith(MusicBrowsePrefix)) {
-                    layers.add(AppLayer.MusicBrowse(MusicBrowseSession(graph, scope, url, item)))
+                    // A music artist reuses the YouTube channel screen (no tab row — a music browse
+                    // returns no pageTabs), fetching via ytmusic/browse; albums/playlists get the
+                    // playlist-style music detail.
+                    if (item.kind == ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL) {
+                        layers.add(
+                            AppLayer.Channel(
+                                ChannelSession(graph, scope, item, initialUrl = url) { u, c ->
+                                    graph.engines.extractMusicBrowse(u, c)
+                                },
+                            ),
+                        )
+                    } else {
+                        layers.add(AppLayer.MusicBrowse(MusicBrowseSession(graph, scope, url, item)))
+                    }
                 } else {
                     when (item.kind) {
                         ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST ->
@@ -548,7 +562,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         coordinator,
                                         top.session,
                                         onBack = popLayer,
-                                        onSearch = openSearch,
+                                        // A music artist page's search is music search, not YouTube.
+                                        onSearch = if (top.session.url.startsWith(MusicBrowsePrefix)) openMusicSearch else openSearch,
                                         onOpen = openItem,
                                         onDeeplink = openDeeplink,
                                     )

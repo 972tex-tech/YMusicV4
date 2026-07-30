@@ -140,10 +140,10 @@ class MusicBrowseSession(graph: AppGraph, scope: CoroutineScope, val url: String
 }
 
 /**
- * The music detail surface (album / playlist / artist) — the SAME layout as the WEB
- * [PlaylistDetailScreen]: back · "Playlist" · search app bar, then the [PlaylistHeader] (title · meta ·
- * actions · shuffle FAB) scrolling above the feed. A song tap plays the page as the queue from that
- * song; the FAB shuffles it; nested album/playlist/artist cards (an artist page) open through [onOpen].
+ * The music album/playlist detail — the SAME layout as the WEB [PlaylistDetailScreen]: back ·
+ * "Playlist" · search app bar, then the [PlaylistHeader] (title · meta · actions · shuffle FAB)
+ * scrolling above the feed. A song tap plays the page as the queue from that song; the FAB shuffles.
+ * (Artists reuse [ChannelDetailScreen] instead — routed in App.kt.)
  */
 @Composable
 fun MusicDetailScreen(
