@@ -19,25 +19,31 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.extractMusicBrowse
+import ymusic.dynamicengine.yt.extractMusicCharts
 import ymusic.dynamicengine.yt.extractMusicExplore
 import ymusic.dynamicengine.yt.extractMusicHome
+import ymusic.dynamicengine.yt.extractMusicNewReleases
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.detail_playlist
 import ymusic.ui.resources.ytmusic_explore_empty
 import ymusic.ui.resources.ytmusic_home_empty
 import ymusic.ui.resources.ytmusic_library_signin
+import ymusic.ui.resources.ytmusic_tab_charts
 import ymusic.ui.resources.ytmusic_tab_explore
 import ymusic.ui.resources.ytmusic_tab_home
 import ymusic.ui.resources.ytmusic_tab_library
+import ymusic.ui.resources.ytmusic_tab_new_releases
 
 /** The engine-composed music detail link prefix ("/ytmusic/browse?id=…", see musicParse.ts) — the
  *  app routes items/deeplinks carrying it to the music detail layer instead of the WEB pages. */
 internal const val MusicBrowsePrefix = "/ytmusic/browse"
 
-/** The YT Music (Beta) top tabs. Home/Explore are anonymous WEB_REMIX feeds; Library needs sign-in. */
+/** The YT Music (Beta) top tabs. All but Library are anonymous WEB_REMIX feeds; Library needs sign-in. */
 enum class YtMusicTab(val label: StringResource) {
     Home(Res.string.ytmusic_tab_home),
     Explore(Res.string.ytmusic_tab_explore),
+    NewReleases(Res.string.ytmusic_tab_new_releases),
+    Charts(Res.string.ytmusic_tab_charts),
     Library(Res.string.ytmusic_tab_library),
 }
 
@@ -95,6 +101,8 @@ fun YtMusicScreen(
                         FeedSession(scope) { continuation ->
                             when (current) {
                                 YtMusicTab.Explore -> graph.engines.extractMusicExplore(continuation)
+                                YtMusicTab.NewReleases -> graph.engines.extractMusicNewReleases(continuation)
+                                YtMusicTab.Charts -> graph.engines.extractMusicCharts(continuation)
                                 else -> graph.engines.extractMusicHome(continuation)
                             }
                         }.also { it.pager.refresh() }

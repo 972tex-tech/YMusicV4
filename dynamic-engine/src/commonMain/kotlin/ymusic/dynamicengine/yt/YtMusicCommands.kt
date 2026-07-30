@@ -30,6 +30,24 @@ suspend fun DynamicEngineManager.extractMusicExplore(
     w.endObject()
 }
 
+/** The Music New releases feed (FEmusic_new_releases — new albums & singles). */
+suspend fun DynamicEngineManager.extractMusicNewReleases(
+    continuation: String? = null,
+): YtFeedPage = feedCommand("ytmusic/new-releases") { w ->
+    w.beginObject()
+    w.optionalField("continuation", continuation)
+    w.endObject()
+}
+
+/** The Music Charts feed (FEmusic_charts — the region's charts, region from the engine locale). */
+suspend fun DynamicEngineManager.extractMusicCharts(
+    continuation: String? = null,
+): YtFeedPage = feedCommand("ytmusic/charts") { w ->
+    w.beginObject()
+    w.optionalField("continuation", continuation)
+    w.endObject()
+}
+
 /**
  * A music detail page — album / artist / playlist. [url] is an engine-composed app link
  * ("/ytmusic/browse?id=<browseId>") from a music [YtFeedItem.url] or [YtSectionHeader.ctaDeeplink],

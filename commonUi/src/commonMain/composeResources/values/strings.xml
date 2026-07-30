@@ -30,6 +30,8 @@
     <!-- YT Music (Beta) -->
     <string name="ytmusic_tab_home">Home</string>
     <string name="ytmusic_tab_explore">Explore</string>
+    <string name="ytmusic_tab_new_releases">New releases</string>
+    <string name="ytmusic_tab_charts">Charts</string>
     <string name="ytmusic_tab_library">Library</string>
     <string name="ytmusic_search_hint">Search songs, albums, artists</string>
     <string name="ytmusic_home_empty">No music to show right now — pull to refresh</string>
