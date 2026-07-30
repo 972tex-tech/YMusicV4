@@ -1,0 +1,120 @@
+package ymusic.dynamicengine.yt
+
+import kmphttp.CookieJar
+import kmphttp.InMemoryCookieJar
+import kmphttp.Request
+import kmphttp.Response
+import kmphttp.parseCookie
+import kmphttp.saveFromResponse
+import kmphttp.toHttpUrlOrNull
+import kotlinx.coroutines.test.runTest
+import ymusic.dynamicengine.CannedResponse
+import ymusic.dynamicengine.DynamicEngineManager
+import ymusic.dynamicengine.FakeHttpClient
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/**
+ * The YouTube sign-in commands end to end over the PRODUCTION bundle: the cookie-only gate reads the
+ * seeded jar (no HTTP), account_menu parses the account card, and the authenticated call carries the
+ * SAPISIDHASH the engine computes from the jar's SAPISID.
+ */
+class YtLoginCommandsTest {
+
+    private var authHeader: String? = null
+
+    private suspend fun manager(
+        jar: CookieJar?,
+        handler: suspend (Request) -> Response,
+    ): DynamicEngineManager {
+        authHeader = null
+        val client = FakeHttpClient { request ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
+                CannedResponse.ofText(HOMEPAGE_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
+            } else {
+                handler(request)
+            }
+        }
+        if (jar != null) client.cookieJar = jar
+        return DynamicEngineManager(client, appVersion = 1).also { it.start() }
+    }
+
+    /** A jar carrying the essential sign-in cookies (in the shared .youtube.com scope) plus SAPISID. */
+    private suspend fun signedInJar(): CookieJar {
+        val jar = InMemoryCookieJar()
+        val url = "https://www.youtube.com/".toHttpUrlOrNull()!!
+        val setCookies = listOf(
+            "LOGIN_INFO=abc; Domain=.youtube.com; Path=/",
+            "SIDCC=def; Domain=.youtube.com; Path=/",
+            "SSID=ghi; Domain=.youtube.com; Path=/",
+            "SAPISID=sapisidvalue; Domain=.youtube.com; Path=/",
+        ).mapNotNull { parseCookie(url, it) }
+        jar.saveFromResponse(url, setCookies)
+        return jar
+    }
+
+    private fun jsonResponse(body: String) =
+        CannedResponse.ofText(body, headers = listOf("Content-Type" to "application/json"))
+
+    @Test
+    fun loginUrlIsTheGoogleLogoutFlow() = runTest {
+        val m = manager(null) { error("no HTTP expected for the login URL") }
+        assertEquals(
+            "https://accounts.google.com/Logout?continue=https://m.youtube.com/signin?app=mobile%26persist_app=1",
+            m.ytLoginUrl(),
+        )
+    }
+
+    @Test
+    fun statusIsFalseWithoutAuthCookies() = runTest {
+        val m = manager(InMemoryCookieJar()) { error("the gate is cookie-only — no HTTP") }
+        assertFalse(m.ytLoginStatus())
+    }
+
+    @Test
+    fun statusIsTrueWithEssentialCookies() = runTest {
+        val m = manager(signedInJar()) { error("the gate is cookie-only — no HTTP") }
+        assertTrue(m.ytLoginStatus())
+    }
+
+    @Test
+    fun accountParsesTheCardAndSendsSapisidHash() = runTest {
+        val m = manager(signedInJar()) { request ->
+            if (request.url.toString().contains("account/account_menu")) {
+                authHeader = request.header("Authorization")
+                jsonResponse(LOGIN_ACCOUNT_MENU_FIXTURE).build(request)
+            } else {
+                error("unexpected request: ${request.url}")
+            }
+        }
+        val account = m.ytAccountInfo()
+        assertTrue(account.signedIn)
+        assertEquals("Mock User", account.name)
+        assertEquals("mockuser@example.com", account.email)
+        assertEquals("@mockuser", account.handle)
+        assertEquals("UCabc123", account.channelId)
+        assertEquals(1, account.thumbs.size)
+        // The authenticated youtubei call must carry the multi-hash SAPISIDHASH the engine computes.
+        val auth = authHeader
+        assertNotNull(auth, "account_menu carried no Authorization header")
+        assertTrue(auth.startsWith("SAPISIDHASH "), "expected SAPISIDHASH auth, got: $auth")
+    }
+}
+
+private val LOGIN_ACCOUNT_MENU_FIXTURE = """
+{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{
+  "header":{"activeAccountHeaderRenderer":{
+    "accountName":{"simpleText":"Mock User"},
+    "email":{"simpleText":"mockuser@example.com"},
+    "channelHandle":{"simpleText":"@mockuser"},
+    "accountPhoto":{"thumbnails":[{"url":"https://yt3.ggpht.com/photo.jpg","width":48,"height":48}]}
+  }},
+  "sections":[{"multiPageMenuSectionRenderer":{"items":[
+    {"compactLinkRenderer":{"navigationEndpoint":{"browseEndpoint":{"browseId":"UCabc123"}}}}
+  ]}}]
+}}}}]}
+""".trimIndent()
