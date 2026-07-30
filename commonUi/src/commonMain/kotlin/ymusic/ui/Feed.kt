@@ -485,10 +485,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         items(rows.size) { r ->
             Row(
                 // Margin/gutter minus the inset each card re-adds around itself as the hover's
-                // breathing room — visual metrics stay margin/gutter exactly.
+                // breathing room — visual metrics stay margin/gutter exactly. Rows sit a full
+                // Space16 apart vertically regardless of the width class's (narrower) gutter —
+                // the card meta under each thumb needs more separation than thumbs side by side.
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = metrics.margin - metrics.inset),
+                    .padding(
+                        start = metrics.margin - metrics.inset,
+                        end = metrics.margin - metrics.inset,
+                        bottom = (DesignSpacing.Space16 - metrics.inset * 2).coerceAtLeast(0.dp),
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(metrics.gutter - metrics.inset * 2),
             ) {
                 rows[r].forEach { item ->

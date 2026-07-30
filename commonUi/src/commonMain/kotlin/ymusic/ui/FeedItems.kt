@@ -131,7 +131,9 @@ fun SectionHeader(
     onCta: (() -> Unit)? = null,
 ) {
     Row(
-        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+        // The tall top inset is the section SEPARATOR: sections have no divider line, so the
+        // header's air above is what makes one group end and the next begin while scrolling.
+        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -205,7 +207,7 @@ fun FeedListItem(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             // The trailing inset is the ⋮ button's own touch padding, so the row stops 4dp short of
             // the edge — same as the Library song row, so the two lists' dots align.
-            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
