@@ -27,6 +27,7 @@ class YtLoginCommandsTest {
 
     private var authHeader: String? = null
     private var authUserHeader: String? = null
+    private var bootstrapHeader: String? = null
 
     private suspend fun manager(
         jar: CookieJar?,
@@ -34,6 +35,7 @@ class YtLoginCommandsTest {
     ): DynamicEngineManager {
         authHeader = null
         authUserHeader = null
+        bootstrapHeader = null
         val client = FakeHttpClient { request ->
             val url = request.url.toString()
             if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
@@ -90,6 +92,7 @@ class YtLoginCommandsTest {
             if (request.url.toString().contains("account/account_menu")) {
                 authHeader = request.header("Authorization")
                 authUserHeader = request.header("X-Goog-AuthUser")
+                bootstrapHeader = request.header("X-Youtube-Bootstrap-Logged-In")
                 jsonResponse(LOGIN_ACCOUNT_MENU_FIXTURE).build(request)
             } else {
                 error("unexpected request: ${request.url}")
@@ -109,6 +112,10 @@ class YtLoginCommandsTest {
         // The anonymous homepage fixture carries no SESSION_INDEX, so X-Goog-AuthUser must be OMITTED
         // — never a hardcoded "0" (legacy sends the real index or nothing).
         assertNull(authUserHeader, "X-Goog-AuthUser must be omitted when the session index is unknown")
+        // A signed-in request advertises it like the web client does.
+        assertEquals("true", bootstrapHeader, "X-Youtube-Bootstrap-Logged-In must be sent when signed in")
+        // No USER_SESSION_ID in the fixture, so the plain (no-"_u") hash form.
+        assertFalse(auth.contains("_u"), "no USER_SESSION_ID → no _u suffix; got: $auth")
     }
 }
 
