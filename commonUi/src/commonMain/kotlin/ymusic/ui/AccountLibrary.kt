@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +40,7 @@ import ymusic.ui.resources.account_library_empty
 import ymusic.ui.resources.account_liked_videos
 import ymusic.ui.resources.account_my_channel
 import ymusic.ui.resources.account_sign_out
+import ymusic.ui.resources.account_watch_history
 import ymusic.ui.resources.account_watch_later
 import ymusic.ui.resources.cd_account_avatar
 
@@ -87,6 +89,7 @@ private fun AccountLibraryHeader(
             account?.channelId?.let {
                 add(NavTarget(Icons.Outlined.AccountCircle, stringResource(Res.string.account_my_channel), "/channel/$it", name))
             }
+            add(NavTarget(Icons.Outlined.History, stringResource(Res.string.account_watch_history), "/feed/history", null))
             add(NavTarget(Icons.Outlined.Schedule, stringResource(Res.string.account_watch_later), "/playlist?list=WL", null))
             add(NavTarget(Icons.Outlined.ThumbUp, stringResource(Res.string.account_liked_videos), "/playlist?list=LL", null))
         }

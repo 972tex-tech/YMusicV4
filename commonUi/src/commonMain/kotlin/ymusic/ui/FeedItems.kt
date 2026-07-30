@@ -178,7 +178,10 @@ fun SectionHeader(
                     },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    header.ctaText?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
+                    // A tappable CTA always says what it does — the engine's label when it sent
+                    // one, the app's localized "View all" otherwise (shelf endpoints carry no text).
+                    val text = header.ctaText ?: if (cta != null) stringResource(Res.string.cd_view_all) else null
+                    text?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
                 }
             }
