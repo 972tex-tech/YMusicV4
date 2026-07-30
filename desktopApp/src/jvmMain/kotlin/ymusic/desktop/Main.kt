@@ -219,6 +219,9 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         settings = settings,
         // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
         surfaceScalesDown = true,
+        loginBrowser = { url, state, onPageChanged, modifier ->
+            DesktopLoginBrowser(url, state, onPageChanged, modifier)
+        },
     ) { modifier ->
         DesktopPlayerSurface(localSurface, webViewSurface, modifier)
     }
