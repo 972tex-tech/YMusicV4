@@ -131,9 +131,9 @@ fun SectionHeader(
     onCta: (() -> Unit)? = null,
 ) {
     Row(
-        // The tall top inset is the section SEPARATOR: sections have no divider line, so the
-        // header's air above is what makes one group end and the next begin while scrolling.
-        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
+        // Sections separate as hairline + air: the feed draws a divider above every section but
+        // the first, and this top inset is the air on both sides of it.
+        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

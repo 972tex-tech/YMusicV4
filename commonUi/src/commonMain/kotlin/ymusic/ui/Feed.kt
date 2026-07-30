@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -391,6 +392,16 @@ private fun FeedSections(
                 item { Spacer(Modifier.height(6.dp)) }
             }
             state.sections.forEachIndexed { index, section ->
+                if (index > 0) {
+                    // The section separator: a hairline centered in the inter-section air (the
+                    // header's own top inset supplies the space below it).
+                    item {
+                        HorizontalDivider(
+                            Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                            color = DesignColors.Divider,
+                        )
+                    }
+                }
                 feedSection(
                     section = section,
                     columns = columns,
