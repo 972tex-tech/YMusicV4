@@ -283,8 +283,7 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
                     .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                     .fillMaxWidth()
                     .height(96.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(DesignColors.Placeholder),
+                    .background(DesignColors.Placeholder, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.Image, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
@@ -297,7 +296,7 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(64.dp).clip(CircleShape).background(DesignColors.PlaceholderDim),
+                Modifier.size(64.dp).background(DesignColors.PlaceholderDim, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.Person, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
