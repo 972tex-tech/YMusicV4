@@ -148,7 +148,8 @@ internal class AccountController(
             // Re-scrape the session under the new cookies so authenticated calls carry the account's
             // SESSION_INDEX before the account fetch and feed reload below.
             runCatching { graph.engines.ytRefreshSession() }
-            _account.value = runCatching { graph.engines.ytAccountInfo() }.getOrNull()
+            // Force a fresh fetch (and re-cache) on sign-in; the startup probe below uses the cache.
+            _account.value = runCatching { graph.engines.ytAccountInfo(refresh = true) }.getOrNull()
             loginEpoch.value += 1
             graph.player.refreshOnNext()
             graph.requestRefresh()

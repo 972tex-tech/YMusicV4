@@ -31,6 +31,7 @@ class YtLoginCommandsTest {
 
     private suspend fun manager(
         jar: CookieJar?,
+        cacheStore: ymusic.dynamicengine.CacheStore? = null,
         handler: suspend (Request) -> Response,
     ): DynamicEngineManager {
         authHeader = null
@@ -45,7 +46,20 @@ class YtLoginCommandsTest {
             }
         }
         if (jar != null) client.cookieJar = jar
-        return DynamicEngineManager(client, appVersion = 1).also { it.start() }
+        return DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore).also { it.start() }
+    }
+
+    /** A wiped, deterministic on-disk cache (SQLite index + temp blobs on a ticking clock). */
+    private fun cacheStore(): ymusic.dynamicengine.DiskCacheStore {
+        val dir = okio.FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-yt-account-test"
+        okio.FileSystem.SYSTEM.deleteRecursively(dir)
+        var tick = 1_000L
+        return ymusic.dynamicengine.DiskCacheStore(
+            ymusic.dynamicengine.testCacheDriver(),
+            dir,
+            okio.FileSystem.SYSTEM,
+            now = { tick++ },
+        )
     }
 
     /** A jar carrying the essential sign-in cookies (in the shared .youtube.com scope) plus SAPISID. */
@@ -116,6 +130,26 @@ class YtLoginCommandsTest {
         assertEquals("true", bootstrapHeader, "X-Youtube-Bootstrap-Logged-In must be sent when signed in")
         // No USER_SESSION_ID in the fixture, so the plain (no-"_u") hash form.
         assertFalse(auth.contains("_u"), "no USER_SESSION_ID → no _u suffix; got: $auth")
+    }
+
+    @Test
+    fun accountIsServedFromCacheThenRefetchedOnRefresh() = runTest {
+        var menuHits = 0
+        val m = manager(signedInJar(), cacheStore()) { request ->
+            if (request.url.toString().contains("account/account_menu")) {
+                menuHits++
+                jsonResponse(LOGIN_ACCOUNT_MENU_FIXTURE).build(request)
+            } else {
+                error("unexpected request: ${request.url}")
+            }
+        }
+        val first = m.ytAccountInfo() // miss → fetch + cache
+        val second = m.ytAccountInfo() // hit → no network
+        assertEquals("Mock User", first.name)
+        assertEquals(first.name, second.name)
+        assertEquals(1, menuHits, "the second fetch must come from cache, not account_menu")
+        m.ytAccountInfo(refresh = true)
+        assertEquals(2, menuHits, "refresh=true must re-fetch account_menu")
     }
 }
 

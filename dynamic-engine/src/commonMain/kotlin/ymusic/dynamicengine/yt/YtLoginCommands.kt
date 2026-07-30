@@ -35,13 +35,15 @@ suspend fun DynamicEngineManager.ytLoginStatus(): Boolean = use { engine ->
 }
 
 /**
- * The signed-in account card (name / email / handle / channel), from account_menu. Call only once
- * [ytLoginStatus] is true — a not-signed-in jar answers [YtAccountInfo.signedIn]=false with no
- * network call.
+ * The signed-in account card (name / email / handle / channel), from account_menu. Cached-first: a
+ * signed-in engine with a cached card returns it with no network — pass [refresh]=true (on a fresh
+ * sign-in) to force account_menu and re-cache. A not-signed-in jar answers
+ * [YtAccountInfo.signedIn]=false with no call. Call only once [ytLoginStatus] is true.
  */
-suspend fun DynamicEngineManager.ytAccountInfo(): YtAccountInfo = use { engine ->
+suspend fun DynamicEngineManager.ytAccountInfo(refresh: Boolean = false): YtAccountInfo = use { engine ->
     engine.jsonCommand("yt/account", { w ->
         w.beginObject()
+        if (refresh) w.name("refresh").value(true)
         w.endObject()
     }) { readAccount(it) }
 }
