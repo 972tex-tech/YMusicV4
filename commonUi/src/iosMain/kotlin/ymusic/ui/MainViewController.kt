@@ -131,6 +131,9 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         imageLoader = imageLoader,
         settings = settings,
         surfaceScalesDown = true,
+        loginBrowser = { url, state, onPageChanged, modifier ->
+            IosLoginBrowser(url, state, onPageChanged, modifier)
+        },
     ) { modifier -> UIKitView(factory = { container }, modifier = modifier, interactive = true) }
 }
 
