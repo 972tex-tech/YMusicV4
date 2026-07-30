@@ -23,6 +23,7 @@ class CefManager {
      *  per profile, so a second process on the same dir (a probe next to the running app) never
      *  creates its browser; probes must pass their own scratch profile. */
     suspend fun createClient(cacheDir: File? = null): CefClient = withContext(Dispatchers.IO) {
+        installShutdownGuards()
         val root = File(System.getProperty("user.home"), ".ymusic")
         val cefApp = CefAppBuilder().apply {
             setInstallDir(File(root, "jcef-bundle"))
@@ -80,6 +81,54 @@ class CefManager {
     private companion object {
         const val COOKIE_MANAGER_ATTEMPTS = 200
         const val COOKIE_MANAGER_POLL_MS = 25L
+        const val CEF_SHUTDOWN_GRACE_MS = 5_000L
+        const val SIGNAL_REASSERT_MS = 1_000L
+
+        private var guardsInstalled = false
+
+        /**
+         * Keep a stop signal able to stop the process despite CEF. Two independent failure modes:
+         *
+         *  - Chromium REPLACES the process's SIGTERM/SIGINT handlers once its subsystems spin up
+         *    (verified live: a browsing app swallows both; a freshly-booted one dies normally) —
+         *    gradle's task cancellation delivers SIGTERM, so stopping the run task left the app
+         *    alive. A daemon thread re-asserts the JVM's handlers every second (sigaction is
+         *    microseconds); the handler funnels into the JVM's normal exit, same as a window close.
+         *
+         *  - JCEF 146's graceful teardown can wedge during JVM shutdown: jcefmaven's own shutdown
+         *    hook calls CefApp.dispose(), whose final N_Shutdown is invokeLater'd onto an EDT that
+         *    no longer pumps once shutdown began. Give CEF a grace window to reach TERMINATED,
+         *    then halt the VM unconditionally.
+         */
+        @Synchronized
+        fun installShutdownGuards() {
+            if (guardsInstalled) return
+            guardsInstalled = true
+            Runtime.getRuntime().addShutdownHook(
+                Thread {
+                    val deadline = System.currentTimeMillis() + CEF_SHUTDOWN_GRACE_MS
+                    while (CefApp.getState() != CefApp.CefAppState.TERMINATED &&
+                        System.currentTimeMillis() < deadline
+                    ) {
+                        Thread.sleep(50)
+                    }
+                    Runtime.getRuntime().halt(0)
+                },
+            )
+            val exit = sun.misc.SignalHandler { kotlin.system.exitProcess(0) }
+            Thread {
+                while (true) {
+                    runCatching {
+                        sun.misc.Signal.handle(sun.misc.Signal("TERM"), exit)
+                        sun.misc.Signal.handle(sun.misc.Signal("INT"), exit)
+                    }
+                    Thread.sleep(SIGNAL_REASSERT_MS)
+                }
+            }.apply {
+                isDaemon = true
+                name = "cef-signal-reassert"
+            }.start()
+        }
 
         // A real desktop Chrome UA — must mirror engine-js session.ts DESKTOP_UA (one YouTube
         // identity) AND carry the bundled Chromium's real major version: Sec-CH-UA client hints
