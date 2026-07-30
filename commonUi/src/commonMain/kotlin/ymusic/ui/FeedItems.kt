@@ -394,10 +394,13 @@ private fun TagPill(label: String, accent: String?, onClick: () -> Unit) {
         label,
         style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
         maxLines = 1,
+        // Fill + border are shape-aware (anti-aliased) and drawn BEFORE the clip; clipping first would
+        // hard-cut the border's outer half against an aliased edge (the jagged look). Clip last, only
+        // so the click ripple stays inside the pill.
         modifier = Modifier
-            .clip(shape)
-            .background(DesignColors.SurfaceElevated)
+            .background(DesignColors.SurfaceElevated, shape)
             .border(1.dp, border, shape)
+            .clip(shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
