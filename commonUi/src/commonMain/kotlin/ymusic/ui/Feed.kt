@@ -419,6 +419,9 @@ private fun FeedSections(
     }
 }
 
+/** Pills shown while a collapsible tag section is collapsed (roughly two rows). */
+private const val TAGS_COLLAPSED = 10
+
 private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
     columns: Int,
@@ -447,9 +450,21 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         }
     }
     // A tag section (Explore's Moods & genres, its entry buttons) is a wrap of navigation pills, not
-    // list rows or grid cards.
+    // list rows or grid cards. A long wrap (37 mood/genre tiles) collapses to a couple rows behind a
+    // "Show more" toggle — the header's chevron and the button below both expand it.
     if (section.layout == YtSection.LAYOUT_TAGS) {
-        item { TagFlow(section.items, onOpen) }
+        val shown = if (expanded || !section.collapsible) section.items else section.items.take(TAGS_COLLAPSED)
+        item { TagFlow(shown, onOpen) }
+        if (section.collapsible && section.items.size > TAGS_COLLAPSED) {
+            item {
+                val label = if (expanded) {
+                    stringResource(Res.string.show_less)
+                } else {
+                    stringResource(Res.string.show_more_n, section.items.size - TAGS_COLLAPSED)
+                }
+                ShowMoreButton(label, expanded = expanded, onClick = onToggle)
+            }
+        }
         return
     }
     // Collapsed shows two rows: 2 items in a single-column list, two grid rows otherwise.
