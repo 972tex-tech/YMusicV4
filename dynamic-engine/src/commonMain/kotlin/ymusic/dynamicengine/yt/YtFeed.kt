@@ -48,6 +48,8 @@ data class YtFeedItem(
     val album: Boolean = false,
     /** The owner channel's badge (see [OWNER_BADGE_ARTIST]/[OWNER_BADGE_VERIFIED]); null = none. */
     val ownerBadge: String? = null,
+    /** A [KIND_TAG]'s accent colour, 8-hex `AARRGGBB` (YouTube Music's per-mood/genre colour); null = none. */
+    val accent: String? = null,
 ) {
     companion object {
         const val KIND_VIDEO = "video"

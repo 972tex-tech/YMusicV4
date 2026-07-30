@@ -380,14 +380,16 @@ internal fun TagFlow(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items.forEach { item -> TagPill(item.title) { onOpen?.invoke(item) } }
+        items.forEach { item -> TagPill(item.title, item.accent) { onOpen?.invoke(item) } }
     }
 }
 
-/** One navigation pill: a rounded, softly-filled chip with the tag's label. */
+/** One navigation pill: a rounded, softly-filled chip whose border takes the tag's backend accent
+ *  colour (YouTube Music's per-mood/genre colour, 8-hex AARRGGBB) when present. */
 @Composable
-private fun TagPill(label: String, onClick: () -> Unit) {
+private fun TagPill(label: String, accent: String?, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
+    val border = remember(accent) { accent?.let { runCatching { Color(it.toLong(16)) }.getOrNull() } } ?: DesignColors.OutlineSoft
     Text(
         label,
         style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
@@ -395,7 +397,7 @@ private fun TagPill(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(shape)
             .background(DesignColors.SurfaceElevated)
-            .border(1.dp, DesignColors.OutlineSoft, shape)
+            .border(1.5.dp, border, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
