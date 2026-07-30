@@ -78,13 +78,30 @@ internal class WebViewPlayerImpl(
     )
 
     private var pendingLoad: PendingLoad? = null
+    // Set by refreshOnNext() when the cookie identity changed (sign-in/out): the next load re-fetches
+    // /embed so the page runs under the new identity. The current song keeps playing on the old page.
+    private var pendingRefresh = false
 
     /** The last-applied config; [setConfig] diffs against it so only changed fields hit the page. */
     private var appliedConfig = PlaybackConfig()
 
+    override fun refreshOnNext() {
+        if (released) return
+        pendingRefresh = true
+    }
+
     override fun load(source: PlayableItem.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val request = PendingLoad(source, startPositionMs, playWhenReady, config)
+        if (pendingRefresh) {
+            pendingRefresh = false
+            // A live page must be torn down and re-fetched; an uninitialized one inits fresh below.
+            if (_status.value.state !is PlaybackState.Uninitialized) {
+                pendingLoad = request
+                initializePage()
+                return
+            }
+        }
         when (val state = _status.value.state) {
             is PlaybackState.Uninitialized -> {
                 pendingLoad = request

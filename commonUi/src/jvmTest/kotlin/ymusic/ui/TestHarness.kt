@@ -180,5 +180,7 @@ internal class StubPlayer : Player {
 
     override fun setSleepTimer(durationMs: Long?) {}
 
+    override fun refreshOnNext() {}
+
     override fun release() {}
 }

@@ -118,6 +118,14 @@ interface Player {
     /** Pause automatically after [durationMs]; null disarms. */
     fun setSleepTimer(durationMs: Long?)
 
+    /**
+     * Mark the YouTube (WebView) engine's page stale so the NEXT track re-fetches `/embed` under the
+     * current cookie identity — called after a YouTube sign-in or sign-out. The current track keeps
+     * playing on the old page until it ends. No-op when the WebView engine isn't built yet (a fresh
+     * one already loads under the new identity).
+     */
+    fun refreshOnNext()
+
     /** Releases both engines and stops all internal work. The instance is unusable afterwards. */
     fun release()
 }

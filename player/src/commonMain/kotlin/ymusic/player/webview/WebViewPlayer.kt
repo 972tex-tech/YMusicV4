@@ -25,6 +25,11 @@ interface WebViewPlayer :
     /** Watch-next payloads the page reports for the music videos it plays — the Recommended feed's
      *  raw material, forwarded to the scraping engine by the app (see [Player.watchNextSeen]). */
     val watchNextSeen: SharedFlow<WebViewEvent.WatchNextSeen>
+
+    /** Mark the page stale so the NEXT [load] re-fetches `/embed` — used after the cookie identity
+     *  changes (YouTube sign-in / sign-out) so the running page picks up the new identity. The
+     *  current song plays on undisturbed until it ends. */
+    fun refreshOnNext()
 }
 
 /**

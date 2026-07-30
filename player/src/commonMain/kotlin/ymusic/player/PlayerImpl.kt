@@ -258,6 +258,12 @@ internal class PlayerImpl(
         }
     }
 
+    override fun refreshOnNext() {
+        // Only the WebView (YouTube) engine has an /embed page tied to the cookie identity. If it
+        // isn't built yet, a future one loads under the new identity anyway — nothing to do.
+        webViewEngine?.refreshOnNext()
+    }
+
     override fun release() {
         if (released) return
         released = true
