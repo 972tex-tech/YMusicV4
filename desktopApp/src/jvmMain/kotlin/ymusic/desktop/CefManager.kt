@@ -35,9 +35,6 @@ class CefManager {
             // browser may not be secure"). Drop the AutomationControlled Blink flag (sets
             // navigator.webdriver=false, removes the automation signal) — the main tell beyond UA.
             addJcefArgs("--disable-blink-features=AutomationControlled")
-            // Stop Chromium emitting Sec-CH-UA client hints, which otherwise carry its REAL engine
-            // version and mismatch our spoofed Chrome user_agent below — itself a bot tell.
-            addJcefArgs("--disable-features=UserAgentClientHint")
             // DevTools: point a real Chrome at http://localhost:9222 to inspect ANY JCEF browser
             // (the login window AND the OSR player). Dev-only — it exposes the browser to local
             // processes; drop before shipping.
@@ -84,9 +81,11 @@ class CefManager {
         const val COOKIE_MANAGER_ATTEMPTS = 200
         const val COOKIE_MANAGER_POLL_MS = 25L
 
-        // A real desktop Chrome UA — must mirror engine-js session.ts DESKTOP_UA (one YouTube identity).
+        // A real desktop Chrome UA — must mirror engine-js session.ts DESKTOP_UA (one YouTube
+        // identity) AND carry the bundled Chromium's real major version: Sec-CH-UA client hints
+        // can't be suppressed and would expose a version mismatch. Bump alongside Versions.jcef.
         const val CHROME_USER_AGENT =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+                "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
     }
 }
