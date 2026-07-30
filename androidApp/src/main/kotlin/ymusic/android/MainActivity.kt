@@ -172,6 +172,9 @@ class MainActivity : ComponentActivity() {
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             imageLoader = shared.imageLoader,
             settings = shared.settings,
+            loginBrowser = { url, state, onPageChanged, modifier ->
+                AndroidLoginBrowser(url, state, onPageChanged, modifier)
+            },
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the

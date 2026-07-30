@@ -60,7 +60,6 @@ class AppGraph(
      * surface kills playback and the UI must keep a real-size docked preview instead.
      */
     val surfaceScalesDown: Boolean = false,
-    val playerSurface: @Composable (modifier: Modifier) -> Unit,
     /**
      * The platform browser WebView for the YouTube sign-in flow, provided by the shell (like
      * [playerSurface]) so the shared UI carries no WebView dependency. Null hosts (headless tests, a
@@ -68,6 +67,8 @@ class AppGraph(
      * default cookie store — the same jar the engine reads — so sign-in cookies reach the login gate.
      */
     val loginBrowser: LoginBrowser? = null,
+    // Kept last so shells pass it as the trailing lambda.
+    val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
     /**
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
