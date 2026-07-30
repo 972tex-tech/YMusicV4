@@ -18,7 +18,7 @@ object Versions {
     // :player local-file backends (per platform; Apple uses AVFoundation cinterop, no dep)
     const val media3 = "1.5.1"   // Android ExoPlayer
     const val vlcj = "4.8.3"     // JVM desktop libVLC binding
-    const val jcef = "126.2.0"   // JVM desktop Chromium (WebView YouTube host)
+    const val jcef = "146.0.10"  // JVM desktop Chromium (WebView YouTube host)
 
     // AndroidX
     const val coreKtx = "1.15.0"

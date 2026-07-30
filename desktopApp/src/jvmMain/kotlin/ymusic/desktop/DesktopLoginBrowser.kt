@@ -12,10 +12,7 @@ import org.cef.browser.CefFrame
 import org.cef.handler.CefDisplayHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import ymusic.ui.LoginWebViewState
-import java.awt.Dimension
-import javax.swing.JFrame
 import javax.swing.SwingUtilities
-import javax.swing.WindowConstants
 
 /**
  * The desktop sign-in WebView (the shell's [ymusic.ui.AppGraph.loginBrowser]) — a WINDOWED JCEF
@@ -81,30 +78,12 @@ fun DesktopLoginBrowser(
 }
 
 private class LoginBrowserHolder(val client: org.cef.CefClient, val browser: CefBrowser) {
-    private var devFrame: JFrame? = null
-
-    /** Open (or raise) a DevTools window for this browser — JCEF's own inspector, no remote port. */
+    /** Open a DevTools window for this browser — CEF owns the window since JCEF 146. */
     fun openDevTools() {
-        SwingUtilities.invokeLater {
-            devFrame?.let {
-                it.isVisible = true
-                it.toFront()
-                return@invokeLater
-            }
-            val dev = browser.getDevTools()
-            devFrame = JFrame("YMusic — DevTools").apply {
-                defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
-                add(dev.uiComponent)
-                size = Dimension(1100, 750)
-                isVisible = true
-            }
-        }
+        SwingUtilities.invokeLater { browser.openDevTools() }
     }
 
     fun closeDevTools() {
-        SwingUtilities.invokeLater {
-            devFrame?.dispose()
-            devFrame = null
-        }
+        SwingUtilities.invokeLater { browser.closeDevTools() }
     }
 }

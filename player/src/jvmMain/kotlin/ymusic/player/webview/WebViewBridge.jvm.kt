@@ -39,10 +39,10 @@ private const val EMBED_URL = "https://www.youtube.com/embed"
 /** Internal channel the browser posts its `navigator.userAgent` back on (see [JcefWebViewBridge]). */
 private const val UA_CHANNEL = "__ua"
 
-/** Chrome-family fallback (JCEF 126 = Chrome 126) used only until the real UA round-trips from the page. */
+/** Chrome-family fallback used only until the real UA round-trips from the page. */
 private const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/126.0.0.0 Safari/537.36"
+        "Chrome/150.0.0.0 Safari/537.36"
 
 /** Any `*.js` URL (optionally with `?`/`#` suffix) — blocked unless it carries [DO_NOT_BLOCK]. */
 private val JS_URL_REGEX = Regex(".*\\.js([?#].*)*$")
