@@ -438,7 +438,10 @@ internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSiz
             style = badgeText.copy(fontWeight = FontWeight.Bold),
             modifier = modifier.background(Color(0xFFCC0000), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
         )
-        item.itemCount != null -> Row(
+        // Any playlist-kind item gets the corner glyph — a count when the source gave one (WEB),
+        // just the icon when it didn't (YouTube Music cards). The glyph names the kind: an endless
+        // Mix (RD… id) → infinity, an album → the record, anything else → the playlist mark.
+        item.kind == YtFeedItem.KIND_PLAYLIST || item.itemCount != null -> Row(
             modifier.background(DesignColors.BadgeScrim, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -453,7 +456,7 @@ internal fun Badges(item: YtFeedItem, modifier: Modifier, textSize: Int, iconSiz
                 Modifier.size(iconSize),
                 tint = Color.White,
             )
-            Text(item.itemCount!!, style = badgeText)
+            item.itemCount?.let { Text(it, style = badgeText) }
         }
         item.duration != null -> Row(
             modifier.background(DesignColors.BadgeInk, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
