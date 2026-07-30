@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import kmphttp.AsyncInterceptor
 import kmphttp.Cache
 import kmphttp.DefaultPlatformCache
 import kmphttp.KmpHttpClient
@@ -31,4 +32,25 @@ class AppHttpClients(
     }
 
     val engine: KmpHttpClient = KmpHttpClient.create { cache = diskCache }
+
+    /**
+     * The image loader's client — derived from [engine] so the whole app shares one connection
+     * pool, minus the HTTP cache (the loader streams originals into its own disk cache; see class
+     * doc). One YouTube quirk lives here: `i.ytimg.com/img/no_thumbnail.jpg` —
+     * the default thumbnail YouTube emits for playlists with nothing to thumbnail — is a real
+     * placeholder JPEG served with status 404. The failing status would keep it out of every image
+     * cache, so each rebind refetched it; rewriting that one response to 200 lets it decode and
+     * cache like any other image.
+     */
+    val image: KmpHttpClient = engine.newBuilder().apply {
+        cache = null
+        networkInterceptors += AsyncInterceptor { chain ->
+            val response = chain.proceed(chain.request)
+            if (response.code == 404 && chain.request.url.toString().contains("/img/no_thumbnail")) {
+                response.newBuilder().code(200).message("OK").build()
+            } else {
+                response
+            }
+        }
+    }.build()
 }

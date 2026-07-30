@@ -16,8 +16,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.window.ComposeUIViewController
-import kmphttp.KmpHttpClient
-import kmphttp.create
 import kotlinx.cinterop.ExperimentalForeignApi
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -109,7 +107,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         .resolve("ymusic-images")
     val imageLoader = ImageLoader(
         fetchers = listOf(
-            networkFetcher(KmpHttpClient.create { }, FileSystem.SYSTEM, cacheRoot.resolve("source")),
+            networkFetcher(http.image, FileSystem.SYSTEM, cacheRoot.resolve("source")),
             fileFetcher(),
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheRoot.resolve("scaled")),

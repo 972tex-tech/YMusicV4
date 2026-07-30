@@ -149,6 +149,47 @@ internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit)
 }
 
 /**
+ * A generic feed page's retained state, created when pushed. [url] is an engine/app "/feed/…" link
+ * (the account's watch history, its all-playlists grid) served through the same yt/channel command
+ * — which decodes the path to its browseId — but rendered WITHOUT channel chrome (no header, no
+ * Subscribe): just the app bar and the feed. [title] seeds the bar until the page header answers.
+ */
+class FeedDetailSession(graph: AppGraph, scope: CoroutineScope, val url: String, val title: String?) {
+    val feed = FeedSession(scope) { continuation ->
+        graph.engines.extractChannelDetail(url, continuation = continuation)
+    }
+
+    init {
+        feed.pager.refresh()
+    }
+}
+
+/** A generic feed page: back · title · search app bar over the plain feed. Playlist/channel taps
+ *  open through [onOpen]; video taps autoplay as usual. */
+@Composable
+fun FeedDetailScreen(
+    coordinator: PlaybackCoordinator,
+    session: FeedDetailSession,
+    onBack: () -> Unit,
+    onSearch: () -> Unit,
+    onOpen: ((YtFeedItem) -> Unit)? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+) {
+    val state by session.feed.pager.state.collectAsState()
+    val ready = state as? Pager.State.Ready
+    Column(Modifier.fillMaxSize()) {
+        DetailAppBar(ready?.pageHeader?.title ?: session.title.orEmpty(), onBack, onSearch)
+        FeedList(
+            session.feed.pager,
+            coordinator,
+            onOpen = onOpen,
+            listState = session.feed.listState,
+            onDeeplink = onDeeplink,
+        )
+    }
+}
+
+/**
  * Channel detail's retained state (feed + scroll + the picked tab), created when pushed. [url] is
  * the engine-composed app link ("/channel/…", possibly pinned to a server tab), round-tripped
  * VERBATIM; a tab switch just swaps in that tab's own engine link and refetches. [item] only seeds

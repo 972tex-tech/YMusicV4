@@ -2,8 +2,6 @@ package ymusic.android
 
 import android.app.Application
 import android.content.ComponentCallbacks2
-import kmphttp.KmpHttpClient
-import kmphttp.create
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -90,7 +88,7 @@ class YMusicApplication : Application() {
         val imageLoader = ImageLoader(
             fetchers = listOf(
                 networkFetcher(
-                    KmpHttpClient.create { },
+                    http.image,
                     FileSystem.SYSTEM,
                     cacheDir.resolve("image-source-cache").toOkioPath(),
                 ),

@@ -40,8 +40,6 @@ import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
-import kmphttp.KmpHttpClient
-import kmphttp.create
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
@@ -185,7 +183,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val imageLoader = ImageLoader(
         fetchers = listOfNotNull(
             networkFetcher(
-                KmpHttpClient.create { },
+                http.image,
                 FileSystem.SYSTEM,
                 File(dataDir, "image-source-cache").absolutePath.toPath(),
             ),

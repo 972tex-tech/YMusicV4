@@ -206,6 +206,9 @@ private sealed interface AppLayer {
 
     class Channel(val session: ChannelSession) : AppLayer
 
+    /** A generic "/feed/…" page (account history / all playlists) — plain feed, no detail chrome. */
+    class Feed(val session: FeedDetailSession) : AppLayer
+
     class MusicBrowse(val session: MusicBrowseSession) : AppLayer
 
     /** The YouTube sign-in browser. Holds its [LoginWebViewState] so the back gesture can walk the
@@ -324,6 +327,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             initialUrl = target.url,
                         ),
                     ),
+                )
+                is Deeplink.Feed -> layers.add(
+                    AppLayer.Feed(FeedDetailSession(graph, scope, target.url, title)),
                 )
                 null -> Unit // an older app meeting a newer bundle's scheme — the CTA is inert
             }
@@ -588,6 +594,16 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         onBack = popLayer,
                                         // A music artist page's search is music search, not YouTube.
                                         onSearch = if (top.session.url.startsWith(MusicBrowsePrefix)) openMusicSearch else openSearch,
+                                        onOpen = openItem,
+                                        onDeeplink = openDeeplink,
+                                    )
+                                }
+                                is AppLayer.Feed -> key(top) {
+                                    FeedDetailScreen(
+                                        coordinator,
+                                        top.session,
+                                        onBack = popLayer,
+                                        onSearch = openSearch,
                                         onOpen = openItem,
                                         onDeeplink = openDeeplink,
                                     )

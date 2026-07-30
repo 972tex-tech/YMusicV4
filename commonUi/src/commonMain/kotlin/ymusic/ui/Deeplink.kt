@@ -13,6 +13,9 @@ internal sealed interface Deeplink {
     data class Playlist(override val url: String) : Deeplink
 
     data class Channel(override val url: String) : Deeplink
+
+    /** A generic feed page (the account's history / all-playlists) — no channel/playlist chrome. */
+    data class Feed(override val url: String) : Deeplink
 }
 
 /** Route [link] to a detail surface; null = not a link this app version can open (an older app
@@ -20,8 +23,6 @@ internal sealed interface Deeplink {
 internal fun parseDeeplink(link: String): Deeplink? = when {
     link.startsWith("/playlist?") -> Deeplink.Playlist(link)
     link.startsWith("/channel/") && link.length > "/channel/".length -> Deeplink.Channel(link)
-    // The account's own feed pages (history, all playlists) — feed-shaped, so the channel screen
-    // (sections + open-able items, no tab chrome without pageTabs) renders them.
-    link.startsWith("/feed/") && link.length > "/feed/".length -> Deeplink.Channel(link)
+    link.startsWith("/feed/") && link.length > "/feed/".length -> Deeplink.Feed(link)
     else -> null
 }
