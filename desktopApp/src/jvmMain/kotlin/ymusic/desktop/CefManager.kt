@@ -42,6 +42,12 @@ class CefManager {
                 // The player's browser renders off-screen (ImageOsrBrowser) into a lightweight
                 // component — see :player WebViewBridge.jvm.kt.
                 windowless_rendering_enabled = true
+                // Google refuses sign-in in an "unsafe" browser and JCEF's default UA gives it away.
+                // Present a real desktop Chrome UA (both navigator.userAgent and request headers) so
+                // the accounts.google.com flow proceeds. Kept in step with the engine's DESKTOP_UA
+                // (engine-js session.ts) so the player's embed browser and InnerTube also present one
+                // identity to YouTube — bump both together.
+                user_agent = CHROME_USER_AGENT
             }
         }.build()
         app = cefApp
@@ -66,5 +72,10 @@ class CefManager {
     private companion object {
         const val COOKIE_MANAGER_ATTEMPTS = 200
         const val COOKIE_MANAGER_POLL_MS = 25L
+
+        // A real desktop Chrome UA — must mirror engine-js session.ts DESKTOP_UA (one YouTube identity).
+        const val CHROME_USER_AGENT =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     }
 }
