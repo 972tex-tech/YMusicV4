@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -90,6 +91,10 @@ class LoginWebViewState {
 
     /** Set by the shell WebView so the chrome/back gesture can walk the page's own history. */
     var back: (() -> Unit)? = null
+
+    /** Set by shells that can open a DevTools window (desktop JCEF); null hides the chrome button.
+     *  Snapshot state so the chrome shows the button once the shell wires it. */
+    var openDevTools: (() -> Unit)? by mutableStateOf(null)
 
     fun goBack() {
         back?.invoke()
@@ -235,6 +240,9 @@ private fun LoginChrome(state: LoginWebViewState, onBack: () -> Unit) = Elevated
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        state.openDevTools?.let { open ->
+            ActionIcon(Icons.Default.Code, "DevTools", onClick = open)
         }
     }
     // The load bar shows only mid-navigation; a finished (1f) or idle (0f) page hides it.

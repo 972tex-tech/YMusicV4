@@ -12,6 +12,10 @@ import org.cef.browser.CefFrame
 import org.cef.handler.CefDisplayHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import ymusic.ui.LoginWebViewState
+import java.awt.Dimension
+import javax.swing.JFrame
+import javax.swing.SwingUtilities
+import javax.swing.WindowConstants
 
 /**
  * The desktop sign-in WebView (the shell's [ymusic.ui.AppGraph.loginBrowser]) — a WINDOWED JCEF
@@ -56,7 +60,9 @@ fun DesktopLoginBrowser(
         })
         val browser = client.createBrowser(url, false, false)
         state.back = { if (browser.canGoBack()) browser.goBack() }
-        LoginBrowserHolder(client, browser)
+        val h = LoginBrowserHolder(client, browser)
+        state.openDevTools = { h.openDevTools() }
+        h
     }
     SwingPanel(
         background = Color.Transparent,
@@ -66,10 +72,39 @@ fun DesktopLoginBrowser(
     DisposableEffect(Unit) {
         onDispose {
             state.back = null
+            state.openDevTools = null
+            holder.closeDevTools()
             holder.browser.close(true)
             holder.client.dispose()
         }
     }
 }
 
-private class LoginBrowserHolder(val client: org.cef.CefClient, val browser: CefBrowser)
+private class LoginBrowserHolder(val client: org.cef.CefClient, val browser: CefBrowser) {
+    private var devFrame: JFrame? = null
+
+    /** Open (or raise) a DevTools window for this browser — JCEF's own inspector, no remote port. */
+    fun openDevTools() {
+        SwingUtilities.invokeLater {
+            devFrame?.let {
+                it.isVisible = true
+                it.toFront()
+                return@invokeLater
+            }
+            val dev = browser.getDevTools()
+            devFrame = JFrame("YMusic — DevTools").apply {
+                defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
+                add(dev.uiComponent)
+                size = Dimension(1100, 750)
+                isVisible = true
+            }
+        }
+    }
+
+    fun closeDevTools() {
+        SwingUtilities.invokeLater {
+            devFrame?.dispose()
+            devFrame = null
+        }
+    }
+}
