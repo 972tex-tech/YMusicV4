@@ -34,7 +34,10 @@ class CefManager {
             // Google refuses sign-in from a browser it fingerprints as embedded/automated ("this
             // browser may not be secure"). Drop the AutomationControlled Blink flag (sets
             // navigator.webdriver=false, removes the automation signal) — the main tell beyond UA.
-            addJcefArgs("--disable-blink-features=AutomationControlled")
+            // WebAuth: hide the WebAuthn API (window.PublicKeyCredential) so accounts.google.com
+            // never offers passkey sign-in — JCEF has no platform authenticator, so the passkey
+            // prompt is a dead end; absent the API, Google falls back to password.
+            addJcefArgs("--disable-blink-features=AutomationControlled,WebAuth")
             // DevTools: point a real Chrome at http://localhost:9222 to inspect ANY JCEF browser
             // (the login window AND the OSR player). Dev-only — it exposes the browser to local
             // processes; drop before shipping.

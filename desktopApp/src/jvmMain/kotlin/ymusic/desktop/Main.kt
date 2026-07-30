@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import org.cef.CefApp
 import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
 import ymusic.dynamicengine.DynamicEngineManager
@@ -92,6 +93,21 @@ fun main() {
     // Compose Image, so the app hosts no Swing interop on the hot path. Blending is kept as a harmless
     // safety net for any incidental lightweight interop; it must be set before the first ComposeWindow.
     System.setProperty("compose.interop.blending", "true")
+    // JCEF 146's graceful teardown can wedge during JVM shutdown: jcefmaven's own shutdown hook
+    // calls CefApp.dispose(), whose final N_Shutdown is invokeLater'd onto an EDT that no longer
+    // pumps once shutdown began — so a SIGINT/SIGTERM (gradle stop) leaves the process alive
+    // forever. Give CEF a grace window to reach TERMINATED, then halt the VM unconditionally.
+    Runtime.getRuntime().addShutdownHook(
+        Thread {
+            val deadline = System.currentTimeMillis() + CEF_SHUTDOWN_GRACE_MS
+            while (CefApp.getState() != CefApp.CefAppState.TERMINATED &&
+                System.currentTimeMillis() < deadline
+            ) {
+                Thread.sleep(50)
+            }
+            Runtime.getRuntime().halt(0)
+        },
+    )
     application {
         val cefManager = remember { CefManager() }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
@@ -367,6 +383,8 @@ private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
         if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
     }
 }
+
+private const val CEF_SHUTDOWN_GRACE_MS = 5_000L
 
 internal fun findFfmpeg(): String? {
     System.getenv("YMUSIC_FFMPEG")?.let { if (File(it).canExecute()) return it }
