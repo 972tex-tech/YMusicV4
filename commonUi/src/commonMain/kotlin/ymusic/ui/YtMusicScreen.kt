@@ -22,6 +22,7 @@ import ymusic.dynamicengine.yt.extractMusicBrowse
 import ymusic.dynamicengine.yt.extractMusicExplore
 import ymusic.dynamicengine.yt.extractMusicHome
 import ymusic.ui.resources.Res
+import ymusic.ui.resources.detail_playlist
 import ymusic.ui.resources.ytmusic_explore_empty
 import ymusic.ui.resources.ytmusic_home_empty
 import ymusic.ui.resources.ytmusic_library_signin
@@ -139,8 +140,10 @@ class MusicBrowseSession(graph: AppGraph, scope: CoroutineScope, val url: String
 }
 
 /**
- * The music detail surface: back · title · search app bar over the browse feed. A song tap plays the
- * page as the queue from that song; nested album/playlist/artist cards open through [onOpen].
+ * The music detail surface (album / playlist / artist) — the SAME layout as the WEB
+ * [PlaylistDetailScreen]: back · "Playlist" · search app bar, then the [PlaylistHeader] (title · meta ·
+ * actions · shuffle FAB) scrolling above the feed. A song tap plays the page as the queue from that
+ * song; the FAB shuffles it; nested album/playlist/artist cards (an artist page) open through [onOpen].
  */
 @Composable
 fun MusicDetailScreen(
@@ -156,12 +159,19 @@ fun MusicDetailScreen(
     val videos = ready?.sections.orEmpty().flatMap { it.items }.filter { it.kind == YtFeedItem.KIND_VIDEO }
 
     Column(Modifier.fillMaxSize()) {
-        DetailAppBar(ready?.pageHeader?.title ?: session.item.title, onBack, onSearch)
+        DetailAppBar(stringResource(Res.string.detail_playlist), onBack, onSearch)
         FeedList(
             session.feed.pager,
             coordinator,
             onPlayItem = { tapped ->
                 coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0))
+            },
+            topContent = {
+                PlaylistHeader(
+                    title = ready?.pageHeader?.title ?: session.item.title,
+                    meta = ready?.pageHeader?.subtitleLine1 ?: session.item.subtitleLine1,
+                    onShuffle = { coordinator.playAll(videos, shuffle = true) },
+                )
             },
             onOpen = onOpen,
             listState = session.feed.listState,

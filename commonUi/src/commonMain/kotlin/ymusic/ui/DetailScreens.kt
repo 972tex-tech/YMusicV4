@@ -107,9 +107,10 @@ fun PlaylistDetailScreen(
 }
 
 /** Title + meta, the actions row (design chrome until playlists/share/downloads land) and the
- *  shuffle FAB, closed by the 16dp-inset divider. */
+ *  shuffle FAB, closed by the 16dp-inset divider. Shared by the WEB playlist detail and the YT Music
+ *  album/playlist detail so both read identically. */
 @Composable
-private fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit) {
+internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
             Text(
