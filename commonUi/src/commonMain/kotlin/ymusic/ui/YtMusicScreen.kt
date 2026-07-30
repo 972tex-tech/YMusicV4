@@ -140,9 +140,12 @@ class MusicBrowseSession(graph: AppGraph, scope: CoroutineScope, val url: String
 }
 
 /**
- * The music album/playlist detail — the SAME layout as the WEB [PlaylistDetailScreen]: back ·
- * "Playlist" · search app bar, then the [PlaylistHeader] (title · meta · actions · shuffle FAB)
- * scrolling above the feed. A song tap plays the page as the queue from that song; the FAB shuffles.
+ * The music detail surface served by `ytmusic/browse`, in one of two shapes:
+ * - an **album / playlist** reads like the WEB [PlaylistDetailScreen] — "Playlist" · a [PlaylistHeader]
+ *   (title · meta · actions · shuffle FAB), and a song tap plays the page as the queue;
+ * - a **category feed** (Explore's New releases / Charts / Moods & genres / a mood category, browseId
+ *   `FEmusic_…`) is just its title over the shelves — no track-list header or shuffle, since it's a
+ *   feed of collections, not a track list.
  * (Artists reuse [ChannelDetailScreen] instead — routed in App.kt.)
  */
 @Composable
@@ -157,21 +160,33 @@ fun MusicDetailScreen(
     val state by session.feed.pager.state.collectAsState()
     val ready = state as? Pager.State.Ready
     val videos = ready?.sections.orEmpty().flatMap { it.items }.filter { it.kind == YtFeedItem.KIND_VIDEO }
+    // A category/feed browse (New releases, Charts, Moods & genres, a mood) vs a track list.
+    val isFeed = session.url.contains("id=FEmusic")
 
     Column(Modifier.fillMaxSize()) {
-        DetailAppBar(stringResource(Res.string.detail_playlist), onBack, onSearch)
+        DetailAppBar(
+            if (isFeed) (ready?.pageHeader?.title ?: session.item.title) else stringResource(Res.string.detail_playlist),
+            onBack,
+            onSearch,
+        )
         FeedList(
             session.feed.pager,
             coordinator,
-            onPlayItem = { tapped ->
-                coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0))
+            onPlayItem = if (isFeed) {
+                null
+            } else {
+                { tapped -> coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0)) }
             },
-            topContent = {
-                PlaylistHeader(
-                    title = ready?.pageHeader?.title ?: session.item.title,
-                    meta = ready?.pageHeader?.subtitleLine1 ?: session.item.subtitleLine1,
-                    onShuffle = { coordinator.playAll(videos, shuffle = true) },
-                )
+            topContent = if (isFeed) {
+                null
+            } else {
+                {
+                    PlaylistHeader(
+                        title = ready?.pageHeader?.title ?: session.item.title,
+                        meta = ready?.pageHeader?.subtitleLine1 ?: session.item.subtitleLine1,
+                        onShuffle = { coordinator.playAll(videos, shuffle = true) },
+                    )
+                }
             },
             onOpen = onOpen,
             listState = session.feed.listState,
