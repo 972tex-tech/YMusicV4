@@ -61,6 +61,13 @@ class AppGraph(
      */
     val surfaceScalesDown: Boolean = false,
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
+    /**
+     * The platform browser WebView for the YouTube sign-in flow, provided by the shell (like
+     * [playerSurface]) so the shared UI carries no WebView dependency. Null hosts (headless tests, a
+     * shell without a WebView stack) show a "sign-in unavailable" note. It MUST use the platform's
+     * default cookie store — the same jar the engine reads — so sign-in cookies reach the login gate.
+     */
+    val loginBrowser: LoginBrowser? = null,
 ) {
     /**
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself

@@ -206,6 +206,10 @@ private sealed interface AppLayer {
     class Channel(val session: ChannelSession) : AppLayer
 
     class MusicBrowse(val session: MusicBrowseSession) : AppLayer
+
+    /** The YouTube sign-in browser. Holds its [LoginWebViewState] so the back gesture can walk the
+     *  page's own history (canGoBack) before popping the layer. */
+    class Login(val state: LoginWebViewState) : AppLayer
 }
 
 @Composable
@@ -213,6 +217,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        // Signed-in state, derived from the engine's cookie gate. Bumps loginEpoch on sign-in/out.
+        val accountController = remember { AccountController(graph, scope) }
+        val signedIn by accountController.signedIn.collectAsState()
+        val account by accountController.account.collectAsState()
+        val loginEpoch by accountController.loginEpoch.collectAsState()
         // The Recommended feed's raw material: the playing page reports YouTube's related items for
         // a music video and the engine keeps them. Pure hand-off — the app parses nothing, and a
         // harvest that fails must never disturb playback.
@@ -239,7 +248,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // away. It lives here, not in DiscoverFeed: that composable is disposed while a search or
         // detail layer is open, and a remember there would re-clear the cache on every return.
         val localeEpoch by graph.localeEpoch.collectAsState()
-        remember(localeEpoch) {
+        // A sign-in/out changes what every feed CONTAINS (personalized vs anonymous), same as a
+        // locale change — so it clears the caches too, and the feeds refetch under the new identity.
+        remember(localeEpoch, loginEpoch) {
             discoverSessions.clear()
             ytMusicSessions.clear()
         }
@@ -338,6 +349,16 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             }
         }
         val popLayer = { layers.removeAt(layers.lastIndex); Unit }
+        // The YouTube sign-in browser — single-instance like search: reopening (from the Account tab
+        // preface or a future gated action like Subscribe) raises the existing layer.
+        val openLogin: () -> Unit = {
+            val existing = layers.indexOfFirst { it is AppLayer.Login }
+            when {
+                existing >= 0 && existing == layers.lastIndex -> Unit
+                existing >= 0 -> layers.add(layers.removeAt(existing))
+                else -> layers.add(AppLayer.Login(LoginWebViewState()))
+            }
+        }
         // Library's own search flow (local files, filter-as-you-type) — a different surface from
         // YouTube search, single-instance within Library's stack the same way.
         val openLibrarySearch: () -> Unit = {
@@ -387,6 +408,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 top is AppLayer.Search && top.session.editing && top.session.submitted != null ->
                     top.session.editing = false
                 top is AppLayer.LibrarySearch && top.session.drill != null -> top.session.drill = null
+                // In the sign-in browser, back walks the page's own history first, then leaves.
+                top is AppLayer.Login && top.state.canGoBack -> top.state.goBack()
                 layers.isNotEmpty() -> popLayer()
                 else -> onSection(AppSection.Discover)
             }
@@ -578,6 +601,19 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         onDeeplink = openDeeplink,
                                     )
                                 }
+                                is AppLayer.Login -> key(top) {
+                                    YtLoginScreen(
+                                        graph,
+                                        top.state,
+                                        onBack = popLayer,
+                                        // Gate passed: drop the browser, then let the controller pull
+                                        // the account card, reload feeds, and stale the player page.
+                                        onComplete = {
+                                            popLayer()
+                                            accountController.onLoginComplete()
+                                        },
+                                    )
+                                }
                                 // Saveable state (tab picks, folder crumbs, scroll positions) is
                                 // kept per section while its content is out of composition —
                                 // Library must come back on the tab and folder it was left on.
@@ -596,8 +632,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 coordinator,
                                                 current,
                                                 localeEpoch,
+                                                loginEpoch,
                                                 discoverSessions,
                                                 scope,
+                                                signedIn = signedIn,
+                                                account = account,
+                                                onLogin = openLogin,
+                                                onSignOut = { accountController.signOut() },
                                                 onOpen = openItem,
                                                 onDeeplink = openDeeplink,
                                             )
@@ -606,7 +647,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             graph,
                                             coordinator,
                                             ytMusicSessions,
-                                            localeEpoch,
+                                            localeEpoch + loginEpoch,
                                             scope,
                                             onOpen = openItem,
                                             onDeeplink = openDeeplink,
@@ -704,12 +745,20 @@ private fun DiscoverFeed(
     coordinator: PlaybackCoordinator,
     tab: DiscoverTab,
     localeEpoch: Int,
+    loginEpoch: Int,
     sessions: MutableMap<String, FeedSession>,
     scope: kotlinx.coroutines.CoroutineScope,
+    signedIn: Boolean,
+    account: ymusic.dynamicengine.yt.YtAccountInfo?,
+    onLogin: () -> Unit,
+    onSignOut: () -> Unit,
     onOpen: ((ymusic.dynamicengine.yt.YtFeedItem) -> Unit)? = null,
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
-    if (!tab.hasFeed) {
+    if (tab == DiscoverTab.Account) {
+        // The user/library tab: the sign-in preface when logged out, the account card when in.
+        if (signedIn) SignedInAccount(account, onSignOut) else LoginPreface(onLogin)
+    } else if (!tab.hasFeed) {
         CenteredBox {
             Text(
                 stringResource(Res.string.discover_needs_account, stringResource(tab.label)),
@@ -723,8 +772,9 @@ private fun DiscoverFeed(
         val localScope = rememberCoroutineScope()
         val recommended = tab == DiscoverTab.Recommended
         // Cached per tab (and on the app scope): coming back to the tab — or back from
-        // search / a detail page — shows the feed as it was, no reload.
-        val session = remember(tab, localeEpoch) {
+        // search / a detail page — shows the feed as it was, no reload. Re-keyed on loginEpoch so a
+        // sign-in/out rebuilds the feed under the new (personalized/anonymous) identity.
+        val session = remember(tab, localeEpoch, loginEpoch) {
             if (recommended) {
                 FeedSession(localScope) { graph.engines.getRecommendedFeed() }.also { it.pager.refresh() }
             } else {

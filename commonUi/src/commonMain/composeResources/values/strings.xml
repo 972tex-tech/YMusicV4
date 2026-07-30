@@ -176,4 +176,22 @@
     <string name="delete_from_disk_message">“%1$s” will be permanently deleted from this device. This cannot be undone.</string>
     <string name="delete_from_disk_confirm">Delete</string>
     <string name="dialog_cancel">Cancel</string>
+
+    <!-- YouTube sign-in -->
+    <string name="signin_preface_title">Sign in with YouTube</string>
+    <string name="signin_preface_subtitle">and get all YouTube features inside YMusic</string>
+    <string name="signin_enables">Signing in enables:</string>
+    <string name="signin_feature_home">Personalized YouTube home feed</string>
+    <string name="signin_feature_subscriptions">Subscriptions feed</string>
+    <string name="signin_feature_playlists">Create or subscribe to playlists</string>
+    <string name="signin_feature_history">Watch history, add videos to watch later</string>
+    <string name="signin_feature_subscribe">Subscribe to new channels</string>
+    <string name="signin_feature_like">Like or dislike videos</string>
+    <string name="signin_feature_more">Numerous other features</string>
+    <string name="signin_button">Sign in</string>
+    <string name="signin_screen_title">Sign in</string>
+    <string name="signin_loading">Loading sign-in…</string>
+    <string name="signin_unavailable">Sign-in isn\'t available on this device yet</string>
+    <string name="account_sign_out">Sign out</string>
+    <string name="cd_account_avatar">Account picture</string>
 </resources>
