@@ -446,7 +446,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
             )
         }
     }
-    val collapsedCount = if (columns == 1) 2 else columns
+    // Collapsed shows two rows: 2 items in a single-column list, two grid rows otherwise.
+    val collapsedCount = if (columns == 1) 2 else columns * 2
     val shown = if (expanded) section.items else section.items.take(collapsedCount)
     if (columns == 1) {
         items(shown.size) { i ->
