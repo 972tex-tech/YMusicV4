@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -25,12 +26,14 @@ import kotlin.test.assertTrue
 class YtLoginCommandsTest {
 
     private var authHeader: String? = null
+    private var authUserHeader: String? = null
 
     private suspend fun manager(
         jar: CookieJar?,
         handler: suspend (Request) -> Response,
     ): DynamicEngineManager {
         authHeader = null
+        authUserHeader = null
         val client = FakeHttpClient { request ->
             val url = request.url.toString()
             if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
@@ -86,6 +89,7 @@ class YtLoginCommandsTest {
         val m = manager(signedInJar()) { request ->
             if (request.url.toString().contains("account/account_menu")) {
                 authHeader = request.header("Authorization")
+                authUserHeader = request.header("X-Goog-AuthUser")
                 jsonResponse(LOGIN_ACCOUNT_MENU_FIXTURE).build(request)
             } else {
                 error("unexpected request: ${request.url}")
@@ -102,6 +106,9 @@ class YtLoginCommandsTest {
         val auth = authHeader
         assertNotNull(auth, "account_menu carried no Authorization header")
         assertTrue(auth.startsWith("SAPISIDHASH "), "expected SAPISIDHASH auth, got: $auth")
+        // The anonymous homepage fixture carries no SESSION_INDEX, so X-Goog-AuthUser must be OMITTED
+        // — never a hardcoded "0" (legacy sends the real index or nothing).
+        assertNull(authUserHeader, "X-Goog-AuthUser must be omitted when the session index is unknown")
     }
 }
 

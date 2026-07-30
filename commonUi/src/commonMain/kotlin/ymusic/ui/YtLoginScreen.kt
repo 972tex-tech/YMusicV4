@@ -51,6 +51,7 @@ import ymusic.dynamicengine.yt.ytAccountInfo
 import ymusic.dynamicengine.yt.ytLoginStatus
 import ymusic.dynamicengine.yt.ytLoginUrl
 import ymusic.dynamicengine.yt.ytLogout
+import ymusic.dynamicengine.yt.ytRefreshSession
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.account_sign_out
 import ymusic.ui.resources.cd_account_avatar
@@ -144,6 +145,9 @@ internal class AccountController(
     fun onLoginComplete() {
         scope.launch {
             _signedIn.value = true
+            // Re-scrape the session under the new cookies so authenticated calls carry the account's
+            // SESSION_INDEX before the account fetch and feed reload below.
+            runCatching { graph.engines.ytRefreshSession() }
             _account.value = runCatching { graph.engines.ytAccountInfo() }.getOrNull()
             loginEpoch.value += 1
             graph.player.refreshOnNext()
@@ -154,6 +158,8 @@ internal class AccountController(
     fun signOut() {
         scope.launch {
             runCatching { graph.engines.ytLogout() }
+            // Re-scrape anonymous so the account identifiers drop out of subsequent requests.
+            runCatching { graph.engines.ytRefreshSession() }
             _signedIn.value = false
             _account.value = null
             loginEpoch.value += 1
