@@ -38,6 +38,10 @@ class CefManager {
             // Stop Chromium emitting Sec-CH-UA client hints, which otherwise carry its REAL engine
             // version and mismatch our spoofed Chrome user_agent below — itself a bot tell.
             addJcefArgs("--disable-features=UserAgentClientHint")
+            // DevTools: point a real Chrome at http://localhost:9222 to inspect ANY JCEF browser
+            // (the login window AND the OSR player). Dev-only — it exposes the browser to local
+            // processes; drop before shipping.
+            addJcefArgs("--remote-debugging-port=9222")
             setAppHandler(object : MavenCefAppHandlerAdapter() {
                 override fun onBeforeTerminate(): Boolean = true
             })
