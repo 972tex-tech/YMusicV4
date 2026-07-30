@@ -9,6 +9,8 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -365,6 +367,37 @@ internal fun CtaPill(text: String, onClick: () -> Unit = {}, modifier: Modifier 
             .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
             .border(1.4.dp, color, RoundedCornerShape(999.dp))
             .padding(horizontal = 12.dp, vertical = 5.dp),
+    )
+}
+
+/** A KIND_TAG section (Explore's Moods & genres, and the New releases / Charts / Moods & genres entry
+ *  buttons) rendered as a wrap of navigation pills — no artwork, each opens its browse via [onOpen]. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TagFlow(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.forEach { item -> TagPill(item.title) { onOpen?.invoke(item) } }
+    }
+}
+
+/** One navigation pill: a rounded, softly-filled chip with the tag's label. */
+@Composable
+private fun TagPill(label: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(999.dp)
+    Text(
+        label,
+        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+        maxLines = 1,
+        modifier = Modifier
+            .clip(shape)
+            .background(DesignColors.SurfaceElevated)
+            .border(1.dp, DesignColors.OutlineSoft, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
 

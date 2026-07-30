@@ -446,6 +446,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
             )
         }
     }
+    // A tag section (Explore's Moods & genres, its entry buttons) is a wrap of navigation pills, not
+    // list rows or grid cards.
+    if (section.layout == YtSection.LAYOUT_TAGS) {
+        item { TagFlow(section.items, onOpen) }
+        return
+    }
     // Collapsed shows two rows: 2 items in a single-column list, two grid rows otherwise.
     val collapsedCount = if (columns == 1) 2 else columns * 2
     val shown = if (expanded) section.items else section.items.take(collapsedCount)
@@ -502,7 +508,7 @@ private fun itemClick(
     onPlayItem: ((YtFeedItem) -> Unit)?,
 ): (() -> Unit)? = when (item.kind) {
     YtFeedItem.KIND_VIDEO -> ({ onPlayItem?.invoke(item) ?: coordinator.playNow(item) })
-    YtFeedItem.KIND_PLAYLIST, YtFeedItem.KIND_CHANNEL -> onOpen?.let { { it(item) } }
+    YtFeedItem.KIND_PLAYLIST, YtFeedItem.KIND_CHANNEL, YtFeedItem.KIND_TAG -> onOpen?.let { { it(item) } }
     else -> null
 }
 

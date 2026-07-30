@@ -53,6 +53,10 @@ data class YtFeedItem(
         const val KIND_VIDEO = "video"
         const val KIND_PLAYLIST = "playlist"
         const val KIND_CHANNEL = "channel"
+
+        /** A navigation tag/button (a mood/genre or an Explore entry) — no artwork; rendered as a
+         *  pill in a [YtSection.LAYOUT_TAGS] section, opening its browse via [url]. */
+        const val KIND_TAG = "tag"
         const val OWNER_BADGE_ARTIST = "artist"
         const val OWNER_BADGE_VERIFIED = "verified"
     }
@@ -145,6 +149,9 @@ data class YtSection(
     companion object {
         const val LAYOUT_LIST = "list"
         const val LAYOUT_GRID = "grid"
+
+        /** A wrap of navigation pills ([YtFeedItem.KIND_TAG]) — e.g. Explore's Moods & genres. */
+        const val LAYOUT_TAGS = "tags"
     }
 }
 
