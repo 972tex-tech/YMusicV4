@@ -1,5 +1,6 @@
 package ymusic.ytmedia.cache
 
+import kmpcommon.WorkerThread
 import okio.BufferedSink
 import ymusic.ytmedia.sabr.MediaHeader
 
@@ -28,8 +29,8 @@ class MediaCache(
     }
 }
 
-/** A one-segment mirror handle: write the segment's bytes to [sink], then [commit] (or [abort]).
- *  [commit]/[abort] do blocking IO on the calling thread (see [MediaBlobCache]) — call off the main thread. */
+/** A one-segment mirror handle: write the segment's bytes to [sink], then [commit] (or [abort]). */
+@WorkerThread
 class SegmentFill internal constructor(private val writer: BlobWriter) {
     val sink: BufferedSink get() = writer.sink
     fun commit() = writer.commit()

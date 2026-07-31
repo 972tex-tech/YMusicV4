@@ -1,5 +1,6 @@
 package ymusic.ytmedia.cache
 
+import kmpcommon.WorkerThread
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import okio.Buffer
@@ -14,10 +15,9 @@ import okio.buffer
 /**
  * okio-`FileSystem`-backed [MediaBlobCache]. Committed bytes live in **immutable span files**
  * `{root}/{key}/{start}_{len}.span`; an in-memory index (`key → spans`, populated from the dir on first
- * touch of a key) tracks their ranges, `lastUsed`, and read pins. Every method does blocking file IO on
- * the **calling thread** — the caller must invoke them off the main thread (see [MediaBlobCache]). The
- * index, pin counts, in-flight write set and totals are guarded by one [lock] — small, IO-free critical
- * sections — so calls from multiple worker threads (and the synchronous [PinnedSource.close]) are safe.
+ * touch of a key) tracks their ranges, `lastUsed`, and read pins. The index, pin counts, in-flight write
+ * set and totals are guarded by one [lock] — small, IO-free critical sections — so calls from multiple
+ * worker threads (and the synchronous [PinnedSource.close]) are safe.
  *
  * This reproduces media3 `SimpleCache`'s six concurrency guarantees without media3 (see
  * `docs/player/sabr-cache-plan.md` §3a):
@@ -36,6 +36,7 @@ import okio.buffer
  *    null (→ network) on any gap, holding no lock across plan→serve, so races resolve to a miss.
  * 6. **LRU eviction** — on commit, evict least-recently-used **unpinned** spans until total ≤ [budgetBytes].
  */
+@WorkerThread
 class DiskMediaBlobCache(
     private val root: Path,
     private val fileSystem: FileSystem,

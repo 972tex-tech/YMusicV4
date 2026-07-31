@@ -1,5 +1,6 @@
 package ymusic.ytmedia.cache
 
+import kmpcommon.WorkerThread
 import okio.BufferedSink
 import okio.Source
 
@@ -13,13 +14,10 @@ import okio.Source
  * bytes live in **immutable span files** `{root}/{key}/{start}_{len}.span`, so reads never see a torn write.
  * The interesting part is the concurrency model reproduced from media3's `SimpleCache` by hand — atomic
  * commit, per-block resume, single-writer dedupe, read pinning, plan-then-reacquire, LRU — documented on
- * [DiskMediaBlobCache].
- *
- * **Threading:** every method (and [BlobWriter.sink] writes / [BlobWriter.commit] / [BlobWriter.abort])
- * performs blocking filesystem IO on the calling thread — **the caller is responsible for invoking these
- * off the main thread** (a worker / IO dispatcher). The in-memory span index is guarded internally, so
- * concurrent calls from multiple worker threads are safe.
+ * [DiskMediaBlobCache]. The in-memory span index is guarded internally, so concurrent calls from multiple
+ * worker threads are safe.
  */
+@WorkerThread
 interface MediaBlobCache {
 
     /**
@@ -58,11 +56,11 @@ interface MediaBlobCache {
 interface PinnedSource : Source
 
 /**
- * A single region's writer. [sink] takes the region's bytes (blocking okio — call off the main thread);
- * the cache spills them to a temp file and commits immutable span blocks as they fill. Finish with exactly
- * one of [commit] / [abort]; both are idempotent and release the in-flight lock for the region. Like the
- * rest of [MediaBlobCache], these do blocking IO on the calling thread — invoke off the main thread.
+ * A single region's writer. [sink] takes the region's bytes; the cache spills them to a temp file and
+ * commits immutable span blocks as they fill. Finish with exactly one of [commit] / [abort]; both are
+ * idempotent and release the in-flight lock for the region.
  */
+@WorkerThread
 interface BlobWriter {
     val sink: BufferedSink
 
