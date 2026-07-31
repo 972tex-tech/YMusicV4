@@ -145,6 +145,14 @@ object DesignSpacing {
 
     /** Between grid cards (expanded windows; mobile-class uses [Space8]). */
     val Gutter = Space16
+
+    /** Feed list rows' vertical inset — rows sit 2× this apart. Deliberately off the step scale:
+     *  [Space8]'s 16dp rhythm read cramped against 92dp thumbs (review 2026-07-31) and the next
+     *  step doubles it, so the row rhythm takes the midpoint. */
+    val ListRowVertical = 10.dp
+
+    /** Vertical gap between grid rows, every width class (the compact gutter stays horizontal). */
+    val GridRowGap = Space16
 }
 
 /**

@@ -133,8 +133,13 @@ fun SectionHeader(
     Row(
         // Sections separate as hairline + air: the feed draws a divider above every section but
         // the first, and this top inset is the air on both sides of it.
-        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier.fillMaxWidth().padding(
+            start = DesignSpacing.MarginCompact,
+            end = DesignSpacing.MarginCompact,
+            top = DesignSpacing.Space16,
+            bottom = DesignSpacing.Space8,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The scanning anchor: a small accent tick before the title — the same accent the tab
@@ -219,7 +224,12 @@ fun FeedListItem(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             // The trailing inset is the ⋮ button's own touch padding, so the row stops 4dp short of
             // the edge — same as the Library song row, so the two lists' dots align.
-            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            .padding(
+                start = DesignSpacing.MarginCompact,
+                end = DesignSpacing.Space4,
+                top = DesignSpacing.ListRowVertical,
+                bottom = DesignSpacing.ListRowVertical,
+            ),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {

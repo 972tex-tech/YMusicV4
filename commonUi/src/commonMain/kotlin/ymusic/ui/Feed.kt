@@ -397,7 +397,11 @@ private fun FeedSections(
                     // header's own top inset supplies the space below it).
                     item {
                         HorizontalDivider(
-                            Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                            Modifier.padding(
+                                start = DesignSpacing.MarginCompact,
+                                end = DesignSpacing.MarginCompact,
+                                top = DesignSpacing.Space16,
+                            ),
                             color = DesignColors.Divider,
                         )
                     }
@@ -511,7 +515,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                     .padding(
                         start = metrics.margin - metrics.inset,
                         end = metrics.margin - metrics.inset,
-                        bottom = (DesignSpacing.Space16 - metrics.inset * 2).coerceAtLeast(0.dp),
+                        bottom = (DesignSpacing.GridRowGap - metrics.inset * 2).coerceAtLeast(0.dp),
                     ),
                 horizontalArrangement = Arrangement.spacedBy(metrics.gutter - metrics.inset * 2),
             ) {
