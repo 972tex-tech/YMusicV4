@@ -170,6 +170,10 @@ data class YtFeedPage(
      *  [YtChip.token] is a server continuation re-serving the page in that order; the selected one
      *  is the current order. Continuation pages omit it — the UI carries it over like [chips]. */
     val sort: List<YtChip> = emptyList(),
+    /** Layout intent for the chip row: true = wrap to as many lines as needed (the music library),
+     *  false = the default horizontal scroll. Set by the serving engine command on every response
+     *  of its surface. */
+    val chipsWrap: Boolean = false,
     /** Search only: the filter submenu groups (fresh pages; continuations omit them). */
     val filterGroups: List<YtFilterGroup> = emptyList(),
     /** Detail surfaces only (channel / playlist browse). */

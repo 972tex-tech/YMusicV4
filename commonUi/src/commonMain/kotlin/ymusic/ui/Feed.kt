@@ -98,6 +98,8 @@ class Pager(
             val selectedChipToken: String?,
             /** The page's sort menu (music library): option tokens are server continuations. */
             val sort: List<YtChip> = emptyList(),
+            /** Engine layout intent: wrap the chip row instead of scrolling it (YtFeedPage.chipsWrap). */
+            val chipsWrap: Boolean = false,
             val continuation: String?,
             val loadingMore: Boolean,
             /** Pull-to-refresh in flight: the list stays on screen, only the pull indicator spins. */
@@ -126,14 +128,16 @@ class Pager(
         // from. A plain refresh is a new surface (a channel tab switch): stale chips must NOT leak
         // into it, or a Playlists tab shows the Videos tab's sort chips and replays their tokens.
         val carryOver = chipToken != null
-        val previousChips = if (carryOver) (_state.value as? State.Ready)?.chips.orEmpty() else emptyList()
-        val previousSort = if (carryOver) (_state.value as? State.Ready)?.sort.orEmpty() else emptyList()
-        val previousFilters = if (carryOver) (_state.value as? State.Ready)?.filterGroups.orEmpty() else emptyList()
+        val previous = if (carryOver) _state.value as? State.Ready else null
+        val previousChips = previous?.chips.orEmpty()
+        val previousSort = previous?.sort.orEmpty()
+        val previousWrap = previous?.chipsWrap == true
+        val previousFilters = previous?.filterGroups.orEmpty()
         _state.value = State.Loading
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                readyFrom(page, chipToken, previousChips, previousSort, previousFilters)
+                readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: TimeoutCancellationException) {
                 State.Failed(TIMEOUT_CODE, "fetch timed out after ${fetchTimeoutMs}ms")
             } catch (e: CancellationException) {
@@ -156,12 +160,13 @@ class Pager(
         val carryOver = chipToken != null
         val previousChips = if (carryOver) current.chips else emptyList()
         val previousSort = if (carryOver) current.sort else emptyList()
+        val previousWrap = carryOver && current.chipsWrap
         val previousFilters = if (carryOver) current.filterGroups else emptyList()
         _state.value = current.copy(refreshing = true)
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                readyFrom(page, chipToken, previousChips, previousSort, previousFilters)
+                readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
                 _errors.tryEmit(TIMEOUT_CODE)
@@ -178,6 +183,7 @@ class Pager(
         chipToken: String?,
         previousChips: List<YtChip>,
         previousSort: List<YtChip>,
+        previousWrap: Boolean,
         previousFilters: List<ymusic.dynamicengine.yt.YtFilterGroup>,
     ): State.Ready {
         // Selection can't ride on token identity across reloads: a chip-filtered page that DOES
@@ -195,6 +201,9 @@ class Pager(
             chips = chips,
             selectedChipToken = chips.firstOrNull { it.selected }?.token ?: chipToken,
             sort = page.sort.ifEmpty { previousSort },
+            // The serving command stamps this on every response of its surface; OR-ing in the
+            // carried value just guards a chip-tapped page that forgot it.
+            chipsWrap = page.chipsWrap || previousWrap,
             continuation = page.continuation,
             loadingMore = false,
             filterGroups = page.filterGroups.ifEmpty { previousFilters },
@@ -579,16 +588,16 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
 )
 
 /** The feed filter chips ("All / Music / Gaming…"); tapping one reloads the feed through its token.
- *  The plain rows scroll horizontally; a page that publishes a sort menu (the music library) wraps
- *  its chips to as many lines as they need instead, the sort trigger inline at the end of the wrap
- *  (the row would otherwise clip mid-chip straight into the trigger). */
+ *  The engine picks the layout ([Pager.State.Ready.chipsWrap]): wrapped to as many lines as needed
+ *  (the music library's fixed filter set), or the default horizontal scroll (the open-ended strips
+ *  everywhere else). A sort menu, when the page publishes one, rides inline at the end either way. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     if (state.chips.isEmpty() && state.sort.isEmpty()) return
     // Keep-content reload either way: the list stays put with the pull indicator spinning, so a
     // failed chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
-    if (state.sort.isNotEmpty()) {
+    if (state.chipsWrap) {
         androidx.compose.foundation.layout.FlowRow(
             Modifier
                 .fillMaxWidth()
@@ -599,7 +608,9 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
             state.chips.forEach { chip ->
                 FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
             }
-            FeedSortMenu(state.sort) { token -> pager.reload(token) }
+            if (state.sort.isNotEmpty()) {
+                FeedSortMenu(state.sort) { token -> pager.reload(token) }
+            }
         }
         return
     }
@@ -612,6 +623,9 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     ) {
         items(state.chips) { chip ->
             FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
+        }
+        if (state.sort.isNotEmpty()) {
+            item { FeedSortMenu(state.sort) { token -> pager.reload(token) } }
         }
     }
 }
