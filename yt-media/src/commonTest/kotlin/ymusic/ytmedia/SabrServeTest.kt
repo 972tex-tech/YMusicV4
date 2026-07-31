@@ -2,7 +2,6 @@ package ymusic.ytmedia
 
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.BufferedSink
@@ -81,8 +80,8 @@ class SabrServeTest {
     private suspend fun filledCache(): MediaCache {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM, ioDispatcher = Dispatchers.Default),
-            SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 }, ioDispatcher = Dispatchers.Default),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM),
+            SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 }),
         )
         val resp = Buffer().apply {
             putSegment(0, 0, 0, ByteArray(10) { 0 }, isInit = true)
@@ -127,8 +126,8 @@ class SabrServeTest {
     fun serve_misses_when_nothing_is_cached() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM, ioDispatcher = Dispatchers.Default),
-            SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 }, ioDispatcher = Dispatchers.Default),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM),
+            SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 }),
         )
         assertTrue(cache.serveSabr(request(playerTimeMs = 0)) is SabrServe.Miss)
     }

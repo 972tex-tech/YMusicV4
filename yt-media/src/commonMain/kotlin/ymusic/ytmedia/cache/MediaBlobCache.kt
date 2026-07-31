@@ -14,6 +14,11 @@ import okio.Source
  * The interesting part is the concurrency model reproduced from media3's `SimpleCache` by hand — atomic
  * commit, per-block resume, single-writer dedupe, read pinning, plan-then-reacquire, LRU — documented on
  * [DiskMediaBlobCache].
+ *
+ * **Threading:** every method (and [BlobWriter.sink] writes / [BlobWriter.commit] / [BlobWriter.abort])
+ * performs blocking filesystem IO on the calling thread — **the caller is responsible for invoking these
+ * off the main thread** (a worker / IO dispatcher). The in-memory span index is guarded internally, so
+ * concurrent calls from multiple worker threads are safe.
  */
 interface MediaBlobCache {
 
@@ -23,7 +28,7 @@ interface MediaBlobCache {
      * with eviction), which is exactly why callers plan with this and then re-acquire with [read],
      * treating a null there as a network miss (plan-then-reacquire).
      */
-    suspend fun isCached(key: String, position: Long, length: Long): Boolean
+    fun isCached(key: String, position: Long, length: Long): Boolean
 
     /**
      * Pin the spans covering `[position, position+length)` and return an immutable, stitched [Source] over
@@ -31,22 +36,22 @@ interface MediaBlobCache {
      * evicted while the returned source is open; the caller **must close it** to unpin. A null result is
      * the signal to fall through to the network.
      */
-    suspend fun read(key: String, position: Long, length: Long): PinnedSource?
+    fun read(key: String, position: Long, length: Long): PinnedSource?
 
     /**
      * A writer for one region `[position, position+length)`. Bytes stream to [BlobWriter.sink]; the caller
      * ends with [BlobWriter.commit] (persist the trailing partial block) or [BlobWriter.abort] (drop it).
      * Returns a **no-op writer** when the exact region is already committed or already being written by
-     * another coroutine — so player readahead and a download fetching the same segment never double-write
+     * another worker — so player readahead and a download fetching the same segment never double-write
      * or corrupt each other.
      */
-    suspend fun writer(key: String, position: Long, length: Long): BlobWriter
+    fun writer(key: String, position: Long, length: Long): BlobWriter
 
     /** Every stream key with at least one committed span — the `keepKeys` set for `SegmentIndex.cleanup`. */
-    suspend fun keys(): Set<String>
+    fun keys(): Set<String>
 
     /** Total bytes of all committed spans (the LRU budget is measured against this). */
-    suspend fun totalSize(): Long
+    fun totalSize(): Long
 }
 
 /** A stitched read over pinned, immutable spans. Closing it unpins them (idempotent). */
@@ -55,15 +60,16 @@ interface PinnedSource : Source
 /**
  * A single region's writer. [sink] takes the region's bytes (blocking okio — call off the main thread);
  * the cache spills them to a temp file and commits immutable span blocks as they fill. Finish with exactly
- * one of [commit] / [abort]; both are idempotent and release the in-flight lock for the region.
+ * one of [commit] / [abort]; both are idempotent and release the in-flight lock for the region. Like the
+ * rest of [MediaBlobCache], these do blocking IO on the calling thread — invoke off the main thread.
  */
 interface BlobWriter {
     val sink: BufferedSink
 
     /** Commit the trailing partial block and release the region. Blocks already committed mid-stream stay. */
-    suspend fun commit()
+    fun commit()
 
     /** Drop the uncommitted temp block and release the region. Blocks committed mid-stream still stay
      *  (they are valid cached bytes for their own ranges — the point of per-block commit). */
-    suspend fun abort()
+    fun abort()
 }

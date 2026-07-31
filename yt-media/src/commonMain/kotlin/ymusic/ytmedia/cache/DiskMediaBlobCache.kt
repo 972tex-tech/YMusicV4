@@ -2,9 +2,6 @@ package ymusic.ytmedia.cache
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
@@ -17,9 +14,10 @@ import okio.buffer
 /**
  * okio-`FileSystem`-backed [MediaBlobCache]. Committed bytes live in **immutable span files**
  * `{root}/{key}/{start}_{len}.span`; an in-memory index (`key → spans`, populated from the dir on first
- * touch of a key) tracks their ranges, `lastUsed`, and read pins. Blocking file IO runs on [ioDispatcher];
- * the index, pin counts, in-flight write set and totals are guarded by one non-suspend [lock] — small,
- * IO-free critical sections — so the synchronous [PinnedSource.close] can unpin without `runBlocking`.
+ * touch of a key) tracks their ranges, `lastUsed`, and read pins. Every method does blocking file IO on
+ * the **calling thread** — the caller must invoke them off the main thread (see [MediaBlobCache]). The
+ * index, pin counts, in-flight write set and totals are guarded by one [lock] — small, IO-free critical
+ * sections — so calls from multiple worker threads (and the synchronous [PinnedSource.close]) are safe.
  *
  * This reproduces media3 `SimpleCache`'s six concurrency guarantees without media3 (see
  * `docs/player/sabr-cache-plan.md` §3a):
@@ -43,7 +41,6 @@ class DiskMediaBlobCache(
     private val fileSystem: FileSystem,
     private val budgetBytes: Long = DEFAULT_BUDGET_BYTES,
     private val maxSpanBytes: Long = DEFAULT_MAX_SPAN_BYTES,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : MediaBlobCache {
 
     private class Span(val start: Long, val len: Long, val path: Path, var lastUsed: Long, var pins: Int) {
@@ -60,44 +57,41 @@ class DiskMediaBlobCache(
     private var totalBytes = 0L
     private var clock = 0L // monotonic LRU tick; only order matters, not wall time
 
-    override suspend fun isCached(key: String, position: Long, length: Long): Boolean =
-        withContext(ioDispatcher) {
-            ensureLoaded(key)
-            synchronized(lock) { cover(index[key], position, length) != null }
-        }
-
-    override suspend fun read(key: String, position: Long, length: Long): PinnedSource? =
-        withContext(ioDispatcher) {
-            ensureLoaded(key)
-            val chunks = synchronized(lock) {
-                val plan = cover(index[key], position, length) ?: return@synchronized null
-                val tick = ++clock
-                plan.forEach { it.span.pins++; it.span.lastUsed = tick } // pin + LRU-touch atomically
-                plan
-            } ?: return@withContext null
-            StitchedSource(chunks)
-        }
-
-    override suspend fun writer(key: String, position: Long, length: Long): BlobWriter =
-        withContext(ioDispatcher) {
-            ensureLoaded(key)
-            val token = flightToken(key, position, length)
-            val real = synchronized(lock) {
-                val taken = cover(index[key], position, length) != null || token in inFlight
-                if (!taken) inFlight += token
-                !taken
-            }
-            if (real) RealBlobWriter(key, position, token) else NoOpBlobWriter()
-        }
-
-    override suspend fun keys(): Set<String> = withContext(ioDispatcher) {
-        loadAllKeys()
-        synchronized(lock) { index.filterValues { it.isNotEmpty() }.keys.toSet() }
+    override fun isCached(key: String, position: Long, length: Long): Boolean {
+        ensureLoaded(key)
+        return synchronized(lock) { cover(index[key], position, length) != null }
     }
 
-    override suspend fun totalSize(): Long = withContext(ioDispatcher) {
+    override fun read(key: String, position: Long, length: Long): PinnedSource? {
+        ensureLoaded(key)
+        val chunks = synchronized(lock) {
+            val plan = cover(index[key], position, length) ?: return@synchronized null
+            val tick = ++clock
+            plan.forEach { it.span.pins++; it.span.lastUsed = tick } // pin + LRU-touch atomically
+            plan
+        } ?: return null
+        return StitchedSource(chunks)
+    }
+
+    override fun writer(key: String, position: Long, length: Long): BlobWriter {
+        ensureLoaded(key)
+        val token = flightToken(key, position, length)
+        val real = synchronized(lock) {
+            val taken = cover(index[key], position, length) != null || token in inFlight
+            if (!taken) inFlight += token
+            !taken
+        }
+        return if (real) RealBlobWriter(key, position, token) else NoOpBlobWriter()
+    }
+
+    override fun keys(): Set<String> {
         loadAllKeys()
-        synchronized(lock) { totalBytes }
+        return synchronized(lock) { index.filterValues { it.isNotEmpty() }.keys.toSet() }
+    }
+
+    override fun totalSize(): Long {
+        loadAllKeys()
+        return synchronized(lock) { totalBytes }
     }
 
     // --- covering (greedy max-reach; tolerates overlapping spans) ------------------------------------
@@ -247,11 +241,11 @@ class DiskMediaBlobCache(
             victims.forEach { fileSystem.delete(it, mustExist = false) }
         }
 
-        override suspend fun commit() = finish(commitTail = true)
-        override suspend fun abort() = finish(commitTail = false)
+        override fun commit() = finish(commitTail = true)
+        override fun abort() = finish(commitTail = false)
 
-        private suspend fun finish(commitTail: Boolean) = withContext(ioDispatcher) {
-            if (released) return@withContext
+        private fun finish(commitTail: Boolean) {
+            if (released) return
             released = true
             if (commitTail) {
                 sink.flush() // push whatever the buffered façade still holds into RelaySink → the temp
@@ -328,6 +322,6 @@ class DiskMediaBlobCache(
 /** Discards its bytes — returned when the region is already committed or being written elsewhere. */
 private class NoOpBlobWriter : BlobWriter {
     override val sink: BufferedSink = okio.blackholeSink().buffer()
-    override suspend fun commit() { /* nothing written */ }
-    override suspend fun abort() { /* nothing written */ }
+    override fun commit() { /* nothing written */ }
+    override fun abort() { /* nothing written */ }
 }

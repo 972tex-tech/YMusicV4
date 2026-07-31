@@ -29,7 +29,7 @@ class MediaBlobCacheTest {
 
     private fun cache(budget: Long = 512L * 1024 * 1024, maxSpan: Long = 512L * 1024): DiskMediaBlobCache {
         FileSystem.SYSTEM.deleteRecursively(dir)
-        return DiskMediaBlobCache(dir, FileSystem.SYSTEM, budgetBytes = budget, maxSpanBytes = maxSpan, ioDispatcher = Dispatchers.Default)
+        return DiskMediaBlobCache(dir, FileSystem.SYSTEM, budgetBytes = budget, maxSpanBytes = maxSpan)
     }
 
     private fun bytes(n: Int, seed: Int = 0) = ByteArray(n) { ((it + seed) and 0xFF).toByte() }
@@ -171,7 +171,7 @@ class MediaBlobCacheTest {
         // A stray temp file, as if a writer crashed mid-block.
         FileSystem.SYSTEM.write(dir / "k" / "999_abc.tmp") { write(bytes(10)) }
         // A fresh cache over the same dir recovers the committed span and sweeps the temp.
-        val c2 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, ioDispatcher = Dispatchers.Default)
+        val c2 = DiskMediaBlobCache(dir, FileSystem.SYSTEM)
         assertContentEquals(bytes(300), readAll(c2, "k", 0, 300))
         assertEquals(setOf("k"), c2.keys())
         assertTrue(spanFiles("k").none { it.endsWith(".tmp") }, "temp swept on load")

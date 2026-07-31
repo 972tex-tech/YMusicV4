@@ -28,9 +28,10 @@ class MediaCache(
     }
 }
 
-/** A one-segment mirror handle: write the segment's bytes to [sink], then [commit] (or [abort]). */
+/** A one-segment mirror handle: write the segment's bytes to [sink], then [commit] (or [abort]).
+ *  [commit]/[abort] do blocking IO on the calling thread (see [MediaBlobCache]) — call off the main thread. */
 class SegmentFill internal constructor(private val writer: BlobWriter) {
     val sink: BufferedSink get() = writer.sink
-    suspend fun commit() = writer.commit()
-    suspend fun abort() = writer.abort()
+    fun commit() = writer.commit()
+    fun abort() = writer.abort()
 }
