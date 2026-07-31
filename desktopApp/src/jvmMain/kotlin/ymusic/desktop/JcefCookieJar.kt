@@ -29,10 +29,23 @@ class JcefCookieJar(private val manager: CefCookieManager) : CookieJar {
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         val u = url.toString()
         for (c in cookies) {
+            // An already-expired cookie is a DELETION (the engine's sign-out sends these). Setting
+            // an expired CefCookie is unreliable for it — deleteCookies matches by url+name and
+            // hits the stored cookie whatever its domain/secure form.
+            if (c.persistent && c.expiresAt <= System.currentTimeMillis()) {
+                manager.deleteCookies(u, c.name)
+                continue
+            }
             val expires = if (c.persistent) Date(c.expiresAt) else null
+            // okhttp strips the leading dot a domain cookie carries; CefCookie's struct form (unlike
+            // header parsing) needs it back, or Chromium stores a host-only twin NEXT TO the real
+            // ".youtube.com" cookie instead of updating it.
+            val domain = if (c.hostOnly) c.domain else "." + c.domain
+            // Chromium rejects a __Secure-/__Host- write without the Secure bit, even over https.
+            val secure = c.secure || c.name.startsWith("__Secure-") || c.name.startsWith("__Host-")
             manager.setCookie(
                 u,
-                CefCookie(c.name, c.value, c.domain, c.path, c.secure, c.httpOnly, Date(), Date(), expires != null, expires),
+                CefCookie(c.name, c.value, domain, c.path, secure, c.httpOnly, Date(), Date(), expires != null, expires),
             )
         }
     }
