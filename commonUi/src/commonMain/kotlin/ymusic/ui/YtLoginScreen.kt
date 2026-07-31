@@ -139,7 +139,18 @@ internal class AccountController(
         scope.launch {
             val ok = runCatching { graph.engines.ytLoginStatus() }.getOrDefault(false)
             _signedIn.value = ok
-            if (ok) _account.value = runCatching { graph.engines.ytAccountInfo() }.getOrNull()
+            if (ok) {
+                val acct = runCatching { graph.engines.ytAccountInfo() }.getOrNull()
+                if (acct != null && !acct.signedIn) {
+                    // The engine found no account behind the cookies (a revoked jar — remote
+                    // logout). Run the full sign-out so the state, session and feeds all reset
+                    // instead of showing a phantom profile. A fetch FAILURE is not this: acct
+                    // stays null and the cookie gate's answer stands.
+                    signOut()
+                } else {
+                    _account.value = acct
+                }
+            }
         }
     }
 
