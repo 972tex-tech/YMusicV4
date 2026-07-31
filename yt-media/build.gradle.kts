@@ -32,6 +32,9 @@ kotlin {
             // api: SabrSession's public constructor takes a KmpHttpClient (the app's standard client).
             api(project(":kmpHttp:core"))
             implementation(Libs.Kotlinx.coroutinesCore)
+            // MediaBlobCache guards its in-memory span index with a SynchronizedObject so the (non-suspend)
+            // PinnedSource.close() can unpin without runBlocking.
+            implementation(Libs.Kotlinx.atomicfu)
         }
 
         commonTest.dependencies {
