@@ -433,6 +433,10 @@ private fun FeedSections(
 /** Pills shown while a collapsible tag section is collapsed (roughly two rows). */
 private const val TAGS_COLLAPSED = 10
 
+/** Default rows a collapsed section keeps, absent an engine override (see YtSection.collapsed*Rows). */
+private const val COLLAPSED_LIST_ROWS = 4
+private const val COLLAPSED_GRID_ROWS = 3
+
 private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
     columns: Int,
@@ -478,8 +482,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         }
         return
     }
-    // Collapsed shows two rows: 2 items in a single-column list, two grid rows otherwise.
-    val collapsedCount = if (columns == 1) 2 else columns * 2
+    // A collapsed section keeps a few rows — the app's 4-list/3-grid policy unless the section
+    // carries its own counts from the engine (YtSection.collapsed*Rows, remotely tunable).
+    val collapsedCount = if (columns == 1) {
+        section.collapsedListRows ?: COLLAPSED_LIST_ROWS
+    } else {
+        columns * (section.collapsedGridRows ?: COLLAPSED_GRID_ROWS)
+    }
     val shown = if (expanded) section.items else section.items.take(collapsedCount)
     if (columns == 1) {
         items(shown.size) { i ->

@@ -133,6 +133,8 @@ private suspend fun readSection(r: JsonReader): YtSection {
     var layout = YtSection.LAYOUT_LIST
     var items: List<YtFeedItem> = emptyList()
     var collapsible = false
+    var collapsedListRows: Int? = null
+    var collapsedGridRows: Int? = null
     var continuation: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
@@ -141,12 +143,14 @@ private suspend fun readSection(r: JsonReader): YtSection {
             "layout" -> layout = r.stringOrNull() ?: YtSection.LAYOUT_LIST
             "items" -> items = r.readArrayOf { readItem(it) }
             "collapsible" -> collapsible = r.boolean()
+            "collapsedListRows" -> collapsedListRows = r.intOrNull()
+            "collapsedGridRows" -> collapsedGridRows = r.intOrNull()
             "continuation" -> continuation = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtSection(header, layout, items, collapsible, continuation)
+    return YtSection(header, layout, items, collapsible, collapsedListRows, collapsedGridRows, continuation)
 }
 
 private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
