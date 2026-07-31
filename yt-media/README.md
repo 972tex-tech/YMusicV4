@@ -8,7 +8,9 @@ protocol field guide and the legacy file map).
 Everything the protocol needs per video — the SABR streaming URL (sig/n **already decoded**),
 `videoPlaybackUstreamerConfig`, PO token, client info, adaptive formats — is fed in by the caller
 as plain data (`SabrStreamSpec`). In the app that data comes from the webview player surface;
-in tests it comes from fixtures. HTTP is likewise injected as a function, not a client dependency.
+in tests it comes from fixtures. HTTP goes through the app's standard `KmpHttpClient` (`:kmpHttp:core`):
+the caller configures it (cookie jar, timeouts) and passes it to `SabrSession.download()` with the
+matching User-Agent, so the SABR requests share the WebView session's cookie/UA identity.
 
 Layers (bottom-up):
 - `proto/` — minimal protobuf wire reader/writer (varint, fixed32/64, length-delimited)
