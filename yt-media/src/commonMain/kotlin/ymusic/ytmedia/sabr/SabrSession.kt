@@ -319,10 +319,20 @@ class SabrSession(
         }
     }
 
-    /** Ensure a length-delimited part is buffered, then parse its fields in place (no slice copy). */
+    /**
+     * Parse a length-delimited part's fields in place from the shared async buffer (no slice copy),
+     * but ALWAYS advance the buffer by exactly [size] — even if parsing throws or stops short. A
+     * malformed control part (whose throw a caller may swallow, e.g. SABR_CONTEXT_UPDATE) must not
+     * leave leftover bytes that desync the next `readUmpPartHeader`.
+     */
     private suspend fun BufferedAsyncSource.readFields(size: Long): List<ProtoField> {
         require(size)
-        return ProtoReader(buffer, size).readAllFields()
+        val remainderAfter = buffer.size - size
+        try {
+            return ProtoReader(buffer, size).readAllFields()
+        } finally {
+            if (buffer.size > remainderAfter) buffer.skip(buffer.size - remainderAfter)
+        }
     }
 
     private fun advanceIfContiguous(header: MediaHeader, audio: SabrTrack, video: SabrTrack?): Boolean {

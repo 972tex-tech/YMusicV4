@@ -134,6 +134,27 @@ class SabrSessionTest {
         assertEquals(total, audio.file.length())
     }
 
+    // A malformed control part whose parse error is swallowed (SABR_CONTEXT_UPDATE) must still
+    // advance the buffer by its full part size — otherwise leftover bytes desync every part after it.
+    @Test
+    fun a_malformed_swallowed_part_does_not_desync_following_parts() = runTest {
+        val session = SabrSession(random = Random(4))
+        val fmt = audioFormat.copy(clen = 20)
+        val audio = SabrTrack(fmt, MemoryFile())
+        val resp = Buffer().apply {
+            putPolicy(null)
+            // SABR_CONTEXT_UPDATE part of 5 bytes whose contents claim a 5-byte sub-field after only
+            // 2 header bytes → ProtoReader throws mid-part, leaving 3 unconsumed bytes.
+            writeUmpPartHeader(UmpPart.SABR_CONTEXT_UPDATE, 5)
+                .writeByte(0x0A).writeByte(0x05).writeByte(1).writeByte(2).writeByte(3)
+            putSegment(0, 251, 0, 0, ByteArray(10), isInit = true)
+            putSegment(1, 251, 1, 10, ByteArray(10) { 1 }, isInit = false)
+        }
+        val outcome = session.readResponse(asyncOf(resp), audio, null)
+        assertEquals(2, outcome.completedSegments, "segments after the bad part must still parse")
+        assertEquals(20, audio.file.length())
+    }
+
     @Test
     fun surfaces_ump_redirect_from_a_response() = runTest {
         val session = SabrSession(random = Random(3))
