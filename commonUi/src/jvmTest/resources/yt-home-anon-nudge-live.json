@@ -1,0 +1,40 @@
+{
+ "contents": {
+  "twoColumnBrowseResultsRenderer": {
+   "tabs": [
+    {
+     "tabRenderer": {
+      "content": {
+       "richGridRenderer": {
+        "contents": [
+         {
+          "richSectionRenderer": {
+           "content": {
+            "feedNudgeRenderer": {
+             "title": {
+              "runs": [
+               {
+                "text": "Try searching to get started"
+               }
+              ]
+             },
+             "subtitle": {
+              "runs": [
+               {
+                "text": "Start watching videos to help us build a feed of videos you'll love."
+               }
+              ]
+             }
+            }
+           }
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

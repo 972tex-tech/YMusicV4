@@ -174,6 +174,11 @@ data class YtFeedPage(
      *  false = the default horizontal scroll. Set by the serving engine command on every response
      *  of its surface. */
     val chipsWrap: Boolean = false,
+    /** The source's OWN empty-state explainer (anonymous Home's "Try searching to get started" +
+     *  subtitle), localized by YouTube. Shown by the app's empty state in place of its generic
+     *  message when the page has no items; null = the app's default. */
+    val emptyTitle: String? = null,
+    val emptyMessage: String? = null,
     /** Search only: the filter submenu groups (fresh pages; continuations omit them). */
     val filterGroups: List<YtFilterGroup> = emptyList(),
     /** Detail surfaces only (channel / playlist browse). */

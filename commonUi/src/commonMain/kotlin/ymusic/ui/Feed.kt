@@ -100,6 +100,10 @@ class Pager(
             val sort: List<YtChip> = emptyList(),
             /** Engine layout intent: wrap the chip row instead of scrolling it (YtFeedPage.chipsWrap). */
             val chipsWrap: Boolean = false,
+            /** The source's own empty-state explainer (YtFeedPage.emptyTitle/emptyMessage) —
+             *  YouTube's localized words, shown over the app's generic empty text when present. */
+            val emptyTitle: String? = null,
+            val emptyMessage: String? = null,
             val continuation: String?,
             val loadingMore: Boolean,
             /** Pull-to-refresh in flight: the list stays on screen, only the pull indicator spins. */
@@ -204,6 +208,8 @@ class Pager(
             // The serving command stamps this on every response of its surface; OR-ing in the
             // carried value just guards a chip-tapped page that forgot it.
             chipsWrap = page.chipsWrap || previousWrap,
+            emptyTitle = page.emptyTitle,
+            emptyMessage = page.emptyMessage,
             continuation = page.continuation,
             loadingMore = false,
             filterGroups = page.filterGroups.ifEmpty { previousFilters },
@@ -317,7 +323,12 @@ fun FeedList(
                     Column(modifier) {
                         topContent?.invoke()
                         FeedChips(s, pager)
-                        EmptyState(emptyMessage) { pager.refresh(s.selectedChipToken) }
+                        // The source's own explainer (anonymous Home's "Try searching to get
+                        // started") beats the surface's generic empty text.
+                        EmptyState(
+                            s.emptyMessage ?: emptyMessage,
+                            title = s.emptyTitle,
+                        ) { pager.refresh(s.selectedChipToken) }
                     }
                 } else {
                     FeedSections(s, pager, coordinator, modifier, onOpen, onPlayItem, topContent, listState, onDeeplink)
@@ -343,9 +354,15 @@ private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, conten
     }
 }
 
-/** Full-surface empty page: picture + message + an emphasized reload action. */
+/** Full-surface empty page: picture + message + an emphasized reload action. [title], when the
+ *  source supplies its own explainer (anonymous Home's nudge), leads in emphasis over the message. */
 @Composable
-internal fun EmptyState(message: String, modifier: Modifier = Modifier, onReload: () -> Unit) {
+internal fun EmptyState(
+    message: String,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    onReload: () -> Unit,
+) {
     CenteredBox(modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(
@@ -354,7 +371,19 @@ internal fun EmptyState(message: String, modifier: Modifier = Modifier, onReload
                 Modifier.size(56.dp).padding(bottom = 4.dp),
                 tint = DesignColors.PlaceholderIcon,
             )
-            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (title != null) {
+                Text(
+                    title,
+                    style = TextStyle(fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                    color = DesignColors.InkStrong,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+            Text(
+                message,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
             Button(onClick = onReload, modifier = Modifier.padding(top = 8.dp)) {
                 Text(stringResource(Res.string.reload))
             }
