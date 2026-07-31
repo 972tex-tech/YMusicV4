@@ -28,12 +28,14 @@ class JcefCookieJar(private val manager: CefCookieManager) : CookieJar {
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         val u = url.toString()
+        var deleted = false
         for (c in cookies) {
             // An already-expired cookie is a DELETION (the engine's sign-out sends these). Setting
             // an expired CefCookie is unreliable for it — deleteCookies matches by url+name and
             // hits the stored cookie whatever its domain/secure form.
             if (c.persistent && c.expiresAt <= System.currentTimeMillis()) {
                 manager.deleteCookies(u, c.name)
+                deleted = true
                 continue
             }
             val expires = if (c.persistent) Date(c.expiresAt) else null
@@ -48,6 +50,11 @@ class JcefCookieJar(private val manager: CefCookieManager) : CookieJar {
                 CefCookie(c.name, c.value, domain, c.path, secure, c.httpOnly, Date(), Date(), expires != null, expires),
             )
         }
+        // CEF persists its cookie DB LAZILY, and the app can die by Runtime.halt (the terminate
+        // watchdog) before it ever flushes — a sign-out's deletions would silently roll back on
+        // the next launch (seen live 2026-07-31: the full auth set resurrected). Deletions are the
+        // semantically critical writes, so force them to disk; routine rotations self-heal.
+        if (deleted) manager.flushStore(null)
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
