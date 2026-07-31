@@ -47,6 +47,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -584,9 +588,36 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
 private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     if (state.chips.isEmpty() && state.sort.isEmpty()) return
     val chipScroll = rememberLazyListState()
+    // A chip clipped by the row's right edge would butt straight into the sort trigger (neither has
+    // a background) — fade the chips out into the surface just before it so the seam reads as
+    // depth, not collision.
+    val surface = DesignColors.Surface
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         LazyRow(
-            Modifier.weight(1f).horizontalWheelScroll(chipScroll),
+            Modifier
+                .weight(1f)
+                .horizontalWheelScroll(chipScroll)
+                .then(
+                    if (state.sort.isEmpty()) {
+                        Modifier
+                    } else {
+                        Modifier.drawWithContent {
+                            drawContent()
+                            val fade = DesignSpacing.Space24.toPx()
+                            drawRect(
+                                Brush.horizontalGradient(
+                                    // NOT Color.Transparent: transparent BLACK grays the ramp.
+                                    0f to surface.copy(alpha = 0f),
+                                    1f to surface,
+                                    startX = size.width - fade,
+                                    endX = size.width,
+                                ),
+                                topLeft = Offset(size.width - fade, 0f),
+                                size = Size(fade, size.height),
+                            )
+                        }
+                    },
+                ),
             state = chipScroll,
             contentPadding = PaddingValues(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
             horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
