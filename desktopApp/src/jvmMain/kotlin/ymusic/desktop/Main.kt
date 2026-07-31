@@ -34,6 +34,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -111,6 +112,15 @@ fun main() {
             },
         ) {
             var error by remember { mutableStateOf<String?>(null) }
+
+            MenuBar {
+                Menu("Debug") {
+                    // Enabled once CEF is up (the graph builds right after createClient).
+                    Item("Cookie inspector (shared CEF profile)", enabled = graph != null) {
+                        openCookieInspector(cefManager)
+                    }
+                }
+            }
 
             LaunchedEffect(Unit) {
                 try {

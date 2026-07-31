@@ -63,6 +63,10 @@ class CefManager {
         cefApp.createClient()
     }
 
+    /** A fresh client off the already-initialized CefApp (a [createClient] must have run first) —
+     *  same process, same one Chromium profile; used by dev windows like the cookie inspector. */
+    fun createExtraClient(): CefClient = checkNotNull(app) { "CEF not initialized" }.createClient()
+
     /** Wait until CEF publishes its global request context and persistent cookie store. */
     suspend fun awaitCookieManager(): CefCookieManager {
         repeat(COOKIE_MANAGER_ATTEMPTS) {
