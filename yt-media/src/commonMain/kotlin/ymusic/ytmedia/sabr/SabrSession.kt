@@ -12,11 +12,11 @@ import kotlinx.coroutines.delay
 import okio.BufferedSink
 import okio.IOException
 import okio.use
+import ymusic.ytmedia.proto.ProtoField
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.ump.UmpPart
 import ymusic.ytmedia.ump.copyFully
 import ymusic.ytmedia.ump.readBytesFully
-import ymusic.ytmedia.ump.readPart
 import ymusic.ytmedia.ump.readUmpPartHeader
 import ymusic.ytmedia.ump.skipFully
 import kotlin.random.Random
@@ -238,7 +238,7 @@ class SabrSession(
                     }
 
                     UmpPart.MEDIA_HEADER -> {
-                        val header = MediaHeader.from(ProtoReader(body.readPart(partSize)).readAllFields())
+                        val header = MediaHeader.from(body.readFields(partSize))
                         check(!open.containsKey(header.headerId)) { "duplicate UMP header id ${header.headerId}" }
                         headers++
                         minSeg = minOf(minSeg, header.segmentIndex)
@@ -268,7 +268,7 @@ class SabrSession(
                     }
 
                     UmpPart.NEXT_REQUEST_POLICY -> {
-                        val policy = NextRequestPolicy.from(ProtoReader(body.readPart(partSize)).readAllFields())
+                        val policy = NextRequestPolicy.from(body.readFields(partSize))
                         policy.playbackCookie?.let { playbackCookie = it }
                         backoffMs = policy.backoffTimeMs ?: 0
                     }
@@ -281,7 +281,7 @@ class SabrSession(
 
                     UmpPart.SABR_CONTEXT_UPDATE -> {
                         val update = runCatching {
-                            SabrContextUpdate.fromUmpResponse(ProtoReader(body.readPart(partSize)).readAllFields())
+                            SabrContextUpdate.fromUmpResponse(body.readFields(partSize))
                         }.getOrNull()
                         if (update != null) sabrContextUpdates[update.type] = update
                     }
@@ -317,6 +317,12 @@ class SabrSession(
             if (fileEnd < partStart) throw IOException("gap in download stream at ${state.header.itag}")
             body.skipFully(dataSize) // already have these bytes
         }
+    }
+
+    /** Ensure a length-delimited part is buffered, then parse its fields in place (no slice copy). */
+    private suspend fun BufferedAsyncSource.readFields(size: Long): List<ProtoField> {
+        require(size)
+        return ProtoReader(buffer, size).readAllFields()
     }
 
     private fun advanceIfContiguous(header: MediaHeader, audio: SabrTrack, video: SabrTrack?): Boolean {

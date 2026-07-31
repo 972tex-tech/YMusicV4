@@ -27,14 +27,32 @@ class ProtoFieldLen(fieldNumber: Int, val bytes: ByteArray) : ProtoField(fieldNu
     val asMessage: List<ProtoField> by lazy { ProtoReader(Buffer().write(bytes)).readAllFields() }
 }
 
-class ProtoReader(private val source: BufferedSource) {
-    fun hasMore(): Boolean = !source.exhausted()
+/**
+ * Reads protobuf fields from [source]. [byteLimit] bounds how many bytes belong to this message —
+ * pass a length-delimited part's size to parse it **in place** from a shared buffer (e.g. a
+ * `BufferedAsyncSource.buffer` that still holds following parts) without slicing it out first.
+ * Default is unbounded (reads until the source is exhausted).
+ */
+class ProtoReader(private val source: BufferedSource, byteLimit: Long = Long.MAX_VALUE) {
+    private var remaining = byteLimit
+
+    fun hasMore(): Boolean = remaining > 0 && !source.exhausted()
+
+    private fun readByte(): Byte {
+        remaining -= 1
+        return source.readByte()
+    }
+
+    private fun readBytes(length: Long): ByteArray {
+        remaining -= length
+        return source.readByteArray(length)
+    }
 
     private fun readVarInt(): Long {
         var result = 0L
         var shift = 0
         while (true) {
-            val b = source.readByte().toInt()
+            val b = readByte().toInt()
             result = result or ((b and 0x7F).toLong() shl shift)
             if (b and 0x80 == 0) break
             shift += 7
@@ -48,9 +66,9 @@ class ProtoReader(private val source: BufferedSource) {
         val fieldNumber = (tag shr 3).toInt()
         return when (val wireType = (tag and 7).toInt()) {
             WIRE_TYPE_VARINT -> ProtoFieldVarInt(fieldNumber, readVarInt())
-            WIRE_TYPE_FIXED64 -> ProtoFieldFixed64(fieldNumber, source.readByteArray(8))
-            WIRE_TYPE_FIXED32 -> ProtoFieldFixed32(fieldNumber, source.readByteArray(4))
-            WIRE_TYPE_LEN -> ProtoFieldLen(fieldNumber, source.readByteArray(readVarInt()))
+            WIRE_TYPE_FIXED64 -> ProtoFieldFixed64(fieldNumber, readBytes(8))
+            WIRE_TYPE_FIXED32 -> ProtoFieldFixed32(fieldNumber, readBytes(4))
+            WIRE_TYPE_LEN -> ProtoFieldLen(fieldNumber, readBytes(readVarInt()))
             else -> throw IOException("Unsupported wire type: $wireType")
         }
     }

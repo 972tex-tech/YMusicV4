@@ -51,6 +51,24 @@ class ProtoTest {
         assertEquals(0, writer.size)
     }
 
+    @Test
+    fun byte_limit_parses_one_message_in_place_leaving_the_rest() {
+        // Two length-delimited messages concatenated in one buffer (like consecutive UMP parts).
+        val first = ProtoWriter().varint(1, 7).string(2, "a")
+        val second = ProtoWriter().varint(1, 99)
+        val buffer = Buffer().write(first.toByteArray()).write(second.toByteArray())
+        val firstSize = first.size
+
+        // Bounded reader consumes exactly the first message and stops, though more bytes follow.
+        val fields = ProtoReader(buffer, firstSize).readAllFields()
+        assertEquals(7L, fields.varint(1))
+        assertEquals("a", fields.string(2))
+        assertEquals(second.size, buffer.size) // the second message is untouched
+
+        // The buffer is positioned to read the second message next.
+        assertEquals(99L, ProtoReader(buffer).readAllFields().varint(1))
+    }
+
     // The writer never emits fixed32/64, but responses may contain them — decode little-endian.
     @Test
     fun reader_decodes_fixed_width_fields() {

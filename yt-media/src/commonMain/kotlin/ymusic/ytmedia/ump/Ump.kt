@@ -1,7 +1,6 @@
 package ymusic.ytmedia.ump
 
 import kmpcommon.io.BufferedAsyncSource
-import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
 
@@ -108,13 +107,6 @@ suspend fun BufferedAsyncSource.readUmpPartHeader(): UmpPartHeader {
 suspend fun BufferedAsyncSource.readBytesFully(count: Long): ByteArray {
     require(count)
     return buffer.readByteArray(count)
-}
-
-/** Read exactly [count] bytes into a fresh [Buffer] (segments moved, no intermediate ByteArray) —
- *  for parsing a length-delimited part payload with `ProtoReader`. */
-suspend fun BufferedAsyncSource.readPart(count: Long): Buffer {
-    require(count)
-    return Buffer().also { buffer.read(it, count) }
 }
 
 /** Skip exactly [count] bytes. */
