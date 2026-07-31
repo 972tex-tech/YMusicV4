@@ -5,6 +5,16 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     kotlin("multiplatform")
     id("com.android.kotlin.multiplatform.library")
+    // SegmentIndex indexes segment metadata in SQLite (the byte spans stay in MediaBlobCache on the FS).
+    id("app.cash.sqldelight")
+}
+
+sqldelight {
+    databases {
+        create("SegmentDatabase") {
+            packageName.set("ymusic.ytmedia.db")
+        }
+    }
 }
 
 kotlin {
@@ -35,11 +45,27 @@ kotlin {
             // MediaBlobCache guards its in-memory span index with a SynchronizedObject so the (non-suspend)
             // PinnedSource.close() can unpin without runBlocking.
             implementation(Libs.Kotlinx.atomicfu)
+            // api: SqlDelightSegmentIndex's constructor takes a SqlDriver (the app builds the platform one).
+            api(Libs.SqlDelight.runtime)
         }
+
+        // Platform SqlDelight drivers (jvm = JDBC, android = AndroidSqliteDriver, apple/linux = sqliter),
+        // same split as :dynamic-engine's DiskCacheStore.
+        val nativeMain by getting {
+            dependencies { implementation(Libs.SqlDelight.nativeDriver) }
+        }
+        jvmMain.dependencies { implementation(Libs.SqlDelight.sqliteDriver) }
+        androidMain.dependencies { implementation(Libs.SqlDelight.androidDriver) }
 
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(Libs.Kotlinx.coroutinesTest)
+        }
+
+        // In-memory SQLite drivers for the SegmentIndex tests (JVM = JDBC, native = sqliter).
+        jvmTest.dependencies { implementation(Libs.SqlDelight.sqliteDriver) }
+        val nativeTest by getting {
+            dependencies { implementation(Libs.SqlDelight.nativeDriver) }
         }
     }
 }

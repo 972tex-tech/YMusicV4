@@ -1,0 +1,56 @@
+-- The segment metadata index for the player cache (port of legacy SabrCacheDb.segments). One row per
+-- (itag, lmt, seg_index); the segment's *bytes* live in MediaBlobCache under formatCacheKey(itag, lmt).
+-- This table only adds the segment ⇄ (timeRange, byteRange) mapping SABR planning needs on top of those
+-- bytes. It is a queryable HINT — MediaBlobCache.isCached is the truth (see plan §3b): a row may exist
+-- while its bytes are mid-write or crash-lost, and the planner just skips it.
+CREATE TABLE segment (
+    itag          INTEGER NOT NULL,
+    lmt           INTEGER NOT NULL,
+    seg_index     INTEGER NOT NULL,
+    xtags         TEXT,
+    vid           TEXT    NOT NULL,
+    start_ms      INTEGER NOT NULL,
+    end_ms        INTEGER NOT NULL,
+    r_start       INTEGER NOT NULL,
+    r_end         INTEGER NOT NULL,
+    download_time INTEGER NOT NULL,
+    PRIMARY KEY (itag, lmt, seg_index)
+);
+
+CREATE INDEX segment_start_ms ON segment(itag, lmt, start_ms);
+CREATE INDEX segment_end_ms   ON segment(itag, lmt, end_ms);
+CREATE INDEX segment_seg      ON segment(itag, lmt, seg_index);
+
+-- INSERT OR IGNORE: the first writer of a segment wins; a re-fetch of the same bytes is a no-op (matches
+-- legacy CONFLICT_IGNORE). download_time is refreshed separately by markDownloadTime.
+save:
+INSERT OR IGNORE INTO segment(itag, lmt, seg_index, xtags, vid, start_ms, end_ms, r_start, r_end, download_time)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- The segment whose player-time window contains :playerMs (LIMIT 1 — windows don't overlap within a key).
+findByStartTime:
+SELECT * FROM segment
+WHERE itag = ? AND lmt = ? AND start_ms <= :playerMs AND end_ms >= :playerMs
+LIMIT 1;
+
+findBySegmentIndex:
+SELECT * FROM segment
+WHERE itag = ? AND lmt = ? AND seg_index = ?
+LIMIT 1;
+
+-- Downloader resume: the furthest segment fully before :byteIndex. Not covered by an index (rare, offline).
+findByByteOffset:
+SELECT * FROM segment
+WHERE itag = ? AND lmt = ? AND r_end <= :byteIndex
+ORDER BY seg_index DESC
+LIMIT 1;
+
+markDownloadTime:
+UPDATE segment SET download_time = ? WHERE itag = ? AND lmt = ?;
+
+-- cleanup(keepKeys): distinct streams so the app can filter out those with live blobs, then age-delete.
+distinctStreams:
+SELECT DISTINCT itag, lmt FROM segment;
+
+deleteStreamOlderThan:
+DELETE FROM segment WHERE itag = ? AND lmt = ? AND download_time < ?;
