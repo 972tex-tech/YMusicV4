@@ -1,6 +1,5 @@
 package ymusic.ytmedia
 
-import okio.Buffer
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.proto.ProtoWriter
 import ymusic.ytmedia.sabr.BufferedRange
@@ -23,7 +22,7 @@ import kotlin.test.assertTrue
 class SabrProtoTest {
 
     private fun parse(writer: ProtoWriter) =
-        ProtoReader(Buffer().write(writer.toByteArray())).readAllFields()
+        ProtoReader(writer.toByteArray()).readAllFields()
 
     @Test
     fun video_playback_abr_request_roundtrip() {

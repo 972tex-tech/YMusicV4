@@ -24,26 +24,29 @@ class ProtoFieldFixed32(fieldNumber: Int, val bytes: ByteArray) : ProtoField(fie
 
 class ProtoFieldLen(fieldNumber: Int, val bytes: ByteArray) : ProtoField(fieldNumber, WIRE_TYPE_LEN) {
     val asString: String by lazy { bytes.decodeToString() }
-    val asMessage: List<ProtoField> by lazy { ProtoReader(Buffer().write(bytes)).readAllFields() }
+    val asMessage: List<ProtoField> by lazy { ProtoReader(bytes).readAllFields() }
 }
 
 /**
- * Reads protobuf fields from [source]. [byteLimit] bounds how many bytes belong to this message —
- * pass a length-delimited part's size to parse it **in place** from a shared buffer (e.g. a
- * `BufferedAsyncSource.buffer` that still holds following parts) without slicing it out first.
- * Default is unbounded (reads until the source is exhausted).
+ * Reads protobuf fields from [source], bounded to [remaining] bytes — the message's own byte length.
+ * Passing an explicit length lets the message be parsed **in place** from a shared buffer (e.g. a
+ * `BufferedAsyncSource.buffer` that still holds following parts): the reader stops at the boundary
+ * and never reads into what follows. Any field that would read past [remaining] throws.
  */
-class ProtoReader(private val source: BufferedSource, byteLimit: Long = Long.MAX_VALUE) {
-    private var remaining = byteLimit
+class ProtoReader(private val source: BufferedSource, private var remaining: Long) {
+    /** Parse a self-contained protobuf message — its own byte length bounds it. */
+    constructor(bytes: ByteArray) : this(Buffer().write(bytes), bytes.size.toLong())
 
-    fun hasMore(): Boolean = remaining > 0 && !source.exhausted()
+    fun hasMore(): Boolean = remaining > 0
 
     private fun readByte(): Byte {
+        if (remaining < 1) throw IOException("protobuf field reads past the message end")
         remaining -= 1
         return source.readByte()
     }
 
     private fun readBytes(length: Long): ByteArray {
+        if (length > remaining) throw IOException("protobuf field length $length exceeds remaining $remaining")
         remaining -= length
         return source.readByteArray(length)
     }

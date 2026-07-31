@@ -13,6 +13,7 @@ import ymusic.ytmedia.proto.varint
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class ProtoTest {
@@ -29,7 +30,7 @@ class ProtoTest {
             .messages(6, listOf(ProtoWriter().varint(1, 1), ProtoWriter().varint(1, 2)))
             .toByteArray()
 
-        val fields = ProtoReader(Buffer().write(encoded)).readAllFields()
+        val fields = ProtoReader(encoded).readAllFields()
         assertEquals(Long.MAX_VALUE, fields.varint(1))
         assertEquals(0L, fields.varint(2))
         assertEquals("hello プロト", fields.string(3))
@@ -66,7 +67,15 @@ class ProtoTest {
         assertEquals(second.size, buffer.size) // the second message is untouched
 
         // The buffer is positioned to read the second message next.
-        assertEquals(99L, ProtoReader(buffer).readAllFields().varint(1))
+        assertEquals(99L, ProtoReader(buffer, second.size).readAllFields().varint(1))
+    }
+
+    @Test
+    fun a_field_length_past_the_bound_throws() {
+        // A length-delimited field (tag 0x0A = field 1, wire type 2) claiming 9 bytes, but only 3
+        // follow and the message bound is 5 — must throw rather than read into whatever comes next.
+        val bytes = byteArrayOf(0x0A, 0x09, 1, 2, 3)
+        assertFailsWith<okio.IOException> { ProtoReader(bytes).readAllFields() }
     }
 
     // The writer never emits fixed32/64, but responses may contain them — decode little-endian.
@@ -78,7 +87,7 @@ class ProtoTest {
             .writeByte((2 shl 3) or 5) // field 2, fixed32
             .writeIntLe(1_234_567)
             .readByteArray()
-        val fields = ProtoReader(Buffer().write(bytes)).readAllFields()
+        val fields = ProtoReader(bytes).readAllFields()
         assertEquals(-2L, (fields[0] as ProtoFieldFixed64).asLong)
         assertEquals(1_234_567, (fields[1] as ProtoFieldFixed32).asInt)
     }

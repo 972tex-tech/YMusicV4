@@ -1,6 +1,5 @@
 package ymusic.ytmedia.sabr
 
-import okio.Buffer
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.proto.string
 import ymusic.ytmedia.proto.varint
@@ -18,10 +17,10 @@ object SabrParts {
 
     /** UMP part 58 payload → status. 1 = ok; 2/3 = PO token rejected, media will stop. */
     fun parseStreamProtectionStatus(payload: ByteArray): Int? = runCatching {
-        ProtoReader(Buffer().write(payload)).readAllFields().varint(1)?.toInt()
+        ProtoReader(payload).readAllFields().varint(1)?.toInt()
     }.getOrNull()
 
     private fun parseStringField1(payload: ByteArray): String? = runCatching {
-        ProtoReader(Buffer().write(payload)).readAllFields().string(1)
+        ProtoReader(payload).readAllFields().string(1)
     }.getOrNull()
 }
