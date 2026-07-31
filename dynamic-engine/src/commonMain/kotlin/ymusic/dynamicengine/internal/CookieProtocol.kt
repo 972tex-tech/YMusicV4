@@ -69,8 +69,14 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
     onAccept("cookie/set") { pipe ->
         serveCookie(pipe, logger, SET_SCOPE) { head ->
             val url = head.requireHttpUrl("url")
+            val raw = head.requireStringList("setCookie")
+            logger?.log(
+                Logger.Level.DEBUG,
+                SET_SCOPE,
+                "${url.host} set-cookie=[${raw.joinToString(" | ") { redactSetCookie(it) }}]",
+            )
             // Unparseable Set-Cookie values are dropped (OkHttp semantics), not an error.
-            val cookies = head.requireStringList("setCookie").mapNotNull { parseCookie(url, it) }
+            val cookies = raw.mapNotNull { parseCookie(url, it) }
             withContext(Dispatchers.IO) { cookieJar.saveFromResponse(url, cookies) }
         }
     }
