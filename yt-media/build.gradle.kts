@@ -29,6 +29,8 @@ kotlin {
         commonMain.dependencies {
             // api: okio Source/Sink/Buffer are the module's byte API (UMP streams, proto payloads).
             api(Libs.Okio.core)
+            // api: SabrSession's public constructor takes a KmpHttpClient (the app's standard client).
+            api(project(":kmpHttp:core"))
             implementation(Libs.Kotlinx.coroutinesCore)
         }
 

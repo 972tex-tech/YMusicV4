@@ -1,5 +1,7 @@
 package ymusic.desktop
 
+import kmphttp.KmpHttpClient
+import kmphttp.RedirectOptions
 import kmphttp.create
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -9,9 +11,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okio.buffer
 import okio.sink
 import org.cef.browser.JcefOsrSurface
@@ -26,14 +25,11 @@ import ymusic.player.createWebViewPlayer
 import ymusic.ytmedia.sabr.AdaptiveFormat
 import ymusic.ytmedia.sabr.ClientInfo
 import ymusic.ytmedia.sabr.DownloadFile
-import ymusic.ytmedia.sabr.SabrHttp
-import ymusic.ytmedia.sabr.SabrHttpResponse
 import ymusic.ytmedia.sabr.SabrSession
 import ymusic.ytmedia.sabr.SabrStreamSpec
 import ymusic.ytmedia.sabr.SabrTrack
 import java.awt.Dimension
 import java.io.File
-import java.util.concurrent.TimeUnit
 import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.OverlayLayout
@@ -69,7 +65,7 @@ fun main(args: Array<String>) {
     val probeProfile = File(System.getProperty("user.home"), ".ymusic/jcef-probe-cache")
     val cefClient = runBlocking { cef.createClient(cacheDir = probeProfile) }
     val cookieManager = runBlocking { cef.awaitCookieManager() }
-    val cookieJar = JcefCookieJar(cookieManager)
+    val cefCookieJar = JcefCookieJar(cookieManager)
     val webViewJs = readWebViewJsForSabr()
 
     val surface = JcefOsrSurface()
@@ -115,10 +111,17 @@ fun main(args: Array<String>) {
             val ext = if (audio.mimeType.contains("webm") || audio.mimeType.contains("opus")) "webm" else "m4a"
             val outFile = File(outDir, "$videoId.$ext")
             outFile.delete()
-            val http = okHttpSabrTransport(cookieJar)
+            // The app's standard client, carrying the CEF cookies and defaulting to no-redirect
+            // (SABR signals redirects itself). JcefCookieJar is an okhttp3.CookieJar == kmphttp.CookieJar.
+            val sabrClient = KmpHttpClient.create {
+                cookieJar = cefCookieJar
+                defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
+            }
             val startedAt = System.currentTimeMillis()
             withContext(Dispatchers.IO) {
-                SabrSession(http, log = { println("[sabr] $it") }).download(
+                SabrSession(log = { println("[sabr] $it") }).download(
+                    client = sabrClient,
+                    userAgent = CefManager.CHROME_USER_AGENT,
                     spec = spec,
                     audio = SabrTrack(audio, FileDownloadFile(outFile)),
                     progress = { done, total, _, _ ->
@@ -209,32 +212,6 @@ private fun pickAudioFormat(formats: List<AdaptiveFormat>): AdaptiveFormat {
     return audio.sortedWith(
         compareByDescending<AdaptiveFormat> { it.mimeType.contains("webm") }.thenByDescending { it.clen },
     ).first()
-}
-
-private fun okHttpSabrTransport(cookieJar: JcefCookieJar): SabrHttp {
-    val client = OkHttpClient.Builder()
-        .cookieJar(cookieJar)
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .readTimeout(0, TimeUnit.MILLISECONDS) // long UMP streams
-        .build()
-    return SabrHttp { url, headers, body ->
-        withContext(Dispatchers.IO) {
-            val request = Request.Builder()
-                .url(url)
-                .apply { headers.forEach { (k, v) -> header(k, v) } }
-                .header("user-agent", CefManager.CHROME_USER_AGENT)
-                .post(body.toRequestBody())
-                .build()
-            val response = client.newCall(request).execute()
-            SabrHttpResponse(
-                status = response.code,
-                location = response.header("location"),
-                body = response.body!!.source(),
-                onClose = { response.close() },
-            )
-        }
-    }
 }
 
 /** okio-backed [DownloadFile] over a real file. One append sink open at a time (SabrSession closes

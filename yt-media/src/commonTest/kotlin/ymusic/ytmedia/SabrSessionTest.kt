@@ -1,19 +1,17 @@
 package ymusic.ytmedia
 
+import kmpcommon.io.AsyncSource
+import kmpcommon.io.BufferedAsyncSource
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.BufferedSink
+import ymusic.ytmedia.proto.ProtoWriter
 import ymusic.ytmedia.sabr.AdaptiveFormat
-import ymusic.ytmedia.sabr.ClientInfo
 import ymusic.ytmedia.sabr.DownloadFile
 import ymusic.ytmedia.sabr.MediaHeader
 import ymusic.ytmedia.sabr.NextRequestPolicy
-import ymusic.ytmedia.sabr.SabrHttp
-import ymusic.ytmedia.sabr.SabrHttpResponse
 import ymusic.ytmedia.sabr.SabrSession
-import ymusic.ytmedia.sabr.SabrStreamSpec
 import ymusic.ytmedia.sabr.SabrTrack
-import ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import ymusic.ytmedia.ump.UmpPart
 import ymusic.ytmedia.ump.writeUmpPartHeader
 import kotlin.random.Random
@@ -21,23 +19,34 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/**
+ * Drives [SabrSession]'s state machine ([SabrSession.nextRequest] / [SabrSession.readResponse])
+ * directly with canned UMP responses — no HTTP client needed (the live client path is covered by the
+ * `:desktopApp:sabrDownload` end-to-end harness).
+ */
 class SabrSessionTest {
 
     private class MemoryFile : DownloadFile {
-        val buffer = Buffer()
-        override fun length() = buffer.size
-        override fun appendSink(): BufferedSink = buffer
+        val data = Buffer()
+        override fun length() = data.size
+        override fun appendSink(): BufferedSink = data
         override fun close() {}
     }
+
+    private fun asyncOf(bytes: Buffer): BufferedAsyncSource = BufferedAsyncSource(
+        object : AsyncSource {
+            override suspend fun read(sink: Buffer, byteCount: Long): Long =
+                if (bytes.exhausted()) -1 else bytes.read(sink, byteCount)
+            override fun close() {}
+        },
+    )
 
     private val audioFormat = AdaptiveFormat(
         itag = 251, lmt = 100, xtag = null, mimeType = "audio/webm; codecs=\"opus\"",
         clen = 0, indexRangeStart = 0, indexRangeEnd = 0, width = null, height = null,
         approxDurationMs = 20_000, audioTrackIsDefault = true, audioTrackId = null, isDrc = false,
     )
-    private val videoFormat = audioFormat.copy(itag = 247, mimeType = "video/webm", width = 640, height = 360)
 
-    /** Encode a full segment (header+data+end) into a UMP buffer for one format. */
     private fun Buffer.putSegment(headerId: Int, itag: Int, seg: Int, startRange: Long, data: ByteArray, isInit: Boolean) {
         val header = MediaHeader(
             headerId = headerId, videoId = "vid", itag = itag, lmt = 100, xtag = null,
@@ -55,119 +64,94 @@ class SabrSessionTest {
         writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, payload.size.toLong()).write(payload)
     }
 
+    // Regression: playerTime must advance across responses. Before the fix the round's contiguity
+    // check seeded from a fresh per-round cursor, so a new response's first segment (index 3) was
+    // checked against -1 not the session's last (2) — never counted, playerTime stuck, download stalls.
     @Test
-    fun downloads_audio_across_multiple_rounds() = runTest {
-        // Format is 3 segments (init + 2 media) of 10 bytes each; server returns one media segment per POST.
-        val segments = listOf(
-            ByteArray(10) { 0 } to true, // init, seg 0
-            ByteArray(10) { 1 } to false, // seg 1
-            ByteArray(10) { 2 } to false, // seg 2
-        )
-        val totalLen = segments.sumOf { it.first.size }.toLong()
-        val format = audioFormat.copy(clen = totalLen)
+    fun advances_segment_cursor_across_responses() = runTest {
+        val session = SabrSession(random = Random(1))
+        val fmt = audioFormat.copy(clen = 1_000_000)
+        val audio = SabrTrack(fmt, MemoryFile())
 
-        var round = 0
-        val http = SabrHttp { _, _, body ->
-            // Verify each POST carries a decodable request with our client info.
-            val request = VideoPlaybackAbrRequest.from(
-                ymusic.ytmedia.proto.ProtoReader(Buffer().write(body)).readAllFields()
-            )
-            assertEquals(1, request.clientAbrState.enabledTrackTypesBitfield, "audio-only bitfield")
-            assertTrue(request.clientAbrState.timeSinceLastSeek!! > 0)
+        val req1 = session.nextRequest(spec(fmt), audio, null, null, 0)
+        assertEquals(0, req1.clientAbrState.playerTimeMs)
 
-            val out = Buffer()
-            out.putPolicy(null)
-            when (round) {
-                0 -> { // init + seg1 in the first response
-                    out.putSegment(0, 251, 0, 0, segments[0].first, isInit = true)
-                    out.putSegment(1, 251, 1, 10, segments[1].first, isInit = false)
-                }
-                else -> out.putSegment(0, 251, 2, 20, segments[2].first, isInit = false)
-            }
-            round++
-            SabrHttpResponse(status = 200, location = null, body = out)
+        // Response A: init(0) + seg1 + seg2.
+        val a = Buffer().apply {
+            putPolicy(null)
+            putSegment(0, 251, 0, 0, ByteArray(10), isInit = true)
+            putSegment(1, 251, 1, 10, ByteArray(10) { 1 }, isInit = false)
+            putSegment(2, 251, 2, 20, ByteArray(10) { 2 }, isInit = false)
         }
+        val outA = session.readResponse(asyncOf(a), audio, null)
+        assertEquals(3, outA.completedSegments)
 
-        val file = MemoryFile()
-        var lastAudioDownloaded = 0L
-        SabrSession(http, random = Random(1)).download(
-            spec = SabrStreamSpec("vid", "https://x.googlevideo.com/videoplayback?sabr=1", ByteArray(0), byteArrayOf(9), ClientInfo(clientName = 1), listOf(format)),
-            audio = SabrTrack(format, file),
-            progress = { a, _, _, _ -> lastAudioDownloaded = a },
-        )
+        val req2 = session.nextRequest(spec(fmt), audio, null, null, 100)
+        assertTrue(req2.clientAbrState.playerTimeMs > 0, "playerTime should advance after buffering")
 
-        assertEquals(totalLen, file.length())
-        assertEquals(totalLen, lastAudioDownloaded)
-        // Bytes are the concatenation of the three segments in order.
-        val bytes = file.buffer.readByteArray()
-        assertTrue(bytes.slice(0..9).all { it == 0.toByte() })
-        assertTrue(bytes.slice(10..19).all { it == 1.toByte() })
-        assertTrue(bytes.slice(20..29).all { it == 2.toByte() })
+        // Response B: seg3 + seg4 — must be recognized as continuing seg2.
+        val b = Buffer().apply {
+            putPolicy(null)
+            putSegment(0, 251, 3, 30, ByteArray(10) { 3 }, isInit = false)
+            putSegment(1, 251, 4, 40, ByteArray(10) { 4 }, isInit = false)
+        }
+        val outB = session.readResponse(asyncOf(b), audio, null)
+        assertEquals(2, outB.completedSegments, "seg3/4 must continue seg2 across the response boundary")
+
+        val req3 = session.nextRequest(spec(fmt), audio, null, null, 200)
+        assertTrue(req3.clientAbrState.playerTimeMs > req2.clientAbrState.playerTimeMs)
+        assertEquals(50, audio.file.length()) // init + 4 segments × 10 bytes
     }
 
-    // Regression: a realistic server that returns the segment AFTER what the request reports buffered.
-    // If the session fails to advance playerTime/buffered ranges across rounds (the contiguity-seed
-    // bug), the server keeps resending the same segment, no new bytes land, and it stalls out.
+    // Full loop simulated against a playerTime-driven server: returns the segment after what the
+    // request reports buffered. Stalls (never completes) unless the session advances each round.
     @Test
-    fun advances_across_rounds_against_a_playertime_driven_server() = runTest {
+    fun drives_a_full_download_against_a_playertime_driven_server() = runTest {
         val segCount = 12
         val segBytes = 8
-        // Segment 0 = init (segBytes), segments 1..N each segBytes; total = (N+1)*segBytes.
         val total = (segCount + 1).toLong() * segBytes
         val fmt = audioFormat.copy(clen = total)
+        val audio = SabrTrack(fmt, MemoryFile())
+        val session = SabrSession(random = Random(2))
 
-        val http = SabrHttp { _, _, body ->
-            val request = VideoPlaybackAbrRequest.from(
-                ymusic.ytmedia.proto.ProtoReader(Buffer().write(body)).readAllFields()
-            )
-            // What has the client buffered? end segment index of its audio buffered range (0 = none).
-            val bufferedEnd = request.bufferedRanges.maxOfOrNull { it.endSegmentIndex } ?: 0
-            val out = Buffer()
-            out.putPolicy(null)
-            if (bufferedEnd == 0) {
-                // send init (seg 0) + seg 1
-                out.putSegment(0, 251, 0, 0, ByteArray(segBytes), isInit = true)
-                out.putSegment(1, 251, 1, segBytes.toLong(), ByteArray(segBytes) { 1 }, isInit = false)
-            } else if (bufferedEnd < segCount) {
-                val next = bufferedEnd + 1
-                out.putSegment(0, 251, next, next.toLong() * segBytes, ByteArray(segBytes) { next.toByte() }, isInit = false)
+        var guard = 0
+        while (audio.file.length() < total) {
+            check(guard++ < 100) { "stalled — cursor not advancing" }
+            val req = session.nextRequest(spec(fmt), audio, null, null, guard)
+            val bufferedEnd = req.bufferedRanges.maxOfOrNull { it.endSegmentIndex } ?: 0
+            val resp = Buffer().apply {
+                putPolicy(null)
+                if (bufferedEnd == 0) {
+                    putSegment(0, 251, 0, 0, ByteArray(segBytes), isInit = true)
+                    putSegment(1, 251, 1, segBytes.toLong(), ByteArray(segBytes) { 1 }, isInit = false)
+                } else if (bufferedEnd < segCount) {
+                    val next = bufferedEnd + 1
+                    putSegment(0, 251, next, next.toLong() * segBytes, ByteArray(segBytes) { next.toByte() }, isInit = false)
+                }
             }
-            SabrHttpResponse(200, null, out)
+            session.readResponse(asyncOf(resp), audio, null)
         }
-
-        val file = MemoryFile()
-        SabrSession(http, random = Random(3)).download(
-            spec = SabrStreamSpec("vid", "https://x.googlevideo.com/videoplayback?sabr=1", ByteArray(0), byteArrayOf(1), ClientInfo(clientName = 1), listOf(fmt)),
-            audio = SabrTrack(fmt, file),
-        )
-        assertEquals(total, file.length())
+        assertEquals(total, audio.file.length())
     }
 
     @Test
-    fun follows_ump_redirect() = runTest {
-        val format = audioFormat.copy(clen = 10)
-        val urls = mutableListOf<String>()
-        var round = 0
-        val http = SabrHttp { url, _, _ ->
-            urls += url
-            val out = Buffer()
-            if (round++ == 0) {
-                val redirect = "https://r2.googlevideo.com/videoplayback?sabr=1".encodeToByteArray()
-                val payload = ymusic.ytmedia.proto.ProtoWriter().string(1, "https://r2.googlevideo.com/videoplayback?sabr=1").toByteArray()
-                out.writeUmpPartHeader(UmpPart.SABR_REDIRECT, payload.size.toLong()).write(payload)
-            } else {
-                out.putPolicy(null)
-                out.putSegment(0, 251, 0, 0, ByteArray(10) { 7 }, isInit = false)
-            }
-            SabrHttpResponse(200, null, out)
+    fun surfaces_ump_redirect_from_a_response() = runTest {
+        val session = SabrSession(random = Random(3))
+        val audio = SabrTrack(audioFormat.copy(clen = 100), MemoryFile())
+        val redirect = Buffer().apply {
+            val payload = ProtoWriter().string(1, "https://r2.googlevideo.com/videoplayback?sabr=1").toByteArray()
+            writeUmpPartHeader(UmpPart.SABR_REDIRECT, payload.size.toLong()).write(payload)
         }
-        val file = MemoryFile()
-        SabrSession(http, random = Random(2)).download(
-            spec = SabrStreamSpec("vid", "https://r1.googlevideo.com/videoplayback?sabr=1", ByteArray(0), null, ClientInfo(), listOf(format)),
-            audio = SabrTrack(format, file),
-        )
-        assertEquals(10, file.length())
-        assertTrue(urls[0].startsWith("https://r1."))
-        assertTrue(urls.last().startsWith("https://r2."))
+        val outcome = session.readResponse(asyncOf(redirect), audio, null)
+        assertEquals("https://r2.googlevideo.com/videoplayback?sabr=1", outcome.redirect)
     }
+
+    private fun spec(fmt: AdaptiveFormat) = ymusic.ytmedia.sabr.SabrStreamSpec(
+        videoId = "vid",
+        sabrUrl = "https://x.googlevideo.com/videoplayback?sabr=1",
+        ustreamerConfig = ByteArray(0),
+        poToken = byteArrayOf(9),
+        clientInfo = ymusic.ytmedia.sabr.ClientInfo(clientName = 1),
+        formats = listOf(fmt),
+    )
 }

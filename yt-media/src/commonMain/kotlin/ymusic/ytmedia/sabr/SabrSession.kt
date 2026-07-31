@@ -1,13 +1,24 @@
 package ymusic.ytmedia.sabr
 
+import kmpcommon.io.BufferedAsyncSource
+import kmphttp.KmpHttpClient
+import kmphttp.MediaTypeX.toMediaTypeOrNull
+import kmphttp.RedirectOptions
+import kmphttp.RequestBodyX.toRequestBody
+import kmphttp.RequestBuilder
+import kmphttp.asyncSource
+import kmphttp.header
 import kotlinx.coroutines.delay
 import okio.Buffer
 import okio.BufferedSink
-import okio.BufferedSource
 import okio.IOException
+import okio.use
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.ump.UmpPart
+import ymusic.ytmedia.ump.copyFully
+import ymusic.ytmedia.ump.readBytesFully
 import ymusic.ytmedia.ump.readUmpPartHeader
+import ymusic.ytmedia.ump.skipFully
 import kotlin.random.Random
 import kotlin.time.TimeSource
 
@@ -26,11 +37,14 @@ fun interface SabrProgress {
 
 /**
  * The SABR session loop (docs/player/sabr-protocol.md §4), ported from legacy
- * `SabrDownloader.sabrDownloader`. Pure protocol: HTTP is injected ([SabrHttp]), byte sinks are
- * [DownloadFile]s. Drives one or two format streams (audio + optional video) to completion.
+ * `SabrDownloader.sabrDownloader`. Pure protocol over the app's standard [KmpHttpClient]: the caller
+ * configures the client (cookie jar, timeouts) and passes it plus the matching User-Agent to
+ * [download]; byte sinks are [DownloadFile]s. Drives one or two format streams to completion.
+ *
+ * One instance is one download session (holds cpn / rn / segment cursor / playback cookie), not
+ * reusable across videos.
  */
 class SabrSession(
-    private val http: SabrHttp,
     private val random: Random = Random,
     /** Viewport reported to the ABR planner; 640×360 like legacy. */
     private val viewportWidth: Int = 640,
@@ -45,7 +59,14 @@ class SabrSession(
     private val sabrContextUpdates = mutableMapOf<Int, SabrContextUpdate>()
     private var poTokenValid = true
 
+    // Session-level cursor: the last completed segment per track. Advanced in place across requests,
+    // so segment N+1 is recognized as continuing N (a per-request cursor would reset and stall).
+    private var audioSegment: MediaHeader? = null
+    private var videoSegment: MediaHeader? = null
+
     suspend fun download(
+        client: KmpHttpClient,
+        userAgent: String,
         spec: SabrStreamSpec,
         audio: SabrTrack,
         video: SabrTrack? = null,
@@ -53,10 +74,6 @@ class SabrSession(
     ) {
         val startMark = TimeSource.Monotonic.markNow()
         var url = spec.sabrUrl.setQueryParam("alr", "yes")
-
-        // Last completed segment per track (drives buffered ranges + resume within this session).
-        var audioSegment: MediaHeader? = null
-        var videoSegment: MediaHeader? = null
 
         fun emitProgress() = progress?.onProgress(
             audio.file.length(), audio.format.clen,
@@ -66,8 +83,7 @@ class SabrSession(
         if (isComplete(audio, video)) return
 
         // A video format must be offered even when downloading audio-only, or the request fails.
-        val fallbackVideoFormat = video?.format
-            ?: spec.formats.lastOrNull { it.isVideo }
+        val fallbackVideoFormat = video?.format ?: spec.formats.lastOrNull { it.isVideo }
 
         var retryCount = 0
         var lastError: String? = null
@@ -78,122 +94,106 @@ class SabrSession(
                 throw IOException("SABR exceeded max retries, last: $lastError")
             }
 
-            val audioBuffered = bufferedRange(audioSegment)
-            val videoBuffered = if (video != null) bufferedRange(videoSegment) else null
-            var playerTimeMs = audioBuffered?.let { it.endMs + 1 } ?: 0
-            if (video != null) {
-                playerTimeMs = minOf(playerTimeMs, videoBuffered?.let { it.endMs + 1 } ?: 0)
-            }
-
-            val timeSinceLastSeek = random.nextInt(50) + 1 // must be > 0
-            val request = VideoPlaybackAbrRequest(
-                clientAbrState = ClientAbrState(
-                    playerTimeMs = playerTimeMs,
-                    enabledTrackTypesBitfield = if (video != null) 0 else 1,
-                    drcEnabled = audio.format.isDrc,
-                    viewportWidth = viewportWidth,
-                    viewportHeight = viewportHeight,
-                    timeSinceLastSeek = timeSinceLastSeek,
-                    visibility = 0,
-                    elapsedWallTimeMs = startMark.elapsedNow().inWholeMilliseconds.toInt(),
-                    timeSinceLastAction = random.nextInt(timeSinceLastSeek),
-                ),
-                selectedFormats = listOfNotNull(
-                    audio.format.toFormatId().takeIf { audioSegment != null },
-                    video?.format?.toFormatId()?.takeIf { videoSegment != null },
-                ),
-                bufferedRanges = listOfNotNull(audioBuffered, videoBuffered),
-                selectedAudioFormats = listOf(audio.format.toFormatId()),
-                selectedVideoFormats = listOfNotNull(
-                    video?.format?.toFormatId() ?: fallbackVideoFormat?.toFormatId(),
-                ),
-                streamerContext = StreamerContext(
-                    clientInfo = spec.clientInfo,
-                    poToken = spec.poToken,
-                    playbackCookie = playbackCookie,
-                    sabrContextUpdates = sabrContextUpdates.values.toList(),
-                ),
-                ustreamerConfig = spec.ustreamerConfig,
-            )
-
+            val request = nextRequest(spec, audio, video, fallbackVideoFormat, startMark.elapsedNow().inWholeMilliseconds.toInt())
             val requestUrl = url
                 .setQueryParam("cpn", cpn)
                 .setQueryParam("rn", (++rn).toString())
-
             log(
-                "round rn=$rn playerTime=$playerTimeMs audioSeg=${audioSegment?.segmentIndex} " +
-                    "videoSeg=${videoSegment?.segmentIndex} bufferedEnd=${audioBuffered?.endMs} " +
+                "round rn=$rn playerTime=${request.clientAbrState.playerTimeMs} " +
+                    "audioSeg=${audioSegment?.segmentIndex} videoSeg=${videoSegment?.segmentIndex} " +
                     "selected=${request.selectedFormats.size} cookieLen=${playbackCookie.size}",
             )
-            // Seed the round's segment trackers from the session so contiguity is checked against the
-            // last segment we actually have (segment N+1 continues N across request boundaries).
-            val round = RoundState()
-            round.audioSegment = audioSegment
-            round.videoSegment = videoSegment
-            val response = http.post(
-                requestUrl,
-                mapOf("content-type" to "application/x-protobuf"),
-                request.encode().toByteArray(),
-            )
+
+            val httpRequest = RequestBuilder()
+                .url(requestUrl)
+                .header("user-agent", userAgent)
+                .post(request.encode().toByteArray().toRequestBody(PROTOBUF))
+                .build()
+            val response = client.execute(httpRequest, RedirectOptions(followRedirects = false, followSslRedirects = false))
+
+            var outcome: RoundOutcome? = null
             try {
                 if (response.isRedirect) {
-                    val location = response.location
+                    val location = response.header("location")
                     if (location == null || !location.contains("/videoplayback")) {
                         throw IOException("Invalid SABR redirect: $location")
                     }
                     url = location
-                    continue
-                }
-                if (!response.isSuccessful) throw IOException("SABR response ${response.status}")
-                val redirect = parseUmpStream(response.body, audio, video, round)
-                log(
-                    "  resp headers=${round.headers} ends=${round.mediaEnds} " +
-                        "seg=[${if (round.headers > 0) "${round.minSeg}..${round.maxSeg}" else "-"}] " +
-                        "completed=${round.completedSegments} backoffMs=${round.backoffMs} " +
-                        "protection=${round.protectionStatus} audioBytes=${audio.file.length()}",
-                )
-                if (redirect != null) {
-                    url = redirect
-                    continue
+                } else if (!response.isSuccessful) {
+                    throw IOException("SABR response ${response.code}")
+                } else {
+                    outcome = BufferedAsyncSource(response.body.asyncSource()).use { readResponse(it, audio, video) }
                 }
             } finally {
                 response.close()
-                round.closeOpenSinks()
             }
+            if (outcome == null) continue // HTTP redirect — retry at the new url
 
-            audioSegment = round.audioSegment ?: audioSegment
-            videoSegment = round.videoSegment ?: videoSegment
+            log(
+                "  resp headers=${outcome.headers} seg=[${outcome.segRange()}] completed=${outcome.completedSegments} " +
+                    "backoffMs=${outcome.backoffMs} protection=${outcome.protectionStatus} audioBytes=${audio.file.length()}",
+            )
+            if (outcome.redirect != null) {
+                url = outcome.redirect
+                continue
+            }
             emitProgress()
             if (isComplete(audio, video)) return
 
-            if (round.completedSegments == 0) {
+            if (outcome.completedSegments == 0) {
                 retryCount++
                 lastError = "received zero segments"
-                delay(maxOf(round.backoffMs, 2000).toLong())
+                delay(maxOf(outcome.backoffMs, 2000).toLong())
             } else {
                 retryCount = 0
             }
         }
     }
 
-    /** Per-request mutable state; segments in flight keyed by UMP headerId. */
-    private inner class RoundState {
-        val parts = mutableMapOf<Int, PartState>()
-        var backoffMs = 0
-        var completedSegments = 0
-        var audioSegment: MediaHeader? = null
-        var videoSegment: MediaHeader? = null
-        // diagnostics
-        var headers = 0
-        var mediaEnds = 0
-        var minSeg = Int.MAX_VALUE
-        var maxSeg = Int.MIN_VALUE
-        var protectionStatus: Int? = null
-        var redirected = false
-        fun closeOpenSinks() {
-            parts.values.forEach { it.sink?.let { s -> runCatching { s.close() } } }
-            parts.clear()
+    /** Build the next request from the current session cursor (buffered ranges + playerTime). */
+    internal fun nextRequest(
+        spec: SabrStreamSpec,
+        audio: SabrTrack,
+        video: SabrTrack?,
+        fallbackVideoFormat: AdaptiveFormat?,
+        elapsedWallMs: Int,
+    ): VideoPlaybackAbrRequest {
+        val audioBuffered = bufferedRange(audioSegment)
+        val videoBuffered = if (video != null) bufferedRange(videoSegment) else null
+        var playerTimeMs = audioBuffered?.let { it.endMs + 1 } ?: 0
+        if (video != null) {
+            playerTimeMs = minOf(playerTimeMs, videoBuffered?.let { it.endMs + 1 } ?: 0)
         }
+        val timeSinceLastSeek = random.nextInt(50) + 1 // must be > 0
+        return VideoPlaybackAbrRequest(
+            clientAbrState = ClientAbrState(
+                playerTimeMs = playerTimeMs,
+                enabledTrackTypesBitfield = if (video != null) 0 else 1,
+                drcEnabled = audio.format.isDrc,
+                viewportWidth = viewportWidth,
+                viewportHeight = viewportHeight,
+                timeSinceLastSeek = timeSinceLastSeek,
+                visibility = 0,
+                elapsedWallTimeMs = elapsedWallMs,
+                timeSinceLastAction = random.nextInt(timeSinceLastSeek),
+            ),
+            selectedFormats = listOfNotNull(
+                audio.format.toFormatId().takeIf { audioSegment != null },
+                video?.format?.toFormatId()?.takeIf { videoSegment != null },
+            ),
+            bufferedRanges = listOfNotNull(audioBuffered, videoBuffered),
+            selectedAudioFormats = listOf(audio.format.toFormatId()),
+            selectedVideoFormats = listOfNotNull(
+                video?.format?.toFormatId() ?: fallbackVideoFormat?.toFormatId(),
+            ),
+            streamerContext = StreamerContext(
+                clientInfo = spec.clientInfo,
+                poToken = spec.poToken,
+                playbackCookie = playbackCookie,
+                sabrContextUpdates = sabrContextUpdates.values.toList(),
+            ),
+            ustreamerConfig = spec.ustreamerConfig,
+        )
     }
 
     private class PartState(val header: MediaHeader, val file: DownloadFile) {
@@ -201,90 +201,107 @@ class SabrSession(
         var totalRead: Long = 0
     }
 
-    /** Returns a redirect URL if the stream carried a SABR_REDIRECT (part 43), else null. */
-    private fun parseUmpStream(
-        body: BufferedSource,
-        audio: SabrTrack,
-        video: SabrTrack?,
-        round: RoundState,
-    ): String? {
-        while (!body.exhausted()) {
-            val (partId, partSize) = body.readUmpPartHeader()
-            when (partId) {
-                UmpPart.SABR_ERROR ->
-                    throw SabrServerError("SABR error: ${SabrParts.parseErrorMessage(body.readByteArray(partSize))}")
+    internal class RoundOutcome(
+        val completedSegments: Int,
+        val redirect: String?,
+        val backoffMs: Int,
+        val headers: Int,
+        val minSeg: Int,
+        val maxSeg: Int,
+        val protectionStatus: Int?,
+    ) {
+        fun segRange() = if (headers > 0) "$minSeg..$maxSeg" else "-"
+    }
 
-                UmpPart.SABR_REDIRECT -> {
-                    val redirect = SabrParts.parseRedirectUrl(body.readByteArray(partSize))
-                    if (redirect == null || !redirect.contains("/videoplayback")) {
-                        throw IOException("Invalid SABR redirect part: $redirect")
+    /** Stream-parse one UMP response, advancing the session cursor; returns per-round outcome. */
+    internal suspend fun readResponse(body: BufferedAsyncSource, audio: SabrTrack, video: SabrTrack?): RoundOutcome {
+        val open = mutableMapOf<Int, PartState>()
+        var completed = 0
+        var backoffMs = 0
+        var redirect: String? = null
+        var headers = 0
+        var minSeg = Int.MAX_VALUE
+        var maxSeg = Int.MIN_VALUE
+        var protectionStatus: Int? = null
+        try {
+            while (!body.exhausted()) {
+                val (partId, partSize) = body.readUmpPartHeader()
+                when (partId) {
+                    UmpPart.SABR_ERROR ->
+                        throw SabrServerError("SABR error: ${SabrParts.parseErrorMessage(body.readBytesFully(partSize))}")
+
+                    UmpPart.SABR_REDIRECT -> {
+                        val r = SabrParts.parseRedirectUrl(body.readBytesFully(partSize))
+                        if (r == null || !r.contains("/videoplayback")) throw IOException("Invalid SABR redirect part: $r")
+                        redirect = r
+                        break
                     }
-                    return redirect
-                }
 
-                UmpPart.MEDIA_HEADER -> {
-                    val header = MediaHeader.from(ProtoReader(Buffer().write(body.readByteArray(partSize))).readAllFields())
-                    check(!round.parts.containsKey(header.headerId)) { "duplicate UMP header id ${header.headerId}" }
-                    round.headers++
-                    round.minSeg = minOf(round.minSeg, header.segmentIndex)
-                    round.maxSeg = maxOf(round.maxSeg, header.segmentIndex)
-                    val file = when (header.cacheKey) {
-                        audio.format.cacheKey -> audio.file
-                        video?.format?.cacheKey -> video.file
-                        else -> throw IOException("unexpected media header ${header.videoId} ${header.cacheKey} seg ${header.segmentIndex}")
+                    UmpPart.MEDIA_HEADER -> {
+                        val header = MediaHeader.from(ProtoReader(Buffer().write(body.readBytesFully(partSize))).readAllFields())
+                        check(!open.containsKey(header.headerId)) { "duplicate UMP header id ${header.headerId}" }
+                        headers++
+                        minSeg = minOf(minSeg, header.segmentIndex)
+                        maxSeg = maxOf(maxSeg, header.segmentIndex)
+                        val file = when (header.cacheKey) {
+                            audio.format.cacheKey -> audio.file
+                            video?.format?.cacheKey -> video.file
+                            else -> throw IOException("unexpected media header ${header.videoId} ${header.cacheKey} seg ${header.segmentIndex}")
+                        }
+                        open[header.headerId] = PartState(header, file)
                     }
-                    round.parts[header.headerId] = PartState(header, file)
-                }
 
-                UmpPart.MEDIA_DATA -> {
-                    val headerId = body.readByte().toInt() and 0xFF
-                    val state = checkNotNull(round.parts[headerId]) { "media data for unknown header $headerId" }
-                    val dataSize = partSize - 1
-                    writeMediaData(body, state, dataSize)
-                    state.totalRead += dataSize
-                }
+                    UmpPart.MEDIA_DATA -> {
+                        val headerId = body.readByte().toInt() and 0xFF
+                        val state = checkNotNull(open[headerId]) { "media data for unknown header $headerId" }
+                        val dataSize = partSize - 1
+                        writeMediaData(body, state, dataSize)
+                        state.totalRead += dataSize
+                    }
 
-                UmpPart.MEDIA_END -> {
-                    val headerId = body.readByte().toInt() and 0xFF
-                    val state = checkNotNull(round.parts.remove(headerId)) { "media end for unknown header $headerId" }
-                    state.sink?.close()
-                    state.sink = null
-                    round.mediaEnds++
-                    advanceIfContiguous(state.header, audio, video, round)
-                }
+                    UmpPart.MEDIA_END -> {
+                        val headerId = body.readByte().toInt() and 0xFF
+                        val state = checkNotNull(open.remove(headerId)) { "media end for unknown header $headerId" }
+                        state.sink?.close()
+                        state.sink = null
+                        if (advanceIfContiguous(state.header, audio, video)) completed++
+                    }
 
-                UmpPart.NEXT_REQUEST_POLICY -> {
-                    val policy = NextRequestPolicy.from(ProtoReader(Buffer().write(body.readByteArray(partSize))).readAllFields())
-                    policy.playbackCookie?.let { playbackCookie = it }
-                    round.backoffMs = policy.backoffTimeMs ?: 0
-                }
+                    UmpPart.NEXT_REQUEST_POLICY -> {
+                        val policy = NextRequestPolicy.from(ProtoReader(Buffer().write(body.readBytesFully(partSize))).readAllFields())
+                        policy.playbackCookie?.let { playbackCookie = it }
+                        backoffMs = policy.backoffTimeMs ?: 0
+                    }
 
-                UmpPart.STREAM_PROTECTION_STATUS -> {
-                    val status = SabrParts.parseStreamProtectionStatus(body.readByteArray(partSize))
-                    round.protectionStatus = status
-                    if (status != null) poTokenValid = status != 2 && status != 3
-                }
+                    UmpPart.STREAM_PROTECTION_STATUS -> {
+                        val status = SabrParts.parseStreamProtectionStatus(body.readBytesFully(partSize))
+                        protectionStatus = status
+                        if (status != null) poTokenValid = status != 2 && status != 3
+                    }
 
-                UmpPart.SABR_CONTEXT_UPDATE -> {
-                    val update = runCatching {
-                        SabrContextUpdate.fromUmpResponse(ProtoReader(Buffer().write(body.readByteArray(partSize))).readAllFields())
-                    }.getOrNull()
-                    if (update != null) sabrContextUpdates[update.type] = update
-                }
+                    UmpPart.SABR_CONTEXT_UPDATE -> {
+                        val update = runCatching {
+                            SabrContextUpdate.fromUmpResponse(ProtoReader(Buffer().write(body.readBytesFully(partSize))).readAllFields())
+                        }.getOrNull()
+                        if (update != null) sabrContextUpdates[update.type] = update
+                    }
 
-                else -> body.skip(partSize)
+                    else -> body.skipFully(partSize)
+                }
             }
+        } finally {
+            open.values.forEach { it.sink?.let { s -> runCatching { s.close() } } }
         }
-        return null
+        return RoundOutcome(completed, redirect, backoffMs, headers, minSeg, maxSeg, protectionStatus)
     }
 
     /**
      * Write one MEDIA_DATA chunk, skipping any prefix the file already has (server may resend bytes
      * inside our buffered range). Mirrors legacy's byte-position reconciliation.
      */
-    private fun writeMediaData(body: BufferedSource, state: PartState, dataSize: Long) {
+    private suspend fun writeMediaData(body: BufferedAsyncSource, state: PartState, dataSize: Long) {
         state.sink?.let { sink ->
-            body.readFully(sink, dataSize)
+            body.copyFully(sink, dataSize)
             return
         }
         val fileEnd = state.file.length()
@@ -292,29 +309,30 @@ class SabrSession(
         val partEnd = partStart + dataSize
         if (fileEnd in partStart until partEnd) {
             val skips = fileEnd - partStart
-            if (skips > 0) body.skip(skips)
+            if (skips > 0) body.skipFully(skips)
             val sink = state.file.appendSink()
             state.sink = sink
-            body.readFully(sink, dataSize - skips)
+            body.copyFully(sink, dataSize - skips)
         } else {
             if (fileEnd < partStart) throw IOException("gap in download stream at ${state.header.itag}")
-            body.skip(dataSize) // already have these bytes
+            body.skipFully(dataSize) // already have these bytes
         }
     }
 
-    private fun advanceIfContiguous(header: MediaHeader, audio: SabrTrack, video: SabrTrack?, round: RoundState) {
+    private fun advanceIfContiguous(header: MediaHeader, audio: SabrTrack, video: SabrTrack?): Boolean {
         when (header.cacheKey) {
             audio.format.cacheKey ->
-                if (header.segmentIndex - 1 == (round.audioSegment?.segmentIndex ?: -1)) {
-                    round.audioSegment = header
-                    round.completedSegments++
+                if (header.segmentIndex - 1 == (audioSegment?.segmentIndex ?: -1)) {
+                    audioSegment = header
+                    return true
                 }
             video?.format?.cacheKey ->
-                if (header.segmentIndex - 1 == (round.videoSegment?.segmentIndex ?: -1)) {
-                    round.videoSegment = header
-                    round.completedSegments++
+                if (header.segmentIndex - 1 == (videoSegment?.segmentIndex ?: -1)) {
+                    videoSegment = header
+                    return true
                 }
         }
+        return false
     }
 
     private fun bufferedRange(segment: MediaHeader?): BufferedRange? {
@@ -331,17 +349,8 @@ class SabrSession(
     private fun isComplete(audio: SabrTrack, video: SabrTrack?): Boolean =
         audio.file.length() >= audio.format.clen &&
             (video == null || video.file.length() >= video.format.clen)
-}
 
-/** Reads exactly [count] bytes from [this] into [sink]. */
-private fun BufferedSource.readFully(sink: BufferedSink, count: Long) {
-    var remaining = count
-    val buffer = Buffer()
-    while (remaining > 0) {
-        val read = read(buffer, minOf(remaining, 64 * 1024))
-        if (read == -1L) throw IOException("unexpected end of UMP media data, $remaining bytes short")
-        sink.write(buffer, read)
-        remaining -= read
+    private companion object {
+        private val PROTOBUF = "application/x-protobuf".toMediaTypeOrNull()
     }
-    sink.flush()
 }

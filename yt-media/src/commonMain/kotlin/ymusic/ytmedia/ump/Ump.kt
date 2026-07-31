@@ -1,5 +1,6 @@
 package ymusic.ytmedia.ump
 
+import kmpcommon.io.BufferedAsyncSource
 import okio.BufferedSink
 import okio.BufferedSource
 
@@ -77,3 +78,56 @@ fun <S : BufferedSink> S.writeUmpPartHeader(partId: Int, size: Long): S =
     writeUmpVarInt(partId.toLong()).writeUmpVarInt(size)
 
 internal fun BufferedSource.readUByte(): Int = readByte().toInt() and 0xFF
+
+// --- async variants for streaming a network response (BufferedAsyncSource) ---
+
+private suspend fun BufferedAsyncSource.readUByteA(): Int {
+    require(1)
+    return buffer.readByte().toInt() and 0xFF
+}
+
+suspend fun BufferedAsyncSource.readUmpVarInt(): Long {
+    val prefix = readUByteA()
+    return when {
+        prefix < 0x80 -> prefix.toLong()
+        prefix < 0xC0 -> (prefix and 0x3F) + 64L * readUByteA()
+        prefix < 0xE0 -> (prefix and 0x1F) + 32L * (readUByteA() + 256L * readUByteA())
+        prefix < 0xF0 -> (prefix and 0x0F) + 16L * (readUByteA() + 256L * (readUByteA() + 256L * readUByteA()))
+        else -> readUByteA() + 256L * (readUByteA() + 256L * (readUByteA() + 256L * readUByteA()))
+    }
+}
+
+suspend fun BufferedAsyncSource.readUmpPartHeader(): UmpPartHeader {
+    val partId = readUmpVarInt().toInt()
+    val size = readUmpVarInt()
+    return UmpPartHeader(partId, size)
+}
+
+/** Read exactly [count] bytes into a fresh ByteArray (small control-part payloads). */
+suspend fun BufferedAsyncSource.readBytesFully(count: Long): ByteArray {
+    require(count)
+    return buffer.readByteArray(count)
+}
+
+/** Skip exactly [count] bytes. */
+suspend fun BufferedAsyncSource.skipFully(count: Long) {
+    var remaining = count
+    while (remaining > 0) {
+        require(1)
+        val chunk = minOf(remaining, buffer.size)
+        buffer.skip(chunk)
+        remaining -= chunk
+    }
+}
+
+/** Copy exactly [count] bytes into [sink]. */
+suspend fun BufferedAsyncSource.copyFully(sink: BufferedSink, count: Long) {
+    var remaining = count
+    while (remaining > 0) {
+        require(1)
+        val chunk = minOf(remaining, buffer.size)
+        sink.write(buffer, chunk)
+        remaining -= chunk
+    }
+    sink.flush()
+}
