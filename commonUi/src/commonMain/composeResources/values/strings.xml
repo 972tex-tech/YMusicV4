@@ -37,7 +37,7 @@
     <string name="ytmusic_home_empty">No music to show right now — pull to refresh</string>
     <string name="ytmusic_explore_empty">Nothing to explore right now — pull to refresh</string>
     <string name="ytmusic_search_empty">No results</string>
-    <string name="ytmusic_library_signin">Your YouTube Music library — playlists, likes and uploads — arrives with sign-in</string>
+    <string name="ytmusic_library_empty">Your YouTube Music library is empty — save some playlists and albums</string>
 
     <!-- Trending Music chart sections (titles the engine synthesizes; keyed by header titleKey) -->
     <string name="chart_trending_music_videos">Trending Music Videos</string>

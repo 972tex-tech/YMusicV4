@@ -49,6 +49,20 @@ suspend fun DynamicEngineManager.extractMusicCharts(
 }
 
 /**
+ * The signed-in Music Library (first page or a continuation). Fresh = the mixed landing (the user's
+ * playlists, artists, profiles). A returned [YtFeedPage.chips] token narrows to one shelf type
+ * (Playlists / Songs / Albums / …); a [YtFeedPage.sort] option token re-serves the page in that
+ * order — both ride this same continuation slot, opaque to the app.
+ */
+suspend fun DynamicEngineManager.extractMusicLibrary(
+    continuation: String? = null,
+): YtFeedPage = feedCommand("ytmusic/library") { w ->
+    w.beginObject()
+    w.optionalField("continuation", continuation)
+    w.endObject()
+}
+
+/**
  * A music detail page — album / artist / playlist. [url] is an engine-composed app link
  * ("/ytmusic/browse?id=<browseId>") from a music [YtFeedItem.url] or [YtSectionHeader.ctaDeeplink],
  * passed back VERBATIM; the engine decodes the browseId and serves it via the music client.

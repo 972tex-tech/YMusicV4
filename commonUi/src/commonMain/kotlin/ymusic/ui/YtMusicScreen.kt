@@ -3,8 +3,6 @@ package ymusic.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,12 +20,13 @@ import ymusic.dynamicengine.yt.extractMusicBrowse
 import ymusic.dynamicengine.yt.extractMusicCharts
 import ymusic.dynamicengine.yt.extractMusicExplore
 import ymusic.dynamicengine.yt.extractMusicHome
+import ymusic.dynamicengine.yt.extractMusicLibrary
 import ymusic.dynamicengine.yt.extractMusicNewReleases
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.detail_playlist
 import ymusic.ui.resources.ytmusic_explore_empty
 import ymusic.ui.resources.ytmusic_home_empty
-import ymusic.ui.resources.ytmusic_library_signin
+import ymusic.ui.resources.ytmusic_library_empty
 import ymusic.ui.resources.ytmusic_tab_charts
 import ymusic.ui.resources.ytmusic_tab_explore
 import ymusic.ui.resources.ytmusic_tab_home
@@ -48,15 +47,16 @@ enum class YtMusicTab(val label: StringResource) {
 }
 
 /**
- * YT Music (Beta) — the music.youtube.com surface. Three swipeable tabs (Home / Explore / Library),
- * each Home/Explore backed by a cached [FeedSession] over the `ytmusic/…` engine commands and drawn
- * with the shared [FeedList]; Library is a sign-in stub for now. Songs play on tap (FeedList's
- * default); album/artist/playlist cards navigate through [onOpen] (an engine-composed
- * "/ytmusic/browse?…" link). The section's search lives in the shell app bar.
+ * YT Music (Beta) — the music.youtube.com surface. Swipeable tabs, each backed by a cached
+ * [FeedSession] over the `ytmusic/…` engine commands and drawn with the shared [FeedList]. Library
+ * is the signed-in `ytmusic/library` feed — the sign-in preface when logged out; its filter chips
+ * (Playlists / Songs / Albums / …) and sort menu ride the page's own chip/sort rows. Songs play on
+ * tap (FeedList's default); album/artist/playlist cards navigate through [onOpen] (an
+ * engine-composed "/ytmusic/browse?…" link). The section's search lives in the shell app bar.
  *
  * [sessions] is hoisted from the app root (like Discover's) so switching tabs — or returning from a
  * search/detail layer — shows the loaded feed at its scroll position instead of reloading; it is
- * cleared when the content locale changes.
+ * cleared when the content locale or login changes.
  */
 @Composable
 fun YtMusicScreen(
@@ -65,6 +65,8 @@ fun YtMusicScreen(
     sessions: MutableMap<YtMusicTab, FeedSession>,
     localeEpoch: Int,
     scope: CoroutineScope,
+    signedIn: Boolean = false,
+    onLogin: () -> Unit = {},
     onOpen: ((YtFeedItem) -> Unit)? = null,
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
@@ -88,13 +90,8 @@ fun YtMusicScreen(
             leadingEdgeReserve = NavDrawerEdgeReserve,
             onLeadingEdgeSwipe = openDrawer,
         ) { current ->
-            if (current == YtMusicTab.Library) {
-                CenteredBox {
-                    Text(
-                        stringResource(Res.string.ytmusic_library_signin),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            if (current == YtMusicTab.Library && !signedIn) {
+                LoginPreface(onLogin)
             } else {
                 val session = remember(current, localeEpoch) {
                     sessions.getOrPut(current) {
@@ -103,6 +100,7 @@ fun YtMusicScreen(
                                 YtMusicTab.Explore -> graph.engines.extractMusicExplore(continuation)
                                 YtMusicTab.NewReleases -> graph.engines.extractMusicNewReleases(continuation)
                                 YtMusicTab.Charts -> graph.engines.extractMusicCharts(continuation)
+                                YtMusicTab.Library -> graph.engines.extractMusicLibrary(continuation)
                                 else -> graph.engines.extractMusicHome(continuation)
                             }
                         }.also { it.pager.refresh() }
@@ -112,7 +110,11 @@ fun YtMusicScreen(
                     session.pager,
                     coordinator,
                     emptyMessage = stringResource(
-                        if (current == YtMusicTab.Explore) Res.string.ytmusic_explore_empty else Res.string.ytmusic_home_empty,
+                        when (current) {
+                            YtMusicTab.Explore -> Res.string.ytmusic_explore_empty
+                            YtMusicTab.Library -> Res.string.ytmusic_library_empty
+                            else -> Res.string.ytmusic_home_empty
+                        },
                     ),
                     onOpen = onOpen,
                     listState = session.listState,

@@ -31,6 +31,7 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
     var sections: List<YtSection> = emptyList()
     var continuation: String? = null
     var chips: List<YtChip> = emptyList()
+    var sort: List<YtChip> = emptyList()
     var filterGroups: List<YtFilterGroup> = emptyList()
     var pageHeader: YtPageHeader? = null
     var pageTabs: List<YtPageTab> = emptyList()
@@ -41,6 +42,7 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
             "sections" -> sections = r.readArrayOf { readSection(it) }
             "continuation" -> continuation = r.stringOrNull()
             "chips" -> chips = r.readArrayOf { readChip(it) }
+            "sort" -> sort = r.readArrayOf { readChip(it) }
             "filterGroups" -> filterGroups = r.readArrayOf { readFilterGroup(it) }
             "pageHeader" -> pageHeader = readPageHeader(r)
             "pageTabs" -> pageTabs = r.readArrayOf { readPageTab(it) }
@@ -49,7 +51,7 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
         }
     }
     r.endObject()
-    return YtFeedPage(sections, continuation, chips, filterGroups, pageHeader, pageTabs, autoplayVideoId)
+    return YtFeedPage(sections, continuation, chips, sort, filterGroups, pageHeader, pageTabs, autoplayVideoId)
 }
 
 private suspend fun readPageHeader(r: JsonReader): YtPageHeader {

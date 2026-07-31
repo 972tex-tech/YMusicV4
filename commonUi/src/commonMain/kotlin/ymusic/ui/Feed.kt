@@ -22,10 +22,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -63,6 +67,7 @@ import ymusic.dynamicengine.yt.YtChip
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtSection
 import ymusic.ui.resources.Res
+import ymusic.ui.resources.cd_sort
 import ymusic.ui.resources.error_generic
 import ymusic.ui.resources.feed_empty
 import ymusic.ui.resources.queue_last
@@ -91,6 +96,8 @@ class Pager(
             val sections: List<YtSection>,
             val chips: List<YtChip>,
             val selectedChipToken: String?,
+            /** The page's sort menu (music library): option tokens are server continuations. */
+            val sort: List<YtChip> = emptyList(),
             val continuation: String?,
             val loadingMore: Boolean,
             /** Pull-to-refresh in flight: the list stays on screen, only the pull indicator spins. */
@@ -120,12 +127,13 @@ class Pager(
         // into it, or a Playlists tab shows the Videos tab's sort chips and replays their tokens.
         val carryOver = chipToken != null
         val previousChips = if (carryOver) (_state.value as? State.Ready)?.chips.orEmpty() else emptyList()
+        val previousSort = if (carryOver) (_state.value as? State.Ready)?.sort.orEmpty() else emptyList()
         val previousFilters = if (carryOver) (_state.value as? State.Ready)?.filterGroups.orEmpty() else emptyList()
         _state.value = State.Loading
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                readyFrom(page, chipToken, previousChips, previousFilters)
+                readyFrom(page, chipToken, previousChips, previousSort, previousFilters)
             } catch (e: TimeoutCancellationException) {
                 State.Failed(TIMEOUT_CODE, "fetch timed out after ${fetchTimeoutMs}ms")
             } catch (e: CancellationException) {
@@ -147,12 +155,13 @@ class Pager(
         job?.cancel()
         val carryOver = chipToken != null
         val previousChips = if (carryOver) current.chips else emptyList()
+        val previousSort = if (carryOver) current.sort else emptyList()
         val previousFilters = if (carryOver) current.filterGroups else emptyList()
         _state.value = current.copy(refreshing = true)
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
-                readyFrom(page, chipToken, previousChips, previousFilters)
+                readyFrom(page, chipToken, previousChips, previousSort, previousFilters)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
                 _errors.tryEmit(TIMEOUT_CODE)
@@ -168,6 +177,7 @@ class Pager(
         page: ymusic.dynamicengine.yt.YtFeedPage,
         chipToken: String?,
         previousChips: List<YtChip>,
+        previousSort: List<YtChip>,
         previousFilters: List<ymusic.dynamicengine.yt.YtFilterGroup>,
     ): State.Ready {
         // Selection can't ride on token identity across reloads: a chip-filtered page that DOES
@@ -184,6 +194,7 @@ class Pager(
             sections = page.sections,
             chips = chips,
             selectedChipToken = chips.firstOrNull { it.selected }?.token ?: chipToken,
+            sort = page.sort.ifEmpty { previousSort },
             continuation = page.continuation,
             loadingMore = false,
             filterGroups = page.filterGroups.ifEmpty { previousFilters },
@@ -386,7 +397,7 @@ private fun FeedSections(
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (topContent != null) item { topContent() }
             item { FeedChips(state, pager) }
-            if (topContent == null && state.chips.isEmpty()) {
+            if (topContent == null && state.chips.isEmpty() && state.sort.isEmpty()) {
                 // Nothing above the first item (search results, channel content tabs) — the
                 // mockups give the feed a small inset under the app bar (search.html .grid).
                 item { Spacer(Modifier.height(6.dp)) }
@@ -567,21 +578,71 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
     },
 )
 
-/** The feed filter chips ("All / Music / Gaming…"); tapping one reloads the feed through its token. */
+/** The feed filter chips ("All / Music / Gaming…"); tapping one reloads the feed through its token.
+ *  A page that publishes a sort menu (the music library) gets it right-aligned after the chips. */
 @Composable
 private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
-    if (state.chips.isEmpty()) return
+    if (state.chips.isEmpty() && state.sort.isEmpty()) return
     val chipScroll = rememberLazyListState()
-    LazyRow(
-        Modifier.fillMaxWidth().horizontalWheelScroll(chipScroll),
-        state = chipScroll,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(state.chips) { chip ->
-            // Keep-content reload: the list stays put with the pull indicator spinning, so a failed
-            // chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
-            FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        LazyRow(
+            Modifier.weight(1f).horizontalWheelScroll(chipScroll),
+            state = chipScroll,
+            contentPadding = PaddingValues(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        ) {
+            items(state.chips) { chip ->
+                // Keep-content reload: the list stays put with the pull indicator spinning, so a failed
+                // chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
+                FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
+            }
+        }
+        if (state.sort.isNotEmpty()) {
+            FeedSortMenu(state.sort, Modifier.padding(end = DesignSpacing.Space8)) { token ->
+                pager.reload(token)
+            }
+        }
+    }
+}
+
+/** The server sort menu ("Recent activity ⌄"): the current order named on the trigger, the options
+ *  in a dropdown; picking one re-serves the feed through its continuation token (keep-content). */
+@Composable
+private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, onSelect: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val current = options.firstOrNull { it.selected } ?: options.first()
+    Box(modifier) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .clickable { open = true }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.Sort,
+                stringResource(Res.string.cd_sort),
+                Modifier.size(16.dp),
+                tint = DesignColors.InkSoft,
+            )
+            Text(current.title, style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink), maxLines = 1)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.title) },
+                    leadingIcon = {
+                        if (option.selected) {
+                            Icon(Icons.Default.Check, null, Modifier.size(18.dp), tint = DesignColors.Accent)
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        if (!option.selected) onSelect(option.token)
+                    },
+                )
+            }
         }
     }
 }

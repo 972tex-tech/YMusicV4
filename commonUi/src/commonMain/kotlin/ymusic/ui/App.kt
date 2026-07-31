@@ -666,6 +666,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             ytMusicSessions,
                                             localeEpoch + loginEpoch,
                                             scope,
+                                            signedIn = signedIn,
+                                            onLogin = openLogin,
                                             onOpen = openItem,
                                             onDeeplink = openDeeplink,
                                         )

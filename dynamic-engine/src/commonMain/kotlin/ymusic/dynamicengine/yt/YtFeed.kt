@@ -166,6 +166,10 @@ data class YtFeedPage(
     val sections: List<YtSection>,
     val continuation: String? = null,
     val chips: List<YtChip> = emptyList(),
+    /** The page's sort menu (music library's "Recent activity / Recently saved / …"): each option's
+     *  [YtChip.token] is a server continuation re-serving the page in that order; the selected one
+     *  is the current order. Continuation pages omit it — the UI carries it over like [chips]. */
+    val sort: List<YtChip> = emptyList(),
     /** Search only: the filter submenu groups (fresh pages; continuations omit them). */
     val filterGroups: List<YtFilterGroup> = emptyList(),
     /** Detail surfaces only (channel / playlist browse). */
