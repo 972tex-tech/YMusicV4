@@ -179,7 +179,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                 }
                 try {
                     val setCookies = response.headers.mapNotNull { (name, value) ->
-                        if (name.equals("Set-Cookie", ignoreCase = true)) redactSetCookie(value) else null
+                        if (name.equals("Set-Cookie", ignoreCase = true)) value else null
                     }
                     logger?.log(
                         Logger.Level.DEBUG,
@@ -273,17 +273,6 @@ private class PreparedRequest(val request: Request, val redirects: RedirectOptio
 
 private fun contentLength(headers: List<Pair<String, String>>): Long =
     headers.firstOrNull { it.first.equals("Content-Length", ignoreCase = true) }?.second?.toLongOrNull() ?: -1L
-
-/** A Set-Cookie header safe for the debug log: the value is elided to its length (auth secrets must
- *  not land in logs); the attributes — Domain/Path/Expires/Secure, what cookie debugging actually
- *  needs — stay verbatim. `SIDCC=<87>; expires=…; domain=.youtube.com; Secure`. */
-internal fun redactSetCookie(header: String): String {
-    val eq = header.indexOf('=')
-    if (eq < 0) return header
-    val semi = header.indexOf(';', eq)
-    val end = if (semi < 0) header.length else semi
-    return header.substring(0, eq) + "=<" + (end - eq - 1) + ">" + if (semi < 0) "" else header.substring(semi)
-}
 
 /** Fire-and-forget close on the cleanup path (see CLAUDE.md error-handling rule). */
 private fun Response.closeQuietly() {
