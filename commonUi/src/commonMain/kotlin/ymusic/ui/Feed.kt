@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -575,27 +578,40 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
     },
 )
 
-/** The feed filter chips ("All / Music / Gaming…"), wrapping to as many lines as they need — no
- *  horizontal scroll; tapping one reloads the feed through its token. A page that publishes a sort
- *  menu (the music library) gets the sort trigger inline at the end of the same wrap. */
+/** The feed filter chips ("All / Music / Gaming…"); tapping one reloads the feed through its token.
+ *  The plain rows scroll horizontally; a page that publishes a sort menu (the music library) wraps
+ *  its chips to as many lines as they need instead, the sort trigger inline at the end of the wrap
+ *  (the row would otherwise clip mid-chip straight into the trigger). */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     if (state.chips.isEmpty() && state.sort.isEmpty()) return
-    androidx.compose.foundation.layout.FlowRow(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-        verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-    ) {
-        state.chips.forEach { chip ->
-            // Keep-content reload: the list stays put with the pull indicator spinning, so a failed
-            // chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
-            FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
-        }
-        if (state.sort.isNotEmpty()) {
+    // Keep-content reload either way: the list stays put with the pull indicator spinning, so a
+    // failed chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
+    if (state.sort.isNotEmpty()) {
+        androidx.compose.foundation.layout.FlowRow(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        ) {
+            state.chips.forEach { chip ->
+                FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
+            }
             FeedSortMenu(state.sort) { token -> pager.reload(token) }
+        }
+        return
+    }
+    val chipScroll = rememberLazyListState()
+    LazyRow(
+        Modifier.fillMaxWidth().horizontalWheelScroll(chipScroll),
+        state = chipScroll,
+        contentPadding = PaddingValues(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+    ) {
+        items(state.chips) { chip ->
+            FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
         }
     }
 }
