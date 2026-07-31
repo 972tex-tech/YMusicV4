@@ -24,6 +24,7 @@ kotlin {
                 implementation(compose.components.resources)
                 implementation(Libs.Jcef.maven)
                 implementation(project(":kmpHttp:core"))
+                implementation(project(":yt-media"))
                 implementation(Libs.Kotlinx.coroutinesCore)
             }
         }
@@ -50,6 +51,23 @@ tasks.register<JavaExec>("webviewProbe") {
         "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
     )
     args((providers.gradleProperty("probeArgs").orNull ?: "realized").split(" "))
+}
+
+// End-to-end SABR download probe (see SabrDownloadProbe.kt):
+//   ./gradlew :desktopApp:sabrDownload -PsabrArgs="<videoId>"
+tasks.register<JavaExec>("sabrDownload") {
+    group = "verification"
+    description = "Play a video, extract its decoded player response + PO token, and SABR-download the audio."
+    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
+    dependsOn(jvmMainCompilation.compileTaskProvider)
+    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
+    mainClass.set("ymusic.desktop.SabrDownloadProbeKt")
+    jvmArgs(
+        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+    )
+    args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
 }
 
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue

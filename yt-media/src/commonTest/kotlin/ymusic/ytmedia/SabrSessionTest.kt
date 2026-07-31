@@ -105,6 +105,44 @@ class SabrSessionTest {
         assertTrue(bytes.slice(20..29).all { it == 2.toByte() })
     }
 
+    // Regression: a realistic server that returns the segment AFTER what the request reports buffered.
+    // If the session fails to advance playerTime/buffered ranges across rounds (the contiguity-seed
+    // bug), the server keeps resending the same segment, no new bytes land, and it stalls out.
+    @Test
+    fun advances_across_rounds_against_a_playertime_driven_server() = runTest {
+        val segCount = 12
+        val segBytes = 8
+        // Segment 0 = init (segBytes), segments 1..N each segBytes; total = (N+1)*segBytes.
+        val total = (segCount + 1).toLong() * segBytes
+        val fmt = audioFormat.copy(clen = total)
+
+        val http = SabrHttp { _, _, body ->
+            val request = VideoPlaybackAbrRequest.from(
+                ymusic.ytmedia.proto.ProtoReader(Buffer().write(body)).readAllFields()
+            )
+            // What has the client buffered? end segment index of its audio buffered range (0 = none).
+            val bufferedEnd = request.bufferedRanges.maxOfOrNull { it.endSegmentIndex } ?: 0
+            val out = Buffer()
+            out.putPolicy(null)
+            if (bufferedEnd == 0) {
+                // send init (seg 0) + seg 1
+                out.putSegment(0, 251, 0, 0, ByteArray(segBytes), isInit = true)
+                out.putSegment(1, 251, 1, segBytes.toLong(), ByteArray(segBytes) { 1 }, isInit = false)
+            } else if (bufferedEnd < segCount) {
+                val next = bufferedEnd + 1
+                out.putSegment(0, 251, next, next.toLong() * segBytes, ByteArray(segBytes) { next.toByte() }, isInit = false)
+            }
+            SabrHttpResponse(200, null, out)
+        }
+
+        val file = MemoryFile()
+        SabrSession(http, random = Random(3)).download(
+            spec = SabrStreamSpec("vid", "https://x.googlevideo.com/videoplayback?sabr=1", ByteArray(0), byteArrayOf(1), ClientInfo(clientName = 1), listOf(fmt)),
+            audio = SabrTrack(fmt, file),
+        )
+        assertEquals(total, file.length())
+    }
+
     @Test
     fun follows_ump_redirect() = runTest {
         val format = audioFormat.copy(clen = 10)

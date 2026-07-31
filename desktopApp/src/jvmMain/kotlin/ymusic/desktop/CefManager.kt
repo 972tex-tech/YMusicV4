@@ -82,7 +82,7 @@ class CefManager {
         app = null
     }
 
-    private companion object {
+    internal companion object {
         const val COOKIE_MANAGER_ATTEMPTS = 200
         const val COOKIE_MANAGER_POLL_MS = 25L
         const val CEF_SHUTDOWN_GRACE_MS = 5_000L

@@ -36,6 +36,8 @@ class SabrSession(
     private val viewportWidth: Int = 640,
     private val viewportHeight: Int = 360,
     private val maxConsecutiveEmptyRounds: Int = 3,
+    /** Optional per-round diagnostics. */
+    private val log: (String) -> Unit = {},
 ) {
     private val cpn = generateCpn(random)
     private var rn = 0
@@ -118,7 +120,16 @@ class SabrSession(
                 .setQueryParam("cpn", cpn)
                 .setQueryParam("rn", (++rn).toString())
 
+            log(
+                "round rn=$rn playerTime=$playerTimeMs audioSeg=${audioSegment?.segmentIndex} " +
+                    "videoSeg=${videoSegment?.segmentIndex} bufferedEnd=${audioBuffered?.endMs} " +
+                    "selected=${request.selectedFormats.size} cookieLen=${playbackCookie.size}",
+            )
+            // Seed the round's segment trackers from the session so contiguity is checked against the
+            // last segment we actually have (segment N+1 continues N across request boundaries).
             val round = RoundState()
+            round.audioSegment = audioSegment
+            round.videoSegment = videoSegment
             val response = http.post(
                 requestUrl,
                 mapOf("content-type" to "application/x-protobuf"),
@@ -135,6 +146,12 @@ class SabrSession(
                 }
                 if (!response.isSuccessful) throw IOException("SABR response ${response.status}")
                 val redirect = parseUmpStream(response.body, audio, video, round)
+                log(
+                    "  resp headers=${round.headers} ends=${round.mediaEnds} " +
+                        "seg=[${if (round.headers > 0) "${round.minSeg}..${round.maxSeg}" else "-"}] " +
+                        "completed=${round.completedSegments} backoffMs=${round.backoffMs} " +
+                        "protection=${round.protectionStatus} audioBytes=${audio.file.length()}",
+                )
                 if (redirect != null) {
                     url = redirect
                     continue
@@ -166,6 +183,13 @@ class SabrSession(
         var completedSegments = 0
         var audioSegment: MediaHeader? = null
         var videoSegment: MediaHeader? = null
+        // diagnostics
+        var headers = 0
+        var mediaEnds = 0
+        var minSeg = Int.MAX_VALUE
+        var maxSeg = Int.MIN_VALUE
+        var protectionStatus: Int? = null
+        var redirected = false
         fun closeOpenSinks() {
             parts.values.forEach { it.sink?.let { s -> runCatching { s.close() } } }
             parts.clear()
@@ -201,6 +225,9 @@ class SabrSession(
                 UmpPart.MEDIA_HEADER -> {
                     val header = MediaHeader.from(ProtoReader(Buffer().write(body.readByteArray(partSize))).readAllFields())
                     check(!round.parts.containsKey(header.headerId)) { "duplicate UMP header id ${header.headerId}" }
+                    round.headers++
+                    round.minSeg = minOf(round.minSeg, header.segmentIndex)
+                    round.maxSeg = maxOf(round.maxSeg, header.segmentIndex)
                     val file = when (header.cacheKey) {
                         audio.format.cacheKey -> audio.file
                         video?.format?.cacheKey -> video.file
@@ -222,6 +249,7 @@ class SabrSession(
                     val state = checkNotNull(round.parts.remove(headerId)) { "media end for unknown header $headerId" }
                     state.sink?.close()
                     state.sink = null
+                    round.mediaEnds++
                     advanceIfContiguous(state.header, audio, video, round)
                 }
 
@@ -233,6 +261,7 @@ class SabrSession(
 
                 UmpPart.STREAM_PROTECTION_STATUS -> {
                     val status = SabrParts.parseStreamProtectionStatus(body.readByteArray(partSize))
+                    round.protectionStatus = status
                     if (status != null) poTokenValid = status != 2 && status != 3
                 }
 
