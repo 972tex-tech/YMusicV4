@@ -213,7 +213,9 @@ private sealed interface AppLayer {
 
     /** The YouTube sign-in browser. Holds its [LoginWebViewState] so the back gesture can walk the
      *  page's own history (canGoBack) before popping the layer. */
-    class Login(val state: LoginWebViewState) : AppLayer
+    /** [switchAccount]: the browser opens YouTube's channel switcher instead of sign-in — no cookie
+     *  polling; CLOSING the layer is the completion signal (popLayer refreshes session+account). */
+    class Login(val state: LoginWebViewState, val switchAccount: Boolean = false) : AppLayer
 }
 
 @Composable
@@ -355,7 +357,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 else -> layers.add(AppLayer.Search(SearchSession.music(graph, scope)))
             }
         }
-        val popLayer = { layers.removeAt(layers.lastIndex); Unit }
+        val popLayer = {
+            val top = layers.removeAt(layers.lastIndex)
+            // Closing the account-switcher browser IS its completion (no cookie gate flips while
+            // switching): refresh session + account + feeds under whatever identity was picked.
+            if (top is AppLayer.Login && top.switchAccount) accountController.onLoginComplete()
+        }
         // The YouTube sign-in browser — single-instance like search: reopening (from the Account tab
         // preface or a future gated action like Subscribe) raises the existing layer.
         val openLogin: () -> Unit = {
@@ -364,6 +371,15 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 existing >= 0 && existing == layers.lastIndex -> Unit
                 existing >= 0 -> layers.add(layers.removeAt(existing))
                 else -> layers.add(AppLayer.Login(LoginWebViewState()))
+            }
+        }
+        // The account switcher — same single Login slot (login and switcher never stack).
+        val openSwitchAccount: () -> Unit = {
+            val existing = layers.indexOfFirst { it is AppLayer.Login }
+            when {
+                existing >= 0 && existing == layers.lastIndex -> Unit
+                existing >= 0 -> layers.add(layers.removeAt(existing))
+                else -> layers.add(AppLayer.Login(LoginWebViewState(), switchAccount = true))
             }
         }
         // Library's own search flow (local files, filter-as-you-type) — a different surface from
@@ -625,10 +641,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         onBack = popLayer,
                                         // Gate passed: drop the browser, then let the controller pull
                                         // the account card, reload feeds, and stale the player page.
+                                        // (The switcher never fires this — popLayer is its signal.)
                                         onComplete = {
                                             popLayer()
                                             accountController.onLoginComplete()
                                         },
+                                        switchAccount = top.switchAccount,
                                     )
                                 }
                                 // Saveable state (tab picks, folder crumbs, scroll positions) is
@@ -656,6 +674,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 account = account,
                                                 onLogin = openLogin,
                                                 onSignOut = { accountController.signOut() },
+                                                onSwitchAccount = openSwitchAccount,
                                                 onOpen = openItem,
                                                 onDeeplink = openDeeplink,
                                             )
@@ -771,6 +790,7 @@ private fun DiscoverFeed(
     account: ymusic.dynamicengine.yt.YtAccountInfo?,
     onLogin: () -> Unit,
     onSignOut: () -> Unit,
+    onSwitchAccount: () -> Unit,
     onOpen: ((ymusic.dynamicengine.yt.YtFeedItem) -> Unit)? = null,
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
@@ -790,6 +810,7 @@ private fun DiscoverFeed(
                 coordinator,
                 account,
                 onSignOut = onSignOut,
+                onSwitchAccount = onSwitchAccount,
                 onOpen = onOpen,
                 onDeeplink = onDeeplink,
             )

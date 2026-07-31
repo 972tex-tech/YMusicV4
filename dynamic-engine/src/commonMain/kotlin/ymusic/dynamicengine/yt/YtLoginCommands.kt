@@ -22,6 +22,18 @@ suspend fun DynamicEngineManager.ytLoginUrl(): String = use { engine ->
 }
 
 /**
+ * The account-switcher entry URL (YouTube's channel switcher) — opened like the sign-in browser but
+ * with NO cookie polling: the switcher swaps identities within an already-valid jar, so there is no
+ * gate to flip. The app refreshes the session and account card when the user closes the screen.
+ */
+suspend fun DynamicEngineManager.ytSwitchAccountUrl(): String = use { engine ->
+    engine.jsonCommand("yt/login/switch-url", { w ->
+        w.beginObject()
+        w.endObject()
+    }) { readLoginUrl(it) }
+}
+
+/**
  * The sign-in gate — COOKIE-ONLY, no network. The login screen polls this while the user signs in;
  * `true` means the essential cookies are present in both jars, so it is safe to dismiss, fetch the
  * account card, and refresh the feeds. It deliberately never touches the network: an authenticated

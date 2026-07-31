@@ -40,6 +40,7 @@ import ymusic.ui.resources.account_library_empty
 import ymusic.ui.resources.account_liked_videos
 import ymusic.ui.resources.account_my_channel
 import ymusic.ui.resources.account_sign_out
+import ymusic.ui.resources.account_switch
 import ymusic.ui.resources.account_watch_history
 import ymusic.ui.resources.account_watch_later
 import ymusic.ui.resources.cd_account_avatar
@@ -56,6 +57,7 @@ internal fun AccountLibraryScreen(
     coordinator: PlaybackCoordinator,
     account: YtAccountInfo?,
     onSignOut: () -> Unit,
+    onSwitchAccount: () -> Unit,
     onOpen: ((YtFeedItem) -> Unit)?,
     onDeeplink: ((link: String, title: String?) -> Unit)?,
 ) {
@@ -66,7 +68,7 @@ internal fun AccountLibraryScreen(
         onOpen = onOpen,
         listState = session.listState,
         onDeeplink = onDeeplink,
-        topContent = { AccountLibraryHeader(account, onSignOut, onDeeplink) },
+        topContent = { AccountLibraryHeader(account, onSignOut, onSwitchAccount, onDeeplink) },
     )
 }
 
@@ -74,10 +76,11 @@ internal fun AccountLibraryScreen(
 private fun AccountLibraryHeader(
     account: YtAccountInfo?,
     onSignOut: () -> Unit,
+    onSwitchAccount: () -> Unit,
     onDeeplink: ((link: String, title: String?) -> Unit)?,
 ) {
     Column {
-        AccountCard(account, onSignOut)
+        AccountCard(account, onSignOut, onSwitchAccount)
         HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = DesignColors.Divider)
         // The nav targets are the app's OWN links in the one scheme it parses (Deeplink.kt): the
         // account's channel, and YouTube's eternal Watch-later/Liked pseudo-playlists. These three
@@ -120,7 +123,7 @@ private class NavTarget(
 )
 
 @Composable
-private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit) {
+private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit, onSwitchAccount: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 15.dp, bottom = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -161,7 +164,14 @@ private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit) {
                 )
             }
         }
-        MoreMenu(ItemActions(listOf(stringResource(Res.string.account_sign_out) to onSignOut)))
+        MoreMenu(
+            ItemActions(
+                listOf(
+                    stringResource(Res.string.account_switch) to onSwitchAccount,
+                    stringResource(Res.string.account_sign_out) to onSignOut,
+                ),
+            ),
+        )
     }
 }
 

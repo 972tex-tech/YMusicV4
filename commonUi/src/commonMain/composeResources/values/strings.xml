@@ -193,6 +193,8 @@
     <string name="signin_loading">Loading sign-in…</string>
     <string name="signin_unavailable">Sign-in isn\'t available on this device yet</string>
     <string name="account_sign_out">Sign out</string>
+    <string name="account_switch">Switch account</string>
+    <string name="switch_account_hint">Pick the account you want, then close this screen with the back arrow — the app refreshes under the new account.</string>
     <string name="cd_account_avatar">Account picture</string>
     <string name="account_my_channel">My channel</string>
     <string name="account_watch_history">Watch history</string>

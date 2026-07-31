@@ -18,12 +18,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,8 +55,10 @@ import ymusic.dynamicengine.yt.ytLoginStatus
 import ymusic.dynamicengine.yt.ytLoginUrl
 import ymusic.dynamicengine.yt.ytLogout
 import ymusic.dynamicengine.yt.ytRefreshSession
+import ymusic.dynamicengine.yt.ytSwitchAccountUrl
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.cd_back
+import ymusic.ui.resources.cd_close
 import ymusic.ui.resources.signin_button
 import ymusic.ui.resources.signin_enables
 import ymusic.ui.resources.signin_feature_history
@@ -68,6 +72,7 @@ import ymusic.ui.resources.signin_preface_subtitle
 import ymusic.ui.resources.signin_preface_title
 import ymusic.ui.resources.signin_screen_title
 import ymusic.ui.resources.signin_unavailable
+import ymusic.ui.resources.switch_account_hint
 
 /**
  * The observable state of the login browser — the shell's [LoginBrowser] writes it, the login chrome
@@ -189,6 +194,11 @@ internal class AccountController(
  * progress) over the shell's WebView, polling the engine's COOKIE-ONLY gate. The moment the essential
  * cookies land it calls [onComplete] — never a network call mid-flow, which YouTube answers by
  * revoking a half-set jar.
+ *
+ * [switchAccount] mode opens YouTube's channel switcher instead, with NO polling — switching swaps
+ * identities within an already-valid jar, so there is no gate to flip. A dismissable hint tells the
+ * user to close the screen when done; the CLOSE is the completion signal (App refreshes the session
+ * and account when this layer pops).
  */
 @Composable
 internal fun YtLoginScreen(
@@ -196,17 +206,21 @@ internal fun YtLoginScreen(
     state: LoginWebViewState,
     onBack: () -> Unit,
     onComplete: () -> Unit,
+    switchAccount: Boolean = false,
 ) {
     var entryUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        entryUrl = runCatching { graph.engines.ytLoginUrl() }.getOrNull()
+        entryUrl = runCatching {
+            if (switchAccount) graph.engines.ytSwitchAccountUrl() else graph.engines.ytLoginUrl()
+        }.getOrNull()
     }
 
     val browser = graph.loginBrowser
     // Poll the cookie gate while the user signs in. Cookie-only, so polling costs nothing and never
     // disturbs the half-set jar. Stops itself the instant it flips (onComplete pops this screen).
-    LaunchedEffect(browser) {
-        if (browser == null) return@LaunchedEffect
+    // The account switcher doesn't poll — the jar is signed in throughout; closing IS completion.
+    LaunchedEffect(browser, switchAccount) {
+        if (browser == null || switchAccount) return@LaunchedEffect
         var done = false
         while (isActive && !done) {
             delay(LOGIN_POLL_MS)
@@ -219,6 +233,10 @@ internal fun YtLoginScreen(
 
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
         LoginChrome(state, onBack)
+        var hintDismissed by remember { mutableStateOf(false) }
+        if (switchAccount && !hintDismissed) {
+            SwitchAccountHint { hintDismissed = true }
+        }
         val url = entryUrl
         when {
             browser == null -> CenteredBox {
@@ -227,6 +245,30 @@ internal fun YtLoginScreen(
             url == null -> CenteredBox { CircularProgressIndicator(color = DesignColors.Accent) }
             else -> browser(url, state, {}, Modifier.fillMaxWidth().weight(1f))
         }
+    }
+}
+
+/** The switcher's dismissable instruction strip — closing the screen is what commits the switch. */
+@Composable
+private fun SwitchAccountHint(onDismiss: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(start = DesignSpacing.MarginCompact, end = DesignSpacing.Space4),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(Res.string.switch_account_hint),
+            style = TextStyle(fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onPrimaryContainer),
+            modifier = Modifier.weight(1f).padding(vertical = DesignSpacing.Space8),
+        )
+        ActionIcon(
+            Icons.Default.Close,
+            stringResource(Res.string.cd_close),
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            onClick = onDismiss,
+        )
     }
 }
 
