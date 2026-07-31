@@ -7,6 +7,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCSignatureOverride
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
@@ -58,6 +59,9 @@ private class LoginNavDelegate(
     private val state: LoginWebViewState,
     private val onPageChanged: () -> Unit,
 ) : NSObject(), WKNavigationDelegateProtocol {
+    // The delegate methods share one ObjC selector family ("webView:…:") — Kotlin sees them as
+    // conflicting overloads; the annotation allows the inherited-ObjC collision.
+    @ObjCSignatureOverride
     override fun webView(webView: WKWebView, didStartProvisionalNavigation: WKNavigation?) {
         state.currentUrl = webView.URL?.absoluteString
         state.canGoBack = webView.canGoBack
@@ -65,6 +69,7 @@ private class LoginNavDelegate(
         onPageChanged()
     }
 
+    @ObjCSignatureOverride
     override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
         state.currentUrl = webView.URL?.absoluteString
         state.title = webView.title
