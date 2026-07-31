@@ -157,7 +157,9 @@ fun SectionHeader(
             Text(it, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = DesignColors.InkFaint))
         }
         when {
-            onToggle != null -> ActionIcon(
+            // A navigable CTA owns the header slot even on a collapsible section — the collapse
+            // toggle also lives in the Show-more pill under the rows, the View-all link only here.
+            onToggle != null && header?.ctaDeeplink == null -> ActionIcon(
                 Icons.Default.KeyboardArrowDown,
                 stringResource(if (collapsed == false) Res.string.cd_collapse else Res.string.cd_expand),
                 Modifier.rotate(if (collapsed == false) 180f else 0f),
