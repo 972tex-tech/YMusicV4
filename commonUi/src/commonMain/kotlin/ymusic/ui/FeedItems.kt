@@ -137,6 +137,14 @@ fun SectionHeader(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The scanning anchor: a small accent tick before the title — the same accent the tab
+        // underline uses — so a section boundary registers in peripheral vision while scrolling,
+        // where a bold-only title blends into the item titles around it.
+        Box(
+            Modifier
+                .size(width = 4.dp, height = 16.dp)
+                .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
+        )
         if (header != null && header.iconThumbs.isNotEmpty()) {
             Box(
                 Modifier.size(26.dp).background(DesignColors.PlaceholderDim, CircleShape),
@@ -148,7 +156,9 @@ fun SectionHeader(
         }
         Text(
             sectionTitle(header),
-            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+            // A step above the 13.5sp item titles — with the tick, what makes headers land at a
+            // glance rather than reading as another row of metadata.
+            style = TextStyle(fontSize = 16.5.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = true),
