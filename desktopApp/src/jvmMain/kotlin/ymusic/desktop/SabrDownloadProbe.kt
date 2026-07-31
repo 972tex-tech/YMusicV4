@@ -11,6 +11,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import okio.buffer
 import okio.sink
 import org.cef.browser.JcefOsrSurface
@@ -22,12 +24,17 @@ import ymusic.player.VideoQualityState
 import ymusic.player.WebViewPlayer
 import ymusic.player.WebViewPlayerContext
 import ymusic.player.createWebViewPlayer
+import ymusic.ytmedia.cache.DiskMediaBlobCache
+import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightSegmentIndex
+import ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import ymusic.ytmedia.sabr.AdaptiveFormat
 import ymusic.ytmedia.sabr.ClientInfo
 import ymusic.ytmedia.sabr.DownloadFile
 import ymusic.ytmedia.sabr.SabrSession
 import ymusic.ytmedia.sabr.SabrStreamSpec
 import ymusic.ytmedia.sabr.SabrTrack
+import ymusic.ytmedia.sabr.formatCacheKey
 import java.awt.Dimension
 import java.io.File
 import javax.swing.JFrame
@@ -117,6 +124,13 @@ fun main(args: Array<String>) {
                 cookieJar = cefCookieJar
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
             }
+            // Route the download through a MediaCache so it mirrors segments into the player cache as it
+            // goes — proving a download populates both the muxed file AND the cache (spans + index rows).
+            val cacheDir = File(outDir, "player-cache").apply { mkdirs() }
+            val blobs = DiskMediaBlobCache(cacheDir.absolutePath.toPath(), FileSystem.SYSTEM, ioDispatcher = Dispatchers.IO)
+            val index = SqlDelightSegmentIndex(jvmSegmentDatabaseDriver(), now = { System.currentTimeMillis() }, ioDispatcher = Dispatchers.IO)
+            val mediaCache = MediaCache(blobs, index)
+
             val startedAt = System.currentTimeMillis()
             withContext(Dispatchers.IO) {
                 SabrSession(log = { println("[sabr] $it") }).download(
@@ -128,12 +142,32 @@ fun main(args: Array<String>) {
                         val pct = if (total > 0) done * 100 / total else 0
                         println("[sabr] audio $done / $total ($pct%)")
                     },
+                    mediaCache = mediaCache,
                 )
             }
             val secs = (System.currentTimeMillis() - startedAt) / 1000.0
-            val ok = outFile.length() >= audio.clen
-            println("[sabr] RESULT file=${outFile.absolutePath} size=${outFile.length()} expected=${audio.clen} ok=$ok in ${secs}s")
-            if (ok) 0 else 2
+            val fileOk = outFile.length() >= audio.clen
+
+            // Cache verification: the whole stream should be cached, and reading it back must equal the file.
+            val key = formatCacheKey(audio.itag, audio.lmt)
+            val cachedWhole = blobs.isCached(key, 0, audio.clen)
+            val cacheBytes = blobs.totalSize()
+            val seg0 = index.findBySegmentIndex(audio.itag, audio.lmt, 0)
+            val firstReal = index.findByStartTime(audio.itag, audio.lmt, 0)
+            val readback = if (cachedWhole) {
+                blobs.read(key, 0, audio.clen)?.buffer()?.use { it.readByteArray() }
+            } else {
+                null
+            }
+            val bytesMatch = readback != null && readback.size.toLong() == outFile.length() &&
+                readback.toList() == outFile.readBytes().toList()
+            println(
+                "[sabr] CACHE key=$key cachedWhole=$cachedWhole cacheBytes=$cacheBytes " +
+                    "initRow=${seg0 != null} firstSegRow=${firstReal != null} readbackMatchesFile=$bytesMatch",
+            )
+            val cacheOk = cachedWhole && cacheBytes >= audio.clen && seg0 != null && bytesMatch
+            println("[sabr] RESULT file=${outFile.absolutePath} size=${outFile.length()} expected=${audio.clen} fileOk=$fileOk cacheOk=$cacheOk in ${secs}s")
+            if (fileOk && cacheOk) 0 else 2
         }
     }.getOrElse { err ->
         System.err.println("[sabr] FAILED: ${err.message}")

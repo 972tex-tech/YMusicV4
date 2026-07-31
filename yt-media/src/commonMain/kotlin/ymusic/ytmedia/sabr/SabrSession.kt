@@ -9,9 +9,15 @@ import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import kmphttp.header
 import kotlinx.coroutines.delay
+import okio.Buffer
 import okio.BufferedSink
 import okio.IOException
+import okio.Sink
+import okio.Timeout
+import okio.buffer
 import okio.use
+import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SegmentFill
 import ymusic.ytmedia.proto.ProtoField
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.ump.UmpPart
@@ -71,6 +77,8 @@ class SabrSession(
         audio: SabrTrack,
         video: SabrTrack? = null,
         progress: SabrProgress? = null,
+        /** When set, every fully-fetched segment is mirrored into the player cache as it downloads. */
+        mediaCache: MediaCache? = null,
     ) {
         val startMark = TimeSource.Monotonic.markNow()
         var url = spec.sabrUrl.setQueryParam("alr", "yes")
@@ -122,7 +130,7 @@ class SabrSession(
                 } else if (!response.isSuccessful) {
                     throw IOException("SABR response ${response.code}")
                 } else {
-                    outcome = BufferedAsyncSource(response.body.asyncSource()).use { readResponse(it, audio, video) }
+                    outcome = BufferedAsyncSource(response.body.asyncSource()).use { readResponse(it, audio, video, mediaCache) }
                 }
             } finally {
                 response.close()
@@ -199,6 +207,8 @@ class SabrSession(
     private class PartState(val header: MediaHeader, val file: DownloadFile) {
         var sink: BufferedSink? = null
         var totalRead: Long = 0
+        /** Set when this segment is also being mirrored into the player cache (see readResponse). */
+        var cacheFill: SegmentFill? = null
     }
 
     internal class RoundOutcome(
@@ -214,7 +224,12 @@ class SabrSession(
     }
 
     /** Stream-parse one UMP response, advancing the session cursor; returns per-round outcome. */
-    internal suspend fun readResponse(body: BufferedAsyncSource, audio: SabrTrack, video: SabrTrack?): RoundOutcome {
+    internal suspend fun readResponse(
+        body: BufferedAsyncSource,
+        audio: SabrTrack,
+        video: SabrTrack?,
+        mediaCache: MediaCache? = null,
+    ): RoundOutcome {
         val open = mutableMapOf<Int, PartState>()
         var completed = 0
         var backoffMs = 0
@@ -248,7 +263,16 @@ class SabrSession(
                             video?.format?.cacheKey -> video.file
                             else -> throw IOException("unexpected media header ${header.videoId} ${header.cacheKey} seg ${header.segmentIndex}")
                         }
-                        open[header.headerId] = PartState(header, file)
+                        val state = PartState(header, file)
+                        // Mirror into the player cache only when this file is exactly at the segment's start
+                        // — a fresh, full write with no server-resent prefix to skip. That keeps the cache
+                        // span's declared range equal to the bytes we actually store (per DownloadFile the
+                        // file position IS the format's contiguous byte offset). A resumed/overlapping
+                        // segment is left uncached rather than mislabeled.
+                        if (mediaCache != null && file.length() == header.startRange) {
+                            state.cacheFill = mediaCache.openSegmentFill(header)
+                        }
+                        open[header.headerId] = state
                     }
 
                     UmpPart.MEDIA_DATA -> {
@@ -264,6 +288,8 @@ class SabrSession(
                         val state = checkNotNull(open.remove(headerId)) { "media end for unknown header $headerId" }
                         state.sink?.close()
                         state.sink = null
+                        state.cacheFill?.commit() // seal the mirrored span (its index row was saved on the header)
+                        state.cacheFill = null
                         if (advanceIfContiguous(state.header, audio, video)) completed++
                     }
 
@@ -290,7 +316,12 @@ class SabrSession(
                 }
             }
         } finally {
-            open.values.forEach { it.sink?.let { s -> runCatching { s.close() } } }
+            open.values.forEach { state ->
+                state.sink?.let { s -> runCatching { s.close() } }
+                // A segment left open (truncated response) never sealed: drop its uncommitted cache block
+                // so no partial span survives; its orphan index row is pruned later by cleanup.
+                state.cacheFill?.let { runCatching { it.abort() } }
+            }
         }
         return RoundOutcome(completed, redirect, backoffMs, headers, minSeg, maxSeg, protectionStatus)
     }
@@ -310,7 +341,10 @@ class SabrSession(
         if (fileEnd in partStart until partEnd) {
             val skips = fileEnd - partStart
             if (skips > 0) body.skipFully(skips)
-            val sink = state.file.appendSink()
+            val fileSink = state.file.appendSink()
+            // Mirror into the cache span too when this segment is being cached. cacheFill is only set for
+            // segments with no skip (file at startRange), so the tee sees the segment's full bytes.
+            val sink = state.cacheFill?.let { TeeSink(fileSink, it.sink).buffer() } ?: fileSink
             state.sink = sink
             body.copyFully(sink, dataSize - skips)
         } else {
@@ -368,5 +402,34 @@ class SabrSession(
 
     private companion object {
         private val PROTOBUF = "application/x-protobuf".toMediaTypeOrNull()
+    }
+}
+
+/**
+ * Fans one write out to two [BufferedSink]s — the download's file and the cache span — so a segment's
+ * bytes land in both in a single streaming pass. [close] closes only [primary] (the file); the cache
+ * side's lifecycle is [SegmentFill.commit]/[SegmentFill.abort], so it is merely flushed here.
+ */
+private class TeeSink(
+    private val primary: BufferedSink,
+    private val secondary: BufferedSink,
+) : Sink {
+    override fun write(source: Buffer, byteCount: Long) {
+        val copy = Buffer()
+        source.copyTo(copy, 0, byteCount) // copy without consuming, so both sinks get the same bytes
+        secondary.write(copy, byteCount)
+        primary.write(source, byteCount)
+    }
+
+    override fun flush() {
+        secondary.flush()
+        primary.flush()
+    }
+
+    override fun timeout(): Timeout = Timeout.NONE
+
+    override fun close() {
+        primary.close()
+        secondary.flush()
     }
 }
