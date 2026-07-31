@@ -167,7 +167,33 @@ fun main(args: Array<String>) {
             )
             val cacheOk = cachedWhole && cacheBytes >= audio.clen && seg0 != null && bytesMatch
             println("[sabr] RESULT file=${outFile.absolutePath} size=${outFile.length()} expected=${audio.clen} fileOk=$fileOk cacheOk=$cacheOk in ${secs}s")
-            if (fileOk && cacheOk) 0 else 2
+
+            // Second download of the SAME track through the SAME cache — must be served entirely from the
+            // cache (zero network rounds), proving download⇄cache reuse (plan §5, roadmap step 4).
+            val reuseFile = File(outDir, "$videoId.reuse.$ext").apply { delete() }
+            var networkRounds = 0
+            var cacheServes = 0
+            withContext(Dispatchers.IO) {
+                SabrSession(
+                    log = { line ->
+                        if (line.startsWith("round rn=")) networkRounds++
+                        if (line.startsWith("cache-serve")) cacheServes++
+                        println("[sabr:reuse] $line")
+                    },
+                ).download(
+                    client = sabrClient,
+                    userAgent = CefManager.CHROME_USER_AGENT,
+                    spec = spec,
+                    audio = SabrTrack(audio, FileDownloadFile(reuseFile)),
+                    mediaCache = mediaCache,
+                )
+            }
+            val reuseOk = reuseFile.length() == outFile.length() &&
+                reuseFile.readBytes().toList() == outFile.readBytes().toList() &&
+                networkRounds == 0 && cacheServes > 0
+            println("[sabr] REUSE size=${reuseFile.length()} networkRounds=$networkRounds cacheServes=$cacheServes reuseOk=$reuseOk")
+
+            if (fileOk && cacheOk && reuseOk) 0 else 2
         }
     }.getOrElse { err ->
         System.err.println("[sabr] FAILED: ${err.message}")

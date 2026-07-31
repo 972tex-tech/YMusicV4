@@ -1,6 +1,7 @@
 package ymusic.ytmedia.sabr
 
 import kmpcommon.io.BufferedAsyncSource
+import kmpcommon.io.asAsyncSource
 import kmphttp.KmpHttpClient
 import kmphttp.MediaTypeX.toMediaTypeOrNull
 import kmphttp.RedirectOptions
@@ -17,7 +18,9 @@ import okio.Timeout
 import okio.buffer
 import okio.use
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SabrServe
 import ymusic.ytmedia.cache.SegmentFill
+import ymusic.ytmedia.cache.serveSabr
 import ymusic.ytmedia.proto.ProtoField
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.ump.UmpPart
@@ -103,6 +106,20 @@ class SabrSession(
             }
 
             val request = nextRequest(spec, audio, video, fallbackVideoFormat, startMark.elapsedNow().inWholeMilliseconds.toInt())
+
+            // Reuse the player cache first: if it can serve this request's segments locally, parse that
+            // synthesized UMP instead of hitting the network. A re-download of an already-cached track is
+            // served entirely from cache (zero network); a partial/absent cache falls through below.
+            val served = mediaCache?.let { runCatching { it.serveSabr(request) }.getOrNull() }
+            if (served is SabrServe.Hit) {
+                log("cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}")
+                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use { readResponse(it, audio, video, mediaCache) }
+                emitProgress()
+                if (isComplete(audio, video)) return
+                if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
+                continue
+            }
+
             val requestUrl = url
                 .setQueryParam("cpn", cpn)
                 .setQueryParam("rn", (++rn).toString())
