@@ -43,6 +43,8 @@ object WebViewProtocol {
     private const val SET_VOLUME = 10
     private const val SET_PLAY_SPEED = 11
     private const val BULK = 12
+    private const val ADD_WANTED_PLAYER_RES = 13
+    private const val GET_PO_TOKEN = 16
 
     /** The video-quality token the page treats as audio-only (hides the picture, keeps audio). */
     const val QUALITY_AUDIO_ONLY = "zero"
@@ -121,6 +123,25 @@ object WebViewProtocol {
         put("trackId", JsonPrimitive(trackId))
     }.toString()
 
+    // --- extraction commands (for the SABR downloader / player cache) ---
+
+    /**
+     * Ask the page to post the decoded player response for [videoId] on the `player_res` channel.
+     * The page posts from its cache (filled + sig/n-decoded when that video's `/player` response was
+     * seen) or from the currently-playing response — so the video must have been loaded/played first.
+     */
+    fun encodeRequestPlayerResponse(videoId: String): String = buildJsonObject {
+        put("what", JsonPrimitive(ADD_WANTED_PLAYER_RES))
+        put("videoId", JsonPrimitive(videoId))
+    }.toString()
+
+    /** Ask the page to mint a GVS PO token for [videoId]; result arrives on the `po_token_v2` channel. */
+    fun encodeRequestPoToken(videoId: String, timeoutMs: Long): String = buildJsonObject {
+        put("what", JsonPrimitive(GET_PO_TOKEN))
+        put("videoId", JsonPrimitive(videoId))
+        put("timeout", JsonPrimitive(timeoutMs))
+    }.toString()
+
     /**
      * Decode a page → host channel. [channel] is the raw channel name (`"${sessionId}_state_changed"`,
      * or `"report_error"` which carries no prefix). Returns null for an unknown channel, a wrong
@@ -172,6 +193,22 @@ object WebViewProtocol {
                 val videoId = obj.string("videoId")
                 val contents = obj["watchNextContents"] as? kotlinx.serialization.json.JsonArray
                 if (videoId == null || contents == null) null else WebViewEvent.WatchNextSeen(videoId, contents.toString())
+            }
+            // Decoded player response for a wanted videoId. `data` (streamingData with sig/n-decoded
+            // serverAbrStreamingUrl, adaptiveFormats, videoPlaybackUstreamerConfig, client info) stays
+            // opaque here — the SABR layer parses it.
+            "player_res" -> {
+                val videoId = obj.string("videoId")
+                val data = obj["data"] as? JsonObject
+                if (videoId == null || data == null) null else WebViewEvent.PlayerResponse(videoId, data.toString())
+            }
+            "po_token_v2" -> {
+                val videoId = obj.string("videoId") ?: return null
+                if (obj.boolOr("success", default = false)) {
+                    WebViewEvent.PoToken(videoId, token = obj.string("token"), errorMessage = null)
+                } else {
+                    WebViewEvent.PoToken(videoId, token = null, errorMessage = obj.string("message") ?: "po token failed")
+                }
             }
             else -> null
         }
@@ -280,6 +317,12 @@ sealed interface WebViewEvent {
      * only thing that parses it.
      */
     data class WatchNextSeen(val videoId: String, val contentsJson: String) : WebViewEvent
+
+    /** The page's decoded player response for [videoId]; [dataJson] is the opaque `data` object. */
+    data class PlayerResponse(val videoId: String, val dataJson: String) : WebViewEvent
+
+    /** A minted GVS PO token (base64) for [videoId], or [errorMessage] on failure. */
+    data class PoToken(val videoId: String, val token: String?, val errorMessage: String?) : WebViewEvent
 }
 
 enum class WebPlaybackState { Idle, Buffering, Ready, Ended, Error }

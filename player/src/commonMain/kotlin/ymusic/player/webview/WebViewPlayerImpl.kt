@@ -1,5 +1,6 @@
 package ymusic.player.webview
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonPrimitive
 import ymusic.player.AudioTrackState
 import ymusic.player.CaptionState
@@ -69,6 +71,11 @@ internal class WebViewPlayerImpl(
     private var connected = false
     private val pending = mutableListOf<String>() // command JSONs queued until the page connects
     private var released = false
+
+    // videoId → awaiting caller, keyed on videoId (the page's only correlation id). Main-thread only,
+    // so a plain map needs no synchronization. Latest request per videoId wins (prior one cancelled).
+    private val playerResWaiters = mutableMapOf<String, CompletableDeferred<String>>()
+    private val poTokenWaiters = mutableMapOf<String, CompletableDeferred<String>>()
 
     private data class PendingLoad(
         val source: PlayableItem.YtVideoId,
@@ -217,9 +224,43 @@ internal class WebViewPlayerImpl(
 
     override fun selectAudioTrack(id: String) = command(WebViewProtocol.encodeSelectAudioTrack(id))
 
+    override suspend fun requestPlayerResponse(videoId: String): String =
+        requestExtraction(videoId, playerResWaiters, PLAYER_RES_TIMEOUT_MS) {
+            WebViewProtocol.encodeRequestPlayerResponse(videoId)
+        }
+
+    override suspend fun requestPoToken(videoId: String): String =
+        requestExtraction(videoId, poTokenWaiters, PO_TOKEN_TIMEOUT_MS) {
+            WebViewProtocol.encodeRequestPoToken(videoId, PO_TOKEN_TIMEOUT_MS)
+        }
+
+    /** Shared request/await: register a per-videoId deferred, send the command, await with timeout. */
+    private suspend fun requestExtraction(
+        videoId: String,
+        waiters: MutableMap<String, CompletableDeferred<String>>,
+        timeoutMs: Long,
+        encode: () -> String,
+    ): String {
+        check(!released) { "player released" }
+        val deferred = CompletableDeferred<String>()
+        withContext(Dispatchers.Main) {
+            waiters.remove(videoId)?.cancel()
+            waiters[videoId] = deferred
+            command(encode())
+        }
+        return try {
+            withTimeout(timeoutMs) { deferred.await() }
+        } finally {
+            withContext(Dispatchers.Main) { if (waiters[videoId] === deferred) waiters.remove(videoId) }
+        }
+    }
+
     override fun release() {
         if (released) return
         released = true
+        (playerResWaiters.values + poTokenWaiters.values).forEach { it.cancel() }
+        playerResWaiters.clear()
+        poTokenWaiters.clear()
         scope.cancel()
         bridge.release()
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
@@ -277,6 +318,11 @@ internal class WebViewPlayerImpl(
             is WebViewEvent.CaptionsChanged -> _captions.value = e.state
             is WebViewEvent.AudioTracksChanged -> _audioTracks.value = e.state
             is WebViewEvent.WatchNextSeen -> _watchNextSeen.tryEmit(e)
+            is WebViewEvent.PlayerResponse -> playerResWaiters.remove(e.videoId)?.complete(e.dataJson)
+            is WebViewEvent.PoToken -> poTokenWaiters.remove(e.videoId)?.let { waiter ->
+                if (e.token != null) waiter.complete(e.token)
+                else waiter.completeExceptionally(IllegalStateException("po token failed: ${e.errorMessage}"))
+            }
             null -> Unit
         }
     }
@@ -307,5 +353,8 @@ internal class WebViewPlayerImpl(
 
         /** The boot-script slot in the engine-served embed HTML (engine-js `logic/yt/embed.ts`). */
         const val INJECT_PLACEHOLDER = "INJECT_JS_HERE"
+
+        private const val PLAYER_RES_TIMEOUT_MS = 20_000L
+        private const val PO_TOKEN_TIMEOUT_MS = 30_000L
     }
 }

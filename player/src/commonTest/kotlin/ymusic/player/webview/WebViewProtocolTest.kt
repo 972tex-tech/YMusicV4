@@ -154,6 +154,47 @@ class WebViewProtocolTest {
     }
 
     @Test
+    fun encodes_extraction_commands() {
+        val pr = parse(WebViewProtocol.encodeRequestPlayerResponse("abc"))
+        assertEquals(13, pr["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals("abc", pr["videoId"]!!.jsonPrimitive.content)
+
+        val pt = parse(WebViewProtocol.encodeRequestPoToken("abc", 30_000))
+        assertEquals(16, pt["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals("abc", pt["videoId"]!!.jsonPrimitive.content)
+        assertEquals(30_000, pt["timeout"]!!.jsonPrimitive.content.toLong())
+    }
+
+    @Test
+    fun decodes_player_response_keeping_data_opaque() {
+        val e = WebViewProtocol.decodeEvent(
+            "s_player_res",
+            """{"videoId":"vid","data":{"streamingData":{"serverAbrStreamingUrl":"https://x/videoplayback?sabr=1"},"clientName":"WEB"}}""",
+            "s",
+        )
+        assertTrue(e is WebViewEvent.PlayerResponse)
+        assertEquals("vid", e.videoId)
+        // data round-trips as a JSON object string the SABR layer can parse.
+        val data = json.parseToJsonElement(e.dataJson).jsonObject
+        assertEquals("WEB", data["clientName"]!!.jsonPrimitive.content)
+        // missing videoId or data → ignored
+        assertNull(WebViewProtocol.decodeEvent("s_player_res", """{"videoId":"vid"}""", "s"))
+    }
+
+    @Test
+    fun decodes_po_token_success_and_failure() {
+        val ok = WebViewProtocol.decodeEvent("s_po_token_v2", """{"videoId":"vid","success":true,"token":"AABB"}""", "s")
+        assertTrue(ok is WebViewEvent.PoToken)
+        assertEquals("AABB", ok.token)
+        assertNull(ok.errorMessage)
+
+        val bad = WebViewProtocol.decodeEvent("s_po_token_v2", """{"videoId":"vid","success":false,"message":"no minter"}""", "s")
+        assertTrue(bad is WebViewEvent.PoToken)
+        assertNull(bad.token)
+        assertEquals("no minter", bad.errorMessage)
+    }
+
+    @Test
     fun wrong_session_and_unknown_channel_are_ignored() {
         // Unknown channel name (after stripping) → null.
         assertNull(WebViewProtocol.decodeEvent("sid_bogus", "{}", "sid"))

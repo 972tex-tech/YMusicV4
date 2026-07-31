@@ -30,6 +30,17 @@ interface WebViewPlayer :
      *  changes (YouTube sign-in / sign-out) so the running page picks up the new identity. The
      *  current song plays on undisturbed until it ends. */
     fun refreshOnNext()
+
+    /**
+     * The decoded player response for [videoId] as the page's opaque `data` JSON (streamingData with
+     * sig/n-decoded `serverAbrStreamingUrl` + adaptiveFormats, `videoPlaybackUstreamerConfig`, client
+     * info). The video must have been loaded/played on this page so its response is cached. Feeds the
+     * SABR downloader / player cache (`:yt-media`). Throws on timeout or if the page isn't connected.
+     */
+    suspend fun requestPlayerResponse(videoId: String): String
+
+    /** Mint a GVS PO token (base64) for [videoId] via the page's BotGuard. Throws on timeout/failure. */
+    suspend fun requestPoToken(videoId: String): String
 }
 
 /**

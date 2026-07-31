@@ -114,6 +114,12 @@ class PlayerFacadeTest {
         )
         override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<ymusic.player.webview.WebViewEvent.WatchNextSeen> =
             reports
+
+        override fun refreshOnNext() = Unit
+
+        override suspend fun requestPlayerResponse(videoId: String): String = error("not used in this test")
+
+        override suspend fun requestPoToken(videoId: String): String = error("not used in this test")
     }
 
     private class Harness(scope: TestScope, webViewFactory: Boolean = true) {
