@@ -9,7 +9,6 @@ import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import kmphttp.header
 import kotlinx.coroutines.delay
-import okio.Buffer
 import okio.BufferedSink
 import okio.IOException
 import okio.use
@@ -17,6 +16,7 @@ import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.ump.UmpPart
 import ymusic.ytmedia.ump.copyFully
 import ymusic.ytmedia.ump.readBytesFully
+import ymusic.ytmedia.ump.readPart
 import ymusic.ytmedia.ump.readUmpPartHeader
 import ymusic.ytmedia.ump.skipFully
 import kotlin.random.Random
@@ -238,7 +238,7 @@ class SabrSession(
                     }
 
                     UmpPart.MEDIA_HEADER -> {
-                        val header = MediaHeader.from(ProtoReader(Buffer().write(body.readBytesFully(partSize))).readAllFields())
+                        val header = MediaHeader.from(ProtoReader(body.readPart(partSize)).readAllFields())
                         check(!open.containsKey(header.headerId)) { "duplicate UMP header id ${header.headerId}" }
                         headers++
                         minSeg = minOf(minSeg, header.segmentIndex)
@@ -268,7 +268,7 @@ class SabrSession(
                     }
 
                     UmpPart.NEXT_REQUEST_POLICY -> {
-                        val policy = NextRequestPolicy.from(ProtoReader(Buffer().write(body.readBytesFully(partSize))).readAllFields())
+                        val policy = NextRequestPolicy.from(ProtoReader(body.readPart(partSize)).readAllFields())
                         policy.playbackCookie?.let { playbackCookie = it }
                         backoffMs = policy.backoffTimeMs ?: 0
                     }
@@ -281,7 +281,7 @@ class SabrSession(
 
                     UmpPart.SABR_CONTEXT_UPDATE -> {
                         val update = runCatching {
-                            SabrContextUpdate.fromUmpResponse(ProtoReader(Buffer().write(body.readBytesFully(partSize))).readAllFields())
+                            SabrContextUpdate.fromUmpResponse(ProtoReader(body.readPart(partSize)).readAllFields())
                         }.getOrNull()
                         if (update != null) sabrContextUpdates[update.type] = update
                     }
