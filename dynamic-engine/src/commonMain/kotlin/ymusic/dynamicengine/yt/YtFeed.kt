@@ -146,10 +146,10 @@ data class YtSection(
     val layout: String = LAYOUT_LIST,
     val items: List<YtFeedItem>,
     val collapsible: Boolean = false,
-    /** Engine override for how many rows a collapsed section keeps (single-column list rows /
-     *  grid rows at the resolved column count); null = the app's default policy. */
-    val collapsedListRows: Int? = null,
-    val collapsedGridRows: Int? = null,
+    /** Engine override for how many rows a collapsed section keeps, indexed by the resolved
+     *  column count (`[4, 3, 2]` = 4 rows single-column, 3 at two columns, 2 beyond; the last
+     *  entry extends). Empty = the app's default policy. */
+    val collapsedRows: List<Int> = emptyList(),
     val continuation: String? = null,
 ) {
     companion object {

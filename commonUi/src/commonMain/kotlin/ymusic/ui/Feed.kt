@@ -433,9 +433,9 @@ private fun FeedSections(
 /** Pills shown while a collapsible tag section is collapsed (roughly two rows). */
 private const val TAGS_COLLAPSED = 10
 
-/** Default rows a collapsed section keeps, absent an engine override (see YtSection.collapsed*Rows). */
-private const val COLLAPSED_LIST_ROWS = 4
-private const val COLLAPSED_GRID_ROWS = 3
+/** Default rows a collapsed section keeps by column count — 4 single-column, 3 at two columns,
+ *  2 from three up (see YtSection.collapsedRows for the per-section engine override). */
+private val COLLAPSED_ROWS_BY_COLUMNS = listOf(4, 3, 2)
 
 private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
@@ -482,13 +482,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         }
         return
     }
-    // A collapsed section keeps a few rows — the app's 4-list/3-grid policy unless the section
-    // carries its own counts from the engine (YtSection.collapsed*Rows, remotely tunable).
-    val collapsedCount = if (columns == 1) {
-        section.collapsedListRows ?: COLLAPSED_LIST_ROWS
-    } else {
-        columns * (section.collapsedGridRows ?: COLLAPSED_GRID_ROWS)
-    }
+    // A collapsed section keeps a few rows, resolved by column count from an engine-supplied
+    // ladder (YtSection.collapsedRows, remotely tunable per section) or the app default —
+    // index columns-1, the last entry extending to wider layouts.
+    val ladder = section.collapsedRows.ifEmpty { COLLAPSED_ROWS_BY_COLUMNS }
+    val collapsedCount = columns * ladder[(columns - 1).coerceAtMost(ladder.lastIndex)].coerceAtLeast(1)
     val shown = if (expanded) section.items else section.items.take(collapsedCount)
     if (columns == 1) {
         items(shown.size) { i ->
