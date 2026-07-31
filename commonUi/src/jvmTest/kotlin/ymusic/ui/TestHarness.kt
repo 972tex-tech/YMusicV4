@@ -60,12 +60,21 @@ internal class CannedHttp(
         throw UnsupportedOperationException("CannedHttp has no builder")
 }
 
-internal fun textResponse(request: Request, text: String, contentType: String): Response = ResponseBuilder()
+internal fun textResponse(
+    request: Request,
+    text: String,
+    contentType: String,
+    extraHeaders: List<Pair<String, String>> = emptyList(),
+): Response = ResponseBuilder()
     .request(request)
     .protocol(Protocol.HTTP_1_1)
     .code(200)
     .message("OK")
-    .headers(HeadersBuilder().add("Content-Type", contentType).build())
+    .headers(
+        HeadersBuilder().add("Content-Type", contentType)
+            .apply { for ((name, value) in extraHeaders) add(name, value) }
+            .build(),
+    )
     .body(Buffer().write(text.encodeToByteArray()).asResponseBody(null, -1L))
     .build()
 
