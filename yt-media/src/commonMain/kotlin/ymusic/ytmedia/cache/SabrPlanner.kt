@@ -241,6 +241,24 @@ private suspend fun MediaCache.synthesizeUmp(policy: NextRequestPolicy, segments
     return out
 }
 
+/**
+ * Serve a progressive `/videoplayback` range read `bytes=[rangeStart, rangeEnd]` (inclusive, HTTP
+ * semantics) straight from the byte store — the cross-protocol payoff (plan §1): bytes cached by *any*
+ * protocol (a SABR fill, a prior progressive fill) answer a progressive range because within a format
+ * stream segments are contiguous in byte space. Returns the pinned slice, or null (→ network) if the
+ * range isn't fully cached right now. `rangeEnd < 0` means open-ended, which the cache never fully
+ * covers, so it's always a miss here (let the network stream it).
+ */
+suspend fun MediaCache.serveProgressive(itag: Int, lmt: Long, rangeStart: Long, rangeEnd: Long): PinnedSource? {
+    if (rangeEnd < rangeStart) return null
+    val length = rangeEnd - rangeStart + 1
+    return blobs.read(formatCacheKey(itag, lmt), rangeStart, length)
+}
+
+// NB: fillFromProgressive (teeing a progressive network body into the cache) lands with the platform
+// interception layer (step 6) — it needs a coroutine scope to abort its writer on a cancelled stream,
+// which the interception plumbing provides. Downloads already fill the cache via fillFromSabr.
+
 /** The cache keys of every stream with committed bytes — the `keepKeys` set for `SegmentIndex.cleanup`. */
 suspend fun MediaCache.liveKeys(): Set<String> = blobs.keys()
 
