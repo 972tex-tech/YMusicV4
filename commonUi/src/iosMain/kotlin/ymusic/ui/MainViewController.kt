@@ -49,6 +49,7 @@ import ymusic.player.createWebViewPlayer
 import ymusic.player.webview.APPLE_WEBVIEW_USER_AGENT
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.nativeSegmentDatabaseDriver
 import ymusic.ytmedia.proxy.LocalMediaProxy
@@ -135,7 +136,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val cacheDriver = nativeSegmentDatabaseDriver() // shared: blob-span index + segment index
     val mediaProxy = LocalMediaProxy(
         cache = MediaCache(
-            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, cacheDriver),
+            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver)),
             SqlDelightSegmentIndex(
                 cacheDriver,
                 now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },

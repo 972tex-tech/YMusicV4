@@ -51,6 +51,7 @@ import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import ymusic.ytmedia.proxy.LocalMediaProxy
@@ -152,7 +153,7 @@ class MainActivity : ComponentActivity() {
             val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
             val driver = androidSegmentDatabaseDriver(applicationContext) // shared: span index + segment index
             val cache = MediaCache(
-                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, driver),
+                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
                 SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
             )
             val client = KmpHttpClient.create {

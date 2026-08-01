@@ -10,6 +10,7 @@ import okio.Path.Companion.toPath
 import okio.buffer
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import ymusic.ytmedia.proxy.SabrCacheTee
@@ -52,7 +53,7 @@ class SabrCacheTeeTest {
     fun tees_complete_segments_and_passes_bytes_through_unchanged() = runBlocking {
         FileSystem.SYSTEM.deleteRecursively(dir.toPath())
         val driver = jvmSegmentDatabaseDriver()
-        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, driver)
+        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver))
         val cache = MediaCache(blobs, SqlDelightSegmentIndex(driver, now = { 0 }))
 
         val seg0 = ByteArray(10) { it.toByte() }

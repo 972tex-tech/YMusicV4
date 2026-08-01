@@ -82,6 +82,7 @@ import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import ymusic.ytmedia.proxy.LocalMediaProxy
@@ -212,7 +213,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         // One persistent DB for both the blob-span index and the segment index.
         val driver = jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "cache-index.db").absolutePath}")
         val cache = MediaCache(
-            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, driver),
+            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
             SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
         )
         val client = KmpHttpClient.create {

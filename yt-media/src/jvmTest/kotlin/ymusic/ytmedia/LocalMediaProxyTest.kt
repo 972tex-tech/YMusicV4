@@ -11,6 +11,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import ymusic.ytmedia.proxy.LocalMediaProxy
@@ -45,7 +46,7 @@ class LocalMediaProxyTest {
     fun serves_a_progressive_range_from_cache() = runBlocking {
         FileSystem.SYSTEM.deleteRecursively(dir.toPath())
         val driver = jvmSegmentDatabaseDriver()
-        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, driver)
+        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver))
         val cache = MediaCache(blobs, SqlDelightSegmentIndex(driver, now = { 0 }))
         withContext(Dispatchers.IO) {
             val w = blobs.writer(formatCacheKey(251, 100), 0, 40)

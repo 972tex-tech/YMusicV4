@@ -11,6 +11,7 @@ import okio.buffer
 import okio.use
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.sabr.AdaptiveFormat
 import ymusic.ytmedia.sabr.DownloadFile
@@ -74,7 +75,7 @@ class MediaCacheFillTest {
     fun a_download_populates_both_the_file_and_the_player_cache() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()
-        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver)
+        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver))
         val index = SqlDelightSegmentIndex(driver, now = { 1_000 })
         val cache = MediaCache(blobs, index)
         val session = SabrSession(random = Random(1))
@@ -116,7 +117,7 @@ class MediaCacheFillTest {
     fun a_truncated_segment_leaves_no_partial_span() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()
-        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver)
+        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver))
         val index = SqlDelightSegmentIndex(driver, now = { 1_000 })
         val cache = MediaCache(blobs, index)
         val session = SabrSession(random = Random(2))

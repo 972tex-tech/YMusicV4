@@ -26,6 +26,7 @@ import ymusic.player.WebViewPlayerContext
 import ymusic.player.createWebViewPlayer
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import ymusic.ytmedia.sabr.AdaptiveFormat
@@ -128,7 +129,7 @@ fun main(args: Array<String>) {
             // goes — proving a download populates both the muxed file AND the cache (spans + index rows).
             val cacheDir = File(outDir, "player-cache").apply { mkdirs() }
             val cacheDriver = jvmSegmentDatabaseDriver()
-            val blobs = DiskMediaBlobCache(cacheDir.absolutePath.toPath(), FileSystem.SYSTEM, cacheDriver)
+            val blobs = DiskMediaBlobCache(cacheDir.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver))
             val index = SqlDelightSegmentIndex(cacheDriver, now = { System.currentTimeMillis() })
             val mediaCache = MediaCache(blobs, index)
 

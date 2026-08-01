@@ -11,6 +11,7 @@ import okio.buffer
 import okio.use
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.serveProgressive
 import ymusic.ytmedia.sabr.AdaptiveFormat
@@ -75,7 +76,7 @@ class ServeProgressiveTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
             SqlDelightSegmentIndex(driver, now = { 1_000 }),
         )
         val resp = Buffer().apply {

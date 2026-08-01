@@ -1,6 +1,5 @@
 package ymusic.ytmedia.cache
 
-import app.cash.sqldelight.db.SqlDriver
 import kmpcommon.WorkerThread
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -12,14 +11,13 @@ import okio.Path
 import okio.Sink
 import okio.Timeout
 import okio.buffer
-import ymusic.ytmedia.db.SegmentDatabase
 
 /**
  * okio-`FileSystem`-backed [MediaBlobCache]. Committed bytes live in **immutable span files**
- * `{root}/{key}/{start}_{len}.span`; a **SQLite** table ([BlobSpan.sq], on the shared [SegmentDatabase]
- * [driver]) is the index of record — which ranges are cached, the total cached size, and LRU recency —
- * so coverage, the byte budget and eviction order never depend on scanning directories and all survive a
- * restart. Read pins are the one piece of state that stays in memory (they are per-process: a span being
+ * `{root}/{key}/{start}_{len}.span`; a persistent [BlobIndex] (SQLite via [SqlDelightBlobIndex]) is the
+ * index of record — which ranges are cached, the total cached size, and LRU recency — so coverage, the
+ * byte budget and eviction order never depend on scanning directories and all survive a restart. Read
+ * pins are the one piece of state that stays in memory (they are per-process: a span being
  * read right now must not be evicted). The index (and pins / in-flight / the LRU clock) are guarded by one
  * [lock] — small critical sections around point/range queries; the large byte IO (spilling and reading
  * span files) happens outside it.
@@ -45,17 +43,10 @@ import ymusic.ytmedia.db.SegmentDatabase
 class DiskMediaBlobCache(
     private val root: Path,
     private val fileSystem: FileSystem,
-    driver: SqlDriver,
+    private val index: BlobIndex,
     private val budgetBytes: Long = DEFAULT_BUDGET_BYTES,
     private val maxSpanBytes: Long = DEFAULT_MAX_SPAN_BYTES,
 ) : MediaBlobCache {
-
-    private val queries = SegmentDatabase(driver).blobSpanQueries
-
-    /** One cached range, as the index knows it. */
-    private class SpanRow(val start: Long, val len: Long) {
-        val end get() = start + len
-    }
 
     /** One contiguous slice to read from one span: `[skip, skip+take)` of the span `(key,start,len)`. */
     private class Chunk(val key: String, val start: Long, val len: Long, val skip: Long, val take: Long)
@@ -64,28 +55,28 @@ class DiskMediaBlobCache(
     private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
     private val inFlight = mutableSetOf<String>()
     private val sweptKeys = mutableSetOf<String>() // key dirs whose stale temps we've swept this process
-    private var clock = queries.maxLastUsed().executeAsOne() // monotonic LRU tick, continued from the DB
+    private var clock = index.maxLastUsed() // monotonic LRU tick, continued from the index
 
     override fun isCached(key: String, position: Long, length: Long): Boolean = synchronized(lock) {
-        cover(key, spansForKey(key), position, length) != null
+        cover(key, index.spansForKey(key), position, length) != null
     }
 
     override fun read(key: String, position: Long, length: Long): PinnedSource? {
         val chunks = synchronized(lock) {
-            val plan = cover(key, spansForKey(key), position, length) ?: return@synchronized null
+            val plan = cover(key, index.spansForKey(key), position, length) ?: return@synchronized null
             // The DB is a hint: a row can outlive its file (crash between delete-row/delete-file elsewhere,
             // or external deletion). Verify every covering file exists; a missing one drops its stale row
             // and collapses the read to a miss (plan-then-reacquire).
             for (c in plan) {
                 if (!fileSystem.exists(pathOf(c.key, c.start, c.len))) {
-                    queries.deleteSpan(c.key, c.start, c.len)
+                    index.delete(c.key, c.start, c.len)
                     return@synchronized null
                 }
             }
             val tick = ++clock
             plan.forEach {
                 pin(spanId(it.key, it.start, it.len))
-                queries.touch(tick, it.key, it.start, it.len) // LRU touch, persisted
+                index.touch(it.key, it.start, it.len, tick) // LRU touch, persisted
             }
             plan
         } ?: return null
@@ -95,7 +86,7 @@ class DiskMediaBlobCache(
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
         val token = flightToken(key, position, length)
         val real = synchronized(lock) {
-            val taken = cover(key, spansForKey(key), position, length) != null || token in inFlight
+            val taken = cover(key, index.spansForKey(key), position, length) != null || token in inFlight
             if (!taken) inFlight += token
             !taken
         }
@@ -104,14 +95,9 @@ class DiskMediaBlobCache(
         return RealBlobWriter(key, position, token)
     }
 
-    override fun keys(): Set<String> = synchronized(lock) { queries.distinctKeys().executeAsList().toSet() }
+    override fun keys(): Set<String> = synchronized(lock) { index.distinctKeys() }
 
-    override fun totalSize(): Long = synchronized(lock) { queries.totalSize().executeAsOne() }
-
-    // --- index queries -------------------------------------------------------------------------------
-
-    private fun spansForKey(key: String): List<SpanRow> =
-        queries.spansForKey(key) { start, len -> SpanRow(start, len) }.executeAsList()
+    override fun totalSize(): Long = synchronized(lock) { index.totalSize() }
 
     private fun pin(id: String) { pins[id] = (pins[id] ?: 0) + 1 }
 
@@ -123,7 +109,7 @@ class DiskMediaBlobCache(
     // --- covering (greedy max-reach; tolerates overlapping spans) ------------------------------------
 
     /** Chunks exactly covering `[position, position+length)`, or null on any gap. Call under [lock]. */
-    private fun cover(key: String, spans: List<SpanRow>, position: Long, length: Long): List<Chunk>? {
+    private fun cover(key: String, spans: List<BlobSpan>, position: Long, length: Long): List<Chunk>? {
         if (length <= 0) return emptyList()
         if (spans.isEmpty()) return null
         val end = position + length
@@ -144,13 +130,13 @@ class DiskMediaBlobCache(
     /** Under [lock], delete unpinned LRU spans (rows now) until `SUM(len)+incoming ≤ budget`; returns their
      *  files to delete outside the lock. */
     private fun planEviction(incoming: Long): List<Path> {
-        var total = queries.totalSize().executeAsOne()
+        var total = index.totalSize()
         if (total + incoming <= budgetBytes) return emptyList()
         val victims = ArrayList<Path>()
-        for (row in queries.lruOrder().executeAsList()) {
+        for (row in index.lruOrder()) {
             if (total + incoming <= budgetBytes) break
             if ((pins[spanId(row.key, row.start, row.len)] ?: 0) > 0) continue // pinned → never evict
-            queries.deleteSpan(row.key, row.start, row.len)
+            index.delete(row.key, row.start, row.len)
             total -= row.len
             victims += pathOf(row.key, row.start, row.len)
         }
@@ -234,12 +220,12 @@ class DiskMediaBlobCache(
                 // identical by the contiguity invariant — drop our temp; don't atomicMove over a file a
                 // reader may hold open. Make sure it's indexed (INSERT OR IGNORE).
                 fileSystem.delete(t, mustExist = false)
-                synchronized(lock) { queries.insertSpan(key, start, len, ++clock) }
+                synchronized(lock) { index.insert(key, start, len, ++clock) }
                 return
             }
             fileSystem.atomicMove(t, spanPath)
             val victims = synchronized(lock) {
-                queries.insertSpan(key, start, len, ++clock)
+                index.insert(key, start, len, ++clock)
                 planEviction(0)
             }
             victims.forEach { fileSystem.delete(it, mustExist = false) }

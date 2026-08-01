@@ -10,6 +10,7 @@ import okio.Path
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SabrServe
+import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.cache.serveSabr
 import ymusic.ytmedia.sabr.AdaptiveFormat
@@ -81,7 +82,7 @@ class SabrServeTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
             SqlDelightSegmentIndex(driver, now = { 1_000 }),
         )
         val resp = Buffer().apply {
@@ -128,7 +129,7 @@ class SabrServeTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
             SqlDelightSegmentIndex(driver, now = { 1_000 }),
         )
         assertTrue(cache.serveSabr(request(playerTimeMs = 0)) is SabrServe.Miss)
