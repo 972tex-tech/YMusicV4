@@ -70,17 +70,6 @@ tasks.register<JavaExec>("sabrDownload") {
     args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
 }
 
-// Loopback media-proxy interception experiment (see LocalProxyExperiment.kt):
-//   ./gradlew :desktopApp:localProxyExperiment
-tasks.register<JavaExec>("localProxyExperiment") {
-    group = "verification"
-    description = "Stand up the loopback LocalMediaProxy and drive simple requests through it."
-    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
-    dependsOn(jvmMainCompilation.compileTaskProvider)
-    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("ymusic.desktop.LocalProxyExperimentKt")
-}
-
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
 tasks.register<JavaExec>("catalogue") {
     group = "application"

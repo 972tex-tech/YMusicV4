@@ -54,8 +54,16 @@ kotlin {
         val nativeMain by getting {
             dependencies { implementation(Libs.SqlDelight.nativeDriver) }
         }
-        jvmMain.dependencies { implementation(Libs.SqlDelight.sqliteDriver) }
-        androidMain.dependencies { implementation(Libs.SqlDelight.androidDriver) }
+        // The loopback proxy transport (MediaProxyServer) is a java.net ServerSocket shared by jvm+android.
+        val jvmAndroidMain by creating { dependsOn(commonMain.get()) }
+        jvmMain {
+            dependsOn(jvmAndroidMain)
+            dependencies { implementation(Libs.SqlDelight.sqliteDriver) }
+        }
+        androidMain {
+            dependsOn(jvmAndroidMain)
+            dependencies { implementation(Libs.SqlDelight.androidDriver) }
+        }
 
         commonTest.dependencies {
             implementation(kotlin("test"))
