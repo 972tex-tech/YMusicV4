@@ -58,6 +58,12 @@ class DiskMediaBlobCache(
     private var totalBytes = 0L
     private var clock = 0L // monotonic LRU tick; only order matters, not wall time
 
+    // Persists LRU recency across restarts (span files carry no usable access time). Replayed once on
+    // first access into [journalRank] (span id → recency rank, oldest = 0), which seeds each span's
+    // lastUsed on load; new touches append and continue on [clock] above the max rank.
+    private val journal = AccessJournal(root, fileSystem)
+    private var journalRank: Map<String, Int>? = null
+
     override fun isCached(key: String, position: Long, length: Long): Boolean {
         ensureLoaded(key)
         return synchronized(lock) { cover(index[key], position, length) != null }
@@ -71,6 +77,8 @@ class DiskMediaBlobCache(
             plan.forEach { it.span.pins++; it.span.lastUsed = tick } // pin + LRU-touch atomically
             plan
         } ?: return null
+        // Persist the touch so this recency survives a restart (outside the lock — journal IO).
+        recordAccess(chunks.map { spanId(key, it.span.start, it.span.len) }.distinct())
         return StitchedSource(chunks)
     }
 
@@ -118,23 +126,37 @@ class DiskMediaBlobCache(
 
     private fun ensureLoaded(key: String) {
         if (synchronized(lock) { key in loadedKeys }) return
+        ensureJournalReplayed()
         val dir = root / key
         val scanned = mutableListOf<Triple<Long, Long, Path>>()
+        val temps = mutableListOf<Path>()
         if (fileSystem.exists(dir)) {
             for (path in fileSystem.list(dir)) {
-                if (path.name.endsWith(".$TMP_EXT")) {
-                    fileSystem.delete(path, mustExist = false) // sweep a crashed writer's temp
-                    continue
-                }
+                if (path.name.endsWith(".$TMP_EXT")) { temps += path; continue }
                 parseSpanName(path.name)?.let { (start, len) -> scanned += Triple(start, len, path) }
             }
         }
         synchronized(lock) {
             if (key in loadedKeys) return // another coroutine scanned while we did
             loadedKeys += key
+            val ranks = journalRank
             index[key] = scanned.mapTo(mutableListOf()) { (start, len, path) ->
                 totalBytes += len
-                Span(start, len, path, lastUsed = ++clock, pins = 0)
+                // Seed recency from the replayed journal (oldest = 0); a span the journal never saw
+                // (pre-journal migration, or a lost append) is treated as freshly used.
+                val seeded = ranks?.get(spanId(key, start, len))?.toLong()
+                Span(start, len, path, lastUsed = seeded ?: ++clock, pins = 0)
+            }
+        }
+        // Sweep temps a crashed writer left behind — but NEVER one a live in-flight writer for this key
+        // is mid-write on, or its `atomicMove` would then fail with FileNotFound. A temp is created only
+        // *after* its token enters [inFlight] (writer → RealBlobWriter.openBlock), so any temp we scanned
+        // is covered by this snapshot; one already committed away since the scan just no-op-deletes.
+        if (temps.isNotEmpty()) {
+            val liveTags = synchronized(lock) { inFlight.mapTo(HashSet()) { it.replace(' ', '_') } }
+            for (t in temps) {
+                val tag = t.name.substringAfter("__", "").removeSuffix(".$TMP_EXT")
+                if (tag !in liveTags) fileSystem.delete(t, mustExist = false)
             }
         }
     }
@@ -230,6 +252,7 @@ class DiskMediaBlobCache(
                         list += Span(start, len, spanPath, ++clock, pins = 0); totalBytes += len
                     }
                 }
+                recordAccess(spanId(key, start, len))
                 return
             }
             fileSystem.atomicMove(t, spanPath)
@@ -240,6 +263,7 @@ class DiskMediaBlobCache(
                 planEviction(0)
             }
             victims.forEach { fileSystem.delete(it, mustExist = false) }
+            recordAccess(spanId(key, start, len))
         }
 
         override fun commit() = finish(commitTail = true)
@@ -299,6 +323,46 @@ class DiskMediaBlobCache(
     }
 
     private fun flightToken(key: String, position: Long, length: Long) = "$key $position $length"
+
+    // --- access journal (LRU recency across restarts) ------------------------------------------------
+
+    private fun spanId(key: String, start: Long, len: Long) = "$key $start $len"
+
+    /** Replay the journal once, before any span is loaded, so [ensureLoaded] can seed [Span.lastUsed]
+     *  from it. IO happens outside [lock]; the merge (and [clock] advance past the max rank) is under it. */
+    private fun ensureJournalReplayed() {
+        if (synchronized(lock) { journalRank != null }) return
+        val order = journal.replay()
+        synchronized(lock) {
+            if (journalRank != null) return
+            journalRank = order.withIndex().associate { (i, id) -> id to i }
+            clock = maxOf(clock, order.size.toLong()) // new touches rank above every replayed span
+        }
+    }
+
+    /** Append the touched span ids, then compact if the log has grown enough. Journal IO only — never
+     *  called while holding [lock]. */
+    private fun recordAccess(ids: List<String>) {
+        if (ids.isEmpty()) return
+        ids.forEach { journal.record(it) }
+        maybeCompact()
+    }
+
+    private fun recordAccess(id: String) = recordAccess(listOf(id))
+
+    /** Rewrite the journal from the live set in LRU order, dropping the accumulated redundant lines
+     *  (and any now-evicted spans' stale ids). */
+    private fun maybeCompact() {
+        if (!journal.needsCompaction()) return
+        loadAllKeys()
+        val ordered = synchronized(lock) {
+            index.entries
+                .flatMap { (k, spans) -> spans.map { spanId(k, it.start, it.len) to it.lastUsed } }
+                .sortedBy { it.second }
+                .map { it.first }
+        }
+        journal.rewrite(ordered)
+    }
 
     private companion object {
         const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024
