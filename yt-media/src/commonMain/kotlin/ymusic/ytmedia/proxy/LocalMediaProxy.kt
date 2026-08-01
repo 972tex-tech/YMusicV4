@@ -68,7 +68,16 @@ class LocalMediaProxy(
         val url = params["url"] ?: return text(400, "Bad Request", "missing url")
         val method = params["method"] ?: "GET"
         val body = params["body"]?.let { runCatching { Base64.decode(it) }.getOrNull() }
+        return serveRequest(url, method, body)
+    }
 
+    /**
+     * Serve one reconstructed request: a cache hit → synthesized bytes (zero network), a miss →
+     * forwarded through [client] and teed back into the cache. The native-interception adapters reach
+     * this via [serve] (parsing the `/ymusicForward` query); the iOS message-channel adapter, which
+     * receives the url/method/body as fields, calls it directly.
+     */
+    suspend fun serveRequest(url: String, method: String, body: ByteArray?): ProxyResponse {
         val hit = runCatching { serveFromCache(url, method, body) }.getOrElse { null }
         return hit ?: forward(url, method, body)
     }

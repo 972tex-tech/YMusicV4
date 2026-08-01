@@ -10,7 +10,7 @@ internal actual fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
 ): WebViewBridge {
-    val bridge = AppleWebViewBridge(sink) {
+    val bridge = AppleWebViewBridge(sink, context.mediaProxy) {
         allowsInlineMediaPlayback = true
         allowsPictureInPictureMediaPlayback = false
     }

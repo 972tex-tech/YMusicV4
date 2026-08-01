@@ -8,6 +8,7 @@ import kotlinx.serialization.json.putJsonObject
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSURL
 import platform.WebKit.WKContentRuleListStore
+import platform.WebKit.WKContentWorld
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUserContentController
@@ -16,6 +17,7 @@ import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.WKWebsiteDataStore
 import platform.WebKit.javaScriptEnabled
 import platform.darwin.NSObject
+import ymusic.ytmedia.proxy.LocalMediaProxy
 
 /**
  * The WKWebView half of the Apple [WebViewBridge], shared by iOS and macOS (WKWebView is a `UIView`
@@ -28,15 +30,31 @@ import platform.darwin.NSObject
 @OptIn(ExperimentalForeignApi::class)
 internal class AppleWebViewBridge(
     sink: WebViewMessageSink,
+    mediaProxy: LocalMediaProxy? = null,
     configure: WKWebViewConfiguration.() -> Unit = {},
 ) : WebViewBridge {
     override val platform: String = "darwin"
 
+    override val playerCacheEnabled: Boolean = mediaProxy != null
+
     private val handler = MessageHandler(sink)
+
+    // The player-cache delivery channel: WKWebView can't intercept https, so webview-js on darwin serves
+    // /videoplayback over this WKScriptMessageHandlerWithReply channel (see AppleProxyChannel). Only
+    // installed when a cache is wired; a with-reply handler must register in a specific content world.
+    private val proxyChannel = mediaProxy?.let { AppleProxyChannel(it) }
+
     private val config = WKWebViewConfiguration().apply {
         preferences.javaScriptEnabled = true
         websiteDataStore = WKWebsiteDataStore.defaultDataStore()
         userContentController.addScriptMessageHandler(handler, HANDLER_NAME)
+        proxyChannel?.let {
+            userContentController.addScriptMessageHandlerWithReply(
+                scriptMessageHandlerWithReply = it,
+                contentWorld = WKContentWorld.pageWorld,
+                name = PROXY_HANDLER_NAME,
+            )
+        }
         configure()
     }
 
@@ -84,6 +102,10 @@ internal class AppleWebViewBridge(
 
     override fun release() {
         config.userContentController.removeScriptMessageHandlerForName(HANDLER_NAME)
+        proxyChannel?.let {
+            config.userContentController.removeScriptMessageHandlerForName(PROXY_HANDLER_NAME, WKContentWorld.pageWorld)
+            it.release()
+        }
         nativeView.removeFromSuperview()
     }
 
@@ -105,6 +127,9 @@ internal class AppleWebViewBridge(
         // Matches webkit.messageHandlers.ymixChanelIos in the injected bundle (the single 'n' is the
         // bundle's spelling).
         const val HANDLER_NAME = "ymixChanelIos"
+
+        // The player-cache channel webview-js posts to on darwin (see AppleProxyChannel / skip_ads.ts).
+        const val PROXY_HANDLER_NAME = "ymusicProxy"
 
         // A current macOS Safari UA (the active Apple target; iOS is a spike). Both the WKWebView and the
         // embed fetch use it, so the client identity is consistent for BotGuard/attestation.
