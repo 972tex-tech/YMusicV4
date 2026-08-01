@@ -127,8 +127,9 @@ fun main(args: Array<String>) {
             // Route the download through a MediaCache so it mirrors segments into the player cache as it
             // goes — proving a download populates both the muxed file AND the cache (spans + index rows).
             val cacheDir = File(outDir, "player-cache").apply { mkdirs() }
-            val blobs = DiskMediaBlobCache(cacheDir.absolutePath.toPath(), FileSystem.SYSTEM)
-            val index = SqlDelightSegmentIndex(jvmSegmentDatabaseDriver(), now = { System.currentTimeMillis() })
+            val cacheDriver = jvmSegmentDatabaseDriver()
+            val blobs = DiskMediaBlobCache(cacheDir.absolutePath.toPath(), FileSystem.SYSTEM, cacheDriver)
+            val index = SqlDelightSegmentIndex(cacheDriver, now = { System.currentTimeMillis() })
             val mediaCache = MediaCache(blobs, index)
 
             val startedAt = System.currentTimeMillis()

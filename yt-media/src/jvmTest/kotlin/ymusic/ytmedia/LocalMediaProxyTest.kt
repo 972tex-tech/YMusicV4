@@ -44,8 +44,9 @@ class LocalMediaProxyTest {
     @Test
     fun serves_a_progressive_range_from_cache() = runBlocking {
         FileSystem.SYSTEM.deleteRecursively(dir.toPath())
-        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM)
-        val cache = MediaCache(blobs, SqlDelightSegmentIndex(jvmSegmentDatabaseDriver(), now = { 0 }))
+        val driver = jvmSegmentDatabaseDriver()
+        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, driver)
+        val cache = MediaCache(blobs, SqlDelightSegmentIndex(driver, now = { 0 }))
         withContext(Dispatchers.IO) {
             val w = blobs.writer(formatCacheKey(251, 100), 0, 40)
             w.sink.write(bytes(40)); w.commit()

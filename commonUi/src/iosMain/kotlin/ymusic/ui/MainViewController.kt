@@ -132,11 +132,12 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         .toPath()
         .resolve("ymusic-player-cache")
     FileSystem.SYSTEM.createDirectories(playerCacheRoot)
+    val cacheDriver = nativeSegmentDatabaseDriver() // shared: blob-span index + segment index
     val mediaProxy = LocalMediaProxy(
         cache = MediaCache(
-            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM),
+            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, cacheDriver),
             SqlDelightSegmentIndex(
-                nativeSegmentDatabaseDriver(),
+                cacheDriver,
                 now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
             ),
         ),

@@ -1,5 +1,6 @@
 package ymusic.ytmedia.cache
 
+import app.cash.sqldelight.db.SqlDriver
 import kmpcommon.WorkerThread
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -11,104 +12,120 @@ import okio.Path
 import okio.Sink
 import okio.Timeout
 import okio.buffer
+import ymusic.ytmedia.db.SegmentDatabase
 
 /**
  * okio-`FileSystem`-backed [MediaBlobCache]. Committed bytes live in **immutable span files**
- * `{root}/{key}/{start}_{len}.span`; an in-memory index (`key → spans`, populated from the dir on first
- * touch of a key) tracks their ranges, `lastUsed`, and read pins. The index, pin counts, in-flight write
- * set and totals are guarded by one [lock] — small, IO-free critical sections — so calls from multiple
- * worker threads (and the synchronous [PinnedSource.close]) are safe.
+ * `{root}/{key}/{start}_{len}.span`; a **SQLite** table ([BlobSpan.sq], on the shared [SegmentDatabase]
+ * [driver]) is the index of record — which ranges are cached, the total cached size, and LRU recency —
+ * so coverage, the byte budget and eviction order never depend on scanning directories and all survive a
+ * restart. Read pins are the one piece of state that stays in memory (they are per-process: a span being
+ * read right now must not be evicted). The index (and pins / in-flight / the LRU clock) are guarded by one
+ * [lock] — small critical sections around point/range queries; the large byte IO (spilling and reading
+ * span files) happens outside it.
  *
  * This reproduces media3 `SimpleCache`'s six concurrency guarantees without media3 (see
  * `docs/player/sabr-cache-plan.md` §3a):
  *
  * 1. **Atomic commit / immutable spans** — a block streams to a `.tmp`, then `atomicMove`s to its
- *    `{start}_{len}.span`. Readers only open committed `.span` files, so a partial write is never visible.
+ *    `{start}_{len}.span` and only then gets a row. Readers open committed `.span` files, so a partial
+ *    write is never visible.
  * 2. **Per-block commit** — a region is cut into blocks of ≤[maxSpanBytes]; each commits independently, so
  *    an interrupted write keeps the blocks it finished (valid bytes for their ranges) and a retry resumes.
  * 3. **Single-writer-per-region dedupe** — an in-flight set keyed `(key, start, len)`; [writer] hands back
- *    a no-op sink when the exact region is already committed or in flight. Segment ranges are
- *    deterministic (the same bytes are always requested with the same `(start, len)`), so exact-range
- *    keying suffices; the cache dir is single-instance, as media3 also assumed.
+ *    a no-op sink when the exact region is already committed (a row exists) or in flight.
  * 4. **Read pinning** — [read] ref-count-pins its covering spans; eviction never touches a pinned span.
- *    Portable, unlike media3's reliance on POSIX unlink-after-open.
- * 5. **Plan-then-reacquire** — [isCached] is a hint; [read] re-checks coverage under the lock and returns
- *    null (→ network) on any gap, holding no lock across plan→serve, so races resolve to a miss.
- * 6. **LRU eviction** — on commit, evict least-recently-used **unpinned** spans until total ≤ [budgetBytes].
+ * 5. **Plan-then-reacquire** — [isCached] is a hint; [read] re-checks coverage **and that the files still
+ *    exist** under the lock, returning null (→ network) on any gap (a stale row whose file is gone is
+ *    dropped), holding no lock across plan→serve.
+ * 6. **LRU eviction** — on commit, delete least-recently-used **unpinned** spans (rows + files) until
+ *    `SUM(len) ≤ [budgetBytes]`.
  */
 @WorkerThread
 class DiskMediaBlobCache(
     private val root: Path,
     private val fileSystem: FileSystem,
+    driver: SqlDriver,
     private val budgetBytes: Long = DEFAULT_BUDGET_BYTES,
     private val maxSpanBytes: Long = DEFAULT_MAX_SPAN_BYTES,
 ) : MediaBlobCache {
 
-    private class Span(val start: Long, val len: Long, val path: Path, var lastUsed: Long, var pins: Int) {
+    private val queries = SegmentDatabase(driver).blobSpanQueries
+
+    /** One cached range, as the index knows it. */
+    private class SpanRow(val start: Long, val len: Long) {
         val end get() = start + len
     }
 
-    /** One contiguous slice to read from one span file: `[skip, skip+take)` within [path]. */
-    private class Chunk(val span: Span, val path: Path, val skip: Long, val take: Long)
+    /** One contiguous slice to read from one span: `[skip, skip+take)` of the span `(key,start,len)`. */
+    private class Chunk(val key: String, val start: Long, val len: Long, val skip: Long, val take: Long)
 
     private val lock = SynchronizedObject()
-    private val index = mutableMapOf<String, MutableList<Span>>()
-    private val loadedKeys = mutableSetOf<String>()
+    private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
     private val inFlight = mutableSetOf<String>()
-    private var totalBytes = 0L
-    private var clock = 0L // monotonic LRU tick; only order matters, not wall time
+    private val sweptKeys = mutableSetOf<String>() // key dirs whose stale temps we've swept this process
+    private var clock = queries.maxLastUsed().executeAsOne() // monotonic LRU tick, continued from the DB
 
-    // Persists LRU recency across restarts (span files carry no usable access time). Replayed once on
-    // first access into [journalRank] (span id → recency rank, oldest = 0), which seeds each span's
-    // lastUsed on load; new touches append and continue on [clock] above the max rank.
-    private val journal = AccessJournal(root, fileSystem)
-    private var journalRank: Map<String, Int>? = null
-
-    override fun isCached(key: String, position: Long, length: Long): Boolean {
-        ensureLoaded(key)
-        return synchronized(lock) { cover(index[key], position, length) != null }
+    override fun isCached(key: String, position: Long, length: Long): Boolean = synchronized(lock) {
+        cover(key, spansForKey(key), position, length) != null
     }
 
     override fun read(key: String, position: Long, length: Long): PinnedSource? {
-        ensureLoaded(key)
         val chunks = synchronized(lock) {
-            val plan = cover(index[key], position, length) ?: return@synchronized null
+            val plan = cover(key, spansForKey(key), position, length) ?: return@synchronized null
+            // The DB is a hint: a row can outlive its file (crash between delete-row/delete-file elsewhere,
+            // or external deletion). Verify every covering file exists; a missing one drops its stale row
+            // and collapses the read to a miss (plan-then-reacquire).
+            for (c in plan) {
+                if (!fileSystem.exists(pathOf(c.key, c.start, c.len))) {
+                    queries.deleteSpan(c.key, c.start, c.len)
+                    return@synchronized null
+                }
+            }
             val tick = ++clock
-            plan.forEach { it.span.pins++; it.span.lastUsed = tick } // pin + LRU-touch atomically
+            plan.forEach {
+                pin(spanId(it.key, it.start, it.len))
+                queries.touch(tick, it.key, it.start, it.len) // LRU touch, persisted
+            }
             plan
         } ?: return null
-        // Persist the touch so this recency survives a restart (outside the lock — journal IO).
-        recordAccess(chunks.map { spanId(key, it.span.start, it.span.len) }.distinct())
         return StitchedSource(chunks)
     }
 
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
-        ensureLoaded(key)
         val token = flightToken(key, position, length)
         val real = synchronized(lock) {
-            val taken = cover(index[key], position, length) != null || token in inFlight
+            val taken = cover(key, spansForKey(key), position, length) != null || token in inFlight
             if (!taken) inFlight += token
             !taken
         }
-        return if (real) RealBlobWriter(key, position, token) else NoOpBlobWriter()
+        if (!real) return NoOpBlobWriter()
+        sweepStaleTemps(key)
+        return RealBlobWriter(key, position, token)
     }
 
-    override fun keys(): Set<String> {
-        loadAllKeys()
-        return synchronized(lock) { index.filterValues { it.isNotEmpty() }.keys.toSet() }
-    }
+    override fun keys(): Set<String> = synchronized(lock) { queries.distinctKeys().executeAsList().toSet() }
 
-    override fun totalSize(): Long {
-        loadAllKeys()
-        return synchronized(lock) { totalBytes }
+    override fun totalSize(): Long = synchronized(lock) { queries.totalSize().executeAsOne() }
+
+    // --- index queries -------------------------------------------------------------------------------
+
+    private fun spansForKey(key: String): List<SpanRow> =
+        queries.spansForKey(key) { start, len -> SpanRow(start, len) }.executeAsList()
+
+    private fun pin(id: String) { pins[id] = (pins[id] ?: 0) + 1 }
+
+    private fun unpin(id: String) {
+        val n = pins[id] ?: return
+        if (n <= 1) pins.remove(id) else pins[id] = n - 1
     }
 
     // --- covering (greedy max-reach; tolerates overlapping spans) ------------------------------------
 
     /** Chunks exactly covering `[position, position+length)`, or null on any gap. Call under [lock]. */
-    private fun cover(spans: List<Span>?, position: Long, length: Long): List<Chunk>? {
+    private fun cover(key: String, spans: List<SpanRow>, position: Long, length: Long): List<Chunk>? {
         if (length <= 0) return emptyList()
-        if (spans.isNullOrEmpty()) return null
+        if (spans.isEmpty()) return null
         val end = position + length
         var cursor = position
         val chunks = ArrayList<Chunk>()
@@ -116,74 +133,45 @@ class DiskMediaBlobCache(
             // Of the spans covering `cursor`, take the one reaching furthest: fewest files, tolerates overlap.
             val best = spans.filter { it.start <= cursor && it.end > cursor }.maxByOrNull { it.end } ?: return null
             val take = minOf(best.end - cursor, end - cursor)
-            chunks += Chunk(best, best.path, skip = cursor - best.start, take = take)
+            chunks += Chunk(key, best.start, best.len, skip = cursor - best.start, take = take)
             cursor += take
         }
         return chunks
     }
 
-    // --- index loading (IO outside the lock, merge under it) -----------------------------------------
-
-    private fun ensureLoaded(key: String) {
-        if (synchronized(lock) { key in loadedKeys }) return
-        ensureJournalReplayed()
-        val dir = root / key
-        val scanned = mutableListOf<Triple<Long, Long, Path>>()
-        val temps = mutableListOf<Path>()
-        if (fileSystem.exists(dir)) {
-            for (path in fileSystem.list(dir)) {
-                if (path.name.endsWith(".$TMP_EXT")) { temps += path; continue }
-                parseSpanName(path.name)?.let { (start, len) -> scanned += Triple(start, len, path) }
-            }
-        }
-        synchronized(lock) {
-            if (key in loadedKeys) return // another coroutine scanned while we did
-            loadedKeys += key
-            val ranks = journalRank
-            index[key] = scanned.mapTo(mutableListOf()) { (start, len, path) ->
-                totalBytes += len
-                // Seed recency from the replayed journal (oldest = 0); a span the journal never saw
-                // (pre-journal migration, or a lost append) is treated as freshly used.
-                val seeded = ranks?.get(spanId(key, start, len))?.toLong()
-                Span(start, len, path, lastUsed = seeded ?: ++clock, pins = 0)
-            }
-        }
-        // Sweep temps a crashed writer left behind — but NEVER one a live in-flight writer for this key
-        // is mid-write on, or its `atomicMove` would then fail with FileNotFound. A temp is created only
-        // *after* its token enters [inFlight] (writer → RealBlobWriter.openBlock), so any temp we scanned
-        // is covered by this snapshot; one already committed away since the scan just no-op-deletes.
-        if (temps.isNotEmpty()) {
-            val liveTags = synchronized(lock) { inFlight.mapTo(HashSet()) { it.replace(' ', '_') } }
-            for (t in temps) {
-                val tag = t.name.substringAfter("__", "").removeSuffix(".$TMP_EXT")
-                if (tag !in liveTags) fileSystem.delete(t, mustExist = false)
-            }
-        }
-    }
-
-    private fun loadAllKeys() {
-        if (!fileSystem.exists(root)) return
-        for (dir in fileSystem.list(root)) {
-            if (fileSystem.metadataOrNull(dir)?.isDirectory == true) ensureLoaded(dir.name)
-        }
-    }
-
     // --- eviction ------------------------------------------------------------------------------------
 
-    /** Under [lock], drop unpinned LRU spans until total+incoming ≤ budget; returns their paths to delete. */
+    /** Under [lock], delete unpinned LRU spans (rows now) until `SUM(len)+incoming ≤ budget`; returns their
+     *  files to delete outside the lock. */
     private fun planEviction(incoming: Long): List<Path> {
-        if (totalBytes + incoming <= budgetBytes) return emptyList()
+        var total = queries.totalSize().executeAsOne()
+        if (total + incoming <= budgetBytes) return emptyList()
         val victims = ArrayList<Path>()
-        val candidates = index.values.flatten().filter { it.pins == 0 }.sortedBy { it.lastUsed }
-        var freed = 0L
-        for (span in candidates) {
-            if (totalBytes - freed + incoming <= budgetBytes) break
-            index[span.path.parent!!.name]?.remove(span) // out of the index first: no new reader can pin it
-            freed += span.len
-            victims += span.path
+        for (row in queries.lruOrder().executeAsList()) {
+            if (total + incoming <= budgetBytes) break
+            if ((pins[spanId(row.key, row.start, row.len)] ?: 0) > 0) continue // pinned → never evict
+            queries.deleteSpan(row.key, row.start, row.len)
+            total -= row.len
+            victims += pathOf(row.key, row.start, row.len)
         }
-        totalBytes -= freed
         return victims
+    }
+
+    /** Sweep a key dir's leftover `.tmp` files from a crashed writer, once per key per process — but NEVER
+     *  one a live in-flight writer for this key is mid-write on (its token is in [inFlight], and a temp is
+     *  created only after its token is registered, so this snapshot covers every live temp; an already
+     *  committed temp just no-op-deletes). */
+    private fun sweepStaleTemps(key: String) {
+        if (synchronized(lock) { !sweptKeys.add(key) }) return
+        val dir = root / key
+        if (!fileSystem.exists(dir)) return
+        val temps = fileSystem.list(dir).filter { it.name.endsWith(".$TMP_EXT") }
+        if (temps.isEmpty()) return
+        val liveTags = synchronized(lock) { inFlight.mapTo(HashSet()) { it.replace(' ', '_') } }
+        for (t in temps) {
+            val tag = t.name.substringAfter("__", "").removeSuffix(".$TMP_EXT")
+            if (tag !in liveTags) fileSystem.delete(t, mustExist = false)
+        }
     }
 
     // --- writer --------------------------------------------------------------------------------------
@@ -223,7 +211,7 @@ class DiskMediaBlobCache(
 
         // Temp name is unique per (region, block): blockStart alone can collide between two overlapping
         // regions that both start at the same offset (e.g. a progressive and a SABR writer), so include the
-        // region token too — space-free so it's a clean filename. parseSpanName ignores `.tmp` either way.
+        // region token too — space-free so it's a clean filename.
         private val tempTag = token.replace(' ', '_')
 
         private fun openBlock(): BufferedSink {
@@ -233,7 +221,7 @@ class DiskMediaBlobCache(
             return fileSystem.sink(t).buffer().also { tmpSink = it }
         }
 
-        /** Seal the current temp into `{start}_{len}.span` and register it. No-op on an empty block. */
+        /** Seal the current temp into `{start}_{len}.span` and index it. No-op on an empty block. */
         private fun commitBlock() {
             val t = tmp ?: return
             tmpSink?.close(); tmpSink = null; tmp = null
@@ -244,26 +232,17 @@ class DiskMediaBlobCache(
             if (fileSystem.exists(spanPath)) {
                 // Identical range already committed (resume, or a concurrent equal writer beat us). Bytes are
                 // identical by the contiguity invariant — drop our temp; don't atomicMove over a file a
-                // reader may hold open. Make sure it's indexed, without double-counting its bytes.
+                // reader may hold open. Make sure it's indexed (INSERT OR IGNORE).
                 fileSystem.delete(t, mustExist = false)
-                synchronized(lock) {
-                    val list = index.getOrPut(key) { mutableListOf() }
-                    if (list.none { it.start == start && it.len == len }) {
-                        list += Span(start, len, spanPath, ++clock, pins = 0); totalBytes += len
-                    }
-                }
-                recordAccess(spanId(key, start, len))
+                synchronized(lock) { queries.insertSpan(key, start, len, ++clock) }
                 return
             }
             fileSystem.atomicMove(t, spanPath)
             val victims = synchronized(lock) {
-                index.getOrPut(key) { mutableListOf() } += Span(start, len, spanPath, ++clock, pins = 0)
-                loadedKeys += key
-                totalBytes += len
+                queries.insertSpan(key, start, len, ++clock)
                 planEviction(0)
             }
             victims.forEach { fileSystem.delete(it, mustExist = false) }
-            recordAccess(spanId(key, start, len))
         }
 
         override fun commit() = finish(commitTail = true)
@@ -305,7 +284,7 @@ class DiskMediaBlobCache(
                 current?.close(); current = null
                 if (idx >= chunks.size) return -1
                 val chunk = chunks[idx++]
-                val s = fileSystem.source(chunk.path).buffer()
+                val s = fileSystem.source(pathOf(chunk.key, chunk.start, chunk.len)).buffer()
                 if (chunk.skip > 0) s.skip(chunk.skip)
                 current = s
                 currentRemaining = chunk.take
@@ -318,51 +297,15 @@ class DiskMediaBlobCache(
             if (closed) return
             closed = true
             current?.close(); current = null
-            synchronized(lock) { chunks.forEach { if (it.span.pins > 0) it.span.pins-- } }
+            synchronized(lock) { chunks.forEach { unpin(spanId(it.key, it.start, it.len)) } }
         }
     }
 
-    private fun flightToken(key: String, position: Long, length: Long) = "$key $position $length"
-
-    // --- access journal (LRU recency across restarts) ------------------------------------------------
+    private fun pathOf(key: String, start: Long, len: Long): Path = root / key / spanName(start, len)
 
     private fun spanId(key: String, start: Long, len: Long) = "$key $start $len"
 
-    /** Replay the journal once, before any span is loaded, so [ensureLoaded] can seed [Span.lastUsed]
-     *  from it. IO happens outside [lock]; the merge (and [clock] advance past the max rank) is under it. */
-    private fun ensureJournalReplayed() {
-        if (synchronized(lock) { journalRank != null }) return
-        val order = journal.replay()
-        synchronized(lock) {
-            if (journalRank != null) return
-            journalRank = order.withIndex().associate { (i, id) -> id to i }
-            clock = maxOf(clock, order.size.toLong()) // new touches rank above every replayed span
-        }
-    }
-
-    /** Append the touched span ids, then compact if the log has grown enough. Journal IO only — never
-     *  called while holding [lock]. */
-    private fun recordAccess(ids: List<String>) {
-        if (ids.isEmpty()) return
-        ids.forEach { journal.record(it) }
-        maybeCompact()
-    }
-
-    private fun recordAccess(id: String) = recordAccess(listOf(id))
-
-    /** Rewrite the journal from the live set in LRU order, dropping the accumulated redundant lines
-     *  (and any now-evicted spans' stale ids). */
-    private fun maybeCompact() {
-        if (!journal.needsCompaction()) return
-        loadAllKeys()
-        val ordered = synchronized(lock) {
-            index.entries
-                .flatMap { (k, spans) -> spans.map { spanId(k, it.start, it.len) to it.lastUsed } }
-                .sortedBy { it.second }
-                .map { it.first }
-        }
-        journal.rewrite(ordered)
-    }
+    private fun flightToken(key: String, position: Long, length: Long) = "$key $position $length"
 
     private companion object {
         const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024
@@ -371,16 +314,6 @@ class DiskMediaBlobCache(
         const val TMP_EXT = "tmp"
 
         fun spanName(start: Long, len: Long) = "${start}_$len.$SPAN_EXT"
-
-        fun parseSpanName(name: String): Pair<Long, Long>? {
-            if (!name.endsWith(".$SPAN_EXT")) return null
-            val stem = name.removeSuffix(".$SPAN_EXT")
-            val u = stem.indexOf('_')
-            if (u <= 0) return null
-            val start = stem.substring(0, u).toLongOrNull() ?: return null
-            val len = stem.substring(u + 1).toLongOrNull() ?: return null
-            return start to len
-        }
     }
 }
 

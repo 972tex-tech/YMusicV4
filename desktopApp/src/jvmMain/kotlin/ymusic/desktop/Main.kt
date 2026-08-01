@@ -209,12 +209,11 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // UA CefManager forces on the WebView; a mismatched identity gets rejected by googlevideo/BotGuard.
     val mediaProxy = withContext(Dispatchers.IO) {
         val cacheRoot = File(dataDir, "player-cache").apply { mkdirs() }
+        // One persistent DB for both the blob-span index and the segment index.
+        val driver = jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "cache-index.db").absolutePath}")
         val cache = MediaCache(
-            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM),
-            SqlDelightSegmentIndex(
-                jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "segments.db").absolutePath}"),
-                now = { System.currentTimeMillis() },
-            ),
+            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, driver),
+            SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
         )
         val client = KmpHttpClient.create {
             cookieJar = platformCookies

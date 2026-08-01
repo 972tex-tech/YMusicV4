@@ -29,7 +29,7 @@ class MediaBlobCacheTest {
 
     private fun cache(budget: Long = 512L * 1024 * 1024, maxSpan: Long = 512L * 1024): DiskMediaBlobCache {
         FileSystem.SYSTEM.deleteRecursively(dir)
-        return DiskMediaBlobCache(dir, FileSystem.SYSTEM, budgetBytes = budget, maxSpanBytes = maxSpan)
+        return DiskMediaBlobCache(dir, FileSystem.SYSTEM, testSegmentDriver(), budgetBytes = budget, maxSpanBytes = maxSpan)
     }
 
     private fun bytes(n: Int, seed: Int = 0) = ByteArray(n) { ((it + seed) and 0xFF).toByte() }
@@ -165,15 +165,19 @@ class MediaBlobCacheTest {
     }
 
     @Test
-    fun reopening_a_dir_recovers_committed_spans_and_sweeps_temps() = runTest {
-        val c1 = cache()
+    fun a_reopen_over_the_same_index_recovers_spans_and_writing_sweeps_stale_temps() = runTest {
+        FileSystem.SYSTEM.deleteRecursively(dir)
+        val driver = testSegmentDriver() // the persistent SQLite index both instances share
+        val c1 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver)
         write(c1, "k", 0, bytes(300))
         // A stray temp file, as if a writer crashed mid-block.
         FileSystem.SYSTEM.write(dir / "k" / "999_abc.tmp") { write(bytes(10)) }
-        // A fresh cache over the same dir recovers the committed span and sweeps the temp.
-        val c2 = DiskMediaBlobCache(dir, FileSystem.SYSTEM)
+        // A fresh cache over the same dir + index recovers the committed span (from the DB, no dir scan)…
+        val c2 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver)
         assertContentEquals(bytes(300), readAll(c2, "k", 0, 300))
         assertEquals(setOf("k"), c2.keys())
-        assertTrue(spanFiles("k").none { it.endsWith(".tmp") }, "temp swept on load")
+        // …and the first write to a key sweeps that key's stale temps.
+        write(c2, "k", 300, bytes(10))
+        assertTrue(spanFiles("k").none { it.endsWith(".tmp") }, "stray temp swept on write")
     }
 }

@@ -73,8 +73,9 @@ class MediaCacheFillTest {
     @Test
     fun a_download_populates_both_the_file_and_the_player_cache() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
-        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM)
-        val index = SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 })
+        val driver = testSegmentDriver()
+        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver)
+        val index = SqlDelightSegmentIndex(driver, now = { 1_000 })
         val cache = MediaCache(blobs, index)
         val session = SabrSession(random = Random(1))
         val audio = SabrTrack(fmt, MemoryFile())
@@ -114,8 +115,9 @@ class MediaCacheFillTest {
     @Test
     fun a_truncated_segment_leaves_no_partial_span() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
-        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM)
-        val index = SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 })
+        val driver = testSegmentDriver()
+        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver)
+        val index = SqlDelightSegmentIndex(driver, now = { 1_000 })
         val cache = MediaCache(blobs, index)
         val session = SabrSession(random = Random(2))
         val audio = SabrTrack(fmt, MemoryFile())

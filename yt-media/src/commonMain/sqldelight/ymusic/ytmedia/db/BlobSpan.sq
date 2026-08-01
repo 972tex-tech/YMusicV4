@@ -1,0 +1,44 @@
+-- Persistent index of committed blob spans for DiskMediaBlobCache — one row per immutable span file
+-- {root}/{key}/{start}_{len}.span. This is the source of truth for which byte ranges are cached, the
+-- total cached size (SUM(len)) the LRU budget is measured against, and recency (last_used) for eviction
+-- order — so none of those depend on scanning directories, and all survive a restart. It replaces the
+-- old in-memory span map + append-only access journal. Read pins stay in memory (per-process; a pinned
+-- span is never evicted). A row is a coverage HINT exactly as before: the file may be mid-write or
+-- crash-lost, so read() re-verifies the file exists before serving.
+CREATE TABLE blob_span (
+    key       TEXT    NOT NULL,
+    start     INTEGER NOT NULL,
+    len       INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    PRIMARY KEY (key, start, len)
+);
+
+CREATE INDEX blob_span_lru ON blob_span(last_used);
+
+-- First committer of a range wins; a re-commit of the identical (key,start,len) is a no-op (mirrors the
+-- file-level dedupe — the bytes are identical by the contiguity invariant). last_used is refreshed by touch.
+insertSpan:
+INSERT OR IGNORE INTO blob_span(key, start, len, last_used) VALUES (?, ?, ?, ?);
+
+touch:
+UPDATE blob_span SET last_used = ? WHERE key = ? AND start = ? AND len = ?;
+
+spansForKey:
+SELECT start, len FROM blob_span WHERE key = ?;
+
+totalSize:
+SELECT coalesce(sum(len), 0) FROM blob_span;
+
+maxLastUsed:
+SELECT coalesce(max(last_used), 0) FROM blob_span;
+
+distinctKeys:
+SELECT DISTINCT key FROM blob_span;
+
+-- Eviction walks this ascending (least-recently-used first); the caller skips still-pinned spans and
+-- stops once total is back under budget.
+lruOrder:
+SELECT key, start, len FROM blob_span ORDER BY last_used ASC;
+
+deleteSpan:
+DELETE FROM blob_span WHERE key = ? AND start = ? AND len = ?;

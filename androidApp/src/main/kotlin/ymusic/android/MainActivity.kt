@@ -150,12 +150,10 @@ class MainActivity : ComponentActivity() {
         // WebView's own default UA; a mismatched identity gets rejected by googlevideo/BotGuard.
         val mediaProxy = shared.webViewJs?.let {
             val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
+            val driver = androidSegmentDatabaseDriver(applicationContext) // shared: span index + segment index
             val cache = MediaCache(
-                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM),
-                SqlDelightSegmentIndex(
-                    androidSegmentDatabaseDriver(applicationContext),
-                    now = { System.currentTimeMillis() },
-                ),
+                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, driver),
+                SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
             )
             val client = KmpHttpClient.create {
                 cookieJar = shared.cookies

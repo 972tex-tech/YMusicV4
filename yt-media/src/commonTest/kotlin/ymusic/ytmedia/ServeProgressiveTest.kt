@@ -73,9 +73,10 @@ class ServeProgressiveTest {
     /** Fill [0,40) via a SABR parse: init=0×10, seg1=1×10, seg2=2×10, seg3=3×10 (distinct per segment). */
     private suspend fun sabrFilledCache(): MediaCache {
         FileSystem.SYSTEM.deleteRecursively(dir)
+        val driver = testSegmentDriver()
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM),
-            SqlDelightSegmentIndex(testSegmentDriver(), now = { 1_000 }),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM, driver),
+            SqlDelightSegmentIndex(driver, now = { 1_000 }),
         )
         val resp = Buffer().apply {
             putSegment(0, 0, 0, ByteArray(10) { 0 }, isInit = true)
