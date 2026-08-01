@@ -119,13 +119,16 @@ class LocalMediaProxy(
             runCatching { response.body.contentType()?.toString() }.getOrNull()?.let { add("Content-Type" to it) }
             if (length != null) add("Content-Length" to "$length")
         }
-        // Progressive fill: tee the range's bytes into the byte store at their known offset. (SABR fill —
-        // parsing the UMP stream to write per-segment — reuses the SabrSession segment writer; TODO.)
+        // Fill on the way through: SABR responses are a UMP part stream (tee each complete segment into
+        // the cache while passing the raw bytes to the WebView untouched); progressive responses are a
+        // plain byte range (tee at the range's known offset). Both leave the response bytes unchanged.
         val networkBody = response.body.asyncSource()
-        val teed = fillProgressive(response.request.url.toString(), networkBody) ?: networkBody
-        return ProxyResponse(
-            response.code, "OK", headers, teed, length, url = response.request.url.toString(),
-        ) { response.close() }
+        val effectiveUrl = response.request.url.toString()
+        val teed = when {
+            isSabr(url) && method == "POST" && response.isSuccessful -> SabrCacheTee(networkBody, cache, log)
+            else -> fillProgressive(effectiveUrl, networkBody) ?: networkBody
+        }
+        return ProxyResponse(response.code, "OK", headers, teed, length, url = effectiveUrl) { response.close() }
     }
 
     /** If [url] is a progressive range read, wrap [network] so its bytes also land in the cache. */
