@@ -29,6 +29,20 @@ interface MediaBlobCache {
     fun isCached(key: String, position: Long, length: Long): Boolean
 
     /**
+     * How much of `[position, position+length)` is **contiguously** cached from [position] — mirrors
+     * media3 `SimpleCache.getCachedLength`:
+     * - a **positive** `n` ≤ [length]: `[position, position+n)` is cached (serve `n` from cache);
+     * - a **negative** `-m`: [position] is a hole and `[position, position+m)` is uncached (the next
+     *   cached byte is at `position+m`) — fetch that hole from the network;
+     * - `0` only when [length] is 0.
+     *
+     * The split-serve primitive: `n = cachedLength(k, p, len)` → `n == len` is a full hit;
+     * `0 < n < len` means serve `[p, p+n)` from cache (via [read]) and request `[p+n, p+len)` from the
+     * network; `n < 0` is a plain miss for `[p, p-n)`.
+     */
+    fun cachedLength(key: String, position: Long, length: Long): Long
+
+    /**
      * Pin the spans covering `[position, position+length)` and return an immutable, stitched [Source] over
      * exactly those bytes — or **null if not fully covered at this instant**. Pinned spans are never
      * evicted while the returned source is open; the caller **must close it** to unpin. A null result is

@@ -67,6 +67,28 @@ class DiskMediaBlobCache(
         cover(key, cachedSpans(key), position, length) != null
     }
 
+    override fun cachedLength(key: String, position: Long, length: Long): Long = synchronized(lock) {
+        if (length <= 0) return@synchronized 0L
+        val spans = cachedSpans(key)
+        val end = position + length
+        // Greedy sweep from position (spans sorted by start), stopping at the first gap.
+        var cursor = position
+        var i = 0
+        while (cursor < end) {
+            var bestEnd = cursor
+            while (i < spans.size && spans[i].start <= cursor) {
+                if (spans[i].end > bestEnd) bestEnd = spans[i].end
+                i++
+            }
+            if (bestEnd <= cursor) break // gap at cursor
+            cursor = bestEnd
+        }
+        if (cursor > position) return@synchronized minOf(cursor, end) - position // cached run
+        // position itself is a hole → distance to the next cached byte (capped at length), negated.
+        val nextStart = spans.firstOrNull { it.start > position }?.start ?: end
+        -(minOf(nextStart, end) - position)
+    }
+
     override fun read(key: String, position: Long, length: Long): PinnedSource? {
         val chunks = synchronized(lock) {
             // Coverage over the validated in-memory span list (files were checked when it loaded, and it's

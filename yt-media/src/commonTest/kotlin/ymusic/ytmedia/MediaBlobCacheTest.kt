@@ -72,6 +72,22 @@ class MediaBlobCacheTest {
     }
 
     @Test
+    fun cached_length_reports_the_contiguous_run_or_the_hole() = runTest {
+        val c = cache()
+        write(c, "k", 0, bytes(1000)) // [0, 1000)
+        write(c, "k", 1500, bytes(500)) // [1500, 2000) — gap at [1000, 1500)
+
+        assertEquals(1000, c.cachedLength("k", 0, 1000)) // fully cached
+        assertEquals(1000, c.cachedLength("k", 0, 2000)) // cached run then the gap stops it
+        assertEquals(500, c.cachedLength("k", 500, 1000)) // cached prefix [500,1000), then the gap
+        assertEquals(500, c.cachedLength("k", 1500, 500)) // the far span, fully
+
+        assertEquals(-500, c.cachedLength("k", 1000, 500)) // hole [1000,1500) → next byte at 1500
+        assertEquals(-300, c.cachedLength("k", 1200, 500)) // hole from 1200, capped before the far span
+        assertEquals(-100, c.cachedLength("k2", 0, 100)) // nothing cached → whole range is a hole
+    }
+
+    @Test
     fun overlapping_spans_are_stitched_greedily_by_furthest_reach() = runTest {
         val c = cache()
         // One logical stream; two overlapping committed ranges of it, byte-identical in the overlap.
