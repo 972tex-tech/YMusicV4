@@ -15,6 +15,7 @@ import ymusic.ytmedia.cache.SqlDelightBlobIndex
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -51,6 +52,24 @@ class MediaBlobCacheTest {
 
     private fun spanFiles(key: String): List<String> =
         if (FileSystem.SYSTEM.exists(dir / key)) FileSystem.SYSTEM.list(dir / key).map { it.name } else emptyList()
+
+    @Test
+    fun a_phantom_row_whose_file_is_gone_is_dropped_when_its_key_loads() = runTest {
+        FileSystem.SYSTEM.deleteRecursively(dir)
+        val driver = testSegmentDriver()
+        var t = 0L
+        val now = { ++t }
+        val c1 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now))
+        write(c1, "k", 0, bytes(300))
+        // The span file vanishes (external deletion, or a crash between the file and row delete) but the
+        // row lingers.
+        FileSystem.SYSTEM.delete(dir / "k" / spanFiles("k").first { it.endsWith(".span") })
+        // A fresh cache loads "k", validates each span's file on the way in, and drops the phantom row →
+        // miss, and the key is gone.
+        val c2 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now))
+        assertFalse(c2.isCached("k", 0, 300))
+        assertEquals(emptySet(), c2.keys())
+    }
 
     @Test
     fun overlapping_spans_are_stitched_greedily_by_furthest_reach() = runTest {

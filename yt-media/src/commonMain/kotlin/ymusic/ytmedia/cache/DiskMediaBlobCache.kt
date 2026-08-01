@@ -33,9 +33,10 @@ import okio.buffer
  * 3. **Single-writer-per-region dedupe** — an in-flight set keyed `(key, start, len)`; [writer] hands back
  *    a no-op sink when the exact region is already committed (a row exists) or in flight.
  * 4. **Read pinning** — [read] ref-count-pins its covering spans; eviction never touches a pinned span.
- * 5. **Plan-then-reacquire** — [isCached] is a hint; [read] re-checks coverage **and that the files still
- *    exist** under the lock, returning null (→ network) on any gap (a stale row whose file is gone is
- *    dropped), holding no lock across plan→serve.
+ * 5. **Plan-then-reacquire** — [isCached] is a hint; [read] re-plans coverage under the lock (over the
+ *    in-memory span cache, which is kept in sync with eviction), returning null (→ network) on any gap and
+ *    holding no lock across plan→serve. Each span's file is validated once, when its key loads into the
+ *    span cache (a phantom row whose file is gone is dropped then) — not on every read.
  * 6. **LRU eviction** — on commit, delete least-recently-used **unpinned** spans (rows + files) until
  *    `SUM(len) ≤ [budgetBytes]`.
  */
@@ -56,22 +57,22 @@ class DiskMediaBlobCache(
     private val inFlight = mutableSetOf<String>()
     private val sweptKeys = mutableSetOf<String>() // key dirs whose stale temps we've swept this process
 
+    // Hot span lists: key → its committed spans (sorted by start), for the ~SPAN_CACHE_MAX_KEYS keys most
+    // recently touched. Repeated isCached/read/writer for the video being played or downloaded then hit
+    // memory instead of re-querying SQLite every call. Insertion order = LRU (move-to-recent on hit).
+    // Loaded lazily and validated against disk; kept in sync with [index] at every insert/delete.
+    private val spanCache = LinkedHashMap<String, MutableList<BlobSpan>>()
+
     override fun isCached(key: String, position: Long, length: Long): Boolean = synchronized(lock) {
-        cover(key, index.spansForKey(key), position, length) != null
+        cover(key, cachedSpans(key), position, length) != null
     }
 
     override fun read(key: String, position: Long, length: Long): PinnedSource? {
         val chunks = synchronized(lock) {
-            val plan = cover(key, index.spansForKey(key), position, length) ?: return@synchronized null
-            // The DB is a hint: a row can outlive its file (crash between delete-row/delete-file elsewhere,
-            // or external deletion). Verify every covering file exists; a missing one drops its stale row
-            // and collapses the read to a miss (plan-then-reacquire).
-            for (c in plan) {
-                if (!fileSystem.exists(pathOf(c.key, c.start, c.len))) {
-                    index.delete(c.key, c.start, c.len)
-                    return@synchronized null
-                }
-            }
+            // Coverage over the validated in-memory span list (files were checked when it loaded, and it's
+            // kept in sync with eviction, so no per-read file re-check — plan-then-reacquire holds via the
+            // lock + the synced cache).
+            val plan = cover(key, cachedSpans(key), position, length) ?: return@synchronized null
             plan.forEach {
                 pin(spanId(it.key, it.start, it.len))
                 index.touch(it.key, it.start, it.len) // LRU touch (stamps now), persisted
@@ -84,7 +85,7 @@ class DiskMediaBlobCache(
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
         val token = flightToken(key, position, length)
         val real = synchronized(lock) {
-            val taken = cover(key, index.spansForKey(key), position, length) != null || token in inFlight
+            val taken = cover(key, cachedSpans(key), position, length) != null || token in inFlight
             if (!taken) inFlight += token
             !taken
         }
@@ -102,6 +103,40 @@ class DiskMediaBlobCache(
     private fun unpin(id: String) {
         val n = pins[id] ?: return
         if (n <= 1) pins.remove(id) else pins[id] = n - 1
+    }
+
+    // --- hot span-list cache -------------------------------------------------------------------------
+
+    /** The key's committed spans (sorted by start), from an in-memory LRU of ~[SPAN_CACHE_MAX_KEYS] keys.
+     *  A miss loads from [index] and validates each span's file exists, dropping any phantom row (file
+     *  gone) as it loads. Kept in sync by [addSpanToCache]/[removeSpanFromCache] at every mutation, so it
+     *  never diverges from [index]. Call under [lock]. */
+    private fun cachedSpans(key: String): MutableList<BlobSpan> {
+        spanCache.remove(key)?.let { spanCache[key] = it; return it } // hit → move to most-recent
+        val loaded = ArrayList<BlobSpan>()
+        for (span in index.spansForKey(key)) {
+            if (fileSystem.exists(pathOf(span.key, span.start, span.len))) {
+                loaded += span
+            } else {
+                index.delete(span.key, span.start, span.len) // phantom row (file gone) — drop it
+            }
+        }
+        spanCache[key] = loaded
+        while (spanCache.size > SPAN_CACHE_MAX_KEYS) spanCache.remove(spanCache.keys.first())
+        return loaded
+    }
+
+    /** Reflect a just-committed span in the resident list (if any), keeping it sorted by start. */
+    private fun addSpanToCache(key: String, start: Long, len: Long) {
+        val list = spanCache[key] ?: return
+        if (list.any { it.start == start && it.len == len }) return // INSERT-OR-IGNORE duplicate
+        val at = list.indexOfFirst { it.start > start }
+        if (at < 0) list.add(BlobSpan(key, start, len)) else list.add(at, BlobSpan(key, start, len))
+    }
+
+    /** Reflect an evicted / dropped span in the resident list (if any). */
+    private fun removeSpanFromCache(key: String, start: Long, len: Long) {
+        spanCache[key]?.removeAll { it.start == start && it.len == len }
     }
 
     // --- covering (greedy max-reach; tolerates overlapping spans) ------------------------------------
@@ -151,6 +186,7 @@ class DiskMediaBlobCache(
             if (total + incoming <= budgetBytes) break
             if ((pins[spanId(row.key, row.start, row.len)] ?: 0) > 0) continue // pinned → never evict
             index.delete(row.key, row.start, row.len)
+            removeSpanFromCache(row.key, row.start, row.len)
             total -= row.len
             victims += pathOf(row.key, row.start, row.len)
         }
@@ -234,12 +270,13 @@ class DiskMediaBlobCache(
                 // identical by the contiguity invariant — drop our temp; don't atomicMove over a file a
                 // reader may hold open. Make sure it's indexed (INSERT OR IGNORE).
                 fileSystem.delete(t, mustExist = false)
-                synchronized(lock) { index.insert(key, start, len) }
+                synchronized(lock) { index.insert(key, start, len); addSpanToCache(key, start, len) }
                 return
             }
             fileSystem.atomicMove(t, spanPath)
             val victims = synchronized(lock) {
                 index.insert(key, start, len)
+                addSpanToCache(key, start, len)
                 planEviction(0)
             }
             victims.forEach { fileSystem.delete(it, mustExist = false) }
@@ -310,6 +347,7 @@ class DiskMediaBlobCache(
     private companion object {
         const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024
         const val DEFAULT_MAX_SPAN_BYTES = 512L * 1024
+        const val SPAN_CACHE_MAX_KEYS = 10 // hot span-lists kept in memory (≈ current + queued videos)
         const val SPAN_EXT = "span"
         const val TMP_EXT = "tmp"
 
