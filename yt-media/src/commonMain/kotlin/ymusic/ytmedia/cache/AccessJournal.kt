@@ -35,25 +35,25 @@ internal class AccessJournal(
 
     /**
      * Replay the log → span ids in LRU order, **oldest first**. Later occurrences win (re-touch =
-     * most-recent), so a `LinkedHashMap`'s insertion order after re-inserting each line is exactly the
+     * most-recent), so a `LinkedHashSet`'s insertion order after re-adding each line is exactly the
      * recency order. A missing journal → empty; a truncated tail (crash mid-append) → whatever parsed.
      */
     fun replay(): List<String> = synchronized(lock) {
         sink?.flush() // in case this instance already appended (belt-and-suspenders; replay runs at open)
         if (!fileSystem.exists(file)) return emptyList()
-        val order = LinkedHashMap<String, Unit>()
+        val order = LinkedHashSet<String>()
         runCatching {
             fileSystem.source(file).buffer().use { source ->
                 while (true) {
                     val line = source.readUtf8Line() ?: break
                     if (line.isNotEmpty()) {
-                        order.remove(line) // move to most-recent (re-insert at the end)
-                        order[line] = Unit
+                        order.remove(line) // re-add moves it to most-recent (insertion order preserved)
+                        order.add(line)
                     }
                 }
             }
         }
-        order.keys.toList()
+        order.toList()
     }
 
     /** Append one touch on the held sink and flush it (a write syscall, no fsync) — so a fresh instance
