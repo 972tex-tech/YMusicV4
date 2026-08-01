@@ -3,6 +3,7 @@ package ymusic.ytmedia.cache
 import kmpcommon.WorkerThread
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import okio.BufferedSink
 import okio.FileSystem
 import okio.Path
 import okio.buffer
@@ -29,6 +30,7 @@ internal class AccessJournal(
 ) {
     private val file = root / FILE_NAME
     private val lock = SynchronizedObject()
+    private var sink: BufferedSink? = null // held open for the cache's lifetime (like DiskLruCache)
     private var appended = 0
 
     /**
@@ -37,6 +39,7 @@ internal class AccessJournal(
      * recency order. A missing journal → empty; a truncated tail (crash mid-append) → whatever parsed.
      */
     fun replay(): List<String> = synchronized(lock) {
+        sink?.flush() // in case this instance already appended (belt-and-suspenders; replay runs at open)
         if (!fileSystem.exists(file)) return emptyList()
         val order = LinkedHashMap<String, Unit>()
         runCatching {
@@ -53,24 +56,36 @@ internal class AccessJournal(
         order.keys.toList()
     }
 
-    /** Append one touch. Cheap (open-append-close, no fsync); losing the tail on a crash only costs
-     *  some recency precision, never correctness. */
+    /** Append one touch on the held sink and flush it (a write syscall, no fsync) — so a fresh instance
+     *  replaying without an explicit [close] still sees it. Losing the tail on a crash only costs some
+     *  recency precision, never correctness. */
     fun record(id: String) = synchronized(lock) {
-        fileSystem.createDirectories(root)
-        fileSystem.appendingSink(file).buffer().use { it.writeUtf8(id).writeUtf8("\n") }
+        val s = sink ?: openSink()
+        s.writeUtf8(id).writeUtf8("\n").flush()
         appended++
+    }
+
+    private fun openSink(): BufferedSink {
+        fileSystem.createDirectories(root)
+        return fileSystem.appendingSink(file).buffer().also { sink = it }
     }
 
     fun needsCompaction(): Boolean = synchronized(lock) { appended > compactThreshold }
 
-    /** Replace the log with one line per live id in [orderedOldestFirst] (atomic tmp+move). */
+    /** Replace the log with one line per live id in [orderedOldestFirst] (atomic tmp+move). The held
+     *  append sink is closed first — its fd points at the pre-rename inode, so it would write to a ghost
+     *  file after the move; the next [record] reopens onto the fresh file. */
     fun rewrite(orderedOldestFirst: List<String>) = synchronized(lock) {
+        sink?.close(); sink = null
         fileSystem.createDirectories(root)
         val tmp = root / "$FILE_NAME.$TMP_EXT"
-        fileSystem.sink(tmp).buffer().use { sink -> orderedOldestFirst.forEach { sink.writeUtf8(it).writeUtf8("\n") } }
+        fileSystem.sink(tmp).buffer().use { out -> orderedOldestFirst.forEach { out.writeUtf8(it).writeUtf8("\n") } }
         fileSystem.atomicMove(tmp, file)
         appended = 0
     }
+
+    /** Release the append fd. Optional — the cache is process-lifetime, so this is for tests / shutdown. */
+    fun close() = synchronized(lock) { sink?.close(); sink = null }
 
     companion object {
         const val FILE_NAME = "access-journal"
