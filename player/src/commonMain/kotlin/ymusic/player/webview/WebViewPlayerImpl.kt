@@ -344,7 +344,9 @@ internal class WebViewPlayerImpl(
         // Globals the bundle reads (some as BARE identifiers — e.g. enablePlayerCache in skip_ads.ts —
         // so leaving them unset is an uncaught ReferenceError that surfaces as YouTube's error screen).
         append("window.isAndroid=").append(bridge.platform == "android").append(";")
-        append("window.enablePlayerCache=false;")
+        // Enabled only when the bridge intercepts /ymusicForward (has a player cache wired). webview-js
+        // additionally gates the rewrite by platform (Android osVer≥24 / desktop; iOS uses a channel).
+        append("window.enablePlayerCache=").append(bridge.playerCacheEnabled).append(";")
         append("\n").append(engineJs)
     }
 

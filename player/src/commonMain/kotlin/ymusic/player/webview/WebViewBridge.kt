@@ -23,6 +23,14 @@ internal interface WebViewBridge {
     val userAgent: String
 
     /**
+     * True when this bridge has a player cache wired and intercepts the bundle's `/ymusicForward`
+     * requests natively (desktop `CefResourceHandler`, Android `shouldInterceptRequest`). Drives the
+     * bundle's `window.enablePlayerCache`: only then does webview-js rewrite `/videoplayback` to the
+     * `/ymusicForward` shape this bridge serves. Default false — no cache, no interception, no rewrite.
+     */
+    val playerCacheEnabled: Boolean get() = false
+
+    /**
      * Load [html] as the document at [baseUrl] (origin) — the injected bundle runs at document-start.
      * The bridge brings its WebView to the front of the shared container here (this engine is becoming
      * the active one); the view is otherwise left attached and visible for its whole lifetime — the

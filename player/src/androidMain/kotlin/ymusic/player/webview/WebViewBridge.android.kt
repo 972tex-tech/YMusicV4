@@ -17,6 +17,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import ymusic.player.WebViewPlayerContext
+import ymusic.ytmedia.proxy.LocalMediaProxy
 import java.io.ByteArrayInputStream
 import kotlin.random.Random
 
@@ -30,16 +31,19 @@ import kotlin.random.Random
 internal actual fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
-): WebViewBridge = AndroidWebViewBridge(context.context, context.container, sink)
+): WebViewBridge = AndroidWebViewBridge(context.context, context.container, context.mediaProxy, sink)
 
 @SuppressLint("SetJavaScriptEnabled")
 private class AndroidWebViewBridge(
     androidContext: android.content.Context,
     private val container: ViewGroup,
+    private val mediaProxy: LocalMediaProxy?,
     sink: WebViewMessageSink,
 ) : WebViewBridge {
 
     override val platform: String = "android"
+
+    override val playerCacheEnabled: Boolean = mediaProxy != null
 
     // The bundle reads window.androidOsVer for OS-version-gated behavior; ymixChannelAndroid is the
     // native JS interface (added below), so no transport shim is needed here.
@@ -73,7 +77,7 @@ private class AndroidWebViewBridge(
             0,
             0,
         )
-        webViewClient = WebViewClientImpl()
+        webViewClient = WebViewClientImpl(mediaProxy)
         webChromeClient = WebChromeClientImpl()
     }
 
@@ -128,7 +132,7 @@ private class AndroidWebViewBridge(
         }
     }
 
-    private class WebViewClientImpl : WebViewClient() {
+    private class WebViewClientImpl(private val mediaProxy: LocalMediaProxy?) : WebViewClient() {
         override fun shouldOverrideUrlLoading(
             view: WebView?,
             request: WebResourceRequest?
@@ -141,6 +145,14 @@ private class AndroidWebViewBridge(
             request: WebResourceRequest
         ): WebResourceResponse? {
             val url = request.url.toString()
+            // Player cache: the bundle rewrites /videoplayback to <origin>/ymusicForward?… (Android can't
+            // read a POST body here, which is why method+body are packed into the query). Serve it from
+            // the router — cache hit → synthesized bytes; miss → forwarded + teed into the cache.
+            val proxy = mediaProxy
+            if (proxy != null && url.contains(LocalMediaProxy.FORWARD_PATH)) {
+                val target = url.substring(url.indexOf(LocalMediaProxy.FORWARD_PATH)) // strip origin → path+query
+                return proxyIntercept(proxy, target)
+            }
             if (url.matches(Regex(".*\\.js([?#].*)*$")) && !url.contains("_doNotBlock=42")) {
                 return WebResourceResponse(
                     "text/plain",

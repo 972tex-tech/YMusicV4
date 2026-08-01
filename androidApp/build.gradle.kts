@@ -62,6 +62,7 @@ dependencies {
     implementation(Libs.AndroidX.activityCompose)
     implementation(Libs.Kotlinx.coroutinesAndroid)
     implementation(project(":kmpHttp:core"))
+    implementation(project(":yt-media")) // the player-cache router (LocalMediaProxy) for the WebView
     implementation(compose.material3)
     implementation(compose.foundation)
 }

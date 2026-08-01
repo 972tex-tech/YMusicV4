@@ -1,5 +1,9 @@
 package ymusic.player.webview
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.browser.CefMessageRouter
@@ -18,6 +22,7 @@ import org.cef.misc.StringRef
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import ymusic.player.WebViewPlayerContext
+import ymusic.ytmedia.proxy.LocalMediaProxy
 import javax.swing.SwingUtilities
 import kotlin.math.min
 
@@ -74,6 +79,13 @@ private class JcefWebViewBridge(
 
     private val client = context.cefClient
     private val surface = context.surface
+    private val mediaProxy: LocalMediaProxy? = context.mediaProxy
+
+    // Serves intercepted /ymusicForward requests off the CEF IO thread (ProxyResourceHandler launches
+    // the suspend router here). Only used when a player cache is wired.
+    private val proxyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override val playerCacheEnabled: Boolean = mediaProxy != null
 
     @Volatile private var pendingHtml: String? = null
 
@@ -118,6 +130,16 @@ private class JcefWebViewBridge(
             disableDefaultHandling: BoolRef?,
         ): CefResourceRequestHandler? {
             val url = request?.url ?: return null
+            // Player cache: the bundle rewrites /videoplayback to <origin>/ymusicForward?… — serve it
+            // from the router (cache hit → synthesized bytes; miss → forwarded + teed into the cache).
+            val proxy = mediaProxy
+            if (proxy != null && url.contains(LocalMediaProxy.FORWARD_PATH)) {
+                val target = url.substring(url.indexOf(LocalMediaProxy.FORWARD_PATH)) // strip origin → path+query
+                return object : CefResourceRequestHandlerAdapter() {
+                    override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?) =
+                        ProxyResourceHandler(proxy, target, proxyScope)
+                }
+            }
             // Block any *.js the content-script hook didn't route through the transform pipeline (which
             // appends _doNotBlock=42) — the un-transformed player must not run (matches Android + legacy).
             if (url.matches(JS_URL_REGEX) && !url.contains(DO_NOT_BLOCK)) {
@@ -201,6 +223,7 @@ private class JcefWebViewBridge(
 
     override fun release() {
         surface.setVisible(false)
+        proxyScope.cancel()
         client.removeRequestHandler()
         client.removeMessageRouter(router)
         client.removeLifeSpanHandler()

@@ -3,6 +3,7 @@ package ymusic.android
 import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
+import android.webkit.WebSettings
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -25,11 +26,16 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kmpcommon.uri.Uri
 import kmpffmpeg.AndroidFfInputResolver
 import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kmphttp.KmpHttpClient
+import kmphttp.RedirectOptions
+import kmphttp.create
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 import ymusic.dynamicengine.yt.embedPage
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.MediaScanner
@@ -43,6 +49,11 @@ import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ytmedia.cache.DiskMediaBlobCache
+import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightSegmentIndex
+import ymusic.ytmedia.cache.androidSegmentDatabaseDriver
+import ymusic.ytmedia.proxy.LocalMediaProxy
 import java.io.File
 
 /**
@@ -133,13 +144,33 @@ class MainActivity : ComponentActivity() {
         // activity; only the view-bound player is built here, around this activity's container.
         val shared = (application as YMusicApplication).services.await()
 
+        // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
+        // /videoplayback) and serves it from this router — hit → synthesized bytes, miss → forwarded and
+        // teed to disk. Its client carries the WebView CookieManager cookies (shared.cookies) + the
+        // WebView's own default UA; a mismatched identity gets rejected by googlevideo/BotGuard.
+        val mediaProxy = shared.webViewJs?.let {
+            val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
+            val cache = MediaCache(
+                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM),
+                SqlDelightSegmentIndex(
+                    androidSegmentDatabaseDriver(applicationContext),
+                    now = { System.currentTimeMillis() },
+                ),
+            )
+            val client = KmpHttpClient.create {
+                cookieJar = shared.cookies
+                defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
+            }
+            LocalMediaProxy(cache, client, userAgent = WebSettings.getDefaultUserAgent(applicationContext))
+        }
+
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
                 webView = shared.webViewJs?.let { js ->
                     {
                         createWebViewPlayer(
-                            WebViewPlayerContext(this, videoContainer),
+                            WebViewPlayerContext(this, videoContainer, mediaProxy),
                             engineJs = js,
                             appVersion = 1,
                             embedHtml = { ua -> shared.engines.embedPage(ua) },

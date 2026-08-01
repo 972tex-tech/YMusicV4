@@ -41,6 +41,9 @@ import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kmphttp.KmpHttpClient
+import kmphttp.RedirectOptions
+import kmphttp.create
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
@@ -77,6 +80,11 @@ import ymusic.ui.ensureAppLanguage
 import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
+import ymusic.ytmedia.cache.DiskMediaBlobCache
+import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightSegmentIndex
+import ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
+import ymusic.ytmedia.proxy.LocalMediaProxy
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
@@ -195,13 +203,33 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val webViewSurface = JcefOsrSurface()
     val webViewJs = withContext(Dispatchers.IO) { readWebViewJs() }
 
+    // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
+    // /videoplayback) and serves it from this router — cache hit → synthesized bytes, miss → forwarded
+    // and teed to disk so re-plays/downloads reuse it. Its client carries the CEF cookies + the Chrome
+    // UA CefManager forces on the WebView; a mismatched identity gets rejected by googlevideo/BotGuard.
+    val mediaProxy = withContext(Dispatchers.IO) {
+        val cacheRoot = File(dataDir, "player-cache").apply { mkdirs() }
+        val cache = MediaCache(
+            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM),
+            SqlDelightSegmentIndex(
+                jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "segments.db").absolutePath}"),
+                now = { System.currentTimeMillis() },
+            ),
+        )
+        val client = KmpHttpClient.create {
+            cookieJar = platformCookies
+            defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
+        }
+        LocalMediaProxy(cache, client, userAgent = CefManager.CHROME_USER_AGENT, log = { println("[player-cache] $it") })
+    }
+
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(localSurface)) },
                 webView = {
                     createWebViewPlayer(
-                        WebViewPlayerContext(cefClient, webViewSurface),
+                        WebViewPlayerContext(cefClient, webViewSurface, mediaProxy),
                         engineJs = webViewJs,
                         appVersion = 1,
                         embedHtml = { ua -> engines.embedPage(ua) },
