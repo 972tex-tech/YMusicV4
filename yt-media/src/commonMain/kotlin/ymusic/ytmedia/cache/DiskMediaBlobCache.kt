@@ -106,18 +106,34 @@ class DiskMediaBlobCache(
 
     // --- covering (greedy max-reach; tolerates overlapping spans) ------------------------------------
 
-    /** Chunks exactly covering `[position, position+length)`, or null on any gap. Call under [lock]. */
+    /**
+     * Chunks exactly covering `[position, position+length)`, or null on any gap. **[spans] must be sorted
+     * by `start` ascending** ([BlobIndex.spansForKey] guarantees it). One O(n) greedy sweep: at each cursor
+     * take the reachable span (`start ≤ cursor`) with the furthest `end`, advancing a single pointer [i]
+     * through [spans] that never rewinds — a span left behind ends at or before the cursor, so it can never
+     * help a later cursor. Overlap is tolerated (bytes are identical by the contiguity invariant). Call
+     * under [lock].
+     */
     private fun cover(key: String, spans: List<BlobSpan>, position: Long, length: Long): List<Chunk>? {
         if (length <= 0) return emptyList()
         if (spans.isEmpty()) return null
         val end = position + length
         var cursor = position
+        var i = 0
         val chunks = ArrayList<Chunk>()
         while (cursor < end) {
-            // Of the spans covering `cursor`, take the one reaching furthest: fewest files, tolerates overlap.
-            val best = spans.filter { it.start <= cursor && it.end > cursor }.maxByOrNull { it.end } ?: return null
-            val take = minOf(best.end - cursor, end - cursor)
-            chunks += Chunk(key, best.start, best.len, skip = cursor - best.start, take = take)
+            // Among spans starting at or before the cursor, the one reaching furthest past it. `bestEnd`
+            // starts at `cursor`, so only spans that actually cover it (end > cursor) can win.
+            var best: BlobSpan? = null
+            var bestEnd = cursor
+            while (i < spans.size && spans[i].start <= cursor) {
+                val s = spans[i]
+                if (s.end > bestEnd) { bestEnd = s.end; best = s }
+                i++
+            }
+            val b = best ?: return null // gap: nothing covers the cursor
+            val take = minOf(bestEnd - cursor, end - cursor)
+            chunks += Chunk(key, b.start, b.len, skip = cursor - b.start, take = take)
             cursor += take
         }
         return chunks

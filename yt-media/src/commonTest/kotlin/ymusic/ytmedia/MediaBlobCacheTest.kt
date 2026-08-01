@@ -53,6 +53,21 @@ class MediaBlobCacheTest {
         if (FileSystem.SYSTEM.exists(dir / key)) FileSystem.SYSTEM.list(dir / key).map { it.name } else emptyList()
 
     @Test
+    fun overlapping_spans_are_stitched_greedily_by_furthest_reach() = runTest {
+        val c = cache()
+        // One logical stream; two overlapping committed ranges of it, byte-identical in the overlap.
+        val content = bytes(1500)
+        write(c, "k", 0, content.copyOfRange(0, 1000)) // span [0, 1000)
+        write(c, "k", 500, content.copyOfRange(500, 1500)) // span [500, 1500) — overlaps [500, 1000)
+
+        // A full read must jump from the [0,1000) span onto the further-reaching [500,1500) span, not
+        // stall at 1000 (cover's greedy max-reach in one forward pass).
+        assertContentEquals(content, readAll(c, "k", 0, 1500))
+        // A read entirely inside the overlap must pick the max-reach span and slice it correctly.
+        assertContentEquals(content.copyOfRange(600, 800), readAll(c, "k", 600, 200))
+    }
+
+    @Test
     fun write_then_read_roundtrips_and_reports_cached() = runTest {
         val c = cache()
         val data = bytes(1000)

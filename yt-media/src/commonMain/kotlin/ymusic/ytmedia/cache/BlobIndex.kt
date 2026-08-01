@@ -18,7 +18,8 @@ class BlobSpan(val key: String, val start: Long, val len: Long) {
  */
 @WorkerThread
 interface BlobIndex {
-    /** Every committed span of [key]. */
+    /** Every committed span of [key], **sorted by `start` ascending** (the cache's cover sweep depends
+     *  on it). */
     fun spansForKey(key: String): List<BlobSpan>
 
     /** Record a committed span, stamping it accessed-now. First writer of an exact `(key, start, len)`

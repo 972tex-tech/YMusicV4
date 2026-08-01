@@ -23,8 +23,10 @@ INSERT OR IGNORE INTO blob_span(key, start, len, last_used) VALUES (?, ?, ?, ?);
 touch:
 UPDATE blob_span SET last_used = ? WHERE key = ? AND start = ? AND len = ?;
 
+-- Sorted by start (satisfied by the PRIMARY KEY (key, start, len) index — no filesort) so the cache's
+-- cover() can sweep them in one O(n) pass.
 spansForKey:
-SELECT start, len FROM blob_span WHERE key = ?;
+SELECT start, len FROM blob_span WHERE key = ? ORDER BY start;
 
 totalSize:
 SELECT coalesce(sum(len), 0) FROM blob_span;
