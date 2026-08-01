@@ -30,14 +30,16 @@ class ProxyResponse(
 )
 
 /**
- * The platform-agnostic media proxy the WebView routes googlevideo requests through (see
- * `docs/player/youtube-playback.md`). webview-js rewrites a `/videoplayback` request into
- * `<proxy>/ymusicForward?url=…&method=…&body=<base64>`; [serve] reconstructs it, tries the player
- * [cache] first (a hit → synthesized bytes, zero network), and forwards a miss through [client].
+ * The platform-agnostic media router behind the player cache (see `docs/player/youtube-playback.md`).
+ * webview-js turns a googlevideo `/videoplayback` request into `/ymusicForward?url=…&method=…&body=<base64>`
+ * (the original method + body packed in the query); [serve] reconstructs it, tries the player [cache]
+ * first (a hit → synthesized bytes, zero network), and forwards a miss through [client].
  *
- * Transport is platform-specific ([MediaProxyServer]) — plain http on desktop/Android, https on iOS — but
- * this routing is common. The whole request (incl. the original method + body) is packed in the query, so
- * the transport only needs the request line; no request-body reading.
+ * This is the **shared** half. Delivery is per-platform and calls straight into [serve] — native request
+ * interception on desktop (`CefResourceHandler`) and Android (`shouldInterceptRequest`), and the JS↔native
+ * message channel on iOS (`WKScriptMessageHandlerWithReply`). Each adapter turns the intercepted request
+ * into the [serve] target and pumps the returned [ProxyResponse.body] (an [AsyncSource] read in a loop)
+ * into its platform response type. No socket/loopback server involved.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class LocalMediaProxy(
