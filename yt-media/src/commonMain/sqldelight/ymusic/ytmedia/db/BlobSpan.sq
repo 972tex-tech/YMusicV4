@@ -29,9 +29,6 @@ SELECT start, len FROM blob_span WHERE key = ?;
 totalSize:
 SELECT coalesce(sum(len), 0) FROM blob_span;
 
-maxLastUsed:
-SELECT coalesce(max(last_used), 0) FROM blob_span;
-
 distinctKeys:
 SELECT DISTINCT key FROM blob_span;
 

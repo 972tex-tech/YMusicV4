@@ -136,7 +136,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val cacheDriver = nativeSegmentDatabaseDriver() // shared: blob-span index + segment index
     val mediaProxy = LocalMediaProxy(
         cache = MediaCache(
-            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver)),
+            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() })),
             SqlDelightSegmentIndex(
                 cacheDriver,
                 now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },

@@ -18,17 +18,15 @@ class BlobSpan(val key: String, val start: Long, val len: Long) {
  */
 @WorkerThread
 interface BlobIndex {
-    /** The largest stored `last_used`, to continue the monotonic LRU clock after a restart (0 if empty). */
-    fun maxLastUsed(): Long
-
     /** Every committed span of [key]. */
     fun spansForKey(key: String): List<BlobSpan>
 
-    /** Record a committed span. First writer of an exact `(key, start, len)` wins; a re-insert is a no-op. */
-    fun insert(key: String, start: Long, len: Long, lastUsed: Long)
+    /** Record a committed span, stamping it accessed-now. First writer of an exact `(key, start, len)`
+     *  wins; a re-insert is a no-op. */
+    fun insert(key: String, start: Long, len: Long)
 
-    /** Bump a span's recency (the LRU touch on read). */
-    fun touch(key: String, start: Long, len: Long, lastUsed: Long)
+    /** Bump a span's recency to now (the LRU touch on read). */
+    fun touch(key: String, start: Long, len: Long)
 
     /** Drop a span row — on eviction, or when its file is found missing. */
     fun delete(key: String, start: Long, len: Long)

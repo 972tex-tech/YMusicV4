@@ -213,7 +213,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         // One persistent DB for both the blob-span index and the segment index.
         val driver = jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "cache-index.db").absolutePath}")
         val cache = MediaCache(
-            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
+            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
             SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
         )
         val client = KmpHttpClient.create {

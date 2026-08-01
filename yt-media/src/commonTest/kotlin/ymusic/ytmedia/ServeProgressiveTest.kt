@@ -76,7 +76,7 @@ class ServeProgressiveTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()
         val cache = MediaCache(
-            DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
+            DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { 1_000 })),
             SqlDelightSegmentIndex(driver, now = { 1_000 }),
         )
         val resp = Buffer().apply {

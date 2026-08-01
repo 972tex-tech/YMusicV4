@@ -18,7 +18,7 @@ import okio.buffer
  * index of record — which ranges are cached, the total cached size, and LRU recency — so coverage, the
  * byte budget and eviction order never depend on scanning directories and all survive a restart. Read
  * pins are the one piece of state that stays in memory (they are per-process: a span being
- * read right now must not be evicted). The index (and pins / in-flight / the LRU clock) are guarded by one
+ * read right now must not be evicted). The index (and pins / in-flight) are guarded by one
  * [lock] — small critical sections around point/range queries; the large byte IO (spilling and reading
  * span files) happens outside it.
  *
@@ -55,7 +55,6 @@ class DiskMediaBlobCache(
     private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
     private val inFlight = mutableSetOf<String>()
     private val sweptKeys = mutableSetOf<String>() // key dirs whose stale temps we've swept this process
-    private var clock = index.maxLastUsed() // monotonic LRU tick, continued from the index
 
     override fun isCached(key: String, position: Long, length: Long): Boolean = synchronized(lock) {
         cover(key, index.spansForKey(key), position, length) != null
@@ -73,10 +72,9 @@ class DiskMediaBlobCache(
                     return@synchronized null
                 }
             }
-            val tick = ++clock
             plan.forEach {
                 pin(spanId(it.key, it.start, it.len))
-                index.touch(it.key, it.start, it.len, tick) // LRU touch, persisted
+                index.touch(it.key, it.start, it.len) // LRU touch (stamps now), persisted
             }
             plan
         } ?: return null
@@ -220,12 +218,12 @@ class DiskMediaBlobCache(
                 // identical by the contiguity invariant — drop our temp; don't atomicMove over a file a
                 // reader may hold open. Make sure it's indexed (INSERT OR IGNORE).
                 fileSystem.delete(t, mustExist = false)
-                synchronized(lock) { index.insert(key, start, len, ++clock) }
+                synchronized(lock) { index.insert(key, start, len) }
                 return
             }
             fileSystem.atomicMove(t, spanPath)
             val victims = synchronized(lock) {
-                index.insert(key, start, len, ++clock)
+                index.insert(key, start, len)
                 planEviction(0)
             }
             victims.forEach { fileSystem.delete(it, mustExist = false) }

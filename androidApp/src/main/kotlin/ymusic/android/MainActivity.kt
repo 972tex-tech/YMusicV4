@@ -153,7 +153,7 @@ class MainActivity : ComponentActivity() {
             val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
             val driver = androidSegmentDatabaseDriver(applicationContext) // shared: span index + segment index
             val cache = MediaCache(
-                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver)),
+                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
                 SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
             )
             val client = KmpHttpClient.create {

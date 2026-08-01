@@ -53,7 +53,7 @@ class SabrCacheTeeTest {
     fun tees_complete_segments_and_passes_bytes_through_unchanged() = runBlocking {
         FileSystem.SYSTEM.deleteRecursively(dir.toPath())
         val driver = jvmSegmentDatabaseDriver()
-        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver))
+        val blobs = DiskMediaBlobCache(dir.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { 0 }))
         val cache = MediaCache(blobs, SqlDelightSegmentIndex(driver, now = { 0 }))
 
         val seg0 = ByteArray(10) { it.toByte() }

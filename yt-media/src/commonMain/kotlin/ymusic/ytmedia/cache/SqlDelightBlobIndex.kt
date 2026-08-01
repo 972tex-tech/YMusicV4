@@ -10,23 +10,25 @@ import ymusic.ytmedia.db.SegmentDatabase
  * typically shares it with [SqlDelightSegmentIndex] so all cache metadata lives in one DB. Synchronous —
  * SqlDelight queries block, which is exactly the non-suspend [BlobIndex] contract; [DiskMediaBlobCache]
  * calls these under its own lock.
+ *
+ * `last_used` is plain wall-clock epoch-millis from [now] (like `SqlDelightSegmentIndex.download_time`) —
+ * good enough for LRU order and directly usable for age-based retention. Clock drift / same-millisecond
+ * ties are ignored (LRU just orders those arbitrarily).
  */
 @WorkerThread
-class SqlDelightBlobIndex(driver: SqlDriver) : BlobIndex {
+class SqlDelightBlobIndex(driver: SqlDriver, private val now: () -> Long) : BlobIndex {
 
     private val queries = SegmentDatabase(driver).blobSpanQueries
-
-    override fun maxLastUsed(): Long = queries.maxLastUsed().executeAsOne()
 
     override fun spansForKey(key: String): List<BlobSpan> =
         queries.spansForKey(key) { start, len -> BlobSpan(key, start, len) }.executeAsList()
 
-    override fun insert(key: String, start: Long, len: Long, lastUsed: Long) {
-        queries.insertSpan(key, start, len, lastUsed)
+    override fun insert(key: String, start: Long, len: Long) {
+        queries.insertSpan(key, start, len, now())
     }
 
-    override fun touch(key: String, start: Long, len: Long, lastUsed: Long) {
-        queries.touch(lastUsed, key, start, len)
+    override fun touch(key: String, start: Long, len: Long) {
+        queries.touch(now(), key, start, len)
     }
 
     override fun delete(key: String, start: Long, len: Long) {
