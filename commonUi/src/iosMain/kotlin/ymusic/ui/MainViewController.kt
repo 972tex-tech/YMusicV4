@@ -16,16 +16,21 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.window.ComposeUIViewController
+import kmphttp.KmpHttpClient
+import kmphttp.RedirectOptions
+import kmphttp.create
 import kotlinx.cinterop.ExperimentalForeignApi
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import platform.Foundation.NSBundle
 import platform.Foundation.NSCachesDirectory
+import platform.Foundation.NSDate
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.stringWithContentsOfFile
+import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import ymusic.dynamicengine.DynamicEngineManager
@@ -41,6 +46,12 @@ import ymusic.player.WebViewPlayerContext
 import ymusic.player.createLocalPlayer
 import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
+import ymusic.player.webview.APPLE_WEBVIEW_USER_AGENT
+import ymusic.ytmedia.cache.DiskMediaBlobCache
+import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SqlDelightSegmentIndex
+import ymusic.ytmedia.cache.nativeSegmentDatabaseDriver
+import ymusic.ytmedia.proxy.LocalMediaProxy
 
 /**
  * The iOS entry point — the Swift app hosts `MainViewControllerKt.MainViewController()`. Builds the
@@ -113,11 +124,34 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheRoot.resolve("scaled")),
     )
 
+    // Player cache: WKWebView can't intercept https, so the injected bundle serves /videoplayback over
+    // the message channel (see AppleProxyChannel). The proxy's client carries the shared
+    // WKWebsiteDataStore cookies (the same store the WebView uses) + the WKWebView UA, so a forwarded
+    // request's identity matches the WebView's own — BotGuard/attestation rejects a mismatch.
+    val playerCacheRoot = (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
+        .toPath()
+        .resolve("ymusic-player-cache")
+    FileSystem.SYSTEM.createDirectories(playerCacheRoot)
+    val mediaProxy = LocalMediaProxy(
+        cache = MediaCache(
+            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM),
+            SqlDelightSegmentIndex(
+                nativeSegmentDatabaseDriver(),
+                now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+            ),
+        ),
+        client = KmpHttpClient.create {
+            cookieJar = cookies
+            defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
+        },
+        userAgent = APPLE_WEBVIEW_USER_AGENT,
+    )
+
     val engineJs = loadWebViewJs()
     val player = createPlayer(
         PlayerEngines(
             local = { createLocalPlayer(LocalPlayerContext(container)) },
-            webView = { createWebViewPlayer(WebViewPlayerContext(container), engineJs, appVersion = 1, { ua -> engines.embedPage(ua) }) },
+            webView = { createWebViewPlayer(WebViewPlayerContext(container, mediaProxy), engineJs, appVersion = 1, { ua -> engines.embedPage(ua) }) },
         ),
     )
 

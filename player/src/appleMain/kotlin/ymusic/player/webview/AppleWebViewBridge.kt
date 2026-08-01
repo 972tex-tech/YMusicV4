@@ -20,6 +20,15 @@ import platform.darwin.NSObject
 import ymusic.ytmedia.proxy.LocalMediaProxy
 
 /**
+ * The User-Agent the Apple WKWebView and every request made on its behalf must share (the embed fetch
+ * and the player-cache proxy's `/videoplayback` forward) — BotGuard/attestation rejects a mismatched
+ * client identity. Public so the app can build the proxy's [LocalMediaProxy] client with it.
+ */
+const val APPLE_WEBVIEW_USER_AGENT: String =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
+        "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+
+/**
  * The WKWebView half of the Apple [WebViewBridge], shared by iOS and macOS (WKWebView is a `UIView`
  * subclass on iOS, an `NSView` subclass on macOS). The container-specific attach — the differing
  * `UIView`/`NSView` type — is done by the per-leaf `createWebViewBridge` actuals, which add
@@ -131,11 +140,9 @@ internal class AppleWebViewBridge(
         // The player-cache channel webview-js posts to on darwin (see AppleProxyChannel / skip_ads.ts).
         const val PROXY_HANDLER_NAME = "ymusicProxy"
 
-        // A current macOS Safari UA (the active Apple target; iOS is a spike). Both the WKWebView and the
-        // embed fetch use it, so the client identity is consistent for BotGuard/attestation.
-        const val USER_AGENT =
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
-                "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        // Both the WKWebView and the embed fetch use this, so the client identity is consistent for
+        // BotGuard/attestation. Shared with the player-cache proxy via [APPLE_WEBVIEW_USER_AGENT].
+        const val USER_AGENT = APPLE_WEBVIEW_USER_AGENT
 
         // Content-rule-list JSON: block every *.js, then ignore-previous for any URL carrying
         // _doNotBlock=42 (the marker the content-script hook appends to its transformed re-fetches).

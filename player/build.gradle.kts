@@ -68,8 +68,10 @@ kotlin {
                 // the Apple Player.framework.
                 api(project(":kmpHttp:core"))
                 // The player-cache router the WebView interception adapters serve from
-                // (CefResourceHandler on desktop, shouldInterceptRequest on Android).
-                implementation(project(":yt-media"))
+                // (CefResourceHandler on desktop, shouldInterceptRequest on Android, the message
+                // channel on Apple). `api`: LocalMediaProxy is a public param of WebViewPlayerContext,
+                // so consumers (the app shells) must see the type to build one.
+                api(project(":yt-media"))
             }
         }
 
