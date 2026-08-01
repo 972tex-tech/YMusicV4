@@ -67,6 +67,9 @@ kotlin {
                 // `api` so KmpHttpClient (a public param of createWebViewPlayer) exports through
                 // the Apple Player.framework.
                 api(project(":kmpHttp:core"))
+                // The player-cache router the WebView interception adapters serve from
+                // (CefResourceHandler on desktop, shouldInterceptRequest on Android).
+                implementation(project(":yt-media"))
             }
         }
 
