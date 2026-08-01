@@ -51,11 +51,16 @@ interface MediaBlobCache {
     fun read(key: String, position: Long, length: Long): PinnedSource?
 
     /**
-     * A writer for one region `[position, position+length)`. Bytes stream to [BlobWriter.sink]; the caller
-     * ends with [BlobWriter.commit] (persist the trailing partial block) or [BlobWriter.abort] (drop it).
-     * Returns a **no-op writer** when the exact region is already committed or already being written by
-     * another worker — so player readahead and a download fetching the same segment never double-write
-     * or corrupt each other.
+     * A writer for a region starting at [position]. Bytes stream to [BlobWriter.sink]; the caller ends
+     * with [BlobWriter.commit] (persist the trailing partial block) or [BlobWriter.abort] (drop it). The
+     * cache seals immutable span blocks as they fill, so [length] is only ever used for dedupe, never for
+     * the writing itself:
+     * - a **non-negative** [length] is the exact region `[position, position+length)` — returns a
+     *   **no-op writer** when that region is already committed or already being written by another worker,
+     *   so player readahead and a download fetching the same segment never double-write;
+     * - a **negative** [length] means the total is **unknown** (a stream): the writer stores whatever it
+     *   is given, block by block, until commit. No whole-region dedupe (only the per-block one on commit),
+     *   so it never returns a no-op.
      */
     fun writer(key: String, position: Long, length: Long): BlobWriter
 

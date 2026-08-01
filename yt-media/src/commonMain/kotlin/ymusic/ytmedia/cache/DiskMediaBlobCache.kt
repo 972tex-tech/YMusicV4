@@ -56,6 +56,7 @@ class DiskMediaBlobCache(
     private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
     private val inFlight = mutableSetOf<String>()
     private val sweptKeys = mutableSetOf<String>() // key dirs whose stale temps we've swept this process
+    private var writerNonce = 0L // unique-ifies unknown-length writer tokens (no region to key them on)
 
     // Hot span lists: key → its committed spans (sorted by start), for the ~SPAN_CACHE_MAX_KEYS keys most
     // recently touched. Repeated isCached/read/writer for the video being played or downloaded then hit
@@ -105,6 +106,14 @@ class DiskMediaBlobCache(
     }
 
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
+        if (length < 0) {
+            // Unknown length: no upfront region dedupe (the region isn't known). A unique token keeps this
+            // writer's temp filenames from colliding with another writer at the same position and marks its
+            // temps live for the sweep; per-block dedupe in commitBlock still avoids re-storing bytes.
+            val token = synchronized(lock) { "$key $position #${++writerNonce}".also { inFlight += it } }
+            sweepStaleTemps(key)
+            return RealBlobWriter(key, position, token)
+        }
         val token = flightToken(key, position, length)
         val real = synchronized(lock) {
             val taken = cover(key, cachedSpans(key), position, length) != null || token in inFlight

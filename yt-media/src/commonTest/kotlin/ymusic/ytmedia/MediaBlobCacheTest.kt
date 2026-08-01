@@ -72,6 +72,24 @@ class MediaBlobCacheTest {
     }
 
     @Test
+    fun an_unknown_length_writer_streams_and_dedupes_by_block() = runTest {
+        val c = cache(maxSpan = 256) // small blocks so a 1000-byte stream seals several spans
+        val data = bytes(1000)
+
+        val w = c.writer("k", 0, -1) // negative length = unknown / streaming
+        w.sink.write(data)
+        w.commit()
+        assertEquals(1000, c.cachedLength("k", 0, 1000))
+        assertContentEquals(data, readAll(c, "k", 0, 1000))
+
+        // A second unknown-length write of the same bytes dedupes per block on commit — no double-count.
+        val w2 = c.writer("k", 0, -1)
+        w2.sink.write(data)
+        w2.commit()
+        assertEquals(1000, c.totalSize())
+    }
+
+    @Test
     fun cached_length_reports_the_contiguous_run_or_the_hole() = runTest {
         val c = cache()
         write(c, "k", 0, bytes(1000)) // [0, 1000)
