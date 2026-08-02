@@ -24,8 +24,10 @@ import ymusic.ytmedia.ump.readUmpPartHeader
  * partial span survives (the [MediaBlobCache] writer no-ops a segment already cached / being written).
  *
  * The parser runs incrementally off a *copy* of each read's bytes, so pass-through is byte-exact and
- * never reframed. Any parse error disables further parsing (open fills aborted) but leaves the
- * pass-through intact — a cache miss is always safe, corrupting the player's stream is not.
+ * never reframed. A parse error, a cache-write failure, or an inconsistent-framing check flips
+ * [illegalState] — open fills are aborted and caching is disabled for the rest of this response — but the
+ * pass-through is left intact: a cache miss is always safe, caching corrupt bytes or corrupting the
+ * player's stream is not.
  */
 internal class SabrCacheTee(
     private val network: AsyncSource,
@@ -46,25 +48,24 @@ internal class SabrCacheTee(
     private var dataNeedId = false // next MEDIA_DATA byte is the 1-byte headerId, not media
     private var curSeg: OpenSeg? = null // the OpenSeg the current MEDIA_DATA feeds
 
-    private var broken = false
+    private var illegalState = false // corrupt/inconsistent stream or a cache-write error — stop caching
     private var finished = false
 
     override suspend fun read(sink: Buffer, byteCount: Long): Long {
         val n = network.read(sink, byteCount)
         if (n == -1L) {
-            finish(commitOpen = false) // clean EOF: any still-open segment is truncated → drop it
+            finish() // clean EOF: any still-open segment is truncated → drop it
             return -1L
         }
-        if (!broken) {
+        if (!illegalState) {
             val copy = Buffer()
             sink.copyTo(copy, sink.size - n, n) // the bytes just appended to sink
             try {
                 scan.writeAll(copy)
                 dispatch()
             } catch (t: Throwable) {
-                log("sabr-fill parse stopped: ${t.message}")
-                broken = true
-                abortOpen()
+                // A thrown parse (bad varint / proto) or cache write (disk / index) — never trust the rest.
+                markIllegal("parse or cache-write error: ${t.message}")
             }
         }
         return n
@@ -72,12 +73,13 @@ internal class SabrCacheTee(
 
     override fun close() {
         network.close()
-        finish(commitOpen = false)
+        finish()
     }
 
-    /** Consume as many complete UMP structures as [scan] holds, opening/filling/committing segments. */
-    private suspend fun dispatch() {
-        while (true) {
+    /** Consume as many complete UMP structures as [scan] holds, opening/filling/committing segments. All
+     *  blocking (okio writes, `@WorkerThread` commit) — non-suspend; only [read] suspends, on `network.read`. */
+    private fun dispatch() {
+        while (!illegalState) {
             if (!inPayload) {
                 // A part header is (varint partId, varint size). Probe a peek so a straddling header
                 // is left in [scan] for the next read instead of being half-consumed.
@@ -93,20 +95,26 @@ internal class SabrCacheTee(
                 inPayload = true
                 startPart()
             }
-            if (!consumePayload()) return
+            if (illegalState || !consumePayload()) return // startPart may have tripped illegalState
         }
     }
 
     private fun startPart() {
         when (partId) {
             UmpPart.MEDIA_HEADER -> headerBuf = Buffer()
-            UmpPart.MEDIA_DATA -> { dataNeedId = true; curSeg = null }
+            UmpPart.MEDIA_DATA -> {
+                // Each MEDIA_DATA re-declares its target (a leading headerId) and is self-contained; the
+                // previous data part clears [curSeg] when it ends ([endPart]). A non-null one here means a
+                // MEDIA_DATA began while another was unfinished — framing lost, don't trust the bytes.
+                if (curSeg != null) return markIllegal("MEDIA_DATA began with an unfinished segment")
+                dataNeedId = true
+            }
             // MEDIA_END / control parts need no per-start state.
         }
     }
 
     /** Feed available payload bytes for the current part; returns false when it needs more bytes. */
-    private suspend fun consumePayload(): Boolean {
+    private fun consumePayload(): Boolean {
         if (partRemaining == 0L) return endPart()
         if (scan.size == 0L) return false
         when (partId) {
@@ -122,25 +130,52 @@ internal class SabrCacheTee(
                     partRemaining -= 1
                     dataNeedId = false
                     curSeg = open[id]
-                } else {
-                    val take = minOf(partRemaining, scan.size)
-                    val seg = curSeg
-                    if (seg != null && seg.remaining > 0) {
-                        val w = minOf(take, seg.remaining)
-                        seg.fill.sink.write(scan, w)
-                        seg.remaining -= w
-                        if (take > w) scan.skip(take - w) // media beyond declared contentLength — drop
-                    } else {
-                        scan.skip(take)
+                    // Every MEDIA_HEADER opens an entry, so an unknown id means its header never arrived or
+                    // its MEDIA_END already closed it (data-after-end) — either way the framing is lost.
+                    if (curSeg == null) {
+                        markIllegal("MEDIA_DATA for unopened id $id")
+                        return false
                     }
+                } else {
+                    val seg = curSeg!! // set above; an unknown id already tripped illegalState
+                    // This part still owes [partRemaining] media bytes and the segment expects [seg.remaining]
+                    // more; more in the part than the segment can take overruns the declared contentLength —
+                    // the mirror image of a short MEDIA_END, and just as corrupt.
+                    if (partRemaining > seg.remaining) {
+                        markIllegal("MEDIA_DATA overruns id: $partRemaining owed vs ${seg.remaining} expected")
+                        return false
+                    }
+                    val take = minOf(partRemaining, scan.size)
+                    seg.fill.sink.write(scan, take)
+                    seg.remaining -= take
                     partRemaining -= take
                 }
             }
 
             UmpPart.MEDIA_END -> {
+                // A MEDIA_END is exactly its 1-byte headerId; any other size is malformed framing (and would
+                // otherwise re-read the trailing bytes as further "ids").
+                if (partRemaining != 1L) {
+                    markIllegal("MEDIA_END payload is $partRemaining bytes, expected 1")
+                    return false
+                }
                 val id = scan.readByte().toInt() and 0xFF
                 partRemaining -= 1
-                open.remove(id)?.let { runCatching { it.fill.commit() } }
+                val seg = open.remove(id)
+                if (seg == null) {
+                    // No open segment for this id: its MEDIA_HEADER never arrived, or this is a second
+                    // MEDIA_END closing it again (double-close) — either way the framing is lost.
+                    markIllegal("MEDIA_END for unopened id $id")
+                    return false
+                }
+                if (seg.remaining > 0L) {
+                    // Short of the declared contentLength: a wrong-length span would desync the index, so drop
+                    // it and stop caching rather than commit a truncated segment.
+                    seg.fill.abort()
+                    markIllegal("MEDIA_END for id $id short by ${seg.remaining} bytes")
+                    return false
+                }
+                seg.fill.commit() // a throw here propagates to read()'s catch → markIllegal
             }
 
             else -> {
@@ -154,28 +189,48 @@ internal class SabrCacheTee(
     }
 
     /** Finish the current part (parse a completed MEDIA_HEADER → open a fill) and rearm for the next. */
-    private suspend fun endPart(): Boolean {
-        if (partId == UmpPart.MEDIA_HEADER) {
-            val bytes = headerBuf!!.readByteArray()
-            headerBuf = null
-            val header = runCatching { MediaHeader.from(ProtoReader(bytes).readAllFields()) }.getOrNull()
-            if (header != null && !open.containsKey(header.headerId)) {
-                // Row saved now, span sealed on MEDIA_END (writer no-ops if already cached/in-flight).
-                open[header.headerId] = OpenSeg(cache.openSegmentFill(header), header.contentLength)
+    private fun endPart(): Boolean {
+        when (partId) {
+            UmpPart.MEDIA_HEADER -> {
+                val bytes = headerBuf!!.readByteArray()
+                headerBuf = null
+                // A malformed header proto throws here → read()'s catch flips illegalState (don't cache a
+                // segment whose byte range we can't trust).
+                val header = MediaHeader.from(ProtoReader(bytes).readAllFields())
+                if (open.containsKey(header.headerId)) {
+                    // A second live segment on the same id before the first's MEDIA_END — lost framing.
+                    markIllegal("duplicate MEDIA_HEADER id ${header.headerId}, still open")
+                } else {
+                    // Row saved now, span sealed on MEDIA_END (writer no-ops if already cached/in-flight).
+                    open[header.headerId] = OpenSeg(cache.openSegmentFill(header), header.contentLength)
+                }
             }
+            // A data part is self-contained; clear the pointer so the next MEDIA_DATA starts from null
+            // (the invariant [startPart] checks). Robust to a segment's media spanning several parts and to
+            // interleaved segments — each part re-derives its target from its own headerId.
+            UmpPart.MEDIA_DATA -> curSeg = null
         }
         inPayload = false
         return true
     }
 
-    private fun finish(commitOpen: Boolean) {
+    private fun finish() {
         if (finished) return
         finished = true
-        if (!commitOpen) abortOpen()
+        abortOpen() // a segment still open at EOF/close is truncated (no MEDIA_END) — drop it
     }
 
     private fun abortOpen() {
         open.values.forEach { runCatching { it.fill.abort() } }
         open.clear()
+    }
+
+    /** Corrupt/inconsistent stream (or a cache-write failure): drop every open fill and stop caching for the
+     *  rest of this response. Pass-through to the player is untouched — only the tee gives up. Idempotent. */
+    private fun markIllegal(reason: String) {
+        if (illegalState) return
+        illegalState = true
+        log("sabr-fill disabled (illegal state): $reason")
+        abortOpen()
     }
 }

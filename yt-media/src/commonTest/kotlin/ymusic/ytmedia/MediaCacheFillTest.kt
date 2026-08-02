@@ -114,6 +114,34 @@ class MediaCacheFillTest {
     }
 
     @Test
+    fun a_segment_fill_writes_only_the_gaps_never_overlapping_spans() = runTest {
+        FileSystem.SYSTEM.deleteRecursively(dir)
+        val driver = testSegmentDriver()
+        val blobs = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { 1_000 }))
+        val cache = MediaCache(blobs, SqlDelightSegmentIndex(driver, now = { 1_000 }))
+        val key = formatCacheKey(251, 100)
+
+        // Pre-cache two disjoint chunks of the segment's byte range, leaving a hole [500, 600).
+        blobs.writer(key, 0, 500).also { it.sink.write(ByteArray(500) { 1 }); it.commit() }
+        blobs.writer(key, 600, 400).also { it.sink.write(ByteArray(400) { 2 }); it.commit() }
+        assertEquals(900, blobs.totalSize())
+
+        // A SABR fill for the whole segment [0, 1000) must write ONLY the 100-byte hole.
+        val whole = ByteArray(1000) { (it and 0xFF).toByte() }
+        val header = MediaHeader(
+            headerId = 0, videoId = "vid", itag = 251, lmt = 100, xtag = null,
+            startRange = 0, isInitSegment = false, segmentIndex = 1,
+            startMs = 0, durationMs = 1000, contentLength = 1000,
+        )
+        cache.openSegmentFill(header).also { it.sink.write(whole); it.commit() }
+
+        assertEquals(1000, blobs.totalSize(), "only the hole was written — no overlapping re-store of cached bytes")
+        assertTrue(blobs.isCached(key, 0, 1000), "the whole range is now covered")
+        val hole = blobs.read(key, 500, 100)!!.buffer().use { it.readByteArray() }
+        assertContentEquals(whole.copyOfRange(500, 600), hole, "the hole holds the segment's real bytes")
+    }
+
+    @Test
     fun a_truncated_segment_leaves_no_partial_span() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver()

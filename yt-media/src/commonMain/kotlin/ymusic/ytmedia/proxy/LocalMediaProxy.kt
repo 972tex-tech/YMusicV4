@@ -140,11 +140,22 @@ class LocalMediaProxy(
         return ProxyResponse(response.code, "OK", headers, teed, length, url = effectiveUrl) { response.close() }
     }
 
-    /** If [url] is a progressive range read, wrap [network] so its bytes also land in the cache. */
+    /**
+     * If [url] is a progressive range read, wrap [network] so its bytes also land in the cache — but only
+     * the part that isn't cached yet. The WebView asked for the whole `[start, end]`, so we forward and
+     * pass the whole body through untouched; the writer, though, opens at the first uncached byte (skipping
+     * the already-cached leading prefix `cachedLength` reports). Re-teeing a cached prefix would only spill
+     * it to a temp and drop it at commit — pointless disk churn. Interior holes past the prefix are still
+     * covered (the per-block commit dedupe drops any block that already exists).
+     */
     private fun fillProgressive(url: String, network: AsyncSource): AsyncSource? {
         val prog = progressiveRange(url) ?: return null
-        val writer = cache.blobs.writer(formatCacheKey(prog.itag, prog.lmt), prog.start, prog.end - prog.start + 1)
-        return CachingSource(network, writer)
+        val key = formatCacheKey(prog.itag, prog.lmt)
+        val length = prog.end - prog.start + 1
+        val skip = cache.blobs.cachedLength(key, prog.start, length).coerceAtLeast(0) // cached leading prefix
+        if (skip >= length) return network // whole range cached (a serve race lost it) — nothing to write
+        val writer = cache.blobs.writer(key, prog.start + skip, length - skip)
+        return CachingSource(network, writer, skip)
     }
 
     private class Progressive(val itag: Int, val lmt: Long, val start: Long, val end: Long)
@@ -194,10 +205,15 @@ class LocalMediaProxy(
  * to the cache, EOF commits, an early [close] aborts (dropping only the uncommitted trailing block —
  * committed blocks stay, per MediaBlobCache's per-block commit). [BlobWriter.commit]/[abort] are
  * non-suspend, so [close] releases the region cleanly without a coroutine.
+ *
+ * [skip] is a count of leading network bytes that are already cached: they pass through to the reader
+ * untouched but are **not** teed (the writer starts at the first uncached byte). Once consumed, every
+ * subsequent byte is mirrored.
  */
-private class CachingSource(
+internal class CachingSource(
     private val network: AsyncSource,
     private val writer: BlobWriter,
+    private var skip: Long = 0L,
 ) : AsyncSource {
     private var finished = false
 
@@ -207,9 +223,19 @@ private class CachingSource(
             finish(commit = true)
             return -1L
         }
-        val copy = Buffer()
-        sink.copyTo(copy, sink.size - n, n) // the bytes just appended to sink
-        writer.sink.write(copy, n)
+        var teeOffset = sink.size - n // the bytes just appended to sink
+        var teeLen = n
+        if (skip > 0) {
+            val drop = minOf(skip, teeLen)
+            teeOffset += drop
+            teeLen -= drop
+            skip -= drop
+        }
+        if (teeLen > 0) {
+            val copy = Buffer()
+            sink.copyTo(copy, teeOffset, teeLen)
+            writer.sink.write(copy, teeLen)
+        }
         return n
     }
 
