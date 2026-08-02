@@ -55,8 +55,9 @@ class DiskMediaBlobCache(
 
     private val lock = SynchronizedObject()
     private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
-    private val inFlight = mutableSetOf<String>()
-    private var writerNonce = 0L // unique-ifies unknown-length writer tokens (no region to key them on)
+    private val inFlight = mutableSetOf<String>() // region tokens "key pos len" — known-length write dedupe
+    private val activeWriters = mutableSetOf<Long>() // live writer ids; temp files carry the id in their name
+    private var writerId = 0L // monotonic per-writer id counter
 
     // Hot span lists: key → its committed spans (sorted by start), for the ~SPAN_CACHE_MAX_KEYS keys most
     // recently touched. Repeated isCached/read/writer for the video being played or downloaded then hit
@@ -107,20 +108,27 @@ class DiskMediaBlobCache(
 
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
         if (length < 0) {
-            // Unknown length: no upfront region dedupe (the region isn't known). A unique token keeps this
-            // writer's temp filenames from colliding with another writer at the same position; per-block
-            // dedupe in commitBlock still avoids re-storing bytes.
-            val token = synchronized(lock) { "$key $position #${++writerNonce}".also { inFlight += it } }
-            return RealBlobWriter(key, position, token)
+            // Unknown length: no region dedupe (the region isn't known). Just a unique writer id for
+            // collision-free temp names; per-block dedupe in commitBlock still avoids re-storing bytes.
+            val id = synchronized(lock) { nextWriterId() }
+            return RealBlobWriter(key, position, regionToken = null, id = id)
         }
         val token = flightToken(key, position, length)
-        val real = synchronized(lock) {
-            val taken = cover(key, cachedSpans(key), position, length) != null || token in inFlight
-            if (!taken) inFlight += token
-            !taken
+        val id = synchronized(lock) {
+            // Exact region already cached or being written → no-op.
+            if (cover(key, cachedSpans(key), position, length) != null || token in inFlight) return NoOpBlobWriter()
+            inFlight += token
+            nextWriterId()
         }
-        if (!real) return NoOpBlobWriter()
-        return RealBlobWriter(key, position, token)
+        return RealBlobWriter(key, position, regionToken = token, id = id)
+    }
+
+    /** A process-unique id per writer, recorded in [activeWriters] so the maintenance worker can tell a
+     *  live writer's temp from a crashed one. Call under [lock]. */
+    private fun nextWriterId(): Long {
+        writerId += 1
+        activeWriters += writerId
+        return writerId
     }
 
     override fun keys(): Set<String> = synchronized(lock) { index.distinctKeys() }
@@ -222,16 +230,17 @@ class DiskMediaBlobCache(
         return victims
     }
 
-    // Crashed writers leave `{blockStart}__{tag}.tmp` files; they're inert (readers go through the index,
-    // never a dir scan) and reclaimed by the background maintenance worker, which must skip any temp whose
-    // tag is still in [inFlight] (a live writer's temp) — not on the write path anymore.
+    // Crashed writers leave `{blockStart}__{writerId}.tmp` files; they're inert (readers go through the
+    // index, never a dir scan) and reclaimed by the background maintenance worker, which must skip any temp
+    // whose {writerId} is still in [activeWriters] (a live writer's temp) — not on the write path anymore.
 
     // --- writer --------------------------------------------------------------------------------------
 
     private inner class RealBlobWriter(
         private val key: String,
         position: Long,
-        private val token: String,
+        private val regionToken: String?, // known-length: the [inFlight] dedupe token to release; else null
+        private val id: Long, // unique per writer → collision-free temp names + [activeWriters] membership
     ) : BlobWriter {
         private val dir = root / key
         private var blockStart = position
@@ -261,14 +270,12 @@ class DiskMediaBlobCache(
             override fun close() { tmpSink?.flush() }
         }
 
-        // Temp name is unique per (region, block): blockStart alone can collide between two overlapping
-        // regions that both start at the same offset (e.g. a progressive and a SABR writer), so include the
-        // region token too — space-free so it's a clean filename.
-        private val tempTag = token.replace(' ', '_')
-
+        // Temp name = `{blockStart}__{writerId}.tmp`. blockStart alone can collide between two writers whose
+        // current block starts at the same offset (e.g. a progressive and a SABR writer), so the per-writer
+        // [id] keeps it unique; both parts are plain numbers, so the name needs no escaping.
         private fun openBlock(): BufferedSink {
             fileSystem.createDirectories(dir)
-            val t = dir / "${blockStart}__$tempTag.$TMP_EXT"
+            val t = dir / "${blockStart}__$id.$TMP_EXT"
             tmp = t
             return fileSystem.sink(t).buffer().also { tmpSink = it }
         }
@@ -312,7 +319,11 @@ class DiskMediaBlobCache(
                 tmp?.let { fileSystem.delete(it, mustExist = false) }
                 tmpSink = null; tmp = null
             }
-            val victims = synchronized(lock) { inFlight -= token; planEviction(0) }
+            val victims = synchronized(lock) {
+                regionToken?.let { inFlight -= it } // known-length only
+                activeWriters -= id
+                planEviction(0)
+            }
             victims.forEach { fileSystem.delete(it, mustExist = false) }
         }
     }
