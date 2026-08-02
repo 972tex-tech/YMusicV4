@@ -24,7 +24,6 @@ import platform.WebKit.WKScriptMessageHandlerWithReplyProtocol
 import platform.WebKit.WKUserContentController
 import platform.darwin.NSObject
 import ymusic.ytmedia.proxy.LocalMediaProxy
-import ymusic.ytmedia.proxy.ProxyResponse
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -53,10 +52,8 @@ internal class AppleProxyChannel(
 ) : NSObject(), WKScriptMessageHandlerWithReplyProtocol {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val streams = mutableMapOf<String, Stream>() // main-confined
+    private val streams = mutableMapOf<String, AsyncSource>() // requestId → response body, main-confined
     private var nextId = 0
-
-    private class Stream(val response: ProxyResponse, val body: AsyncSource)
 
     override fun userContentController(
         userContentController: WKUserContentController,
@@ -94,7 +91,7 @@ internal class AppleProxyChannel(
         val body = msg["body"]?.jsonPrimitive?.contentOrNull?.let { Base64.decode(it) }
         val response = withContext(Dispatchers.Default) { proxy.serveRequest(url, method, body) }
         val id = "r${++nextId}"
-        streams[id] = Stream(response, response.body)
+        streams[id] = response.body
         return buildJsonObject {
             put("requestId", id)
             put("status", response.status)
@@ -106,9 +103,9 @@ internal class AppleProxyChannel(
 
     /** Next chunk as base64, or `""` at EOF (which also releases the stream). */
     private suspend fun read(id: String?): String {
-        val stream = id?.let { streams[it] } ?: return ""
+        val body = id?.let { streams[it] } ?: return ""
         val buf = Buffer()
-        val n = withContext(Dispatchers.Default) { stream.body.read(buf, CHUNK) }
+        val n = withContext(Dispatchers.Default) { body.read(buf, CHUNK) }
         if (n == -1L) {
             close(id)
             return ""
@@ -116,11 +113,9 @@ internal class AppleProxyChannel(
         return Base64.encode(buf.readByteArray())
     }
 
+    /** Closing the body releases the upstream network response (the tee / caching source forwards close). */
     private fun close(id: String) {
-        streams.remove(id)?.let { s ->
-            runCatching { s.body.close() }
-            runCatching { s.response.onClose() }
-        }
+        streams.remove(id)?.let { runCatching { it.close() } }
     }
 
     fun release() {

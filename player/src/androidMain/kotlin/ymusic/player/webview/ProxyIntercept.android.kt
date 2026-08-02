@@ -26,7 +26,7 @@ internal fun proxyIntercept(proxy: LocalMediaProxy, target: String): WebResource
         response.status,
         response.reason.ifEmpty { "OK" },
         response.headers.toMap(),
-        AsyncInputStream(response.body) { response.onClose() },
+        AsyncInputStream(response.body),
     )
     out
 }
@@ -34,7 +34,6 @@ internal fun proxyIntercept(proxy: LocalMediaProxy, target: String): WebResource
 /** A blocking [InputStream] over the router's suspend body — each read blocks on one async read. */
 private class AsyncInputStream(
     private val body: kmpcommon.io.AsyncSource,
-    private val onClose: () -> Unit,
 ) : InputStream() {
     private val buffer = Buffer()
 
@@ -60,7 +59,6 @@ private class AsyncInputStream(
     }
 
     override fun close() {
-        runBlocking { body.close() }
-        onClose()
+        runBlocking { body.close() } // releases the upstream network response via the tee / caching source
     }
 }

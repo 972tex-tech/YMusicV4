@@ -24,7 +24,11 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 /**
  * One response the platform adapter writes back to the WebView. [body] streams until EOF (bytes pulled in a
  * loop by the adapter); [contentLength] is null when unknown. [url] is the effective request URL (the final
- * one after any followed redirect) — carried so an adapter can surface it. [onClose] releases upstream.
+ * one after any followed redirect) — carried so an adapter can surface it.
+ *
+ * **The consumer owns [body] and must close it** when done: that releases the upstream network response —
+ * the SABR tee / progressive caching source forward `close()` down to it, and a cache-hit body has no
+ * upstream to release. There is no separate teardown hook.
  */
 class ProxyResponse(
     val status: Int,
@@ -33,7 +37,6 @@ class ProxyResponse(
     val body: AsyncSource,
     val contentLength: Long?,
     val url: String,
-    val onClose: () -> Unit = {},
 )
 
 /**
@@ -138,11 +141,13 @@ class LocalMediaProxy(
         // plain byte range (tee at the range's known offset). Both leave the response bytes unchanged.
         val networkBody = response.body.asyncSource()
         val effectiveUrl = response.request.url.toString()
-        val teed = when {
-            isSabr(url) && method == "POST" && response.isSuccessful -> SabrCacheTee(networkBody, cache, logger)
-            else -> fillProgressive(effectiveUrl, networkBody) ?: networkBody
+        if (!response.isSuccessful) {
+            return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
-        return ProxyResponse(response.code, "OK", headers, teed, length, url = effectiveUrl) { response.close() }
+        if (isSabr(url)) {
+            return ProxyResponse(response.code, "OK", headers, SabrCacheTee(networkBody, cache, logger), length, url = effectiveUrl)
+        }
+        return ProxyResponse(response.code, "OK", headers, fillProgressive(effectiveUrl, networkBody) ?: networkBody, length, url = effectiveUrl)
     }
 
     /**

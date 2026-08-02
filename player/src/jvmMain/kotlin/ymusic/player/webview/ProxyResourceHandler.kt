@@ -39,8 +39,7 @@ internal class ProxyResourceHandler(
                 headers = response.headers
                 mimeType = response.headers.firstOrNull { it.first.equals("Content-Type", ignoreCase = true) }
                     ?.second?.substringBefore(';') ?: "application/octet-stream"
-                data = drain(response.body)
-                response.onClose()
+                data = drain(response.body) // drain() closes body at EOF, releasing the upstream response
             } catch (t: Throwable) {
                 status = 502
                 data = ByteArray(0)
