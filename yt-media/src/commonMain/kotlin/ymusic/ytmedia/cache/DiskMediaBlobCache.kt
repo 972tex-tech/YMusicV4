@@ -6,6 +6,7 @@ import kotlinx.atomicfu.locks.synchronized
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
+import okio.FileHandle
 import okio.FileSystem
 import okio.Path
 import okio.Sink
@@ -320,6 +321,7 @@ class DiskMediaBlobCache(
     private inner class StitchedSource(private val chunks: List<Chunk>) : PinnedSource {
         private var idx = 0
         private var current: BufferedSource? = null
+        private var handle: FileHandle? = null
         private var currentRemaining = 0L
         private var closed = false
 
@@ -333,12 +335,14 @@ class DiskMediaBlobCache(
                     currentRemaining -= n
                     return n
                 }
-                current?.close(); current = null
+                closeCurrent()
                 if (idx >= chunks.size) return -1
                 val chunk = chunks[idx++]
-                val s = fileSystem.source(pathOf(chunk.key, chunk.start, chunk.len)).buffer()
-                if (chunk.skip > 0) s.skip(chunk.skip)
-                current = s
+                // openReadOnly + seek to the span offset. `source().skip(skip)` would read-and-discard the
+                // prefix — up to a whole span for a read starting deep into it.
+                val h = fileSystem.openReadOnly(pathOf(chunk.key, chunk.start, chunk.len))
+                handle = h
+                current = h.source(fileOffset = chunk.skip).buffer()
                 currentRemaining = chunk.take
             }
         }
@@ -348,8 +352,15 @@ class DiskMediaBlobCache(
         override fun close() {
             if (closed) return
             closed = true
-            current?.close(); current = null
+            closeCurrent()
             synchronized(lock) { chunks.forEach { unpin(spanId(it.key, it.start, it.len)) } }
+        }
+
+        /** Close the current span's source then its file handle (order matters — the handle's OS resource
+         *  is released once it's closed and its last stream is closed). */
+        private fun closeCurrent() {
+            current?.close(); current = null
+            handle?.close(); handle = null
         }
     }
 
