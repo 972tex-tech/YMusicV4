@@ -237,21 +237,19 @@ class MediaBlobCacheTest {
     }
 
     @Test
-    fun a_reopen_over_the_same_index_recovers_spans_and_writing_sweeps_stale_temps() = runTest {
+    fun a_reopen_over_the_same_index_recovers_committed_spans() = runTest {
         FileSystem.SYSTEM.deleteRecursively(dir)
         val driver = testSegmentDriver() // the persistent SQLite index both instances share
         var t = 0L
         val now = { ++t } // one monotonic clock across both "runs"
         val c1 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now))
         write(c1, "k", 0, bytes(300))
-        // A stray temp file, as if a writer crashed mid-block.
+        // A stray temp from a crashed writer is inert — reads go through the index, never a dir scan (the
+        // maintenance worker reclaims it later), so it doesn't affect recovery.
         FileSystem.SYSTEM.write(dir / "k" / "999_abc.tmp") { write(bytes(10)) }
-        // A fresh cache over the same dir + index recovers the committed span (from the DB, no dir scan)…
+        // A fresh cache over the same dir + index recovers the committed span (from the DB, no dir scan).
         val c2 = DiskMediaBlobCache(dir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now))
         assertContentEquals(bytes(300), readAll(c2, "k", 0, 300))
         assertEquals(setOf("k"), c2.keys())
-        // …and the first write to a key sweeps that key's stale temps.
-        write(c2, "k", 300, bytes(10))
-        assertTrue(spanFiles("k").none { it.endsWith(".tmp") }, "stray temp swept on write")
     }
 }

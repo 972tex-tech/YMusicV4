@@ -55,7 +55,6 @@ class DiskMediaBlobCache(
     private val lock = SynchronizedObject()
     private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
     private val inFlight = mutableSetOf<String>()
-    private val sweptKeys = mutableSetOf<String>() // key dirs whose stale temps we've swept this process
     private var writerNonce = 0L // unique-ifies unknown-length writer tokens (no region to key them on)
 
     // Hot span lists: key → its committed spans (sorted by start), for the ~SPAN_CACHE_MAX_KEYS keys most
@@ -108,10 +107,9 @@ class DiskMediaBlobCache(
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
         if (length < 0) {
             // Unknown length: no upfront region dedupe (the region isn't known). A unique token keeps this
-            // writer's temp filenames from colliding with another writer at the same position and marks its
-            // temps live for the sweep; per-block dedupe in commitBlock still avoids re-storing bytes.
+            // writer's temp filenames from colliding with another writer at the same position; per-block
+            // dedupe in commitBlock still avoids re-storing bytes.
             val token = synchronized(lock) { "$key $position #${++writerNonce}".also { inFlight += it } }
-            sweepStaleTemps(key)
             return RealBlobWriter(key, position, token)
         }
         val token = flightToken(key, position, length)
@@ -121,7 +119,6 @@ class DiskMediaBlobCache(
             !taken
         }
         if (!real) return NoOpBlobWriter()
-        sweepStaleTemps(key)
         return RealBlobWriter(key, position, token)
     }
 
@@ -224,22 +221,9 @@ class DiskMediaBlobCache(
         return victims
     }
 
-    /** Sweep a key dir's leftover `.tmp` files from a crashed writer, once per key per process — but NEVER
-     *  one a live in-flight writer for this key is mid-write on (its token is in [inFlight], and a temp is
-     *  created only after its token is registered, so this snapshot covers every live temp; an already
-     *  committed temp just no-op-deletes). */
-    private fun sweepStaleTemps(key: String) {
-        if (synchronized(lock) { !sweptKeys.add(key) }) return
-        val dir = root / key
-        if (!fileSystem.exists(dir)) return
-        val temps = fileSystem.list(dir).filter { it.name.endsWith(".$TMP_EXT") }
-        if (temps.isEmpty()) return
-        val liveTags = synchronized(lock) { inFlight.mapTo(HashSet()) { it.replace(' ', '_') } }
-        for (t in temps) {
-            val tag = t.name.substringAfter("__", "").removeSuffix(".$TMP_EXT")
-            if (tag !in liveTags) fileSystem.delete(t, mustExist = false)
-        }
-    }
+    // Crashed writers leave `{blockStart}__{tag}.tmp` files; they're inert (readers go through the index,
+    // never a dir scan) and reclaimed by the background maintenance worker, which must skip any temp whose
+    // tag is still in [inFlight] (a live writer's temp) — not on the write path anymore.
 
     // --- writer --------------------------------------------------------------------------------------
 
