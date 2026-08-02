@@ -43,7 +43,7 @@ private const val MIN_VIDEO_READAHEAD_MS = TARGET_VIDEO_READAHEAD_MS + 45_000L
  * The downloader passes its own request here first so a re-download reuses the cache; the player
  * interception layer (later) passes the intercepted request the same way.
  */
-suspend fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
+fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
     val abr = request.clientAbrState
     val playerTimeMs = abr.playerTimeMs
     val isAudioOnly = abr.enabledTrackTypesBitfield == 1
@@ -156,7 +156,7 @@ private sealed class CheckResult {
  * covered, prepending each format's init segment on first use. Every candidate is verified against
  * `blobs.isCached`. Port of legacy `findFormatCachedSegments`.
  */
-private suspend fun MediaCache.findCachedSegments(
+private fun MediaCache.findCachedSegments(
     playerTimeMs: Long,
     formats: List<FormatId>,
     bufferedRanges: List<BufferedRange>,
@@ -166,7 +166,7 @@ private suspend fun MediaCache.findCachedSegments(
     val initialized = bufferedRanges.map { it.formatId }.toMutableSet()
     val result = mutableListOf<MediaHeader>()
 
-    suspend fun addNext(find: suspend (FormatId) -> MediaHeader?): MediaHeader? {
+    fun addNext(find: (FormatId) -> MediaHeader?): MediaHeader? {
         for (format in formats) {
             val segment = find(format) ?: continue
             if (!blobs.isCached(segment.cacheKey, segment.startRange, segment.contentLength)) continue
@@ -219,7 +219,7 @@ private suspend fun MediaCache.findCachedSegments(
  * segment, streaming its bytes out of the blob store. Returns null if any segment's bytes can't be
  * re-acquired (evicted since planning) — the caller then treats the whole serve as a network miss.
  */
-private suspend fun MediaCache.synthesizeUmp(policy: NextRequestPolicy, segments: List<MediaHeader>): Buffer? {
+private fun MediaCache.synthesizeUmp(policy: NextRequestPolicy, segments: List<MediaHeader>): Buffer? {
     val out = Buffer()
     val policyBytes = policy.encode().toByteArray()
     out.writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, policyBytes.size.toLong()).write(policyBytes)
@@ -249,7 +249,7 @@ private suspend fun MediaCache.synthesizeUmp(policy: NextRequestPolicy, segments
  * range isn't fully cached right now. `rangeEnd < 0` means open-ended, which the cache never fully
  * covers, so it's always a miss here (let the network stream it).
  */
-suspend fun MediaCache.serveProgressive(itag: Int, lmt: Long, rangeStart: Long, rangeEnd: Long): PinnedSource? {
+fun MediaCache.serveProgressive(itag: Int, lmt: Long, rangeStart: Long, rangeEnd: Long): PinnedSource? {
     if (rangeEnd < rangeStart) return null
     val length = rangeEnd - rangeStart + 1
     return blobs.read(formatCacheKey(itag, lmt), rangeStart, length)
@@ -260,7 +260,7 @@ suspend fun MediaCache.serveProgressive(itag: Int, lmt: Long, rangeStart: Long, 
 // which the interception plumbing provides. Downloads already fill the cache via fillFromSabr.
 
 /** The cache keys of every stream with committed bytes — the `keepKeys` set for `SegmentIndex.cleanup`. */
-suspend fun MediaCache.liveKeys(): Set<String> = blobs.keys()
+fun MediaCache.liveKeys(): Set<String> = blobs.keys()
 
 /** Convenience for callers that hold (itag, lmt) rather than a key. */
 fun cacheKeyOf(itag: Int, lmt: Long): String = formatCacheKey(itag, lmt)

@@ -1,9 +1,7 @@
 package ymusic.ytmedia.cache
 
 import app.cash.sqldelight.db.SqlDriver
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kmpcommon.WorkerThread
 import ymusic.ytmedia.db.SegmentDatabase
 import ymusic.ytmedia.sabr.MediaHeader
 import ymusic.ytmedia.sabr.formatCacheKey
@@ -11,19 +9,20 @@ import ymusic.ytmedia.sabr.formatCacheKey
 /**
  * SqlDelight-backed [SegmentIndex]. The [driver]'s schema must already be created
  * ([SegmentDatabase.Schema]); the app builds the platform driver (JDBC / Android / sqliter) and hands it
- * over, exactly like `DiskCacheStore`. Blocking SQLite runs on [ioDispatcher]; [now] supplies epoch-millis
- * `download_time` stamps (injectable for tests).
+ * over, exactly like `DiskCacheStore`. Synchronous — the queries block, matching the non-suspend
+ * [WorkerThread] contract (the SABR session / proxy calling in is already off the main thread). [now]
+ * supplies epoch-millis `download_time` stamps (injectable for tests).
  */
+@WorkerThread
 class SqlDelightSegmentIndex(
     driver: SqlDriver,
     private val now: () -> Long,
     private val retentionMillis: Long = DEFAULT_RETENTION_MILLIS,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : SegmentIndex {
 
     private val queries = SegmentDatabase(driver).segmentQueries
 
-    override suspend fun save(header: MediaHeader) = withContext(ioDispatcher) {
+    override fun save(header: MediaHeader) {
         // Legacy shape: init segment stores start_ms=0, end_ms=-1 (window degenerate); a real segment
         // stores [startMs, startMs+durationMs-1]. Byte range is always [startRange, startRange+len-1].
         val startMs = header.startMs ?: 0
@@ -40,30 +39,22 @@ class SqlDelightSegmentIndex(
             r_end = header.startRange + header.contentLength - 1,
             download_time = now(),
         )
-        Unit
     }
 
-    override suspend fun findByStartTime(itag: Int, lmt: Long, playerMs: Long): MediaHeader? =
-        withContext(ioDispatcher) {
-            queries.findByStartTime(itag.toLong(), lmt, playerMs, ::toHeader).executeAsOneOrNull()
-        }
+    override fun findByStartTime(itag: Int, lmt: Long, playerMs: Long): MediaHeader? =
+        queries.findByStartTime(itag.toLong(), lmt, playerMs, ::toHeader).executeAsOneOrNull()
 
-    override suspend fun findBySegmentIndex(itag: Int, lmt: Long, seg: Int): MediaHeader? =
-        withContext(ioDispatcher) {
-            queries.findBySegmentIndex(itag.toLong(), lmt, seg.toLong(), ::toHeader).executeAsOneOrNull()
-        }
+    override fun findBySegmentIndex(itag: Int, lmt: Long, seg: Int): MediaHeader? =
+        queries.findBySegmentIndex(itag.toLong(), lmt, seg.toLong(), ::toHeader).executeAsOneOrNull()
 
-    override suspend fun findByByteOffset(itag: Int, lmt: Long, byteIndex: Long): MediaHeader? =
-        withContext(ioDispatcher) {
-            queries.findByByteOffset(itag.toLong(), lmt, byteIndex, ::toHeader).executeAsOneOrNull()
-        }
+    override fun findByByteOffset(itag: Int, lmt: Long, byteIndex: Long): MediaHeader? =
+        queries.findByByteOffset(itag.toLong(), lmt, byteIndex, ::toHeader).executeAsOneOrNull()
 
-    override suspend fun markDownloadTime(itag: Int, lmt: Long): Unit = withContext(ioDispatcher) {
+    override fun markDownloadTime(itag: Int, lmt: Long) {
         queries.markDownloadTime(now(), itag.toLong(), lmt)
-        Unit
     }
 
-    override suspend fun cleanup(keepKeys: Set<String>) = withContext(ioDispatcher) {
+    override fun cleanup(keepKeys: Set<String>) {
         val cutoff = now() - retentionMillis
         queries.transaction {
             for (stream in queries.distinctStreams().executeAsList()) {

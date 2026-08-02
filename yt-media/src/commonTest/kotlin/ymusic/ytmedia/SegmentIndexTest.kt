@@ -1,6 +1,5 @@
 package ymusic.ytmedia
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import ymusic.ytmedia.sabr.MediaHeader
@@ -15,7 +14,7 @@ class SegmentIndexTest {
 
     private var tick = 1_000L
     private fun index(retention: Long = 30L * 24 * 60 * 60 * 1000) =
-        SqlDelightSegmentIndex(testSegmentDriver(), now = { tick }, retentionMillis = retention, ioDispatcher = Dispatchers.Default)
+        SqlDelightSegmentIndex(testSegmentDriver(), now = { tick }, retentionMillis = retention)
 
     private val itag = 251
     private val lmt = 1_700_000_000_123_456L
@@ -28,7 +27,7 @@ class SegmentIndexTest {
         contentLength = 100,
     )
 
-    private suspend fun SqlDelightSegmentIndex.saveAll(vararg ks: Int) = ks.forEach { save(seg(it)) }
+    private fun SqlDelightSegmentIndex.saveAll(vararg ks: Int) = ks.forEach { save(seg(it)) }
 
     @Test
     fun find_by_start_time_returns_the_covering_segment() = runTest {

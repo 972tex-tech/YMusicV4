@@ -23,7 +23,7 @@ class MediaCache(
      * no cross-store transaction (plan §3b). The returned writer is a no-op if these bytes are already
      * cached or being written elsewhere.
      */
-    suspend fun openSegmentFill(header: MediaHeader): SegmentFill {
+    fun openSegmentFill(header: MediaHeader): SegmentFill {
         index.save(header)
         return SegmentFill(blobs.writer(header.cacheKey, header.startRange, header.contentLength))
     }
