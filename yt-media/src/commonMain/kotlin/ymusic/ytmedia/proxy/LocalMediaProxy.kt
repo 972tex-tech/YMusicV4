@@ -2,6 +2,7 @@ package ymusic.ytmedia.proxy
 
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.asAsyncSource
+import kmpcommon.log.Logger
 import kmpcommon.uri.PercentEncoder
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
@@ -58,7 +59,7 @@ class LocalMediaProxy(
     private val cache: MediaCache,
     private val client: KmpHttpClient,
     private val userAgent: String,
-    private val log: (String) -> Unit = {},
+    private val logger: Logger? = null,
 ) {
     suspend fun serve(target: String): ProxyResponse {
         if (target.startsWith(HEALTH_PATH)) return text(200, "OK", "ymusic-proxy")
@@ -78,17 +79,21 @@ class LocalMediaProxy(
      * receives the url/method/body as fields, calls it directly.
      */
     suspend fun serveRequest(url: String, method: String, body: ByteArray?): ProxyResponse {
-        val hit = runCatching { serveFromCache(url, method, body) }.getOrElse { null }
+        // A cache-serve fault must never fail the request — fall through to the network — but it's a real
+        // bug (bad parse, cache read), so log it as a breadcrumb rather than swallowing it silently.
+        val hit = runCatching { serveFromCache(url, method, body) }
+            .onFailure { logger?.log(Logger.Level.WARN, LOG_CTX, "cache serve failed, forwarding: $url", it) }
+            .getOrNull()
         return hit ?: forward(url, method, body)
     }
 
     /** A cache hit → a synthesized response; null → miss (forward to the network). */
-    private suspend fun serveFromCache(url: String, method: String, body: ByteArray?): ProxyResponse? {
+    private fun serveFromCache(url: String, method: String, body: ByteArray?): ProxyResponse? {
         if (isSabr(url) && method == "POST" && body != null) {
             val request = VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields())
             when (val serve = cache.serveSabr(request)) {
                 is SabrServe.Hit -> {
-                    log("cache-hit sabr segments=${serve.segmentCount} bytes=${serve.cachedBytes}")
+                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "cache-hit sabr segments=${serve.segmentCount} bytes=${serve.cachedBytes}")
                     return umpResponse(serve.ump, url)
                 }
                 is SabrServe.Backoff -> return umpResponse(serve.ump, url)
@@ -97,7 +102,7 @@ class LocalMediaProxy(
         }
         val prog = progressiveRange(url) ?: return null
         val src = cache.serveProgressive(prog.itag, prog.lmt, prog.start, prog.end) ?: return null
-        log("cache-hit progressive itag=${prog.itag} range=${prog.start}-${prog.end}")
+        logger?.log(Logger.Level.DEBUG, LOG_CTX, "cache-hit progressive itag=${prog.itag} range=${prog.start}-${prog.end}")
         val len = prog.end - prog.start + 1
         return ProxyResponse(
             status = 200, reason = "OK",
@@ -134,7 +139,7 @@ class LocalMediaProxy(
         val networkBody = response.body.asyncSource()
         val effectiveUrl = response.request.url.toString()
         val teed = when {
-            isSabr(url) && method == "POST" && response.isSuccessful -> SabrCacheTee(networkBody, cache, log)
+            isSabr(url) && method == "POST" && response.isSuccessful -> SabrCacheTee(networkBody, cache, logger)
             else -> fillProgressive(effectiveUrl, networkBody) ?: networkBody
         }
         return ProxyResponse(response.code, "OK", headers, teed, length, url = effectiveUrl) { response.close() }
@@ -197,6 +202,7 @@ class LocalMediaProxy(
     companion object {
         const val FORWARD_PATH = "/ymusicForward"
         const val HEALTH_PATH = "/health"
+        private val LOG_CTX = listOf("mediaproxy")
     }
 }
 

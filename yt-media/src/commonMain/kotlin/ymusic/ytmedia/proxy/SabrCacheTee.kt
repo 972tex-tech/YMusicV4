@@ -1,6 +1,7 @@
 package ymusic.ytmedia.proxy
 
 import kmpcommon.io.AsyncSource
+import kmpcommon.log.Logger
 import okio.Buffer
 import okio.EOFException
 import ymusic.ytmedia.cache.MediaCache
@@ -32,7 +33,7 @@ import ymusic.ytmedia.ump.readUmpPartHeader
 internal class SabrCacheTee(
     private val network: AsyncSource,
     private val cache: MediaCache,
-    private val log: (String) -> Unit = {},
+    private val logger: Logger? = null,
 ) : AsyncSource {
 
     /** A segment being mirrored: its writer plus how many media bytes are still expected. */
@@ -230,7 +231,11 @@ internal class SabrCacheTee(
     private fun markIllegal(reason: String) {
         if (illegalState) return
         illegalState = true
-        log("sabr-fill disabled (illegal state): $reason")
+        logger?.log(Logger.Level.WARN, LOG_CTX, "sabr-fill disabled (illegal state): $reason")
         abortOpen()
+    }
+
+    private companion object {
+        val LOG_CTX = listOf("mediaproxy", "sabr-fill")
     }
 }

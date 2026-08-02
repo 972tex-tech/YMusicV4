@@ -220,7 +220,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             cookieJar = platformCookies
             defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
         }
-        LocalMediaProxy(cache, client, userAgent = CefManager.CHROME_USER_AGENT, log = { println("[player-cache] $it") })
+        LocalMediaProxy(cache, client, userAgent = CefManager.CHROME_USER_AGENT, logger = StdoutLogger)
     }
 
     val player = withContext(Dispatchers.Main) {
