@@ -377,7 +377,7 @@ class DiskMediaBlobCache(
 
     private companion object {
         const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024
-        const val DEFAULT_MAX_SPAN_BYTES = 512L * 1024
+        const val DEFAULT_MAX_SPAN_BYTES = 5L * 1024 * 1024 // 5 MB span blocks
         const val SPAN_CACHE_MAX_KEYS = 10 // hot span-lists kept in memory (≈ current + queued videos)
         const val SPAN_EXT = "span"
         const val TMP_EXT = "tmp"
