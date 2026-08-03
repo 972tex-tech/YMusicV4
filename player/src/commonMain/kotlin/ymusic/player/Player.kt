@@ -126,6 +126,14 @@ interface Player {
      */
     fun refreshOnNext()
 
+    /**
+     * Tear down the engine playing the current item and reload it from scratch at the current position —
+     * a full recreate, not just a re-navigate. For the WebView engine this rebuilds the page (and, if the
+     * host factory re-reads it, a freshly built `webview-js` bundle); it also recovers a wedged player.
+     * No-op when nothing is loaded. Keeps the current play/pause intent.
+     */
+    fun reload()
+
     /** Releases both engines and stops all internal work. The instance is unusable afterwards. */
     fun release()
 }

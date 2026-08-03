@@ -662,6 +662,12 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                 trailingIcon = { Switch(checked = config.audioOnly, onCheckedChange = null) },
                 onClick = { player.setAudioOnly(!config.audioOnly) },
             )
+            // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
+            // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
+            DropdownMenuItem(
+                text = { Text("Reload player") },
+                onClick = { player.reload(); open = false },
+            )
             if (audioTracks.tracks.size > 1) {
                 audioTracks.tracks.forEach { t ->
                     DropdownMenuItem(

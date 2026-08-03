@@ -202,7 +202,6 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
 
     val localSurface = LocalVideoSurface()
     val webViewSurface = JcefOsrSurface()
-    val webViewJs = withContext(Dispatchers.IO) { readWebViewJs() }
 
     // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
     // /videoplayback) and serves it from this router — cache hit → synthesized bytes, miss → forwarded
@@ -227,10 +226,12 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(localSurface)) },
+                // Re-read the bundle on every WebView-engine build so "Reload player" picks up a freshly
+                // built webview-js (npm run build) without an app restart.
                 webView = {
                     createWebViewPlayer(
                         WebViewPlayerContext(cefClient, webViewSurface, mediaProxy),
-                        engineJs = webViewJs,
+                        engineJs = readWebViewJs(),
                         appVersion = 1,
                         embedHtml = { ua -> engines.embedPage(ua) },
                     )

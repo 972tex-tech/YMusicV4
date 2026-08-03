@@ -191,5 +191,7 @@ internal class StubPlayer : Player {
 
     override fun refreshOnNext() {}
 
+    override fun reload() {}
+
     override fun release() {}
 }

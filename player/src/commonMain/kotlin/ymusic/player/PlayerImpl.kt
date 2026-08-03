@@ -264,6 +264,19 @@ internal class PlayerImpl(
         webViewEngine?.refreshOnNext()
     }
 
+    override fun reload() {
+        val item = controller.state.currentItem ?: return
+        val resumeMs = _progress.value.positionMs
+        // Unbind + stop the active engine before releasing it, so the rebuild's bind() sees no stale
+        // previous engine to stop.
+        bind(null)
+        when (item) {
+            is PlayableItem.YtVideoId -> { webViewEngine?.release(); webViewEngine = null }
+            is PlayableItem.LocalUri -> { localEngine?.release(); localEngine = null }
+        }
+        loadCurrent(resumeMs) // rebuilds the engine via its factory (fresh page / freshly read bundle)
+    }
+
     override fun release() {
         if (released) return
         released = true
