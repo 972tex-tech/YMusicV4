@@ -192,7 +192,7 @@ internal class ProxyResourceHandler(
     }
 
     private companion object {
-        const val CHUNK = 64L * 1024
-        const val READY_CAP = 1L * 1024 * 1024 // ~16 chunks of read-ahead — keep the pipe full off-thread
+        const val CHUNK = 8L * 1024 // ~1 okio segment, so Buffer.read drains a chunk in one copy
+        const val READY_CAP = 128L * 1024 // 16 chunks of read-ahead — keep the pipe full off-thread
     }
 }
