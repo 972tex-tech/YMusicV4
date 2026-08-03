@@ -1,5 +1,6 @@
 package ymusic.player.webview
 
+import kmpcommon.io.AsyncSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import okio.Buffer
@@ -10,14 +11,14 @@ import org.cef.misc.StringRef
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import ymusic.ytmedia.proxy.LocalMediaProxy
-import kotlin.math.min
 
 /**
  * The desktop (JCEF) delivery adapter for the player cache: a `CefResourceHandler` that answers an
- * intercepted `/ymusicForward` request from [proxy] ([LocalMediaProxy.serve] — the shared router). The
- * JCEF resource-handler contract is synchronous, so [processRequest] launches the suspend serve on [scope],
- * buffers the (bounded) response body, then `callback.Continue()`s; headers and bytes are handed back from
- * the buffer. Wire it in from the request handler's `getResourceHandler` for a URL containing `/ymusicForward`.
+ * intercepted `/ymusicForward` request from [proxy] ([LocalMediaProxy.serve] — the shared router) and
+ * **streams** the body through. A media response is tens of MB, so it must never sit fully in memory:
+ * each time CEF wants more, one chunk is pulled off the [ProxyResponse.body]; if none is buffered yet the
+ * read returns 0 bytes and CEF is told to wait ([CefCallback.Continue] fires once the chunk lands). Wire
+ * it in from the request handler's `getResourceHandler` for a URL containing `/ymusicForward`.
  */
 internal class ProxyResourceHandler(
     private val proxy: LocalMediaProxy,
@@ -25,11 +26,18 @@ internal class ProxyResourceHandler(
     private val scope: CoroutineScope,
 ) : CefResourceHandlerAdapter() {
 
+    // Header fields: written in [processRequest]'s coroutine before its Continue(), read by CEF in
+    // [getResponseHeaders] after it — the Continue() hand-off publishes them.
     private var status = 200
     private var mimeType = "application/octet-stream"
     private var headers: List<Pair<String, String>> = emptyList()
-    private var data = ByteArray(0)
-    private var offset = 0
+    private var contentLength = -1L
+
+    // Streaming state, touched from both CEF threads and pull coroutines — guarded by [lock].
+    private val lock = Any()
+    private var body: AsyncSource? = null // the response body; nulled once drained or cancelled
+    private val ready = Buffer() // bytes pulled but not yet handed to CEF
+    private var eof = false
 
     override fun processRequest(request: CefRequest?, callback: CefCallback?): Boolean {
         scope.launch {
@@ -39,10 +47,11 @@ internal class ProxyResourceHandler(
                 headers = response.headers
                 mimeType = response.headers.firstOrNull { it.first.equals("Content-Type", ignoreCase = true) }
                     ?.second?.substringBefore(';') ?: "application/octet-stream"
-                data = drain(response.body) // drain() closes body at EOF, releasing the upstream response
+                contentLength = response.contentLength ?: -1L
+                synchronized(lock) { body = response.body }
             } catch (t: Throwable) {
                 status = 502
-                data = ByteArray(0)
+                synchronized(lock) { eof = true }
             }
             callback?.Continue()
         }
@@ -55,30 +64,46 @@ internal class ProxyResourceHandler(
             r.mimeType = mimeType
             headers.forEach { (k, v) -> r.setHeaderByName(k, v, true) }
         }
-        responseLength?.set(data.size)
+        // A known length lets CEF size the response; unknown (-1) streams until readResponse signals EOF.
+        responseLength?.set(if (contentLength in 0..Int.MAX_VALUE.toLong()) contentLength.toInt() else -1)
     }
 
     override fun readResponse(dataOut: ByteArray?, bytesToRead: Int, bytesRead: IntRef?, callback: CefCallback?): Boolean {
-        if (dataOut == null || offset >= data.size) {
-            bytesRead?.set(0)
-            return false
+        if (dataOut == null) { bytesRead?.set(0); return false }
+        synchronized(lock) {
+            if (ready.size > 0L) {
+                val n = minOf(bytesToRead.toLong(), ready.size).toInt()
+                ready.read(dataOut, 0, n)
+                bytesRead?.set(n)
+                return true
+            }
+            if (eof) { bytesRead?.set(0); return false } // fully streamed
         }
-        val n = min(bytesToRead, data.size - offset)
-        System.arraycopy(data, offset, dataOut, 0, n)
-        offset += n
-        bytesRead?.set(n)
+        // Nothing buffered and not done: pull the next chunk, then have CEF read again. CEF keeps only one
+        // readResponse outstanding, so there's never more than one pull in flight.
+        scope.launch { pullNext(callback) }
+        bytesRead?.set(0)
         return true
     }
 
-    private suspend fun drain(body: kmpcommon.io.AsyncSource): ByteArray {
-        val out = Buffer()
+    private suspend fun pullNext(callback: CefCallback?) {
+        val src = synchronized(lock) { body }
         val chunk = Buffer()
-        while (true) {
-            val n = body.read(chunk, 64 * 1024)
-            if (n == -1L) break
-            out.write(chunk, chunk.size)
+        val n = if (src == null) -1L else runCatching { src.read(chunk, CHUNK) }.getOrElse { -1L }
+        synchronized(lock) {
+            if (n == -1L) { eof = true; body = null } else ready.writeAll(chunk)
         }
-        body.close()
-        return out.readByteArray()
+        if (n == -1L) src?.let { runCatching { it.close() } } // release the upstream response at EOF
+        callback?.Continue()
+    }
+
+    override fun cancel() {
+        // The WebView aborted the request (seek / stop / navigate) — release the upstream response.
+        val src = synchronized(lock) { eof = true; body.also { body = null } }
+        src?.let { b -> scope.launch { runCatching { b.close() } } }
+    }
+
+    private companion object {
+        const val CHUNK = 64L * 1024
     }
 }
