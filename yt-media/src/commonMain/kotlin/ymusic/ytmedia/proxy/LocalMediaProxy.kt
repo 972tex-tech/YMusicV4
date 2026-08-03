@@ -141,6 +141,7 @@ class LocalMediaProxy(
         // plain byte range (tee at the range's known offset). Both leave the response bytes unchanged.
         val networkBody = response.body.asyncSource()
         val effectiveUrl = response.request.url.toString()
+        logger?.log(Logger.Level.DEBUG, LOG_CTX, "cache-miss → network ${response.code}: $effectiveUrl")
         if (!response.isSuccessful) {
             return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
@@ -165,7 +166,9 @@ class LocalMediaProxy(
         val skip = cache.blobs.cachedLength(key, prog.start, length).coerceAtLeast(0) // cached leading prefix
         if (skip >= length) return network // whole range cached (a serve race lost it) — nothing to write
         val writer = cache.blobs.writer(key, prog.start + skip, length - skip)
-        return CachingSource(network, writer, skip)
+        return CachingSource(network, writer, skip) { teed ->
+            logger?.log(Logger.Level.DEBUG, LOG_CTX, "progressive-fill itag=${prog.itag} $teed bytes @ ${prog.start + skip} (skipped $skip cached)")
+        }
     }
 
     private class Progressive(val itag: Int, val lmt: Long, val start: Long, val end: Long)
@@ -225,8 +228,10 @@ internal class CachingSource(
     private val network: AsyncSource,
     private val writer: BlobWriter,
     private var skip: Long = 0L,
+    private val onCommit: (teed: Long) -> Unit = {},
 ) : AsyncSource {
     private var finished = false
+    private var teed = 0L // bytes actually mirrored into the cache (excludes the skipped cached prefix)
 
     override suspend fun read(sink: Buffer, byteCount: Long): Long {
         val n = network.read(sink, byteCount)
@@ -246,6 +251,7 @@ internal class CachingSource(
             val copy = Buffer()
             sink.copyTo(copy, teeOffset, teeLen)
             writer.sink.write(copy, teeLen)
+            teed += teeLen
         }
         return n
     }
@@ -258,6 +264,11 @@ internal class CachingSource(
     private fun finish(commit: Boolean) {
         if (finished) return
         finished = true
-        if (commit) writer.commit() else writer.abort()
+        if (commit) {
+            writer.commit()
+            onCommit(teed)
+        } else {
+            writer.abort()
+        }
     }
 }

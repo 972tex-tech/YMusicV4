@@ -36,8 +36,10 @@ internal class SabrCacheTee(
     private val logger: Logger? = null,
 ) : AsyncSource {
 
-    /** A segment being mirrored: its writer plus how many media bytes are still expected. */
-    private class OpenSeg(val fill: SegmentFill, var remaining: Long)
+    /** A segment being mirrored: its writer, declared [length], and how many media bytes are still owed. */
+    private class OpenSeg(val fill: SegmentFill, val length: Long) {
+        var remaining = length
+    }
 
     private val scan = Buffer() // undispatched bytes (at most a part header + one MEDIA_HEADER payload)
     private val open = mutableMapOf<Int, OpenSeg>()
@@ -51,6 +53,8 @@ internal class SabrCacheTee(
 
     private var illegalState = false // corrupt/inconsistent stream or a cache-write error — stop caching
     private var finished = false
+    private var sealedSegments = 0 // whole segments committed this response — for the fill-summary log
+    private var sealedBytes = 0L
 
     override suspend fun read(sink: Buffer, byteCount: Long): Long {
         val n = network.read(sink, byteCount)
@@ -177,6 +181,8 @@ internal class SabrCacheTee(
                     return false
                 }
                 seg.fill.commit() // a throw here propagates to read()'s catch → markIllegal
+                sealedSegments++
+                sealedBytes += seg.length
             }
 
             else -> {
@@ -219,6 +225,9 @@ internal class SabrCacheTee(
         if (finished) return
         finished = true
         abortOpen() // a segment still open at EOF/close is truncated (no MEDIA_END) — drop it
+        if (sealedSegments > 0) {
+            logger?.log(Logger.Level.DEBUG, LOG_CTX, "sabr-fill sealed $sealedSegments segments ($sealedBytes bytes)")
+        }
     }
 
     private fun abortOpen() {
