@@ -348,6 +348,9 @@ internal class WebViewPlayerImpl(
         // additionally gates the rewrite by platform (Android osVer≥24 / desktop; iOS uses a channel).
         append("window.enablePlayerCache=").append(bridge.playerCacheEnabled).append(";")
         append("\n").append(engineJs)
+        // Name the injected bundle so DevTools shows it as a real, breakpointable source instead of an
+        // anonymous inline script. Harmless in release — DevTools-only, no runtime cost.
+        append("\n//# sourceURL=webview_ymusic.js")
     }
 
     companion object {
