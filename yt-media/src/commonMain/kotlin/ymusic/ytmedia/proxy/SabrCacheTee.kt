@@ -8,6 +8,8 @@ import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SegmentFill
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.sabr.MediaHeader
+import ymusic.ytmedia.sabr.NextRequestPolicy
+import ymusic.ytmedia.sabr.SabrParts
 import ymusic.ytmedia.ump.UmpPart
 import ymusic.ytmedia.ump.readUmpPartHeader
 
@@ -50,6 +52,7 @@ internal class SabrCacheTee(
     private var headerBuf: Buffer? = null // accumulates a MEDIA_HEADER's proto until complete
     private var dataNeedId = false // next MEDIA_DATA byte is the 1-byte headerId, not media
     private var curSeg: OpenSeg? = null // the OpenSeg the current MEDIA_DATA feeds
+    private var ctrlBuf: Buffer? = null // accumulates a control part's payload for logging (only when logging)
 
     private var illegalState = false // corrupt/inconsistent stream or a cache-write error — stop caching
     private var finished = false
@@ -98,6 +101,7 @@ internal class SabrCacheTee(
                 partId = header.partId
                 partRemaining = header.size
                 inPayload = true
+                logger?.log(Logger.Level.DEBUG, LOG_CTX, "part ${partName(partId)}($partId) size=$partRemaining")
                 startPart()
             }
             if (illegalState || !consumePayload()) return // startPart may have tripped illegalState
@@ -114,7 +118,10 @@ internal class SabrCacheTee(
                 if (curSeg != null) return markIllegal("MEDIA_DATA began with an unfinished segment")
                 dataNeedId = true
             }
-            // MEDIA_END / control parts need no per-start state.
+            // Buffer the small control-part payloads we decode for logs (only when logging is on).
+            UmpPart.NEXT_REQUEST_POLICY, UmpPart.STREAM_PROTECTION_STATUS, UmpPart.SABR_ERROR, UmpPart.SABR_REDIRECT ->
+                if (logger != null) ctrlBuf = Buffer()
+            // MEDIA_END / other control parts need no per-start state.
         }
     }
 
@@ -187,7 +194,8 @@ internal class SabrCacheTee(
 
             else -> {
                 val take = minOf(partRemaining, scan.size)
-                scan.skip(take)
+                val buf = ctrlBuf
+                if (buf != null) buf.write(scan, take) else scan.skip(take)
                 partRemaining -= take
             }
         }
@@ -208,6 +216,11 @@ internal class SabrCacheTee(
                     // A second live segment on the same id before the first's MEDIA_END — lost framing.
                     markIllegal("duplicate MEDIA_HEADER id ${header.headerId}, still open")
                 } else {
+                    logger?.log(
+                        Logger.Level.DEBUG, LOG_CTX,
+                        "media-header itag=${header.itag} seg=${header.segmentIndex} " +
+                            "range=${header.startRange}+${header.contentLength}",
+                    )
                     // Row saved now, span sealed on MEDIA_END (writer no-ops if already cached/in-flight).
                     open[header.headerId] = OpenSeg(cache.openSegmentFill(header), header.contentLength)
                 }
@@ -216,6 +229,11 @@ internal class SabrCacheTee(
             // (the invariant [startPart] checks). Robust to a segment's media spanning several parts and to
             // interleaved segments — each part re-derives its target from its own headerId.
             UmpPart.MEDIA_DATA -> curSeg = null
+            // A control part we buffered for logging (only set when logging is on).
+            else -> ctrlBuf?.let { buf ->
+                logControlPart(buf.readByteArray())
+                ctrlBuf = null
+            }
         }
         inPayload = false
         return true
@@ -242,6 +260,47 @@ internal class SabrCacheTee(
         illegalState = true
         logger?.log(Logger.Level.WARN, LOG_CTX, "sabr-fill disabled (illegal state): $reason")
         abortOpen()
+    }
+
+    /** Decode + log a buffered control part (backoff / protection status / error / redirect) — the same
+     *  parts `SabrSession` acts on, surfaced here for fill-side debugging. */
+    private fun logControlPart(payload: ByteArray) {
+        val log = logger ?: return
+        when (partId) {
+            UmpPart.NEXT_REQUEST_POLICY -> {
+                val p = runCatching { NextRequestPolicy.from(ProtoReader(payload).readAllFields()) }.getOrNull()
+                log.log(
+                    Logger.Level.DEBUG, LOG_CTX,
+                    "next-request-policy backoff=${p?.backoffTimeMs ?: 0}ms " +
+                        "readahead a=${p?.targetAudioReadaheadMs} v=${p?.targetVideoReadaheadMs}",
+                )
+            }
+
+            UmpPart.STREAM_PROTECTION_STATUS -> {
+                val s = SabrParts.parseStreamProtectionStatus(payload)
+                val rejected = s == 2 || s == 3 // PO token rejected → media will stop
+                log.log(
+                    if (rejected) Logger.Level.WARN else Logger.Level.DEBUG, LOG_CTX,
+                    "stream-protection-status=$s${if (rejected) " (PO token rejected — media will stop)" else ""}",
+                )
+            }
+
+            UmpPart.SABR_ERROR -> log.log(Logger.Level.WARN, LOG_CTX, "sabr-error: ${SabrParts.parseErrorMessage(payload)}")
+            UmpPart.SABR_REDIRECT -> log.log(Logger.Level.DEBUG, LOG_CTX, "sabr-redirect → ${SabrParts.parseRedirectUrl(payload)}")
+        }
+    }
+
+    private fun partName(id: Int): String = when (id) {
+        UmpPart.MEDIA_HEADER -> "MEDIA_HEADER"
+        UmpPart.MEDIA_DATA -> "MEDIA_DATA"
+        UmpPart.MEDIA_END -> "MEDIA_END"
+        UmpPart.NEXT_REQUEST_POLICY -> "NEXT_REQUEST_POLICY"
+        UmpPart.FORMAT_INITIALIZATION_METADATA -> "FORMAT_INITIALIZATION_METADATA"
+        UmpPart.SABR_REDIRECT -> "SABR_REDIRECT"
+        UmpPart.SABR_ERROR -> "SABR_ERROR"
+        UmpPart.SABR_CONTEXT_UPDATE -> "SABR_CONTEXT_UPDATE"
+        UmpPart.STREAM_PROTECTION_STATUS -> "STREAM_PROTECTION_STATUS"
+        else -> "UNKNOWN"
     }
 
     private companion object {
