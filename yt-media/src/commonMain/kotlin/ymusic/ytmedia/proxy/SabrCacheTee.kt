@@ -250,10 +250,35 @@ internal class SabrCacheTee(
             // interleaved segments — each part re-derives its target from its own headerId.
             UmpPart.MEDIA_DATA -> curSeg = null
             // A part we buffered: format-init is stored for hit replay, control parts are logged.
+            UmpPart.FORMAT_INITIALIZATION_METADATA -> {
+                ctrlBuf.let { buf ->
+                    ctrlBuf = null
+                    if (buf == null) {
+                        markIllegal("missing FORMAT_INITIALIZATION_METADATA buff")
+                        return@let
+                    }
+                    val size = buf.size
+                    var error: Throwable? = null
+                    val fmt = try {
+                        ProtoReader(buf.peek(), size).readAllFields().message(2)?.let {
+                            FormatId.from(it)
+                        }
+                    } catch (t: Throwable) {
+                        error = t
+                        null
+                    }
+                    if (fmt == null) {
+                        markIllegal("parse FORMAT_INITIALIZATION_METADATA failed ${error?.message}")
+                        return@let
+                    }
+                    cache.index.putFormatInit(fmt.itag, fmt.lmt, buf.readByteArray())
+                    logVerbose { "stored format-init for itag=${fmt.itag} ($size bytes)" }
+                }
+            }
             else -> ctrlBuf?.let { buf ->
                 val bytes = buf.readByteArray()
                 ctrlBuf = null
-                if (partId == UmpPart.FORMAT_INITIALIZATION_METADATA) storeFormatInit(bytes) else logControlPart(bytes)
+                logControlPart(bytes)
             }
         }
         inPayload = false
@@ -281,17 +306,6 @@ internal class SabrCacheTee(
         illegalState = true
         logger?.log(Logger.Level.WARN, LOG_CTX, "sabr-fill disabled (illegal state): $reason")
         abortOpen()
-    }
-
-    /** Cache the raw FORMAT_INITIALIZATION_METADATA keyed by its format, so a synthesized hit can replay it.
-     *  The FormatId is field 2; a parse miss just skips storing (that format's hits then forward). */
-    private fun storeFormatInit(fim: ByteArray) {
-        val fmt = runCatching {
-            val idFields = ProtoReader(fim).readAllFields().message(2) ?: return
-            FormatId.from(idFields)
-        }.getOrNull() ?: return
-        cache.index.putFormatInit(fmt.itag, fmt.lmt, fim)
-        logVerbose { "stored format-init for itag=${fmt.itag} (${fim.size} bytes)" }
     }
 
     /** Decode + log a buffered control part (backoff / protection status / error / redirect) — the same

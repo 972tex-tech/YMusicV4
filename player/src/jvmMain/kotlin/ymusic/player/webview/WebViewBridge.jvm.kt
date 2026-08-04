@@ -137,7 +137,7 @@ private class JcefWebViewBridge(
                 val target = url.substring(url.indexOf(LocalMediaProxy.FORWARD_PATH)) // strip origin → path+query
                 return object : CefResourceRequestHandlerAdapter() {
                     override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?) =
-                        ProxyResourceHandler(proxy, target, proxyScope)
+                        ProxyResourceHandler(proxy::serve, target, proxyScope)
                 }
             }
             // Block any *.js the content-script hook didn't route through the transform pipeline (which
