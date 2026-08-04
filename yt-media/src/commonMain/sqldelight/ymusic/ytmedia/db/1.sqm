@@ -1,0 +1,8 @@
+-- v1 -> v2: add the format_init table (FORMAT_INITIALIZATION_METADATA replay for synthesized SABR hits).
+-- Matches the CREATE in Segment.sq, which is what a fresh DB gets; this migrates an existing one.
+CREATE TABLE format_init (
+    itag  INTEGER NOT NULL,
+    lmt   INTEGER NOT NULL,
+    bytes BLOB    NOT NULL,
+    PRIMARY KEY (itag, lmt)
+);
