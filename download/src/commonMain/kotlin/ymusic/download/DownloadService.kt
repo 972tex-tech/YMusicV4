@@ -95,7 +95,7 @@ class DownloadService(
             state = DownloadState.QUEUED,
             downloadedBytes = 0,
             totalBytes = 0,
-            filePath = null,
+            fileUri = null,
             errorMessage = null,
             createdAt = now(),
             updatedAt = now(),
@@ -188,7 +188,9 @@ class DownloadService(
             val bytes = runCatching { fileSystem.metadata(result.file).size ?: 0L }.getOrDefault(0L)
             put(current(task.id)!!.copy(
                 state = DownloadState.COMPLETED,
-                filePath = result.file.toString(),
+                // The on-disk path for now; on Android this must become a content:// MediaStore URI (see
+                // the TODO board) — the onCompleted hook is where the shell would publish + rewrite it.
+                fileUri = result.file.toString(),
                 downloadedBytes = bytes,
                 totalBytes = bytes,
                 errorMessage = null,

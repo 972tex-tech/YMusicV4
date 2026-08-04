@@ -63,7 +63,9 @@ class DownloadPipeline(
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
         val finalPath = outputDir / uniqueFileName(task)
 
-        // M4A with no ffmpeg: the raw best-AAC stream IS a playable .m4a — stream straight to the final file.
+        // M4A with no ffmpeg (iOS): the raw best-AAC stream IS a playable .m4a — stream it straight to the
+        // final file. No file tags here (that needs ffmpeg); the metadata lives in the DB task row instead
+        // (title/artist/videoId), which is the app's source of truth for such files.
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             onDownloading()
             downloadTracks(spec, audioFmt, null, OkioDownloadFile(fileSystem, finalPath), null, onProgress) {

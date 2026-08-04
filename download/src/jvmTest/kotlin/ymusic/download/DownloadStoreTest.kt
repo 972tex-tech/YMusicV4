@@ -12,7 +12,7 @@ class DownloadStoreTest {
     private fun task(id: String, state: DownloadState = DownloadState.QUEUED) = DownloadTask(
         id = id, videoId = "vid$id", title = "Song $id", artist = "Artist", thumbnailUrl = null,
         format = DownloadFormat.MP3, requestedHeight = null, state = state,
-        downloadedBytes = 0, totalBytes = 0, filePath = null, errorMessage = null,
+        downloadedBytes = 0, totalBytes = 0, fileUri = null, errorMessage = null,
         createdAt = 100, updatedAt = 100,
     )
 
@@ -38,10 +38,10 @@ class DownloadStoreTest {
         assertEquals(500, row.downloadedBytes)
         assertEquals(0.5f, row.progress)
 
-        store.updateCompleted("a", filePath = "/out/a.mp3", bytes = 1000, updatedAt = 300)
+        store.updateCompleted("a", fileUri = "/out/a.mp3", bytes = 1000, updatedAt = 300)
         row = store.all().first()
         assertEquals(DownloadState.COMPLETED, row.state)
-        assertEquals("/out/a.mp3", row.filePath)
+        assertEquals("/out/a.mp3", row.fileUri)
         assertNull(row.errorMessage)
     }
 

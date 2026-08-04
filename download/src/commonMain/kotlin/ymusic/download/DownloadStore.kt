@@ -31,7 +31,7 @@ class DownloadStore(driver: SqlDriver) {
             state = task.state.name,
             downloaded_bytes = task.downloadedBytes,
             total_bytes = task.totalBytes,
-            file_path = task.filePath,
+            file_path = task.fileUri,
             error_message = task.errorMessage,
             created_at = task.createdAt,
             updated_at = task.updatedAt,
@@ -44,9 +44,9 @@ class DownloadStore(driver: SqlDriver) {
     suspend fun updateProgress(id: String, downloaded: Long, total: Long, updatedAt: Long): Unit =
         withContext(downloadDbDispatcher()) { queries.updateProgress(downloaded, total, updatedAt, id) }
 
-    suspend fun updateCompleted(id: String, filePath: String, bytes: Long, updatedAt: Long): Unit =
+    suspend fun updateCompleted(id: String, fileUri: String, bytes: Long, updatedAt: Long): Unit =
         withContext(downloadDbDispatcher()) {
-            queries.updateCompleted(DownloadState.COMPLETED.name, filePath, bytes, bytes, updatedAt, id)
+            queries.updateCompleted(DownloadState.COMPLETED.name, fileUri, bytes, bytes, updatedAt, id)
         }
 
     suspend fun delete(id: String): Unit = withContext(downloadDbDispatcher()) { queries.deleteById(id) }
@@ -78,7 +78,7 @@ class DownloadStore(driver: SqlDriver) {
         state = runCatching { DownloadState.valueOf(state) }.getOrDefault(DownloadState.FAILED),
         downloadedBytes = downloaded_bytes,
         totalBytes = total_bytes,
-        filePath = file_path,
+        fileUri = file_path,
         errorMessage = error_message,
         createdAt = created_at,
         updatedAt = updated_at,

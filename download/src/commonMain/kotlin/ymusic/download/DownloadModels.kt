@@ -9,9 +9,12 @@ package ymusic.download
  * - [VIDEO_WEBM] — VP9 video + Opus audio, stream-copied into one WebM (cheap, no re-encode).
  * - [VIDEO_MP4] — video stream-copied + audio transcoded to AAC into one MP4 (broad device support).
  *
- * On a platform without ffmpeg (iOS) only the no-mux, no-transcode outputs are possible — see
- * [needsFfmpeg]. There the app offers M4A audio (progressive best-AAC) and MP4 video only when a
- * progressive/muxable-without-ffmpeg source exists; everything else is hidden.
+ * Every output goes through ffmpeg where it exists — not just to transcode/mux, but to embed the
+ * metadata tags (title / artist / composer=videoId) into the container. iOS has no ffmpeg: there M4A
+ * degrades to the raw best-AAC stream written straight to the file, and its metadata lives in the
+ * download DB row instead of the file (video would need an AVFoundation muxer — separate). So
+ * [needsFfmpeg] marks the outputs that are simply unavailable without ffmpeg; M4A stays available on
+ * iOS (untagged file + DB metadata), the rest are hidden there.
  */
 enum class DownloadFormat(val kind: DownloadKind, val fileExtension: String) {
     MP3(DownloadKind.AUDIO, "mp3"),
@@ -20,11 +23,12 @@ enum class DownloadFormat(val kind: DownloadKind, val fileExtension: String) {
     VIDEO_MP4(DownloadKind.VIDEO, "mp4"),
     ;
 
-    /** True when producing this output requires ffmpeg (transcode or mux). */
+    /** True when this output can't be produced at all without ffmpeg. M4A is the exception: it degrades
+     *  to a raw-stream file (metadata in the DB) where ffmpeg is absent, so it stays available on iOS. */
     val needsFfmpeg: Boolean
         get() = when (this) {
             MP3 -> true // libmp3lame transcode
-            M4A -> false // best-effort: copied when source is AAC (checked at run time), else needs ffmpeg
+            M4A -> false // degrades to raw best-AAC + DB metadata on iOS; ffmpeg elsewhere embeds the tags
             VIDEO_WEBM, VIDEO_MP4 -> true // mux (and AAC transcode for mp4)
         }
 }
@@ -93,8 +97,10 @@ class DownloadTask(
     val state: DownloadState,
     val downloadedBytes: Long,
     val totalBytes: Long,
-    /** Absolute path of the finished file once [state] is [DownloadState.COMPLETED]; null before. */
-    val filePath: String?,
+    /** URI of the finished file once [state] is [DownloadState.COMPLETED]; null before. A platform URI —
+     *  `content://` on Android (MediaStore), `file://`/path elsewhere — so it round-trips to the player
+     *  and the library regardless of where the file lives. */
+    val fileUri: String?,
     val errorMessage: String?,
     val createdAt: Long,
     val updatedAt: Long,
@@ -107,11 +113,11 @@ class DownloadTask(
         state: DownloadState = this.state,
         downloadedBytes: Long = this.downloadedBytes,
         totalBytes: Long = this.totalBytes,
-        filePath: String? = this.filePath,
+        fileUri: String? = this.fileUri,
         errorMessage: String? = this.errorMessage,
         updatedAt: Long = this.updatedAt,
     ) = DownloadTask(
         id, videoId, title, artist, thumbnailUrl, format, requestedHeight,
-        state, downloadedBytes, totalBytes, filePath, errorMessage, createdAt, updatedAt,
+        state, downloadedBytes, totalBytes, fileUri, errorMessage, createdAt, updatedAt,
     )
 }
