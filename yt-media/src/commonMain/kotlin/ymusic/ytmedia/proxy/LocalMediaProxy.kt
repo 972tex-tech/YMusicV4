@@ -73,6 +73,19 @@ class LocalMediaProxy(
         if (verbose) logger?.log(Logger.Level.DEBUG, LOG_CTX, message())
     }
 
+    /** One-line dump of what the player is asking for — the state the serve decision is made against.
+     *  `vid` tells main-video vs ad; empty `selV` (or tracks=1) means audio-only; `buffered` is what the
+     *  player claims it already has (drives HIT vs BACKOFF). */
+    private fun sabrRequestSummary(r: VideoPlaybackAbrRequest): String {
+        val abr = r.clientAbrState
+        val buffered = r.bufferedRanges.joinToString(",") {
+            "${it.formatId.itag}@${it.startMs}-${it.endMs}ms[seg${it.startSegmentIndex}-${it.endSegmentIndex}]"
+        }
+        return "sabr-req vid=${r.videoId} t=${abr.playerTimeMs}ms tracks=${abr.enabledTrackTypesBitfield} " +
+            "selA=${r.selectedAudioFormats.map { it.itag }} selV=${r.selectedVideoFormats.map { it.itag }} " +
+            "avail=${r.adaptiveFormats.size} buffered=[$buffered]"
+    }
+
     suspend fun serve(target: String): ProxyResponse {
         if (target.startsWith(HEALTH_PATH)) return text(200, "OK", "ymusic-proxy")
         if (!target.startsWith(FORWARD_PATH)) return text(404, "Not Found", "no route")
@@ -106,6 +119,7 @@ class LocalMediaProxy(
         val started = TimeSource.Monotonic.markNow()
         if (isSabr(url) && method == "POST" && body != null) {
             val request = VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields())
+            logVerbose { sabrRequestSummary(request) }
             when (val serve = cache.serveSabr(request)) {
                 is SabrServe.Hit -> {
                     logVerbose { "HIT sabr: ${serve.segmentCount} segments, ${serve.cachedBytes} bytes (${started.elapsedNow()})" }

@@ -224,7 +224,7 @@ internal class SabrCacheTee(
                     markIllegal("duplicate MEDIA_HEADER id ${header.headerId}, still open")
                 } else {
                     logVerbose {
-                        "media-header itag=${header.itag} seg=${header.segmentIndex} " +
+                        "media-header vid=${header.videoId} itag=${header.itag} seg=${header.segmentIndex} " +
                             "range=${header.startRange}+${header.contentLength}"
                     }
                     // Row saved now, span sealed on MEDIA_END (writer no-ops if already cached/in-flight).
