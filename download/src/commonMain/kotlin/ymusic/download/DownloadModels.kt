@@ -98,8 +98,8 @@ class DownloadTask(
     val downloadedBytes: Long,
     val totalBytes: Long,
     /** URI of the finished file once [state] is [DownloadState.COMPLETED]; null before. A platform URI —
-     *  `content://` on Android (MediaStore), `file://`/path elsewhere — so it round-trips to the player
-     *  and the library regardless of where the file lives. */
+     *  on Android a `content://` SAF document in one of the user's Library folders, a `file://`/path
+     *  elsewhere — so it round-trips to the player and the library regardless of where the file lives. */
     val fileUri: String?,
     val errorMessage: String?,
     val createdAt: Long,

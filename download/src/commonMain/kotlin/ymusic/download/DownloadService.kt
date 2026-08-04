@@ -188,8 +188,9 @@ class DownloadService(
             val bytes = runCatching { fileSystem.metadata(result.file).size ?: 0L }.getOrDefault(0L)
             put(current(task.id)!!.copy(
                 state = DownloadState.COMPLETED,
-                // The on-disk path for now; on Android this must become a content:// MediaStore URI (see
-                // the TODO board) — the onCompleted hook is where the shell would publish + rewrite it.
+                // The on-disk path for now; on Android this must become the content:// SAF document written
+                // into the user-picked Library folder (see the TODO board) — the onCompleted hook is where
+                // the shell would publish the file there and rewrite this to that content:// uri.
                 fileUri = result.file.toString(),
                 downloadedBytes = bytes,
                 totalBytes = bytes,
