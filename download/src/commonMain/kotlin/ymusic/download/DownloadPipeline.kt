@@ -97,14 +97,14 @@ class DownloadPipeline(
         return Result(finalPath, audioFmt, videoFmt)
     }
 
-    /** Container tags embedded into the finished file. Title + the source videoId always; artist when we
-     *  have one. The videoId rides in `comment` as a recoverable URL and in a machine-parseable custom key
+    /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
+     *  — it survives in both ID3 (TCOM) and MP4 (©wrt), and the app's ffmpeg metadata parser reads it
+     *  (`MetadataMap.composer`), unlike a custom atom MP4 hides. Title always; artist when we have one
      *  (album is not modelled yet — add it here once the request carries one). */
     private fun DownloadTask.tags(): List<Pair<String, String>> = buildList {
         add("title" to title)
         artist?.let { add("artist" to it) }
-        add("comment" to "https://youtu.be/$videoId")
-        add("YOUTUBE_ID" to videoId)
+        add("composer" to videoId)
     }
 
     /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for the task. */
