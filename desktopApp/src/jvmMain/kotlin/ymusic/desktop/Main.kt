@@ -219,7 +219,13 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             cookieJar = platformCookies
             defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
         }
-        LocalMediaProxy(cache, client, userAgent = CefManager.CHROME_USER_AGENT, logger = StdoutLogger)
+        LocalMediaProxy(
+            cache, client,
+            userAgent = CefManager.CHROME_USER_AGENT,
+            logger = StdoutLogger,
+            // Chatty per-part/decision logs; -Dymusic.player.verbose=false to quiet them (or flip at runtime).
+            verbose = System.getProperty("ymusic.player.verbose", "true").toBoolean(),
+        )
     }
 
     val player = withContext(Dispatchers.Main) {

@@ -64,7 +64,15 @@ class LocalMediaProxy(
     private val client: KmpHttpClient,
     private val userAgent: String,
     private val logger: Logger? = null,
+    /** Per-request/part chatter (cache hit-miss decisions, fill sizes, UMP parts). Toggle at runtime;
+     *  WARN-level events (cache-serve faults, SABR errors, protection rejects) always log if [logger] is set. */
+    var verbose: Boolean = false,
 ) {
+    /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
+    private inline fun logVerbose(message: () -> String) {
+        if (verbose) logger?.log(Logger.Level.DEBUG, LOG_CTX, message())
+    }
+
     suspend fun serve(target: String): ProxyResponse {
         if (target.startsWith(HEALTH_PATH)) return text(200, "OK", "ymusic-proxy")
         if (!target.startsWith(FORWARD_PATH)) return text(404, "Not Found", "no route")
@@ -100,15 +108,15 @@ class LocalMediaProxy(
             val request = VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields())
             when (val serve = cache.serveSabr(request)) {
                 is SabrServe.Hit -> {
-                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "HIT sabr: ${serve.segmentCount} segments, ${serve.cachedBytes} bytes (${started.elapsedNow()})")
+                    logVerbose { "HIT sabr: ${serve.segmentCount} segments, ${serve.cachedBytes} bytes (${started.elapsedNow()})" }
                     return umpResponse(serve.ump, url)
                 }
                 is SabrServe.Backoff -> {
-                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "BACKOFF sabr: requester buffered ahead — told to back off (${started.elapsedNow()})")
+                    logVerbose { "BACKOFF sabr: requester buffered ahead — told to back off (${started.elapsedNow()})" }
                     return umpResponse(serve.ump, url)
                 }
                 is SabrServe.Miss -> {
-                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "MISS sabr: ${serve.reason} (${started.elapsedNow()})")
+                    logVerbose { "MISS sabr: ${serve.reason} (${started.elapsedNow()})" }
                     return null
                 }
             }
@@ -117,13 +125,13 @@ class LocalMediaProxy(
         val len = prog.end - prog.start + 1
         val src = cache.serveProgressive(prog.itag, prog.lmt, prog.start, prog.end)
         if (src == null) {
-            logger?.let {
+            logVerbose {
                 val cached = cache.blobs.cachedLength(formatCacheKey(prog.itag, prog.lmt), prog.start, len).coerceAtLeast(0)
-                it.log(Logger.Level.DEBUG, LOG_CTX, "MISS progressive itag=${prog.itag} range=${prog.start}-${prog.end}: cached $cached/$len bytes (${started.elapsedNow()})")
+                "MISS progressive itag=${prog.itag} range=${prog.start}-${prog.end}: cached $cached/$len bytes (${started.elapsedNow()})"
             }
             return null
         }
-        logger?.log(Logger.Level.DEBUG, LOG_CTX, "HIT progressive itag=${prog.itag} range=${prog.start}-${prog.end} (${started.elapsedNow()})")
+        logVerbose { "HIT progressive itag=${prog.itag} range=${prog.start}-${prog.end} (${started.elapsedNow()})" }
         return ProxyResponse(
             status = 200, reason = "OK",
             headers = listOf("Content-Type" to "application/octet-stream", "Content-Length" to "$len"),
@@ -158,12 +166,12 @@ class LocalMediaProxy(
         // plain byte range (tee at the range's known offset). Both leave the response bytes unchanged.
         val networkBody = response.body.asyncSource()
         val effectiveUrl = response.request.url.toString()
-        logger?.log(Logger.Level.DEBUG, LOG_CTX, "cache-miss → network ${response.code}: $effectiveUrl")
+        logVerbose { "cache-miss → network ${response.code}: $effectiveUrl" }
         if (!response.isSuccessful) {
             return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
         if (isSabr(url)) {
-            return ProxyResponse(response.code, "OK", headers, SabrCacheTee(networkBody, cache, logger), length, url = effectiveUrl)
+            return ProxyResponse(response.code, "OK", headers, SabrCacheTee(networkBody, cache, logger, verbose), length, url = effectiveUrl)
         }
         return ProxyResponse(response.code, "OK", headers, fillProgressive(effectiveUrl, networkBody) ?: networkBody, length, url = effectiveUrl)
     }
@@ -184,7 +192,7 @@ class LocalMediaProxy(
         if (skip >= length) return network // whole range cached (a serve race lost it) — nothing to write
         val writer = cache.blobs.writer(key, prog.start + skip, length - skip)
         return CachingSource(network, writer, skip) { teed ->
-            logger?.log(Logger.Level.DEBUG, LOG_CTX, "progressive-fill itag=${prog.itag} $teed bytes @ ${prog.start + skip} (skipped $skip cached)")
+            logVerbose { "progressive-fill itag=${prog.itag} $teed bytes @ ${prog.start + skip} (skipped $skip cached)" }
         }
     }
 
