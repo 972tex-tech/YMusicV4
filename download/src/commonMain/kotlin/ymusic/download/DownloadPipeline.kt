@@ -85,15 +85,26 @@ class DownloadPipeline(
 
         onProcessing()
         val ff = ffmpeg ?: error("ffmpeg unavailable: ${task.format} needs transcode/mux on this platform")
+        val meta = task.tags()
         when (task.format) {
-            DownloadFormat.MP3 -> ff.toMp3(audioTmp, finalPath)
-            DownloadFormat.M4A -> ff.toM4a(audioTmp, finalPath, copy = audioFmt.mimeType.contains("mp4"))
-            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(videoTmp, audioTmp, finalPath)
-            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(videoTmp, audioTmp, finalPath)
+            DownloadFormat.MP3 -> ff.toMp3(audioTmp, finalPath, meta)
+            DownloadFormat.M4A -> ff.toM4a(audioTmp, finalPath, copy = audioFmt.mimeType.contains("mp4"), metadata = meta)
+            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(videoTmp, audioTmp, finalPath, meta)
+            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(videoTmp, audioTmp, finalPath, meta)
         }
         fileSystem.delete(audioTmp, mustExist = false)
         if (videoFmt != null) fileSystem.delete(videoTmp, mustExist = false)
         return Result(finalPath, audioFmt, videoFmt)
+    }
+
+    /** Container tags embedded into the finished file. Title + the source videoId always; artist when we
+     *  have one. The videoId rides in `comment` as a recoverable URL and in a machine-parseable custom key
+     *  (album is not modelled yet — add it here once the request carries one). */
+    private fun DownloadTask.tags(): List<Pair<String, String>> = buildList {
+        add("title" to title)
+        artist?.let { add("artist" to it) }
+        add("comment" to "https://youtu.be/$videoId")
+        add("YOUTUBE_ID" to videoId)
     }
 
     /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for the task. */
