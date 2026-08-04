@@ -6,6 +6,10 @@ import okio.Buffer
 import okio.EOFException
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SegmentFill
+import ymusic.ytmedia.proto.ProtoFieldFixed32
+import ymusic.ytmedia.proto.ProtoFieldFixed64
+import ymusic.ytmedia.proto.ProtoFieldLen
+import ymusic.ytmedia.proto.ProtoFieldVarInt
 import ymusic.ytmedia.proto.ProtoReader
 import ymusic.ytmedia.proto.message
 import ymusic.ytmedia.sabr.FormatId
@@ -230,7 +234,12 @@ internal class SabrCacheTee(
                 } else {
                     logVerbose {
                         "media-header vid=${header.videoId} itag=${header.itag} seg=${header.segmentIndex} " +
-                            "range=${header.startRange}+${header.contentLength}"
+                            "range=${header.startRange}+${header.contentLength} t=${header.startMs}+${header.durationMs}ms"
+                    }
+                    // DIAGNOSTIC: a media segment with no start_ms can't be time-looked-up on serve (cache
+                    // never hits). Dump the raw fields to find where the timing actually is (e.g. time_range).
+                    if (header.segmentIndex != 0 && header.startMs == null) {
+                        logVerbose { "  ^ MEDIA_HEADER has no start_ms; raw fields: ${rawFields(bytes)}" }
                     }
                     // Row saved now, span sealed on MEDIA_END (writer no-ops if already cached/in-flight).
                     open[header.headerId] = OpenSeg(cache.openSegmentFill(header), header.contentLength)
@@ -309,6 +318,21 @@ internal class SabrCacheTee(
             UmpPart.SABR_REDIRECT -> logVerbose { "sabr-redirect → ${SabrParts.parseRedirectUrl(payload)}" }
         }
     }
+
+    /** DIAGNOSTIC: dump a proto's top-level fields as `num=value` (LEN fields show their sub-field nums). */
+    private fun rawFields(bytes: ByteArray): String = runCatching {
+        ProtoReader(bytes).readAllFields().joinToString(", ") { f ->
+            when (f) {
+                is ProtoFieldVarInt -> "${f.fieldNumber}=${f.asLong}"
+                is ProtoFieldLen -> {
+                    val sub = runCatching { f.asMessage.joinToString("+") { "${it.fieldNumber}:${it.wireType}" } }.getOrNull()
+                    "${f.fieldNumber}=len[${sub ?: "${f.bytes.size}b"}]"
+                }
+                is ProtoFieldFixed64 -> "${f.fieldNumber}=f64(${f.asLong})"
+                is ProtoFieldFixed32 -> "${f.fieldNumber}=f32"
+            }
+        }
+    }.getOrElse { "?" }
 
     private fun partName(id: Int): String = when (id) {
         UmpPart.MEDIA_HEADER -> "MEDIA_HEADER"
