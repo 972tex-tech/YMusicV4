@@ -7,6 +7,9 @@ import okio.Buffer
 import okio.BufferedSink
 import okio.FileSystem
 import okio.Path
+import okio.Source
+import okio.buffer
+import okio.use
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SabrServe
@@ -49,6 +52,9 @@ class SabrServeTest {
         override fun appendSink(): BufferedSink = data
         override fun close() {}
     }
+
+    /** Materialize a hit's streaming body so it can be re-parsed (the serve now streams, not a Buffer). */
+    private fun Source.toBuffer(): Buffer = Buffer().also { out -> buffer().use { it.readAll(out) } }
 
     private fun asyncOf(bytes: Buffer): BufferedAsyncSource = BufferedAsyncSource(
         object : AsyncSource {
@@ -122,7 +128,7 @@ class SabrServeTest {
         // The synthesized UMP re-parses through readResponse into a byte-identical stream.
         val outFile = MemoryFile()
         val outcome = SabrSession(random = Random(2))
-            .readResponse(asyncOf(serve.ump as Buffer), SabrTrack(fmt, outFile), null, null)
+            .readResponse(asyncOf(serve.ump.toBuffer()), SabrTrack(fmt, outFile), null, null)
         assertEquals(4, outcome.completedSegments)
         val expected = ByteArray(10) { 0 } + ByteArray(10) { 1 } + ByteArray(10) { 2 } + ByteArray(10) { 3 }
         assertContentEquals(expected, outFile.data.copy().readByteArray())
@@ -146,11 +152,11 @@ class SabrServeTest {
         val cache = filledCache()
         val first = cache.serveSabr(request(0)) as SabrServe.Hit
         val fileA = MemoryFile()
-        SabrSession(random = Random(3)).readResponse(asyncOf(first.ump as Buffer), SabrTrack(fmt, fileA), null, cache)
+        SabrSession(random = Random(3)).readResponse(asyncOf(first.ump.toBuffer()), SabrTrack(fmt, fileA), null, cache)
 
         val second = cache.serveSabr(request(0)) as SabrServe.Hit
         val fileB = MemoryFile()
-        SabrSession(random = Random(4)).readResponse(asyncOf(second.ump as Buffer), SabrTrack(fmt, fileB), null, cache)
+        SabrSession(random = Random(4)).readResponse(asyncOf(second.ump.toBuffer()), SabrTrack(fmt, fileB), null, cache)
 
         assertContentEquals(fileA.data.copy().readByteArray(), fileB.data.copy().readByteArray())
         assertEquals(40, fileB.data.size)

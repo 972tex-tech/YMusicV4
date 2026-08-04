@@ -2,8 +2,7 @@ package ymusic.ytmedia.cache
 
 import okio.Buffer
 import okio.Source
-import okio.buffer
-import okio.use
+import okio.Timeout
 import ymusic.ytmedia.sabr.BufferedRange
 import ymusic.ytmedia.sabr.FormatId
 import ymusic.ytmedia.sabr.MediaHeader
@@ -230,30 +229,63 @@ private fun MediaCache.findCachedSegments(
  * protection status, no NEXT_REQUEST_POLICY. Returns null if any segment's bytes can't be re-acquired
  * (evicted since planning) — the caller then treats the whole serve as a network miss.
  */
-private fun MediaCache.synthesizeUmp(segments: List<MediaHeader>): Buffer? {
-    val out = Buffer()
-    segments.forEachIndexed { i, segment ->
+private fun MediaCache.synthesizeUmp(segments: List<MediaHeader>): Source? {
+    // Build a list of pieces to stream in order: small framing buffers (part headers + FIM + media header)
+    // interleaved with each segment's PINNED span source. The segment bytes are NEVER read into memory —
+    // they stream lazily as the consumer pulls, so a multi-MB hit costs only the framing (~100 B/segment).
+    // Pin every segment up front so eviction in the plan→serve gap is caught before we commit to a hit.
+    val pieces = ArrayList<Source>(segments.size * 3)
+    for ((i, segment) in segments.withIndex()) {
+        val pin = blobs.read(segment.cacheKey, segment.startRange, segment.contentLength)
+        if (pin == null) {
+            pieces.forEach { runCatching { it.close() } } // release the spans pinned so far, give up the hit
+            return null
+        }
+        val headerId = i and 0xFF
+        val head = Buffer()
         // An init segment in the plan means this format is being (re)initialized → send its init metadata
         // first, as the server does. Best-effort: skip if the tee hasn't captured it (media still serves).
         if (segment.isInitSegment) {
             index.formatInit(segment.itag, segment.lmt)?.let { fim ->
-                out.writeUmpPartHeader(UmpPart.FORMAT_INITIALIZATION_METADATA, fim.size.toLong()).write(fim)
+                head.writeUmpPartHeader(UmpPart.FORMAT_INITIALIZATION_METADATA, fim.size.toLong()).write(fim)
             }
         }
-        val headerId = i and 0xFF
-        val pinned = blobs.read(segment.cacheKey, segment.startRange, segment.contentLength) ?: return null
-        try {
-            val headerBytes = segment.copy(headerId = headerId).encode().toByteArray()
-            out.writeUmpPartHeader(UmpPart.MEDIA_HEADER, headerBytes.size.toLong()).write(headerBytes)
-            out.writeUmpPartHeader(UmpPart.MEDIA_DATA, segment.contentLength + 1).writeByte(headerId)
-            pinned.buffer().use { it.readAll(out) }
-            out.writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(headerId)
-        } catch (e: Throwable) {
-            pinned.close()
-            throw e
-        }
+        val headerBytes = segment.copy(headerId = headerId).encode().toByteArray()
+        head.writeUmpPartHeader(UmpPart.MEDIA_HEADER, headerBytes.size.toLong()).write(headerBytes)
+        head.writeUmpPartHeader(UmpPart.MEDIA_DATA, segment.contentLength + 1).writeByte(headerId)
+        pieces += head // framing
+        pieces += pin // segment media, streamed
+        pieces += Buffer().apply { writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(headerId) }
     }
-    return out
+    return ConcatSource(pieces)
+}
+
+/**
+ * Reads a list of [Source] pieces in order, closing each as it's exhausted; [close] releases any still open
+ * (the pinned segment spans). Lets a synthesized hit stream instead of materializing the whole body.
+ */
+private class ConcatSource(private val pieces: List<Source>) : Source {
+    private var idx = 0
+    private var closed = false
+
+    override fun read(sink: Buffer, byteCount: Long): Long {
+        check(!closed) { "closed" }
+        while (idx < pieces.size) {
+            val n = pieces[idx].read(sink, byteCount)
+            if (n != -1L) return n
+            pieces[idx].close() // exhausted → release and advance
+            idx++
+        }
+        return -1L
+    }
+
+    override fun timeout(): Timeout = Timeout.NONE
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        for (i in idx until pieces.size) runCatching { pieces[i].close() } // earlier pieces closed on exhaustion
+    }
 }
 
 /**
