@@ -15,8 +15,10 @@ import ymusic.ytmedia.ump.writeUmpPartHeader
 
 /** What the cache can do for a SABR request (plan §3c). */
 sealed class SabrServe {
-    /** A synthesized UMP body of cached segments — serve it to the requester with no network. */
-    class Hit(val ump: Source, val cachedBytes: Long, val segmentCount: Int) : SabrServe()
+    /** A synthesized UMP body of cached segments — serve it to the requester with no network.
+     *  [servedRanges] is a per-format summary of the playback served (`itag@startMs-endMs[segA-segB]`,
+     *  the same shape as the request's buffered ranges). */
+    class Hit(val ump: Source, val cachedBytes: Long, val segmentCount: Int, val servedRanges: String) : SabrServe()
 
     /** The requester is already buffered far enough ahead; a policy-only body tells it to back off. */
     class Backoff(val ump: Source) : SabrServe()
@@ -120,7 +122,14 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
     // Re-acquire every segment's bytes; a miss here (evicted in the plan→serve gap) means network.
     val ump = synthesizeUmp(policy, segments) ?: return SabrServe.Miss("${segments.size} segments planned but evicted before re-acquire")
     val bytes = segments.sumOf { it.contentLength }
-    return SabrServe.Hit(ump, bytes, segments.size)
+    // Per-format summary of the playback served (itag@start-end[segA-segB]), matching the request's buffered.
+    val servedRanges = segments.filter { it.startMs != null }
+        .groupBy { it.itag }
+        .entries.joinToString(",") { (itag, segs) ->
+            "$itag@${segs.minOf { it.startMs!! }}-${segs.maxOf { it.startMs!! + (it.durationMs ?: 0) }}ms" +
+                "[seg${segs.minOf { it.segmentIndex }}-${segs.maxOf { it.segmentIndex }}]"
+        }
+    return SabrServe.Hit(ump, bytes, segments.size, servedRanges)
 }
 
 /** Legacy multi-audio narrowing: honor a requested track id, DRC preference, then the default track. */

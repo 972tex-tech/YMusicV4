@@ -122,7 +122,7 @@ class LocalMediaProxy(
             logVerbose { sabrRequestSummary(request) }
             when (val serve = cache.serveSabr(request)) {
                 is SabrServe.Hit -> {
-                    logVerbose { "HIT sabr: ${serve.segmentCount} segments, ${serve.cachedBytes} bytes (${started.elapsedNow()})" }
+                    logVerbose { "HIT sabr: served=[${serve.servedRanges}] (${serve.segmentCount} segments, ${serve.cachedBytes} bytes, built in ${started.elapsedNow()})" }
                     return umpResponse(serve.ump, url)
                 }
                 is SabrServe.Backoff -> {
