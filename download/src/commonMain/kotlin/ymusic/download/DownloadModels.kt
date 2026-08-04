@@ -11,26 +11,15 @@ package ymusic.download
  *
  * Every output goes through ffmpeg where it exists — not just to transcode/mux, but to embed the
  * metadata tags (title / artist / composer=videoId) into the container. iOS has no ffmpeg: there M4A
- * degrades to the raw best-AAC stream written straight to the file, and its metadata lives in the
- * download DB row instead of the file (video would need an AVFoundation muxer — separate). So
- * [needsFfmpeg] marks the outputs that are simply unavailable without ffmpeg; M4A stays available on
- * iOS (untagged file + DB metadata), the rest are hidden there.
+ * degrades to the raw best-AAC stream written straight to the file, its metadata living in the download
+ * DB row instead (video would need an AVFoundation muxer — separate). So on iOS only M4A is offered;
+ * MP3/video are hidden — the picker gates on [DownloadService.ffmpegAvailable].
  */
 enum class DownloadFormat(val kind: DownloadKind, val fileExtension: String) {
     MP3(DownloadKind.AUDIO, "mp3"),
     M4A(DownloadKind.AUDIO, "m4a"),
     VIDEO_WEBM(DownloadKind.VIDEO, "webm"),
     VIDEO_MP4(DownloadKind.VIDEO, "mp4"),
-    ;
-
-    /** True when this output can't be produced at all without ffmpeg. M4A is the exception: it degrades
-     *  to a raw-stream file (metadata in the DB) where ffmpeg is absent, so it stays available on iOS. */
-    val needsFfmpeg: Boolean
-        get() = when (this) {
-            MP3 -> true // libmp3lame transcode
-            M4A -> false // degrades to raw best-AAC + DB metadata on iOS; ffmpeg elsewhere embeds the tags
-            VIDEO_WEBM, VIDEO_MP4 -> true // mux (and AAC transcode for mp4)
-        }
 }
 
 enum class DownloadKind { AUDIO, VIDEO }
