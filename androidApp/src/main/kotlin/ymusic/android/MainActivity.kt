@@ -160,7 +160,13 @@ class MainActivity : ComponentActivity() {
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
             }
-            LocalMediaProxy(cache, client, userAgent = WebSettings.getDefaultUserAgent(applicationContext))
+            LocalMediaProxy(
+                cache,
+                client,
+                userAgent = WebSettings.getDefaultUserAgent(applicationContext),
+                logger = LogcatLogger(),
+                verbose = true,
+            )
         }
 
         val player = createPlayer(
@@ -171,7 +177,7 @@ class MainActivity : ComponentActivity() {
                         createWebViewPlayer(
                             WebViewPlayerContext(this, videoContainer, mediaProxy),
                             engineJs = js,
-                            appVersion = 1,
+                            appVersion = 5000,
                             embedHtml = { ua -> shared.engines.embedPage(ua) },
                         )
                     }
