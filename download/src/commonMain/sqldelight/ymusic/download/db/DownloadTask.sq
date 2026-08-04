@@ -1,0 +1,44 @@
+-- The download queue. One row per task; the service is the single writer, the UI observes selectAll.
+-- format/state are enum names (TEXT) so a schema bump isn't needed to add a variant.
+CREATE TABLE downloadTask (
+    id                TEXT    NOT NULL PRIMARY KEY,
+    video_id          TEXT    NOT NULL,
+    title             TEXT    NOT NULL,
+    artist            TEXT,
+    thumbnail_url     TEXT,
+    format            TEXT    NOT NULL,
+    requested_height  INTEGER,
+    state             TEXT    NOT NULL,
+    downloaded_bytes  INTEGER NOT NULL DEFAULT 0,
+    total_bytes       INTEGER NOT NULL DEFAULT 0,
+    file_path         TEXT,
+    error_message     TEXT,
+    created_at        INTEGER NOT NULL,
+    updated_at        INTEGER NOT NULL
+);
+
+CREATE INDEX downloadTask_created ON downloadTask(created_at);
+
+upsert:
+INSERT OR REPLACE INTO downloadTask(
+    id, video_id, title, artist, thumbnail_url, format, requested_height,
+    state, downloaded_bytes, total_bytes, file_path, error_message, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateState:
+UPDATE downloadTask SET state = ?, error_message = ?, updated_at = ? WHERE id = ?;
+
+updateProgress:
+UPDATE downloadTask SET downloaded_bytes = ?, total_bytes = ?, updated_at = ? WHERE id = ?;
+
+updateCompleted:
+UPDATE downloadTask SET state = ?, file_path = ?, downloaded_bytes = ?, total_bytes = ?, error_message = NULL, updated_at = ? WHERE id = ?;
+
+deleteById:
+DELETE FROM downloadTask WHERE id = ?;
+
+selectAll:
+SELECT * FROM downloadTask ORDER BY created_at ASC;
+
+selectById:
+SELECT * FROM downloadTask WHERE id = ?;
