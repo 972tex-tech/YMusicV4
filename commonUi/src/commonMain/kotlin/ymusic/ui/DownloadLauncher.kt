@@ -42,7 +42,9 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
             DownloadRequest(
                 videoId = video.id,
                 title = video.title,
-                artist = video.subtitleLine1,
+                // subtitleLine1 is the view/date line for feed videos, not an artist — leave null until
+                // we resolve a real artist (music-video artist, channel-name fallback). See TODO board.
+                artist = null,
                 thumbnailUrl = video.thumbs.firstOrNull()?.url,
                 format = format,
                 requestedHeight = height,
