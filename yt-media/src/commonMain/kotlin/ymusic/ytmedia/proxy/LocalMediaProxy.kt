@@ -20,6 +20,7 @@ import ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import ymusic.ytmedia.sabr.formatCacheKey
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 
 /**
  * One response the platform adapter writes back to the WebView. [body] streams until EOF (bytes pulled in a
@@ -90,23 +91,39 @@ class LocalMediaProxy(
         return hit ?: forward(url, method, body)
     }
 
-    /** A cache hit → a synthesized response; null → miss (forward to the network). */
+    /** A cache hit → a synthesized response; null → miss (forward to the network). Logs the decision and
+     *  how long it took: HIT / BACKOFF / MISS with the reason and, for a progressive miss, how much of the
+     *  range *was* cached (so a partial-coverage miss is visible). */
     private fun serveFromCache(url: String, method: String, body: ByteArray?): ProxyResponse? {
+        val started = TimeSource.Monotonic.markNow()
         if (isSabr(url) && method == "POST" && body != null) {
             val request = VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields())
             when (val serve = cache.serveSabr(request)) {
                 is SabrServe.Hit -> {
-                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "cache-hit sabr segments=${serve.segmentCount} bytes=${serve.cachedBytes}")
+                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "HIT sabr: ${serve.segmentCount} segments, ${serve.cachedBytes} bytes (${started.elapsedNow()})")
                     return umpResponse(serve.ump, url)
                 }
-                is SabrServe.Backoff -> return umpResponse(serve.ump, url)
-                SabrServe.Miss -> return null
+                is SabrServe.Backoff -> {
+                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "BACKOFF sabr: requester buffered ahead — told to back off (${started.elapsedNow()})")
+                    return umpResponse(serve.ump, url)
+                }
+                is SabrServe.Miss -> {
+                    logger?.log(Logger.Level.DEBUG, LOG_CTX, "MISS sabr: ${serve.reason} (${started.elapsedNow()})")
+                    return null
+                }
             }
         }
         val prog = progressiveRange(url) ?: return null
-        val src = cache.serveProgressive(prog.itag, prog.lmt, prog.start, prog.end) ?: return null
-        logger?.log(Logger.Level.DEBUG, LOG_CTX, "cache-hit progressive itag=${prog.itag} range=${prog.start}-${prog.end}")
         val len = prog.end - prog.start + 1
+        val src = cache.serveProgressive(prog.itag, prog.lmt, prog.start, prog.end)
+        if (src == null) {
+            logger?.let {
+                val cached = cache.blobs.cachedLength(formatCacheKey(prog.itag, prog.lmt), prog.start, len).coerceAtLeast(0)
+                it.log(Logger.Level.DEBUG, LOG_CTX, "MISS progressive itag=${prog.itag} range=${prog.start}-${prog.end}: cached $cached/$len bytes (${started.elapsedNow()})")
+            }
+            return null
+        }
+        logger?.log(Logger.Level.DEBUG, LOG_CTX, "HIT progressive itag=${prog.itag} range=${prog.start}-${prog.end} (${started.elapsedNow()})")
         return ProxyResponse(
             status = 200, reason = "OK",
             headers = listOf("Content-Type" to "application/octet-stream", "Content-Length" to "$len"),

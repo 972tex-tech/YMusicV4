@@ -21,8 +21,8 @@ sealed class SabrServe {
     /** The requester is already buffered far enough ahead; a policy-only body tells it to back off. */
     class Backoff(val ump: Source) : SabrServe()
 
-    /** Nothing useful cached — go to the network. */
-    data object Miss : SabrServe()
+    /** Nothing useful cached — go to the network. [reason] explains why, for logging. */
+    class Miss(val reason: String) : SabrServe()
 }
 
 // Readahead windows, ported from legacy SabrCacheHandler. MIN is the "keep filling until covered" target;
@@ -104,7 +104,10 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
                 return SabrServe.Backoff(synthesizeUmp(policy, emptyList()) ?: Buffer())
             }
         }
-        return SabrServe.Miss
+        return SabrServe.Miss(
+            if (audio is CheckResult.Buffered) "buffered ahead but below the backoff threshold"
+            else "no cached segments cover playerTime=${playerTimeMs}ms",
+        )
     }
 
     val policy = NextRequestPolicy(
@@ -115,7 +118,7 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
         videoId = null,
     )
     // Re-acquire every segment's bytes; a miss here (evicted in the plan→serve gap) means network.
-    val ump = synthesizeUmp(policy, segments) ?: return SabrServe.Miss
+    val ump = synthesizeUmp(policy, segments) ?: return SabrServe.Miss("${segments.size} segments planned but evicted before re-acquire")
     val bytes = segments.sumOf { it.contentLength }
     return SabrServe.Hit(ump, bytes, segments.size)
 }
