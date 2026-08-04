@@ -499,12 +499,20 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 LaunchedEffect(scanController) {
                     scanController.summaries.collect { showSnackbar(it) }
                 }
+                // Download-format picker: any video menu sets this to a video; DownloadDialogHost shows
+                // the format dialog and enqueues into graph.downloads. Null launcher when no service.
+                var pendingDownload by remember { mutableStateOf<ymusic.dynamicengine.yt.YtFeedItem?>(null) }
+                val downloadLauncher = remember(graph) {
+                    graph.downloads?.let { DownloadLauncher { video -> pendingDownload = video } }
+                }
                 CompositionLocalProvider(
                     LocalScrollHost provides scrollHost,
                     LocalSnackbar provides showSnackbar,
                     LocalScanController provides scanController,
                     LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
+                    LocalDownloadLauncher provides downloadLauncher,
                 ) {
+                    DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
                         containerColor = DesignColors.Surface,

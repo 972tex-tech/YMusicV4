@@ -605,16 +605,20 @@ private fun itemClick(
 }
 
 @Composable
-private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions = ItemActions(
-    if (item.kind == YtFeedItem.KIND_VIDEO) {
-        listOf(
-            stringResource(Res.string.queue_next) to { coordinator.playNext(item) },
-            stringResource(Res.string.queue_last) to { coordinator.playLater(item) },
-        )
-    } else {
-        emptyList()
-    },
-)
+private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions {
+    val downloadLauncher = LocalDownloadLauncher.current
+    return ItemActions(
+        if (item.kind == YtFeedItem.KIND_VIDEO) {
+            buildList {
+                add(stringResource(Res.string.queue_next) to { coordinator.playNext(item) })
+                add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
+                if (downloadLauncher != null) add("Download" to { downloadLauncher.launch(item) })
+            }
+        } else {
+            emptyList()
+        },
+    )
+}
 
 /** The feed filter chips ("All / Music / Gaming…"); tapping one reloads the feed through its token.
  *  The engine picks the layout ([Pager.State.Ready.chipsWrap]): wrapped to as many lines as needed

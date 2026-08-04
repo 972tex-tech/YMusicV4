@@ -598,6 +598,11 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
         else -> option.label
     }
 
+    val queue by player.queue.collectAsState()
+    val downloadLauncher = LocalDownloadLauncher.current
+    val downloadable = coordinator.metadataFor(queue.currentItem)
+        ?.takeIf { it.kind == ymusic.dynamicengine.yt.YtFeedItem.KIND_VIDEO }
+
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
         Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 3.dp),
@@ -606,8 +611,13 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     ) {
         ActionIcon(Icons.Default.KeyboardArrowDown, stringResource(Res.string.cd_close), onClick = onClose)
         Box(Modifier.weight(1f))
-        // Download lands with M6 (LocalMediaProxy + downloads); the slot is design chrome until then.
-        ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = false, onClick = {})
+        // Enabled once there's a download service and the current item is a YouTube video.
+        ActionIcon(
+            Icons.Outlined.FileDownload,
+            stringResource(Res.string.cd_download),
+            enabled = downloadLauncher != null && downloadable != null,
+            onClick = { downloadable?.let { downloadLauncher?.launch(it) } },
+        )
         SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(
