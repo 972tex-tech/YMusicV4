@@ -30,12 +30,16 @@ import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.create
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
+import okio.Path.Companion.toPath
 import ymusic.dynamicengine.yt.embedPage
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.MediaScanner
@@ -49,6 +53,7 @@ import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -169,6 +174,9 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // Captured from the WebView-engine factory so the download service can prime SABR inputs off the
+        // same page (attestation lives in the running page).
+        var downloadWebViewPlayer: ymusic.player.WebViewPlayer? = null
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
@@ -179,11 +187,39 @@ class MainActivity : ComponentActivity() {
                             engineJs = js,
                             appVersion = 5000,
                             embedHtml = { ua -> shared.engines.embedPage(ua) },
-                        )
+                        ).also { downloadWebViewPlayer = it }
                     }
                 },
             ),
         ).also { this.player = it }
+
+        // Offline downloads: SABR download stack + on-device ffmpeg (libffmpeg.so). The spec resolver
+        // drives the playback WebView to prime each video's player response + PO token.
+        val downloadService = shared.webViewJs?.let {
+            val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")
+                .takeIf { f -> f.exists() }?.absolutePath
+            val downloadsDir = File(getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC) ?: filesDir, "downloads")
+            val sabrClient = KmpHttpClient.create {
+                cookieJar = shared.cookies
+                defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
+            }
+            ymusic.download.DownloadService(
+                store = ymusic.download.DownloadStore(ymusic.download.downloadDatabaseAndroidDriver(applicationContext)),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                now = { System.currentTimeMillis() },
+                resolver = ymusic.download.SabrSpecResolver { videoId ->
+                    val page = downloadWebViewPlayer ?: error("play a YouTube item first to enable downloads")
+                    WebViewSabrSpecResolver(page).resolve(videoId)
+                },
+                client = sabrClient,
+                userAgent = WebSettings.getDefaultUserAgent(applicationContext),
+                ffmpeg = ffmpegBin?.let { bin -> ymusic.download.Ffmpeg(bin) },
+                fileSystem = FileSystem.SYSTEM,
+                workDir = File(cacheDir, "download-work").absolutePath.toPath(),
+                outputDir = downloadsDir.absolutePath.toPath(),
+                logger = LogcatLogger(),
+            ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
+        }
 
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName
         return AppGraph(
@@ -211,6 +247,7 @@ class MainActivity : ComponentActivity() {
             loginBrowser = { url, state, onPageChanged, modifier ->
                 AndroidLoginBrowser(url, state, onPageChanged, modifier)
             },
+            downloads = downloadService,
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the

@@ -44,9 +44,12 @@ import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.create
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -76,6 +79,7 @@ import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ui.AppHttpClients
+import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.ensureAppLanguage
 import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
@@ -230,6 +234,9 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         )
     }
 
+    // Captured from the WebView-engine factory so the download service can prime SABR inputs off the
+    // same page (attestation lives in the running page). Recreated on "Reload player"; latest wins.
+    var downloadWebViewPlayer: ymusic.player.WebViewPlayer? = null
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
@@ -240,12 +247,43 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                     createWebViewPlayer(
                         WebViewPlayerContext(cefClient, webViewSurface, mediaProxy),
                         engineJs = readWebViewJs(),
-                        appVersion = 1,
+                        appVersion = 5000,
                         embedHtml = { ua -> engines.embedPage(ua) },
-                    )
+                    ).also { downloadWebViewPlayer = it }
                 },
             ),
         )
+    }
+
+    // Offline downloads: reuse the SABR download stack over the prebuilt ffmpeg. The spec resolver drives
+    // the playback WebView to prime each video's player response + PO token (so a download of a video the
+    // user isn't already playing briefly loads it into the player — a known first-cut limitation).
+    val downloadService = withContext(Dispatchers.IO) {
+        val ffmpeg = locateDesktopFfmpeg()?.let { ymusic.download.Ffmpeg(it) }
+        val store = ymusic.download.DownloadStore(
+            ymusic.download.downloadDatabaseJdbcDriver("jdbc:sqlite:${File(dataDir, "downloads.db").absolutePath}"),
+        )
+        val sabrClient = KmpHttpClient.create {
+            cookieJar = platformCookies
+            defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
+        }
+        val resolver = ymusic.download.SabrSpecResolver { videoId ->
+            val page = downloadWebViewPlayer ?: error("play a YouTube item first to enable downloads")
+            WebViewSabrSpecResolver(page).resolve(videoId)
+        }
+        ymusic.download.DownloadService(
+            store = store,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            now = { System.currentTimeMillis() },
+            resolver = resolver,
+            client = sabrClient,
+            userAgent = CefManager.CHROME_USER_AGENT,
+            ffmpeg = ffmpeg,
+            fileSystem = FileSystem.SYSTEM,
+            workDir = File(dataDir, "download-work").absolutePath.toPath(),
+            outputDir = File(dataDir, "downloads").absolutePath.toPath(),
+            logger = StdoutLogger,
+        ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
     }
 
     return AppGraph(
@@ -269,6 +307,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         loginBrowser = { url, state, onPageChanged, modifier ->
             DesktopLoginBrowser(url, state, onPageChanged, modifier)
         },
+        downloads = downloadService,
     ) { modifier ->
         DesktopPlayerSurface(localSurface, webViewSurface, modifier)
     }
@@ -436,4 +475,17 @@ private fun Booting(content: @Composable () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) { content() }
+}
+
+/** The prebuilt ffmpeg binary for this host, or null (mp3/video downloads then unavailable). Dev-time:
+ *  the repo's ffmpeg-prebuilt-ymusic; override with -Dymusic.ffmpeg=/path. */
+private fun locateDesktopFfmpeg(): String? {
+    System.getProperty("ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.exists() }?.absolutePath }
+    val os = System.getProperty("os.name").lowercase()
+    val rel = when {
+        os.contains("mac") -> "ffmpeg-prebuilt-ymusic/macos/ffmpeg"
+        os.contains("linux") -> "ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg"
+        else -> return null
+    }
+    return listOf(rel, "../$rel").map(::File).firstOrNull { it.exists() }?.absolutePath
 }
