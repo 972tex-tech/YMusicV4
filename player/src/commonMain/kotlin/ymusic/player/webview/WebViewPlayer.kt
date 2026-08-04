@@ -31,6 +31,11 @@ interface WebViewPlayer :
      *  current song plays on undisturbed until it ends. */
     fun refreshOnNext()
 
+    /** Eagerly build the page session (fetch + inject `/embed`) with no video queued, so a later [load]
+     *  or download resolves against an already-connected page instead of paying the init cost then.
+     *  No-op once the page is initializing/initialized. Main thread. */
+    fun warmUp()
+
     /**
      * The decoded player response for [videoId] as the page's opaque `data` JSON (streamingData with
      * sig/n-decoded `serverAbrStreamingUrl` + adaptiveFormats, `videoPlaybackUstreamerConfig`, client

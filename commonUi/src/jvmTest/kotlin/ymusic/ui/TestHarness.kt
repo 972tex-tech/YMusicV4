@@ -192,6 +192,7 @@ internal class StubPlayer : Player {
     override fun refreshOnNext() {}
 
     override fun reload() {}
+    override fun prepareYoutubeEngine() {}
 
     override fun release() {}
 }

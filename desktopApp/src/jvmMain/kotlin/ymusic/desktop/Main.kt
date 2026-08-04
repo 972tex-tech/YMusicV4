@@ -47,6 +47,7 @@ import kmphttp.create
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -255,6 +256,13 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         )
     }
 
+    // Warm the YouTube engine ~5s after startup so the first play/download skips the WebView + /embed
+    // build (mirrors legacy warmUpYtPlayer). Off the boot path; on the EDT since it hosts JCEF.
+    CoroutineScope(Dispatchers.Default).launch {
+        delay(5_000)
+        withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+    }
+
     // Offline downloads: reuse the SABR download stack over the prebuilt ffmpeg. The spec resolver drives
     // the playback WebView to prime each video's player response + PO token (so a download of a video the
     // user isn't already playing briefly loads it into the player — a known first-cut limitation).
@@ -268,7 +276,11 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
         }
         val resolver = ymusic.download.SabrSpecResolver { videoId ->
-            val page = downloadWebViewPlayer ?: error("play a YouTube item first to enable downloads")
+            // Force-init the WebView engine if it isn't up yet (the factory sets downloadWebViewPlayer).
+            val page = downloadWebViewPlayer ?: run {
+                withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+                downloadWebViewPlayer
+            } ?: error("YouTube engine unavailable")
             WebViewSabrSpecResolver(page).resolve(videoId)
         }
         ymusic.download.DownloadService(

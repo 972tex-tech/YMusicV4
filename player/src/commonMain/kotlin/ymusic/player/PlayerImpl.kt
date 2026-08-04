@@ -277,6 +277,13 @@ internal class PlayerImpl(
         loadCurrent(resumeMs) // rebuilds the engine via its factory (fresh page / freshly read bundle)
     }
 
+    override fun prepareYoutubeEngine() {
+        if (released) return
+        val factory = engines.webView ?: return
+        val engine = webViewEngine ?: factory().also { webViewEngine = it }
+        engine.warmUp()
+    }
+
     override fun release() {
         if (released) return
         released = true

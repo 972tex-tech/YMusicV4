@@ -97,6 +97,14 @@ internal class WebViewPlayerImpl(
         pendingRefresh = true
     }
 
+    override fun warmUp() {
+        if (released) return
+        // Only kick off a page init from a cold engine; if it's already initializing/Idle/playing, the
+        // session is (being) built and a later load reuses it.
+        val state = _status.value.state
+        if (state is PlaybackState.Uninitialized && !state.isInitializing) initializePage()
+    }
+
     override fun load(source: PlayableItem.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val request = PendingLoad(source, startPositionMs, playWhenReady, config)

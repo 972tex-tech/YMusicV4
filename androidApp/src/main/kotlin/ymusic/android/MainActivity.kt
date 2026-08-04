@@ -193,6 +193,13 @@ class MainActivity : ComponentActivity() {
             ),
         ).also { this.player = it }
 
+        // Warm the YouTube engine ~5s after startup so the first play/download skips the WebView +
+        // /embed build (mirrors legacy warmUpYtPlayer). On the main thread — it hosts a platform WebView.
+        CoroutineScope(Dispatchers.Main).launch {
+            kotlinx.coroutines.delay(5_000)
+            player.prepareYoutubeEngine()
+        }
+
         // Offline downloads: SABR download stack + on-device ffmpeg (libffmpeg.so). The spec resolver
         // drives the playback WebView to prime each video's player response + PO token.
         val downloadService = shared.webViewJs?.let {
@@ -208,7 +215,11 @@ class MainActivity : ComponentActivity() {
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                 now = { System.currentTimeMillis() },
                 resolver = ymusic.download.SabrSpecResolver { videoId ->
-                    val page = downloadWebViewPlayer ?: error("play a YouTube item first to enable downloads")
+                    // Force-init the WebView engine if it isn't up yet (the factory sets downloadWebViewPlayer).
+                    val page = downloadWebViewPlayer ?: run {
+                        withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+                        downloadWebViewPlayer
+                    } ?: error("YouTube engine unavailable")
                     WebViewSabrSpecResolver(page).resolve(videoId)
                 },
                 client = sabrClient,

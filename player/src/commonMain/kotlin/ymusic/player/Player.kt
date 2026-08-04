@@ -134,6 +134,14 @@ interface Player {
      */
     fun reload()
 
+    /**
+     * Eagerly create + warm the YouTube (WebView) engine — build the WebView and its `/embed` page
+     * session — so the first video play (or download) skips that construction cost. Safe to call once,
+     * a few seconds after startup. No-op if the engine already exists or no WebView engine is
+     * configured. Main thread (the engine hosts a platform WebView).
+     */
+    fun prepareYoutubeEngine()
+
     /** Releases both engines and stops all internal work. The instance is unusable afterwards. */
     fun release()
 }

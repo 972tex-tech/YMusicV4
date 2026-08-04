@@ -1,8 +1,10 @@
 package ymusic.ui
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import ymusic.download.SabrSpecBuilder
 import ymusic.download.SabrSpecResolver
 import ymusic.player.PlayableItem
@@ -31,17 +33,20 @@ class WebViewSabrSpecResolver(
     private val mutex = Mutex()
 
     override suspend fun resolve(videoId: String): SabrStreamSpec = mutex.withLock {
-        // Muted, audio-only (PlaybackConfig's default preferVideoQuality is AUDIO_ONLY); playback
-        // advancing past ~1.5s is our "response cached + PO token minted" signal.
-        player.load(
-            PlayableItem.YtVideoId(videoId),
-            startPositionMs = 0L,
-            playWhenReady = true,
-            config = PlaybackConfig(volume = 0f),
-        )
-        awaitPlayback(videoId)
-        val playerResponse = player.requestPlayerResponse(videoId)
-        val poToken = player.requestPoToken(videoId)
+        // WebView methods must run on the main thread (Android enforces it); the download worker calls
+        // this from a background dispatcher, so every page interaction hops to Main. Muted, audio-only
+        // (PlaybackConfig's default preferVideoQuality is AUDIO_ONLY); playback advancing past ~1.5s is
+        // our "response cached + PO token minted" signal.
+        val (playerResponse, poToken) = withContext(Dispatchers.Main) {
+            player.load(
+                PlayableItem.YtVideoId(videoId),
+                startPositionMs = 0L,
+                playWhenReady = true,
+                config = PlaybackConfig(volume = 0f),
+            )
+            awaitPlayback(videoId)
+            player.requestPlayerResponse(videoId) to player.requestPoToken(videoId)
+        }
         SabrSpecBuilder.build(videoId, playerResponse, poToken)
     }
 
