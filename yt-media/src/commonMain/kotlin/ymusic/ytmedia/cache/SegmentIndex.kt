@@ -29,6 +29,12 @@ interface SegmentIndex {
     /** Bump the `download_time` of every segment of a stream (used to protect a just-downloaded track). */
     fun markDownloadTime(itag: Int, lmt: Long)
 
+    /** Store a format's raw FORMAT_INITIALIZATION_METADATA (UMP part 42) for hit replay (INSERT-OR-REPLACE). */
+    fun putFormatInit(itag: Int, lmt: Long, bytes: ByteArray)
+
+    /** The format's stored init metadata, or null if the tee hasn't captured it yet. */
+    fun formatInit(itag: Int, lmt: Long): ByteArray?
+
     /**
      * Prune orphan rows: any stream whose `formatCacheKey` is **not** in [keepKeys] (i.e. has no blobs)
      * and whose segments are older than the retention window is deleted. Run on startup with

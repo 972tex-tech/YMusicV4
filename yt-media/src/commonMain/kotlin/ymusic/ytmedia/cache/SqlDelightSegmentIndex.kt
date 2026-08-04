@@ -54,6 +54,13 @@ class SqlDelightSegmentIndex(
         queries.markDownloadTime(now(), itag.toLong(), lmt)
     }
 
+    override fun putFormatInit(itag: Int, lmt: Long, bytes: ByteArray) {
+        queries.putFormatInit(itag.toLong(), lmt, bytes)
+    }
+
+    override fun formatInit(itag: Int, lmt: Long): ByteArray? =
+        queries.formatInit(itag.toLong(), lmt).executeAsOneOrNull()
+
     override fun cleanup(keepKeys: Set<String>) {
         val cutoff = now() - retentionMillis
         queries.transaction {

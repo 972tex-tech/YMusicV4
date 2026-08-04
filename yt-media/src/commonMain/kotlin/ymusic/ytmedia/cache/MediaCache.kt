@@ -1,8 +1,6 @@
 package ymusic.ytmedia.cache
 
 import kmpcommon.WorkerThread
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import okio.Buffer
 import okio.BufferedSink
 import okio.Sink
@@ -22,17 +20,6 @@ class MediaCache(
     val blobs: MediaBlobCache,
     val index: SegmentIndex,
 ) {
-    // Raw FORMAT_INITIALIZATION_METADATA (UMP part 42) per format key, captured by the tee and replayed in
-    // synthesized hits so a hit looks like a real response — the player needs it to (re)initialize a format,
-    // and the blank-video audio-only hack leans on that native format-switch path. In-memory: rebuilt from
-    // the network on the first miss per format per run.
-    private val formatInitLock = SynchronizedObject()
-    private val formatInit = mutableMapOf<String, ByteArray>()
-
-    fun putFormatInit(key: String, bytes: ByteArray) = synchronized(formatInitLock) { formatInit[key] = bytes }
-
-    fun formatInit(key: String): ByteArray? = synchronized(formatInitLock) { formatInit[key] }
-
     /**
      * Begin mirroring one segment into the cache. The metadata row is saved **now** (on the MEDIA_HEADER,
      * a queryable hint) while the bytes are committed later on [SegmentFill.commit] (the MEDIA_END, the

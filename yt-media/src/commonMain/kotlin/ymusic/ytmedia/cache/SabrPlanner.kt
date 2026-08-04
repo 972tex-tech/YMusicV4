@@ -4,7 +4,6 @@ import okio.Buffer
 import okio.Source
 import okio.buffer
 import okio.use
-import ymusic.ytmedia.proto.ProtoWriter
 import ymusic.ytmedia.sabr.BufferedRange
 import ymusic.ytmedia.sabr.FormatId
 import ymusic.ytmedia.sabr.MediaHeader
@@ -30,9 +29,6 @@ sealed class SabrServe {
 
 // Readahead windows, ported from legacy SabrCacheHandler. MIN is the "keep filling until covered" target;
 // TARGET is what the synthesized NextRequestPolicy advertises back.
-// A synthetic STREAM_PROTECTION_STATUS payload = OK (field 1 = 1), prepended to synthesized hits.
-private val PROTECTION_OK = ProtoWriter().varint(1, 1).toByteArray()
-
 private const val TARGET_AUDIO_READAHEAD_MS = 60_000
 private const val MIN_AUDIO_READAHEAD_MS = TARGET_AUDIO_READAHEAD_MS + 45_000L
 private const val TARGET_VIDEO_READAHEAD_MS = 60_000
@@ -107,7 +103,11 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
                     playbackCookie = request.streamerContext.playbackCookie,
                     videoId = null,
                 )
-                return SabrServe.Backoff(synthesizeUmp(policy, emptyList()) ?: Buffer())
+                // A policy-only body — the one time we send NEXT_REQUEST_POLICY: to tell the player to back off.
+                val body = Buffer()
+                val policyBytes = policy.encode().toByteArray()
+                body.writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, policyBytes.size.toLong()).write(policyBytes)
+                return SabrServe.Backoff(body)
             }
         }
         return SabrServe.Miss(
@@ -116,15 +116,8 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
         )
     }
 
-    val policy = NextRequestPolicy(
-        targetAudioReadaheadMs = TARGET_AUDIO_READAHEAD_MS,
-        targetVideoReadaheadMs = TARGET_VIDEO_READAHEAD_MS,
-        backoffTimeMs = null,
-        playbackCookie = request.streamerContext.playbackCookie,
-        videoId = null,
-    )
     // Re-acquire every segment's bytes; a miss here (evicted in the plan→serve gap) means network.
-    val ump = synthesizeUmp(policy, segments) ?: return SabrServe.Miss("${segments.size} segments planned but evicted before re-acquire")
+    val ump = synthesizeUmp(segments) ?: return SabrServe.Miss("${segments.size} segments planned but evicted before re-acquire")
     val bytes = segments.sumOf { it.contentLength }
     // Per-format summary of the playback served (itag@start-end[segA-segB]), matching the request's buffered.
     val servedRanges = segments.filter { it.startMs != null }
@@ -231,25 +224,22 @@ private fun MediaCache.findCachedSegments(
 }
 
 /**
- * Build a UMP body: a NEXT_REQUEST_POLICY part followed by MEDIA_HEADER / MEDIA_DATA / MEDIA_END for each
- * segment, streaming its bytes out of the blob store. Returns null if any segment's bytes can't be
- * re-acquired (evicted since planning) — the caller then treats the whole serve as a network miss.
+ * Build a hit's UMP body — exactly what the player needs and nothing else: for each segment, its format's
+ * FORMAT_INITIALIZATION_METADATA (only before an init segment — i.e. when the format is being initialized,
+ * as the real server does) then MEDIA_HEADER / MEDIA_DATA / MEDIA_END streamed from the blob store. No
+ * protection status, no NEXT_REQUEST_POLICY. Returns null if any segment's bytes can't be re-acquired
+ * (evicted since planning) — the caller then treats the whole serve as a network miss.
  */
-private fun MediaCache.synthesizeUmp(policy: NextRequestPolicy, segments: List<MediaHeader>): Buffer? {
+private fun MediaCache.synthesizeUmp(segments: List<MediaHeader>): Buffer? {
     val out = Buffer()
-    // A synthesized hit must look like a real response so the player can (re)initialize a format on a
-    // switch: a protection status it accepts, then each served format's init metadata, before the policy +
-    // media. Missing init for any served format → give up the hit (return null → the caller forwards; the
-    // network response rebuilds the init).
-    out.writeUmpPartHeader(UmpPart.STREAM_PROTECTION_STATUS, PROTECTION_OK.size.toLong()).write(PROTECTION_OK)
-    for (key in segments.map { it.cacheKey }.distinct()) {
-        val fim = formatInit(key) ?: return null
-        out.writeUmpPartHeader(UmpPart.FORMAT_INITIALIZATION_METADATA, fim.size.toLong()).write(fim)
-    }
-    val policyBytes = policy.encode().toByteArray()
-    out.writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, policyBytes.size.toLong()).write(policyBytes)
-
     segments.forEachIndexed { i, segment ->
+        // An init segment in the plan means this format is being (re)initialized → send its init metadata
+        // first, as the server does. Best-effort: skip if the tee hasn't captured it (media still serves).
+        if (segment.isInitSegment) {
+            index.formatInit(segment.itag, segment.lmt)?.let { fim ->
+                out.writeUmpPartHeader(UmpPart.FORMAT_INITIALIZATION_METADATA, fim.size.toLong()).write(fim)
+            }
+        }
         val headerId = i and 0xFF
         val pinned = blobs.read(segment.cacheKey, segment.startRange, segment.contentLength) ?: return null
         try {

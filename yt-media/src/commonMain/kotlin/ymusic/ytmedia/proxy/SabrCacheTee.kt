@@ -12,7 +12,6 @@ import ymusic.ytmedia.sabr.FormatId
 import ymusic.ytmedia.sabr.MediaHeader
 import ymusic.ytmedia.sabr.NextRequestPolicy
 import ymusic.ytmedia.sabr.SabrParts
-import ymusic.ytmedia.sabr.formatCacheKey
 import ymusic.ytmedia.ump.UmpPart
 import ymusic.ytmedia.ump.readUmpPartHeader
 
@@ -282,7 +281,7 @@ internal class SabrCacheTee(
             val idFields = ProtoReader(fim).readAllFields().message(2) ?: return
             FormatId.from(idFields)
         }.getOrNull() ?: return
-        cache.putFormatInit(formatCacheKey(fmt.itag, fmt.lmt), fim)
+        cache.index.putFormatInit(fmt.itag, fmt.lmt, fim)
         logVerbose { "stored format-init for itag=${fmt.itag} (${fim.size} bytes)" }
     }
 
