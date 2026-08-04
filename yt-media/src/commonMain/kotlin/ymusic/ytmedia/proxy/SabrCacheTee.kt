@@ -64,7 +64,8 @@ internal class SabrCacheTee(
     private var headerBuf: Buffer? = null // accumulates a MEDIA_HEADER's proto until complete
     private var dataNeedId = false // next MEDIA_DATA byte is the 1-byte headerId, not media
     private var curSeg: OpenSeg? = null // the OpenSeg the current MEDIA_DATA feeds
-    private var ctrlBuf: Buffer? = null // accumulates a control part's payload for logging (only when logging)
+    private var fimBuf: Buffer? = null // accumulates a FORMAT_INITIALIZATION_METADATA payload — always (stored for hit replay)
+    private var ctrlBuf: Buffer? = null // accumulates a log-only control part's payload (only when logging)
 
     private var illegalState = false // corrupt/inconsistent stream or a cache-write error — stop caching
     private var finished = false
@@ -130,11 +131,11 @@ internal class SabrCacheTee(
                 if (curSeg != null) return markIllegal("MEDIA_DATA began with an unfinished segment")
                 dataNeedId = true
             }
-            // Format-init is captured always — it's stored and replayed in synthesized hits (the player
-            // needs it to (re)initialize a format on a switch).
-            UmpPart.FORMAT_INITIALIZATION_METADATA -> ctrlBuf = Buffer()
-            // Buffer control-part payloads to decode for logs. Protection/error can WARN even when not
-            // verbose, so buffer them whenever a logger is set; the verbose-only parts only when verbose.
+            // Format-init is captured always — its own buffer — it's stored and replayed in synthesized hits
+            // (the player needs it to (re)initialize a format on a switch).
+            UmpPart.FORMAT_INITIALIZATION_METADATA -> fimBuf = Buffer()
+            // Buffer log-only control-part payloads to decode for logs. Protection/error can WARN even when
+            // not verbose, so buffer them whenever a logger is set; the verbose-only parts only when verbose.
             UmpPart.STREAM_PROTECTION_STATUS, UmpPart.SABR_ERROR -> if (logger != null) ctrlBuf = Buffer()
             UmpPart.NEXT_REQUEST_POLICY, UmpPart.SABR_REDIRECT -> if (verbose) ctrlBuf = Buffer()
             // MEDIA_END / other control parts need no per-start state.
@@ -210,7 +211,8 @@ internal class SabrCacheTee(
 
             else -> {
                 val take = minOf(partRemaining, scan.size)
-                val buf = ctrlBuf
+                // FIM always accumulates (fimBuf); log-only parts only when buffered (ctrlBuf may be null → skip).
+                val buf = if (partId == UmpPart.FORMAT_INITIALIZATION_METADATA) fimBuf else ctrlBuf
                 if (buf != null) buf.write(scan, take) else scan.skip(take)
                 partRemaining -= take
             }
@@ -251,26 +253,19 @@ internal class SabrCacheTee(
             UmpPart.MEDIA_DATA -> curSeg = null
             // A part we buffered: format-init is stored for hit replay, control parts are logged.
             UmpPart.FORMAT_INITIALIZATION_METADATA -> {
-                ctrlBuf.let { buf ->
-                    ctrlBuf = null
-                    if (buf == null) {
-                        markIllegal("missing FORMAT_INITIALIZATION_METADATA buff")
-                        return@let
-                    }
-                    val size = buf.size
-                    var error: Throwable? = null
-                    val fmt = try {
-                        ProtoReader(buf.peek(), size).readAllFields().message(2)?.let {
-                            FormatId.from(it)
-                        }
-                    } catch (t: Throwable) {
-                        error = t
-                        null
-                    }
-                    if (fmt == null) {
-                        markIllegal("parse FORMAT_INITIALIZATION_METADATA failed ${error?.message}")
-                        return@let
-                    }
+                val buf = fimBuf!! // startPart unconditionally creates it for this part (cf. headerBuf)
+                fimBuf = null
+                val size = buf.size
+                var error: Throwable? = null
+                val fmt = try {
+                    ProtoReader(buf.peek(), size).readAllFields().message(2)?.let { FormatId.from(it) }
+                } catch (t: Throwable) {
+                    error = t
+                    null
+                }
+                if (fmt == null) {
+                    markIllegal("parse FORMAT_INITIALIZATION_METADATA failed ${error?.message}")
+                } else {
                     cache.index.putFormatInit(fmt.itag, fmt.lmt, buf.readByteArray())
                     logVerbose { "stored format-init for itag=${fmt.itag} ($size bytes)" }
                 }
