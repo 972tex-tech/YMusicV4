@@ -56,6 +56,7 @@ kotlin {
                 api(project(":image-loader"))
                 api(project(":settings"))
                 api(project(":kmpFfmpeg"))
+                api(project(":download"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material3)

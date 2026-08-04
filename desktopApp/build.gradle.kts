@@ -70,6 +70,23 @@ tasks.register<JavaExec>("sabrDownload") {
     args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
 }
 
+// End-to-end Download Manager probe (see DownloadManagerProbe.kt):
+//   ./gradlew :desktopApp:downloadManager -PsabrArgs="<videoId>"
+tasks.register<JavaExec>("downloadManager") {
+    group = "verification"
+    description = "Enqueue MP3 + M4A downloads through the real DownloadService and verify the output files."
+    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
+    dependsOn(jvmMainCompilation.compileTaskProvider)
+    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
+    mainClass.set("ymusic.desktop.DownloadManagerProbeKt")
+    jvmArgs(
+        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+    )
+    args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
+}
+
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
 tasks.register<JavaExec>("catalogue") {
     group = "application"

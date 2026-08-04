@@ -691,6 +691,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             onDeeplink = openDeeplink,
                                         )
                                         AppSection.Library -> LibraryScreen(graph, coordinator)
+                                        AppSection.Downloads -> DownloadsScreen(graph, coordinator)
                                         AppSection.Settings -> SettingsScreen(graph)
                                         AppSection.Catalogue -> CatalogueScreen()
                                         else -> ComingSoon(section)

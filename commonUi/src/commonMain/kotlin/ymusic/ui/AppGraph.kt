@@ -67,6 +67,12 @@ class AppGraph(
      * default cookie store — the same jar the engine reads — so sign-in cookies reach the login gate.
      */
     val loginBrowser: LoginBrowser? = null,
+    /**
+     * The offline-download queue service; null on a shell that can't download (no WebView stack, or a
+     * headless test graph) — the Downloads screen then shows an unavailable note. Built once per shell,
+     * like [mediaStore].
+     */
+    val downloads: ymusic.download.DownloadService? = null,
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
