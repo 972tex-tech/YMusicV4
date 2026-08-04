@@ -155,9 +155,15 @@ class WebViewProtocolTest {
 
     @Test
     fun encodes_extraction_commands() {
+        // BULK [AddWantedPlayerRes(13), Preload(1)] — want registered before the preload fetch (matches
+        // legacy wantedPlayerRes). Preload fetches /player without playing; no video is loaded on screen.
         val pr = parse(WebViewProtocol.encodeRequestPlayerResponse("abc"))
-        assertEquals(13, pr["what"]!!.jsonPrimitive.content.toInt())
-        assertEquals("abc", pr["videoId"]!!.jsonPrimitive.content)
+        assertEquals(12, pr["what"]!!.jsonPrimitive.content.toInt())
+        val actions = pr["actions"]!!.jsonArray
+        assertEquals(13, actions[0].jsonObject["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals("abc", actions[0].jsonObject["videoId"]!!.jsonPrimitive.content)
+        assertEquals(1, actions[1].jsonObject["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals("abc", actions[1].jsonObject["videoId"]!!.jsonPrimitive.content)
 
         val pt = parse(WebViewProtocol.encodeRequestPoToken("abc", 30_000))
         assertEquals(16, pt["what"]!!.jsonPrimitive.content.toInt())

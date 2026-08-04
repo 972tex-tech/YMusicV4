@@ -39,8 +39,10 @@ interface WebViewPlayer :
     /**
      * The decoded player response for [videoId] as the page's opaque `data` JSON (streamingData with
      * sig/n-decoded `serverAbrStreamingUrl` + adaptiveFormats, `videoPlaybackUstreamerConfig`, client
-     * info). The video must have been loaded/played on this page so its response is cached. Feeds the
-     * SABR downloader / player cache (`:yt-media`). Throws on timeout or if the page isn't connected.
+     * info). The page **preloads** the response (fetches `/player` without playing the video), so this
+     * works for any video and doesn't disturb what's currently playing; a cached / currently-playing
+     * response returns immediately. Feeds the SABR downloader / player cache (`:yt-media`). The page must
+     * be connected (warm it first); throws on timeout.
      */
     suspend fun requestPlayerResponse(videoId: String): String
 

@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -45,6 +46,7 @@ object WebViewProtocol {
     private const val BULK = 12
     private const val ADD_WANTED_PLAYER_RES = 13
     private const val GET_PO_TOKEN = 16
+    private const val PRELOAD_VIDEO = 1
 
     /** The video-quality token the page treats as audio-only (hides the picture, keeps audio). */
     const val QUALITY_AUDIO_ONLY = "zero"
@@ -126,13 +128,32 @@ object WebViewProtocol {
     // --- extraction commands (for the SABR downloader / player cache) ---
 
     /**
-     * Ask the page to post the decoded player response for [videoId] on the `player_res` channel.
-     * The page posts from its cache (filled + sig/n-decoded when that video's `/player` response was
-     * seen) or from the currently-playing response — so the video must have been loaded/played first.
+     * Ask the page for the decoded player response for [videoId] on the `player_res` channel. Sent as a
+     * BULK of ADD_WANTED then PRELOAD: register the want **first** so the page is already listening when
+     * the preload's `/player` fetch lands (no lost-response race), then preload makes it **fetch** that
+     * response (sig/n decoded, cached) without playing — so this works for any video, not just the one on
+     * screen, and doesn't disturb what's currently playing. A cached / currently-playing response posts
+     * immediately on ADD_WANTED.
      */
     fun encodeRequestPlayerResponse(videoId: String): String = buildJsonObject {
-        put("what", JsonPrimitive(ADD_WANTED_PLAYER_RES))
-        put("videoId", JsonPrimitive(videoId))
+        put("what", JsonPrimitive(BULK))
+        put(
+            "actions",
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("what", JsonPrimitive(ADD_WANTED_PLAYER_RES))
+                        put("videoId", JsonPrimitive(videoId))
+                    },
+                )
+                add(
+                    buildJsonObject {
+                        put("what", JsonPrimitive(PRELOAD_VIDEO))
+                        put("videoId", JsonPrimitive(videoId))
+                    },
+                )
+            },
+        )
     }.toString()
 
     /** Ask the page to mint a GVS PO token for [videoId]; result arrives on the `po_token_v2` channel. */
