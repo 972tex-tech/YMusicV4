@@ -7,9 +7,12 @@ import okio.EOFException
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SegmentFill
 import ymusic.ytmedia.proto.ProtoReader
+import ymusic.ytmedia.proto.message
+import ymusic.ytmedia.sabr.FormatId
 import ymusic.ytmedia.sabr.MediaHeader
 import ymusic.ytmedia.sabr.NextRequestPolicy
 import ymusic.ytmedia.sabr.SabrParts
+import ymusic.ytmedia.sabr.formatCacheKey
 import ymusic.ytmedia.ump.UmpPart
 import ymusic.ytmedia.ump.readUmpPartHeader
 
@@ -124,6 +127,9 @@ internal class SabrCacheTee(
                 if (curSeg != null) return markIllegal("MEDIA_DATA began with an unfinished segment")
                 dataNeedId = true
             }
+            // Format-init is captured always — it's stored and replayed in synthesized hits (the player
+            // needs it to (re)initialize a format on a switch).
+            UmpPart.FORMAT_INITIALIZATION_METADATA -> ctrlBuf = Buffer()
             // Buffer control-part payloads to decode for logs. Protection/error can WARN even when not
             // verbose, so buffer them whenever a logger is set; the verbose-only parts only when verbose.
             UmpPart.STREAM_PROTECTION_STATUS, UmpPart.SABR_ERROR -> if (logger != null) ctrlBuf = Buffer()
@@ -235,10 +241,11 @@ internal class SabrCacheTee(
             // (the invariant [startPart] checks). Robust to a segment's media spanning several parts and to
             // interleaved segments — each part re-derives its target from its own headerId.
             UmpPart.MEDIA_DATA -> curSeg = null
-            // A control part we buffered for logging (only set when logging is on).
+            // A part we buffered: format-init is stored for hit replay, control parts are logged.
             else -> ctrlBuf?.let { buf ->
-                logControlPart(buf.readByteArray())
+                val bytes = buf.readByteArray()
                 ctrlBuf = null
+                if (partId == UmpPart.FORMAT_INITIALIZATION_METADATA) storeFormatInit(bytes) else logControlPart(bytes)
             }
         }
         inPayload = false
@@ -266,6 +273,17 @@ internal class SabrCacheTee(
         illegalState = true
         logger?.log(Logger.Level.WARN, LOG_CTX, "sabr-fill disabled (illegal state): $reason")
         abortOpen()
+    }
+
+    /** Cache the raw FORMAT_INITIALIZATION_METADATA keyed by its format, so a synthesized hit can replay it.
+     *  The FormatId is field 2; a parse miss just skips storing (that format's hits then forward). */
+    private fun storeFormatInit(fim: ByteArray) {
+        val fmt = runCatching {
+            val idFields = ProtoReader(fim).readAllFields().message(2) ?: return
+            FormatId.from(idFields)
+        }.getOrNull() ?: return
+        cache.putFormatInit(formatCacheKey(fmt.itag, fmt.lmt), fim)
+        logVerbose { "stored format-init for itag=${fmt.itag} (${fim.size} bytes)" }
     }
 
     /** Decode + log a buffered control part (backoff / protection status / error / redirect) — the same

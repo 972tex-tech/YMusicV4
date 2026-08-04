@@ -4,6 +4,7 @@ import okio.Buffer
 import okio.Source
 import okio.buffer
 import okio.use
+import ymusic.ytmedia.proto.ProtoWriter
 import ymusic.ytmedia.sabr.BufferedRange
 import ymusic.ytmedia.sabr.FormatId
 import ymusic.ytmedia.sabr.MediaHeader
@@ -29,6 +30,9 @@ sealed class SabrServe {
 
 // Readahead windows, ported from legacy SabrCacheHandler. MIN is the "keep filling until covered" target;
 // TARGET is what the synthesized NextRequestPolicy advertises back.
+// A synthetic STREAM_PROTECTION_STATUS payload = OK (field 1 = 1), prepended to synthesized hits.
+private val PROTECTION_OK = ProtoWriter().varint(1, 1).toByteArray()
+
 private const val TARGET_AUDIO_READAHEAD_MS = 60_000
 private const val MIN_AUDIO_READAHEAD_MS = TARGET_AUDIO_READAHEAD_MS + 45_000L
 private const val TARGET_VIDEO_READAHEAD_MS = 60_000
@@ -233,6 +237,15 @@ private fun MediaCache.findCachedSegments(
  */
 private fun MediaCache.synthesizeUmp(policy: NextRequestPolicy, segments: List<MediaHeader>): Buffer? {
     val out = Buffer()
+    // A synthesized hit must look like a real response so the player can (re)initialize a format on a
+    // switch: a protection status it accepts, then each served format's init metadata, before the policy +
+    // media. Missing init for any served format → give up the hit (return null → the caller forwards; the
+    // network response rebuilds the init).
+    out.writeUmpPartHeader(UmpPart.STREAM_PROTECTION_STATUS, PROTECTION_OK.size.toLong()).write(PROTECTION_OK)
+    for (key in segments.map { it.cacheKey }.distinct()) {
+        val fim = formatInit(key) ?: return null
+        out.writeUmpPartHeader(UmpPart.FORMAT_INITIALIZATION_METADATA, fim.size.toLong()).write(fim)
+    }
     val policyBytes = policy.encode().toByteArray()
     out.writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, policyBytes.size.toLong()).write(policyBytes)
 

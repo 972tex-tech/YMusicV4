@@ -92,6 +92,10 @@ class SabrServeTest {
             putSegment(3, 3, 30, ByteArray(10) { 3 }, isInit = false)
         }
         SabrSession(random = Random(1)).readResponse(asyncOf(resp), SabrTrack(fmt, MemoryFile()), null, cache)
+        // A synthesized hit needs the format's init metadata (the tee captures it on the network response;
+        // the download parse above doesn't) — store one so serveSabr can build a hit. Its bytes are opaque
+        // to the serve (replayed verbatim) and skipped on re-parse, so any payload works.
+        cache.putFormatInit(key, byteArrayOf(1, 2, 3, 4))
         return cache
     }
 
