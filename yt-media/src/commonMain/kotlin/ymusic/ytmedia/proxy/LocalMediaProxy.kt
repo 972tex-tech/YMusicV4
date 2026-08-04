@@ -67,6 +67,12 @@ class LocalMediaProxy(
     /** Per-request/part chatter (cache hit-miss decisions, fill sizes, UMP parts). Toggle at runtime;
      *  WARN-level events (cache-serve faults, SABR errors, protection rejects) always log if [logger] is set. */
     var verbose: Boolean = false,
+    /** Serve SABR from cache (synthesized UMP hits). A synthesized hit omits the control parts a real
+     *  response carries — `FORMAT_INITIALIZATION_METADATA`, `STREAM_PROTECTION_STATUS` — that the player
+     *  needs to (re)initialize a format, so a hit on a quality / audio-only switch can wedge the player
+     *  (the blank-video hack relies on the native format-switch path). Set false to fill-only (always
+     *  forward SABR; the tee still caches) until the hit builder replays those control parts. */
+    var serveSabrHits: Boolean = true,
 ) {
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
@@ -120,6 +126,7 @@ class LocalMediaProxy(
         if (isSabr(url) && method == "POST" && body != null) {
             val request = VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields())
             logVerbose { sabrRequestSummary(request) }
+            if (!serveSabrHits) return null // fill-only: forward SABR to the network (still teed into cache)
             when (val serve = cache.serveSabr(request)) {
                 is SabrServe.Hit -> {
                     logVerbose { "HIT sabr: served=[${serve.servedRanges}] (${serve.segmentCount} segments, ${serve.cachedBytes} bytes, built in ${started.elapsedNow()})" }

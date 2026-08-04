@@ -225,6 +225,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             logger = StdoutLogger,
             // Chatty per-part/decision logs; -Dymusic.player.verbose=false to quiet them (or flip at runtime).
             verbose = System.getProperty("ymusic.player.verbose", "true").toBoolean(),
+            // -Dymusic.player.serveSabrHits=false → fill-only, to test whether synthesized hits wedge switches.
+            serveSabrHits = System.getProperty("ymusic.player.serveSabrHits", "true").toBoolean(),
         )
     }
 
