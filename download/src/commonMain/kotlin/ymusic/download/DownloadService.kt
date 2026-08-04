@@ -15,8 +15,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okio.FileSystem
-import okio.Path
 import ymusic.ytmedia.cache.MediaCache
 import kotlin.random.Random
 
@@ -27,7 +25,7 @@ import kotlin.random.Random
  * concurrent priming would contend; the byte download + ffmpeg then run to completion before the next.
  *
  * Pause and cancel both cancel the active [Job]; the difference is the recorded terminal state and
- * whether the partially-downloaded files are kept (pause, for resume via [OkioDownloadFile]'s length
+ * whether the partially-downloaded files are kept (pause, for resume via the scratch file's length
  * resume point) or deleted (cancel). Control methods are fire-and-forget — they launch into [scope].
  */
 class DownloadService(
@@ -38,9 +36,7 @@ class DownloadService(
     client: KmpHttpClient,
     userAgent: String,
     ffmpeg: Ffmpeg?,
-    private val fileSystem: FileSystem,
-    private val workDir: Path,
-    outputDir: Path,
+    private val storage: DownloadStorage,
     mediaCache: MediaCache? = null,
     private val logger: Logger? = null,
     /** Optional hook to register a finished file into the local library (media-store); shell-provided. */
@@ -50,7 +46,7 @@ class DownloadService(
     val ffmpegAvailable: Boolean = ffmpeg != null
 
     private val pipeline = DownloadPipeline(
-        resolver, client, userAgent, ffmpeg, fileSystem, workDir, outputDir, mediaCache, logger,
+        resolver, client, userAgent, ffmpeg, storage, mediaCache, logger,
     )
 
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
@@ -185,15 +181,13 @@ class DownloadService(
                 onProcessing = { setStateAsync(task.id, DownloadState.PROCESSING) },
                 onProgress = { done, total -> setProgressAsync(task.id, done, total) },
             )
-            val bytes = runCatching { fileSystem.metadata(result.file).size ?: 0L }.getOrDefault(0L)
             put(current(task.id)!!.copy(
                 state = DownloadState.COMPLETED,
-                // The on-disk path for now; on Android this must become the content:// SAF document written
-                // into the user-picked Library folder (see the TODO board) — the onCompleted hook is where
-                // the shell would publish the file there and rewrite this to that content:// uri.
-                fileUri = result.file.toString(),
-                downloadedBytes = bytes,
-                totalBytes = bytes,
+                // The uri the storage published to — a path today (okio), a content:// SAF document once
+                // Android's storage impl lands (see the TODO board).
+                fileUri = result.uri,
+                downloadedBytes = result.bytes,
+                totalBytes = result.bytes,
                 errorMessage = null,
                 updatedAt = now(),
             ))
@@ -232,8 +226,9 @@ class DownloadService(
     }
 
     private fun cleanupTemp(id: String) {
-        runCatching { fileSystem.delete(workDir / "$id.audio", mustExist = false) }
-        runCatching { fileSystem.delete(workDir / "$id.video", mustExist = false) }
+        listOf("$id.audio", "$id.video", "$id.out").forEach { name ->
+            runCatching { storage.scratch(name).delete() }
+        }
     }
 
     private companion object {

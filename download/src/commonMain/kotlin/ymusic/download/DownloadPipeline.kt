@@ -2,10 +2,9 @@ package ymusic.download
 
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
-import okio.FileSystem
-import okio.Path
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.sabr.AdaptiveFormat
+import ymusic.ytmedia.sabr.DownloadFile
 import ymusic.ytmedia.sabr.SabrPoTokenExpired
 import ymusic.ytmedia.sabr.SabrProgress
 import ymusic.ytmedia.sabr.SabrSession
@@ -20,32 +19,33 @@ fun interface SabrSpecResolver {
     suspend fun resolve(videoId: String): SabrStreamSpec
 }
 
-/** A worker was asked to stop mid-run (pause/cancel). Distinct from a failure — no error surfaced. */
-internal class DownloadInterrupted : Exception()
-
 /**
- * Executes one [DownloadTask] end to end: pick formats → download the elementary stream(s) via
- * [SabrSession] → transcode/mux with [Ffmpeg] into the requested container → return the final file.
+ * Executes one [DownloadTask] end to end, over a [DownloadStorage] (no direct FileSystem — so the same
+ * pipeline works whether the final file is a `file://` path or an Android `content://` SAF document):
  *
- * Audio elementary streams are already valid container files (a raw itag-140 stream is a playable
- * `.m4a`, itag-251 a playable `.webm`), so audio-only + no-ffmpeg (iOS M4A) downloads straight to the
- * final path with no post-processing. MP3 and video (mux) require [ffmpeg]; when it's null those
- * outputs are rejected (the UI hides them on such platforms).
+ *  1a. download the elementary stream(s) to scratch files (via [SabrSession]; a ProgressiveDownloader for
+ *      direct-url streams is TODO). Pause/resume rides the scratch's on-disk length.
+ *  1b. (optional) download the thumbnail for cover art — TODO.
+ *  2.  mux/convert + embed metadata with [ffmpeg] into a final scratch file.
+ *  3.  clean up the elementary scratch files.
+ *  4.  publish the final scratch to the destination (returns its uri) — the shell then adds it to the
+ *      local library ([DownloadService.onCompleted]).
+ *
+ * Audio elementary streams are already valid container files, so audio-only + no-ffmpeg (iOS M4A) skips
+ * step 2 — the raw stream is published as-is and its metadata lives in the DB task row.
  */
 class DownloadPipeline(
     private val resolver: SabrSpecResolver,
     private val client: KmpHttpClient,
     private val userAgent: String,
     private val ffmpeg: Ffmpeg?,
-    private val fileSystem: FileSystem,
-    private val workDir: Path,
-    private val outputDir: Path,
+    private val storage: DownloadStorage,
     private val mediaCache: MediaCache?,
     private val logger: Logger?,
 ) {
 
-    /** Result of a completed pipeline run: the final file plus the format metadata for library ingest. */
-    class Result(val file: Path, val audio: AdaptiveFormat, val video: AdaptiveFormat?)
+    /** A completed run: the published file's uri + byte size, and the formats (for library ingest). */
+    class Result(val uri: String, val bytes: Long, val audio: AdaptiveFormat, val video: AdaptiveFormat?)
 
     suspend fun run(
         task: DownloadTask,
@@ -54,49 +54,50 @@ class DownloadPipeline(
         onProcessing: () -> Unit,
         onProgress: (done: Long, total: Long) -> Unit,
     ): Result {
-        fileSystem.createDirectories(workDir)
-        fileSystem.createDirectories(outputDir)
-
         onPreparing()
         var spec = resolver.resolve(task.videoId)
-
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
-        val finalPath = outputDir / uniqueFileName(task)
+        val fileName = uniqueFileName(task)
+        val reAttest: suspend () -> SabrStreamSpec = { spec = resolver.resolve(task.videoId); spec }
 
-        // M4A with no ffmpeg (iOS): the raw best-AAC stream IS a playable .m4a — stream it straight to the
-        // final file. No file tags here (that needs ffmpeg); the metadata lives in the DB task row instead
-        // (title/artist/videoId), which is the app's source of truth for such files.
+        // No-ffmpeg M4A (iOS): the raw best-AAC stream IS a playable .m4a — download it straight into the
+        // final scratch and publish, no step 2 (metadata lives in the DB task row).
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
+            val out = storage.scratch("${task.id}.out")
             onDownloading()
-            downloadTracks(spec, audioFmt, null, OkioDownloadFile(fileSystem, finalPath), null, onProgress) {
-                spec = resolver.resolve(task.videoId); spec
-            }
-            return Result(finalPath, audioFmt, null)
+            downloadTracks(spec, audioFmt, null, out, null, onProgress, reAttest)
+            onProcessing()
+            val bytes = out.length()
+            return Result(storage.publish(out, fileName), bytes, audioFmt, null) // steps 3+4 (nothing to clean)
         }
 
-        // Everything else stages elementary streams under workDir, then transcodes/muxes into finalPath.
-        val audioTmp = workDir / "${task.id}.audio"
-        val videoTmp = workDir / "${task.id}.video"
-        val audioFile = OkioDownloadFile(fileSystem, audioTmp)
-        val videoFile = if (videoFmt != null) OkioDownloadFile(fileSystem, videoTmp) else null
-
+        // 1a. download the elementary streams.
+        val audio = storage.scratch("${task.id}.audio")
+        val video = if (videoFmt != null) storage.scratch("${task.id}.video") else null
         onDownloading()
-        downloadTracks(spec, audioFmt, videoFmt, audioFile, videoFile, onProgress) {
-            spec = resolver.resolve(task.videoId); spec
-        }
+        downloadTracks(spec, audioFmt, videoFmt, audio, video, onProgress, reAttest)
 
+        // 1b. optional thumbnail download for cover art — TODO.
+
+        // 2. mux/convert + metadata into the final scratch.
         onProcessing()
         val ff = ffmpeg ?: error("ffmpeg unavailable: ${task.format} needs transcode/mux on this platform")
+        val out = storage.scratch("${task.id}.out")
         val meta = task.tags()
         when (task.format) {
-            DownloadFormat.MP3 -> ff.toMp3(audioTmp, finalPath, meta)
-            DownloadFormat.M4A -> ff.toM4a(audioTmp, finalPath, copy = audioFmt.mimeType.contains("mp4"), metadata = meta)
-            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(videoTmp, audioTmp, finalPath, meta)
-            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(videoTmp, audioTmp, finalPath, meta)
+            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta)
+            DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), metadata = meta)
+            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, meta)
+            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, meta)
         }
-        fileSystem.delete(audioTmp, mustExist = false)
-        if (videoFmt != null) fileSystem.delete(videoTmp, mustExist = false)
-        return Result(finalPath, audioFmt, videoFmt)
+        val bytes = out.length()
+
+        // 3. clean up the elementary scratch files.
+        audio.delete()
+        video?.delete()
+
+        // 4. publish the final file; the caller adds it to the library.
+        return Result(storage.publish(out, fileName), bytes, audioFmt, videoFmt)
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
@@ -128,8 +129,8 @@ class DownloadPipeline(
         spec: SabrStreamSpec,
         audioFmt: AdaptiveFormat,
         videoFmt: AdaptiveFormat?,
-        audioFile: OkioDownloadFile,
-        videoFile: OkioDownloadFile?,
+        audioFile: DownloadFile,
+        videoFile: DownloadFile?,
         onProgress: (Long, Long) -> Unit,
         reAttest: suspend () -> SabrStreamSpec,
     ) {

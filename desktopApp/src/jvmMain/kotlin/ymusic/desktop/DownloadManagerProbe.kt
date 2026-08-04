@@ -102,9 +102,11 @@ fun main(args: Array<String>) {
                 client = sabrClient,
                 userAgent = CefManager.CHROME_USER_AGENT,
                 ffmpeg = Ffmpeg(ffmpegBin.absolutePath),
-                fileSystem = FileSystem.SYSTEM,
-                workDir = File(outDir, "work").absolutePath.toPath(),
-                outputDir = File(outDir, "out").absolutePath.toPath(),
+                storage = ymusic.download.OkioDownloadStorage(
+                    FileSystem.SYSTEM,
+                    File(outDir, "work").absolutePath.toPath(),
+                    File(outDir, "out").absolutePath.toPath(),
+                ),
                 logger = logger,
             )
 

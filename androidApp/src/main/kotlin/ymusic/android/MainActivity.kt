@@ -225,9 +225,13 @@ class MainActivity : ComponentActivity() {
                 client = sabrClient,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 ffmpeg = ffmpegBin?.let { bin -> ymusic.download.Ffmpeg(bin) },
-                fileSystem = FileSystem.SYSTEM,
-                workDir = File(cacheDir, "download-work").absolutePath.toPath(),
-                outputDir = downloadsDir.absolutePath.toPath(),
+                // Okio storage for now; a SAF-backed DownloadStorage writing into a user-picked Library
+                // folder (content://) is on the board.
+                storage = ymusic.download.OkioDownloadStorage(
+                    FileSystem.SYSTEM,
+                    File(cacheDir, "download-work").absolutePath.toPath(),
+                    downloadsDir.absolutePath.toPath(),
+                ),
                 logger = LogcatLogger(),
             ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
         }

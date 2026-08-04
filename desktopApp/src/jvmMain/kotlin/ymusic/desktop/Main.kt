@@ -291,9 +291,11 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             client = sabrClient,
             userAgent = CefManager.CHROME_USER_AGENT,
             ffmpeg = ffmpeg,
-            fileSystem = FileSystem.SYSTEM,
-            workDir = File(dataDir, "download-work").absolutePath.toPath(),
-            outputDir = File(dataDir, "downloads").absolutePath.toPath(),
+            storage = ymusic.download.OkioDownloadStorage(
+                FileSystem.SYSTEM,
+                File(dataDir, "download-work").absolutePath.toPath(),
+                File(dataDir, "downloads").absolutePath.toPath(),
+            ),
             logger = StdoutLogger,
         ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
     }
