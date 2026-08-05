@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -36,6 +37,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import ymusic.download.DownloadFormat
 import ymusic.download.DownloadService
 import ymusic.download.DownloadState
@@ -85,8 +89,13 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val running = visible.any { it.state == DownloadState.QUEUED || it.state.isActive }
     val paused = visible.any { it.state == DownloadState.PAUSED }
 
+    // Report scroll into the shell's ScrollHost so the shared app bar lifts on scroll, like Library/Discover.
+    val gridState = rememberLazyGridState()
+    TrackScroll { gridState.canScrollBackward }
+
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(DownloadCardMinWidth),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -191,6 +200,12 @@ private fun DownloadCard(task: DownloadTask, service: DownloadService) {
             task.byteLine()?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = ContentIndent))
             }
+            if (task.state == DownloadState.COMPLETED) {
+                Row(Modifier.padding(start = ContentIndent), horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
+                    Text(humanSize(task.totalBytes), style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace)
+                    Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
+                }
+            }
             if (failed) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = ContentIndent),
@@ -293,12 +308,20 @@ private fun DownloadFormat.badge(): String = when (this) {
     DownloadFormat.VIDEO_MP4 -> "MP4"
 }
 
-/** The byte-count line under the text: "used / total" while downloading/paused, the final size when done. */
+/** The byte-count line under the text: "used / total" while downloading/paused. Completed cards show
+ *  size + finished date on their own row instead. */
 private fun DownloadTask.byteLine(): String? = when (state) {
     DownloadState.DOWNLOADING, DownloadState.PAUSED -> "${humanSize(downloadedBytes)} / ${humanSize(totalBytes)}"
-    DownloadState.COMPLETED -> humanSize(totalBytes)
     else -> null
 }
+
+/** `updatedAt` (a completed task's finish time) as e.g. "Jul 31, 2026", in the device's time zone. */
+private fun formatDownloadDate(epochMs: Long): String {
+    val dt = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(TimeZone.currentSystemDefault())
+    return "${MONTH_ABBR[dt.monthNumber - 1]} ${dt.dayOfMonth}, ${dt.year}"
+}
+
+private val MONTH_ABBR = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 private fun humanSize(bytes: Long): String {
     if (bytes <= 0) return "0 MB"

@@ -64,6 +64,7 @@ kotlin {
                 implementation(compose.ui)
                 implementation(compose.components.resources)
                 implementation(Libs.Kotlinx.coroutinesCore)
+                implementation(Libs.Kotlinx.dateTime)
             }
         }
 
