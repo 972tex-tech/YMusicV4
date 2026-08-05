@@ -57,11 +57,32 @@ class InMemorySettingsStoreTest {
     fun appSettingsAccessors() =
         runTest {
             val store = InMemorySettingsStore()
-            assertEquals("", store.flow(AppSettings.hl).value)
-            assertEquals("", store.flow(AppSettings.gl).value)
+            assertEquals("", store.flow(AppSettings.uiLanguage).value)
+            assertEquals("", store.flow(AppSettings.theme).value)
             assertEquals("", store.flow(AppSettings.themeAccent).value)
 
-            store.put(AppSettings.hl, "vi")
-            assertEquals("vi", store.flow(AppSettings.hl).value)
+            store.put(AppSettings.uiLanguage, "vi")
+            assertEquals("vi", store.flow(AppSettings.uiLanguage).value)
         }
+
+    @Test
+    fun stringSetSettingRoundTrips() =
+        runTest {
+            val store = InMemorySettingsStore()
+            val captions = store.flow(AppSettings.preferredCaptionLanguages)
+            assertEquals(emptySet(), captions.value)
+
+            store.put(AppSettings.preferredCaptionLanguages, linkedSetOf("en", "vi", "pt-BR"))
+            // Order preserved, view is reactive.
+            assertEquals(listOf("en", "vi", "pt-BR"), captions.value.toList())
+
+            store.put(AppSettings.preferredCaptionLanguages, emptySet())
+            assertEquals(emptySet(), captions.value)
+        }
+
+    @Test
+    fun stringSetDecodeDropsBlanks() {
+        assertEquals(linkedSetOf("en", "vi"), decodeStringSet("en\n\nvi\n"))
+        assertEquals(emptySet(), decodeStringSet(""))
+    }
 }

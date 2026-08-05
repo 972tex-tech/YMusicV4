@@ -24,6 +24,8 @@ internal class IosSettingsStore(
             "app.gl",
             "theme.accent",
             "app.uiLanguage",
+            "download.location",
+            "download.captionLanguages",
             PlaybackQualitySettingKey,
         )
     }

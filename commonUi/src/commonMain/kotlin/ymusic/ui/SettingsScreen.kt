@@ -117,6 +117,7 @@ fun SettingsScreen(graph: AppGraph) {
             style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
+        DownloadSettingsSection(graph)
     }
 }
 

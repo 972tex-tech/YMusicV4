@@ -45,7 +45,7 @@ abstract class StringBackedSettingsStore : SettingsStore {
 class InMemorySettingsStore : StringBackedSettingsStore()
 
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-private class MappedStateFlow<S, T>(
+internal class MappedStateFlow<S, T>(
     private val source: StateFlow<S>,
     private val transform: (S) -> T,
 ) : StateFlow<T> {

@@ -153,6 +153,11 @@ object DesignSpacing {
 
     /** Vertical gap between grid rows, every width class (the compact gutter stays horizontal). */
     val GridRowGap = Space16
+
+    /** Settings list-detail row insets. Off the step scale — the settings rows were tuned to this
+     *  rhythm before the scale existed; kept as named tokens for visual continuity across the screen. */
+    val SettingsRowHorizontal = 20.dp
+    val SettingsRowVertical = 14.dp
 }
 
 /**

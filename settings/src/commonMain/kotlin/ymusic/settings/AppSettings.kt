@@ -12,6 +12,26 @@ suspend fun SettingsStore.put(
 ) = putString(setting.key, value)
 
 /**
+ * A multi-value string setting: a set of values kept in one key, newline-joined (values themselves
+ * must not contain '\n' — BCP-47 codes, uris, etc. don't). The decoded view preserves insertion
+ * order and drops blanks; an empty key reads as the empty set.
+ */
+data class StringSetSetting(val key: String, val default: Set<String> = emptySet())
+
+private const val SET_DELIMITER = "\n"
+
+fun SettingsStore.flow(setting: StringSetSetting): StateFlow<Set<String>> =
+    MappedStateFlow(string(setting.key, "")) { decodeStringSet(it) }
+
+suspend fun SettingsStore.put(
+    setting: StringSetSetting,
+    values: Set<String>,
+) = putString(setting.key, values.joinToString(SET_DELIMITER))
+
+internal fun decodeStringSet(raw: String): Set<String> =
+    raw.split(SET_DELIMITER).filter { it.isNotBlank() }.toCollection(LinkedHashSet())
+
+/**
  * The app language, seeded on first ask: a blank read resolves [default], PERSISTS it, and returns
  * it — from then on the key is never blank and is the single source of truth for every reader (the
  * UI and the engine's settings pull alike). Shells call this once before starting the engine.
@@ -36,4 +56,17 @@ object AppSettings {
 
     /** Theme override: "light" | "dark"; empty = follow the system appearance. */
     val theme = StringSetting("app.theme", "")
+
+    /**
+     * Where finished downloads are written — a media-store bucket uri (the folder is also a Library
+     * bucket, since downloads land inside the local library). Empty = not chosen yet: the download
+     * flow asks the user to pick a folder before the first download.
+     */
+    val downloadLocation = StringSetting("download.location", "")
+
+    /**
+     * Caption languages to fetch alongside a downloaded media (BCP-47 codes). Empty = no preference:
+     * fall back to the media's default caption track if it has one.
+     */
+    val preferredCaptionLanguages = StringSetSetting("download.captionLanguages")
 }
