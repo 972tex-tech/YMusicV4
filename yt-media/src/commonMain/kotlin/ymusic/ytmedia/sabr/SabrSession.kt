@@ -82,7 +82,16 @@ class SabrSession(
         progress: SabrProgress? = null,
         /** When set, every fully-fetched segment is mirrored into the player cache as it downloads. */
         mediaCache: MediaCache? = null,
+        /** Resume point: the last completed audio/video segment already on disk (see [onCursor]). Seeds
+         *  the session so the first request declares the buffered range and the server skips ahead
+         *  instead of re-sending from segment 0. */
+        resumeAudio: MediaHeader? = null,
+        resumeVideo: MediaHeader? = null,
+        /** Called after every round with the current cursor so the caller can persist it for resume. */
+        onCursor: ((audio: MediaHeader?, video: MediaHeader?) -> Unit)? = null,
     ) {
+        audioSegment = resumeAudio
+        videoSegment = resumeVideo
         val startMark = TimeSource.Monotonic.markNow()
         var url = spec.sabrUrl.setQueryParam("alr", "yes")
 
@@ -90,6 +99,10 @@ class SabrSession(
             audio.file.length(), audio.format.clen,
             video?.file?.length() ?: 0, video?.format?.clen ?: 0,
         )
+        fun roundDone() {
+            emitProgress()
+            onCursor?.invoke(audioSegment, videoSegment)
+        }
         emitProgress()
         if (isComplete(audio, video)) return
 
@@ -114,7 +127,7 @@ class SabrSession(
             if (served is SabrServe.Hit) {
                 log("cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}")
                 val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use { readResponse(it, audio, video, mediaCache) }
-                emitProgress()
+                roundDone()
                 if (isComplete(audio, video)) return
                 if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
                 continue
@@ -162,7 +175,7 @@ class SabrSession(
                 url = outcome.redirect
                 continue
             }
-            emitProgress()
+            roundDone()
             if (isComplete(audio, video)) return
 
             if (outcome.completedSegments == 0) {

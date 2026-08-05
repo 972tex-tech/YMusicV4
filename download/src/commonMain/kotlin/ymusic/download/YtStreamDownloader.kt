@@ -13,6 +13,7 @@ import ymusic.ytmedia.sabr.CaptionTrack
 import ymusic.ytmedia.sabr.DownloadFile
 import ymusic.ytmedia.sabr.SabrPoTokenExpired
 import ymusic.ytmedia.sabr.SabrProgress
+import ymusic.ytmedia.sabr.SabrResumeCursor
 import ymusic.ytmedia.sabr.SabrSession
 import ymusic.ytmedia.sabr.SabrStreamSpec
 import ymusic.ytmedia.sabr.SabrTrack
@@ -109,7 +110,7 @@ class YtStreamDownloader(
 
         onDownloading()
         downloadTracks(
-            spec, audioFmt, videoFmt, audioScratch, videoScratch, onProgress,
+            task.id, spec, audioFmt, videoFmt, audioScratch, videoScratch, onProgress,
             reAttest = { spec = resolveSpec(task.videoId); spec },
         )
 
@@ -169,8 +170,14 @@ class YtStreamDownloader(
         return DownloadedCaption(track.languageCode, track.name, track.isDefault, scratch)
     }
 
-    /** Run the SABR download, re-priming a fresh spec once if the PO token is rejected mid-stream. */
+    /**
+     * Run the SABR download, re-priming a fresh spec once if the PO token is rejected mid-stream. Resume
+     * point rides a small cursor blob in the scratch folder: seeded into each session (so a paused/resumed
+     * or re-attested download continues from the last segment instead of re-fetching from zero) and
+     * rewritten after every round.
+     */
     private suspend fun downloadTracks(
+        taskId: String,
         spec: SabrStreamSpec,
         audioFmt: AdaptiveFormat,
         videoFmt: AdaptiveFormat?,
@@ -180,9 +187,12 @@ class YtStreamDownloader(
         reAttest: suspend () -> SabrStreamSpec,
     ) {
         val progress = SabrProgress { aDone, aLen, vDone, vLen -> onProgress(aDone + vDone, aLen + vLen) }
+        val cursorName = "$taskId/cursor"
         var current = spec
         var reAttested = false
         while (true) {
+            val (resumeAudio, resumeVideo) = storage.readScratchBlob(cursorName)?.let { SabrResumeCursor.decode(it) }
+                ?: (null to null)
             try {
                 SabrSession(log = { logger?.log(Logger.Level.DEBUG, LOG_CTX, it) }).download(
                     client = client,
@@ -192,6 +202,9 @@ class YtStreamDownloader(
                     video = videoFmt?.let { SabrTrack(it, videoFile!!) },
                     progress = progress,
                     mediaCache = mediaCache,
+                    resumeAudio = resumeAudio,
+                    resumeVideo = resumeVideo,
+                    onCursor = { a, v -> storage.writeScratchBlob(cursorName, SabrResumeCursor.encode(a, v)) },
                 )
                 return
             } catch (e: SabrPoTokenExpired) {

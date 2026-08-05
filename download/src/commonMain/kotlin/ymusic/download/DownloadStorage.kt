@@ -23,6 +23,12 @@ interface DownloadStorage {
      *  Best-effort (no-op if absent). */
     fun deleteScratch(taskId: String)
 
+    /** Overwrite a small local state file (e.g. a `"<taskId>/cursor"` resume blob) in the scratch area. */
+    fun writeScratchBlob(name: String, bytes: ByteArray)
+
+    /** Read back a [writeScratchBlob] file, or null if absent. */
+    fun readScratchBlob(name: String): ByteArray?
+
     /** Move [scratch]'s finished bytes to the final destination as [fileName] and return its uri. On okio
      *  this is a rename into the downloads dir; on Android it creates the SAF document and streams in. */
     suspend fun publish(scratch: DownloadScratch, fileName: String): String

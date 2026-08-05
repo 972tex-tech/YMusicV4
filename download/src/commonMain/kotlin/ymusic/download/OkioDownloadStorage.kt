@@ -29,6 +29,17 @@ class OkioDownloadStorage(
         fileSystem.deleteRecursively(scratchDir / taskId, mustExist = false)
     }
 
+    override fun writeScratchBlob(name: String, bytes: ByteArray) {
+        val path = scratchDir / name
+        path.parent?.let { fileSystem.createDirectories(it) }
+        fileSystem.write(path) { write(bytes) }
+    }
+
+    override fun readScratchBlob(name: String): ByteArray? {
+        val path = scratchDir / name
+        return if (fileSystem.exists(path)) fileSystem.read(path) { readByteArray() } else null
+    }
+
     override suspend fun publish(scratch: DownloadScratch, fileName: String): String {
         val dest = outputDir / fileName
         val src = scratch.path.toPath()

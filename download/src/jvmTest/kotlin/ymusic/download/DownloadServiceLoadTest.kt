@@ -16,6 +16,8 @@ class DownloadServiceLoadTest {
     private object ThrowingStorage : DownloadStorage {
         override fun scratch(name: String): DownloadScratch = throw UnsupportedOperationException()
         override fun deleteScratch(taskId: String) = Unit
+        override fun writeScratchBlob(name: String, bytes: ByteArray) = Unit
+        override fun readScratchBlob(name: String): ByteArray? = null
         override suspend fun publish(scratch: DownloadScratch, fileName: String): String = throw UnsupportedOperationException()
     }
 
