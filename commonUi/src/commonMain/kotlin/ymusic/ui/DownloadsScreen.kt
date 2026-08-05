@@ -163,12 +163,11 @@ private fun DownloadCard(task: DownloadTask, service: DownloadService) {
         shape = RoundedCornerShape(CardCorner),
         color = if (failed) c.dangerSoft else c.surface,
         border = BorderStroke(1.dp, if (failed) c.danger.copy(alpha = 0.4f) else c.border),
-        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {
-                LibraryThumb(icon = Icons.Outlined.FileDownload, badge = task.format.badge(), artUrl = task.thumbnailUrl)
+                LibraryThumb(icon = Icons.Outlined.FileDownload, badge = task.format.badge(), artUrl = task.thumbnailUrl, corner = CardCorner)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
                     Text(
                         task.title,
@@ -333,10 +332,10 @@ private fun downloadColors(): DownloadColors {
     val amber = if (d.isDark) Color(0xFFE3A63E) else Color(0xFFB5720F)
     val green = if (d.isDark) Color(0xFF57C983) else Color(0xFF288A50)
     return DownloadColors(
-        surface = d.SurfaceElevated,
-        border = d.Outline,
-        track = d.SurfaceDim,
-        neutral = d.SurfaceDim,
+        surface = d.SurfaceDim, // subtle lift from the screen surface — not the high-contrast elevated tone
+        border = d.Divider,
+        track = d.Placeholder,
+        neutral = d.Placeholder,
         ink = d.Ink,
         inkMuted = d.InkMuted,
         accent = d.Accent,
