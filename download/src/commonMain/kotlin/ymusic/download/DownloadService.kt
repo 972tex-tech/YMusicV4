@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SegmentIndex
 import kotlin.random.Random
 
 /**
@@ -46,6 +47,8 @@ class DownloadService(
      *  concurrent byte-download + ffmpeg work. */
     private val maxConcurrent: Int = 3,
     mediaCache: MediaCache? = null,
+    /** Persistent segment index used to resume SABR downloads (share the player cache's index). */
+    segmentIndex: SegmentIndex? = null,
     private val logger: Logger? = null,
     /** Current caption selection, read fresh per download (the shell sources it from settings). Keeps the
      *  service headless and avoids persisting the preference on each task. Defaults to no captions. */
@@ -57,7 +60,7 @@ class DownloadService(
     val ffmpegAvailable: Boolean = ffmpeg != null
 
     private val pipeline = DownloadPipeline(
-        resolver, client, userAgent, ffmpeg, storage, mediaCache, logger,
+        resolver, client, userAgent, ffmpeg, storage, mediaCache, segmentIndex, logger,
     )
 
     private val _changes = MutableSharedFlow<DownloadChange>(

@@ -20,6 +20,7 @@ import okio.use
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SabrServe
 import ymusic.ytmedia.cache.SegmentFill
+import ymusic.ytmedia.cache.SegmentIndex
 import ymusic.ytmedia.cache.serveSabr
 import ymusic.ytmedia.proto.ProtoField
 import ymusic.ytmedia.proto.ProtoReader
@@ -82,16 +83,18 @@ class SabrSession(
         progress: SabrProgress? = null,
         /** When set, every fully-fetched segment is mirrored into the player cache as it downloads. */
         mediaCache: MediaCache? = null,
-        /** Resume point: the last completed audio/video segment already on disk (see [onCursor]). Seeds
-         *  the session so the first request declares the buffered range and the server skips ahead
-         *  instead of re-sending from segment 0. */
-        resumeAudio: MediaHeader? = null,
-        resumeVideo: MediaHeader? = null,
-        /** Called after every round with the current cursor so the caller can persist it for resume. */
-        onCursor: ((audio: MediaHeader?, video: MediaHeader?) -> Unit)? = null,
+        /** Persistent segment index (byte range per segment). Records each header as it downloads and, on
+         *  start, seeds the resume cursor by querying the on-disk file length — so pause/resume and
+         *  PO-token re-attest continue from the last complete segment instead of re-fetching from zero. */
+        segmentIndex: SegmentIndex? = null,
     ) {
-        audioSegment = resumeAudio
-        videoSegment = resumeVideo
+        // Seed the cursor: the last COMPLETE segment ends at/before (fileLength - 1). A partial next
+        // segment is excluded (its r_end > fileLength - 1) and writeMediaData reconciles its bytes when the
+        // server resends it. markDownloadTime protects these rows from cache retention cleanup.
+        audioSegment = seedCursor(segmentIndex, audio)
+        videoSegment = video?.let { seedCursor(segmentIndex, it) }
+        segmentIndex?.markDownloadTime(audio.format.itag, audio.format.lmt)
+        video?.let { segmentIndex?.markDownloadTime(it.format.itag, it.format.lmt) }
         val startMark = TimeSource.Monotonic.markNow()
         var url = spec.sabrUrl.setQueryParam("alr", "yes")
 
@@ -99,10 +102,6 @@ class SabrSession(
             audio.file.length(), audio.format.clen,
             video?.file?.length() ?: 0, video?.format?.clen ?: 0,
         )
-        fun roundDone() {
-            emitProgress()
-            onCursor?.invoke(audioSegment, videoSegment)
-        }
         emitProgress()
         if (isComplete(audio, video)) return
 
@@ -126,8 +125,8 @@ class SabrSession(
             val served = mediaCache?.let { runCatching { it.serveSabr(request) }.getOrNull() }
             if (served is SabrServe.Hit) {
                 log("cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}")
-                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use { readResponse(it, audio, video, mediaCache) }
-                roundDone()
+                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use { readResponse(it, audio, video, mediaCache, segmentIndex) }
+                emitProgress()
                 if (isComplete(audio, video)) return
                 if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
                 continue
@@ -160,7 +159,7 @@ class SabrSession(
                 } else if (!response.isSuccessful) {
                     throw IOException("SABR response ${response.code}")
                 } else {
-                    outcome = BufferedAsyncSource(response.body.asyncSource()).use { readResponse(it, audio, video, mediaCache) }
+                    outcome = BufferedAsyncSource(response.body.asyncSource()).use { readResponse(it, audio, video, mediaCache, segmentIndex) }
                 }
             } finally {
                 response.close()
@@ -175,7 +174,7 @@ class SabrSession(
                 url = outcome.redirect
                 continue
             }
-            roundDone()
+            emitProgress()
             if (isComplete(audio, video)) return
 
             if (outcome.completedSegments == 0) {
@@ -259,6 +258,7 @@ class SabrSession(
         audio: SabrTrack,
         video: SabrTrack?,
         mediaCache: MediaCache? = null,
+        segmentIndex: SegmentIndex? = null,
     ): RoundOutcome {
         val open = mutableMapOf<Int, PartState>()
         var completed = 0
@@ -284,6 +284,7 @@ class SabrSession(
 
                     UmpPart.MEDIA_HEADER -> {
                         val header = MediaHeader.from(body.readFields(partSize))
+                        segmentIndex?.save(header) // persist the byte range for resume (INSERT-OR-IGNORE)
                         check(!open.containsKey(header.headerId)) { "duplicate UMP header id ${header.headerId}" }
                         headers++
                         minSeg = minOf(minSeg, header.segmentIndex)
@@ -424,6 +425,14 @@ class SabrSession(
             startSegmentIndex = 1,
             endSegmentIndex = header.segmentIndex,
         )
+    }
+
+    /** The resume cursor for a track: the last complete segment covering the current file end, from the
+     *  segment index — or null for a fresh (empty file) or un-indexed download. */
+    private fun seedCursor(index: SegmentIndex?, track: SabrTrack): MediaHeader? {
+        val length = track.file.length()
+        return if (index == null || length <= 0) null
+        else index.findByByteOffset(track.format.itag, track.format.lmt, length - 1)
     }
 
     private fun isComplete(audio: SabrTrack, video: SabrTrack?): Boolean =

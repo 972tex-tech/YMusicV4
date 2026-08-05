@@ -285,6 +285,12 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             } ?: error("YouTube engine unavailable")
             WebViewSabrSpecResolver(page).resolve(videoId)
         }
+        // Own segment index (byte range per segment) → SABR resume across pause/re-attest. Separate from
+        // the player cache DB: downloads store bytes in their own file, not the player blob cache.
+        val segmentIndex = SqlDelightSegmentIndex(
+            jvmSegmentDatabaseDriver("jdbc:sqlite:${File(dataDir, "download-segments.db").absolutePath}"),
+            now = { System.currentTimeMillis() },
+        )
         ymusic.download.DownloadService(
             store = store,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -298,6 +304,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                 File(dataDir, "download-work").absolutePath.toPath(),
                 File(dataDir, "downloads").absolutePath.toPath(),
             ),
+            segmentIndex = segmentIndex,
             captionPreference = { settings.downloadCaptionPreference() },
             logger = StdoutLogger,
         )

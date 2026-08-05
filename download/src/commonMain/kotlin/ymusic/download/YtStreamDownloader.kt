@@ -8,12 +8,12 @@ import kmphttp.byteString
 import okio.IOException
 import okio.use
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SegmentIndex
 import ymusic.ytmedia.sabr.AdaptiveFormat
 import ymusic.ytmedia.sabr.CaptionTrack
 import ymusic.ytmedia.sabr.DownloadFile
 import ymusic.ytmedia.sabr.SabrPoTokenExpired
 import ymusic.ytmedia.sabr.SabrProgress
-import ymusic.ytmedia.sabr.SabrResumeCursor
 import ymusic.ytmedia.sabr.SabrSession
 import ymusic.ytmedia.sabr.SabrStreamSpec
 import ymusic.ytmedia.sabr.SabrTrack
@@ -90,6 +90,9 @@ class YtStreamDownloader(
     private val userAgent: String,
     private val storage: DownloadStorage,
     private val mediaCache: MediaCache?,
+    /** Persistent segment index — records each downloaded segment's byte range and seeds the SABR resume
+     *  cursor from the on-disk file length. Null → no resume (re-downloads from zero on pause/resume). */
+    private val segmentIndex: SegmentIndex?,
     private val logger: Logger?,
 ) {
 
@@ -110,7 +113,7 @@ class YtStreamDownloader(
 
         onDownloading()
         downloadTracks(
-            task.id, spec, audioFmt, videoFmt, audioScratch, videoScratch, onProgress,
+            spec, audioFmt, videoFmt, audioScratch, videoScratch, onProgress,
             reAttest = { spec = resolveSpec(task.videoId); spec },
         )
 
@@ -171,13 +174,12 @@ class YtStreamDownloader(
     }
 
     /**
-     * Run the SABR download, re-priming a fresh spec once if the PO token is rejected mid-stream. Resume
-     * point rides a small cursor blob in the scratch folder: seeded into each session (so a paused/resumed
-     * or re-attested download continues from the last segment instead of re-fetching from zero) and
-     * rewritten after every round.
+     * Run the SABR download, re-priming a fresh spec once if the PO token is rejected mid-stream. Each
+     * session records its segments in [segmentIndex] and seeds its resume cursor from the on-disk file
+     * length via that index — so pause/resume and re-attest continue from the last segment (see
+     * [SabrSession.download]), rather than re-fetching from zero.
      */
     private suspend fun downloadTracks(
-        taskId: String,
         spec: SabrStreamSpec,
         audioFmt: AdaptiveFormat,
         videoFmt: AdaptiveFormat?,
@@ -187,12 +189,9 @@ class YtStreamDownloader(
         reAttest: suspend () -> SabrStreamSpec,
     ) {
         val progress = SabrProgress { aDone, aLen, vDone, vLen -> onProgress(aDone + vDone, aLen + vLen) }
-        val cursorName = "$taskId/cursor"
         var current = spec
         var reAttested = false
         while (true) {
-            val (resumeAudio, resumeVideo) = storage.readScratchBlob(cursorName)?.let { SabrResumeCursor.decode(it) }
-                ?: (null to null)
             try {
                 SabrSession(log = { logger?.log(Logger.Level.DEBUG, LOG_CTX, it) }).download(
                     client = client,
@@ -202,9 +201,7 @@ class YtStreamDownloader(
                     video = videoFmt?.let { SabrTrack(it, videoFile!!) },
                     progress = progress,
                     mediaCache = mediaCache,
-                    resumeAudio = resumeAudio,
-                    resumeVideo = resumeVideo,
-                    onCursor = { a, v -> storage.writeScratchBlob(cursorName, SabrResumeCursor.encode(a, v)) },
+                    segmentIndex = segmentIndex,
                 )
                 return
             } catch (e: SabrPoTokenExpired) {

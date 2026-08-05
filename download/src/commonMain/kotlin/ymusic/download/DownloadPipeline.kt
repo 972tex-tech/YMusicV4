@@ -4,6 +4,7 @@ import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import ymusic.ytmedia.cache.MediaCache
+import ymusic.ytmedia.cache.SegmentIndex
 import ymusic.ytmedia.sabr.AdaptiveFormat
 import ymusic.ytmedia.sabr.SabrStreamSpec
 
@@ -36,10 +37,11 @@ class DownloadPipeline(
     private val ffmpeg: Ffmpeg?,
     private val storage: DownloadStorage,
     mediaCache: MediaCache?,
+    segmentIndex: SegmentIndex?,
     private val logger: Logger?,
 ) {
 
-    private val downloader = YtStreamDownloader(resolver, client, userAgent, storage, mediaCache, logger)
+    private val downloader = YtStreamDownloader(resolver, client, userAgent, storage, mediaCache, segmentIndex, logger)
 
     /** A completed run: the published file's uri + byte size, and the formats (for library ingest). */
     class Result(val uri: String, val bytes: Long, val audio: AdaptiveFormat, val video: AdaptiveFormat?)

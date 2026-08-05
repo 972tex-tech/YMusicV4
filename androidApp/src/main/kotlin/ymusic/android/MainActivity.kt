@@ -235,6 +235,11 @@ class MainActivity : ComponentActivity() {
                     File(cacheDir, "download-work").absolutePath.toPath(),
                     downloadsDir.absolutePath.toPath(),
                 ),
+                // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
+                segmentIndex = SqlDelightSegmentIndex(
+                    androidSegmentDatabaseDriver(applicationContext, name = "download_segments.db"),
+                    now = { System.currentTimeMillis() },
+                ),
                 captionPreference = { shared.settings.downloadCaptionPreference() },
                 logger = LogcatLogger(),
             )
