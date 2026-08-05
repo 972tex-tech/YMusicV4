@@ -30,6 +30,7 @@ import ymusic.ytmedia.ump.readBytesFully
 import ymusic.ytmedia.ump.readUmpPartHeader
 import ymusic.ytmedia.ump.skipFully
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /** One format stream to download and where its bytes go. */
@@ -98,11 +99,19 @@ class SabrSession(
         val startMark = TimeSource.Monotonic.markNow()
         var url = spec.sabrUrl.setQueryParam("alr", "yes")
 
-        fun emitProgress() = progress?.onProgress(
-            audio.file.length(), audio.format.clen,
-            video?.file?.length() ?: 0, video?.format?.clen ?: 0,
-        )
-        emitProgress()
+        // Emit as bytes land (throttled to [PROGRESS_INTERVAL]) so the bar moves smoothly across a long
+        // round or a large segment, without a DB write per data chunk on a fast connection. [force] emits
+        // the final value regardless of the throttle.
+        var lastProgress = startMark
+        fun emitProgress(force: Boolean = false) {
+            if (!force && lastProgress.elapsedNow() < PROGRESS_INTERVAL) return
+            lastProgress = TimeSource.Monotonic.markNow()
+            progress?.onProgress(
+                audio.file.length(), audio.format.clen,
+                video?.file?.length() ?: 0, video?.format?.clen ?: 0,
+            )
+        }
+        emitProgress(force = true)
         if (isComplete(audio, video)) return
 
         // A video format must be offered even when downloading audio-only, or the request fails.
@@ -125,9 +134,10 @@ class SabrSession(
             val served = mediaCache?.let { runCatching { it.serveSabr(request) }.getOrNull() }
             if (served is SabrServe.Hit) {
                 log("cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}")
-                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use { readResponse(it, audio, video, mediaCache, segmentIndex) }
-                emitProgress()
-                if (isComplete(audio, video)) return
+                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use {
+                    readResponse(it, audio, video, mediaCache, segmentIndex, onProgress = { emitProgress() })
+                }
+                if (isComplete(audio, video)) { emitProgress(force = true); return }
                 if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
                 continue
             }
@@ -159,7 +169,9 @@ class SabrSession(
                 } else if (!response.isSuccessful) {
                     throw IOException("SABR response ${response.code}")
                 } else {
-                    outcome = BufferedAsyncSource(response.body.asyncSource()).use { readResponse(it, audio, video, mediaCache, segmentIndex) }
+                    outcome = BufferedAsyncSource(response.body.asyncSource()).use {
+                        readResponse(it, audio, video, mediaCache, segmentIndex, onProgress = { emitProgress() })
+                    }
                 }
             } finally {
                 response.close()
@@ -174,8 +186,7 @@ class SabrSession(
                 url = outcome.redirect
                 continue
             }
-            emitProgress()
-            if (isComplete(audio, video)) return
+            if (isComplete(audio, video)) { emitProgress(force = true); return }
 
             if (outcome.completedSegments == 0) {
                 retryCount++
@@ -259,6 +270,7 @@ class SabrSession(
         video: SabrTrack?,
         mediaCache: MediaCache? = null,
         segmentIndex: SegmentIndex? = null,
+        onProgress: () -> Unit = {},
     ): RoundOutcome {
         val open = mutableMapOf<Int, PartState>()
         var completed = 0
@@ -312,6 +324,7 @@ class SabrSession(
                         val dataSize = partSize - 1
                         writeMediaData(body, state, dataSize)
                         state.totalRead += dataSize
+                        onProgress() // throttled by the caller; reflects the growing file length
                     }
 
                     UmpPart.MEDIA_END -> {
@@ -441,6 +454,9 @@ class SabrSession(
 
     private companion object {
         private val PROTOBUF = "application/x-protobuf".toMediaTypeOrNull()
+
+        /** Minimum gap between progress emits — caps DB/UI churn on a fast connection while staying smooth. */
+        private val PROGRESS_INTERVAL = 150.milliseconds
     }
 }
 
