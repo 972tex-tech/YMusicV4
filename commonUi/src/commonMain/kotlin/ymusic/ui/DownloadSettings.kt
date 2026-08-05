@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Folder
@@ -156,12 +157,12 @@ private fun DownloadLocationDialog(
                 )
             }
             buckets.forEach { bucket ->
-                val selected = bucket.uri.toString() == current
                 DialogChoiceRow(
                     icon = Icons.Outlined.Folder,
                     label = bucket.name,
-                    color = if (selected) DesignColors.Accent else DesignColors.Ink,
-                    bold = selected,
+                    color = DesignColors.Ink,
+                    bold = false,
+                    checked = bucket.uri.toString() == current,
                 ) { onPick(bucket.uri.toString()) }
             }
             if (onAddFolder != null) {
@@ -170,6 +171,7 @@ private fun DownloadLocationDialog(
                     label = "Add new folder…",
                     color = DesignColors.Accent,
                     bold = true,
+                    checked = false,
                     onClick = onAddFolder,
                 )
             }
@@ -177,9 +179,19 @@ private fun DownloadLocationDialog(
     }
 }
 
-/** A picker-dialog choice row: leading icon + label, full-bleed hover, text inset to the title. */
+/**
+ * A picker-dialog choice row: leading icon + label, full-bleed hover, text inset to the title. A
+ * [checked] row shows a trailing check (the selection marker — the label itself stays plain).
+ */
 @Composable
-private fun DialogChoiceRow(icon: ImageVector, label: String, color: Color, bold: Boolean, onClick: () -> Unit) {
+private fun DialogChoiceRow(
+    icon: ImageVector,
+    label: String,
+    color: Color,
+    bold: Boolean,
+    checked: Boolean,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -196,7 +208,11 @@ private fun DialogChoiceRow(icon: ImageVector, label: String, color: Color, bold
                 fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
                 color = color,
             ),
+            modifier = Modifier.weight(1f),
         )
+        if (checked) {
+            Icon(Icons.Default.Check, contentDescription = "Selected", tint = DesignColors.Accent, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
