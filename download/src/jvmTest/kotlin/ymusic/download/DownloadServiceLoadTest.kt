@@ -26,7 +26,7 @@ class DownloadServiceLoadTest {
     )
 
     @Test
-    fun load_pauses_in_flight_and_queued_keeps_terminal_and_failed() = runBlocking {
+    fun init_pauses_in_flight_and_queued_keeps_terminal_and_failed() = runBlocking {
         val store = DownloadStore(downloadDatabaseJdbcDriver())
         listOf(
             task("prep", DownloadState.PREPARING),
@@ -45,7 +45,7 @@ class DownloadServiceLoadTest {
             client = KmpHttpClient.create {}, userAgent = "test", ffmpeg = null, storage = ThrowingStorage,
         )
         try {
-            service.load()
+            service.initIfNotYet()
             val state = store.all().associate { it.id to it.state }
             // in-flight + queued → paused (no auto-start)
             assertEquals(DownloadState.PAUSED, state["prep"])

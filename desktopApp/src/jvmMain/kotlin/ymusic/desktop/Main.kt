@@ -300,7 +300,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             ),
             captionPreference = { settings.downloadCaptionPreference() },
             logger = StdoutLogger,
-        ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
+        )
     }
 
     return AppGraph(

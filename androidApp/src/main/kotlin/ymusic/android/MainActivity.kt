@@ -237,7 +237,7 @@ class MainActivity : ComponentActivity() {
                 ),
                 captionPreference = { shared.settings.downloadCaptionPreference() },
                 logger = LogcatLogger(),
-            ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
+            )
         }
 
         val versionName = packageManager.getPackageInfo(packageName, 0).versionName

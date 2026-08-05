@@ -75,16 +75,28 @@ class DownloadService(
     private val active = mutableMapOf<String, Job>()
     private val interrupts = mutableMapOf<String, DownloadState>()
 
-    /** A one-off imperative read of the whole queue (headless callers/tests, and the aggregator's seed). */
-    suspend fun snapshot(): List<DownloadTask> = store.all()
+    private val initMutex = Mutex()
+    private var initialized = false
 
     /**
-     * Load the persisted queue on startup. The queue does NOT auto-start: anything left running or queued
-     * — in-flight when the app was killed/crashed, or still waiting — is reset to [DownloadState.PAUSED]
-     * so the user explicitly resumes it. Terminal/failed/already-paused tasks are kept as-is.
+     * One-time startup recovery, run lazily on first use (no explicit start-up call): anything left
+     * running or queued — in-flight when the app was killed/crashed, or still waiting — is reset to
+     * [DownloadState.PAUSED] so the queue never auto-starts and the user resumes explicitly.
+     * Terminal/failed/already-paused tasks are kept. Idempotent.
      */
-    suspend fun load() {
-        store.pauseActiveAndQueued(now())
+    internal suspend fun initIfNotYet() {
+        if (initialized) return
+        initMutex.withLock {
+            if (initialized) return
+            store.pauseActiveAndQueued(now())
+            initialized = true
+        }
+    }
+
+    /** A one-off imperative read of the whole queue (headless callers/tests, and the aggregator's seed). */
+    suspend fun snapshot(): List<DownloadTask> {
+        initIfNotYet()
+        return store.all()
     }
 
     fun enqueue(request: DownloadRequest): String {
@@ -106,6 +118,7 @@ class DownloadService(
             updatedAt = now(),
         )
         scope.launch {
+            initIfNotYet()
             store.upsert(task)
             _changes.emit(DownloadChange.Added(task))
             fillSlots()
