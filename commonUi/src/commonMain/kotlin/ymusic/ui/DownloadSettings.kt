@@ -59,14 +59,16 @@ private fun DownloadLocationRow(graph: AppGraph) {
     val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
 
     // Resolve the location uri to its (possibly non-root) bucket name; a single indexed lookup, not
-    // an allBuckets() scan.
+    // an allBuckets() scan. A folder that no longer exists (or is excluded) reads as "Not set" — the
+    // next download re-validates and re-picks.
     var name by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(location, mediaStore) {
         name = if (location.isBlank()) {
             null
         } else {
-            mediaStore.findBucketByUri(Uri.parse(location))?.let { it.aliasName?.takeIf(String::isNotBlank) ?: it.name }
-                ?: location
+            mediaStore.findBucketByUri(Uri.parse(location))
+                ?.takeIf { !it.excluded }
+                ?.let { it.aliasName?.takeIf(String::isNotBlank) ?: it.name }
         }
     }
 
@@ -93,22 +95,16 @@ internal suspend fun pickDownloadFolder(graph: AppGraph): Boolean {
 }
 
 /**
- * Clears the download location when its folder leaves the Library — removed (soft-deleted, so
- * [BetterMediaStore.findBucketByUri] returns null) or excluded (or cascade-deleted by excluding an
- * ancestor). The next download then re-prompts for a folder. Mounted app-wide (App.kt).
+ * Whether the saved download location is usable right now: its folder must still be in the Library and
+ * not excluded (a removed folder soft-deletes, so [BetterMediaStore.findBucketByUri] returns null). The
+ * download flow checks this at start time and re-picks when it's false — no need to watch the store.
  */
-@Composable
-internal fun DownloadLocationGuard(graph: AppGraph) {
-    val store = graph.mediaStore ?: return
-    if (graph.downloads == null) return
-    LaunchedEffect(store) {
-        store.bucketsChanges().collect {
-            val loc = graph.settings.flow(AppSettings.downloadLocation).value
-            if (loc.isBlank()) return@collect
-            val bucket = store.findBucketByUri(Uri.parse(loc))
-            if (bucket == null || bucket.excluded) graph.settings.put(AppSettings.downloadLocation, "")
-        }
-    }
+internal suspend fun hasUsableDownloadLocation(graph: AppGraph): Boolean {
+    val store = graph.mediaStore ?: return false
+    val loc = graph.settings.flow(AppSettings.downloadLocation).value
+    if (loc.isBlank()) return false
+    val bucket = store.findBucketByUri(Uri.parse(loc)) ?: return false
+    return !bucket.excluded
 }
 
 /**

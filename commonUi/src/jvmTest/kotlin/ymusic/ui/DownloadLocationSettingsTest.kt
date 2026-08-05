@@ -127,15 +127,16 @@ class DownloadLocationSettingsTest {
     }
 
     @Test
-    fun removing_the_download_location_folder_clears_the_setting() {
+    fun download_reprompts_when_the_saved_location_folder_is_gone() {
         Locale.setDefault(Locale.ENGLISH)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         val settings = InMemorySettingsStore()
-        val bucket = runBlocking {
-            store.upsertBucket(BucketDraft(Uri.parse("file:///Lib"), "Lib")).also {
-                settings.put(AppSettings.downloadLocation, it.uri.toString())
-            }
+        // A location was set, but its folder has since been removed from the Library.
+        runBlocking {
+            val old = store.upsertBucket(BucketDraft(Uri.parse("file:///Old"), "Old"))
+            settings.put(AppSettings.downloadLocation, old.uri.toString())
+            store.deleteBucket(old.id)
         }
         val graph = AppGraph(
             engines = engines(),
@@ -144,12 +145,22 @@ class DownloadLocationSettingsTest {
             mediaStore = store,
             settings = settings,
             downloads = downloadService(scope),
+            scanLibraryFolder = {
+                store.upsertBucket(BucketDraft(Uri.parse("file:///New"), "New"))
+                "Added 1 folder"
+            },
         )
         try {
             runComposeUiTest {
-                setContent { DownloadLocationGuard(graph) }
-                runBlocking { store.deleteBucket(bucket.id) } // remove the folder that is the location
-                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value.isBlank() }
+                val video = YtFeedItem(kind = YtFeedItem.KIND_VIDEO, id = "abc", title = "A Song")
+                setContent {
+                    CompositionLocalProvider(LocalSnackbar provides {}) {
+                        DownloadDialogHost(graph, video) {}
+                    }
+                }
+                // The stale location is invalid → picker runs → new folder adopted → format dialog.
+                waitUntilAtLeastOneExists(hasText("Audio · M4A"), 5_000)
+                assertEquals("file:///New", settings.flow(AppSettings.downloadLocation).value)
             }
         } finally {
             scope.cancel()

@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -43,12 +44,21 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     val video = pending ?: return
     val snackbar = LocalSnackbar.current
 
-    // Gate: pick a download location first. With none set, go straight to the OS folder picker; a pick
-    // sets the location (this recomposes into the format dialog), a cancel cancels the download.
+    // Gate: the saved download location must still point at a Library folder. If it's unset — or its
+    // folder was removed/excluded — go straight to the OS folder picker; a pick sets the location (this
+    // recomposes into the format dialog), a cancel cancels the download. Validated only here, at start
+    // time, so nothing has to watch the store. (No gate when the shell can't pick a folder.)
     val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
-    if (location.isBlank() && graph.mediaStore != null && graph.scanLibraryFolder != null) {
-        LaunchedEffect(video) { if (!pickDownloadFolder(graph)) onDismiss() }
-        return
+    if (graph.mediaStore != null && graph.scanLibraryFolder != null) {
+        val usable by produceState<Boolean?>(null, video, location) { value = hasUsableDownloadLocation(graph) }
+        when (usable) {
+            null -> return // validating — render nothing yet
+            false -> {
+                LaunchedEffect(video) { if (!pickDownloadFolder(graph)) onDismiss() }
+                return
+            }
+            true -> Unit // fall through to the format dialog
+        }
     }
 
     fun pick(format: DownloadFormat, height: Int?) {
