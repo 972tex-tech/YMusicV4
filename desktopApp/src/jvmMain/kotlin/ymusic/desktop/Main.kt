@@ -83,6 +83,7 @@ import ymusic.ui.AppGraph
 import ymusic.ui.AppHttpClients
 import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.downloadCaptionPreference
+import ymusic.ui.downloadLocationFolder
 import ymusic.ui.ensureAppLanguage
 import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
@@ -311,6 +312,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
             segmentIndex = segmentIndex,
             captionPreference = { settings.downloadCaptionPreference() },
+            downloadFolder = { settings.downloadLocationFolder() }, // publish into the chosen file:// folder
             logger = StdoutLogger,
         )
     }

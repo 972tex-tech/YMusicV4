@@ -53,6 +53,9 @@ class DownloadService(
     /** Current caption selection, read fresh per download (the shell sources it from settings). Keeps the
      *  service headless and avoids persisting the preference on each task. Defaults to no captions. */
     private val captionPreference: suspend () -> CaptionPreference = { CaptionPreference.None },
+    /** The user's chosen download-location folder uri, read fresh at publish time (shell sources it from
+     *  settings). Null → the storage's default dir. */
+    private val downloadFolder: suspend () -> String? = { null },
     /** Optional hook to register a finished file into the local library (media-store); shell-provided. */
     private val onCompleted: (suspend (DownloadTask, DownloadPipeline.Result) -> Unit)? = null,
 ) {
@@ -244,6 +247,7 @@ class DownloadService(
             val result = pipeline.run(
                 task,
                 captions = captionPreference(),
+                destinationFolder = downloadFolder(),
                 onPreparing = { setStateAsync(task.id, DownloadState.PREPARING) },
                 onDownloading = { setStateAsync(task.id, DownloadState.DOWNLOADING) },
                 onProcessing = { setStateAsync(task.id, DownloadState.PROCESSING) },

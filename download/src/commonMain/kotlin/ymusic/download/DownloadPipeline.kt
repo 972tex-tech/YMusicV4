@@ -49,6 +49,7 @@ class DownloadPipeline(
     suspend fun run(
         task: DownloadTask,
         captions: CaptionPreference,
+        destinationFolder: String?,
         onPreparing: () -> Unit,
         onDownloading: () -> Unit,
         onProcessing: () -> Unit,
@@ -69,7 +70,7 @@ class DownloadPipeline(
         // (metadata lives in the DB task row). Captions can't be muxed without ffmpeg here, so drop them.
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             val bytes = streams.audio.scratch.length()
-            val uri = storage.publish(streams.audio.scratch, fileName)
+            val uri = storage.publish(streams.audio.scratch, fileName, destinationFolder)
             storage.deleteScratch(task.id)
             return Result(uri, bytes, audioFmt, null)
         }
@@ -103,7 +104,7 @@ class DownloadPipeline(
 
         // 3. publish the final file (moved out of the scratch folder), then drop the task's whole scratch
         //    folder — elementary streams + captions in one delete.
-        val uri = storage.publish(out, fileName)
+        val uri = storage.publish(out, fileName, destinationFolder)
         storage.deleteScratch(task.id)
         return Result(uri, bytes, audioFmt, videoFmt)
     }

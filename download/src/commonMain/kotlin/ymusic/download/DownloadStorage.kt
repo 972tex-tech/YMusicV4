@@ -23,9 +23,23 @@ interface DownloadStorage {
      *  Best-effort (no-op if absent). */
     fun deleteScratch(taskId: String)
 
-    /** Move [scratch]'s finished bytes to the final destination as [fileName] and return its uri. On okio
-     *  this is a rename into the downloads dir; on Android it creates the SAF document and streams in. */
-    suspend fun publish(scratch: DownloadScratch, fileName: String): String
+    /**
+     * Move [scratch]'s finished bytes into [destinationFolder] as [fileName] and return the created
+     * file's uri. [destinationFolder] is the user's chosen download location (a `file://` folder, an
+     * Android SAF `content://` tree, or null → the storage's default dir). A `file://`/null destination
+     * is an okio rename/copy; a non-`file:` one is delegated to a [ContentPublisher] (Android SAF).
+     */
+    suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String?): String
+}
+
+/**
+ * Writes a finished scratch file into a folder that okio can't reach — an Android SAF `content://` tree.
+ * Shell-provided (needs `ContentResolver`/`DocumentsContract`); null on desktop/iOS, where `file://`
+ * destinations are handled by okio directly.
+ */
+fun interface ContentPublisher {
+    /** Create [fileName] inside [folderUri] and stream [scratchPath]'s bytes in; return the new file uri. */
+    suspend fun publish(scratchPath: String, folderUri: String, fileName: String): String
 }
 
 /** A local scratch file: a [DownloadFile] to stream into, plus the local [path] ffmpeg reads/writes and a
