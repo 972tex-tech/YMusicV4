@@ -81,6 +81,17 @@ class InMemorySettingsStoreTest {
         }
 
     @Test
+    fun boolSettingRoundTrips() =
+        runTest {
+            val store = InMemorySettingsStore()
+            val flag = store.flow(AppSettings.downloadDefaultCaption)
+            assertEquals(true, flag.value) // default
+
+            store.put(AppSettings.downloadDefaultCaption, false)
+            assertEquals(false, flag.value)
+        }
+
+    @Test
     fun stringSetDecodeDropsBlanks() {
         assertEquals(linkedSetOf("en", "vi"), decodeStringSet("en\n\nvi\n"))
         assertEquals(emptySet(), decodeStringSet(""))

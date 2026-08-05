@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.OutlinedTextField
@@ -250,12 +251,13 @@ internal fun DefaultDownloadLocationPrompt(graph: AppGraph) {
 private fun PreferredCaptionsRow(graph: AppGraph) {
     val scope = rememberCoroutineScope()
     val selected by remember(graph) { graph.settings.flow(AppSettings.preferredCaptionLanguages) }.collectAsState()
+    val default by remember(graph) { graph.settings.flow(AppSettings.downloadDefaultCaption) }.collectAsState()
 
-    val summary = if (selected.isEmpty()) {
-        "Default track only"
-    } else {
-        selected.joinToString(", ") { captionLanguageName(it) }
+    val parts = buildList {
+        if (default) add("Default")
+        addAll(selected.map { captionLanguageName(it) })
     }
+    val summary = if (parts.isEmpty()) "None" else parts.joinToString(", ")
     var open by remember { mutableStateOf(false) }
 
     SettingRow(title = "Caption languages", value = summary) { open = true }
@@ -263,8 +265,12 @@ private fun PreferredCaptionsRow(graph: AppGraph) {
     if (open) {
         CaptionLanguagesDialog(
             selected = selected,
-            onConfirm = { picked ->
-                scope.launch { graph.settings.put(AppSettings.preferredCaptionLanguages, picked) }
+            defaultEnabled = default,
+            onConfirm = { picked, def ->
+                scope.launch {
+                    graph.settings.put(AppSettings.preferredCaptionLanguages, picked)
+                    graph.settings.put(AppSettings.downloadDefaultCaption, def)
+                }
                 open = false
             },
             onDismiss = { open = false },
@@ -273,24 +279,28 @@ private fun PreferredCaptionsRow(graph: AppGraph) {
 }
 
 /**
- * Caption-language picker: chips for the current selection + a type-to-filter field whose suggestions
- * (matched on name or code) add a chip on tap. Changes stay in a local working set until Save.
+ * Caption-language picker: a "default track" toggle, chips for the chosen languages, and a type-to-
+ * filter field over the FULL scrollable language list (tap a row to add it). Changes stay in a local
+ * working set until Save.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CaptionLanguagesDialog(
     selected: Set<String>,
-    onConfirm: (Set<String>) -> Unit,
+    defaultEnabled: Boolean,
+    onConfirm: (Set<String>, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var working by remember { mutableStateOf(selected) }
+    var default by remember { mutableStateOf(defaultEnabled) }
     var query by remember { mutableStateOf("") }
+    // The whole catalogue, filtered by the query and minus what's already chosen — the dialog scrolls,
+    // so the list is not capped (a short "suggestions" list read as "these are the only ones").
     val suggestions = remember(query, working) {
         val q = query.trim().lowercase()
         CaptionLanguages
             .filter { it.code !in working }
             .filter { q.isEmpty() || it.name.lowercase().contains(q) || it.code.startsWith(q) }
-            .take(6)
     }
 
     val scroll = rememberScrollState()
@@ -301,14 +311,29 @@ private fun CaptionLanguagesDialog(
         canScrollForward = scroll.canScrollForward,
         buttons = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
-            TextButton(onClick = { onConfirm(working) }) { Text("Save") }
+            TextButton(onClick = { onConfirm(working, default) }) { Text("Save") }
         },
     ) {
-        // No horizontal padding on the scroll container: the header/chips/field inset themselves, but
-        // the suggestion rows stay full-bleed so their hover/ripple spans the whole dialog width.
+        // No horizontal padding on the scroll container: the toggle/header/chips/field inset themselves,
+        // but the language rows stay full-bleed so their hover/ripple spans the whole dialog width.
         Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(vertical = DesignSpacing.Space8)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { default = !default }
+                    .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = default, onCheckedChange = null)
+                Text(
+                    "Always download the default caption track",
+                    style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+                    modifier = Modifier.weight(1f),
+                )
+            }
             Text(
-                "Download these caption tracks when a video has them.",
+                "Also download these languages when a video offers them:",
                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
                 modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space8),
             )

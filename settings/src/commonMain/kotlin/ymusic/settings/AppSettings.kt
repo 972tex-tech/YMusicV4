@@ -31,6 +31,15 @@ suspend fun SettingsStore.put(
 internal fun decodeStringSet(raw: String): Set<String> =
     raw.split(SET_DELIMITER).filter { it.isNotBlank() }.toCollection(LinkedHashSet())
 
+data class BoolSetting(val key: String, val default: Boolean)
+
+fun SettingsStore.flow(setting: BoolSetting): StateFlow<Boolean> = boolean(setting.key, setting.default)
+
+suspend fun SettingsStore.put(
+    setting: BoolSetting,
+    value: Boolean,
+) = putBoolean(setting.key, value)
+
 /**
  * The app language, seeded on first ask: a blank read resolves [default], PERSISTS it, and returns
  * it — from then on the key is never blank and is the single source of truth for every reader (the
@@ -65,8 +74,11 @@ object AppSettings {
     val downloadLocation = StringSetting("download.location", "")
 
     /**
-     * Caption languages to fetch alongside a downloaded media (BCP-47 codes). Empty = no preference:
-     * fall back to the media's default caption track if it has one.
+     * Caption languages to fetch alongside a downloaded media (BCP-47 codes). Independent of
+     * [downloadDefaultCaption]: these are the extra languages to grab when a video offers them.
      */
     val preferredCaptionLanguages = StringSetSetting("download.captionLanguages")
+
+    /** Always fetch the media's own default caption track, on top of any [preferredCaptionLanguages]. */
+    val downloadDefaultCaption = BoolSetting("download.captionDefault", true)
 }

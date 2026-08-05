@@ -26,6 +26,7 @@ internal class IosSettingsStore(
             "app.uiLanguage",
             "download.location",
             "download.captionLanguages",
+            "download.captionDefault",
             PlaybackQualitySettingKey,
         )
     }
