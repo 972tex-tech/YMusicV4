@@ -128,12 +128,19 @@ class DownloadService(
 
     /** Pause one task and free its slot; the next queued task takes it (the queue keeps flowing). */
     fun pause(id: String) = scope.launch {
-        val job = gate.withLock { active[id]?.also { interrupts[id] = DownloadState.PAUSED } }
-        if (job != null) {
-            job.cancel() // execute → PAUSED; its completion frees the slot and fillSlots starts the next
-        } else if (store.get(id)?.state == DownloadState.QUEUED) {
-            setState(id, DownloadState.PAUSED)
+        // Decide under the same lock fillSlots claims with, so a QUEUED task can't be started between the
+        // read and the pause (which would lose the pause, or leave a "paused" task still downloading).
+        val job = gate.withLock {
+            val running = active[id]
+            if (running != null) {
+                interrupts[id] = DownloadState.PAUSED
+                running
+            } else {
+                if (store.get(id)?.state == DownloadState.QUEUED) setState(id, DownloadState.PAUSED)
+                null
+            }
         }
+        job?.cancel() // execute → PAUSED; its completion frees the slot and fillSlots starts the next
     }.let {}
 
     fun resume(id: String) = scope.launch {
@@ -149,13 +156,18 @@ class DownloadService(
     fun retry(id: String) = resume(id)
 
     fun cancel(id: String) = scope.launch {
-        val job = gate.withLock { active[id]?.also { interrupts[id] = DownloadState.CANCELED } }
-        if (job != null) {
-            job.cancel()
-        } else {
-            cleanupTemp(id)
-            setState(id, DownloadState.CANCELED)
+        val job = gate.withLock {
+            val running = active[id]
+            if (running != null) {
+                interrupts[id] = DownloadState.CANCELED
+                running
+            } else {
+                cleanupTemp(id)
+                setState(id, DownloadState.CANCELED)
+                null
+            }
         }
+        job?.cancel()
     }.let {}
 
     /** Remove a task (and its temp files) entirely. The finished output file is left on disk. */
@@ -260,9 +272,7 @@ class DownloadService(
     }
 
     private fun cleanupTemp(id: String) {
-        listOf("$id.audio", "$id.video", "$id.out").forEach { name ->
-            runCatching { storage.scratch(name).delete() }
-        }
+        runCatching { storage.deleteScratch(id) }
     }
 
     private companion object {

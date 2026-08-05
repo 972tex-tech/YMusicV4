@@ -104,8 +104,8 @@ class YtStreamDownloader(
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
         val captionPicks = captionsToDownload(task.format, spec.captionTracks, captions)
 
-        val audioScratch = storage.scratch("${task.id}.audio")
-        val videoScratch = if (videoFmt != null) storage.scratch("${task.id}.video") else null
+        val audioScratch = storage.scratch("${task.id}/audio")
+        val videoScratch = if (videoFmt != null) storage.scratch("${task.id}/video") else null
 
         onDownloading()
         downloadTracks(
@@ -155,7 +155,7 @@ class YtStreamDownloader(
 
     /** GET the caption's WebVTT into a scratch file. The baseUrl is already GET-ready (sig/n + pot). */
     private suspend fun downloadCaption(taskId: String, track: CaptionTrack): DownloadedCaption {
-        val scratch = storage.scratch("$taskId.cc.${track.languageCode}.vtt")
+        val scratch = storage.scratch("$taskId/cc.${track.languageCode}.vtt")
         scratch.delete() // tiny file — always refetch whole rather than resume a partial
         val url = track.baseUrl + (if ('?' in track.baseUrl) "&" else "?") + "fmt=vtt"
         val response = client.execute(RequestBuilder().url(url).header("user-agent", userAgent).get().build())

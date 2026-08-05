@@ -68,7 +68,7 @@ class DownloadPipeline(
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             val bytes = streams.audio.scratch.length()
             val uri = storage.publish(streams.audio.scratch, fileName)
-            deleteCaptions(streams)
+            storage.deleteScratch(task.id)
             return Result(uri, bytes, audioFmt, null)
         }
 
@@ -88,7 +88,7 @@ class DownloadPipeline(
 
         val audio = streams.audio.scratch
         val video = streams.video?.scratch
-        val out = storage.scratch("${task.id}.out")
+        val out = storage.scratch("${task.id}/out")
         val meta = task.tags()
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
@@ -99,17 +99,11 @@ class DownloadPipeline(
         }
         val bytes = out.length()
 
-        // 3. clean up the elementary scratch files — captions were consumed by the mux (MP3 has none).
-        audio.delete()
-        video?.delete()
-        deleteCaptions(streams)
-
-        // 4. publish the final file; the caller adds the media to the library.
-        return Result(storage.publish(out, fileName), bytes, audioFmt, videoFmt)
-    }
-
-    private fun deleteCaptions(streams: DownloadedStreams) {
-        streams.captions.forEach { it.scratch.delete() }
+        // 3. publish the final file (moved out of the scratch folder), then drop the task's whole scratch
+        //    folder — elementary streams + captions in one delete.
+        val uri = storage.publish(out, fileName)
+        storage.deleteScratch(task.id)
+        return Result(uri, bytes, audioFmt, videoFmt)
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field

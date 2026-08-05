@@ -25,6 +25,10 @@ class OkioDownloadStorage(
 
     override fun scratch(name: String): DownloadScratch = OkioDownloadScratch(fileSystem, scratchDir / name)
 
+    override fun deleteScratch(taskId: String) {
+        fileSystem.deleteRecursively(scratchDir / taskId, mustExist = false)
+    }
+
     override suspend fun publish(scratch: DownloadScratch, fileName: String): String {
         val dest = outputDir / fileName
         val src = scratch.path.toPath()

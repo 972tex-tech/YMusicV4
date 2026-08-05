@@ -15,8 +15,13 @@ import ymusic.ytmedia.sabr.DownloadFile
 interface DownloadStorage {
 
     /** A local scratch file, created on first write. Stable for [name] so a paused download resumes into
-     *  the same bytes. Reuses [DownloadFile] for the write side. */
+     *  the same bytes. A task's files live under a `"<taskId>/…"` [name] so [deleteScratch] can drop them
+     *  all at once. Reuses [DownloadFile] for the write side. */
     fun scratch(name: String): DownloadScratch
+
+    /** Delete a task's entire scratch folder — every elementary/caption/out file for [taskId] in one go.
+     *  Best-effort (no-op if absent). */
+    fun deleteScratch(taskId: String)
 
     /** Move [scratch]'s finished bytes to the final destination as [fileName] and return its uri. On okio
      *  this is a rename into the downloads dir; on Android it creates the SAF document and streams in. */
