@@ -8,10 +8,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.OutlinedTextField
@@ -27,8 +30,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import ymusic.mediastore.model.MediaStoreBucket
@@ -140,7 +146,7 @@ private fun DownloadLocationDialog(
         canScrollForward = scroll.canScrollForward,
         buttons = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     ) {
-        Column(Modifier.fillMaxWidth().verticalScroll(scroll)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(vertical = DesignSpacing.Space8)) {
             if (buckets.isEmpty()) {
                 Text(
                     "No Library folders yet — add one to download into it.",
@@ -149,19 +155,47 @@ private fun DownloadLocationDialog(
                 )
             }
             buckets.forEach { bucket ->
-                ChoiceRow(label = bucket.name, selected = bucket.uri.toString() == current) { onPick(bucket.uri.toString()) }
+                val selected = bucket.uri.toString() == current
+                DialogChoiceRow(
+                    icon = Icons.Outlined.Folder,
+                    label = bucket.name,
+                    color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                    bold = selected,
+                ) { onPick(bucket.uri.toString()) }
             }
             if (onAddFolder != null) {
-                Text(
-                    "Add new folder…",
-                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onAddFolder)
-                        .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
+                DialogChoiceRow(
+                    icon = Icons.Outlined.CreateNewFolder,
+                    label = "Add new folder…",
+                    color = DesignColors.Accent,
+                    bold = true,
+                    onClick = onAddFolder,
                 )
             }
         }
+    }
+}
+
+/** A picker-dialog choice row: leading icon + label, full-bleed hover, text inset to the title. */
+@Composable
+private fun DialogChoiceRow(icon: ImageVector, label: String, color: Color, bold: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+        Text(
+            label,
+            style = TextStyle(
+                fontSize = 14.sp,
+                fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
+                color = color,
+            ),
+        )
     }
 }
 
@@ -270,19 +304,19 @@ private fun CaptionLanguagesDialog(
             TextButton(onClick = { onConfirm(working) }) { Text("Save") }
         },
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(scroll)
-                .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space8),
-            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-        ) {
+        // No horizontal padding on the scroll container: the header/chips/field inset themselves, but
+        // the suggestion rows stay full-bleed so their hover/ripple spans the whole dialog width.
+        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(vertical = DesignSpacing.Space8)) {
             Text(
                 "Download these caption tracks when a video has them.",
                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space8),
             )
             if (working.isNotEmpty()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                    modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal),
+                ) {
                     working.forEach { code ->
                         InputChip(
                             selected = true,
@@ -298,7 +332,7 @@ private fun CaptionLanguagesDialog(
                 onValueChange = { query = it },
                 placeholder = { Text("Add a language") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space8),
                 trailingIcon = {
                     if (query.isNotEmpty()) ActionIcon(Icons.Default.Close, "clear") { query = "" }
                 },
@@ -308,8 +342,9 @@ private fun CaptionLanguagesDialog(
                     Modifier
                         .fillMaxWidth()
                         .clickable { working = working + lang.code; query = "" }
-                        .padding(vertical = DesignSpacing.Space8),
+                        .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
                     horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(lang.name, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink), modifier = Modifier.weight(1f))
                     Text(lang.code, style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary))
@@ -350,21 +385,5 @@ private fun SettingsSectionHeader(text: String) {
             top = DesignSpacing.Space16,
             bottom = DesignSpacing.Space4,
         ),
-    )
-}
-
-@Composable
-private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        style = TextStyle(
-            fontSize = 14.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) DesignColors.Accent else DesignColors.Ink,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
     )
 }

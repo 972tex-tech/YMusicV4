@@ -97,15 +97,11 @@ fun SettingsScreen(graph: AppGraph) {
         )
         ContentLocaleRow(
             title = stringResource(Res.string.settings_content_region),
+            subtitle = stringResource(Res.string.settings_content_locale_hint),
             current = options.gl,
             options = options.regions,
             loading = loadingOptions,
             onSelect = { code -> pickLocale(gl = code) },
-        )
-        Text(
-            stringResource(Res.string.settings_content_locale_hint),
-            style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         DownloadSettingsSection(graph)
     }
@@ -120,6 +116,7 @@ fun SettingsScreen(graph: AppGraph) {
 @Composable
 private fun ContentLocaleRow(
     title: String,
+    subtitle: String,
     current: String,
     options: List<YtLocaleOption>,
     loading: Boolean,
@@ -127,6 +124,8 @@ private fun ContentLocaleRow(
 ) {
     var open by remember { mutableStateOf(false) }
     fun labelOf(code: String) = options.firstOrNull { it.code.equals(code, ignoreCase = true) }?.label ?: code
+    // Title + caption are one row: the whole two-line block is the hover/click target, and the value
+    // sits vertically centred against it (Row-level CenterVertically).
     Row(
         Modifier
             .fillMaxWidth()
@@ -135,11 +134,17 @@ private fun ContentLocaleRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            title,
-            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            Text(
+                subtitle,
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(top = DesignSpacing.Space2),
+            )
+        }
         Text(
             labelOf(current),
             style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
