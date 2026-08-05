@@ -64,11 +64,11 @@ class DownloadPipeline(
         onProcessing()
 
         // No-ffmpeg M4A (iOS): the raw best-AAC stream IS a playable .m4a — publish it as-is, no step 2
-        // (metadata lives in the DB task row).
+        // (metadata lives in the DB task row). Captions can't be muxed without ffmpeg here, so drop them.
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             val bytes = streams.audio.scratch.length()
             val uri = storage.publish(streams.audio.scratch, fileName)
-            publishCaptionSidecars(base, streams)
+            deleteCaptions(streams)
             return Result(uri, bytes, audioFmt, null)
         }
 
@@ -92,31 +92,20 @@ class DownloadPipeline(
         val meta = task.tags()
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
-            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress)
-            DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), metadata = meta, onProgressUs = onFfProgress)
+            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress) // MP3 carries no captions
+            DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
             DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
             DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
         }
         val bytes = out.length()
 
-        // 3. clean up the elementary scratch files.
+        // 3. clean up the elementary scratch files — captions were consumed by the mux (MP3 has none).
         audio.delete()
         video?.delete()
+        deleteCaptions(streams)
 
-        // 4. publish the final file; the caller adds the media to the library. Captions are muxed into
-        // video containers above; an audio container (mp3/m4a) can't carry a subtitle stream, so those keep
-        // a sidecar. Video caption scratches were consumed by the mux — drop them.
-        val uri = storage.publish(out, fileName)
-        if (task.format.kind == DownloadKind.AUDIO) publishCaptionSidecars(base, streams) else deleteCaptions(streams)
-        return Result(uri, bytes, audioFmt, videoFmt)
-    }
-
-    // An audio container has no subtitle stream — publish each caption as a `<base>.<lang>.vtt` sidecar
-    // next to the media file so it isn't lost.
-    private suspend fun publishCaptionSidecars(base: String, streams: DownloadedStreams) {
-        streams.captions.forEach { cc ->
-            storage.publish(cc.scratch, "$base.${cc.languageCode}.${cc.fileExtension}")
-        }
+        // 4. publish the final file; the caller adds the media to the library.
+        return Result(storage.publish(out, fileName), bytes, audioFmt, videoFmt)
     }
 
     private fun deleteCaptions(streams: DownloadedStreams) {

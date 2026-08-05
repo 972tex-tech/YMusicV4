@@ -58,7 +58,6 @@ class DownloadedCaption(
     val languageCode: String,
     val name: String,
     val isDefault: Boolean,
-    val fileExtension: String,
     val scratch: DownloadScratch,
 )
 
@@ -167,7 +166,7 @@ class YtStreamDownloader(
         } finally {
             response.close()
         }
-        return DownloadedCaption(track.languageCode, track.name, track.isDefault, "vtt", scratch)
+        return DownloadedCaption(track.languageCode, track.name, track.isDefault, scratch)
     }
 
     /** Run the SABR download, re-priming a fresh spec once if the PO token is rejected mid-stream. */

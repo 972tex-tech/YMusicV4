@@ -50,22 +50,16 @@ class Ffmpeg(
         onProgressUs,
     )
 
-    /** best audio → m4a: stream-copy when already AAC ([copy]=true), else transcode to AAC. */
+    /** best audio → m4a (+ any [captions], as mov_text): stream-copy when already AAC ([copy]=true),
+     *  else transcode to AAC. M4A is an ISO-BMFF container, so it carries subtitle tracks like MP4. */
     suspend fun toM4a(
         input: String,
         output: String,
         copy: Boolean,
+        captions: List<SubtitleInput> = emptyList(),
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(
-        buildList {
-            add("-i"); add(input.ffSpec()); add("-vn")
-            if (copy) { add("-c:a"); add("copy") } else { add("-c:a"); add("aac"); add("-b:a"); add("192k") }
-            addAll(metaArgs(metadata))
-            add("-f"); add("ipod"); add(output.ffSpec()) // ipod = the m4a muxer
-        },
-        onProgressUs,
-    )
+    ) = run(m4aArgs(input, output, copy, captions, metadata), onProgressUs)
 
     /** Mux VP9 video + Opus audio (+ any [captions], as WebVTT) into one WebM, stream-copying A/V. */
     suspend fun muxWebm(
@@ -118,6 +112,25 @@ class Ffmpeg(
 }
 
 // --- pure argv builders (unit-tested; ffmpeg not invoked) ------------------------------------------
+
+/** best audio (+ subtitles as mov_text) → m4a via the `ipod` muxer. Audio is copied ([copy]) or → AAC. */
+internal fun m4aArgs(
+    audio: String,
+    output: String,
+    copy: Boolean,
+    captions: List<SubtitleInput>,
+    metadata: List<Pair<String, String>>,
+): List<String> = buildList {
+    add("-i"); add(audio.ffSpec())
+    captions.forEach { add("-i"); add(it.path.ffSpec()) }
+    add("-map"); add("0:a:0")
+    captions.indices.forEach { add("-map"); add("${it + 1}:0") } // subtitle inputs start at index 1
+    if (copy) { add("-c:a"); add("copy") } else { add("-c:a"); add("aac"); add("-b:a"); add("192k") }
+    if (captions.isNotEmpty()) { add("-c:s"); add("mov_text") }
+    addAll(subtitleMetaArgs(captions))
+    addAll(metaArgs(metadata))
+    add("-f"); add("ipod"); add(output.ffSpec()) // ipod = the m4a muxer
+}
 
 /** Mux video+audio (+subtitles as mov_text) into an MP4. Video is stream-copied, audio → AAC. */
 internal fun mp4MuxArgs(

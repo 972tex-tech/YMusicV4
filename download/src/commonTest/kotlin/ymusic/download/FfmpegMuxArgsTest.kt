@@ -29,6 +29,26 @@ class FfmpegMuxArgsTest {
     }
 
     @Test
+    fun m4a_maps_captions_as_mov_text_after_the_audio() {
+        val args = m4aArgs("/a", "/out", copy = true, cc, listOf("title" to "Song"))
+        assertTrue(args.containsSeq("-map", "0:a:0"))
+        assertTrue(args.containsSeq("-map", "1:0")) // subtitle inputs start at index 1 (no video input)
+        assertTrue(args.containsSeq("-map", "2:0"))
+        assertTrue(args.containsSeq("-c:a", "copy"))
+        assertTrue(args.containsSeq("-c:s", "mov_text"))
+        assertTrue(args.containsSeq("-metadata:s:s:1", "language=por"))
+        assertTrue(args.containsSeq("-f", "ipod"))
+    }
+
+    @Test
+    fun m4a_without_captions_has_no_subtitle_flags() {
+        val args = m4aArgs("/a", "/out", copy = false, emptyList(), emptyList())
+        assertTrue(args.none { it == "-c:s" || it.startsWith("-metadata:s:s:") })
+        assertTrue(args.containsSeq("-c:a", "aac"))
+        assertTrue(args.containsSeq("-map", "0:a:0"))
+    }
+
+    @Test
     fun webm_uses_webvtt_codec_for_subtitles() {
         val args = webmMuxArgs("/v", "/a", "/out", cc, emptyList())
         assertTrue(args.containsSeq("-c:s", "webvtt"))
