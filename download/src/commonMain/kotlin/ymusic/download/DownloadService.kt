@@ -172,10 +172,16 @@ class DownloadService(
 
     /** Remove a task (and its temp files) entirely. The finished output file is left on disk. */
     fun remove(id: String) = scope.launch {
-        val job = gate.withLock { active[id]?.also { interrupts[id] = DownloadState.CANCELED } }
+        // Decide + delete under the claim lock so a QUEUED task can't be started into a deleted row. An
+        // active task is cancelled — its execute cleans up its own scratch on the CANCELED path; a
+        // non-active one is cleaned up here.
+        val job = gate.withLock {
+            val running = active[id]
+            if (running != null) interrupts[id] = DownloadState.CANCELED else cleanupTemp(id)
+            store.delete(id)
+            running
+        }
         job?.cancel()
-        cleanupTemp(id)
-        store.delete(id)
         _changes.emit(DownloadChange.Removed(id))
     }.let {}
 
