@@ -1,5 +1,6 @@
 package ymusic.download
 
+import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import ymusic.ytmedia.cache.MediaCache
@@ -74,7 +75,9 @@ class DownloadPipeline(
         // 2. mux/convert + metadata into the final scratch, reporting ffmpeg's output-time progress. The
         // media duration bounds it; we map output-time → the same done/total the UI's bar reads. Start at 0
         // so the bar refills for the processing phase rather than jumping from the download's 100%.
-        val ff = ffmpeg ?: error("ffmpeg unavailable: ${task.format} needs transcode/mux on this platform")
+        val ff = ffmpeg ?: throw TechnicalException(
+            "E70020", "ffmpeg unavailable: ${task.format} needs transcode/mux on this platform",
+        )
         val durationMs = maxOf(audioFmt.approxDurationMs, videoFmt?.approxDurationMs ?: 0).toLong()
         val onFfProgress: ((Long) -> Unit)? = if (durationMs > 0) {
             { us -> onProgress((us / 1000).coerceIn(0, durationMs), durationMs) }

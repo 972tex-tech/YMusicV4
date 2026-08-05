@@ -1,5 +1,6 @@
 package ymusic.download
 
+import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -60,11 +61,6 @@ class DownloadedStreams(
     val captions: List<DownloadedCaption>,
 )
 
-/** A video with no SABR stream (progressive direct-url only). The progressive downloader is TODO; such a
- *  video fails here until it lands. */
-class ProgressiveStreamUnsupported(videoId: String) :
-    IOException("no SABR stream for $videoId; progressive download is not yet supported")
-
 /**
  * The download step of the pipeline: takes a queued [DownloadTask] and produces the elementary files
  * (audio, optional video, captions) the mux/convert step then assembles. It:
@@ -111,7 +107,12 @@ class YtStreamDownloader(
         )
 
         // Captions are KB-scale; fetched after the media, whole (no range-resume), not folded into progress.
-        val captionFiles = captionPicks.map { downloadCaption(task.id, it) }
+        // Best-effort: a caption that fails to download is logged and skipped — it must not fail the media.
+        val captionFiles = captionPicks.mapNotNull { track ->
+            runCatching { downloadCaption(task.id, track) }
+                .onFailure { logger?.log(Logger.Level.WARN, LOG_CTX, "caption ${track.languageCode} failed: ${it.message}") }
+                .getOrNull()
+        }
 
         return DownloadedStreams(
             audio = DownloadedStream(audioFmt, audioScratch),
@@ -125,7 +126,9 @@ class YtStreamDownloader(
             resolver.resolve(videoId)
         } catch (e: IllegalStateException) {
             // SabrSpecBuilder throws this when the response carries no serverAbrStreamingUrl.
-            if (e.message?.contains("serverAbrStreamingUrl") == true) throw ProgressiveStreamUnsupported(videoId)
+            if (e.message?.contains("serverAbrStreamingUrl") == true) {
+                throw TechnicalException("E70010", "no SABR stream for $videoId; progressive download is not yet supported", cause = e)
+            }
             throw e
         }
 
@@ -133,10 +136,10 @@ class YtStreamDownloader(
     private fun selectFormats(task: DownloadTask, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
         val preferAac = task.format == DownloadFormat.M4A || task.format == DownloadFormat.VIDEO_MP4
         val audio = FormatSelection.bestAudio(formats, preferAac = preferAac)
-            ?: error("no audio format for ${task.videoId}")
+            ?: throw TechnicalException("E70011", "no audio format for ${task.videoId}")
         val video = if (task.format.kind == DownloadKind.VIDEO) {
             FormatSelection.videoNearest(formats, task.requestedHeight, task.format)
-                ?: error("no video format for ${task.videoId}")
+                ?: throw TechnicalException("E70012", "no video format for ${task.videoId}")
         } else {
             null
         }

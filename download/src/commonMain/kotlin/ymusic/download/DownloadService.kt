@@ -1,5 +1,6 @@
 package ymusic.download
 
+import kmpcommon.error.codedError
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
@@ -204,8 +205,15 @@ class DownloadService(
             }
             throw c
         } catch (e: Throwable) {
+            // Log the full technical failure at the birth-of-record here; the user sees only a code. An
+            // uncoded exception (network, SABR, …) gets the E70001 fallback so every failure is reportable.
             logger?.log(Logger.Level.WARN, LOG_CTX, "download ${task.id} failed: ${e.message}", e)
-            put(current(task.id)!!.copy(state = DownloadState.FAILED, errorMessage = e.message ?: "failed", updatedAt = now()))
+            val coded = e.codedError()
+            val userFacing = when {
+                coded?.userMessage != null -> "${coded.userMessage} (${coded.code})"
+                else -> "Something went wrong (${coded?.code ?: "E70001"})"
+            }
+            put(current(task.id)!!.copy(state = DownloadState.FAILED, errorMessage = userFacing, updatedAt = now()))
         }
     }
 

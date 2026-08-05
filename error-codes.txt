@@ -5,7 +5,7 @@
 # Mint = grep this file for a free number, add a `-` row in the same commit as the throw site.
 # NOTHING is deployed yet, so every row below is `-` (free).
 # Ranges: E1xxxx :quickjs | E2xxxx :dynamic-engine + engine-js | E3xxxx :kmpHttp
-#         E4xxxx :kmpFfmpeg | E5xxxx :media-store / :media-scanner | E6xxxx :player
+#         E4xxxx :kmpFfmpeg | E5xxxx :media-store / :media-scanner | E6xxxx :player | E7xxxx :download
 
 E10001 - (example) kmpCommon CodedErrorTest fixture
 E12345 - (example) doc placeholder in AGENTS.md minting rule
@@ -38,5 +38,12 @@ E60031 - failed to fetch the YouTube embed page (player webview)
 E60033 - YouTube playback error, no page-supplied code (player webview fallback)
 E60040 - WebView host not available on this platform (player webview jvm stub)
 E60050 - queue item needs the WebView engine but none is configured (player facade)
+
+E70001 - unclassified download failure (download DownloadService.execute fallback)
+E70010 - no SABR stream; progressive download not yet supported (download YtStreamDownloader)
+E70011 - no audio format in the player response (download YtStreamDownloader.selectFormats)
+E70012 - no video format in the player response (download YtStreamDownloader.selectFormats)
+E70020 - ffmpeg unavailable for this output on this platform (download DownloadPipeline)
+E70021 - ffmpeg exited non-zero (download Ffmpeg.run)
 
 E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture

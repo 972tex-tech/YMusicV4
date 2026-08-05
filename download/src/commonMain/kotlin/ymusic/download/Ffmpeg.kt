@@ -1,5 +1,6 @@
 package ymusic.download
 
+import kmpcommon.error.TechnicalException
 import kmpffmpeg.KmpProcessBuilder
 import kotlinx.coroutines.async
 import okio.buffer
@@ -117,7 +118,7 @@ class Ffmpeg(
         runCatching { progress?.await() }
         val log = runCatching { stderr.await() }.getOrDefault("")
         process.close()
-        if (code != 0) error("ffmpeg exited $code:\n$log")
+        if (code != 0) throw TechnicalException("E70021", "ffmpeg exited $code:\n$log")
     }
 
     /** `-metadata k=v` per non-blank tag; applied to the output container. */
