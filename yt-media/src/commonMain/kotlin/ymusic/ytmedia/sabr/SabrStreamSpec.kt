@@ -17,4 +17,19 @@ class SabrStreamSpec(
     val clientInfo: ClientInfo,
     /** `streamingData.adaptiveFormats` metadata. */
     val formats: List<AdaptiveFormat>,
+    /**
+     * Timed-text tracks from the player response. Not part of the SABR protocol — carried here because
+     * they come from the same player response and the downloader needs them. Their [CaptionTrack.baseUrl]
+     * arrives ready to GET (signature/n decoded, pot bound; done in webview-js).
+     */
+    val captionTracks: List<CaptionTrack> = emptyList(),
+)
+
+/** One timed-text (caption/subtitle) track. [baseUrl] is a plain HTTP GET — not SABR. */
+class CaptionTrack(
+    val languageCode: String,
+    val name: String,
+    val baseUrl: String,
+    val isDefault: Boolean,
+    val isAsr: Boolean,
 )

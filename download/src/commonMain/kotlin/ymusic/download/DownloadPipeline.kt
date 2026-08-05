@@ -4,12 +4,7 @@ import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.sabr.AdaptiveFormat
-import ymusic.ytmedia.sabr.DownloadFile
-import ymusic.ytmedia.sabr.SabrPoTokenExpired
-import ymusic.ytmedia.sabr.SabrProgress
-import ymusic.ytmedia.sabr.SabrSession
 import ymusic.ytmedia.sabr.SabrStreamSpec
-import ymusic.ytmedia.sabr.SabrTrack
 
 /**
  * Resolves the SABR inputs for a video (loads/plays it in a WebView, extracts the player response + PO
@@ -23,8 +18,7 @@ fun interface SabrSpecResolver {
  * Executes one [DownloadTask] end to end, over a [DownloadStorage] (no direct FileSystem — so the same
  * pipeline works whether the final file is a `file://` path or an Android `content://` SAF document):
  *
- *  1a. download the elementary stream(s) to scratch files (via [SabrSession]; a ProgressiveDownloader for
- *      direct-url streams is TODO). Pause/resume rides the scratch's on-disk length.
+ *  1a. download the elementary stream(s) + captions to scratch files ([YtStreamDownloader]).
  *  1b. (optional) download the thumbnail for cover art — TODO.
  *  2.  mux/convert + embed metadata with [ffmpeg] into a final scratch file.
  *  3.  clean up the elementary scratch files.
@@ -35,53 +29,51 @@ fun interface SabrSpecResolver {
  * step 2 — the raw stream is published as-is and its metadata lives in the DB task row.
  */
 class DownloadPipeline(
-    private val resolver: SabrSpecResolver,
-    private val client: KmpHttpClient,
-    private val userAgent: String,
+    resolver: SabrSpecResolver,
+    client: KmpHttpClient,
+    userAgent: String,
     private val ffmpeg: Ffmpeg?,
     private val storage: DownloadStorage,
-    private val mediaCache: MediaCache?,
+    mediaCache: MediaCache?,
     private val logger: Logger?,
 ) {
+
+    private val downloader = YtStreamDownloader(resolver, client, userAgent, storage, mediaCache, logger)
 
     /** A completed run: the published file's uri + byte size, and the formats (for library ingest). */
     class Result(val uri: String, val bytes: Long, val audio: AdaptiveFormat, val video: AdaptiveFormat?)
 
     suspend fun run(
         task: DownloadTask,
+        captions: CaptionPreference,
         onPreparing: () -> Unit,
         onDownloading: () -> Unit,
         onProcessing: () -> Unit,
         onProgress: (done: Long, total: Long) -> Unit,
     ): Result {
-        onPreparing()
-        var spec = resolver.resolve(task.videoId)
-        val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
+        // 1. download the elementary streams (+ captions) to scratch files.
+        val streams = downloader.download(task, captions, onPreparing, onDownloading, onProgress)
+        val audioFmt = streams.audio.format
+        val videoFmt = streams.video?.format
         val fileName = uniqueFileName(task)
-        val reAttest: suspend () -> SabrStreamSpec = { spec = resolver.resolve(task.videoId); spec }
-
-        // No-ffmpeg M4A (iOS): the raw best-AAC stream IS a playable .m4a — download it straight into the
-        // final scratch and publish, no step 2 (metadata lives in the DB task row).
-        if (task.format == DownloadFormat.M4A && ffmpeg == null) {
-            val out = storage.scratch("${task.id}.out")
-            onDownloading()
-            downloadTracks(spec, audioFmt, null, out, null, onProgress, reAttest)
-            onProcessing()
-            val bytes = out.length()
-            return Result(storage.publish(out, fileName), bytes, audioFmt, null) // steps 3+4 (nothing to clean)
-        }
-
-        // 1a. download the elementary streams.
-        val audio = storage.scratch("${task.id}.audio")
-        val video = if (videoFmt != null) storage.scratch("${task.id}.video") else null
-        onDownloading()
-        downloadTracks(spec, audioFmt, videoFmt, audio, video, onProgress, reAttest)
 
         // 1b. optional thumbnail download for cover art — TODO.
 
-        // 2. mux/convert + metadata into the final scratch.
         onProcessing()
+
+        // No-ffmpeg M4A (iOS): the raw best-AAC stream IS a playable .m4a — publish it as-is, no step 2
+        // (metadata lives in the DB task row).
+        if (task.format == DownloadFormat.M4A && ffmpeg == null) {
+            val bytes = streams.audio.scratch.length()
+            val uri = storage.publish(streams.audio.scratch, fileName)
+            cleanupCaptions(streams) // TODO: sidecar/mux the downloaded captions (next pipeline step)
+            return Result(uri, bytes, audioFmt, null)
+        }
+
+        // 2. mux/convert + metadata into the final scratch.
         val ff = ffmpeg ?: error("ffmpeg unavailable: ${task.format} needs transcode/mux on this platform")
+        val audio = streams.audio.scratch
+        val video = streams.video?.scratch
         val out = storage.scratch("${task.id}.out")
         val meta = task.tags()
         when (task.format) {
@@ -95,9 +87,16 @@ class DownloadPipeline(
         // 3. clean up the elementary scratch files.
         audio.delete()
         video?.delete()
+        cleanupCaptions(streams) // TODO: sidecar/mux the downloaded captions (next pipeline step)
 
         // 4. publish the final file; the caller adds it to the library.
         return Result(storage.publish(out, fileName), bytes, audioFmt, videoFmt)
+    }
+
+    // Captions are downloaded by [YtStreamDownloader] but not yet consumed — the mux/sidecar step is TODO,
+    // so for now they're cleaned up here rather than left as scratch litter.
+    private fun cleanupCaptions(streams: DownloadedStreams) {
+        streams.captions.forEach { it.scratch.delete() }
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
@@ -110,54 +109,6 @@ class DownloadPipeline(
         add("composer" to videoId)
     }
 
-    /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for the task. */
-    private fun selectFormats(task: DownloadTask, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
-        val preferAac = task.format == DownloadFormat.M4A || task.format == DownloadFormat.VIDEO_MP4
-        val audio = FormatSelection.bestAudio(formats, preferAac = preferAac)
-            ?: error("no audio format for ${task.videoId}")
-        val video = if (task.format.kind == DownloadKind.VIDEO) {
-            FormatSelection.videoNearest(formats, task.requestedHeight, task.format)
-                ?: error("no video format for ${task.videoId}")
-        } else {
-            null
-        }
-        return audio to video
-    }
-
-    /** Run the SABR download, re-priming a fresh spec once if the PO token is rejected mid-stream. */
-    private suspend fun downloadTracks(
-        spec: SabrStreamSpec,
-        audioFmt: AdaptiveFormat,
-        videoFmt: AdaptiveFormat?,
-        audioFile: DownloadFile,
-        videoFile: DownloadFile?,
-        onProgress: (Long, Long) -> Unit,
-        reAttest: suspend () -> SabrStreamSpec,
-    ) {
-        val progress = SabrProgress { aDone, aLen, vDone, vLen -> onProgress(aDone + vDone, aLen + vLen) }
-        var current = spec
-        var reAttested = false
-        while (true) {
-            try {
-                SabrSession(log = { logger?.log(Logger.Level.DEBUG, LOG_CTX, it) }).download(
-                    client = client,
-                    userAgent = userAgent,
-                    spec = current,
-                    audio = SabrTrack(audioFmt, audioFile),
-                    video = videoFmt?.let { SabrTrack(it, videoFile!!) },
-                    progress = progress,
-                    mediaCache = mediaCache,
-                )
-                return
-            } catch (e: SabrPoTokenExpired) {
-                if (reAttested) throw e
-                reAttested = true
-                logger?.log(Logger.Level.WARN, LOG_CTX, "PO token rejected, re-attesting: ${e.message}")
-                current = reAttest()
-            }
-        }
-    }
-
     /** `Title-videoId.ext`, sanitized to a safe filename. The videoId keeps it unique across same-title videos. */
     private fun uniqueFileName(task: DownloadTask): String {
         val base = task.title.map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }
@@ -166,9 +117,5 @@ class DownloadPipeline(
             .take(80)
             .ifBlank { task.videoId }
         return "$base-${task.videoId}.${task.format.fileExtension}"
-    }
-
-    private companion object {
-        val LOG_CTX = listOf("download", "pipeline")
     }
 }

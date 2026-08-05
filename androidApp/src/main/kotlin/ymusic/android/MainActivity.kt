@@ -56,6 +56,7 @@ import ymusic.player.createWebViewPlayer
 import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ui.WebViewSabrSpecResolver
+import ymusic.ui.downloadCaptionPreference
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -234,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     File(cacheDir, "download-work").absolutePath.toPath(),
                     downloadsDir.absolutePath.toPath(),
                 ),
+                captionPreference = { shared.settings.downloadCaptionPreference() },
                 logger = LogcatLogger(),
             ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
         }

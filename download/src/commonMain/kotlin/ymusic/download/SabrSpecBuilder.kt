@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.ByteString.Companion.decodeBase64
 import ymusic.ytmedia.sabr.AdaptiveFormat
+import ymusic.ytmedia.sabr.CaptionTrack
 import ymusic.ytmedia.sabr.ClientInfo
 import ymusic.ytmedia.sabr.SabrStreamSpec
 
@@ -31,6 +32,7 @@ object SabrSpecBuilder {
         val clientVersion = data["clientVersion"]?.jsonPrimitive?.content
         val clientName = data["clientNameId"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
         val formats = (streaming["adaptiveFormats"] as? JsonArray).orEmpty().map { it.jsonObject.toAdaptiveFormat() }
+        val captions = (data["captionTracks"] as? JsonArray).orEmpty().mapNotNull { it.jsonObject.toCaptionTrack() }
         return SabrStreamSpec(
             videoId = videoId,
             sabrUrl = sabrUrl,
@@ -38,6 +40,21 @@ object SabrSpecBuilder {
             poToken = poTokenBase64?.takeIf { it.isNotBlank() }?.decodeBase64Bytes(),
             clientInfo = ClientInfo(clientName = clientName, clientVersion = clientVersion, osName = "Windows", osVersion = "10.0"),
             formats = formats,
+            captionTracks = captions,
+        )
+    }
+
+    /** Map one already-cooked `captionTracks` entry (see webview-js `postPlayerRes`) — baseUrl carries
+     *  the decoded signature/n + a bound pot, so no URL work here. Skips entries missing a baseUrl. */
+    private fun JsonObject.toCaptionTrack(): CaptionTrack? {
+        val baseUrl = str("baseUrl")?.takeIf { it.isNotBlank() } ?: return null
+        val lang = str("languageCode") ?: return null
+        return CaptionTrack(
+            languageCode = lang,
+            name = str("name") ?: lang,
+            baseUrl = baseUrl,
+            isDefault = this["isDefault"]?.jsonPrimitive?.content?.toBoolean() ?: false,
+            isAsr = this["isAsr"]?.jsonPrimitive?.content?.toBoolean() ?: false,
         )
     }
 

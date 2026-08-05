@@ -39,6 +39,9 @@ class DownloadService(
     private val storage: DownloadStorage,
     mediaCache: MediaCache? = null,
     private val logger: Logger? = null,
+    /** Current caption selection, read fresh per download (the shell sources it from settings). Keeps the
+     *  service headless and avoids persisting the preference on each task. Defaults to no captions. */
+    private val captionPreference: suspend () -> CaptionPreference = { CaptionPreference.None },
     /** Optional hook to register a finished file into the local library (media-store); shell-provided. */
     private val onCompleted: (suspend (DownloadTask, DownloadPipeline.Result) -> Unit)? = null,
 ) {
@@ -176,6 +179,7 @@ class DownloadService(
         try {
             val result = pipeline.run(
                 task,
+                captions = captionPreference(),
                 onPreparing = { setStateAsync(task.id, DownloadState.PREPARING) },
                 onDownloading = { setStateAsync(task.id, DownloadState.DOWNLOADING) },
                 onProcessing = { setStateAsync(task.id, DownloadState.PROCESSING) },

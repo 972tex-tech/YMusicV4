@@ -82,6 +82,7 @@ import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ui.AppHttpClients
 import ymusic.ui.WebViewSabrSpecResolver
+import ymusic.ui.downloadCaptionPreference
 import ymusic.ui.ensureAppLanguage
 import ymusic.ui.localArtFetcher
 import ymusic.ui.resources.Res
@@ -297,6 +298,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                 File(dataDir, "download-work").absolutePath.toPath(),
                 File(dataDir, "downloads").absolutePath.toPath(),
             ),
+            captionPreference = { settings.downloadCaptionPreference() },
             logger = StdoutLogger,
         ).also { svc -> CoroutineScope(Dispatchers.Default).launch { svc.load() } }
     }
