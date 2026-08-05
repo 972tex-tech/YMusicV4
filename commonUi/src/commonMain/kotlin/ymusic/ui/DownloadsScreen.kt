@@ -79,12 +79,16 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         return
     }
 
-    // Sections in fixed order; within each, newest first.
+    // Sections in fixed order. Completed sorts by finish time (updatedAt, the date shown on the card);
+    // the rest keep queue order (createdAt), newest first.
     val sections = DownloadSection.entries.mapNotNull { section ->
-        visible.filter { it.state.section() == section }
-            .sortedByDescending { it.createdAt }
-            .takeIf { it.isNotEmpty() }
-            ?.let { section to it }
+        val items = visible.filter { it.state.section() == section }
+        val sorted = if (section == DownloadSection.COMPLETED) {
+            items.sortedByDescending { it.updatedAt }
+        } else {
+            items.sortedByDescending { it.createdAt }
+        }
+        sorted.takeIf { it.isNotEmpty() }?.let { section to it }
     }
     val running = visible.any { it.state == DownloadState.QUEUED || it.state.isActive }
     val paused = visible.any { it.state == DownloadState.PAUSED }
