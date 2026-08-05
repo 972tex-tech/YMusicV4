@@ -42,3 +42,6 @@ SELECT * FROM downloadTask ORDER BY created_at ASC;
 
 selectById:
 SELECT * FROM downloadTask WHERE id = ?;
+
+selectNextQueued:
+SELECT * FROM downloadTask WHERE state = ? ORDER BY created_at ASC LIMIT 1;

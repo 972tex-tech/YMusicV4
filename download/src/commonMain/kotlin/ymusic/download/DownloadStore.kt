@@ -6,10 +6,10 @@ import ymusic.download.db.DownloadDatabase
 import ymusic.download.internal.downloadDbDispatcher
 
 /**
- * Persistence for the download queue — a thin suspend facade over the generated SqlDelight queries, all
- * work confined to [downloadDbDispatcher]. The service is the single writer and keeps the live list in
- * memory; this only durably records it so the queue survives a restart. Build the [driver] with the
- * per-platform `downloadDatabase*Driver` factory.
+ * Persistence for the download queue and the single source of truth — a thin suspend facade over the
+ * generated SqlDelight queries, all work confined to [downloadDbDispatcher]. The service writes here and
+ * the UI's [DownloadTasksAggregator] reads/observes here; nothing holds the whole list resident. Build the
+ * [driver] with the per-platform `downloadDatabase*Driver` factory.
  */
 class DownloadStore(driver: SqlDriver) {
 
@@ -17,6 +17,15 @@ class DownloadStore(driver: SqlDriver) {
 
     suspend fun all(): List<DownloadTask> = withContext(downloadDbDispatcher()) {
         queries.selectAll(::mapRow).executeAsList()
+    }
+
+    suspend fun get(id: String): DownloadTask? = withContext(downloadDbDispatcher()) {
+        queries.selectById(id, ::mapRow).executeAsOneOrNull()
+    }
+
+    /** The oldest [DownloadState.QUEUED] task — what the worker runs next. */
+    suspend fun nextQueued(): DownloadTask? = withContext(downloadDbDispatcher()) {
+        queries.selectNextQueued(DownloadState.QUEUED.name, ::mapRow).executeAsOneOrNull()
     }
 
     suspend fun upsert(task: DownloadTask): Unit = withContext(downloadDbDispatcher()) {

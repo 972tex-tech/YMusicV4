@@ -117,13 +117,13 @@ fun main(args: Array<String>) {
             // Wait up to 5 min for both tasks to finish (COMPLETED or FAILED).
             val deadline = System.currentTimeMillis() + 300_000
             while (System.currentTimeMillis() < deadline) {
-                val tasks = service.tasks.value.filter { it.id in wanted }
+                val tasks = service.snapshot().filter { it.id in wanted }
                 tasks.forEach { println("[dl]   ${it.format} ${it.state} ${it.downloadedBytes}/${it.totalBytes}") }
                 if (tasks.size == 2 && tasks.all { it.state.isTerminal || it.state == DownloadState.FAILED }) break
                 delay(2000)
             }
 
-            val results = service.tasks.value.filter { it.id in wanted }
+            val results = service.snapshot().filter { it.id in wanted }
             var ok = true
             results.forEach { t ->
                 val file = t.fileUri?.let { File(it) }

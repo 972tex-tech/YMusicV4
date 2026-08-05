@@ -7,11 +7,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,14 +18,17 @@ import ymusic.ytmedia.cache.MediaCache
 import kotlin.random.Random
 
 /**
- * Manages the download queue: enqueue / pause / resume / cancel / retry / remove, with the live list
- * exposed as [tasks] for the UI and mirrored to [store] so it survives a restart. One task runs at a
- * time — obtaining each video's SABR inputs drives the shared WebView (via the [SabrSpecResolver]), so
- * concurrent priming would contend; the byte download + ffmpeg then run to completion before the next.
+ * Manages the download queue. The DB ([store]) is the single source of truth — the service holds no task
+ * list, only the one active worker slot; the UI reads via [tasks] (a lazy [DownloadTasksAggregator]).
  *
- * Pause and cancel both cancel the active [Job]; the difference is the recorded terminal state and
- * whether the partially-downloaded files are kept (pause, for resume via the scratch file's length
- * resume point) or deleted (cancel). Control methods are fire-and-forget — they launch into [scope].
+ * Queue model: one task runs at a time. Adding a task starts it if nothing is active; when a task
+ * finishes (or is canceled), the next queued one starts. **Pause stops the whole queue** — the active
+ * download is interrupted and every queued task is held; the user then resumes tasks individually.
+ * Nothing auto-starts on [load] (a crash leaves tasks PAUSED).
+ *
+ * Pause and cancel both cancel the active [Job]; the difference is the recorded state and whether the
+ * partially-downloaded files are kept (pause, for resume via the scratch length) or deleted (cancel).
+ * Control methods are fire-and-forget — they launch into [scope].
  */
 class DownloadService(
     private val store: DownloadStore,
@@ -53,33 +54,34 @@ class DownloadService(
         resolver, client, userAgent, ffmpeg, storage, mediaCache, logger,
     )
 
-    private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
-    val tasks: StateFlow<List<DownloadTask>> = _tasks.asStateFlow()
+    private val changes = MutableSharedFlow<DownloadChange>(
+        extraBufferCapacity = 128,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
-    private val lock = Mutex()
-    private val pumpSignal = Channel<Unit>(Channel.CONFLATED)
-    private var activeJob: Job? = null
+    /** The live queue for the UI — materialized only while collected (see [DownloadTasksAggregator]). */
+    val tasks: StateFlow<List<DownloadTask>> = DownloadTasksAggregator(store, changes, scope).tasks
+
+    // The single worker slot. `gate` guards it and the interrupt reason for the active task.
+    private val gate = Mutex()
     private var activeId: String? = null
-
-    /** Set just before cancelling the active job so the interrupt handler knows PAUSED vs CANCELED. */
+    private var activeJob: Job? = null
     private val interrupts = mutableMapOf<String, DownloadState>()
 
-    init {
-        scope.launch { pumpLoop() }
-    }
+    /** A one-off imperative read of the whole queue (for headless callers/tests; the UI uses [tasks]). */
+    suspend fun snapshot(): List<DownloadTask> = store.all()
 
-    /** Load the persisted queue on startup; any task left mid-flight (app killed) is re-queued. */
+    /**
+     * Load the persisted queue on startup. The queue does NOT auto-start: anything left running or queued
+     * — in-flight when the app was killed/crashed, or still waiting — is reset to [DownloadState.PAUSED]
+     * so the user explicitly resumes it. Terminal/failed/already-paused tasks are kept as-is.
+     */
     suspend fun load() {
-        val restored = store.all().map { task ->
-            if (task.state.isActive || task.state == DownloadState.PREPARING) {
-                task.copy(state = DownloadState.QUEUED, updatedAt = now())
-            } else {
-                task
+        store.all().forEach { task ->
+            if (task.state.isActive || task.state == DownloadState.QUEUED) {
+                store.upsert(task.copy(state = DownloadState.PAUSED, updatedAt = now()))
             }
         }
-        restored.filter { it.state == DownloadState.QUEUED }.forEach { store.upsert(it) }
-        _tasks.value = restored
-        pumpSignal.trySend(Unit)
     }
 
     fun enqueue(request: DownloadRequest): String {
@@ -101,27 +103,25 @@ class DownloadService(
             updatedAt = now(),
         )
         scope.launch {
-            put(task)
-            pumpSignal.trySend(Unit)
+            store.upsert(task)
+            changes.emit(DownloadChange.Added(task))
+            startNextIfIdle()
         }
         return id
     }
 
-    fun pause(id: String) = scope.launch {
-        val task = current(id) ?: return@launch
-        if (task.state == DownloadState.QUEUED) {
-            put(task.copy(state = DownloadState.PAUSED, updatedAt = now()))
-        } else if (task.id == activeId) {
-            lock.withLock { interrupts[id] = DownloadState.PAUSED }
-            activeJob?.cancel()
-        }
+    /** Pause the whole queue: stop the active download and hold every queued task. */
+    fun pause(@Suppress("UNUSED_PARAMETER") id: String) = scope.launch {
+        val active = gate.withLock { activeId?.also { interrupts[it] = DownloadState.PAUSED }?.let { activeJob } }
+        active?.cancel()
+        store.all().filter { it.state == DownloadState.QUEUED }.forEach { setState(it.id, DownloadState.PAUSED) }
     }.let {}
 
     fun resume(id: String) = scope.launch {
-        val task = current(id) ?: return@launch
+        val task = store.get(id) ?: return@launch
         if (task.state == DownloadState.PAUSED || task.state == DownloadState.FAILED) {
-            put(task.copy(state = DownloadState.QUEUED, errorMessage = null, updatedAt = now()))
-            pumpSignal.trySend(Unit)
+            setState(id, DownloadState.QUEUED, error = null)
+            startNextIfIdle()
         }
     }.let {}
 
@@ -129,50 +129,48 @@ class DownloadService(
     fun retry(id: String) = resume(id)
 
     fun cancel(id: String) = scope.launch {
-        val task = current(id) ?: return@launch
-        if (task.id == activeId) {
-            lock.withLock { interrupts[id] = DownloadState.CANCELED }
-            activeJob?.cancel()
+        val active = gate.withLock { if (activeId == id) { interrupts[id] = DownloadState.CANCELED; activeJob } else null }
+        if (active != null) {
+            active.cancel()
         } else {
             cleanupTemp(id)
-            put(task.copy(state = DownloadState.CANCELED, updatedAt = now()))
+            setState(id, DownloadState.CANCELED)
         }
     }.let {}
 
-    /** Remove a task from the queue entirely (and its temp files). The finished output file is left on
-     *  disk — it's a normal library file by then. */
+    /** Remove a task (and its temp files) entirely. The finished output file is left on disk. */
     fun remove(id: String) = scope.launch {
-        if (id == activeId) {
-            lock.withLock { interrupts[id] = DownloadState.CANCELED }
-            activeJob?.cancel()
-        }
+        val active = gate.withLock { if (activeId == id) { interrupts[id] = DownloadState.CANCELED; activeJob } else null }
+        active?.cancel()
         cleanupTemp(id)
         store.delete(id)
-        _tasks.update { list -> list.filterNot { it.id == id } }
+        changes.emit(DownloadChange.Removed(id))
     }.let {}
 
-    // --- worker pump ---------------------------------------------------------------------------------
+    // --- worker --------------------------------------------------------------------------------------
 
-    private suspend fun pumpLoop() {
-        for (signal in pumpSignal) {
-            while (true) {
-                val next = lock.withLock {
-                    if (activeId != null) return@withLock null
-                    _tasks.value.firstOrNull { it.state == DownloadState.QUEUED }?.also { activeId = it.id }
-                } ?: break
-                runTask(next)
+    /** Start the oldest queued task if no task is currently active. */
+    private fun startNextIfIdle() {
+        scope.launch {
+            gate.withLock {
+                if (activeId != null) return@withLock
+                val next = store.nextQueued() ?: return@withLock
+                activeId = next.id
+                val job = scope.launch { execute(next) }
+                activeJob = job
+                // On completion free the slot and advance — unless this task was explicitly paused (pausing
+                // holds the whole queue), in which case the queue stays put until the user resumes.
+                job.invokeOnCompletion {
+                    scope.launch {
+                        val paused = gate.withLock {
+                            activeId = null
+                            activeJob = null
+                            interrupts.remove(next.id) == DownloadState.PAUSED
+                        }
+                        if (!paused) startNextIfIdle()
+                    }
+                }
             }
-        }
-    }
-
-    private suspend fun runTask(task: DownloadTask) {
-        val job = scope.launch { execute(task) }
-        activeJob = job
-        job.join()
-        lock.withLock {
-            activeJob = null
-            activeId = null
-            interrupts.remove(task.id)
         }
     }
 
@@ -186,55 +184,44 @@ class DownloadService(
                 onProcessing = { setStateAsync(task.id, DownloadState.PROCESSING) },
                 onProgress = { done, total -> setProgressAsync(task.id, done, total) },
             )
-            put(current(task.id)!!.copy(
-                state = DownloadState.COMPLETED,
-                // The uri the storage published to — a path today (okio), a content:// SAF document once
-                // Android's storage impl lands (see the TODO board).
-                fileUri = result.uri,
-                downloadedBytes = result.bytes,
-                totalBytes = result.bytes,
-                errorMessage = null,
-                updatedAt = now(),
-            ))
-            onCompleted?.invoke(current(task.id)!!, result)
+            store.updateCompleted(task.id, result.uri, result.bytes, now())
+            changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
+            store.get(task.id)?.let { onCompleted?.invoke(it, result) }
         } catch (c: CancellationException) {
             withContext(NonCancellable) {
-                val target = lock.withLock { interrupts[task.id] } ?: DownloadState.PAUSED
+                val target = gate.withLock { interrupts[task.id] } ?: DownloadState.PAUSED
                 if (target == DownloadState.CANCELED) cleanupTemp(task.id)
-                put(current(task.id)!!.copy(state = target, updatedAt = now()))
+                setState(task.id, target)
             }
-            throw c
+            throw c // let the job complete as cancelled; invokeOnCompletion decides whether to advance
         } catch (e: Throwable) {
-            // Log the full technical failure at the birth-of-record here; the user sees only a code. An
-            // uncoded exception (network, SABR, …) gets the E70001 fallback so every failure is reportable.
+            // Log the full technical failure here; the user sees only a code. An uncoded exception
+            // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
             logger?.log(Logger.Level.WARN, LOG_CTX, "download ${task.id} failed: ${e.message}", e)
-            val coded = e.codedError()
-            val userFacing = when {
-                coded?.userMessage != null -> "${coded.userMessage} (${coded.code})"
-                else -> "Something went wrong (${coded?.code ?: "E70001"})"
-            }
-            put(current(task.id)!!.copy(state = DownloadState.FAILED, errorMessage = userFacing, updatedAt = now()))
+            setState(task.id, DownloadState.FAILED, error = userFacingError(e))
         }
     }
 
-    // --- state helpers -------------------------------------------------------------------------------
+    // --- writes (DB + change event) ------------------------------------------------------------------
 
-    private fun current(id: String) = _tasks.value.firstOrNull { it.id == id }
+    private suspend fun setState(id: String, state: DownloadState, error: String? = null) {
+        store.updateState(id, state, error, now())
+        changes.emit(DownloadChange.StateChanged(id, state, error))
+    }
 
-    private fun setStateAsync(id: String, state: DownloadState) = scope.launch {
-        current(id)?.let { put(it.copy(state = state, updatedAt = now())) }
-    }.let {}
+    private fun setStateAsync(id: String, state: DownloadState) = scope.launch { setState(id, state) }.let {}
 
     private fun setProgressAsync(id: String, done: Long, total: Long) = scope.launch {
-        current(id)?.let { put(it.copy(downloadedBytes = done, totalBytes = total, updatedAt = now())) }
+        store.updateProgress(id, done, total, now())
+        changes.emit(DownloadChange.ProgressChanged(id, done, total))
     }.let {}
 
-    /** Update the in-memory list and durably persist one task (insert or replace). */
-    private suspend fun put(task: DownloadTask) {
-        _tasks.update { list ->
-            if (list.any { it.id == task.id }) list.map { if (it.id == task.id) task else it } else list + task
+    private fun userFacingError(e: Throwable): String {
+        val coded = e.codedError()
+        return when {
+            coded?.userMessage != null -> "${coded.userMessage} (${coded.code})"
+            else -> "Something went wrong (${coded?.code ?: "E70001"})"
         }
-        store.upsert(task)
     }
 
     private fun cleanupTemp(id: String) {
