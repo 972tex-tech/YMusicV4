@@ -148,14 +148,15 @@ private fun DownloadCard(task: DownloadTask, service: DownloadService) {
     }
 }
 
-/** A determinate bar while bytes are known, indeterminate during prepare/process, nothing when terminal. */
+/** A determinate bar while a fraction is known (download bytes, or ffmpeg output-time during processing),
+ *  indeterminate while preparing or before the first tick, nothing when terminal. */
 @Composable
 private fun DownloadProgress(task: DownloadTask) {
     when {
-        task.state == DownloadState.DOWNLOADING && task.progress != null ->
+        (task.state == DownloadState.DOWNLOADING || task.state == DownloadState.PROCESSING) && task.progress != null ->
             LinearProgressIndicator(progress = { task.progress!! }, modifier = Modifier.fillMaxWidth())
         task.state == DownloadState.PREPARING || task.state == DownloadState.PROCESSING ||
-            (task.state == DownloadState.DOWNLOADING) ->
+            task.state == DownloadState.DOWNLOADING ->
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         else -> Unit
     }
@@ -210,6 +211,8 @@ private fun DownloadTask.statusLine(): String {
             val pct = progress?.let { " · ${(it * 100).toInt()}%" } ?: ""
             "${humanSize(downloadedBytes)} / ${humanSize(totalBytes)}$pct"
         }
+        // During processing the byte counters carry ffmpeg's output-time fraction, not bytes — show only %.
+        DownloadState.PROCESSING -> progress?.let { "${(it * 100).toInt()}%" } ?: ""
         DownloadState.COMPLETED -> humanSize(totalBytes)
         DownloadState.FAILED -> errorMessage ?: ""
         else -> ""

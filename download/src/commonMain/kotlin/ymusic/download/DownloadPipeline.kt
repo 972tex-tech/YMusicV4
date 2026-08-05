@@ -55,7 +55,8 @@ class DownloadPipeline(
         val streams = downloader.download(task, captions, onPreparing, onDownloading, onProgress)
         val audioFmt = streams.audio.format
         val videoFmt = streams.video?.format
-        val fileName = uniqueFileName(task)
+        val base = baseName(task)
+        val fileName = "$base.${task.format.fileExtension}"
 
         // 1b. optional thumbnail download for cover art — TODO.
 
@@ -66,37 +67,50 @@ class DownloadPipeline(
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             val bytes = streams.audio.scratch.length()
             val uri = storage.publish(streams.audio.scratch, fileName)
-            cleanupCaptions(streams) // TODO: sidecar/mux the downloaded captions (next pipeline step)
+            publishCaptionSidecars(base, streams)
             return Result(uri, bytes, audioFmt, null)
         }
 
-        // 2. mux/convert + metadata into the final scratch.
+        // 2. mux/convert + metadata into the final scratch, reporting ffmpeg's output-time progress. The
+        // media duration bounds it; we map output-time → the same done/total the UI's bar reads. Start at 0
+        // so the bar refills for the processing phase rather than jumping from the download's 100%.
         val ff = ffmpeg ?: error("ffmpeg unavailable: ${task.format} needs transcode/mux on this platform")
+        val durationMs = maxOf(audioFmt.approxDurationMs, videoFmt?.approxDurationMs ?: 0).toLong()
+        val onFfProgress: ((Long) -> Unit)? = if (durationMs > 0) {
+            { us -> onProgress((us / 1000).coerceIn(0, durationMs), durationMs) }
+        } else {
+            null
+        }
+        if (durationMs > 0) onProgress(0, durationMs)
+
         val audio = streams.audio.scratch
         val video = streams.video?.scratch
         val out = storage.scratch("${task.id}.out")
         val meta = task.tags()
         when (task.format) {
-            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta)
-            DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), metadata = meta)
-            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, meta)
-            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, meta)
+            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress)
+            DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), metadata = meta, onProgressUs = onFfProgress)
+            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, meta, onFfProgress)
+            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, meta, onFfProgress)
         }
         val bytes = out.length()
 
         // 3. clean up the elementary scratch files.
         audio.delete()
         video?.delete()
-        cleanupCaptions(streams) // TODO: sidecar/mux the downloaded captions (next pipeline step)
 
-        // 4. publish the final file; the caller adds it to the library.
-        return Result(storage.publish(out, fileName), bytes, audioFmt, videoFmt)
+        // 4. publish the final file (+ caption sidecars); the caller adds the media to the library.
+        val uri = storage.publish(out, fileName)
+        publishCaptionSidecars(base, streams)
+        return Result(uri, bytes, audioFmt, videoFmt)
     }
 
-    // Captions are downloaded by [YtStreamDownloader] but not yet consumed — the mux/sidecar step is TODO,
-    // so for now they're cleaned up here rather than left as scratch litter.
-    private fun cleanupCaptions(streams: DownloadedStreams) {
-        streams.captions.forEach { it.scratch.delete() }
+    // Publish each downloaded caption as a sidecar next to the media file: `<base>.<lang>.vtt`. In-container
+    // muxing (mov_text / webvtt) is a possible future refinement; sidecars keep it simple and universal.
+    private suspend fun publishCaptionSidecars(base: String, streams: DownloadedStreams) {
+        streams.captions.forEach { cc ->
+            storage.publish(cc.scratch, "$base.${cc.languageCode}.${cc.fileExtension}")
+        }
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
@@ -109,13 +123,14 @@ class DownloadPipeline(
         add("composer" to videoId)
     }
 
-    /** `Title-videoId.ext`, sanitized to a safe filename. The videoId keeps it unique across same-title videos. */
-    private fun uniqueFileName(task: DownloadTask): String {
-        val base = task.title.map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }
+    /** `Title-videoId`, sanitized — the shared stem for the media file and its caption sidecars. The
+     *  videoId keeps it unique across same-title videos. Callers append the extension. */
+    private fun baseName(task: DownloadTask): String {
+        val title = task.title.map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }
             .joinToString("")
             .trim()
             .take(80)
             .ifBlank { task.videoId }
-        return "$base-${task.videoId}.${task.format.fileExtension}"
+        return "$title-${task.videoId}"
     }
 }
