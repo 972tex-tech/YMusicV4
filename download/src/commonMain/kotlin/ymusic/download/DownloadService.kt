@@ -127,81 +127,90 @@ class DownloadService(
     }
 
     /** Pause one task and free its slot; the next queued task takes it (the queue keeps flowing). */
-    fun pause(id: String) = scope.launch {
-        // Decide under the same lock fillSlots claims with, so a QUEUED task can't be started between the
+    fun pause(id: String) {
+        // Act under the same lock fillSlots claims with, so a QUEUED task can't be started between the
         // read and the pause (which would lose the pause, or leave a "paused" task still downloading).
-        val job = gate.withLock {
-            val running = active[id]
-            if (running != null) {
-                interrupts[id] = DownloadState.PAUSED
-                running
-            } else {
-                if (store.get(id)?.state == DownloadState.QUEUED) setState(id, DownloadState.PAUSED)
-                null
+        scope.launch {
+            gate.withLock {
+                val running = active[id]
+                if (running != null) {
+                    interrupts[id] = DownloadState.PAUSED
+                    running.cancel() // execute → PAUSED; completion frees the slot and fillSlots continues
+                } else if (store.get(id)?.state == DownloadState.QUEUED) {
+                    setState(id, DownloadState.PAUSED)
+                }
             }
         }
-        job?.cancel() // execute → PAUSED; its completion frees the slot and fillSlots starts the next
-    }.let {}
+    }
 
-    fun resume(id: String) = scope.launch {
-        val task = store.get(id) ?: return@launch
-        if (task.state == DownloadState.PAUSED || task.state == DownloadState.FAILED) {
-            gate.withLock { queuePaused = false } // resuming a task un-holds the queue
-            setState(id, DownloadState.QUEUED, error = null)
-            fillSlots()
+    fun resume(id: String) {
+        scope.launch {
+            val task = store.get(id) ?: return@launch
+            if (task.state == DownloadState.PAUSED || task.state == DownloadState.FAILED) {
+                gate.withLock { queuePaused = false } // resuming a task un-holds the queue
+                setState(id, DownloadState.QUEUED, error = null)
+                fillSlots()
+            }
         }
-    }.let {}
+    }
 
     /** Alias for [resume] on a failed task — the same "back to QUEUED" transition. */
     fun retry(id: String) = resume(id)
 
-    fun cancel(id: String) = scope.launch {
-        val job = gate.withLock {
-            val running = active[id]
-            if (running != null) {
-                interrupts[id] = DownloadState.CANCELED
-                running
-            } else {
-                cleanupTemp(id)
-                setState(id, DownloadState.CANCELED)
-                null
+    fun cancel(id: String) {
+        scope.launch {
+            gate.withLock {
+                val running = active[id]
+                if (running != null) {
+                    interrupts[id] = DownloadState.CANCELED
+                    running.cancel()
+                } else {
+                    cleanupTemp(id)
+                    setState(id, DownloadState.CANCELED)
+                }
             }
         }
-        job?.cancel()
-    }.let {}
+    }
 
     /** Remove a task (and its temp files) entirely. The finished output file is left on disk. */
-    fun remove(id: String) = scope.launch {
+    fun remove(id: String) {
         // Decide + delete under the claim lock so a QUEUED task can't be started into a deleted row. An
         // active task is cancelled — its execute cleans up its own scratch on the CANCELED path; a
         // non-active one is cleaned up here.
-        val job = gate.withLock {
-            val running = active[id]
-            if (running != null) interrupts[id] = DownloadState.CANCELED else cleanupTemp(id)
-            store.delete(id)
-            running
+        scope.launch {
+            gate.withLock {
+                val running = active[id]
+                if (running != null) {
+                    interrupts[id] = DownloadState.CANCELED
+                    running.cancel()
+                } else {
+                    cleanupTemp(id)
+                }
+                store.delete(id)
+            }
+            _changes.emit(DownloadChange.Removed(id))
         }
-        job?.cancel()
-        _changes.emit(DownloadChange.Removed(id))
-    }.let {}
+    }
 
     /** Global pause: hold the whole queue — stop every active download and every queued task. */
-    fun pauseAll() = scope.launch {
-        val jobs = gate.withLock {
-            queuePaused = true
-            active.keys.forEach { interrupts[it] = DownloadState.PAUSED }
-            active.values.toList()
+    fun pauseAll() {
+        scope.launch {
+            gate.withLock {
+                queuePaused = true
+                active.forEach { (id, job) -> interrupts[id] = DownloadState.PAUSED; job.cancel() }
+            }
+            store.all().filter { it.state == DownloadState.QUEUED }.forEach { setState(it.id, DownloadState.PAUSED) }
         }
-        jobs.forEach { it.cancel() }
-        store.all().filter { it.state == DownloadState.QUEUED }.forEach { setState(it.id, DownloadState.PAUSED) }
-    }.let {}
+    }
 
     /** Global resume: re-queue every paused task and run up to [maxConcurrent] of them. */
-    fun resumeAll() = scope.launch {
-        gate.withLock { queuePaused = false }
-        store.all().filter { it.state == DownloadState.PAUSED }.forEach { setState(it.id, DownloadState.QUEUED) }
-        fillSlots()
-    }.let {}
+    fun resumeAll() {
+        scope.launch {
+            gate.withLock { queuePaused = false }
+            store.all().filter { it.state == DownloadState.PAUSED }.forEach { setState(it.id, DownloadState.QUEUED) }
+            fillSlots()
+        }
+    }
 
     // --- worker --------------------------------------------------------------------------------------
 
@@ -262,12 +271,16 @@ class DownloadService(
         _changes.emit(DownloadChange.StateChanged(id, state, error))
     }
 
-    private fun setStateAsync(id: String, state: DownloadState) = scope.launch { setState(id, state) }.let {}
+    private fun setStateAsync(id: String, state: DownloadState) {
+        scope.launch { setState(id, state) }
+    }
 
-    private fun setProgressAsync(id: String, done: Long, total: Long) = scope.launch {
-        store.updateProgress(id, done, total, now())
-        _changes.emit(DownloadChange.ProgressChanged(id, done, total))
-    }.let {}
+    private fun setProgressAsync(id: String, done: Long, total: Long) {
+        scope.launch {
+            store.updateProgress(id, done, total, now())
+            _changes.emit(DownloadChange.ProgressChanged(id, done, total))
+        }
+    }
 
     private fun userFacingError(e: Throwable): String {
         val coded = e.codedError()
