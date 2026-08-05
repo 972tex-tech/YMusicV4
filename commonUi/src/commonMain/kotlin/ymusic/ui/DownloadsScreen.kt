@@ -1,6 +1,7 @@
 package ymusic.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +65,29 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     // Newest first so an in-progress download sits at the top.
     val ordered = tasks.sortedByDescending { it.createdAt }
 
+    Column(Modifier.fillMaxSize()) {
+        QueueControls(tasks, service)
+        Box(Modifier.weight(1f)) { DownloadsList(ordered, service) }
+    }
+}
+
+/** Global queue control: pause the whole queue while anything is running/queued, else resume it. */
+@Composable
+private fun QueueControls(tasks: List<DownloadTask>, service: DownloadService) {
+    val running = tasks.any { it.state == DownloadState.QUEUED || it.state.isActive }
+    val paused = tasks.any { it.state == DownloadState.PAUSED }
+    if (!running && !paused) return
+    Row(Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.MarginCompact), horizontalArrangement = Arrangement.End) {
+        if (running) {
+            TextButton(onClick = { service.pauseAll() }) { Text("Pause all") }
+        } else {
+            TextButton(onClick = { service.resumeAll() }) { Text("Resume all") }
+        }
+    }
+}
+
+@Composable
+private fun DownloadsList(ordered: List<DownloadTask>, service: DownloadService) {
     BoxWithConstraintsCompat { maxWidth ->
         if (maxWidth >= DownloadsGridMinWidth) {
             LazyVerticalGrid(

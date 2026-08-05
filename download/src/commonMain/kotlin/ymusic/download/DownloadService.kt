@@ -19,14 +19,15 @@ import kotlin.random.Random
 
 /**
  * Manages the download queue. The DB ([store]) is the single source of truth — the service holds no task
- * list, only the one active worker slot; the UI reads via [tasks] (a lazy [DownloadTasksAggregator]).
+ * list, only the [maxConcurrent] worker slots; the UI reads via [tasks] (a lazy [DownloadTasksAggregator]).
  *
- * Queue model: one task runs at a time. Adding a task starts it if nothing is active; when a task
- * finishes (or is canceled), the next queued one starts. **Pause stops the whole queue** — the active
- * download is interrupted and every queued task is held; the user then resumes tasks individually.
- * Nothing auto-starts on [load] (a crash leaves tasks PAUSED).
+ * Queue model: up to [maxConcurrent] tasks run at once (priming the WebView still serializes). Adding a
+ * task fills a free slot; when a task finishes or is canceled, the next queued one takes the slot.
+ * **[pause] is per-task** — it frees that slot and the queue keeps flowing; **[pauseAll] holds the whole
+ * queue**. [resume]/[resumeAll] bring tasks back. Nothing auto-starts on [load] (a crash leaves tasks
+ * PAUSED).
  *
- * Pause and cancel both cancel the active [Job]; the difference is the recorded state and whether the
+ * Pause and cancel both cancel the task's [Job]; the difference is the recorded state and whether the
  * partially-downloaded files are kept (pause, for resume via the scratch length) or deleted (cancel).
  * Control methods are fire-and-forget — they launch into [scope].
  */
@@ -39,6 +40,9 @@ class DownloadService(
     userAgent: String,
     ffmpeg: Ffmpeg?,
     private val storage: DownloadStorage,
+    /** How many downloads run at once. Priming (the WebView resolve) still serializes; this bounds the
+     *  concurrent byte-download + ffmpeg work. */
+    private val maxConcurrent: Int = 3,
     mediaCache: MediaCache? = null,
     private val logger: Logger? = null,
     /** Current caption selection, read fresh per download (the shell sources it from settings). Keeps the
@@ -62,10 +66,10 @@ class DownloadService(
     /** The live queue for the UI — materialized only while collected (see [DownloadTasksAggregator]). */
     val tasks: StateFlow<List<DownloadTask>> = DownloadTasksAggregator(store, changes, scope).tasks
 
-    // The single worker slot. `gate` guards it and the interrupt reason for the active task.
+    // The worker slots. `gate` guards them, the global-pause flag, and the interrupt reasons.
     private val gate = Mutex()
-    private var activeId: String? = null
-    private var activeJob: Job? = null
+    private var queuePaused = false
+    private val active = mutableMapOf<String, Job>()
     private val interrupts = mutableMapOf<String, DownloadState>()
 
     /** A one-off imperative read of the whole queue (for headless callers/tests; the UI uses [tasks]). */
@@ -105,23 +109,27 @@ class DownloadService(
         scope.launch {
             store.upsert(task)
             changes.emit(DownloadChange.Added(task))
-            startNextIfIdle()
+            fillSlots()
         }
         return id
     }
 
-    /** Pause the whole queue: stop the active download and hold every queued task. */
-    fun pause(@Suppress("UNUSED_PARAMETER") id: String) = scope.launch {
-        val active = gate.withLock { activeId?.also { interrupts[it] = DownloadState.PAUSED }?.let { activeJob } }
-        active?.cancel()
-        store.all().filter { it.state == DownloadState.QUEUED }.forEach { setState(it.id, DownloadState.PAUSED) }
+    /** Pause one task and free its slot; the next queued task takes it (the queue keeps flowing). */
+    fun pause(id: String) = scope.launch {
+        val job = gate.withLock { active[id]?.also { interrupts[id] = DownloadState.PAUSED } }
+        if (job != null) {
+            job.cancel() // execute → PAUSED; its completion frees the slot and fillSlots starts the next
+        } else if (store.get(id)?.state == DownloadState.QUEUED) {
+            setState(id, DownloadState.PAUSED)
+        }
     }.let {}
 
     fun resume(id: String) = scope.launch {
         val task = store.get(id) ?: return@launch
         if (task.state == DownloadState.PAUSED || task.state == DownloadState.FAILED) {
+            gate.withLock { queuePaused = false } // resuming a task un-holds the queue
             setState(id, DownloadState.QUEUED, error = null)
-            startNextIfIdle()
+            fillSlots()
         }
     }.let {}
 
@@ -129,9 +137,9 @@ class DownloadService(
     fun retry(id: String) = resume(id)
 
     fun cancel(id: String) = scope.launch {
-        val active = gate.withLock { if (activeId == id) { interrupts[id] = DownloadState.CANCELED; activeJob } else null }
-        if (active != null) {
-            active.cancel()
+        val job = gate.withLock { active[id]?.also { interrupts[id] = DownloadState.CANCELED } }
+        if (job != null) {
+            job.cancel()
         } else {
             cleanupTemp(id)
             setState(id, DownloadState.CANCELED)
@@ -140,34 +148,49 @@ class DownloadService(
 
     /** Remove a task (and its temp files) entirely. The finished output file is left on disk. */
     fun remove(id: String) = scope.launch {
-        val active = gate.withLock { if (activeId == id) { interrupts[id] = DownloadState.CANCELED; activeJob } else null }
-        active?.cancel()
+        val job = gate.withLock { active[id]?.also { interrupts[id] = DownloadState.CANCELED } }
+        job?.cancel()
         cleanupTemp(id)
         store.delete(id)
         changes.emit(DownloadChange.Removed(id))
     }.let {}
 
+    /** Global pause: hold the whole queue — stop every active download and every queued task. */
+    fun pauseAll() = scope.launch {
+        val jobs = gate.withLock {
+            queuePaused = true
+            active.keys.forEach { interrupts[it] = DownloadState.PAUSED }
+            active.values.toList()
+        }
+        jobs.forEach { it.cancel() }
+        store.all().filter { it.state == DownloadState.QUEUED }.forEach { setState(it.id, DownloadState.PAUSED) }
+    }.let {}
+
+    /** Global resume: re-queue every paused task and run up to [maxConcurrent] of them. */
+    fun resumeAll() = scope.launch {
+        gate.withLock { queuePaused = false }
+        store.all().filter { it.state == DownloadState.PAUSED }.forEach { setState(it.id, DownloadState.QUEUED) }
+        fillSlots()
+    }.let {}
+
     // --- worker --------------------------------------------------------------------------------------
 
-    /** Start the oldest queued task if no task is currently active. */
-    private fun startNextIfIdle() {
+    /** Start queued tasks until [maxConcurrent] are running (unless the queue is globally paused). Each
+     *  pick is claimed as PREPARING under the lock so the next [DownloadStore.nextQueued] skips it. */
+    private fun fillSlots() {
         scope.launch {
             gate.withLock {
-                if (activeId != null) return@withLock
-                val next = store.nextQueued() ?: return@withLock
-                activeId = next.id
-                val job = scope.launch { execute(next) }
-                activeJob = job
-                // On completion free the slot and advance — unless this task was explicitly paused (pausing
-                // holds the whole queue), in which case the queue stays put until the user resumes.
-                job.invokeOnCompletion {
-                    scope.launch {
-                        val paused = gate.withLock {
-                            activeId = null
-                            activeJob = null
-                            interrupts.remove(next.id) == DownloadState.PAUSED
+                if (queuePaused) return@withLock
+                while (active.size < maxConcurrent) {
+                    val next = store.nextQueued() ?: break
+                    setState(next.id, DownloadState.PREPARING)
+                    val job = scope.launch { execute(next) }
+                    active[next.id] = job
+                    job.invokeOnCompletion {
+                        scope.launch {
+                            gate.withLock { active.remove(next.id); interrupts.remove(next.id) }
+                            fillSlots()
                         }
-                        if (!paused) startNextIfIdle()
                     }
                 }
             }
