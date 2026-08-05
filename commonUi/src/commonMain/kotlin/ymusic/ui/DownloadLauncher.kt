@@ -7,6 +7,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -42,11 +43,11 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     val video = pending ?: return
     val snackbar = LocalSnackbar.current
 
-    // Gate: pick a download location first. When one is set, the setting flips non-blank and this
-    // recomposes straight into the format dialog below (choosing does NOT cancel the pending download).
+    // Gate: pick a download location first. With none set, go straight to the OS folder picker; a pick
+    // sets the location (this recomposes into the format dialog), a cancel cancels the download.
     val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
-    if (location.isBlank() && graph.mediaStore != null) {
-        ChooseDownloadLocationDialog(graph, onDismiss = onDismiss, onChosen = {})
+    if (location.isBlank() && graph.mediaStore != null && graph.scanLibraryFolder != null) {
+        LaunchedEffect(video) { if (!pickDownloadFolder(graph)) onDismiss() }
         return
     }
 

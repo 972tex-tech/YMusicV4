@@ -64,6 +64,7 @@
     <string name="menu_remove_folder">Remove from list</string>
     <string name="menu_exclude_folder">Exclude folder</string>
     <string name="menu_include_folder">Include folder</string>
+    <string name="menu_download_location">Download location</string>
     <string name="queue_next">Queue next</string>
     <string name="queue_last">Queue last</string>
     <string name="badge_live">LIVE</string>

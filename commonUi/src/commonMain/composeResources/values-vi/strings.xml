@@ -43,6 +43,7 @@
     <string name="menu_remove_folder">Gỡ khỏi danh sách</string>
     <string name="menu_exclude_folder">Loại trừ thư mục</string>
     <string name="menu_include_folder">Đưa lại thư mục</string>
+    <string name="menu_download_location">Thư mục tải xuống</string>
     <string name="queue_next">Phát tiếp theo</string>
     <string name="queue_last">Thêm vào cuối hàng đợi</string>
     <string name="badge_live">TRỰC TIẾP</string>

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AllInclusive
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Album
@@ -91,7 +92,11 @@ internal val GridTitleStyle: TextStyle @Composable get() =
 internal val GridSubStyle: TextStyle @Composable get() = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary)
 
 /** What the ⋮ overflow offers for an item; empty = no overflow shown. */
-class ItemActions(val entries: List<Pair<String, () -> Unit>>)
+class ItemActions(
+    val entries: List<Pair<String, () -> Unit>>,
+    /** Labels drawn with a trailing check — toggle-state items (e.g. "Download location"). */
+    val checked: Set<String> = emptySet(),
+)
 
 /**
  * A header's display title. Scraped titles arrive localized from YouTube and render verbatim; the
@@ -445,7 +450,15 @@ internal fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             actions.entries.forEach { (label, action) ->
-                DropdownMenuItem(text = { Text(label) }, onClick = { action(); open = false })
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    trailingIcon = if (label in actions.checked) {
+                        { Icon(Icons.Default.Check, contentDescription = null, tint = DesignColors.Accent) }
+                    } else {
+                        null
+                    },
+                    onClick = { action(); open = false },
+                )
             }
         }
     }

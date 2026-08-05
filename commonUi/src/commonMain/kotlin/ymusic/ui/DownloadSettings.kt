@@ -8,14 +8,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
@@ -32,12 +28,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
 import ymusic.mediastore.model.MediaStoreBucket
 import ymusic.settings.AppSettings
@@ -61,157 +55,58 @@ internal fun DownloadSettingsSection(graph: AppGraph) {
 @Composable
 private fun DownloadLocationRow(graph: AppGraph) {
     val mediaStore = graph.mediaStore ?: return
-    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
-
-    var buckets by remember { mutableStateOf<List<MediaStoreBucket>>(emptyList()) }
-    LaunchedEffect(mediaStore) {
-        buckets = mediaStore.childBuckets(null)
-        mediaStore.bucketsChanges().collect { buckets = mediaStore.childBuckets(null) }
-    }
-
-    val currentName = buckets.firstOrNull { it.uri.toString() == location }?.name
-        ?: location.ifBlank { null }
-    var open by remember { mutableStateOf(false) }
-
-    SettingRow(title = "Download location", value = currentName ?: "Not set") { open = true }
-
-    if (open) {
-        ChooseDownloadLocationDialog(graph, onDismiss = { open = false }, onChosen = { open = false })
-    }
-}
-
-/**
- * Pick where downloads go: choose an existing Library folder, or "Add new folder…" to pick one from
- * disk (a new Library bucket) and adopt it. Writes [AppSettings.downloadLocation] on a pick.
- * [onChosen] fires when a location was set (the download flow uses it to advance past the gate);
- * [onDismiss] fires on cancel. Both close the dialog. No-ops itself if the shell has no media store.
- */
-@Composable
-internal fun ChooseDownloadLocationDialog(graph: AppGraph, onDismiss: () -> Unit, onChosen: () -> Unit) {
-    val mediaStore = graph.mediaStore ?: return
     val scope = rememberCoroutineScope()
     val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
 
-    var buckets by remember { mutableStateOf<List<MediaStoreBucket>>(emptyList()) }
-    LaunchedEffect(mediaStore) {
-        buckets = mediaStore.childBuckets(null)
-        mediaStore.bucketsChanges().collect { buckets = mediaStore.childBuckets(null) }
-    }
-
-    val scan = graph.scanLibraryFolder
-    val onAddFolder: (() -> Unit)? = if (scan == null) {
-        null
-    } else {
-        {
-            scope.launch {
-                val before = mediaStore.allBuckets().map { it.uri.toString() }.toSet()
-                val added = if (scan { } != null) {
-                    mediaStore.allBuckets().firstOrNull { it.uri.toString() !in before }
-                } else {
-                    null
-                }
-                if (added != null) {
-                    graph.settings.put(AppSettings.downloadLocation, added.uri.toString())
-                    onChosen()
-                } else {
-                    onDismiss() // canceled the picker, or nothing new was added
-                }
-            }
+    // Resolve the location uri to its (possibly non-root) bucket name; a single indexed lookup, not
+    // an allBuckets() scan.
+    var name by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(location, mediaStore) {
+        name = if (location.isBlank()) {
+            null
+        } else {
+            mediaStore.findBucketByUri(Uri.parse(location))?.let { it.aliasName?.takeIf(String::isNotBlank) ?: it.name }
+                ?: location
         }
     }
 
-    DownloadLocationDialog(
-        buckets = buckets,
-        current = location,
-        onPick = { uri ->
-            scope.launch { graph.settings.put(AppSettings.downloadLocation, uri) }
-            onChosen()
-        },
-        onAddFolder = onAddFolder,
-        onDismiss = onDismiss,
-    )
-}
-
-@Composable
-private fun DownloadLocationDialog(
-    buckets: List<MediaStoreBucket>,
-    current: String,
-    onPick: (String) -> Unit,
-    onAddFolder: (() -> Unit)?,
-    onDismiss: () -> Unit,
-) {
-    val scroll = rememberScrollState()
-    ElevatedBarDialog(
-        title = "Download location",
-        onDismiss = onDismiss,
-        canScrollBackward = scroll.canScrollBackward,
-        canScrollForward = scroll.canScrollForward,
-        buttons = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    ) {
-        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(vertical = DesignSpacing.Space8)) {
-            if (buckets.isEmpty()) {
-                Text(
-                    "No Library folders yet — add one to download into it.",
-                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                    modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
-                )
-            }
-            buckets.forEach { bucket ->
-                DialogChoiceRow(
-                    icon = Icons.Outlined.Folder,
-                    label = bucket.name,
-                    color = DesignColors.Ink,
-                    bold = false,
-                    checked = bucket.uri.toString() == current,
-                ) { onPick(bucket.uri.toString()) }
-            }
-            if (onAddFolder != null) {
-                DialogChoiceRow(
-                    icon = Icons.Outlined.CreateNewFolder,
-                    label = "Add new folder…",
-                    color = DesignColors.Accent,
-                    bold = true,
-                    checked = false,
-                    onClick = onAddFolder,
-                )
-            }
-        }
+    // No dialog: tapping goes straight to the OS folder picker (adds the folder to the Library and
+    // sets it as the location). Existing folders are re-designated from the Library tab's menu instead.
+    SettingRow(title = "Download location", value = name ?: "Not set") {
+        scope.launch { pickDownloadFolder(graph) }
     }
 }
 
 /**
- * A picker-dialog choice row: leading icon + label, full-bleed hover, text inset to the title. A
- * [checked] row shows a trailing check (the selection marker — the label itself stays plain).
+ * Show the OS folder picker; on pick, the folder is scanned into the Library (a new bucket) and set as
+ * [AppSettings.downloadLocation]. Returns true iff a new folder was chosen. No-op (false) without a
+ * media store or scan action, or when the pick was canceled / added nothing new.
+ */
+internal suspend fun pickDownloadFolder(graph: AppGraph): Boolean {
+    val store = graph.mediaStore ?: return false
+    val scan = graph.scanLibraryFolder ?: return false
+    val before = store.childBuckets(null).map { it.uri.toString() }.toSet()
+    if (scan { } == null) return false // canceled
+    val added = store.childBuckets(null).firstOrNull { it.uri.toString() !in before } ?: return false
+    graph.settings.put(AppSettings.downloadLocation, added.uri.toString())
+    return true
+}
+
+/**
+ * Clears the download location when its folder leaves the Library — removed (soft-deleted, so
+ * [BetterMediaStore.findBucketByUri] returns null) or excluded (or cascade-deleted by excluding an
+ * ancestor). The next download then re-prompts for a folder. Mounted app-wide (App.kt).
  */
 @Composable
-private fun DialogChoiceRow(
-    icon: ImageVector,
-    label: String,
-    color: Color,
-    bold: Boolean,
-    checked: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-        Text(
-            label,
-            style = TextStyle(
-                fontSize = 14.sp,
-                fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
-                color = color,
-            ),
-            modifier = Modifier.weight(1f),
-        )
-        if (checked) {
-            Icon(Icons.Default.Check, contentDescription = "Selected", tint = DesignColors.Accent, modifier = Modifier.size(20.dp))
+internal fun DownloadLocationGuard(graph: AppGraph) {
+    val store = graph.mediaStore ?: return
+    if (graph.downloads == null) return
+    LaunchedEffect(store) {
+        store.bucketsChanges().collect {
+            val loc = graph.settings.flow(AppSettings.downloadLocation).value
+            if (loc.isBlank()) return@collect
+            val bucket = store.findBucketByUri(Uri.parse(loc))
+            if (bucket == null || bucket.excluded) graph.settings.put(AppSettings.downloadLocation, "")
         }
     }
 }

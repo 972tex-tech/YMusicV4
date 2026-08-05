@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
@@ -87,6 +88,9 @@ import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreBucket
 import ymusic.mediastore.model.MediaStoreItem
 import ymusic.mediastore.model.Playlist
+import ymusic.settings.AppSettings
+import ymusic.settings.flow
+import ymusic.settings.put
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.cd_back
 import ymusic.ui.resources.delete_from_disk_confirm
@@ -110,6 +114,7 @@ import ymusic.ui.resources.library_tab_genres
 import ymusic.ui.resources.library_tab_playlists
 import ymusic.ui.resources.library_tab_songs
 import ymusic.ui.resources.library_unavailable
+import ymusic.ui.resources.menu_download_location
 import ymusic.ui.resources.menu_exclude_folder
 import ymusic.ui.resources.menu_include_folder
 import ymusic.ui.resources.menu_play
@@ -191,6 +196,21 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         loaded == null -> CenteredBox { CircularProgressIndicator() }
         loaded.isEmpty -> EmptyLibrary(graph.scanLibraryFolder, scanController)
         else -> {
+            // Download location (a Library folder, root or nested) — the Folders tab marks it and its
+            // menu re-designates it. Only meaningful when the shell can download.
+            val dlScope = rememberCoroutineScope()
+            val downloadLocationRaw by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+            val downloadLocation: String? = downloadLocationRaw.takeIf { graph.downloads != null && it.isNotBlank() }
+            val onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)? = if (graph.downloads == null) {
+                null
+            } else {
+                { bucket ->
+                    val target = bucket.uri.toString()
+                    dlScope.launch {
+                        graph.settings.put(AppSettings.downloadLocation, if (downloadLocationRaw == target) "" else target)
+                    }
+                }
+            }
             var tab by rememberSaveable { mutableStateOf(LibraryTab.Folders) }
             // A song's "Show in folder" jump: the bucket to open, consumed by the Folders tab once
             // it composes, then cleared.
@@ -249,6 +269,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     scanController,
                                     revealBucket,
                                     onRevealHandled = { revealBucket = null },
+                                    downloadLocation = downloadLocation,
+                                    onToggleDownloadLocation = onToggleDownloadLocation,
                                 )
                                 LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
                                 LibraryTab.Songs -> {
@@ -316,7 +338,11 @@ private fun FoldersTab(
     scanController: ScanController?,
     revealBucket: Long?,
     onRevealHandled: () -> Unit,
+    downloadLocation: String?,
+    onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)?,
 ) {
+    fun isDownloadLocation(bucket: MediaStoreBucket) =
+        downloadLocation != null && bucket.uri.toString() == downloadLocation
     // (id, displayName) instead of the bucket itself so the browse position survives the section
     // leaving composition (saveable): coming back from Discover reopens the same folder.
     var path by rememberSaveable(stateSaver = CrumbPathSaver) { mutableStateOf(listOf<Pair<Long, String>>()) }
@@ -427,7 +453,8 @@ private fun FoldersTab(
                                 title = bucket.displayName,
                                 subtitle = stringResource(Res.string.library_folder),
                                 dimmed = bucket.excluded,
-                                menu = folderActions(bucket, onRemove, onExclude, onInclude),
+                                marked = isDownloadLocation(bucket),
+                                menu = folderActions(bucket, onRemove, onExclude, onInclude, isDownloadLocation(bucket), onToggleDownloadLocation),
                             ) { openFolder(bucket) }
                         }
                         // Full-span rows break the flow onto a fresh line below the folders.
@@ -448,7 +475,11 @@ private fun FoldersTab(
                     LazyColumn(Modifier.fillMaxSize(), state = folderListState) {
                         item { header() }
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
-                            FolderRow(bucket, folderActions(bucket, onRemove, onExclude, onInclude)) { openFolder(bucket) }
+                            FolderRow(
+                                bucket,
+                                folderActions(bucket, onRemove, onExclude, onInclude, isDownloadLocation(bucket), onToggleDownloadLocation),
+                                isDownloadLocation = isDownloadLocation(bucket),
+                            ) { openFolder(bucket) }
                         }
                         itemsIndexed(sortedItems, key = { _, s -> s.id }) { index, song ->
                             SongRow(song, coordinator) { coordinator.playLocal(sortedItems, index) }
@@ -571,7 +602,7 @@ private fun CrumbText(label: String, last: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FolderRow(bucket: MediaStoreBucket, menu: ItemActions, onOpen: () -> Unit) {
+private fun FolderRow(bucket: MediaStoreBucket, menu: ItemActions, isDownloadLocation: Boolean, onOpen: () -> Unit) {
     val contentAlpha = if (bucket.excluded) 0.4f else 1f
     Row(
         modifier = Modifier
@@ -586,22 +617,33 @@ private fun FolderRow(bucket: MediaStoreBucket, menu: ItemActions, onOpen: () ->
             Text(bucket.displayName, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(stringResource(Res.string.library_folder), style = ListSubStyle, modifier = Modifier.padding(top = 4.dp))
         }
+        if (isDownloadLocation) {
+            Icon(
+                Icons.Default.Download,
+                contentDescription = stringResource(Res.string.menu_download_location),
+                tint = DesignColors.Accent,
+                modifier = Modifier.padding(top = 10.dp).size(18.dp),
+            )
+        }
         MoreMenu(menu, Modifier.padding(top = 2.dp))
     }
 }
 
-/** The folder-row overflow menu: a root folder offers Remove (un-add it); a subfolder offers
- *  Exclude, or Include when it's already excluded. */
+/** The folder-row overflow menu: a root folder offers Remove (un-add it); a subfolder offers Exclude,
+ *  or Include when it's already excluded; any included folder can be toggled as the download location. */
 @Composable
 private fun folderActions(
     bucket: MediaStoreBucket,
     onRemove: (MediaStoreBucket) -> Unit,
     onExclude: (MediaStoreBucket) -> Unit,
     onInclude: (MediaStoreBucket) -> Unit,
+    isDownloadLocation: Boolean,
+    onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)?,
 ): ItemActions {
     val remove = stringResource(Res.string.menu_remove_folder)
     val exclude = stringResource(Res.string.menu_exclude_folder)
     val include = stringResource(Res.string.menu_include_folder)
+    val downloadLocation = stringResource(Res.string.menu_download_location)
     return ItemActions(
         buildList {
             when {
@@ -609,7 +651,11 @@ private fun folderActions(
                 bucket.excluded -> add(include to { onInclude(bucket) })
                 else -> add(exclude to { onExclude(bucket) })
             }
+            if (onToggleDownloadLocation != null && !bucket.excluded) {
+                add(downloadLocation to { onToggleDownloadLocation(bucket) })
+            }
         },
+        checked = if (isDownloadLocation) setOf(downloadLocation) else emptySet(),
     )
 }
 
@@ -1041,6 +1087,7 @@ private fun LibraryGridCard(
     title: String,
     subtitle: String,
     dimmed: Boolean = false,
+    marked: Boolean = false,
     menu: ItemActions? = null,
     onClick: () -> Unit,
 ) {
@@ -1067,6 +1114,14 @@ private fun LibraryGridCard(
             ) {
                 Icon(icon, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
                 ArtImage(artUrl, RoundedCornerShape(10.dp))
+            }
+            if (marked) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = stringResource(Res.string.menu_download_location),
+                    tint = DesignColors.Accent,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(18.dp),
+                )
             }
             if (menu != null) MoreMenu(menu, Modifier.align(Alignment.TopEnd))
         }

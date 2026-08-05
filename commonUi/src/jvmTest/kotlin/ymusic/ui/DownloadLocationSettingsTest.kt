@@ -1,13 +1,14 @@
 package ymusic.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
-import androidx.compose.ui.test.waitUntilDoesNotExist
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,14 +29,15 @@ import ymusic.mediastore.model.BucketDraft
 import ymusic.settings.AppSettings
 import ymusic.settings.InMemorySettingsStore
 import ymusic.settings.flow
+import ymusic.settings.put
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The download-location UX: tapping Download with no location set gates on a folder pick (choosing one
- * advances to the format dialog, it does not cancel the download), and adding the first Library folder
- * offers to make it the default download location. Both drive the real settings + media store.
+ * The download-location UX: with none set, tapping Download goes straight to the folder picker (which
+ * adds the folder to the Library and adopts it), and that folder can be re-designated / cleared from the
+ * Library tab. Removing (or excluding) the folder clears the location. Drives the real settings + store.
  */
 @OptIn(ExperimentalTestApi::class)
 class DownloadLocationSettingsTest {
@@ -56,20 +58,27 @@ class DownloadLocationSettingsTest {
         storage = NoopStorage,
     )
 
+    private fun engines() =
+        DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1)
+
     @Test
-    fun download_with_no_location_gates_on_a_folder_pick_then_shows_formats() {
+    fun download_with_no_location_goes_straight_to_the_folder_picker() {
         Locale.setDefault(Locale.ENGLISH)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
-        runBlocking { store.upsertBucket(BucketDraft(Uri.parse("file:///Music"), "Music")) }
         val settings = InMemorySettingsStore()
         val graph = AppGraph(
-            engines = DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1),
+            engines = engines(),
             player = StubPlayer(),
             playerSurface = {},
             mediaStore = store,
             settings = settings,
             downloads = downloadService(scope),
+            // The "folder picker" — pretend the user picked a folder that scans into a new bucket.
+            scanLibraryFolder = {
+                store.upsertBucket(BucketDraft(Uri.parse("file:///Picked"), "Picked"))
+                "Added 1 folder"
+            },
         )
         try {
             runComposeUiTest {
@@ -79,14 +88,9 @@ class DownloadLocationSettingsTest {
                         DownloadDialogHost(graph, video) {}
                     }
                 }
-
-                // Location unset → the picker gate, not the format dialog.
-                waitUntilAtLeastOneExists(hasText("Download location"), 5_000)
-                onNodeWithText("Music").performClick()
-
-                // Picking a folder advances to the format dialog (M4A only, no ffmpeg).
+                // No dialog — the picker ran, set the location, and we land on the format dialog.
                 waitUntilAtLeastOneExists(hasText("Audio · M4A"), 5_000)
-                assertEquals("file:///Music", settings.flow(AppSettings.downloadLocation).value)
+                assertEquals("file:///Picked", settings.flow(AppSettings.downloadLocation).value)
             }
         } finally {
             scope.cancel()
@@ -100,7 +104,7 @@ class DownloadLocationSettingsTest {
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         val settings = InMemorySettingsStore()
         val graph = AppGraph(
-            engines = DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1),
+            engines = engines(),
             player = StubPlayer(),
             playerSurface = {},
             mediaStore = store,
@@ -111,15 +115,82 @@ class DownloadLocationSettingsTest {
             runComposeUiTest {
                 setContent { DefaultDownloadLocationPrompt(graph) }
 
-                // First folder appears → the offer dialog.
                 runBlocking { store.upsertBucket(BucketDraft(Uri.parse("file:///Library"), "Library")) }
                 waitUntilAtLeastOneExists(hasText("Set as default"), 5_000)
 
                 onNodeWithText("Set as default").performClick()
-                waitUntilDoesNotExist(hasText("Set as default"), 5_000) // dialog gone once saved
-                assertEquals("file:///Library", settings.flow(AppSettings.downloadLocation).value)
+                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value == "file:///Library" }
             }
         } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun removing_the_download_location_folder_clears_the_setting() {
+        Locale.setDefault(Locale.ENGLISH)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
+        val settings = InMemorySettingsStore()
+        val bucket = runBlocking {
+            store.upsertBucket(BucketDraft(Uri.parse("file:///Lib"), "Lib")).also {
+                settings.put(AppSettings.downloadLocation, it.uri.toString())
+            }
+        }
+        val graph = AppGraph(
+            engines = engines(),
+            player = StubPlayer(),
+            playerSurface = {},
+            mediaStore = store,
+            settings = settings,
+            downloads = downloadService(scope),
+        )
+        try {
+            runComposeUiTest {
+                setContent { DownloadLocationGuard(graph) }
+                runBlocking { store.deleteBucket(bucket.id) } // remove the folder that is the location
+                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value.isBlank() }
+            }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun library_folder_menu_toggles_the_download_location() {
+        Locale.setDefault(Locale.ENGLISH)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val engines = engines()
+        runBlocking { engines.start() }
+        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
+        runBlocking { store.upsertBucket(BucketDraft(Uri.parse("file:///Music"), "Music")) }
+        val settings = InMemorySettingsStore()
+        val graph = AppGraph(
+            engines = engines,
+            player = StubPlayer(),
+            playerSurface = {},
+            mediaStore = store,
+            settings = settings,
+            downloads = downloadService(scope),
+        )
+        try {
+            runComposeUiTest {
+                setContent { App(graph, mutableStateOf(AppSection.Library)) }
+                waitUntilAtLeastOneExists(hasText("Folders"), 20_000)
+                onNodeWithText("Folders").performClick()
+                waitUntilAtLeastOneExists(hasText("Music"), 5_000) // the sole folder row
+
+                onNodeWithContentDescription("More").performClick()
+                onNodeWithText("Download location").performClick()
+                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value == "file:///Music" }
+
+                // Toggle it off again.
+                onNodeWithContentDescription("More").performClick()
+                onNodeWithText("Download location").performClick()
+                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value.isBlank() }
+            }
+        } finally {
+            runBlocking { engines.close() }
             scope.cancel()
         }
     }
