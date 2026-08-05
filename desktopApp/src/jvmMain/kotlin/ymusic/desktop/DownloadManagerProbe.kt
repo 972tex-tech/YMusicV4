@@ -126,7 +126,7 @@ fun main(args: Array<String>) {
             val results = service.snapshot().filter { it.id in wanted }
             var ok = true
             results.forEach { t ->
-                val file = t.fileUri?.let { File(it) }
+                val file = t.fileUri?.let { File(it.removePrefix("file://")) }
                 val good = t.state == DownloadState.COMPLETED && file != null && file.exists() && file.length() > 0
                 println("[dl] RESULT ${t.format} state=${t.state} file=${file?.absolutePath} size=${file?.length()} ${if (good) "OK" else "FAIL: ${t.errorMessage ?: ""}"}")
                 ok = ok && good

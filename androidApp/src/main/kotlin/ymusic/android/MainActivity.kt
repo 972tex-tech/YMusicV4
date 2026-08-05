@@ -58,6 +58,7 @@ import ymusic.ui.AppGraph
 import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.downloadCaptionPreference
 import ymusic.ui.downloadLocationFolder
+import ymusic.ui.registerCompletedDownload
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -250,6 +251,7 @@ class MainActivity : ComponentActivity() {
                 ),
                 captionPreference = { shared.settings.downloadCaptionPreference() },
                 downloadFolder = { shared.settings.downloadLocationFolder() }, // SAF folder (content://) or default
+                onCompleted = { task, result -> registerCompletedDownload(shared.mediaStore, shared.settings, task, result) },
                 logger = LogcatLogger(),
             )
         }

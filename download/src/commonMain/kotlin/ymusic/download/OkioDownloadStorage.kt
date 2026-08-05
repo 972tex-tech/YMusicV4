@@ -50,7 +50,7 @@ class OkioDownloadStorage(
             fileSystem.source(src).use { s -> fileSystem.sink(dest).buffer().use { it.writeAll(s) } }
             fileSystem.delete(src, mustExist = false)
         }
-        return dest.toString()
+        return "file://$dest" // a real uri, like the content:// path — so task.fileUri is always parseable
     }
 
     /** `file:///abs/path` → an okio [Path] (strips the scheme; leaves the leading slash). */

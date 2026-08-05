@@ -86,6 +86,7 @@ import ymusic.ui.downloadCaptionPreference
 import ymusic.ui.downloadLocationFolder
 import ymusic.ui.ensureAppLanguage
 import ymusic.ui.localArtFetcher
+import ymusic.ui.registerCompletedDownload
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
 import ymusic.ytmedia.cache.DiskMediaBlobCache
@@ -313,6 +314,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             segmentIndex = segmentIndex,
             captionPreference = { settings.downloadCaptionPreference() },
             downloadFolder = { settings.downloadLocationFolder() }, // publish into the chosen file:// folder
+            onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, task, result) },
             logger = StdoutLogger,
         )
     }
