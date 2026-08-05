@@ -352,7 +352,7 @@ private fun downloadColors(): DownloadColors {
 }
 
 // --- layout tokens (match the mockup's media-card metrics) ---------------------------------------
-private val CardCorner = 18.dp
+private val CardCorner = 12.dp // match the feed/video card radius
 private val CardPadding = 14.dp
 private val CardGap = 12.dp // thumb ↔ text
 private val ContentIndent = 68.dp // ThumbSize (56) + CardGap (12): aligns the bar/bytes under the text
