@@ -184,7 +184,12 @@ private fun DownloadCard(task: DownloadTask, service: DownloadService) {
 private fun DownloadProgress(task: DownloadTask) {
     when {
         (task.state == DownloadState.DOWNLOADING || task.state == DownloadState.PROCESSING) && task.progress != null ->
-            LinearProgressIndicator(progress = { task.progress!! }, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = { task.progress!! },
+                modifier = Modifier.fillMaxWidth(),
+                gapSize = 0.dp, // solid bar — drop the M3 track gap …
+                drawStopIndicator = {}, // … and the trailing stop-indicator dot
+            )
         task.state == DownloadState.PREPARING || task.state == DownloadState.PROCESSING ||
             task.state == DownloadState.DOWNLOADING ->
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
