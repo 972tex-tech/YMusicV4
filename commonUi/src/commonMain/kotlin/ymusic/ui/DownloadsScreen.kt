@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,6 +33,7 @@ import ymusic.download.DownloadFormat
 import ymusic.download.DownloadService
 import ymusic.download.DownloadState
 import ymusic.download.DownloadTask
+import ymusic.download.DownloadTasksAggregator
 
 /**
  * The Download Manager. Renders the [DownloadService] queue as adaptive cards: a single-column list on
@@ -46,7 +48,10 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         CenteredBox { Text("Downloads aren't available on this device.") }
         return
     }
-    val tasks by service.tasks.collectAsState()
+    // Own the aggregator for as long as this screen is composed: it seeds once and folds change events,
+    // and is dropped (its DB subscription cancelled) when the user leaves.
+    val aggregator = remember(service) { DownloadTasksAggregator(service::snapshot, service.changes) }
+    val tasks by aggregator.tasks.collectAsState(emptyList())
 
     if (tasks.isEmpty()) {
         CenteredBox {

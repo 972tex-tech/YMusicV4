@@ -1,18 +1,15 @@
 package ymusic.download
 
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** A change the [DownloadService] made to a task, published so the on-demand [DownloadTasksAggregator]
- *  can patch its view without re-reading the whole queue. The DB write always precedes the event. */
+/** A change the [DownloadService] made to a task, published so a [DownloadTasksAggregator] can patch its
+ *  view without re-reading the whole queue. The DB write always precedes the event. */
 sealed interface DownloadChange {
     data class Added(val task: DownloadTask) : DownloadChange
     data class StateChanged(val id: String, val state: DownloadState, val error: String?) : DownloadChange
@@ -22,35 +19,34 @@ sealed interface DownloadChange {
 }
 
 /**
- * Materializes the download queue as a list **only while someone (the UI) is watching**. On the first
- * collector it queries all tasks once, then folds in [DownloadChange] events to stay current without
- * re-reading the DB; when the last collector leaves it drops the list. The [DownloadService] never holds
- * the queue resident — the DB is the source of truth and this is a lazy, UI-scoped read model.
+ * Materializes the download queue as a list for a UI. The [DownloadService] holds no list — it just
+ * dispatches [DownloadChange] events; the UI creates one of these when the Downloads screen appears and
+ * discards it on leave. [tasks] is a cold flow: on collection it [seed]s the queue once, then folds in
+ * change events; when collection stops (screen closed) it drops everything. Own it with `remember` +
+ * `collectAsState` so its lifetime is the composition's.
  */
 class DownloadTasksAggregator(
-    private val store: DownloadStore,
+    private val seed: suspend () -> List<DownloadTask>,
     private val changes: SharedFlow<DownloadChange>,
-    scope: CoroutineScope,
 ) {
-    val tasks: StateFlow<List<DownloadTask>> = channelFlow {
+    val tasks: Flow<List<DownloadTask>> = channelFlow {
         val byId = LinkedHashMap<String, DownloadTask>()
         val gate = Mutex() // serialize the one-time seed against incoming events
-        fun snapshot() = byId.values.sortedByDescending { it.createdAt } // newest first
 
-        // Subscribe before seeding so no event is lost in the gap; the seed reads the DB (authoritative,
+        // Subscribe before seeding so no event is lost in the gap; the seed reads the store (authoritative,
         // written before every event), so an event that raced ahead is reconciled either way.
         changes.onEach { change ->
             gate.withLock {
                 apply(byId, change)
-                send(snapshot())
+                send(byId.values.sortedByDescending { it.createdAt }) // newest first
             }
         }.launchIn(this)
 
         gate.withLock {
-            store.all().forEach { byId[it.id] = it }
-            send(snapshot())
+            seed().forEach { byId[it.id] = it }
+            send(byId.values.sortedByDescending { it.createdAt })
         }
-    }.stateIn(scope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 2_000), emptyList())
+    }
 
     private fun apply(byId: MutableMap<String, DownloadTask>, change: DownloadChange) {
         when (change) {

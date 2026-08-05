@@ -9,7 +9,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,7 +20,8 @@ import kotlin.random.Random
 
 /**
  * Manages the download queue. The DB ([store]) is the single source of truth — the service holds no task
- * list, only the [maxConcurrent] worker slots; the UI reads via [tasks] (a lazy [DownloadTasksAggregator]).
+ * list, only the [maxConcurrent] worker slots; it just dispatches [changes] events that a UI-owned
+ * [DownloadTasksAggregator] folds into a list while the screen is shown.
  *
  * Queue model: up to [maxConcurrent] tasks run at once (priming the WebView still serializes). Adding a
  * task fills a free slot; when a task finishes or is canceled, the next queued one takes the slot.
@@ -58,13 +60,14 @@ class DownloadService(
         resolver, client, userAgent, ffmpeg, storage, mediaCache, logger,
     )
 
-    private val changes = MutableSharedFlow<DownloadChange>(
+    private val _changes = MutableSharedFlow<DownloadChange>(
         extraBufferCapacity = 128,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** The live queue for the UI — materialized only while collected (see [DownloadTasksAggregator]). */
-    val tasks: StateFlow<List<DownloadTask>> = DownloadTasksAggregator(store, changes, scope).tasks
+    /** Per-task change events. A UI builds a [DownloadTasksAggregator] over this + [snapshot] to render the
+     *  queue while it's on screen; nothing is materialized here. */
+    val changes: SharedFlow<DownloadChange> = _changes.asSharedFlow()
 
     // The worker slots. `gate` guards them, the global-pause flag, and the interrupt reasons.
     private val gate = Mutex()
@@ -72,7 +75,7 @@ class DownloadService(
     private val active = mutableMapOf<String, Job>()
     private val interrupts = mutableMapOf<String, DownloadState>()
 
-    /** A one-off imperative read of the whole queue (for headless callers/tests; the UI uses [tasks]). */
+    /** A one-off imperative read of the whole queue (headless callers/tests, and the aggregator's seed). */
     suspend fun snapshot(): List<DownloadTask> = store.all()
 
     /**
@@ -108,7 +111,7 @@ class DownloadService(
         )
         scope.launch {
             store.upsert(task)
-            changes.emit(DownloadChange.Added(task))
+            _changes.emit(DownloadChange.Added(task))
             fillSlots()
         }
         return id
@@ -152,7 +155,7 @@ class DownloadService(
         job?.cancel()
         cleanupTemp(id)
         store.delete(id)
-        changes.emit(DownloadChange.Removed(id))
+        _changes.emit(DownloadChange.Removed(id))
     }.let {}
 
     /** Global pause: hold the whole queue — stop every active download and every queued task. */
@@ -208,7 +211,7 @@ class DownloadService(
                 onProgress = { done, total -> setProgressAsync(task.id, done, total) },
             )
             store.updateCompleted(task.id, result.uri, result.bytes, now())
-            changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
+            _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
             store.get(task.id)?.let { onCompleted?.invoke(it, result) }
         } catch (c: CancellationException) {
             withContext(NonCancellable) {
@@ -229,14 +232,14 @@ class DownloadService(
 
     private suspend fun setState(id: String, state: DownloadState, error: String? = null) {
         store.updateState(id, state, error, now())
-        changes.emit(DownloadChange.StateChanged(id, state, error))
+        _changes.emit(DownloadChange.StateChanged(id, state, error))
     }
 
     private fun setStateAsync(id: String, state: DownloadState) = scope.launch { setState(id, state) }.let {}
 
     private fun setProgressAsync(id: String, done: Long, total: Long) = scope.launch {
         store.updateProgress(id, done, total, now())
-        changes.emit(DownloadChange.ProgressChanged(id, done, total))
+        _changes.emit(DownloadChange.ProgressChanged(id, done, total))
     }.let {}
 
     private fun userFacingError(e: Throwable): String {

@@ -5,14 +5,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The aggregator seeds the queue once from the DB, then folds in change events to stay current. */
+/** The aggregator seeds the queue once from its seed source, then folds change events to stay current. */
 class DownloadTasksAggregatorTest {
 
     private fun task(id: String, state: DownloadState = DownloadState.QUEUED) = DownloadTask(
@@ -23,32 +24,31 @@ class DownloadTasksAggregatorTest {
     )
 
     @Test
-    fun seeds_from_db_then_folds_add_progress_and_remove() = runBlocking {
-        val store = DownloadStore(downloadDatabaseJdbcDriver())
-        store.upsert(task("a"))
+    fun seeds_then_folds_add_progress_state_and_remove() = runBlocking {
+        val seedTasks = mutableListOf(task("a"))
         val changes = MutableSharedFlow<DownloadChange>(extraBufferCapacity = 64)
+        val agg = DownloadTasksAggregator(seed = { seedTasks.toList() }, changes = changes)
+
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val agg = DownloadTasksAggregator(store, changes, scope)
-        val collector = scope.launch { agg.tasks.collect {} } // keep it hot (WhileSubscribed)
+        // Hot-share the cold flow so we can await successive values (mimics collectAsState keeping it live).
+        val tasks = agg.tasks.stateIn(scope, SharingStarted.Eagerly, emptyList())
         try {
-            // seeded from the DB
-            withTimeout(5_000) { agg.tasks.first { list -> list.map { it.id } == listOf("a") } }
+            withTimeout(5_000) { tasks.first { it.map { t -> t.id } == listOf("a") } }
 
             changes.emit(DownloadChange.Added(task("b")))
-            withTimeout(5_000) { agg.tasks.first { list -> list.map { it.id }.toSet() == setOf("a", "b") } }
+            withTimeout(5_000) { tasks.first { it.map { t -> t.id }.toSet() == setOf("a", "b") } }
 
             changes.emit(DownloadChange.ProgressChanged("a", downloaded = 50, total = 100))
-            withTimeout(5_000) { agg.tasks.first { list -> list.firstOrNull { it.id == "a" }?.progress == 0.5f } }
+            withTimeout(5_000) { tasks.first { it.firstOrNull { t -> t.id == "a" }?.progress == 0.5f } }
 
             changes.emit(DownloadChange.StateChanged("b", DownloadState.FAILED, "Something went wrong (E70001)"))
-            withTimeout(5_000) { agg.tasks.first { list -> list.firstOrNull { it.id == "b" }?.state == DownloadState.FAILED } }
+            withTimeout(5_000) { tasks.first { it.firstOrNull { t -> t.id == "b" }?.state == DownloadState.FAILED } }
 
             changes.emit(DownloadChange.Removed("b"))
-            withTimeout(5_000) { agg.tasks.first { list -> list.map { it.id } == listOf("a") } }
+            withTimeout(5_000) { tasks.first { it.map { t -> t.id } == listOf("a") } }
 
-            assertEquals(0.5f, agg.tasks.value.first { it.id == "a" }.progress)
+            assertEquals(0.5f, tasks.value.first { it.id == "a" }.progress)
         } finally {
-            collector.cancel()
             scope.cancel()
         }
     }
