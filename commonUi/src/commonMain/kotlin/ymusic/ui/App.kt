@@ -513,6 +513,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     LocalDownloadLauncher provides downloadLauncher,
                 ) {
                     DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
+                    DefaultDownloadLocationPrompt(graph)
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
                         containerColor = DesignColors.Surface,

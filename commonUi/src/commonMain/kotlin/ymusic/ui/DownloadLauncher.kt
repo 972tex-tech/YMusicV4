@@ -7,11 +7,16 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import ymusic.download.DownloadFormat
 import ymusic.download.DownloadRequest
 import ymusic.dynamicengine.yt.YtFeedItem
+import ymusic.settings.AppSettings
+import ymusic.settings.flow
 
 /**
  * Opens the download-format picker for a video. Provided app-wide by [DownloadDialogHost] (null when the
@@ -36,6 +41,14 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     val downloads = graph.downloads ?: return
     val video = pending ?: return
     val snackbar = LocalSnackbar.current
+
+    // Gate: pick a download location first. When one is set, the setting flips non-blank and this
+    // recomposes straight into the format dialog below (choosing does NOT cancel the pending download).
+    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+    if (location.isBlank() && graph.mediaStore != null) {
+        ChooseDownloadLocationDialog(graph, onDismiss = onDismiss, onChosen = {})
+        return
+    }
 
     fun pick(format: DownloadFormat, height: Int?) {
         downloads.enqueue(
