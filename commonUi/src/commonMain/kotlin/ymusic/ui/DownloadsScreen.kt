@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +18,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ymusic.download.DownloadFormat
@@ -40,10 +43,10 @@ import ymusic.download.DownloadTask
 import ymusic.download.DownloadTasksAggregator
 
 /**
- * The Download Manager. Renders the [DownloadService] queue as Media Cards grouped into status sections
- * (Downloading / Queued / Paused / Needs attention / Completed), in an adaptive grid — one column on a
- * phone, more as width allows. A Pause-all / Resume-all FAB sits bottom-right; each card has a per-state
- * overflow menu (pause/resume/cancel/retry/remove) and an inline Retry on failures.
+ * The Download Manager. Media Cards grouped into status sections (Downloading / Queued / Paused / Needs
+ * attention / Completed) in an adaptive grid — one column on a phone, more as width allows — with a
+ * Pause-all / Resume-all FAB bottom-right. Each card: art + title + a status pill, the progress bar and
+ * byte counts aligned under the text, a per-state overflow menu, and an inline Retry on failures.
  */
 @Composable
 fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
@@ -93,7 +96,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 bottom = FabClearance, // so the last card isn't hidden behind the FAB
             ),
             horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter),
-            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+            verticalArrangement = Arrangement.spacedBy(CardGap),
         ) {
             sections.forEach { (section, items) ->
                 item(span = { GridItemSpan(maxLineSpan) }, key = "header:${section.name}") {
@@ -134,108 +137,128 @@ private fun DownloadState.section(): DownloadSection? = when (this) {
 
 @Composable
 private fun SectionHeader(title: String, count: Int) {
+    val danger = title == DownloadSection.FAILED.title
     Row(
-        Modifier.fillMaxWidth().padding(top = DesignSpacing.Space8, bottom = DesignSpacing.Space2),
+        Modifier.fillMaxWidth().padding(top = DesignSpacing.Space16, bottom = DesignSpacing.Space4),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        Text("$count", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (danger) MaterialTheme.colorScheme.error else DesignColors.Ink,
+        )
+        StatusChip("$count", DesignColors.SurfaceDim, DesignColors.InkMuted, mono = true)
     }
 }
 
-/** One download as a Media Card: art + title/artist/status pill + overflow, with the progress bar below
- *  and an inline Retry on failures. */
+/** One download as a Media Card: bordered surface, art + title + status pill + overflow up top; the
+ *  progress bar and byte counts indented under the text; an inline Retry on failures. Matches the chosen
+ *  "Media Cards" mockup. */
 @Composable
 private fun DownloadCard(task: DownloadTask, service: DownloadService) {
+    val c = downloadColors()
+    val failed = task.state == DownloadState.FAILED
     Surface(
-        shape = RoundedCornerShape(DesignSpacing.Space16),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(CardCorner),
+        color = if (failed) c.dangerSoft else c.surface,
+        border = BorderStroke(1.dp, if (failed) c.danger.copy(alpha = 0.4f) else c.border),
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
-            Modifier.padding(DesignSpacing.Space8),
-            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
+        Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {
                 LibraryThumb(icon = Icons.Outlined.FileDownload, badge = task.format.badge(), artUrl = task.thumbnailUrl)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space2)) {
-                    Text(task.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    task.artist?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
+                    Text(
+                        task.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                        StatusPill(task)
-                        task.detailText()?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        StatusPill(task, c)
+                        if (task.state == DownloadState.DOWNLOADING || task.state == DownloadState.PROCESSING) {
+                            task.progress?.let { Text("${(it * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace) }
                         }
                     }
                 }
                 MoreMenu(actionsFor(task, service))
             }
-            DownloadProgress(task)
-            if (task.state == DownloadState.FAILED) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                    Text(
-                        task.errorMessage ?: "Download failed",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    FilledTonalButton(onClick = { service.retry(task.id) }) { Text("Retry") }
+            if (task.showsBar()) {
+                Box(Modifier.fillMaxWidth().padding(start = ContentIndent)) { DownloadBar(task, c) }
+            }
+            task.byteLine()?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = ContentIndent))
+            }
+            if (failed) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = ContentIndent),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                ) {
+                    Text(task.errorMessage ?: "Download failed", style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Button(
+                        onClick = { service.retry(task.id) },
+                        shape = RoundedCornerShape(percent = 50),
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                        contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),
+                    ) { Text("Retry", style = MaterialTheme.typography.labelMedium) }
                 }
             }
         }
     }
 }
 
-/** Small state chip (Downloading / Queued / Paused / Processing / Failed / Done), colored by state. */
+/** Which states show a bar: preparing (indeterminate), and downloading/processing/paused with a known
+ *  fraction (determinate). Queued/completed/failed show none. */
+private fun DownloadTask.showsBar(): Boolean = state == DownloadState.PREPARING ||
+    ((state == DownloadState.DOWNLOADING || state == DownloadState.PROCESSING || state == DownloadState.PAUSED) && progress != null)
+
 @Composable
-private fun StatusPill(task: DownloadTask) {
-    val scheme = MaterialTheme.colorScheme
-    val (label, container, content) = when (task.state) {
-        DownloadState.QUEUED -> Triple("Queued", scheme.surfaceVariant, scheme.onSurfaceVariant)
-        DownloadState.PREPARING -> Triple("Preparing", scheme.primaryContainer, scheme.onPrimaryContainer)
-        DownloadState.DOWNLOADING -> Triple("Downloading", scheme.primaryContainer, scheme.onPrimaryContainer)
-        DownloadState.PROCESSING -> Triple("Processing", scheme.tertiaryContainer, scheme.onTertiaryContainer)
-        DownloadState.PAUSED -> Triple("Paused", scheme.surfaceVariant, scheme.onSurfaceVariant)
-        DownloadState.FAILED -> Triple("Failed", scheme.errorContainer, scheme.onErrorContainer)
-        DownloadState.COMPLETED -> Triple("Done", scheme.secondaryContainer, scheme.onSecondaryContainer)
-        DownloadState.CANCELED -> Triple("Canceled", scheme.surfaceVariant, scheme.onSurfaceVariant)
+private fun DownloadBar(task: DownloadTask, c: DownloadColors) {
+    if (task.state == DownloadState.PREPARING || task.progress == null) {
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = c.accent, trackColor = c.track)
+    } else {
+        LinearProgressIndicator(
+            progress = { task.progress!! },
+            modifier = Modifier.fillMaxWidth(),
+            color = if (task.state == DownloadState.PAUSED) c.inkMuted else c.accent,
+            trackColor = c.track,
+            gapSize = 0.dp, // solid bar, no M3 track gap or stop-indicator dot
+            drawStopIndicator = {},
+        )
     }
-    StatusChip(label, container, content)
+}
+
+/** Colored state chip; the queued one is neutral, the rest semantic (teal active / amber paused / green
+ *  done / red failed) — matching the mockup's pill roles. */
+@Composable
+private fun StatusPill(task: DownloadTask, c: DownloadColors) {
+    val (label, bg, fg) = when (task.state) {
+        DownloadState.QUEUED -> Triple("Queued", c.neutral, c.inkMuted)
+        DownloadState.PREPARING -> Triple("Preparing", c.accentSoft, c.accent)
+        DownloadState.DOWNLOADING -> Triple("Downloading", c.accentSoft, c.accent)
+        DownloadState.PROCESSING -> Triple("Processing", c.accentSoft, c.accent)
+        DownloadState.PAUSED -> Triple("Paused", c.warningSoft, c.warning)
+        DownloadState.FAILED -> Triple("Failed", c.dangerSoft, c.danger)
+        DownloadState.COMPLETED -> Triple("Done", c.successSoft, c.success)
+        DownloadState.CANCELED -> Triple("Canceled", c.neutral, c.inkMuted)
+    }
+    StatusChip(label, bg, fg)
 }
 
 @Composable
-private fun StatusChip(label: String, container: Color, content: Color) {
+private fun StatusChip(label: String, container: Color, content: Color, mono: Boolean = false) {
     Surface(shape = RoundedCornerShape(percent = 50), color = container) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = content,
+            fontFamily = if (mono) FontFamily.Monospace else null,
             modifier = Modifier.padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space2),
         )
-    }
-}
-
-/** A determinate bar while a fraction is known (download bytes, or ffmpeg output-time during processing),
- *  indeterminate while preparing or before the first tick, nothing when terminal. */
-@Composable
-private fun DownloadProgress(task: DownloadTask) {
-    when {
-        (task.state == DownloadState.DOWNLOADING || task.state == DownloadState.PROCESSING) && task.progress != null ->
-            LinearProgressIndicator(
-                progress = { task.progress!! },
-                modifier = Modifier.fillMaxWidth(),
-                gapSize = 0.dp, // solid bar — drop the M3 track gap …
-                drawStopIndicator = {}, // … and the trailing stop-indicator dot
-            )
-        task.state == DownloadState.PREPARING || task.state == DownloadState.PROCESSING ||
-            task.state == DownloadState.DOWNLOADING ->
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        else -> Unit
     }
 }
 
@@ -271,14 +294,9 @@ private fun DownloadFormat.badge(): String = when (this) {
     DownloadFormat.VIDEO_MP4 -> "MP4"
 }
 
-/** The size/percent detail shown beside the status pill, or null when there's nothing to add. */
-private fun DownloadTask.detailText(): String? = when (state) {
-    DownloadState.DOWNLOADING -> {
-        val pct = progress?.let { " · ${(it * 100).toInt()}%" } ?: ""
-        "${humanSize(downloadedBytes)} / ${humanSize(totalBytes)}$pct"
-    }
-    // During processing the byte counters carry ffmpeg's output-time fraction, not bytes — show only %.
-    DownloadState.PROCESSING -> progress?.let { "${(it * 100).toInt()}%" }
+/** The byte-count line under the text: "used / total" while downloading/paused, the final size when done. */
+private fun DownloadTask.byteLine(): String? = when (state) {
+    DownloadState.DOWNLOADING, DownloadState.PAUSED -> "${humanSize(downloadedBytes)} / ${humanSize(totalBytes)}"
     DownloadState.COMPLETED -> humanSize(totalBytes)
     else -> null
 }
@@ -289,8 +307,54 @@ private fun humanSize(bytes: Long): String {
     return if (mb >= 1) "${(mb * 10).toLong() / 10.0} MB" else "${bytes / 1024} KB"
 }
 
-/** Adaptive grid: one column on a phone, more as width allows. */
-private val DownloadCardMinWidth = 340.dp
+/** The download screen's semantic palette — the app's surfaces/ink/accent plus amber/green for the
+ *  paused/done states (M3 has no warning/success role), matching the "Media Cards" mockup. */
+private class DownloadColors(
+    val surface: Color,
+    val border: Color,
+    val track: Color,
+    val neutral: Color,
+    val ink: Color,
+    val inkMuted: Color,
+    val accent: Color,
+    val accentSoft: Color,
+    val onAccent: Color,
+    val warning: Color,
+    val warningSoft: Color,
+    val success: Color,
+    val successSoft: Color,
+    val danger: Color,
+    val dangerSoft: Color,
+)
 
-/** Bottom content inset so the FAB doesn't cover the last card (FAB height + margins). */
-private val FabClearance = 88.dp
+@Composable
+private fun downloadColors(): DownloadColors {
+    val d = DesignColors
+    val amber = if (d.isDark) Color(0xFFE3A63E) else Color(0xFFB5720F)
+    val green = if (d.isDark) Color(0xFF57C983) else Color(0xFF288A50)
+    return DownloadColors(
+        surface = d.SurfaceElevated,
+        border = d.Outline,
+        track = d.SurfaceDim,
+        neutral = d.SurfaceDim,
+        ink = d.Ink,
+        inkMuted = d.InkMuted,
+        accent = d.Accent,
+        accentSoft = d.Accent.copy(alpha = 0.16f),
+        onAccent = Color.White,
+        warning = amber,
+        warningSoft = amber.copy(alpha = if (d.isDark) 0.16f else 0.14f),
+        success = green,
+        successSoft = green.copy(alpha = if (d.isDark) 0.16f else 0.14f),
+        danger = MaterialTheme.colorScheme.error,
+        dangerSoft = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+    )
+}
+
+// --- layout tokens (match the mockup's media-card metrics) ---------------------------------------
+private val CardCorner = 18.dp
+private val CardPadding = 14.dp
+private val CardGap = 12.dp // thumb ↔ text
+private val ContentIndent = 68.dp // ThumbSize (56) + CardGap (12): aligns the bar/bytes under the text
+private val DownloadCardMinWidth = 340.dp // adaptive grid: 1 column on a phone, more as width allows
+private val FabClearance = 88.dp // bottom inset so the FAB doesn't cover the last card
