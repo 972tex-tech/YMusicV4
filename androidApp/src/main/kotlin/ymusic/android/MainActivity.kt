@@ -157,19 +157,23 @@ class MainActivity : ComponentActivity() {
         // /videoplayback) and serves it from this router — hit → synthesized bytes, miss → forwarded and
         // teed to disk. Its client carries the WebView CookieManager cookies (shared.cookies) + the
         // WebView's own default UA; a mismatched identity gets rejected by googlevideo/BotGuard.
-        val mediaProxy = shared.webViewJs?.let {
+        // The player cache; shared read-only with the download stack so a download reuses segments already
+        // cached from playback (never writing into it).
+        val playerCache = run {
             val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
             val driver = androidSegmentDatabaseDriver(applicationContext) // shared: span index + segment index
-            val cache = MediaCache(
+            MediaCache(
                 DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
                 SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
             )
+        }
+        val mediaProxy = shared.webViewJs?.let {
             val client = KmpHttpClient.create {
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
             }
             LocalMediaProxy(
-                cache,
+                playerCache,
                 client,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 logger = LogcatLogger(),
@@ -235,6 +239,7 @@ class MainActivity : ComponentActivity() {
                     File(cacheDir, "download-work").absolutePath.toPath(),
                     downloadsDir.absolutePath.toPath(),
                 ),
+                mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
                 segmentIndex = SqlDelightSegmentIndex(
                     androidSegmentDatabaseDriver(applicationContext, name = "download_segments.db"),

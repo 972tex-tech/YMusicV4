@@ -201,6 +201,7 @@ class YtStreamDownloader(
                     video = videoFmt?.let { SabrTrack(it, videoFile!!) },
                     progress = progress,
                     mediaCache = mediaCache,
+                    cacheReadOnly = true, // reuse cached playback bytes, but never write into the player cache
                     segmentIndex = segmentIndex,
                 )
                 return

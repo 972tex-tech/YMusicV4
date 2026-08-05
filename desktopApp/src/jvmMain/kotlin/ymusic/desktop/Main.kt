@@ -214,20 +214,24 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // /videoplayback) and serves it from this router — cache hit → synthesized bytes, miss → forwarded
     // and teed to disk so re-plays/downloads reuse it. Its client carries the CEF cookies + the Chrome
     // UA CefManager forces on the WebView; a mismatched identity gets rejected by googlevideo/BotGuard.
-    val mediaProxy = withContext(Dispatchers.IO) {
+    // The player cache; shared read-only with the download stack so a download reuses segments already
+    // cached from playback (never writing into it).
+    val playerCache = withContext(Dispatchers.IO) {
         val cacheRoot = File(dataDir, "player-cache").apply { mkdirs() }
         // One persistent DB for both the blob-span index and the segment index.
         val driver = jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "cache-index.db").absolutePath}")
-        val cache = MediaCache(
+        MediaCache(
             DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
             SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
         )
+    }
+    val mediaProxy = withContext(Dispatchers.IO) {
         val client = KmpHttpClient.create {
             cookieJar = platformCookies
             defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
         }
         LocalMediaProxy(
-            cache, client,
+            playerCache, client,
             userAgent = CefManager.CHROME_USER_AGENT,
             logger = StdoutLogger,
             // Chatty per-part/decision logs; -Dymusic.player.verbose=false to quiet them (or flip at runtime).
@@ -304,6 +308,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                 File(dataDir, "download-work").absolutePath.toPath(),
                 File(dataDir, "downloads").absolutePath.toPath(),
             ),
+            mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
             segmentIndex = segmentIndex,
             captionPreference = { settings.downloadCaptionPreference() },
             logger = StdoutLogger,

@@ -82,8 +82,12 @@ class SabrSession(
         audio: SabrTrack,
         video: SabrTrack? = null,
         progress: SabrProgress? = null,
-        /** When set, every fully-fetched segment is mirrored into the player cache as it downloads. */
+        /** When set, segments already in the player cache are served from it (read) and — unless
+         *  [cacheReadOnly] — every fetched segment is mirrored back into it (write). */
         mediaCache: MediaCache? = null,
+        /** True for a download: serve from [mediaCache] to reuse cached playback bytes, but never write
+         *  into it (no fill), so a download doesn't pollute the player cache. */
+        cacheReadOnly: Boolean = false,
         /** Persistent segment index (byte range per segment). Records each header as it downloads and, on
          *  start, seeds the resume cursor by querying the on-disk file length — so pause/resume and
          *  PO-token re-attest continue from the last complete segment instead of re-fetching from zero. */
@@ -135,7 +139,7 @@ class SabrSession(
             if (served is SabrServe.Hit) {
                 log("cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}")
                 val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use {
-                    readResponse(it, audio, video, mediaCache, segmentIndex, onProgress = { emitProgress() })
+                    readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
                 }
                 if (isComplete(audio, video)) { emitProgress(force = true); return }
                 if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
@@ -170,7 +174,7 @@ class SabrSession(
                     throw IOException("SABR response ${response.code}")
                 } else {
                     outcome = BufferedAsyncSource(response.body.asyncSource()).use {
-                        readResponse(it, audio, video, mediaCache, segmentIndex, onProgress = { emitProgress() })
+                        readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
                     }
                 }
             } finally {
@@ -269,6 +273,7 @@ class SabrSession(
         audio: SabrTrack,
         video: SabrTrack?,
         mediaCache: MediaCache? = null,
+        cacheReadOnly: Boolean = false,
         segmentIndex: SegmentIndex? = null,
         onProgress: () -> Unit = {},
     ): RoundOutcome {
@@ -307,12 +312,12 @@ class SabrSession(
                             else -> throw IOException("unexpected media header ${header.videoId} ${header.cacheKey} seg ${header.segmentIndex}")
                         }
                         val state = PartState(header, file)
-                        // Mirror into the player cache only when this file is exactly at the segment's start
-                        // — a fresh, full write with no server-resent prefix to skip. That keeps the cache
-                        // span's declared range equal to the bytes we actually store (per DownloadFile the
-                        // file position IS the format's contiguous byte offset). A resumed/overlapping
-                        // segment is left uncached rather than mislabeled.
-                        if (mediaCache != null && file.length() == header.startRange) {
+                        // Mirror into the player cache only when writable (a download is read-only) and the
+                        // file is exactly at the segment's start — a fresh, full write with no server-resent
+                        // prefix to skip. That keeps the cache span's declared range equal to the bytes we
+                        // actually store (per DownloadFile the file position IS the format's contiguous byte
+                        // offset). A resumed/overlapping segment is left uncached rather than mislabeled.
+                        if (mediaCache != null && !cacheReadOnly && file.length() == header.startRange) {
                             state.cacheFill = mediaCache.openSegmentFill(header)
                         }
                         open[header.headerId] = state
