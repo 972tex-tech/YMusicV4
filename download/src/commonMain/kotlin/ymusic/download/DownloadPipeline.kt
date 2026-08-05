@@ -90,11 +90,12 @@ class DownloadPipeline(
         val video = streams.video?.scratch
         val out = storage.scratch("${task.id}.out")
         val meta = task.tags()
+        val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
             DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress)
             DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), metadata = meta, onProgressUs = onFfProgress)
-            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, meta, onFfProgress)
-            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, meta, onFfProgress)
+            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
+            DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
         }
         val bytes = out.length()
 
@@ -102,18 +103,24 @@ class DownloadPipeline(
         audio.delete()
         video?.delete()
 
-        // 4. publish the final file (+ caption sidecars); the caller adds the media to the library.
+        // 4. publish the final file; the caller adds the media to the library. Captions are muxed into
+        // video containers above; an audio container (mp3/m4a) can't carry a subtitle stream, so those keep
+        // a sidecar. Video caption scratches were consumed by the mux — drop them.
         val uri = storage.publish(out, fileName)
-        publishCaptionSidecars(base, streams)
+        if (task.format.kind == DownloadKind.AUDIO) publishCaptionSidecars(base, streams) else deleteCaptions(streams)
         return Result(uri, bytes, audioFmt, videoFmt)
     }
 
-    // Publish each downloaded caption as a sidecar next to the media file: `<base>.<lang>.vtt`. In-container
-    // muxing (mov_text / webvtt) is a possible future refinement; sidecars keep it simple and universal.
+    // An audio container has no subtitle stream — publish each caption as a `<base>.<lang>.vtt` sidecar
+    // next to the media file so it isn't lost.
     private suspend fun publishCaptionSidecars(base: String, streams: DownloadedStreams) {
         streams.captions.forEach { cc ->
             storage.publish(cc.scratch, "$base.${cc.languageCode}.${cc.fileExtension}")
         }
+    }
+
+    private fun deleteCaptions(streams: DownloadedStreams) {
+        streams.captions.forEach { it.scratch.delete() }
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
