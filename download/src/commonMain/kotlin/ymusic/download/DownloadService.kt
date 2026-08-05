@@ -84,11 +84,7 @@ class DownloadService(
      * so the user explicitly resumes it. Terminal/failed/already-paused tasks are kept as-is.
      */
     suspend fun load() {
-        store.all().forEach { task ->
-            if (task.state.isActive || task.state == DownloadState.QUEUED) {
-                store.upsert(task.copy(state = DownloadState.PAUSED, updatedAt = now()))
-            }
-        }
+        store.pauseActiveAndQueued(now())
     }
 
     fun enqueue(request: DownloadRequest): String {

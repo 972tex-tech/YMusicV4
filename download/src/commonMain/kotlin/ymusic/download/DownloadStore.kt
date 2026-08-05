@@ -58,6 +58,12 @@ class DownloadStore(driver: SqlDriver) {
             queries.updateCompleted(DownloadState.COMPLETED.name, fileUri, bytes, bytes, updatedAt, id)
         }
 
+    /** Reset every in-flight or queued task to PAUSED in one statement — startup crash recovery. */
+    suspend fun pauseActiveAndQueued(updatedAt: Long): Unit = withContext(downloadDbDispatcher()) {
+        val states = DownloadState.entries.filter { it.isActive || it == DownloadState.QUEUED }.map { it.name }
+        queries.pauseActiveAndQueued(paused = DownloadState.PAUSED.name, updatedAt = updatedAt, states = states)
+    }
+
     suspend fun delete(id: String): Unit = withContext(downloadDbDispatcher()) { queries.deleteById(id) }
 
     @Suppress("LongParameterList")

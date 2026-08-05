@@ -34,6 +34,10 @@ UPDATE downloadTask SET downloaded_bytes = ?, total_bytes = ?, updated_at = ? WH
 updateCompleted:
 UPDATE downloadTask SET state = ?, file_path = ?, downloaded_bytes = ?, total_bytes = ?, error_message = NULL, updated_at = ? WHERE id = ?;
 
+-- Startup recovery: hold everything that was running or waiting (states passed in) as :paused.
+pauseActiveAndQueued:
+UPDATE downloadTask SET state = :paused, updated_at = :updatedAt WHERE state IN :states;
+
 deleteById:
 DELETE FROM downloadTask WHERE id = ?;
 
