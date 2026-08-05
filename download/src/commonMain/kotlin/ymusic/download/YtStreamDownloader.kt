@@ -24,6 +24,14 @@ class CaptionPreference(val languages: Set<String>, val includeDefault: Boolean)
     }
 }
 
+/** Caption tracks to fetch for [format]: none for MP3 — it has no way to carry a subtitle/text track, so
+ *  downloading them would be wasted — otherwise the preference-driven [selectCaptions]. */
+internal fun captionsToDownload(
+    format: DownloadFormat,
+    tracks: List<CaptionTrack>,
+    pref: CaptionPreference,
+): List<CaptionTrack> = if (format == DownloadFormat.MP3) emptyList() else selectCaptions(tracks, pref)
+
 /**
  * The caption tracks to download: those whose language matches a preference (exact or base-language,
  * e.g. `pt` matches `pt-BR`). If none match and [CaptionPreference.includeDefault] is set, fall back to
@@ -95,7 +103,7 @@ class YtStreamDownloader(
         onPreparing()
         var spec = resolveSpec(task.videoId)
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
-        val captionPicks = selectCaptions(spec.captionTracks, captions)
+        val captionPicks = captionsToDownload(task.format, spec.captionTracks, captions)
 
         val audioScratch = storage.scratch("${task.id}.audio")
         val videoScratch = if (videoFmt != null) storage.scratch("${task.id}.video") else null
