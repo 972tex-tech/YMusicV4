@@ -57,6 +57,7 @@ import ymusic.ui.App
 import ymusic.ui.AppGraph
 import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.downloadCaptionPreference
+import ymusic.ui.downloadLocationFolder
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
 import ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -238,6 +239,8 @@ class MainActivity : ComponentActivity() {
                     FileSystem.SYSTEM,
                     File(cacheDir, "download-work").absolutePath.toPath(),
                     downloadsDir.absolutePath.toPath(),
+                    // Publishes into a user-picked SAF folder (content://); okio handles file:// / default.
+                    contentPublisher = SafContentPublisher(applicationContext),
                 ),
                 mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
@@ -246,6 +249,7 @@ class MainActivity : ComponentActivity() {
                     now = { System.currentTimeMillis() },
                 ),
                 captionPreference = { shared.settings.downloadCaptionPreference() },
+                downloadFolder = { shared.settings.downloadLocationFolder() }, // SAF folder (content://) or default
                 logger = LogcatLogger(),
             )
         }
