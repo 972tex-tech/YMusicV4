@@ -1,7 +1,5 @@
 package ymusic.ui
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,22 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,12 +29,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -176,7 +166,6 @@ private fun ContentLocaleRow(
  * [DesignPalette.SurfaceElevated] behind a divider, casting a shadow onto the list while content
  * continues past their edge — the ElevatedBarColumn idiom.
  */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun LocalePickerDialog(
     title: String,
@@ -190,57 +179,36 @@ private fun LocalePickerDialog(
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = entries.indexOfFirst { isCurrent(it.code) }.coerceAtLeast(0),
     )
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(4.dp),
-            color = DesignColors.Surface,
-            modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
-        ) {
-            Column {
-                val topShadow by animateDpAsState(if (listState.canScrollBackward) 6.dp else 0.dp)
-                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(DesignColors.SurfaceElevated)) {
-                    Text(
-                        title,
-                        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                    )
-                    HorizontalDivider(color = DesignColors.Divider)
-                }
-                LazyColumn(state = listState, modifier = Modifier.weight(1f, fill = false).heightIn(max = 420.dp)) {
-                    items(entries, key = { it.code }) { option ->
-                        val selected = isCurrent(option.code)
-                        Text(
-                            option.label,
-                            style = TextStyle(
-                                fontSize = 14.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (selected) DesignColors.Accent else DesignColors.Ink,
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(option.code) }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
-                        )
-                    }
-                    if (loading && entries.size <= 1) {
-                        item("loading") {
-                            Box(
-                                Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
-                            }
-                        }
-                    }
-                }
-                val bottomShadow by animateDpAsState(if (listState.canScrollForward) 6.dp else 0.dp)
-                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(bottomShadow).background(DesignColors.SurfaceElevated)) {
-                    HorizontalDivider(color = DesignColors.Divider)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.End,
+    ElevatedBarDialog(
+        title = title,
+        onDismiss = onDismiss,
+        canScrollBackward = listState.canScrollBackward,
+        canScrollForward = listState.canScrollForward,
+        buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+    ) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+            items(entries, key = { it.code }) { option ->
+                val selected = isCurrent(option.code)
+                Text(
+                    option.label,
+                    style = TextStyle(
+                        fontSize = 14.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(option.code) }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                )
+            }
+            if (loading && entries.size <= 1) {
+                item("loading") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+                        CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
                     }
                 }
             }

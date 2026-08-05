@@ -8,9 +8,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.OutlinedTextField
@@ -131,31 +132,37 @@ private fun DownloadLocationDialog(
     onAddFolder: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Download location", maxLines = 1) },
-        text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space2)) {
-                if (buckets.isEmpty()) {
-                    Text(
-                        "No Library folders yet — add one to download into it.",
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                    )
-                }
-                buckets.forEach { bucket ->
-                    val selected = bucket.uri.toString() == current
-                    ChoiceRow(label = bucket.name, selected = selected) { onPick(bucket.uri.toString()) }
-                }
-                if (onAddFolder != null) {
-                    TextButton(onClick = onAddFolder, modifier = Modifier.fillMaxWidth()) {
-                        Text("Add new folder…", modifier = Modifier.fillMaxWidth(), color = DesignColors.Accent)
-                    }
-                }
+    val scroll = rememberScrollState()
+    ElevatedBarDialog(
+        title = "Download location",
+        onDismiss = onDismiss,
+        canScrollBackward = scroll.canScrollBackward,
+        canScrollForward = scroll.canScrollForward,
+        buttons = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    ) {
+        Column(Modifier.fillMaxWidth().verticalScroll(scroll)) {
+            if (buckets.isEmpty()) {
+                Text(
+                    "No Library folders yet — add one to download into it.",
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                    modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
+                )
             }
-        },
-    )
+            buckets.forEach { bucket ->
+                ChoiceRow(label = bucket.name, selected = bucket.uri.toString() == current) { onPick(bucket.uri.toString()) }
+            }
+            if (onAddFolder != null) {
+                Text(
+                    "Add new folder…",
+                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onAddFolder)
+                        .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -183,18 +190,25 @@ internal fun DefaultDownloadLocationPrompt(graph: AppGraph) {
 
     val bucket = candidate
     if (bucket != null && location.isBlank()) {
-        AlertDialog(
-            onDismissRequest = { candidate = null },
-            confirmButton = {
+        ElevatedBarDialog(
+            title = "Download location",
+            onDismiss = { candidate = null },
+            canScrollBackward = false,
+            canScrollForward = false,
+            buttons = {
+                TextButton(onClick = { candidate = null }) { Text("Not now") }
                 TextButton(onClick = {
                     scope.launch { graph.settings.put(AppSettings.downloadLocation, bucket.uri.toString()) }
                     candidate = null
                 }) { Text("Set as default") }
             },
-            dismissButton = { TextButton(onClick = { candidate = null }) { Text("Not now") } },
-            title = { Text("Download location") },
-            text = { Text("Save downloads to “${bucket.name}”? You can change this in Settings.") },
-        )
+        ) {
+            Text(
+                "Save downloads to “${bucket.name}”? You can change this in Settings.",
+                style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+                modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space16),
+            )
+        }
     }
 }
 
@@ -245,54 +259,64 @@ private fun CaptionLanguagesDialog(
             .take(6)
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(working) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Caption languages", maxLines = 1) },
-        text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                Text(
-                    "Download these caption tracks when a video has them.",
-                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                )
-                if (working.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                        working.forEach { code ->
-                            InputChip(
-                                selected = true,
-                                onClick = { working = working - code },
-                                label = { Text(captionLanguageName(code)) },
-                                trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove") },
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Add a language") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        if (query.isNotEmpty()) ActionIcon(Icons.Default.Close, "clear") { query = "" }
-                    },
-                )
-                suggestions.forEach { lang ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { working = working + lang.code; query = "" }
-                            .padding(vertical = DesignSpacing.Space8),
-                        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-                    ) {
-                        Text(lang.name, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink), modifier = Modifier.weight(1f))
-                        Text(lang.code, style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary))
+    val scroll = rememberScrollState()
+    ElevatedBarDialog(
+        title = "Caption languages",
+        onDismiss = onDismiss,
+        canScrollBackward = scroll.canScrollBackward,
+        canScrollForward = scroll.canScrollForward,
+        buttons = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = { onConfirm(working) }) { Text("Save") }
+        },
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space8),
+            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        ) {
+            Text(
+                "Download these caption tracks when a video has them.",
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+            )
+            if (working.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
+                    working.forEach { code ->
+                        InputChip(
+                            selected = true,
+                            onClick = { working = working - code },
+                            label = { Text(captionLanguageName(code)) },
+                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove") },
+                        )
                     }
                 }
             }
-        },
-    )
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Add a language") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    if (query.isNotEmpty()) ActionIcon(Icons.Default.Close, "clear") { query = "" }
+                },
+            )
+            suggestions.forEach { lang ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { working = working + lang.code; query = "" }
+                        .padding(vertical = DesignSpacing.Space8),
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                ) {
+                    Text(lang.name, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink), modifier = Modifier.weight(1f))
+                    Text(lang.code, style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary))
+                }
+            }
+        }
+    }
 }
 
 /** A plain settings row: bold title on the left, current value on the right, whole row tappable. */
@@ -341,6 +365,6 @@ private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = DesignSpacing.Space8),
+            .padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.DialogRowVertical),
     )
 }

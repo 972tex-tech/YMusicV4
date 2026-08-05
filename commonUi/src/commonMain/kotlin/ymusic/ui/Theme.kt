@@ -158,6 +158,11 @@ object DesignSpacing {
      *  rhythm before the scale existed; kept as named tokens for visual continuity across the screen. */
     val SettingsRowHorizontal = 20.dp
     val SettingsRowVertical = 14.dp
+
+    /** Row insets inside the elevated-bar picker dialog ([ElevatedBarDialog]) — the choice rows align
+     *  with the title (24) and take a 12 midpoint vertical, matching the content-region picker. */
+    val DialogRowHorizontal = Space24
+    val DialogRowVertical = 12.dp
 }
 
 /**
