@@ -69,6 +69,7 @@ import ymusic.mediascanner.FileSystemDocumentsProvider
 import ymusic.mediascanner.MediaScanner
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.mediaStoreJdbcDriver
+import ymusic.mediastore.model.BucketDraft
 import ymusic.player.LocalPlayerContext
 import ymusic.player.LocalVideoSurface
 import ymusic.player.PlayerEngines
@@ -305,6 +306,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         player,
         mediaStore = mediaStore,
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
+        libraryFolderPicker = { pickAndRegisterFolder(mediaStore) },
         rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },
         deleteFromDisk = { item ->
             withContext(Dispatchers.IO) {
@@ -414,6 +416,15 @@ private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) 
     val picked = pickFolder() ?: return null
     val rootUri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
     return scanUris(store, listOf(rootUri), onProgress)
+}
+
+/** Pick a folder and register it as a Library bucket (no media scan — works even when empty), returning
+ *  its uri. Used to choose a download location. */
+private suspend fun pickAndRegisterFolder(store: BetterMediaStore): String? {
+    val picked = pickFolder() ?: return null
+    val uri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
+    store.upsertBucket(BucketDraft(uri = uri, name = picked.name))
+    return uri.toString()
 }
 
 /** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */

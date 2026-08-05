@@ -36,6 +36,14 @@ class AppGraph(
     val mediaStore: BetterMediaStore? = null,
     val scanLibraryFolder: ScanAction? = null,
     /**
+     * Opens the OS folder picker and registers the chosen folder as a Library bucket (a lightweight
+     * `upsertBucket`, so it works even for an empty folder — no media scan), returning its bucket uri,
+     * or null if the user canceled. Unlike [scanLibraryFolder] (which scans + reports a summary for the
+     * Library pill), the caller needs the picked folder's identity — used to set a download location.
+     * Null on shells without a folder picker.
+     */
+    val libraryFolderPicker: (suspend () -> String?)? = null,
+    /**
      * Re-scans the already-added root folders in place (no folder pick). Null when the shell can't
      * scan, or has no notion of persisted roots.
      */

@@ -74,10 +74,9 @@ class DownloadLocationSettingsTest {
             mediaStore = store,
             settings = settings,
             downloads = downloadService(scope),
-            // The "folder picker" — pretend the user picked a folder that scans into a new bucket.
-            scanLibraryFolder = {
-                store.upsertBucket(BucketDraft(Uri.parse("file:///Picked"), "Picked"))
-                "Added 1 folder"
+            // The folder picker — pretend the user picked a folder; it's registered and its uri returned.
+            libraryFolderPicker = {
+                store.upsertBucket(BucketDraft(Uri.parse("file:///Picked"), "Picked")).uri.toString()
             },
         )
         try {
@@ -145,9 +144,8 @@ class DownloadLocationSettingsTest {
             mediaStore = store,
             settings = settings,
             downloads = downloadService(scope),
-            scanLibraryFolder = {
-                store.upsertBucket(BucketDraft(Uri.parse("file:///New"), "New"))
-                "Added 1 folder"
+            libraryFolderPicker = {
+                store.upsertBucket(BucketDraft(Uri.parse("file:///New"), "New")).uri.toString()
             },
         )
         try {

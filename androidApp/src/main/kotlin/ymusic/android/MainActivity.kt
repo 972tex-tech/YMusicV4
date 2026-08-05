@@ -41,10 +41,12 @@ import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 import ymusic.dynamicengine.yt.embedPage
+import ymusic.mediascanner.DocumentInfo
 import ymusic.mediascanner.FfmpegMetadataExtractor
 import ymusic.mediascanner.MediaScanner
 import ymusic.mediascanner.SafDocumentsProvider
 import ymusic.mediastore.BetterMediaStore
+import ymusic.mediastore.model.BucketDraft
 import ymusic.player.LocalPlayerContext
 import ymusic.player.PlayerEngines
 import ymusic.player.WebViewPlayerContext
@@ -242,6 +244,7 @@ class MainActivity : ComponentActivity() {
             player,
             mediaStore = shared.mediaStore,
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
+            libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
             rescanLibrary = { onProgress -> rescanKnownRoots(shared.mediaStore, onProgress) },
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {
@@ -285,6 +288,15 @@ class MainActivity : ComponentActivity() {
     private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
         val treeUri = pickFolder() ?: return null
         return scanUris(store, listOf(treeUri), onProgress)
+    }
+
+    /** Pick a folder and register it as a Library bucket (no media scan — works even when empty),
+     *  returning its uri. Used to choose a download location. */
+    private suspend fun pickAndRegisterFolder(store: BetterMediaStore): String? {
+        val treeUri = pickFolder() ?: return null
+        val folder = SafDocumentsProvider(applicationContext).queryDocument(treeUri) as? DocumentInfo.Folder ?: return null
+        store.upsertBucket(BucketDraft(uri = folder.uri, name = folder.name))
+        return folder.uri.toString()
     }
 
     /** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */

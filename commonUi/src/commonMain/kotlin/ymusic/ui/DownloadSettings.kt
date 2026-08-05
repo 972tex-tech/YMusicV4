@@ -80,17 +80,15 @@ private fun DownloadLocationRow(graph: AppGraph) {
 }
 
 /**
- * Show the OS folder picker; on pick, the folder is scanned into the Library (a new bucket) and set as
- * [AppSettings.downloadLocation]. Returns true iff a new folder was chosen. No-op (false) without a
- * media store or scan action, or when the pick was canceled / added nothing new.
+ * Open the folder picker, register the chosen folder in the Library, and set it as
+ * [AppSettings.downloadLocation]. Returns true iff a folder was chosen (false = no picker, or canceled).
+ * The picker hands back the folder's uri, so this works whether the folder is new, already present,
+ * empty, or nested — no guessing which bucket appeared.
  */
 internal suspend fun pickDownloadFolder(graph: AppGraph): Boolean {
-    val store = graph.mediaStore ?: return false
-    val scan = graph.scanLibraryFolder ?: return false
-    val before = store.childBuckets(null).map { it.uri.toString() }.toSet()
-    if (scan { } == null) return false // canceled
-    val added = store.childBuckets(null).firstOrNull { it.uri.toString() !in before } ?: return false
-    graph.settings.put(AppSettings.downloadLocation, added.uri.toString())
+    val pick = graph.libraryFolderPicker ?: return false
+    val uri = pick() ?: return false // canceled
+    graph.settings.put(AppSettings.downloadLocation, uri)
     return true
 }
 

@@ -49,7 +49,7 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     // recomposes into the format dialog), a cancel cancels the download. Validated only here, at start
     // time, so nothing has to watch the store. (No gate when the shell can't pick a folder.)
     val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
-    if (graph.mediaStore != null && graph.scanLibraryFolder != null) {
+    if (graph.mediaStore != null && graph.libraryFolderPicker != null) {
         val usable by produceState<Boolean?>(null, video, location) { value = hasUsableDownloadLocation(graph) }
         when (usable) {
             null -> return // validating — render nothing yet
