@@ -14,10 +14,11 @@ import ymusic.ytmedia.sabr.DownloadFile
  */
 interface DownloadStorage {
 
-    /** A local scratch file, created on first write. Stable for [name] so a paused download resumes into
-     *  the same bytes. A task's files live under a `"<taskId>/…"` [name] so [deleteScratch] can drop them
-     *  all at once. Reuses [DownloadFile] for the write side. */
-    fun scratch(name: String): DownloadScratch
+    /** A local scratch file [name] (e.g. `"audio"`, `"out"`) belonging to [taskId], created on first
+     *  write. Stable per (taskId, name) so a paused download resumes into the same bytes. All of a task's
+     *  files live together so [deleteScratch] can drop them at once. Reuses [DownloadFile] for the write
+     *  side. */
+    fun scratch(taskId: String, name: String): DownloadScratch
 
     /** Delete a task's entire scratch folder — every elementary/caption/out file for [taskId] in one go.
      *  Best-effort (no-op if absent). */

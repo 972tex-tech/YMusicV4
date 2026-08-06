@@ -43,7 +43,7 @@ import kotlin.test.assertEquals
 class DownloadLocationSettingsTest {
 
     private object NoopStorage : DownloadStorage {
-        override fun scratch(name: String): DownloadScratch = throw UnsupportedOperationException()
+        override fun scratch(taskId: String, name: String): DownloadScratch = throw UnsupportedOperationException()
         override fun deleteScratch(taskId: String) = Unit
         override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String?): String = throw UnsupportedOperationException()
     }

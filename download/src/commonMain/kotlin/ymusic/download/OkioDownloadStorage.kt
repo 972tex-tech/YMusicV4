@@ -25,7 +25,8 @@ class OkioDownloadStorage(
         fileSystem.createDirectories(outputDir)
     }
 
-    override fun scratch(name: String): DownloadScratch = OkioDownloadScratch(fileSystem, scratchDir / name)
+    override fun scratch(taskId: String, name: String): DownloadScratch =
+        OkioDownloadScratch(fileSystem, scratchDir / taskId / name)
 
     override fun deleteScratch(taskId: String) {
         fileSystem.deleteRecursively(scratchDir / taskId, mustExist = false)

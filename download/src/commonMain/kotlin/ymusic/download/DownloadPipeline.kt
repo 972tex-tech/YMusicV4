@@ -91,7 +91,7 @@ class DownloadPipeline(
 
         val audio = streams.audio.scratch
         val video = streams.video?.scratch
-        val out = storage.scratch("${task.id}/out")
+        val out = storage.scratch(task.id, "out")
         val meta = task.tags()
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
