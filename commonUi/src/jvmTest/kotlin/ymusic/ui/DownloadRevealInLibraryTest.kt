@@ -28,9 +28,7 @@ import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.mediaStoreJdbcDriver
 import ymusic.mediastore.model.BucketDraft
 import ymusic.mediastore.model.MediaItemDraft
-import ymusic.settings.AppSettings
 import ymusic.settings.InMemorySettingsStore
-import ymusic.settings.put
 import java.util.Locale
 import kotlin.test.Test
 
@@ -69,8 +67,9 @@ class DownloadRevealInLibraryTest {
             )
         }
 
+        // Deliberately no download location set: reveal must resolve the folder from the task's persisted
+        // fileUri, not any current setting.
         val settings = InMemorySettingsStore()
-        runBlocking { settings.put(AppSettings.downloadLocation, "file:///Music/Downloads") }
 
         val downloadStore = DownloadStore(downloadDatabaseJdbcDriver())
         runBlocking {

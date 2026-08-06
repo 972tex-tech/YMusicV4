@@ -129,14 +129,13 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         onPlay = { task.fileUri?.let { coordinator.playLocalUri(it, task.title, task.artist, task.thumbnailUrl) } },
                         onRevealLibrary = if (store != null) ({
                             scope.launch {
-                                // Point the Library at the file's folder: the item's own bucket if it's
-                                // registered, else the download-location folder itself (all downloads land
-                                // there). Null falls back to just opening the Library.
-                                val itemBucket = task.fileUri
-                                    ?.let { store.findItemByUri(Uri.parse(it)) }?.bucketId
-                                val folderBucket = graph.settings.downloadLocationFolder()
-                                    ?.let { store.findBucketByUri(Uri.parse(it)) }?.id
-                                folderReveal?.value = itemBucket ?: folderBucket
+                                // Resolve the folder from the file's own persisted uri, not the current
+                                // download-location setting (which may have changed since): the item's
+                                // registered bucket, else the file's parent folder as a Library bucket.
+                                // Null falls back to just opening the Library.
+                                val uri = task.fileUri
+                                folderReveal?.value = uri?.let { store.findItemByUri(Uri.parse(it)) }?.bucketId
+                                    ?: uri?.parentFolderUri()?.let { store.findBucketByUri(Uri.parse(it)) }?.id
                                 navigate(AppSection.Library)
                             }
                             Unit
@@ -267,6 +266,11 @@ private fun DownloadCard(
  *  fraction (determinate). Queued/completed/failed show none. */
 private fun DownloadTask.showsBar(): Boolean = state == DownloadState.PREPARING ||
     ((state == DownloadState.DOWNLOADING || state == DownloadState.PROCESSING || state == DownloadState.PAUSED) && progress != null)
+
+/** The containing folder of a `file://` uri, as a bucket uri; null for opaque uris (Android SAF
+ *  `content://` documents, whose parent isn't derivable by string ops — those resolve via findItemByUri). */
+private fun String.parentFolderUri(): String? =
+    if (startsWith("file://")) substringBeforeLast('/').takeIf { it.length > "file://".length } else null
 
 @Composable
 private fun DownloadBar(task: DownloadTask, c: DownloadColors) {
