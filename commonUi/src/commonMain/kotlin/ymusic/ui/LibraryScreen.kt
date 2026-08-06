@@ -1154,7 +1154,7 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-internal fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = null, corner: Dp = 10.dp) {
+internal fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = null, corner: Dp = 10.dp, badgeColor: Color = DesignColors.BadgeInk) {
     val shape = RoundedCornerShape(corner)
     Box(
         modifier = Modifier
@@ -1171,7 +1171,7 @@ internal fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = n
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(4.dp)
-                    .background(DesignColors.BadgeInk, RoundedCornerShape(3.dp))
+                    .background(badgeColor, RoundedCornerShape(3.dp))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
