@@ -45,5 +45,8 @@ E70011 - no audio format in the player response (download YtStreamDownloader.sel
 E70012 - no video format in the player response (download YtStreamDownloader.selectFormats)
 E70020 - ffmpeg unavailable for this output on this platform (download DownloadPipeline)
 E70021 - ffmpeg exited non-zero (download Ffmpeg.run)
+E70030 - could not publish the finished file into the destination folder (download OkioDownloadStorage.publish)
+E70031 - no ContentPublisher for a non-file destination (download OkioDownloadStorage.publish)
+E70032 - SAF/content publish failed (download OkioDownloadStorage.publish → ContentPublisher)
 
 E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture

@@ -1,7 +1,9 @@
 package ymusic.download
 
+import kmpcommon.error.TechnicalException
 import okio.BufferedSink
 import okio.FileSystem
+import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -36,20 +38,39 @@ class OkioDownloadStorage(
         // A content:// (or any non-file) folder can't be an okio path — delegate to the platform publisher.
         if (destinationFolder != null && !destinationFolder.startsWith("file:")) {
             val publisher = contentPublisher
-                ?: error("no ContentPublisher for destination $destinationFolder")
-            val uri = publisher.publish(scratch.path, destinationFolder, fileName)
+                ?: throw TechnicalException("E70031", "no ContentPublisher for destination $destinationFolder")
+            val uri = try {
+                publisher.publish(scratch.path, destinationFolder, fileName)
+            } catch (e: TechnicalException) {
+                throw e
+            } catch (e: Exception) {
+                throw TechnicalException("E70032", "could not publish $fileName into $destinationFolder", cause = e)
+            }
             scratch.delete()
             return uri
         }
         val dir = destinationFolder?.let { fileUriToPath(it) } ?: outputDir
-        fileSystem.createDirectories(dir)
         val dest = dir / fileName
         val src = scratch.path.toPath()
-        fileSystem.delete(dest, mustExist = false)
-        // Rename within the same filesystem; fall back to copy+delete across mounts.
-        runCatching { fileSystem.atomicMove(src, dest) }.onFailure {
-            fileSystem.source(src).use { s -> fileSystem.sink(dest).buffer().use { it.writeAll(s) } }
-            fileSystem.delete(src, mustExist = false)
+        try {
+            fileSystem.createDirectories(dir)
+            fileSystem.delete(dest, mustExist = false)
+            // A same-filesystem rename is atomic and cheap; a cross-mount one can't be, and THAT is the only
+            // failure a copy legitimately recovers. okio surfaces every atomicMove failure as a bare
+            // IOException with no portable errno, so we can't tell "cross-device" from "no space / no
+            // permission / source gone" by inspecting it — we attempt the rename, and on any IOException try
+            // the copy. If the copy also fails it's a genuine storage error, surfaced coded below (not as a
+            // second bare okio throw).
+            try {
+                fileSystem.atomicMove(src, dest)
+            } catch (_: IOException) {
+                fileSystem.source(src).use { s -> fileSystem.sink(dest).buffer().use { it.writeAll(s) } }
+                fileSystem.delete(src, mustExist = false)
+            }
+        } catch (e: TechnicalException) {
+            throw e
+        } catch (e: Exception) {
+            throw TechnicalException("E70030", "could not publish $fileName into $dir", cause = e)
         }
         return "file://$dest" // a real uri, like the content:// path — so task.fileUri is always parseable
     }
