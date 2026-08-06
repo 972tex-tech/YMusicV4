@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -100,6 +101,8 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     TrackScroll { gridState.canScrollBackward }
 
     val navigate = LocalNavigateToSection.current
+    val folderReveal = LocalLibraryFolderReveal.current
+    val store = graph.mediaStore
     val scope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize()) {
@@ -124,7 +127,16 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     DownloadCard(
                         task, service,
                         onPlay = { task.fileUri?.let { coordinator.playLocalUri(it, task.title, task.artist, task.thumbnailUrl) } },
-                        onRevealLibrary = if (graph.mediaStore != null) ({ navigate(AppSection.Library) }) else null,
+                        onRevealLibrary = if (store != null) ({
+                            scope.launch {
+                                // Point the Library at the file's actual folder, then switch to it. Falls
+                                // back to just opening the Library if the item isn't in the store yet.
+                                folderReveal?.value = task.fileUri
+                                    ?.let { store.findItemByUri(Uri.parse(it)) }?.bucketId
+                                navigate(AppSection.Library)
+                            }
+                            Unit
+                        }) else null,
                         onRevealFolder = graph.revealInFolder?.let { hook -> { task.fileUri?.let { uri -> scope.launch { hook(uri) } }; Unit } },
                     )
                 }

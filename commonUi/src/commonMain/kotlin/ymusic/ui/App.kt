@@ -134,6 +134,12 @@ enum class AppSection(val label: StringResource, val icon: ImageVector, val grou
  *  outside the app shell. */
 val LocalNavigateToSection = androidx.compose.runtime.compositionLocalOf<(AppSection) -> Unit> { {} }
 
+/** A pending "open this folder in the Library" request (a bucket id), stashed by one screen and
+ *  consumed by the Library once it composes — so Downloads' "Reveal in Library" lands on the file's
+ *  actual folder, not wherever the Library was left. Null host outside the shell. */
+val LocalLibraryFolderReveal =
+    androidx.compose.runtime.compositionLocalOf<androidx.compose.runtime.MutableState<Long?>?> { null }
+
 /**
  * The app root: drawer navigation + the persistent mini-player + the Now Playing overlay. The shell
  * calls this with a ready [AppGraph] (engines started, player built, surface injected).
@@ -227,6 +233,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        // A folder-reveal target (bucket id) set by Downloads' "Reveal in Library" and consumed by the
+        // Library once it composes. Lives here so it survives the section switch.
+        val libraryReveal = remember { androidx.compose.runtime.mutableStateOf<Long?>(null) }
         // Signed-in state, derived from the engine's cookie gate. Bumps loginEpoch on sign-in/out.
         val accountController = remember { AccountController(graph, scope) }
         val signedIn by accountController.signedIn.collectAsState()
@@ -516,6 +525,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
                     LocalDownloadLauncher provides downloadLauncher,
                     LocalNavigateToSection provides { onSection(it) },
+                    LocalLibraryFolderReveal provides libraryReveal,
                 ) {
                     DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
                     DefaultDownloadLocationPrompt(graph)

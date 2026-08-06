@@ -219,6 +219,15 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 item.bucketId?.let { revealBucket = it }
                 tab = LibraryTab.Folders
             }
+            // A cross-section reveal (Downloads → "Reveal in Library"): open the requested folder here
+            // and clear the request so it fires once.
+            val folderReveal = LocalLibraryFolderReveal.current
+            LaunchedEffect(folderReveal?.value) {
+                val bucketId = folderReveal?.value ?: return@LaunchedEffect
+                revealBucket = bucketId
+                tab = LibraryTab.Folders
+                folderReveal.value = null
+            }
             // "Remove from disk": the menu only REQUESTS; the deletion runs from the dialog's
             // confirm, and the store row goes only after the file did (itemsChanges reloads the UI).
             var confirmDelete by remember { mutableStateOf<MediaStoreItem?>(null) }
