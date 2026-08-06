@@ -1,6 +1,7 @@
 package ymusic.download
 
 import kmpcommon.error.TechnicalException
+import kmpcommon.uri.Uri
 import okio.BufferedSink
 import okio.FileSystem
 import okio.IOException
@@ -10,37 +11,32 @@ import okio.buffer
 import okio.use
 
 /**
- * [DownloadStorage] over an okio [FileSystem] — desktop (`~/.ymusic`) and iOS (NSDocument). Scratch files
- * live under [scratchDir]; [publish] moves the finished file into the chosen `file://` folder (or
- * [outputDir] when none). A non-`file:` destination (Android SAF `content://`) is handed to
- * [contentPublisher], which the shell provides; without one, such a destination is an error.
+ * [DownloadStorage] over an okio [FileSystem]. Scratch files live under [scratchDir]; [publish] moves the
+ * finished file into a `file://` destination folder. Non-`file://` destinations (e.g. Android SAF
+ * `content://`) are delegated to [publishToUri], which the base rejects — a platform subclass
+ * (`AndroidDownloadStorage`) overrides it. Used directly on desktop/iOS, where destinations are `file://`.
  */
-class OkioDownloadStorage(
+open class DefaultDownloadStorage(
     private val fileSystem: FileSystem,
     private val scratchDir: Path,
-    private val outputDir: Path,
-    private val contentPublisher: ContentPublisher? = null,
 ) : DownloadStorage {
 
     init {
         fileSystem.createDirectories(scratchDir)
-        fileSystem.createDirectories(outputDir)
     }
 
     override fun scratch(taskId: String, name: String): DownloadScratch =
-        OkioDownloadScratch(fileSystem, scratchDir / taskId / name)
+        DefaultDownloadScratch(fileSystem, scratchDir / taskId / name)
 
     override fun deleteScratch(taskId: String) {
         fileSystem.deleteRecursively(scratchDir / taskId, mustExist = false)
     }
 
-    override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String?): String {
-        // A content:// (or any non-file) folder can't be an okio path — delegate to the platform publisher.
-        if (destinationFolder != null && !destinationFolder.startsWith("file:")) {
-            val publisher = contentPublisher
-                ?: throw TechnicalException("E70031", "no ContentPublisher for destination $destinationFolder")
+    final override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String): String {
+        val folder = Uri.parse(destinationFolder)
+        if (folder.scheme != "file") {
             val uri = try {
-                publisher.publish(scratch.path, destinationFolder, fileName)
+                publishToUri(scratch.path, fileName, folder)
             } catch (e: TechnicalException) {
                 throw e
             } catch (e: Exception) {
@@ -49,7 +45,7 @@ class OkioDownloadStorage(
             scratch.delete()
             return uri
         }
-        val dir = destinationFolder?.let { fileUriToPath(it) } ?: outputDir
+        val dir = folder.path.toString().toPath()
         val dest = dir / fileName
         val src = scratch.path.toPath()
         try {
@@ -75,13 +71,20 @@ class OkioDownloadStorage(
         return "file://$dest" // a real uri, like the content:// path — so task.fileUri is always parseable
     }
 
-    /** `file:///abs/path` → an okio [Path] (strips the scheme; leaves the leading slash). */
-    private fun fileUriToPath(fileUri: String): Path =
-        fileUri.removePrefix("file://").removePrefix("localhost").ifEmpty { "/" }.toPath()
+    /**
+     * Publish [scratchPath]'s finished bytes into a non-`file://` [destinationFolder] as [fileName] and
+     * return the created file's uri. The base implementation rejects any such scheme; a platform subclass
+     * that can reach the folder (Android SAF `content://`) overrides this.
+     */
+    protected open suspend fun publishToUri(scratchPath: String, fileName: String, destinationFolder: Uri): String =
+        throw TechnicalException(
+            "E70031",
+            "destination scheme '${destinationFolder.scheme}' unsupported by ${this::class.simpleName}",
+        )
 }
 
 /** okio-backed [DownloadScratch]: append-only writes (resume via on-disk size) + a real path for ffmpeg. */
-private class OkioDownloadScratch(
+private class DefaultDownloadScratch(
     private val fileSystem: FileSystem,
     private val file: Path,
 ) : DownloadScratch {

@@ -19,7 +19,7 @@ class DownloadServiceQueueTest {
     private object ThrowingStorage : DownloadStorage {
         override fun scratch(taskId: String, name: String): DownloadScratch = throw UnsupportedOperationException()
         override fun deleteScratch(taskId: String) = Unit
-        override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String?): String = throw UnsupportedOperationException()
+        override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String): String = throw UnsupportedOperationException()
     }
 
     private fun task(id: String, state: DownloadState) = DownloadTask(
@@ -34,7 +34,7 @@ class DownloadServiceQueueTest {
         store = store, scope = scope, now = { 0L },
         resolver = SabrSpecResolver { awaitCancellation() },
         client = KmpHttpClient.create {}, userAgent = "test", ffmpeg = null,
-        storage = ThrowingStorage, maxConcurrent = maxConcurrent,
+        storage = ThrowingStorage, downloadFolder = { "file:///tmp/dl" }, maxConcurrent = maxConcurrent,
     )
 
     @Test

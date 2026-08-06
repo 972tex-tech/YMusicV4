@@ -49,7 +49,7 @@ class DownloadPipeline(
     suspend fun run(
         task: DownloadTask,
         captions: CaptionPreference,
-        destinationFolder: String?,
+        destinationFolder: String,
         onPreparing: () -> Unit,
         onDownloading: () -> Unit,
         onProcessing: () -> Unit,

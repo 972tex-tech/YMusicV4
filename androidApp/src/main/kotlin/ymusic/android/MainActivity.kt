@@ -214,7 +214,6 @@ class MainActivity : ComponentActivity() {
         val downloadService = shared.webViewJs?.let {
             val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")
                 .takeIf { f -> f.exists() }?.absolutePath
-            val downloadsDir = File(getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC) ?: filesDir, "downloads")
             val sabrClient = KmpHttpClient.create {
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
@@ -234,14 +233,11 @@ class MainActivity : ComponentActivity() {
                 client = sabrClient,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 ffmpeg = ffmpegBin?.let { bin -> ymusic.download.Ffmpeg(bin) },
-                // Okio storage for now; a SAF-backed DownloadStorage writing into a user-picked Library
-                // folder (content://) is on the board.
-                storage = ymusic.download.OkioDownloadStorage(
+                // Handles file:// (app dirs) via okio and user-picked SAF folders (content://) via SAF.
+                storage = AndroidDownloadStorage(
+                    applicationContext,
                     FileSystem.SYSTEM,
                     File(cacheDir, "download-work").absolutePath.toPath(),
-                    downloadsDir.absolutePath.toPath(),
-                    // Publishes into a user-picked SAF folder (content://); okio handles file:// / default.
-                    contentPublisher = SafContentPublisher(applicationContext),
                 ),
                 mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
@@ -250,7 +246,9 @@ class MainActivity : ComponentActivity() {
                     now = { System.currentTimeMillis() },
                 ),
                 captionPreference = { shared.settings.downloadCaptionPreference() },
-                downloadFolder = { shared.settings.downloadLocationFolder() }, // SAF folder (content://) or default
+                // The user's chosen download location (SAF content:// or file://) — always set: the download
+                // flow requires picking one before enqueue.
+                downloadFolder = { shared.settings.downloadLocationFolder()!! },
                 onCompleted = { task, result -> registerCompletedDownload(shared.mediaStore, shared.settings, task, result) },
                 logger = LogcatLogger(),
             )

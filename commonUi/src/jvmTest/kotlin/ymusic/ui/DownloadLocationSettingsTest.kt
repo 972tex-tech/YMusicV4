@@ -45,7 +45,7 @@ class DownloadLocationSettingsTest {
     private object NoopStorage : DownloadStorage {
         override fun scratch(taskId: String, name: String): DownloadScratch = throw UnsupportedOperationException()
         override fun deleteScratch(taskId: String) = Unit
-        override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String?): String = throw UnsupportedOperationException()
+        override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String): String = throw UnsupportedOperationException()
     }
 
     private fun downloadService(scope: CoroutineScope) = DownloadService(
@@ -57,6 +57,7 @@ class DownloadLocationSettingsTest {
         userAgent = "test",
         ffmpeg = null, // no ffmpeg → the format dialog shows only the M4A option
         storage = NoopStorage,
+        downloadFolder = { "file:///tmp/dl" },
     )
 
     private fun engines() =

@@ -43,7 +43,7 @@ class DownloadRevealInLibraryTest {
     private object NoopStorage : DownloadStorage {
         override fun scratch(taskId: String, name: String): DownloadScratch = throw UnsupportedOperationException()
         override fun deleteScratch(taskId: String) = Unit
-        override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String?): String =
+        override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String): String =
             throw UnsupportedOperationException()
     }
 
@@ -91,6 +91,7 @@ class DownloadRevealInLibraryTest {
             userAgent = "test",
             ffmpeg = null,
             storage = NoopStorage,
+            downloadFolder = { "file:///tmp/dl" },
         )
 
         val graph = AppGraph(

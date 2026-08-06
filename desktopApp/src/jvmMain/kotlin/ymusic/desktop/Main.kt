@@ -305,15 +305,16 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             client = sabrClient,
             userAgent = CefManager.CHROME_USER_AGENT,
             ffmpeg = ffmpeg,
-            storage = ymusic.download.OkioDownloadStorage(
+            storage = ymusic.download.DefaultDownloadStorage(
                 FileSystem.SYSTEM,
                 File(dataDir, "download-work").absolutePath.toPath(),
-                File(dataDir, "downloads").absolutePath.toPath(),
             ),
             mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
             segmentIndex = segmentIndex,
             captionPreference = { settings.downloadCaptionPreference() },
-            downloadFolder = { settings.downloadLocationFolder() }, // publish into the chosen file:// folder
+            // The user's chosen download location — always set: the download flow requires picking one
+            // before enqueue.
+            downloadFolder = { settings.downloadLocationFolder()!! },
             onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, task, result) },
             logger = StdoutLogger,
         )

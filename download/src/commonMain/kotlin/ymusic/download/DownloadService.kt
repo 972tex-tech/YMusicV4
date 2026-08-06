@@ -54,8 +54,9 @@ class DownloadService(
      *  service headless and avoids persisting the preference on each task. Defaults to no captions. */
     private val captionPreference: suspend () -> CaptionPreference = { CaptionPreference.None },
     /** The user's chosen download-location folder uri, read fresh at publish time (shell sources it from
-     *  settings). Null → the storage's default dir. */
-    private val downloadFolder: suspend () -> String? = { null },
+     *  settings, falling back to the platform's default downloads dir). Always concrete — the UX requires
+     *  a location before a download runs. */
+    private val downloadFolder: suspend () -> String,
     /** Optional hook to register a finished file into the local library (media-store); shell-provided. */
     private val onCompleted: (suspend (DownloadTask, DownloadPipeline.Result) -> Unit)? = null,
 ) {
