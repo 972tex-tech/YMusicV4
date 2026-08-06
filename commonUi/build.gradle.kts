@@ -53,6 +53,7 @@ kotlin {
                 api(project(":player"))
                 api(project(":dynamic-engine"))
                 api(project(":media-store"))
+                api(project(":media-scanner"))
                 api(project(":image-loader"))
                 api(project(":settings"))
                 api(project(":kmpFfmpeg"))

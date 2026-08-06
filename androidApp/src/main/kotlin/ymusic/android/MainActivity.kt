@@ -214,6 +214,15 @@ class MainActivity : ComponentActivity() {
         val downloadService = shared.webViewJs?.let {
             val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")
                 .takeIf { f -> f.exists() }?.absolutePath
+            // Probes a finished download's metadata into its Library bucket (same path as the folder scan,
+            // and it reads content:// via SAF); null without ffmpeg → a hand-built draft fallback.
+            val downloadScanner = ffmpegBin?.let {
+                MediaScanner.create(
+                    shared.mediaStore,
+                    SafDocumentsProvider(applicationContext),
+                    FfmpegMetadataExtractor(FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver))),
+                )
+            }
             val sabrClient = KmpHttpClient.create {
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
@@ -249,7 +258,9 @@ class MainActivity : ComponentActivity() {
                 // The user's chosen download location (SAF content:// or file://) — always set: the download
                 // flow requires picking one before enqueue.
                 downloadFolder = { shared.settings.downloadLocationFolder()!! },
-                onCompleted = { task, result -> registerCompletedDownload(shared.mediaStore, shared.settings, task, result) },
+                onCompleted = { task, result ->
+                    registerCompletedDownload(shared.mediaStore, shared.settings, downloadScanner, task, result)
+                },
                 logger = LogcatLogger(),
             )
         }

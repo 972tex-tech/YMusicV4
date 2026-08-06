@@ -91,7 +91,7 @@ internal class MediaScannerEngine(
      *  read (so the parent must NOT prune it, even if it currently looks media-less). */
     private data class FolderScan(val hasMedia: Boolean, val hadError: Boolean)
 
-    override fun scan(uri: Uri): Flow<Progress> = channelFlow {
+    override fun scan(uri: Uri, intoBucket: Long?): Flow<Progress> = channelFlow {
         val progress = MutableStateFlow(Progress())
         // Forward every progress change to the collector (StateFlow conflates rapid updates).
         val forward = launch { progress.collect { send(it) } }
@@ -107,8 +107,9 @@ internal class MediaScannerEngine(
                         }
                     }
                 }
-                // A single media file: index it directly (as an orphan until a folder scan adopts it).
-                is DocumentInfo.File -> scanFile(folder, progress)
+                // A single media file: index it directly — into [intoBucket] if the caller named one, else
+                // as an orphan until a folder scan adopts it.
+                is DocumentInfo.File -> scanFile(folder, progress, intoBucket)
                 is DocumentInfo.Missing -> {} // nothing to scan (also the no-op provider's path)
             }
             forward.cancelAndJoin() // stop the forwarder before the authoritative final send
@@ -123,7 +124,7 @@ internal class MediaScannerEngine(
      * Index one media file: same uri unchanged → skip; same uri changed → update in place (keeps its
      * bucket via `upsertItem(null)`); a new uri → insert as an orphan (adopted later by a folder scan).
      */
-    private suspend fun scanFile(file: DocumentInfo.File, progress: MutableStateFlow<Progress>) {
+    private suspend fun scanFile(file: DocumentInfo.File, progress: MutableStateFlow<Progress>, intoBucket: Long? = null) {
         if (file.isVirtual || file.size <= 0 || !isMediaFile(file.name, file.mimeType)) return
         try {
             val known = store.findItemByUri(file.uri)
@@ -136,7 +137,9 @@ internal class MediaScannerEngine(
                 progress.update { it.copy(scanned = it.scanned + 1) } // couldn't probe; skip
                 return
             }
-            store.upsertItem(bucketId = null, draft) // orphan if new; keeps bucket if already filed
+            // Orphan a new file (bucketId=null) unless a caller named the bucket it lives in (a completed
+            // download knows its download-location folder); an existing item keeps its bucket via null.
+            store.upsertItem(bucketId = intoBucket, draft)
             progress.update {
                 if (known == null) it.copy(scanned = it.scanned + 1, added = it.added + 1)
                 else it.copy(scanned = it.scanned + 1, updated = it.updated + 1)

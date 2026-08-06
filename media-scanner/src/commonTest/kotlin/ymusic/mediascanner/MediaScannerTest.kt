@@ -208,6 +208,19 @@ class MediaScannerTest {
     }
 
     @Test
+    fun scan_single_file_into_a_bucket_files_it_there() = runTest {
+        // A completed download names the bucket its file lives in, so it's filed (not orphaned).
+        val bucket = store.upsertBucket(ymusic.mediastore.model.BucketDraft(uri("file:///music"), "music"))
+        val fs = FakeFileSystem().apply { file("/music/a.mp3", 10) }
+        val progress = scanner(fs).scan(uri("file:///music/a.mp3"), intoBucket = bucket.id).last()
+
+        assertEquals(1, progress.added)
+        val item = assertNotNull(store.findItemByUri(uri("file:///music/a.mp3")))
+        assertEquals(bucket.id, item.bucketId, "filed under the named bucket, not an orphan")
+        assertEquals(listOf("a.mp3"), store.itemsInBucket(bucket.id).map { leaf(it.uri) })
+    }
+
+    @Test
     fun scan_single_non_media_file_does_nothing() = runTest {
         val fs = FakeFileSystem().apply { file("/music/notes.txt", 5) }
         val progress = scanner(fs).scan(uri("file:///music/notes.txt")).last()

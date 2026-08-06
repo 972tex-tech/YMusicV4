@@ -275,7 +275,17 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // the playback WebView to prime each video's player response + PO token (so a download of a video the
     // user isn't already playing briefly loads it into the player — a known first-cut limitation).
     val downloadService = withContext(Dispatchers.IO) {
-        val ffmpeg = locateDesktopFfmpeg()?.let { ymusic.download.Ffmpeg(it) }
+        val ffmpegPath = locateDesktopFfmpeg()
+        val ffmpeg = ffmpegPath?.let { ymusic.download.Ffmpeg(it) }
+        // Probes a finished download's metadata into its Library bucket (same path as the folder scan);
+        // null without ffmpeg → registerCompletedDownload falls back to a hand-built draft.
+        val downloadScanner = ffmpegPath?.let {
+            MediaScanner.create(
+                mediaStore,
+                FileSystemDocumentsProvider(FileSystem.SYSTEM),
+                FfmpegMetadataExtractor(FfmpegMetadataGetter(it)),
+            )
+        }
         val store = ymusic.download.DownloadStore(
             ymusic.download.downloadDatabaseJdbcDriver("jdbc:sqlite:${File(dataDir, "downloads.db").absolutePath}"),
         )
@@ -315,7 +325,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             // The user's chosen download location — always set: the download flow requires picking one
             // before enqueue.
             downloadFolder = { settings.downloadLocationFolder()!! },
-            onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, task, result) },
+            onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, downloadScanner, task, result) },
             logger = StdoutLogger,
         )
     }
