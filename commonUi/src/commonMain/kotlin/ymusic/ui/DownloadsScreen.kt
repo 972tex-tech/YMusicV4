@@ -129,10 +129,14 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         onPlay = { task.fileUri?.let { coordinator.playLocalUri(it, task.title, task.artist, task.thumbnailUrl) } },
                         onRevealLibrary = if (store != null) ({
                             scope.launch {
-                                // Point the Library at the file's actual folder, then switch to it. Falls
-                                // back to just opening the Library if the item isn't in the store yet.
-                                folderReveal?.value = task.fileUri
+                                // Point the Library at the file's folder: the item's own bucket if it's
+                                // registered, else the download-location folder itself (all downloads land
+                                // there). Null falls back to just opening the Library.
+                                val itemBucket = task.fileUri
                                     ?.let { store.findItemByUri(Uri.parse(it)) }?.bucketId
+                                val folderBucket = graph.settings.downloadLocationFolder()
+                                    ?.let { store.findBucketByUri(Uri.parse(it)) }?.id
+                                folderReveal?.value = itemBucket ?: folderBucket
                                 navigate(AppSection.Library)
                             }
                             Unit
