@@ -247,10 +247,10 @@ class MediaStoreTest {
     // ---- playlists ----
 
     @Test
-    fun reserved_playlists_seeded() = runTest {
-        val ids = store.playlists().map { it.id }
-        assertTrue(BetterMediaStore.FAVORITE_PLAYLIST_ID in ids)
-        assertTrue(BetterMediaStore.RECENT_PLAY_PLAYLIST_ID in ids)
+    fun no_playlists_until_the_user_creates_one() = runTest {
+        // The system playlists (Recent play / Last added / Top tracks) are computed queries, not rows,
+        // so the playlist table is empty on a fresh store.
+        assertTrue(store.playlists().isEmpty())
     }
 
     @Test
@@ -264,10 +264,10 @@ class MediaStoreTest {
     }
 
     @Test
-    fun cannot_delete_reserved_playlist() = runTest {
-        assertFailsWith<IllegalArgumentException> {
-            store.deletePlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID)
-        }
+    fun cannot_delete_a_non_user_playlist() = runTest {
+        // Non-positive ids are the computed system playlists, not deletable rows.
+        assertFailsWith<IllegalArgumentException> { store.deletePlaylist(0L) }
+        assertFailsWith<IllegalArgumentException> { store.deletePlaylist(-1L) }
     }
 
     @Test
@@ -310,19 +310,46 @@ class MediaStoreTest {
         assertEquals(i.playlistCode, details[0].code)
     }
 
+    // ---- system (computed) playlists ----
+
     @Test
-    fun favorite_follows_content_code_across_a_move() = runTest {
+    fun recentlyAdded_returns_library_items_bounded_by_limit() = runTest {
         val b = bucket("file:///music")
-        val a = item(b.id, "file:///music/a.mp3", fileSize = 100)
-        store.addToPlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID, listOf(a))
-        assertTrue(store.isFavorite(a))
+        val uris = (1..3).map { item(b.id, "file:///music/$it.mp3", fileSize = it.toLong()).uri }
+        assertEquals(uris.toSet(), store.recentlyAdded().map { it.uri }.toSet())
+        assertEquals(2, store.recentlyAdded(limit = 2).size)
+    }
 
-        // The same file re-appears at a new uri (a fresh row, same fileSize+duration → same code).
-        val moved = item(b.id, "file:///music/renamed.mp3", fileSize = 100)
-        assertTrue(store.isFavorite(moved), "favorite follows the content code, not the row")
+    @Test
+    fun recentlyPlayed_and_topTracks_reflect_recorded_plays() = runTest {
+        val b = bucket("file:///music")
+        val a = item(b.id, "file:///music/a.mp3", fileSize = 1)
+        val c = item(b.id, "file:///music/c.mp3", fileSize = 2)
 
-        store.removeFromPlaylist(BetterMediaStore.FAVORITE_PLAYLIST_ID, moved.playlistCode)
-        assertTrue(!store.isFavorite(a))
+        // Nothing played yet: both computed lists are empty.
+        assertTrue(store.recentlyPlayed().isEmpty())
+        assertTrue(store.topTracks().isEmpty())
+
+        store.recordLocalPlay(a.uri)
+        store.recordLocalPlay(c.uri)
+        store.recordLocalPlay(c.uri)
+
+        // Only played items surface (order by time is left to SQL; assert membership to avoid ms ties).
+        assertEquals(setOf(a.uri, c.uri), store.recentlyPlayed().map { it.uri }.toSet())
+        // Top tracks ranks by play count — c(2) before a(1), deterministic.
+        assertEquals(listOf(c.uri, a.uri), store.topTracks().map { it.uri })
+
+        // A never-played item stays out of both.
+        val d = item(b.id, "file:///music/d.mp3", fileSize = 3)
+        assertTrue(store.recentlyPlayed().none { it.uri == d.uri })
+        assertTrue(store.topTracks().none { it.uri == d.uri })
+    }
+
+    @Test
+    fun recordLocalPlay_ignores_unknown_uris() = runTest {
+        // A stream / a download with no library row: recording is a harmless no-op.
+        store.recordLocalPlay(kmpcommon.uri.Uri.parse("https://youtube.com/watch?v=x"))
+        assertTrue(store.recentlyPlayed().isEmpty())
     }
 
     // ---- reactive ----

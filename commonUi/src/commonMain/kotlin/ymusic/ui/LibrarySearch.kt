@@ -101,7 +101,7 @@ fun LibrarySearchScreen(
         val query = session.field.text.trim()
         when {
             drill != null -> Column(Modifier.fillMaxSize()) {
-                DrillDownHeader(drill.first) { session.drill = null }
+                DrillDownHeader(drill.first, onBack = { session.drill = null })
                 SongList(drill.second, coordinator)
             }
             query.isEmpty() -> CenteredBox {

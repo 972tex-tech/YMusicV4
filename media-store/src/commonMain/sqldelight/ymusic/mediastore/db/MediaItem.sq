@@ -28,12 +28,18 @@ CREATE TABLE mediaItem (
     lastModified         INTEGER NOT NULL,
     deleted              INTEGER NOT NULL DEFAULT 0,
     createdAt            INTEGER NOT NULL,
-    updatedAt            INTEGER NOT NULL
+    updatedAt            INTEGER NOT NULL,
+    -- Play tracking for the computed system playlists (Recent play / Top tracks). playCount defaults
+    -- to 0; lastPlayedAt is NULL until the item is first played (see recordPlay).
+    playCount            INTEGER NOT NULL DEFAULT 0,
+    lastPlayedAt         INTEGER
 );
 
-CREATE INDEX mediaItem_bucketId   ON mediaItem(bucketId);
-CREATE INDEX mediaItem_fileSize   ON mediaItem(fileSize);
-CREATE INDEX mediaItem_updatedAt  ON mediaItem(updatedAt);
+CREATE INDEX mediaItem_bucketId     ON mediaItem(bucketId);
+CREATE INDEX mediaItem_fileSize     ON mediaItem(fileSize);
+CREATE INDEX mediaItem_updatedAt    ON mediaItem(updatedAt);
+CREATE INDEX mediaItem_lastPlayedAt ON mediaItem(lastPlayedAt);
+CREATE INDEX mediaItem_playCount    ON mediaItem(playCount);
 -- findItemByVideoId is per-playlist-entry (playlistItemDetails resolves each membership code) and
 -- via public findItemsByVideoId; without this index every lookup is a full table scan, making
 -- playlistItemDetails O(playlist x table).
@@ -115,3 +121,23 @@ SELECT * FROM mediaItem WHERE id IN ? AND deleted = 0;
 
 findItemByVideoId:
 SELECT * FROM mediaItem WHERE youtubeVid = ? AND deleted = 0;
+
+-- Record a play of the local file at [uri]: bump its counter and stamp the play time. A no-op (0 rows)
+-- when the uri isn't a library item (a YouTube stream, or a download with no library location).
+recordPlay:
+UPDATE mediaItem SET playCount = playCount + 1, lastPlayedAt = :ts, updatedAt = :ts
+WHERE uri = :uri AND deleted = 0;
+
+-- System playlist "Recent play": the items played most recently, one row each, newest first.
+-- Filter on playCount (> 0 ⟺ played ⟺ lastPlayedAt set) rather than `lastPlayedAt IS NOT NULL`, which
+-- would make SQLDelight narrow the projected row to a non-null-lastPlayedAt type (breaks the shared mapper).
+recentlyPlayed:
+SELECT * FROM mediaItem WHERE deleted = 0 AND playCount > 0 ORDER BY lastPlayedAt DESC LIMIT ?;
+
+-- System playlist "Last added": the newest library additions first.
+recentlyAdded:
+SELECT * FROM mediaItem WHERE deleted = 0 ORDER BY createdAt DESC LIMIT ?;
+
+-- System playlist "Top tracks": the most-played items, ties broken by most recent play.
+topTracks:
+SELECT * FROM mediaItem WHERE deleted = 0 AND playCount > 0 ORDER BY playCount DESC, lastPlayedAt DESC LIMIT ?;

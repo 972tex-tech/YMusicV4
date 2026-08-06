@@ -250,10 +250,9 @@ internal class BetterMediaStoreImpl(
     }
 
     override suspend fun deletePlaylist(playlistId: Long): Unit = withContext(io) {
-        require(playlistId != BetterMediaStore.FAVORITE_PLAYLIST_ID &&
-            playlistId != BetterMediaStore.RECENT_PLAY_PLAYLIST_ID) {
-            "Cannot delete the reserved playlist $playlistId"
-        }
+        // User playlists carry positive AUTOINCREMENT ids; the system playlists are computed, not
+        // rows, so there is nothing here to delete for a non-positive id.
+        require(playlistId > 0) { "Cannot delete a non-user playlist $playlistId" }
         playlistQ.deletePlaylist(playlistId)
     }
 
@@ -321,8 +320,22 @@ internal class BetterMediaStoreImpl(
         return itemQ.findItemByVideoId(code).executeAsList().firstOrNull()?.toModel()
     }
 
-    override suspend fun isFavorite(item: MediaStoreItem): Boolean = withContext(io) {
-        plItemQ.isFavorite(item.playlistCode).executeAsOne()
+    // ---- system (computed) playlists ----
+
+    override suspend fun recordLocalPlay(uri: Uri): Unit = withContext(io) {
+        itemQ.recordPlay(ts = now(), uri = uri.toString())
+    }
+
+    override suspend fun recentlyPlayed(limit: Int): List<MediaStoreItem> = withContext(io) {
+        itemQ.recentlyPlayed(limit.toLong()).executeAsList().map { it.toModel() }
+    }
+
+    override suspend fun recentlyAdded(limit: Int): List<MediaStoreItem> = withContext(io) {
+        itemQ.recentlyAdded(limit.toLong()).executeAsList().map { it.toModel() }
+    }
+
+    override suspend fun topTracks(limit: Int): List<MediaStoreItem> = withContext(io) {
+        itemQ.topTracks(limit.toLong()).executeAsList().map { it.toModel() }
     }
 
     // ---- reactive ----

@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,23 +30,30 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -92,6 +101,8 @@ import ymusic.settings.AppSettings
 import ymusic.settings.flow
 import ymusic.settings.put
 import ymusic.ui.resources.Res
+import ymusic.ui.resources.add_to_playlist_new
+import ymusic.ui.resources.cd_add_to_playlist
 import ymusic.ui.resources.cd_back
 import ymusic.ui.resources.delete_from_disk_confirm
 import ymusic.ui.resources.delete_from_disk_message
@@ -102,7 +113,6 @@ import ymusic.ui.resources.library_crumb_root
 import ymusic.ui.resources.library_empty
 import ymusic.ui.resources.library_empty_folder
 import ymusic.ui.resources.library_folder
-import ymusic.ui.resources.library_no_playlists
 import ymusic.ui.resources.library_rescan
 import ymusic.ui.resources.library_scan_folder
 import ymusic.ui.resources.library_scanning
@@ -114,14 +124,32 @@ import ymusic.ui.resources.library_tab_genres
 import ymusic.ui.resources.library_tab_playlists
 import ymusic.ui.resources.library_tab_songs
 import ymusic.ui.resources.library_unavailable
+import ymusic.ui.resources.menu_delete_playlist
 import ymusic.ui.resources.menu_download_location
 import ymusic.ui.resources.menu_exclude_folder
 import ymusic.ui.resources.menu_include_folder
 import ymusic.ui.resources.menu_play
 import ymusic.ui.resources.menu_remove_folder
 import ymusic.ui.resources.menu_remove_from_disk
+import ymusic.ui.resources.menu_remove_from_playlist
+import ymusic.ui.resources.menu_rename
 import ymusic.ui.resources.menu_show_in_folder
 import ymusic.ui.resources.n_songs
+import ymusic.ui.resources.playlist_create_confirm
+import ymusic.ui.resources.playlist_create_title
+import ymusic.ui.resources.playlist_delete_message
+import ymusic.ui.resources.playlist_delete_title
+import ymusic.ui.resources.playlist_last_added
+import ymusic.ui.resources.playlist_last_added_desc
+import ymusic.ui.resources.playlist_name_hint
+import ymusic.ui.resources.playlist_new
+import ymusic.ui.resources.playlist_play_all
+import ymusic.ui.resources.playlist_recent_play
+import ymusic.ui.resources.playlist_recent_play_desc
+import ymusic.ui.resources.playlist_rename_confirm
+import ymusic.ui.resources.playlist_rename_title
+import ymusic.ui.resources.playlist_top_tracks
+import ymusic.ui.resources.playlist_top_tracks_desc
 import ymusic.ui.resources.queue_last
 import ymusic.ui.resources.queue_next
 import ymusic.ui.resources.sort_date_added
@@ -159,6 +187,14 @@ internal val LocalLibraryReveal = compositionLocalOf<((MediaStoreItem) -> Unit)?
 /** A song's "Remove from disk" REQUEST — opens [LibraryScreen]'s confirm dialog; nothing is
  *  deleted until the user confirms there. Null (no shell delete hook) hides the menu item. */
 internal val LocalLibraryDelete = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
+
+/** A song's "Add to playlist" REQUEST — opens [LibraryScreen]'s playlist picker for this song.
+ *  Provided over the Library tabs; null elsewhere hides the menu item. */
+internal val LocalAddToPlaylist = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
+
+/** A song's "Remove from playlist" action — provided only inside an opened user playlist, so the menu
+ *  item shows there and nowhere else. */
+internal val LocalPlaylistRemove = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
 
 /** The local library over [AppGraph.mediaStore]: an empty state with the scan action until the first
  *  scan lands, then the Folders/Playlists/Songs/Artists/Albums/Genres tabs. Styled with
@@ -243,6 +279,11 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     },
                 )
             }
+            // "Add to playlist": the menu only opens the picker; the store mutation runs from there.
+            var addToPlaylist by remember { mutableStateOf<MediaStoreItem?>(null) }
+            addToPlaylist?.let { song ->
+                AddToPlaylistDialog(store, song, onDismiss = { addToPlaylist = null })
+            }
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
             val tabStateHolder = rememberSaveableStateHolder()
             // Live swipe progress (−1..1) so the underline tracks the drag, not just the commit.
@@ -257,6 +298,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 CompositionLocalProvider(
                     LocalLibraryReveal provides reveal,
                     LocalLibraryDelete provides requestDelete,
+                    LocalAddToPlaylist provides { song -> addToPlaylist = song },
                 ) {
                     val openDrawer = LocalOpenNavDrawer.current
                     SwipeTabSwitcher(
@@ -725,83 +767,337 @@ private fun DeleteFromDiskDialog(
 
 // ---- playlists ----
 
+// Sentinel ids for the computed "system" playlists — they aren't rows in the store (see
+// media-store MediaItem.sq recentlyPlayed/recentlyAdded/topTracks), so they use negative ids that
+// AUTOINCREMENT user playlists (always positive) never collide with.
+private const val SMART_RECENT_PLAY = -1L
+private const val SMART_LAST_ADDED = -2L
+private const val SMART_TOP_TRACKS = -3L
+
+/** One row in the Playlists list: either a computed system playlist or a user-created one. */
+private sealed interface PlaylistEntry {
+    val id: Long
+}
+
+private data class SmartEntry(
+    override val id: Long,
+    val labelRes: StringResource,
+    val descRes: StringResource,
+    val icon: ImageVector,
+) : PlaylistEntry
+
+private data class UserEntry(val playlist: Playlist, val count: Int) : PlaylistEntry {
+    override val id get() = playlist.id
+}
+
+/** The three system playlists, pinned above the user playlists in this fixed order. */
+private val smartPlaylists = listOf(
+    SmartEntry(SMART_RECENT_PLAY, Res.string.playlist_recent_play, Res.string.playlist_recent_play_desc, Icons.Default.History),
+    SmartEntry(SMART_LAST_ADDED, Res.string.playlist_last_added, Res.string.playlist_last_added_desc, Icons.Default.NewReleases),
+    SmartEntry(SMART_TOP_TRACKS, Res.string.playlist_top_tracks, Res.string.playlist_top_tracks_desc, Icons.Default.Whatshot),
+)
+
 @Composable
 private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coordinator: PlaybackCoordinator) {
-    // (id, name) — saveable, so the opened playlist survives the tab leaving composition.
+    // (id, name) — saveable, so the opened playlist survives the tab leaving composition. Negative ids
+    // are the system playlists; the name is the resolved display title.
     var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
-    var lists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
+    var userLists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
     var members by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
+    // Create/rename/delete don't emit itemsChanges, so the outer content tick won't reload the list —
+    // bump this after any playlist mutation to reload playlists() + counts.
+    var refreshTick by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(selected, content) {
-        val open = selected
-        if (open == null) {
-            lists = store.playlists().map { it to store.playlistItems(it.id).size }
-        } else {
-            members = store.playlistItemDetails(open.first).map { it.mediaItem }
+    LaunchedEffect(content, refreshTick) {
+        userLists = store.playlists().map { it to store.playlistItems(it.id).size }
+    }
+    // The opened playlist's songs. System lists are one-shot queries (re-run when the library changes);
+    // a user playlist reads its live membership so add/remove/reorder reflect at once.
+    LaunchedEffect(selected?.first, content) {
+        val id = selected?.first ?: return@LaunchedEffect
+        members = null
+        when (id) {
+            SMART_RECENT_PLAY -> members = store.recentlyPlayed()
+            SMART_LAST_ADDED -> members = store.recentlyAdded()
+            SMART_TOP_TRACKS -> members = store.topTracks()
+            else -> store.playlistChanges(id).collect { members = store.playlistItemDetails(id).map { it.mediaItem } }
         }
+    }
+
+    // Create / rename / delete dialogs (user playlists only).
+    var showCreate by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<Playlist?>(null) }
+    var deleting by remember { mutableStateOf<Playlist?>(null) }
+    if (showCreate) {
+        PlaylistNameDialog(
+            title = stringResource(Res.string.playlist_create_title),
+            confirmLabel = stringResource(Res.string.playlist_create_confirm),
+            initial = "",
+            onDismiss = { showCreate = false },
+            onConfirm = { name -> store.createPlaylist(name); refreshTick++ },
+        )
+    }
+    renaming?.let { pl ->
+        PlaylistNameDialog(
+            title = stringResource(Res.string.playlist_rename_title),
+            confirmLabel = stringResource(Res.string.playlist_rename_confirm),
+            initial = pl.name,
+            onDismiss = { renaming = null },
+            onConfirm = { name -> store.renamePlaylist(pl.id, name); refreshTick++ },
+        )
+    }
+    deleting?.let { pl ->
+        DeletePlaylistDialog(
+            pl.name,
+            onDismiss = { deleting = null },
+            delete = {
+                store.deletePlaylist(pl.id)
+                if (selected?.first == pl.id) selected = null
+                refreshTick++
+            },
+        )
     }
 
     val open = selected
     if (open == null) {
-        val loaded = lists
-        when {
-            loaded == null -> CenteredBox { CircularProgressIndicator() }
-            loaded.isEmpty() -> CenteredBox {
-                Text(stringResource(Res.string.library_no_playlists), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            else -> {
-                val sort = rememberSortState("sort.playlists")
-                LibraryBrowseLevel(
-                    entries = sort.sort(loaded, playlistSortOptions),
-                    key = { (p, _) -> p.id },
-                    sortBar = { SortBar(playlistSortOptions.map { it.label }, sort) },
-                    row = { (playlist, count) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    members = null
-                                    selected = playlist.id to playlist.name
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            LibraryThumb(Icons.AutoMirrored.Filled.PlaylistPlay, badge = "$count")
-                            Column(Modifier.weight(1f)) {
-                                Text(playlist.name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(
-                                    pluralStringResource(Res.plurals.n_songs, count, count),
-                                    style = ListSubStyle,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
+        val loaded = userLists
+        if (loaded == null) {
+            CenteredBox { CircularProgressIndicator() }
+        } else {
+            val sort = rememberSortState("sort.playlists")
+            // System playlists pinned first (fixed order); user playlists sorted below.
+            val entries: List<PlaylistEntry> =
+                smartPlaylists + sort.sort(loaded, playlistSortOptions).map { UserEntry(it.first, it.second) }
+            LibraryBrowseLevel(
+                entries = entries,
+                key = { it.id },
+                sortBar = { PlaylistsToolbar(sort) { showCreate = true } },
+                row = { entry ->
+                    val (title, sub, icon) = playlistDisplay(entry)
+                    val actions = (entry as? UserEntry)?.let {
+                        playlistActions(it.playlist, onRename = { renaming = it.playlist }, onDelete = { deleting = it.playlist })
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = entry.id to title }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        LibraryThumb(icon, badge = (entry as? UserEntry)?.count?.toString())
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                         }
-                    },
-                    card = { (playlist, count) ->
-                        LibraryGridCard(
-                            icon = Icons.AutoMirrored.Filled.PlaylistPlay,
-                            artUrl = null,
-                            title = playlist.name,
-                            subtitle = pluralStringResource(Res.plurals.n_songs, count, count),
-                        ) {
-                            members = null
-                            selected = playlist.id to playlist.name
-                        }
-                    },
-                )
-            }
+                        if (actions != null && actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.padding(top = 2.dp))
+                    }
+                },
+                card = { entry ->
+                    val (title, sub, icon) = playlistDisplay(entry)
+                    val actions = (entry as? UserEntry)?.let {
+                        playlistActions(it.playlist, onRename = { renaming = it.playlist }, onDelete = { deleting = it.playlist })
+                    }?.takeIf { it.entries.isNotEmpty() }
+                    LibraryGridCard(icon = icon, artUrl = null, title = title, subtitle = sub, menu = actions) {
+                        selected = entry.id to title
+                    }
+                },
+            )
         }
     } else {
         Column(Modifier.fillMaxSize()) {
-            DrillDownHeader(open.second) { selected = null }
             val songs = members
-            if (songs == null) {
-                CenteredBox { CircularProgressIndicator() }
-            } else {
-                SongList(songs, coordinator)
+            DrillDownHeader(open.second, onBack = { selected = null }) {
+                if (!songs.isNullOrEmpty()) {
+                    IconButton(onClick = { coordinator.playLocal(songs, 0) }) {
+                        Icon(Icons.Default.PlayArrow, stringResource(Res.string.playlist_play_all), tint = DesignColors.Ink)
+                    }
+                }
+            }
+            when {
+                songs == null -> CenteredBox { CircularProgressIndicator() }
+                // A user playlist offers "Remove from playlist" on each song; system lists don't.
+                open.first > 0 -> CompositionLocalProvider(
+                    LocalPlaylistRemove provides { song ->
+                        scope.launch { store.removeFromPlaylist(open.first, song.playlistCode) }
+                    },
+                ) { SongList(songs, coordinator) }
+                else -> SongList(songs, coordinator)
             }
         }
+    }
+}
+
+/** A playlist row's (title, subtitle, icon): a system playlist shows its description, a user playlist
+ *  its song count. */
+@Composable
+private fun playlistDisplay(entry: PlaylistEntry): Triple<String, String, ImageVector> = when (entry) {
+    is SmartEntry -> Triple(stringResource(entry.labelRes), stringResource(entry.descRes), entry.icon)
+    is UserEntry -> Triple(
+        entry.playlist.name,
+        pluralStringResource(Res.plurals.n_songs, entry.count, entry.count),
+        Icons.AutoMirrored.Filled.PlaylistPlay,
+    )
+}
+
+/** The user-playlist overflow menu — rename / delete. Empty for a system playlist (no menu shown). */
+@Composable
+private fun playlistActions(playlist: Playlist, onRename: () -> Unit, onDelete: () -> Unit): ItemActions {
+    val rename = stringResource(Res.string.menu_rename)
+    val delete = stringResource(Res.string.menu_delete_playlist)
+    return ItemActions(listOf(rename to onRename, delete to onDelete))
+}
+
+/** The Playlists toolbar: the "+ New playlist" pill on the left, the sort control on the right. */
+@Composable
+private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LibraryChip(stringResource(Res.string.playlist_new), selected = false, onClick = onCreate)
+        Spacer(Modifier.weight(1f))
+        SortControl(playlistSortOptions.map { it.label }, sort)
+    }
+}
+
+/** Create / rename text-input dialog. [onConfirm] runs the store mutation; the dialog closes after it
+ *  (or on cancel). Confirm is disabled while the field is blank or the mutation is running. */
+@Composable
+private fun PlaylistNameDialog(
+    title: String,
+    confirmLabel: String,
+    initial: String,
+    onDismiss: () -> Unit,
+    onConfirm: suspend (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(initial) }
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text(stringResource(Res.string.playlist_name_hint)) },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && name.isNotBlank(),
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            onConfirm(name.trim())
+                            onDismiss()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+        },
+    )
+}
+
+/** Delete-playlist confirm. Removes the playlist (its membership cascades); the songs stay in the library. */
+@Composable
+private fun DeletePlaylistDialog(name: String, onDismiss: () -> Unit, delete: suspend () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(Res.string.playlist_delete_title)) },
+        text = { Text(stringResource(Res.string.playlist_delete_message, name)) },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            delete()
+                            onDismiss()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text(stringResource(Res.string.delete_from_disk_confirm), color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+        },
+    )
+}
+
+/** The "Add to playlist" picker: the user's playlists plus a "New playlist…" row. Picking a playlist
+ *  appends [song] and closes; "New playlist…" swaps to the name dialog, then creates + appends. */
+@Composable
+private fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var lists by remember { mutableStateOf<List<Playlist>?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { lists = store.playlists() }
+
+    if (creating) {
+        PlaylistNameDialog(
+            title = stringResource(Res.string.playlist_create_title),
+            confirmLabel = stringResource(Res.string.playlist_create_confirm),
+            initial = "",
+            onDismiss = onDismiss,
+            onConfirm = { name ->
+                val pl = store.createPlaylist(name)
+                store.addToPlaylist(pl.id, listOf(song))
+            },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.cd_add_to_playlist)) },
+        text = {
+            val loaded = lists
+            if (loaded == null) {
+                CircularProgressIndicator()
+            } else {
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    PlaylistPickRow(Icons.Default.Add, stringResource(Res.string.add_to_playlist_new)) { creating = true }
+                    loaded.forEach { pl ->
+                        PlaylistPickRow(Icons.AutoMirrored.Filled.PlaylistPlay, pl.name) {
+                            scope.launch {
+                                store.addToPlaylist(pl.id, listOf(song))
+                                onDismiss()
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+    )
+}
+
+@Composable
+private fun PlaylistPickRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(22.dp), tint = DesignColors.InkSoft)
+        Text(label, style = ListTitleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -969,15 +1265,21 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
     val play = stringResource(Res.string.menu_play)
     val next = stringResource(Res.string.queue_next)
     val last = stringResource(Res.string.queue_last)
+    val addToPlaylistLabel = stringResource(Res.string.cd_add_to_playlist)
+    val removeFromPlaylistLabel = stringResource(Res.string.menu_remove_from_playlist)
     val showInFolder = stringResource(Res.string.menu_show_in_folder)
     val removeFromDisk = stringResource(Res.string.menu_remove_from_disk)
     val reveal = LocalLibraryReveal.current
     val requestDelete = LocalLibraryDelete.current
+    val addToPlaylist = LocalAddToPlaylist.current
+    val removeFromPlaylist = LocalPlaylistRemove.current
     return ItemActions(
         buildList {
             add(play to { coordinator.playLocalSingle(song) })
             add(next to { coordinator.queueLocalNext(song) })
             add(last to { coordinator.queueLocalLast(song) })
+            if (addToPlaylist != null) add(addToPlaylistLabel to { addToPlaylist(song) })
+            if (removeFromPlaylist != null) add(removeFromPlaylistLabel to { removeFromPlaylist(song) })
             if (reveal != null && song.bucketId != null) add(showInFolder to { reveal(song) })
             if (requestDelete != null) add(removeFromDisk to { requestDelete(song) })
         },
@@ -1049,7 +1351,7 @@ private fun GroupedList(
         )
     } else {
         Column(Modifier.fillMaxSize()) {
-            DrillDownHeader(selected) { group = null }
+            DrillDownHeader(selected, onBack = { group = null })
             SongList(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), coordinator)
         }
     }
@@ -1146,7 +1448,7 @@ private fun LibraryGridCard(
 }
 
 @Composable
-internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
+internal fun DrillDownHeader(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1158,7 +1460,9 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
             style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
+        actions()
     }
 }
 

@@ -24,6 +24,3 @@ UPDATE playlistItem SET sortKey = ? WHERE playlistId = ? AND code = ?;
 
 playlistItemsOrdered:
 SELECT * FROM playlistItem WHERE playlistId = ? ORDER BY sortKey;
-
-isFavorite:
-SELECT EXISTS(SELECT 1 FROM playlistItem WHERE playlistId = 0 AND code = ?);

@@ -1,0 +1,8 @@
+-- v3 -> v4: the system playlists (Recent play / Last added / Top tracks) are now computed queries
+-- over mediaItem, not seeded rows. Drop the old reserved Favorite(0) + Recent play(-1) rows (their
+-- membership cascades away with them) and add per-item play tracking the smart lists read from.
+DELETE FROM playlist WHERE id <= 0;
+ALTER TABLE mediaItem ADD COLUMN playCount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE mediaItem ADD COLUMN lastPlayedAt INTEGER;
+CREATE INDEX mediaItem_lastPlayedAt ON mediaItem(lastPlayedAt);
+CREATE INDEX mediaItem_playCount ON mediaItem(playCount);

@@ -1,9 +1,12 @@
 package ymusic.ui
 
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ymusic.dynamicengine.yt.YtFeedItem
@@ -28,6 +31,30 @@ class PlaybackCoordinator(
     val metadata: StateFlow<Map<String, YtFeedItem>> = _metadata.asStateFlow()
 
     val player: Player get() = graph.player
+
+    init {
+        // Record library plays for the computed "Recent play" / "Top tracks" playlists: every time a
+        // local file becomes the current item, bump its play stats. recordLocalPlay is a no-op for a
+        // uri that isn't a library item (a YouTube stream, or a download with no library location).
+        val store = graph.mediaStore
+        if (store != null) {
+            scope.launch {
+                player.queue
+                    .map { it.currentItem }
+                    .distinctUntilChanged()
+                    .collect { item ->
+                        if (item is PlayableItem.LocalUri) {
+                            try {
+                                store.recordLocalPlay(Uri.parse(item.uri))
+                            } catch (e: Exception) {
+                                // Play stats are best-effort; a failure never interrupts playback.
+                                println("recordLocalPlay failed: $e")
+                            }
+                        }
+                    }
+            }
+        }
+    }
 
     fun metadataFor(item: PlayableItem?): YtFeedItem? = when (item) {
         is PlayableItem.YtVideoId -> _metadata.value[item.videoId]

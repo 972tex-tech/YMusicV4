@@ -108,7 +108,23 @@ interface BetterMediaStore {
     /** Playlist rows joined with the (non-deleted) media item each [PlaylistItem.code] resolves to, in order. */
     suspend fun playlistItemDetails(playlistId: Long): List<PlaylistItemDetail>
 
-    suspend fun isFavorite(item: MediaStoreItem): Boolean
+    // ---- system (computed) playlists ----
+    //
+    // Recent play / Last added / Top tracks aren't rows in the playlist table — they're live queries
+    // over the media items, so they need no membership upkeep and never go stale.
+
+    /** Record a play of the local file at [uri] (bumps its play count + last-played time). No-op when
+     *  [uri] isn't a library item, so it's safe to call for every played item (streams included). */
+    suspend fun recordLocalPlay(uri: Uri)
+
+    /** "Recent play": items by most-recent play, newest first (only items played at least once). */
+    suspend fun recentlyPlayed(limit: Int = 200): List<MediaStoreItem>
+
+    /** "Last added": the newest library additions first. */
+    suspend fun recentlyAdded(limit: Int = 200): List<MediaStoreItem>
+
+    /** "Top tracks": the most-played items first (only items played at least once). */
+    suspend fun topTracks(limit: Int = 200): List<MediaStoreItem>
 
     // ---- reactive ----
 
@@ -122,9 +138,6 @@ interface BetterMediaStore {
     fun playlistChanges(playlistId: Long): Flow<List<PlaylistItem>>
 
     companion object {
-        const val FAVORITE_PLAYLIST_ID = 0L
-        const val RECENT_PLAY_PLAYLIST_ID = -1L
-
         /** Build a store over an already-configured driver (schema created, foreign keys enabled). */
         fun create(driver: SqlDriver): BetterMediaStore = BetterMediaStoreImpl(driver)
     }
