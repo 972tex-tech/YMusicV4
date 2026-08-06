@@ -333,6 +333,12 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                 FileSystem.SYSTEM.delete(item.uri.path.toString().toPath(), mustExist = false)
             }
         },
+        revealInFolder = { uri ->
+            withContext(Dispatchers.IO) {
+                val path = uri.removePrefix("file://")
+                runCatching { ProcessBuilder("open", "-R", path).start() } // mac Finder reveal
+            }
+        },
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
         settings = settings,

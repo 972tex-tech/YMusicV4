@@ -31,12 +31,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -97,6 +99,9 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val gridState = rememberLazyGridState()
     TrackScroll { gridState.canScrollBackward }
 
+    val navigate = LocalNavigateToSection.current
+    val scope = rememberCoroutineScope()
+
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,
@@ -115,7 +120,14 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "header:${section.name}") {
                     SectionHeader(section.title, items.size)
                 }
-                items(items, key = { it.id }) { task -> DownloadCard(task, service) }
+                items(items, key = { it.id }) { task ->
+                    DownloadCard(
+                        task, service,
+                        onPlay = { task.fileUri?.let { coordinator.playLocalUri(it, task.title, task.artist, task.thumbnailUrl) } },
+                        onRevealLibrary = if (graph.mediaStore != null) ({ navigate(AppSection.Library) }) else null,
+                        onRevealFolder = graph.revealInFolder?.let { hook -> { task.fileUri?.let { uri -> scope.launch { hook(uri) } }; Unit } },
+                    )
+                }
             }
         }
 
@@ -169,7 +181,13 @@ private fun SectionHeader(title: String, count: Int) {
  *  progress bar and byte counts indented under the text; an inline Retry on failures. Matches the chosen
  *  "Media Cards" mockup. */
 @Composable
-private fun DownloadCard(task: DownloadTask, service: DownloadService) {
+private fun DownloadCard(
+    task: DownloadTask,
+    service: DownloadService,
+    onPlay: () -> Unit,
+    onRevealLibrary: (() -> Unit)?,
+    onRevealFolder: (() -> Unit)?,
+) {
     val c = downloadColors()
     val failed = task.state == DownloadState.FAILED
     Surface(
@@ -196,7 +214,7 @@ private fun DownloadCard(task: DownloadTask, service: DownloadService) {
                         }
                     }
                 }
-                MoreMenu(actionsFor(task, service))
+                MoreMenu(actionsFor(task, service, onPlay, onRevealLibrary, onRevealFolder))
             }
             if (task.showsBar()) {
                 Box(Modifier.fillMaxWidth().padding(start = ContentIndent)) { DownloadBar(task, c) }
@@ -282,8 +300,14 @@ private fun StatusChip(label: String, container: Color, content: Color, mono: Bo
 
 /** Build the per-state overflow menu. Labels are hardcoded (English) to steer clear of the
  *  compose-resources accessor-chunk boundary hazard when adding many new strings at once. */
-private fun actionsFor(task: DownloadTask, service: DownloadService): ItemActions {
-    val entries = buildList {
+private fun actionsFor(
+    task: DownloadTask,
+    service: DownloadService,
+    onPlay: () -> Unit,
+    onRevealLibrary: (() -> Unit)?,
+    onRevealFolder: (() -> Unit)?,
+): ItemActions {
+    val entries = buildList<Pair<String, () -> Unit>> {
         when (task.state) {
             DownloadState.QUEUED, DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.PROCESSING -> {
                 add("Pause" to { service.pause(task.id) })
@@ -297,7 +321,13 @@ private fun actionsFor(task: DownloadTask, service: DownloadService): ItemAction
                 add("Retry" to { service.retry(task.id) })
                 add("Remove" to { service.remove(task.id) })
             }
-            DownloadState.COMPLETED, DownloadState.CANCELED -> {
+            DownloadState.COMPLETED -> {
+                add("Play" to onPlay)
+                onRevealLibrary?.let { add("Reveal in Library" to it) }
+                onRevealFolder?.let { add("Reveal in Finder" to it) }
+                add("Remove" to { service.remove(task.id) })
+            }
+            DownloadState.CANCELED -> {
                 add("Remove" to { service.remove(task.id) })
             }
         }

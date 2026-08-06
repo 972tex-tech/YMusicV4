@@ -86,6 +86,20 @@ class PlaybackCoordinator(
         player.setQueue(listOf(rememberLocal(song)))
     }
 
+    /** Play a local file by uri now (queue of one) with the given display metadata — for a downloaded
+     *  item, which may not be a [MediaStoreItem] (no download location set). */
+    fun playLocalUri(uri: String, title: String, artist: String?, thumbnailUrl: String?) {
+        _metadata.update {
+            it + (
+                uri to YtFeedItem(
+                    kind = KIND_LOCAL, id = uri, title = title, subtitleLine1 = artist,
+                    thumbs = thumbnailUrl?.let { t -> listOf(YtThumb(t)) } ?: emptyList(),
+                )
+                )
+        }
+        player.setQueue(listOf(PlayableItem.LocalUri(uri)))
+    }
+
     /** Queue [song] right after the current item. */
     fun queueLocalNext(song: MediaStoreItem) {
         player.addToPlayNext(listOf(rememberLocal(song)))

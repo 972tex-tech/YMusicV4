@@ -130,6 +130,10 @@ enum class AppSection(val label: StringResource, val icon: ImageVector, val grou
     Feedback(Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
 }
 
+/** Switch the top-level section from within a screen (e.g. Downloads → "Reveal in Library"); no-op
+ *  outside the app shell. */
+val LocalNavigateToSection = androidx.compose.runtime.compositionLocalOf<(AppSection) -> Unit> { {} }
+
 /**
  * The app root: drawer navigation + the persistent mini-player + the Now Playing overlay. The shell
  * calls this with a ready [AppGraph] (engines started, player built, surface injected).
@@ -511,6 +515,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     LocalScanController provides scanController,
                     LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
                     LocalDownloadLauncher provides downloadLauncher,
+                    LocalNavigateToSection provides { onSection(it) },
                 ) {
                     DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
                     DefaultDownloadLocationPrompt(graph)

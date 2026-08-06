@@ -55,6 +55,9 @@ class AppGraph(
      * the confirm dialog). Null hides the menu action entirely.
      */
     val deleteFromDisk: (suspend (ymusic.mediastore.model.MediaStoreItem) -> Unit)? = null,
+    /** Reveal a file (by its uri) in the OS file manager — desktop only (mac Finder / file explorer);
+     *  null on mobile, which hides the "Reveal in Finder" download action. */
+    val revealInFolder: (suspend (uri: String) -> Unit)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
