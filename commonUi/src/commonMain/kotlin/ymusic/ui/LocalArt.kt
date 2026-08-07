@@ -1,5 +1,6 @@
 package ymusic.ui
 
+import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -21,10 +22,12 @@ import ymusic.mediastore.model.MediaStoreItem
  * only when the store knows an artwork source exists, so art-less files never reach the fetcher
  * (every fetch spawns one ffmpeg).
  */
-private const val ART_PIC = "art://pic/"
-
 internal fun localArtUrl(item: MediaStoreItem): String? =
-    if (item.thumbnailStreamIndex != null || item.videoCodec != null) ART_PIC + item.id else null
+    if (item.thumbnailStreamIndex != null || item.videoCodec != null) {
+        UriBuilder().scheme("art").authority("pic").appendPathSegment(item.id.toString()).buildString()
+    } else {
+        null
+    }
 
 /** The `art:` resolver: media id → [store] item → [getter] extraction, decoded to the view size. */
 fun localArtFetcher(
