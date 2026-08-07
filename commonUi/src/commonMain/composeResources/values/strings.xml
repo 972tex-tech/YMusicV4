@@ -120,6 +120,7 @@
     <string name="playlist_create_title">New playlist</string>
     <string name="playlist_rename_title">Rename playlist</string>
     <string name="playlist_name_hint">Playlist name</string>
+    <string name="playlist_name_exists">A playlist with this name already exists</string>
     <string name="playlist_create_confirm">Create</string>
     <string name="playlist_rename_confirm">Rename</string>
     <string name="menu_rename">Rename</string>

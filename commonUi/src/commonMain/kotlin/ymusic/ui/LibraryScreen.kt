@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -48,7 +50,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -135,6 +137,7 @@ import ymusic.ui.resources.playlist_create_confirm
 import ymusic.ui.resources.playlist_create_title
 import ymusic.ui.resources.playlist_delete_message
 import ymusic.ui.resources.playlist_delete_title
+import ymusic.ui.resources.playlist_name_exists
 import ymusic.ui.resources.playlist_name_hint
 import ymusic.ui.resources.playlist_new
 import ymusic.ui.resources.playlist_recent_play
@@ -851,6 +854,7 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
             title = stringResource(Res.string.playlist_create_title),
             confirmLabel = stringResource(Res.string.playlist_create_confirm),
             initial = "",
+            existingNames = userLists.orEmpty().map { it.first.name },
             onDismiss = { showCreate = false },
             onConfirm = { name -> store.createPlaylist(name); refreshTick++ },
         )
@@ -860,6 +864,8 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
             title = stringResource(Res.string.playlist_rename_title),
             confirmLabel = stringResource(Res.string.playlist_rename_confirm),
             initial = pl.name,
+            // The playlist's own current name isn't a collision (renaming with no change / just casing).
+            existingNames = userLists.orEmpty().map { it.first.name }.filter { !it.equals(pl.name, ignoreCase = true) },
             onDismiss = { renaming = null },
             onConfirm = { name -> store.renamePlaylist(pl.id, name); refreshTick++ },
         )
@@ -1045,13 +1051,31 @@ private fun PlaylistNameDialog(
     title: String,
     confirmLabel: String,
     initial: String,
+    existingNames: List<String>,
     onDismiss: () -> Unit,
     onConfirm: suspend (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(initial) }
     var busy by remember { mutableStateOf(false) }
+    val trimmed = name.trim()
+    val duplicate = trimmed.isNotEmpty() && existingNames.any { it.equals(trimmed, ignoreCase = true) }
+    val canSubmit = !busy && trimmed.isNotEmpty() && !duplicate
     val dismiss = { if (!busy) onDismiss() }
+    val submit = {
+        if (canSubmit) {
+            busy = true
+            scope.launch {
+                try {
+                    onConfirm(trimmed)
+                    onDismiss()
+                } finally {
+                    busy = false
+                }
+            }
+        }
+        Unit
+    }
     ElevatedBarDialog(
         title = title,
         onDismiss = dismiss,
@@ -1059,28 +1083,19 @@ private fun PlaylistNameDialog(
         canScrollForward = false,
         buttons = {
             TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
-            TextButton(
-                enabled = !busy && name.isNotBlank(),
-                onClick = {
-                    busy = true
-                    scope.launch {
-                        try {
-                            onConfirm(name.trim())
-                            onDismiss()
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
-            ) { Text(confirmLabel, color = DesignColors.Accent) }
+            TextButton(enabled = canSubmit, onClick = submit) { Text(confirmLabel, color = DesignColors.Accent) }
         },
     ) {
-        OutlinedTextField(
+        AppTextField(
             value = name,
             onValueChange = { name = it },
-            singleLine = true,
-            placeholder = { Text(stringResource(Res.string.playlist_name_hint)) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+            label = stringResource(Res.string.playlist_name_hint),
+            autoFocus = true,
+            isError = duplicate,
+            supportingText = if (duplicate) stringResource(Res.string.playlist_name_exists) else null,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submit() }),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
     }
 }
@@ -1138,6 +1153,7 @@ private fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, o
             title = stringResource(Res.string.playlist_create_title),
             confirmLabel = stringResource(Res.string.playlist_create_confirm),
             initial = "",
+            existingNames = lists.orEmpty().map { it.name },
             onDismiss = onDismiss,
             onConfirm = { name ->
                 val pl = store.createPlaylist(name)

@@ -3,6 +3,7 @@ package ymusic.ui
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -89,6 +90,52 @@ class LibraryPlaylistTest {
                 waitUntilAtLeastOneExists(hasText("Top tracks"), 5_000)
                 onNodeWithText("Top tracks").performClick()
                 waitUntilDoesNotExist(hasText("Last added"), 5_000)
+            }
+        } finally {
+            runBlocking { engines.close() }
+        }
+    }
+
+    @Test
+    fun creating_a_duplicate_playlist_name_shows_an_error_and_blocks_create() {
+        Locale.setDefault(Locale.ENGLISH)
+        val client = CannedHttp { request, _ ->
+            val url = request.url.toString()
+            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei"))
+                textResponse(request, HOMEPAGE_FIXTURE, "text/html")
+            else textResponse(request, "{}", "application/json")
+        }
+        val engines = DynamicEngineManager(client, appVersion = 1)
+        runBlocking { engines.start() }
+        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
+        runBlocking {
+            // A song so the library isn't empty (empty → no tabs), plus the playlist to collide with.
+            val music = store.upsertBucket(BucketDraft(Uri.parse("file:///Music"), "Music"))
+            store.upsertItem(music.id, song("file:///Music/a.mp3", "MySong"))
+            store.createPlaylist("Chill")
+        }
+        try {
+            runComposeUiTest {
+                val section = mutableStateOf(AppSection.Library)
+                setContent {
+                    App(
+                        AppGraph(engines = engines, player = StubPlayer(), playerSurface = {}, mediaStore = store),
+                        section,
+                    )
+                }
+
+                waitUntilAtLeastOneExists(hasText("Folders"), 20_000)
+                onNodeWithText("Playlists").performClick()
+                waitUntilAtLeastOneExists(hasText("Chill"), 5_000)
+
+                // Open the create dialog and type the existing name.
+                onNodeWithText("New playlist", substring = true).performClick()
+                waitUntilAtLeastOneExists(hasSetTextAction(), 5_000)
+                onNode(hasSetTextAction()).performTextInput("Chill")
+
+                // The error shows under the field and Create is disabled.
+                waitUntilAtLeastOneExists(hasText("A playlist with this name already exists"), 5_000)
+                onNodeWithText("Create").assertIsNotEnabled()
             }
         } finally {
             runBlocking { engines.close() }
