@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,7 +70,7 @@ internal fun rememberSortState(key: String): SortState =
 @Composable
 internal fun SortBar(labels: List<StringResource>, state: SortState, modifier: Modifier = Modifier) {
     Row(
-        modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+        modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(Modifier.weight(1f))

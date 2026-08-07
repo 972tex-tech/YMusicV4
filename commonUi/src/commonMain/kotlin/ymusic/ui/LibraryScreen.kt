@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -540,6 +541,13 @@ private fun FoldersTab(
  *  Library sets its own breakpoint rather than borrowing the Discover video feed's. */
 internal val LibraryGridMinWidth = 480.dp
 
+/** The fixed height of a tab's sub-toolbar band — the sort/scan/breadcrumb toolbar and the drill-down
+ *  back-row all use it, with their content vertically centered, so any element's center sits at the
+ *  same Y whether you're at the list level or the detail level (nothing jumps on drill-in). Fixed
+ *  rather than wrap-content because the pill / chip / icon-button children have slightly different
+ *  intrinsic heights. */
+internal val LibrarySubToolbarHeight = 40.dp
+
 /** Library grids size cards by a MAXIMUM width, not an adaptive minimum: the fewest columns that
  *  keep every card ≤ this width, so cards shrink toward the next column instead of ballooning toward
  *  double the minimum, and the column count climbs one at a time (no 2→4 jump). */
@@ -994,7 +1002,7 @@ private fun playlistActions(playlist: Playlist, onRename: () -> Unit, onDelete: 
 @Composable
 private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1496,7 +1504,7 @@ private fun LibraryGridCard(
 @Composable
 internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
