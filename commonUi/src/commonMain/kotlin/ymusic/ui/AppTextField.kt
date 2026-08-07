@@ -13,12 +13,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 
 /**
- * The app's universal text input: a filled field ([DesignColors.FieldPill]) with a floating label —
- * the label sits like a placeholder when empty, then floats up (and turns [DesignColors.Accent]) on
- * focus — and only a bottom underline, no box outline. [supportingText] shows under the field, in the
- * error colour when [isError]. Wraps Material's filled TextField, re-coloured to the app's palette.
+ * The app's universal text input: no background box — just a floating label (sits like a placeholder
+ * when empty, then floats up and turns [DesignColors.Accent] on focus) over a single bottom underline
+ * (grey → accent on focus). [supportingText] shows under the field, in the error colour when
+ * [isError]. Wraps Material's TextField with a transparent container, re-coloured to the app's palette.
  */
 @Composable
 internal fun AppTextField(
@@ -45,10 +46,11 @@ internal fun AppTextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = DesignColors.FieldPill,
-            unfocusedContainerColor = DesignColors.FieldPill,
-            errorContainerColor = DesignColors.FieldPill,
-            disabledContainerColor = DesignColors.FieldPill,
+            // No fill — the field is just a floating label over the bottom underline.
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            errorContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
             cursorColor = DesignColors.Accent,
             errorCursorColor = MaterialTheme.colorScheme.error,
             focusedIndicatorColor = DesignColors.Accent,
