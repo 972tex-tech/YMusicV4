@@ -80,7 +80,11 @@ fun SettingsScreen(graph: AppGraph) {
         }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+    // Report scroll to the shell so the app bar lifts once the content scrolls under it (every other
+    // scrolling screen does this via TrackScroll; without it the bar never elevates).
+    val scrollState = rememberScrollState()
+    TrackScroll { scrollState.canScrollBackward }
+    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(vertical = 8.dp)) {
         LanguageRow(
             current = uiLanguage.ifBlank { defaultUiLanguageTag() },
             onSelect = { tag ->
