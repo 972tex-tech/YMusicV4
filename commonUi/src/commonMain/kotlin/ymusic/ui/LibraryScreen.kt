@@ -1435,13 +1435,14 @@ private fun LibraryGridCard(
     }
 }
 
-/** The compact back-row heading a drill-down (playlist / artist / album / genre / search result).
- *  Sized to the tab's sort toolbar — a small back arrow (matching the sort direction arrow) + the
- *  title — and passed as [SongList]'s header so it scrolls with the list rather than pinning above it. */
+/** The back-row heading a drill-down (playlist / artist / album / genre / search result). Uses the
+ *  exact row padding of a tab's sort toolbar ([PlaylistsToolbar]/[FoldersToolbar]) — same height, same
+ *  insets — so drilling in from the list level doesn't shift the content. Passed as [SongList]'s
+ *  header so it scrolls with the list rather than pinning above it. */
 @Composable
 internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
