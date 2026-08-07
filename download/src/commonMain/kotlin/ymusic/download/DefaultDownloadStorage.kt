@@ -2,6 +2,7 @@ package ymusic.download
 
 import kmpcommon.error.TechnicalException
 import kmpcommon.uri.Uri
+import kmpcommon.uri.fileUri
 import okio.BufferedSink
 import okio.FileSystem
 import okio.IOException
@@ -68,7 +69,9 @@ open class DefaultDownloadStorage(
         } catch (e: Exception) {
             throw TechnicalException("E70030", "could not publish $fileName into $dir", cause = e)
         }
-        return "file://$dest" // a real uri, like the content:// path — so task.fileUri is always parseable
+        // Build the uri (percent-encoding the path) rather than "file://$dest" — a name with a space or
+        // '#' would otherwise produce a malformed string that won't round-trip or match the scanned uri.
+        return fileUri(dest.toString()).toString()
     }
 
     /**

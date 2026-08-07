@@ -40,6 +40,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
+import kmpcommon.uri.filePath
 import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
@@ -346,7 +347,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         },
         revealInFolder = { uri ->
             withContext(Dispatchers.IO) {
-                val path = uri.removePrefix("file://")
+                val path = Uri.parse(uri).filePath()
                 runCatching { ProcessBuilder("open", "-R", path).start() } // mac Finder reveal
             }
         },

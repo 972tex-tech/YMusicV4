@@ -1,6 +1,8 @@
 package ymusic.imageloader
 
 import kmpcommon.io.AsyncSource
+import kmpcommon.uri.Uri
+import kmpcommon.uri.filePath
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
 import kmphttp.Response
@@ -66,12 +68,12 @@ fun networkFetcher(
 }
 
 /**
- * `file://` urls straight from disk — no network, no copy; decoding happens from the file. The
- * path is taken verbatim after the scheme (no percent-decoding) — pass unencoded paths.
+ * `file://` urls straight from disk — no network, no copy; decoding happens from the file. The path is
+ * percent-decoded from the uri, so an encoded name (`My%20Song.mp3`) resolves to the real file.
  */
 fun fileFetcher(fileSystem: FileSystem = systemFileSystem): ImageFetcher = ImageFetcher { url, _, size ->
     if (!url.startsWith("file://")) return@ImageFetcher null
-    decodeScaledFile(fileSystem, url.removePrefix("file://").toPath(), size)
+    decodeScaledFile(fileSystem, Uri.parse(url).filePath().toPath(), size)
 }
 
 private fun String.isHttpUrl(): Boolean = startsWith("https://") || startsWith("http://")
