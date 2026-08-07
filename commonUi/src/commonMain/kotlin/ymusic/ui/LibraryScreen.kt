@@ -1532,10 +1532,10 @@ private fun LibraryGridCard(
 @Composable
 internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        // The 24dp arrow is centred in a 32dp button, so it sits 4dp in from the button's edge. Pull
-        // the row's start in by that 4dp (16 − 4) so the arrow GLYPH lines up with the list items'
-        // 16dp content inset; the button's larger tap area just reaches a little further left.
-        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 12.dp, end = 8.dp),
+        // The 21dp arrow is centred in a 32dp button, so it sits ~5.5dp in from the button's edge.
+        // Pull the row's start in by that much (16 − 5.5 ≈ 11) so the arrow GLYPH lines up with the
+        // list items' 16dp content inset; the button's larger tap area just reaches a little further left.
+        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 11.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1543,13 +1543,13 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Comp
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 stringResource(Res.string.cd_back),
-                Modifier.size(24.dp),
+                Modifier.size(21.dp),
                 tint = DesignColors.InkSoft,
             )
         }
         Text(
             title,
-            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             // Fills the gap so [trailing] (a sort control) sits at the end padding — the same right
