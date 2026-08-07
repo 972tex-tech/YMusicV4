@@ -129,10 +129,8 @@
     <string name="add_to_playlist_new">New playlist…</string>
     <string name="playlist_play_all">Play all</string>
     <string name="playlist_recent_play">Recent play</string>
-    <string name="playlist_last_added">Last added</string>
     <string name="playlist_top_tracks">Top tracks</string>
     <string name="playlist_recent_play_desc">Recently played</string>
-    <string name="playlist_last_added_desc">Newest additions</string>
     <string name="playlist_top_tracks_desc">Most played</string>
     <string name="library_search_hint">Search your library</string>
     <string name="library_search_field_hint">Search in your Library</string>

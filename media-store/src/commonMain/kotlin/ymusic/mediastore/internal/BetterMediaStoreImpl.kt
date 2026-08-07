@@ -330,10 +330,6 @@ internal class BetterMediaStoreImpl(
         itemQ.recentlyPlayed(limit.toLong()).executeAsList().map { it.toModel() }
     }
 
-    override suspend fun recentlyAdded(limit: Int): List<MediaStoreItem> = withContext(io) {
-        itemQ.recentlyAdded(limit.toLong()).executeAsList().map { it.toModel() }
-    }
-
     override suspend fun topTracks(limit: Int): List<MediaStoreItem> = withContext(io) {
         itemQ.topTracks(limit.toLong()).executeAsList().map { it.toModel() }
     }

@@ -134,10 +134,6 @@ WHERE uri = :uri AND deleted = 0;
 recentlyPlayed:
 SELECT * FROM mediaItem WHERE deleted = 0 AND playCount > 0 ORDER BY lastPlayedAt DESC LIMIT ?;
 
--- System playlist "Last added": the newest library additions first.
-recentlyAdded:
-SELECT * FROM mediaItem WHERE deleted = 0 ORDER BY createdAt DESC LIMIT ?;
-
 -- System playlist "Top tracks": the most-played items, ties broken by most recent play.
 topTracks:
 SELECT * FROM mediaItem WHERE deleted = 0 AND playCount > 0 ORDER BY playCount DESC, lastPlayedAt DESC LIMIT ?;

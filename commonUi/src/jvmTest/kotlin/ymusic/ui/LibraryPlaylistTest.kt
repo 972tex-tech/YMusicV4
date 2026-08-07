@@ -58,12 +58,13 @@ class LibraryPlaylistTest {
 
                 waitUntilAtLeastOneExists(hasText("Folders"), 20_000)
 
-                // The Playlists tab shows the three system playlists — and no "Favorite".
+                // The Playlists tab shows the system playlists — and neither "Favorite" nor "Last
+                // added" (the latter is covered by the Songs tab's "Date added" sort).
                 onNodeWithText("Playlists").performClick()
                 waitUntilAtLeastOneExists(hasText("Recent play"), 5_000)
-                onNodeWithText("Last added").assertIsDisplayed()
                 onNodeWithText("Top tracks").assertIsDisplayed()
                 onNodeWithText("Favorite").assertDoesNotExist()
+                onNodeWithText("Last added").assertDoesNotExist()
 
                 // Add MySong to a new playlist from the Songs tab's row menu.
                 onNodeWithText("Songs").performClick()

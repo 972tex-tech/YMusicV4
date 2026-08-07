@@ -313,14 +313,6 @@ class MediaStoreTest {
     // ---- system (computed) playlists ----
 
     @Test
-    fun recentlyAdded_returns_library_items_bounded_by_limit() = runTest {
-        val b = bucket("file:///music")
-        val uris = (1..3).map { item(b.id, "file:///music/$it.mp3", fileSize = it.toLong()).uri }
-        assertEquals(uris.toSet(), store.recentlyAdded().map { it.uri }.toSet())
-        assertEquals(2, store.recentlyAdded(limit = 2).size)
-    }
-
-    @Test
     fun recentlyPlayed_and_topTracks_reflect_recorded_plays() = runTest {
         val b = bucket("file:///music")
         val a = item(b.id, "file:///music/a.mp3", fileSize = 1)

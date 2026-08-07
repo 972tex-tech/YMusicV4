@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -139,8 +138,6 @@ import ymusic.ui.resources.playlist_create_confirm
 import ymusic.ui.resources.playlist_create_title
 import ymusic.ui.resources.playlist_delete_message
 import ymusic.ui.resources.playlist_delete_title
-import ymusic.ui.resources.playlist_last_added
-import ymusic.ui.resources.playlist_last_added_desc
 import ymusic.ui.resources.playlist_name_hint
 import ymusic.ui.resources.playlist_new
 import ymusic.ui.resources.playlist_play_all
@@ -771,7 +768,6 @@ private fun DeleteFromDiskDialog(
 // media-store MediaItem.sq recentlyPlayed/recentlyAdded/topTracks), so they use negative ids that
 // AUTOINCREMENT user playlists (always positive) never collide with.
 private const val SMART_RECENT_PLAY = -1L
-private const val SMART_LAST_ADDED = -2L
 private const val SMART_TOP_TRACKS = -3L
 
 /** One row in the Playlists list: either a computed system playlist or a user-created one. */
@@ -790,10 +786,10 @@ private data class UserEntry(val playlist: Playlist, val count: Int) : PlaylistE
     override val id get() = playlist.id
 }
 
-/** The three system playlists, pinned above the user playlists in this fixed order. */
+/** The system playlists, pinned above the user playlists in this fixed order. (No "Last added" —
+ *  the Songs tab's "Date added" sort already covers it.) */
 private val smartPlaylists = listOf(
     SmartEntry(SMART_RECENT_PLAY, Res.string.playlist_recent_play, Res.string.playlist_recent_play_desc, Icons.Default.History),
-    SmartEntry(SMART_LAST_ADDED, Res.string.playlist_last_added, Res.string.playlist_last_added_desc, Icons.Default.NewReleases),
     SmartEntry(SMART_TOP_TRACKS, Res.string.playlist_top_tracks, Res.string.playlist_top_tracks_desc, Icons.Default.Whatshot),
 )
 
@@ -819,7 +815,6 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
         members = null
         when (id) {
             SMART_RECENT_PLAY -> members = store.recentlyPlayed()
-            SMART_LAST_ADDED -> members = store.recentlyAdded()
             SMART_TOP_TRACKS -> members = store.topTracks()
             else -> store.playlistChanges(id).collect { members = store.playlistItemDetails(id).map { it.mediaItem } }
         }

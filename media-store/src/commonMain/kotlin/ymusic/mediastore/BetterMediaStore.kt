@@ -120,9 +120,6 @@ interface BetterMediaStore {
     /** "Recent play": items by most-recent play, newest first (only items played at least once). */
     suspend fun recentlyPlayed(limit: Int = 200): List<MediaStoreItem>
 
-    /** "Last added": the newest library additions first. */
-    suspend fun recentlyAdded(limit: Int = 200): List<MediaStoreItem>
-
     /** "Top tracks": the most-played items first (only items played at least once). */
     suspend fun topTracks(limit: Int = 200): List<MediaStoreItem>
 
