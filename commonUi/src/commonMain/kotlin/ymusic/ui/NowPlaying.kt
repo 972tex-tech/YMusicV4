@@ -189,17 +189,17 @@ fun MiniPlayer(
                     // Taps on the tile expand Now Playing — they must not reach the video page.
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
-                    ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 36.dp, RoundedCornerShape(8.dp))
+                    ArtImage(coordinator.infoFor(item)?.thumbnailUrl, RoundedCornerShape(8.dp))
                 }
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    coordinator.titleFor(item),
+                    coordinator.infoFor(item)?.title.orEmpty(),
                     style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                coordinator.metadataFor(item)?.subtitleLine1?.let {
+                coordinator.infoFor(item)?.subtitle?.let {
                     Text(
                         it,
                         style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
@@ -326,13 +326,13 @@ private fun PortraitNowPlaying(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            coordinator.titleFor(current),
+                            coordinator.infoFor(current)?.title.orEmpty(),
                             style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkStrong),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
                         )
-                        coordinator.metadataFor(current)?.subtitleLine1?.let {
+                        coordinator.infoFor(current)?.subtitle?.let {
                             Text(
                                 it,
                                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
@@ -465,12 +465,12 @@ private fun BoxScope.VideoOverlayControls(
 
     Column(Modifier.align(Alignment.TopStart).padding(start = 16.dp, end = 16.dp, top = 11.dp)) {
         Text(
-            coordinator.titleFor(current),
+            coordinator.infoFor(current)?.title.orEmpty(),
             style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        coordinator.metadataFor(current)?.subtitleLine1?.let {
+        coordinator.infoFor(current)?.subtitle?.let {
             Text(
                 it,
                 style = TextStyle(fontSize = 11.sp, color = Color(0xFFDADADA)),
@@ -600,8 +600,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 
     val queue by player.queue.collectAsState()
     val downloadLauncher = LocalDownloadLauncher.current
-    val downloadable = coordinator.metadataFor(queue.currentItem)
-        ?.takeIf { it.kind == ymusic.dynamicengine.yt.YtFeedItem.KIND_VIDEO }
+    val downloadable = coordinator.downloadable(queue.currentItem)
 
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
@@ -1007,11 +1006,11 @@ private fun QueueRow(
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.Image, null, Modifier.size(18.dp), tint = DesignColors.PlaceholderIcon)
-            ThumbImage(coordinator.metadataFor(item)?.thumbs.orEmpty(), 48.dp, RoundedCornerShape(6.dp))
+            ArtImage(coordinator.infoFor(item)?.thumbnailUrl, RoundedCornerShape(6.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
-                coordinator.titleFor(item),
+                coordinator.infoFor(item)?.title.orEmpty(),
                 style = TextStyle(
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -1020,8 +1019,8 @@ private fun QueueRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val meta = coordinator.metadataFor(item)
-            val sub = listOfNotNull(meta?.duration, meta?.subtitleLine1).joinToString(" · ")
+            val info = coordinator.infoFor(item)
+            val sub = listOfNotNull(info?.duration, info?.subtitle).joinToString(" · ")
             if (sub.isNotEmpty()) {
                 Text(
                     sub,

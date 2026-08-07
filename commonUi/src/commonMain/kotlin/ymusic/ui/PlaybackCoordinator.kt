@@ -11,11 +11,20 @@ import ymusic.mediastore.model.MediaStoreItem
 import ymusic.player.PlayableItem
 import ymusic.player.Player
 
+/** Neutral Now Playing display data, extracted from a [PlayableItem]'s own fields — no engine/feed
+ *  types leak into the UI. */
+data class TrackInfo(
+    val title: String,
+    val subtitle: String?,
+    val thumbnailUrl: String?,
+    val duration: String?,
+)
+
 /**
  * UI-side playback glue over the [Player] facade. Every queue item is self-describing — a
  * [PlayableItem.LocalMedia] / [PlayableItem.YtMedia] carries its own id + display metadata — so the
- * coordinator holds NO side map: Now Playing reads [metadataFor]/[titleFor] straight off the item, and
- * play-recording keys on the item's own id. Implements "play now" as YouTube-style autoplay — load the
+ * coordinator holds NO side map: Now Playing reads [infoFor] straight off the item, and play-recording
+ * keys on the item's own id. Implements "play now" as YouTube-style autoplay — load the
  * tapped video, then append its watch-next as the rest of the queue.
  */
 class PlaybackCoordinator(
@@ -48,17 +57,34 @@ class PlaybackCoordinator(
         }
     }
 
-    /** The Now Playing display model for [item], built from its own fields (no lookup). */
-    fun metadataFor(item: PlayableItem?): YtFeedItem? = when (item) {
-        is PlayableItem.YtMedia -> item.toDisplay()
-        is PlayableItem.LocalMedia -> item.toDisplay()
+    /** The Now Playing display for [item], read straight off the queue item's own fields. */
+    fun infoFor(item: PlayableItem?): TrackInfo? = when (item) {
+        is PlayableItem.LocalMedia -> TrackInfo(
+            title = item.title ?: item.uri.substringAfterLast('/'),
+            subtitle = listOfNotNull(item.artist, item.album).joinToString(" · ").ifEmpty { null },
+            thumbnailUrl = item.thumbnailUrl,
+            duration = null,
+        )
+        is PlayableItem.YtMedia -> TrackInfo(
+            title = item.title ?: item.videoId,
+            subtitle = item.artist,
+            thumbnailUrl = item.thumbnailUrl,
+            duration = item.duration,
+        )
         null -> null
     }
 
-    fun titleFor(item: PlayableItem?): String = when (item) {
-        is PlayableItem.YtMedia -> item.title ?: item.videoId
-        is PlayableItem.LocalMedia -> item.title ?: item.uri.substringAfterLast('/')
-        null -> ""
+    /** The video to hand the download launcher — only a YouTube item is downloadable (local → null).
+     *  The one place a queue item is rebuilt into a [YtFeedItem], for the launcher's API. */
+    fun downloadable(item: PlayableItem?): YtFeedItem? = (item as? PlayableItem.YtMedia)?.let {
+        YtFeedItem(
+            kind = YtFeedItem.KIND_VIDEO,
+            id = it.videoId,
+            title = it.title ?: it.videoId,
+            subtitleLine1 = it.artist,
+            duration = it.duration,
+            thumbs = it.thumbnailUrl?.let { url -> listOf(YtThumb(url)) } ?: emptyList(),
+        )
     }
 
     /** Play [video] now; its watch-next related videos become the rest of the queue (autoplay). */
@@ -146,28 +172,4 @@ class PlaybackCoordinator(
         thumbnailUrl = thumbs.firstOrNull()?.url,
         duration = duration,
     )
-
-    /** Now Playing display for a local item, from its own fields. */
-    private fun PlayableItem.LocalMedia.toDisplay() = YtFeedItem(
-        kind = KIND_LOCAL,
-        id = uri,
-        title = title ?: uri.substringAfterLast('/'),
-        subtitleLine1 = listOfNotNull(artist, album).joinToString(" · ").ifEmpty { null },
-        thumbs = thumbnailUrl?.let { listOf(YtThumb(it)) } ?: emptyList(),
-    )
-
-    /** Now Playing display for a YouTube item, from its own fields (kind = VIDEO, so it stays downloadable). */
-    private fun PlayableItem.YtMedia.toDisplay() = YtFeedItem(
-        kind = YtFeedItem.KIND_VIDEO,
-        id = videoId,
-        title = title ?: videoId,
-        subtitleLine1 = artist,
-        duration = duration,
-        thumbs = thumbnailUrl?.let { listOf(YtThumb(it)) } ?: emptyList(),
-    )
-
-    private companion object {
-        /** Display-metadata kind for local library items. */
-        const val KIND_LOCAL = "local"
-    }
 }
