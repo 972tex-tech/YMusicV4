@@ -3,6 +3,7 @@ package ymusic.imageloader
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import kmpcommon.log.Logger
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.CancellationException
 import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
@@ -74,7 +75,7 @@ class ImageLoader(
         memory.peek(key)?.let { return it }
         return gate.withPermit {
             memory.peek(key)?.let { return@withPermit it } // raced with an identical load
-            val bitmap = fromScaledCache(key) ?: fetchAndDecode(url, cacheKey, key, w, h)
+            val bitmap = fromScaledCache(key) ?: fetchAndDecode(url, key, w, h)
             memory.put(key, bitmap)
             bitmap
         }
@@ -93,9 +94,11 @@ class ImageLoader(
         }
     }
 
-    private suspend fun fetchAndDecode(url: String, cacheKey: String, key: String, w: Int, h: Int): ImageBitmap {
+    private suspend fun fetchAndDecode(url: String, key: String, w: Int, h: Int): ImageBitmap {
         val size = IntSize(w, h)
-        val decoded = fetchers.firstNotNullOfOrNull { it.fetch(url, cacheKey, size) }
+        // Parse the caller's url once; fetchers dispatch on the uri's scheme.
+        val target = Uri.parse(url)
+        val decoded = fetchers.firstNotNullOfOrNull { it.fetch(target, size) }
             ?: throw IOException("no fetcher handles: $url")
         // Only a genuinely downscaled result is worth persisting: an un-shrunk image re-encoded as
         // PNG is often BIGGER than the original its fetcher already holds, and saves no decode.

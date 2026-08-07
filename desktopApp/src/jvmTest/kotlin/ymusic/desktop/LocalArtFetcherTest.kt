@@ -50,10 +50,10 @@ class LocalArtFetcherTest {
                 )
                 val fetcher = localArtFetcher(FfmpegMetadataGetter(ffmpeg), store)
                 assertNull(
-                    fetcher.fetch("https://example.com/x.png", "k", IntSize(64, 64)),
+                    fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64)),
                     "fetcher must decline non-art urls",
                 )
-                fetcher.fetch("art://pic/${item.id}", cacheKey = "k", size = IntSize(64, 64))
+                fetcher.fetch(Uri.parse("art://pic/${item.id}"), size = IntSize(64, 64))
             }
             assertNotNull(decoded, "fetcher returned null for its own scheme")
             assertEquals(64, decoded.bitmap.width)

@@ -147,7 +147,7 @@ class ImageLoaderTest {
         val art = pngBytes(400, 200)
         val loader = ImageLoader(
             listOf(
-                ImageFetcher { url, _, size -> if (url.startsWith("art://")) decodeScaled(art, size) else null },
+                ImageFetcher { uri, size -> if (uri.scheme?.toString() == "art") decodeScaled(art, size) else null },
                 networkFetcher(server),
             ),
         )

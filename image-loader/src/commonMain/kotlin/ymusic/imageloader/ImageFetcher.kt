@@ -1,21 +1,21 @@
 package ymusic.imageloader
 
 import androidx.compose.ui.unit.IntSize
+import kmpcommon.uri.Uri
 
 /**
- * One url scheme resolver: fetch the data AND decode it to fit [IntSize] — however suits its
+ * One uri-scheme resolver: fetch the data AND decode it to fit [IntSize] — however suits its
  * storage best (a file decode, a capped stream drain, even scale-during-extraction). The loader
- * asks its fetchers in order and the first non-null result wins; return null when the url isn't
- * yours. Everything is a fetcher — http ([networkFetcher]), local files ([fileFetcher]), and
- * app-defined schemes like `art://<path>` for ffmpeg-extracted embedded album art.
+ * parses the caller's url once and asks its fetchers in order; the first non-null result wins.
+ * Return null when the [uri]'s scheme isn't yours. Everything is a fetcher — http ([networkFetcher]),
+ * local files ([fileFetcher]), and app-defined schemes like `art://…` for ffmpeg-extracted album art.
  *
  * Results flow into the loader's memory/scaled caches, so a warm load never re-runs a fetch or
- * extraction. Guarding (byte caps, retries on a vanished cache file) is the fetcher's own
- * responsibility. [decodeScaled]/[decodeScaledFile] are the module's clamped decoders — or write
- * your own.
+ * extraction. A fetcher that caches on disk derives its own key from [uri] (dropping volatile query
+ * params). Guarding (byte caps, retries on a vanished cache file) is the fetcher's own responsibility.
+ * [decodeScaled]/[decodeScaledFile] are the module's clamped decoders — or write your own.
  */
 fun interface ImageFetcher {
-    /** [cacheKey] is the caller's stable identity for [url] (strips rotating params) — fetchers
-     *  that cache on disk key by it; others ignore it. [size] never asks for an upscale. */
-    suspend fun fetch(url: String, cacheKey: String, size: IntSize): DecodedImage?
+    /** [size] never asks for an upscale. Return null when [uri]'s scheme isn't handled here. */
+    suspend fun fetch(uri: Uri, size: IntSize): DecodedImage?
 }

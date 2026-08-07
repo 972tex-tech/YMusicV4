@@ -31,12 +31,13 @@ fun localArtFetcher(
     getter: FfmpegMetadataGetter,
     store: BetterMediaStore,
     maxImageBytes: Long = 32L * 1024 * 1024,
-): ImageFetcher = ImageFetcher { url, _, size ->
-    if (!url.startsWith(ART_PIC)) return@ImageFetcher null
-    val id = url.substringAfterLast('/').toLongOrNull()
-        ?: throw IOException("malformed art url: $url")
+): ImageFetcher = ImageFetcher { uri, size ->
+    if (uri.scheme?.toString() != "art" || uri.authority?.toString() != "pic") return@ImageFetcher null
+    val url = uri.toString()
+    val id = uri.path.toString().substringAfterLast('/').toLongOrNull()
+        ?: throw IOException("malformed art uri: $url")
     val item = store.findItem(id)
-        ?: throw IOException("no media item for art url: $url")
+        ?: throw IOException("no media item for art uri: $url")
     val source = when {
         item.thumbnailStreamIndex != null -> getter.getAttachedPic(item.uri)
         item.videoCodec != null -> getter.extractThumbnail(item.uri)

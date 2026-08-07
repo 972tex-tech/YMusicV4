@@ -2,6 +2,7 @@ package ymusic.imageloader
 
 import kmpcommon.io.AsyncSource
 import kmpcommon.uri.Uri
+import kmpcommon.uri.UriBuilder
 import kmpcommon.uri.filePath
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -32,9 +33,10 @@ fun networkFetcher(
     maxImageBytes: Long = 32L * 1024 * 1024,
 ): ImageFetcher {
     val cache = ImageSourceCache(fileSystem, cacheDir, cacheMaxBytes)
-    return ImageFetcher { url, cacheKey, size ->
-        if (!url.isHttpUrl()) return@ImageFetcher null
-        val key = diskCacheKey(cacheKey)
+    return ImageFetcher { uri, size ->
+        if (!uri.isHttp()) return@ImageFetcher null
+        val url = uri.toString()
+        val key = diskCacheKey(uri.cacheIdentity())
         cache.filePath(key)?.let { file ->
             try {
                 return@ImageFetcher decodeScaledFile(fileSystem, file, size)
@@ -59,8 +61,9 @@ fun networkFetcher(
 fun networkFetcher(
     client: KmpHttpClient,
     maxImageBytes: Long = 32L * 1024 * 1024,
-): ImageFetcher = ImageFetcher { url, _, size ->
-    if (!url.isHttpUrl()) return@ImageFetcher null
+): ImageFetcher = ImageFetcher { uri, size ->
+    if (!uri.isHttp()) return@ImageFetcher null
+    val url = uri.toString()
     val bytes = executeChecked(client, url, maxImageBytes) { response ->
         readCapped(response.body.asyncSource(), maxImageBytes, url)
     }
@@ -71,12 +74,15 @@ fun networkFetcher(
  * `file://` urls straight from disk — no network, no copy; decoding happens from the file. The path is
  * percent-decoded from the uri, so an encoded name (`My%20Song.mp3`) resolves to the real file.
  */
-fun fileFetcher(fileSystem: FileSystem = systemFileSystem): ImageFetcher = ImageFetcher { url, _, size ->
-    if (!url.startsWith("file://")) return@ImageFetcher null
-    decodeScaledFile(fileSystem, Uri.parse(url).filePath().toPath(), size)
+fun fileFetcher(fileSystem: FileSystem = systemFileSystem): ImageFetcher = ImageFetcher { uri, size ->
+    if (uri.scheme?.toString() != "file") return@ImageFetcher null
+    decodeScaledFile(fileSystem, uri.filePath().toPath(), size)
 }
 
-private fun String.isHttpUrl(): Boolean = startsWith("https://") || startsWith("http://")
+private fun Uri.isHttp(): Boolean = scheme?.toString().let { it == "http" || it == "https" }
+
+/** Stable disk-cache identity for a uri: drops volatile query params (ytimg's rotating ?sqp/&rs). */
+private fun Uri.cacheIdentity(): String = UriBuilder(this).encodedQuery(null).buildString()
 
 /** Executes [url], enforces success + the declared-length cap, and closes the response. */
 private suspend fun <T> executeChecked(
