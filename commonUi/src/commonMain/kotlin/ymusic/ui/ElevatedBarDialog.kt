@@ -46,6 +46,10 @@ internal fun ElevatedBarDialog(
     buttons: @Composable RowScope.() -> Unit,
     body: @Composable () -> Unit,
 ) {
+    // The title/button bars sit a step above the body. On dark, the full SurfaceElevated lift (0x12 →
+    // 0x1F) reads too strongly against the near-black body, so use the gentler SurfaceDim step there
+    // (the divider + scroll shadow still delineate the bars); light keeps the usual elevated grey.
+    val barColor = if (DesignColors.isDark) DesignColors.SurfaceDim else DesignColors.SurfaceElevated
     BasicAlertDialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(4.dp),
@@ -54,7 +58,7 @@ internal fun ElevatedBarDialog(
         ) {
             Column {
                 val topShadow by animateDpAsState(if (canScrollBackward) 6.dp else 0.dp)
-                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(DesignColors.SurfaceElevated)) {
+                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(barColor)) {
                     Text(
                         title,
                         style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
@@ -64,7 +68,7 @@ internal fun ElevatedBarDialog(
                 }
                 Box(Modifier.weight(1f, fill = false).heightIn(max = 420.dp)) { body() }
                 val bottomShadow by animateDpAsState(if (canScrollForward) 6.dp else 0.dp)
-                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(bottomShadow).background(DesignColors.SurfaceElevated)) {
+                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(bottomShadow).background(barColor)) {
                     HorizontalDivider(color = DesignColors.Divider)
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),

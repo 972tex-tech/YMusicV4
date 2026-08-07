@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -27,8 +26,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,7 +52,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,6 +67,7 @@ import ymusic.dynamicengine.yt.searchSuggestions
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.cd_insert_query
 import ymusic.ui.resources.cd_remove_from_history
+import ymusic.ui.resources.dialog_cancel
 import ymusic.ui.resources.search_clear_history
 import ymusic.ui.resources.search_filter_title
 import ymusic.ui.resources.search_no_results
@@ -331,36 +330,36 @@ private fun FilterDialog(
     onDismiss: () -> Unit,
     onSelect: (YtFilterOption) -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(18.dp), color = DesignColors.SurfaceElevated) {
-            Column(
-                Modifier
-                    .widthIn(max = 460.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-            ) {
+    val scrollState = rememberScrollState()
+    ElevatedBarDialog(
+        title = stringResource(Res.string.search_filter_title),
+        onDismiss = onDismiss,
+        canScrollBackward = scrollState.canScrollBackward,
+        canScrollForward = scrollState.canScrollForward,
+        buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+    ) {
+        Column(
+            Modifier
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+        ) {
+            groups.forEach { group ->
                 Text(
-                    stringResource(Res.string.search_filter_title),
-                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                    group.title.uppercase(),
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DesignColors.InkSecondary,
+                        letterSpacing = 0.4.sp,
+                    ),
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                 )
-                groups.forEach { group ->
-                    Text(
-                        group.title.uppercase(),
-                        style = TextStyle(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = DesignColors.InkSecondary,
-                            letterSpacing = 0.4.sp,
-                        ),
-                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        group.options.forEach { option ->
-                            FilterPill(option) { onSelect(option) }
-                        }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    group.options.forEach { option ->
+                        FilterPill(option) { onSelect(option) }
                     }
                 }
             }

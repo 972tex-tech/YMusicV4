@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Whatshot
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -731,23 +730,14 @@ private fun DeleteFromDiskDialog(
     val scope = rememberCoroutineScope()
     var busy by remember(item) { mutableStateOf(false) }
     var error by remember(item) { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(Res.string.delete_from_disk_title)) },
-        text = {
-            Column {
-                Text(stringResource(Res.string.delete_from_disk_message, item.title))
-                error?.let {
-                    Text(
-                        it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            }
-        },
-        confirmButton = {
+    val dismiss = { if (!busy) onDismiss() }
+    ElevatedBarDialog(
+        title = stringResource(Res.string.delete_from_disk_title),
+        onDismiss = dismiss,
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = {
+            TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
             TextButton(
                 enabled = !busy,
                 onClick = {
@@ -766,10 +756,22 @@ private fun DeleteFromDiskDialog(
                 },
             ) { Text(stringResource(Res.string.delete_from_disk_confirm), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
-        },
-    )
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+            Text(
+                stringResource(Res.string.delete_from_disk_message, item.title),
+                style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+            )
+            error?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+    }
 }
 
 // ---- playlists ----

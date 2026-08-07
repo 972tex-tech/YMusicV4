@@ -1,9 +1,9 @@
 package ymusic.ui
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -14,6 +14,9 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ymusic.download.DownloadFormat
 import ymusic.download.DownloadRequest
 import ymusic.dynamicengine.yt.YtFeedItem
@@ -78,28 +81,31 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
         onDismiss()
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Download", maxLines = 1) },
-        text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space2)) {
-                // Audio-only M4A is the raw best-AAC stream — the one output that needs no ffmpeg.
-                DownloadOption("Audio · M4A") { pick(DownloadFormat.M4A, null) }
-                if (downloads.ffmpegAvailable) {
-                    DownloadOption("Audio · MP3") { pick(DownloadFormat.MP3, null) }
-                    DownloadOption("Video · 1080p (MP4)") { pick(DownloadFormat.VIDEO_MP4, 1080) }
-                    DownloadOption("Video · 720p (MP4)") { pick(DownloadFormat.VIDEO_MP4, 720) }
-                }
+    ElevatedBarDialog(
+        title = "Download",
+        onDismiss = onDismiss,
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            // Audio-only M4A is the raw best-AAC stream — the one output that needs no ffmpeg.
+            DownloadOption("Audio · M4A") { pick(DownloadFormat.M4A, null) }
+            if (downloads.ffmpegAvailable) {
+                DownloadOption("Audio · MP3") { pick(DownloadFormat.MP3, null) }
+                DownloadOption("Video · 1080p (MP4)") { pick(DownloadFormat.VIDEO_MP4, 1080) }
+                DownloadOption("Video · 720p (MP4)") { pick(DownloadFormat.VIDEO_MP4, 720) }
             }
-        },
-    )
+        }
+    }
 }
 
+/** A full-bleed picker row matching the region/add-to-playlist dialogs (24/12 inset, 14sp). */
 @Composable
 private fun DownloadOption(label: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Text(label, modifier = Modifier.fillMaxWidth())
-    }
+    Text(
+        label,
+        style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
+    )
 }
