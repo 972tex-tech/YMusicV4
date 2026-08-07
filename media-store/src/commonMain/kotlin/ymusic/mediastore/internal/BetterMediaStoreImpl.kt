@@ -322,8 +322,8 @@ internal class BetterMediaStoreImpl(
 
     // ---- system (computed) playlists ----
 
-    override suspend fun recordLocalPlay(uri: Uri): Unit = withContext(io) {
-        itemQ.recordPlay(ts = now(), uri = uri.toString())
+    override suspend fun recordLocalPlay(itemId: Long): Unit = withContext(io) {
+        itemQ.recordPlay(ts = now(), id = itemId)
     }
 
     override suspend fun recentlyPlayed(limit: Int): List<MediaStoreItem> = withContext(io) {

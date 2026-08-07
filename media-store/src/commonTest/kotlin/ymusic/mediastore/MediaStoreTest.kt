@@ -322,9 +322,9 @@ class MediaStoreTest {
         assertTrue(store.recentlyPlayed().isEmpty())
         assertTrue(store.topTracks().isEmpty())
 
-        store.recordLocalPlay(a.uri)
-        store.recordLocalPlay(c.uri)
-        store.recordLocalPlay(c.uri)
+        store.recordLocalPlay(a.id)
+        store.recordLocalPlay(c.id)
+        store.recordLocalPlay(c.id)
 
         // Only played items surface (order by time is left to SQL; assert membership to avoid ms ties).
         assertEquals(setOf(a.uri, c.uri), store.recentlyPlayed().map { it.uri }.toSet())
@@ -338,9 +338,9 @@ class MediaStoreTest {
     }
 
     @Test
-    fun recordLocalPlay_ignores_unknown_uris() = runTest {
-        // A stream / a download with no library row: recording is a harmless no-op.
-        store.recordLocalPlay(kmpcommon.uri.Uri.parse("https://youtube.com/watch?v=x"))
+    fun recordLocalPlay_ignores_unknown_ids() = runTest {
+        // A stream / a download with no library row (the coordinator has no id for it): a no-op.
+        store.recordLocalPlay(999_999L)
         assertTrue(store.recentlyPlayed().isEmpty())
     }
 

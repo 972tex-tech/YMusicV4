@@ -122,11 +122,11 @@ SELECT * FROM mediaItem WHERE id IN ? AND deleted = 0;
 findItemByVideoId:
 SELECT * FROM mediaItem WHERE youtubeVid = ? AND deleted = 0;
 
--- Record a play of the local file at [uri]: bump its counter and stamp the play time. A no-op (0 rows)
--- when the uri isn't a library item (a YouTube stream, or a download with no library location).
+-- Record a play of a library item by row id: bump its counter and stamp the play time. Keyed on the
+-- id (not the uri) so it survives a move/rescan rewriting the uri; a no-op (0 rows) for a stale id.
 recordPlay:
 UPDATE mediaItem SET playCount = playCount + 1, lastPlayedAt = :ts, updatedAt = :ts
-WHERE uri = :uri AND deleted = 0;
+WHERE id = :id AND deleted = 0;
 
 -- System playlist "Recent play": the items played most recently, one row each, newest first.
 -- Filter on playCount (> 0 ⟺ played ⟺ lastPlayedAt set) rather than `lastPlayedAt IS NOT NULL`, which

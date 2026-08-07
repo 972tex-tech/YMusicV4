@@ -113,9 +113,10 @@ interface BetterMediaStore {
     // Recent play / Last added / Top tracks aren't rows in the playlist table — they're live queries
     // over the media items, so they need no membership upkeep and never go stale.
 
-    /** Record a play of the local file at [uri] (bumps its play count + last-played time). No-op when
-     *  [uri] isn't a library item, so it's safe to call for every played item (streams included). */
-    suspend fun recordLocalPlay(uri: Uri)
+    /** Record a play of the library item [itemId] (bumps its play count + last-played time). Keyed on
+     *  the row id — not the uri — so it survives a move/rescan rewriting the file's uri; a no-op for a
+     *  stale/unknown id, so it's safe to call for anything that isn't a live library row. */
+    suspend fun recordLocalPlay(itemId: Long)
 
     /** "Recent play": items by most-recent play, newest first (only items played at least once). */
     suspend fun recentlyPlayed(limit: Int = 200): List<MediaStoreItem>

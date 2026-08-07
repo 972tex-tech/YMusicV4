@@ -1,6 +1,5 @@
 package ymusic.ui
 
-import kmpcommon.uri.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,12 +29,17 @@ class PlaybackCoordinator(
     /** Display metadata by [PlayableItem] key (videoId / local uri). */
     val metadata: StateFlow<Map<String, YtFeedItem>> = _metadata.asStateFlow()
 
+    // Library-item id by the exact uri string we put in the queue, filled whenever we queue a
+    // MediaStoreItem. Lets play-recording key on the row id (stable across moves/rescans) instead of
+    // re-matching the uri against the DB — the player only carries the uri, this bridges it to the id.
+    private val localIds = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     val player: Player get() = graph.player
 
     init {
         // Record library plays for the computed "Recent play" / "Top tracks" playlists: every time a
-        // local file becomes the current item, bump its play stats. recordLocalPlay is a no-op for a
-        // uri that isn't a library item (a YouTube stream, or a download with no library location).
+        // local library item becomes the current item, bump its play stats by row id. Items with no
+        // known id (a YouTube stream, or a download with no library row) simply aren't recorded.
         val store = graph.mediaStore
         if (store != null) {
             scope.launch {
@@ -43,17 +47,22 @@ class PlaybackCoordinator(
                     .map { it.currentItem }
                     .distinctUntilChanged()
                     .collect { item ->
-                        if (item is PlayableItem.LocalUri) {
-                            try {
-                                store.recordLocalPlay(Uri.parse(item.uri))
-                            } catch (e: Exception) {
-                                // Play stats are best-effort; a failure never interrupts playback.
-                                println("recordLocalPlay failed: $e")
-                            }
+                        val id = (item as? PlayableItem.LocalUri)?.let { localIds.value[it.uri] } ?: return@collect
+                        try {
+                            store.recordLocalPlay(id)
+                        } catch (e: Exception) {
+                            // Play stats are best-effort; a failure never interrupts playback.
+                            println("recordLocalPlay failed: $e")
                         }
                     }
             }
         }
+    }
+
+    /** Remember the row id behind each song's uri, so a later "became current" can record it by id. */
+    private fun rememberLocalIds(songs: List<MediaStoreItem>) {
+        if (songs.isEmpty()) return
+        localIds.update { current -> current + songs.associate { it.uri.toString() to it.id } }
     }
 
     fun metadataFor(item: PlayableItem?): YtFeedItem? = when (item) {
@@ -105,6 +114,7 @@ class PlaybackCoordinator(
     /** Play local library [songs] as the queue, starting at [index]. */
     fun playLocal(songs: List<MediaStoreItem>, index: Int) {
         _metadata.update { it + songs.map(::localDisplay).associateBy(YtFeedItem::id) }
+        rememberLocalIds(songs)
         player.setQueue(songs.map { PlayableItem.LocalUri(it.uri.toString()) }, playIndex = index)
     }
 
@@ -147,6 +157,7 @@ class PlaybackCoordinator(
 
     private fun rememberLocal(song: MediaStoreItem): PlayableItem {
         _metadata.update { it + (song.uri.toString() to localDisplay(song)) }
+        rememberLocalIds(listOf(song))
         return PlayableItem.LocalUri(song.uri.toString())
     }
 
