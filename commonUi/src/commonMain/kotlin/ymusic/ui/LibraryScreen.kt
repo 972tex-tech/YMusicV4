@@ -152,7 +152,6 @@ import ymusic.ui.resources.sort_date_added
 import ymusic.ui.resources.sort_date_created
 import ymusic.ui.resources.sort_last_added
 import ymusic.ui.resources.sort_name
-import ymusic.ui.resources.sort_song_count
 import ymusic.ui.resources.sort_type
 import ymusic.ui.resources.unknown_album
 import ymusic.ui.resources.unknown_artist
@@ -593,7 +592,6 @@ private val folderSortOptions = listOf(
 private val playlistSortOptions = listOf(
     SortOption<Pair<Playlist, Int>>(Res.string.sort_name, compareBy { it.first.name.lowercase() }),
     SortOption(Res.string.sort_date_created, compareBy { it.first.createdAt }),
-    SortOption(Res.string.sort_song_count, compareBy { it.second }),
 )
 
 /** The songs inside a USER playlist: by when they were added to the playlist (default — matches the
@@ -608,7 +606,6 @@ private val playlistSongSortOptions = listOf(
 private val groupSortOptions = listOf(
     SortOption<Pair<String, List<MediaStoreItem>>>(Res.string.sort_name, compareBy { it.first.lowercase() }),
     SortOption(Res.string.sort_date_created, compareBy { it.second.minOfOrNull { m -> m.createdAt } ?: 0L }),
-    SortOption(Res.string.sort_song_count, compareBy { it.second.size }),
 )
 
 /** Saves the folder browse path as a flat [id, name, id, name, …] list. */
