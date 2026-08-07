@@ -189,17 +189,17 @@ fun MiniPlayer(
                     // Taps on the tile expand Now Playing — they must not reach the video page.
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
-                    ArtImage(coordinator.infoFor(item)?.thumbnailUrl, RoundedCornerShape(8.dp))
+                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(8.dp))
                 }
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    coordinator.infoFor(item)?.title.orEmpty(),
+                    item.displayTitle,
                     style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                coordinator.infoFor(item)?.subtitle?.let {
+                item.displaySubtitle?.let {
                     Text(
                         it,
                         style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
@@ -326,13 +326,13 @@ private fun PortraitNowPlaying(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            coordinator.infoFor(current)?.title.orEmpty(),
+                            current?.displayTitle.orEmpty(),
                             style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkStrong),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
                         )
-                        coordinator.infoFor(current)?.subtitle?.let {
+                        current?.displaySubtitle?.let {
                             Text(
                                 it,
                                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
@@ -465,12 +465,12 @@ private fun BoxScope.VideoOverlayControls(
 
     Column(Modifier.align(Alignment.TopStart).padding(start = 16.dp, end = 16.dp, top = 11.dp)) {
         Text(
-            coordinator.infoFor(current)?.title.orEmpty(),
+            current?.displayTitle.orEmpty(),
             style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        coordinator.infoFor(current)?.subtitle?.let {
+        current?.displaySubtitle?.let {
             Text(
                 it,
                 style = TextStyle(fontSize = 11.sp, color = Color(0xFFDADADA)),
@@ -1006,11 +1006,11 @@ private fun QueueRow(
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.Image, null, Modifier.size(18.dp), tint = DesignColors.PlaceholderIcon)
-            ArtImage(coordinator.infoFor(item)?.thumbnailUrl, RoundedCornerShape(6.dp))
+            ArtImage(item.displayThumbnailUrl, RoundedCornerShape(6.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
-                coordinator.infoFor(item)?.title.orEmpty(),
+                item.displayTitle,
                 style = TextStyle(
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -1019,8 +1019,7 @@ private fun QueueRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val info = coordinator.infoFor(item)
-            val sub = listOfNotNull(info?.duration, info?.subtitle).joinToString(" · ")
+            val sub = listOfNotNull(item.displayDuration, item.displaySubtitle).joinToString(" · ")
             if (sub.isNotEmpty()) {
                 Text(
                     sub,
