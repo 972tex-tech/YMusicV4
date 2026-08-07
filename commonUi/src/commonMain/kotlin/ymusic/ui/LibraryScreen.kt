@@ -1504,7 +1504,10 @@ private fun LibraryGridCard(
 @Composable
 internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
+        // The 24dp arrow is centred in a 32dp button, so it sits 4dp in from the button's edge. Pull
+        // the row's start in by that 4dp (16 − 4) so the arrow GLYPH lines up with the list items'
+        // 16dp content inset; the button's larger tap area just reaches a little further left.
+        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 12.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
