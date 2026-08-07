@@ -100,10 +100,11 @@ fun LibrarySearchScreen(
         val drill = session.drill
         val query = session.field.text.trim()
         when {
-            drill != null -> Column(Modifier.fillMaxSize()) {
-                DrillDownHeader(drill.first, onBack = { session.drill = null })
-                SongList(drill.second, coordinator)
-            }
+            drill != null -> SongList(
+                drill.second,
+                coordinator,
+                header = { DrillDownHeader(drill.first, onBack = { session.drill = null }) },
+            )
             query.isEmpty() -> CenteredBox {
                 Text(stringResource(Res.string.library_search_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

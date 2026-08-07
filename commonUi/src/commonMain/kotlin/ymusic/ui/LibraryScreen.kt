@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,7 +42,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.AlertDialog
@@ -140,7 +138,6 @@ import ymusic.ui.resources.playlist_delete_message
 import ymusic.ui.resources.playlist_delete_title
 import ymusic.ui.resources.playlist_name_hint
 import ymusic.ui.resources.playlist_new
-import ymusic.ui.resources.playlist_play_all
 import ymusic.ui.resources.playlist_recent_play
 import ymusic.ui.resources.playlist_recent_play_desc
 import ymusic.ui.resources.playlist_rename_confirm
@@ -901,25 +898,20 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
             )
         }
     } else {
-        Column(Modifier.fillMaxSize()) {
-            val songs = members
-            DrillDownHeader(open.second, onBack = { selected = null }) {
-                if (!songs.isNullOrEmpty()) {
-                    IconButton(onClick = { coordinator.playLocal(songs, 0) }) {
-                        Icon(Icons.Default.PlayArrow, stringResource(Res.string.playlist_play_all), tint = DesignColors.Ink)
-                    }
-                }
+        val songs = members
+        val header: @Composable () -> Unit = { DrillDownHeader(open.second, onBack = { selected = null }) }
+        when {
+            songs == null -> Column(Modifier.fillMaxSize()) {
+                header()
+                CenteredBox { CircularProgressIndicator() }
             }
-            when {
-                songs == null -> CenteredBox { CircularProgressIndicator() }
-                // A user playlist offers "Remove from playlist" on each song; system lists don't.
-                open.first > 0 -> CompositionLocalProvider(
-                    LocalPlaylistRemove provides { song ->
-                        scope.launch { store.removeFromPlaylist(open.first, song.playlistCode) }
-                    },
-                ) { SongList(songs, coordinator) }
-                else -> SongList(songs, coordinator)
-            }
+            // A user playlist offers "Remove from playlist" on each song; system lists don't.
+            open.first > 0 -> CompositionLocalProvider(
+                LocalPlaylistRemove provides { song ->
+                    scope.launch { store.removeFromPlaylist(open.first, song.playlistCode) }
+                },
+            ) { SongList(songs, coordinator, header = header) }
+            else -> SongList(songs, coordinator, header = header)
         }
     }
 }
@@ -1345,10 +1337,11 @@ private fun GroupedList(
             },
         )
     } else {
-        Column(Modifier.fillMaxSize()) {
-            DrillDownHeader(selected, onBack = { group = null })
-            SongList(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), coordinator)
-        }
+        SongList(
+            grouped.firstOrNull { it.first == selected }?.second.orEmpty(),
+            coordinator,
+            header = { DrillDownHeader(selected, onBack = { group = null }) },
+        )
     }
 }
 
@@ -1442,22 +1435,30 @@ private fun LibraryGridCard(
     }
 }
 
+/** The compact back-row heading a drill-down (playlist / artist / album / genre / search result).
+ *  Sized to the tab's sort toolbar — a small back arrow (matching the sort direction arrow) + the
+ *  title — and passed as [SongList]'s header so it scrolls with the list rather than pinning above it. */
 @Composable
-internal fun DrillDownHeader(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back)) }
+        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                stringResource(Res.string.cd_back),
+                Modifier.size(17.dp),
+                tint = DesignColors.InkSoft,
+            )
+        }
         Text(
             title,
-            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+            style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
         )
-        actions()
     }
 }
 
