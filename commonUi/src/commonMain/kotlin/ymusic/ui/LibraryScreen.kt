@@ -1449,13 +1449,13 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 stringResource(Res.string.cd_back),
-                Modifier.size(17.dp),
+                Modifier.size(24.dp),
                 tint = DesignColors.InkSoft,
             )
         }
         Text(
             title,
-            style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
