@@ -47,7 +47,7 @@ class AppleLocalPlayerTest {
         writeFile(path, sineWavPcm16(seconds = 3.0))
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
 
-        p.load(PlayableItem.LocalUri(path), playWhenReady = true)
+        p.load(PlayableItem.LocalMedia(path), playWhenReady = true)
         awaitState(p) { it is PlaybackState.Prepared && !it.buffering }
         assertTrue(p.status.value.state is PlaybackState.Prepared, "load failed: ${p.status.value.error}")
         val duration = p.progress.value.durationMs
@@ -84,7 +84,7 @@ class AppleLocalPlayerTest {
     @Test
     fun bad_uri_fails_typed() = pumpingMainLoop {
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
-        p.load(PlayableItem.LocalUri(NSTemporaryDirectory() + "does_not_exist.wav"), playWhenReady = false)
+        p.load(PlayableItem.LocalMedia(NSTemporaryDirectory() + "does_not_exist.wav"), playWhenReady = false)
         awaitState(p) { it is PlaybackState.Error }
         assertTrue(p.status.value.state is PlaybackState.Error, "loading a missing file must fail")
         assertTrue(p.status.value.error?.code?.startsWith("E600") == true)
@@ -95,7 +95,7 @@ class AppleLocalPlayerTest {
         val surface = RecordingApplePlayerSurface()
         val p = AppleLocalPlayer { surface }.also { player = it }
 
-        p.load(PlayableItem.LocalUri(NSTemporaryDirectory() + "surface-test.wav"), playWhenReady = false)
+        p.load(PlayableItem.LocalMedia(NSTemporaryDirectory() + "surface-test.wav"), playWhenReady = false)
         assertEquals(listOf(true), surface.visibility)
 
         p.stop()
@@ -116,7 +116,7 @@ class AppleLocalPlayerTest {
         if (!generateMultiTrack(path)) return@pumpingMainLoop // ffmpeg not installed → skip
         val p = createLocalPlayer(LocalPlayerContext()).also { player = it }
 
-        p.load(PlayableItem.LocalUri(path), playWhenReady = false)
+        p.load(PlayableItem.LocalMedia(path), playWhenReady = false)
         awaitState(p) { it is PlaybackState.Prepared && !it.buffering }
         assertTrue(p.status.value.state is PlaybackState.Prepared)
 

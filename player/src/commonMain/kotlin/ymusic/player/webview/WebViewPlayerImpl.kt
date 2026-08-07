@@ -78,7 +78,7 @@ internal class WebViewPlayerImpl(
     private val poTokenWaiters = mutableMapOf<String, CompletableDeferred<String>>()
 
     private data class PendingLoad(
-        val source: PlayableItem.YtVideoId,
+        val source: PlayableItem.YtMedia,
         val startPositionMs: Long,
         val playWhenReady: Boolean,
         val config: PlaybackConfig,
@@ -105,7 +105,7 @@ internal class WebViewPlayerImpl(
         if (state is PlaybackState.Uninitialized && !state.isInitializing) initializePage()
     }
 
-    override fun load(source: PlayableItem.YtVideoId, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
+    override fun load(source: PlayableItem.YtMedia, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val request = PendingLoad(source, startPositionMs, playWhenReady, config)
         if (pendingRefresh) {

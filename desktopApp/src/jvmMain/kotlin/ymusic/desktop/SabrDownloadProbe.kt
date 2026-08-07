@@ -97,7 +97,7 @@ fun main(args: Array<String>) {
         )
         // Audio-only, muted — playback advancing is our "player response + botguard are ready" signal.
         player.load(
-            PlayableItem.YtVideoId(videoId),
+            PlayableItem.YtMedia(videoId),
             startPositionMs = 0L,
             playWhenReady = true,
             config = PlaybackConfig(preferVideoQuality = VideoQualityState.AUDIO_ONLY to 0L, volume = 0f),

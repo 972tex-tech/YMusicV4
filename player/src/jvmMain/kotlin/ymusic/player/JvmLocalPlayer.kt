@@ -135,7 +135,7 @@ internal class JvmLocalPlayer(private val videoSurface: LocalVideoSurface? = nul
         scope.launch { tick() }
     }
 
-    override fun load(source: PlayableItem.LocalUri, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
+    override fun load(source: PlayableItem.LocalMedia, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri
         // The `playing` event re-asserts rate + audio-only; set them (and volume) now so they hold.

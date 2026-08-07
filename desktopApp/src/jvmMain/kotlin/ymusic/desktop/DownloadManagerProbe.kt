@@ -84,7 +84,7 @@ fun main(args: Array<String>) {
             embedHtml = { ua -> engines.embedPage(ua) },
         )
         // Warm the page so the first resolve doesn't wait on a cold WebView (audio-only, muted).
-        player.load(PlayableItem.YtVideoId(videoId), config = PlaybackConfig(volume = 0f))
+        player.load(PlayableItem.YtMedia(videoId), config = PlaybackConfig(volume = 0f))
     }
 
     val exit = runCatching {

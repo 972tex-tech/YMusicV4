@@ -83,7 +83,7 @@ fun WebViewPlayerScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
-            Button(onClick = { player.load(PlayableItem.YtVideoId(videoId), playWhenReady = true, config = config) }) { Text("Load") }
+            Button(onClick = { player.load(PlayableItem.YtMedia(videoId), playWhenReady = true, config = config) }) { Text("Load") }
         }
 
         Text("State: ${status.state}", style = MaterialTheme.typography.bodyMedium)

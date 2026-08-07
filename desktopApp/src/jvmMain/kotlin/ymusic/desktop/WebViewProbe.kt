@@ -130,7 +130,7 @@ fun main(args: Array<String>) {
         // it disables the video track, not the surface).
         val quality = if (mode == "audioonly") VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO
         player.load(
-            PlayableItem.YtVideoId(videoId),
+            PlayableItem.YtMedia(videoId),
             startPositionMs = 0L,
             playWhenReady = true,
             config = PlaybackConfig(preferVideoQuality = quality to 0L, volume = 0f),

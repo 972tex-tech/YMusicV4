@@ -105,9 +105,9 @@ class PlayerFacadeTest {
         }
     }
 
-    private class FakeLocal : FakeEngine<PlayableItem.LocalUri>(), LocalPlayer
+    private class FakeLocal : FakeEngine<PlayableItem.LocalMedia>(), LocalPlayer
 
-    private class FakeWebView : FakeEngine<PlayableItem.YtVideoId>(), WebViewPlayer {
+    private class FakeWebView : FakeEngine<PlayableItem.YtMedia>(), WebViewPlayer {
         /** The harvest side channel — tests emit here to drive the facade's re-exposure. */
         val reports = kotlinx.coroutines.flow.MutableSharedFlow<ymusic.player.webview.WebViewEvent.WatchNextSeen>(
             extraBufferCapacity = 4,
@@ -141,9 +141,9 @@ class PlayerFacadeTest {
         )
     }
 
-    private fun local(n: Int) = PlayableItem.LocalUri("file:///$n.mp3")
+    private fun local(n: Int) = PlayableItem.LocalMedia("file:///$n.mp3")
 
-    private fun yt(id: String) = PlayableItem.YtVideoId(id)
+    private fun yt(id: String) = PlayableItem.YtMedia(id)
 
     @Test
     fun routes_by_item_type_and_builds_engines_lazily() = runTest {
@@ -403,7 +403,7 @@ class PlayerFacadeTest {
         h.player.playAt(2)
         runCurrent()
         val load = h.local.loads.last()
-        assertIs<PlayableItem.LocalUri>(load.item)
+        assertIs<PlayableItem.LocalMedia>(load.item)
         assertEquals(local(3), load.item)
         assertTrue(load.playWhenReady, "playAt implies intent to play")
     }

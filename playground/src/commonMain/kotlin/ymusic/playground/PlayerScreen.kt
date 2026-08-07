@@ -65,7 +65,7 @@ fun PlayerScreen(player: LocalPlayer, filePicker: FilePicker, modifier: Modifier
         Button(onClick = {
             val picked = filePicker.pick() ?: return@Button
             fileName = picked.substringAfterLast('/')
-            player.load(PlayableItem.LocalUri(picked), playWhenReady = true, config = config)
+            player.load(PlayableItem.LocalMedia(picked), playWhenReady = true, config = config)
         }) { Text("Open file…") }
 
         Text(

@@ -271,8 +271,8 @@ internal class PlayerImpl(
         // previous engine to stop.
         bind(null)
         when (item) {
-            is PlayableItem.YtVideoId -> { webViewEngine?.release(); webViewEngine = null }
-            is PlayableItem.LocalUri -> { localEngine?.release(); localEngine = null }
+            is PlayableItem.YtMedia -> { webViewEngine?.release(); webViewEngine = null }
+            is PlayableItem.LocalMedia -> { localEngine?.release(); localEngine = null }
         }
         loadCurrent(resumeMs) // rebuilds the engine via its factory (fresh page / freshly read bundle)
     }
@@ -303,12 +303,12 @@ internal class PlayerImpl(
         val item = controller.state.currentItem ?: return
         loadGeneration++
         when (item) {
-            is PlayableItem.LocalUri -> {
+            is PlayableItem.LocalMedia -> {
                 val engine = localEngine ?: engines.local().also { localEngine = it }
                 bind(engine)
                 engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
             }
-            is PlayableItem.YtVideoId -> {
+            is PlayableItem.YtMedia -> {
                 val factory = engines.webView
                 if (factory == null) {
                     bind(null)

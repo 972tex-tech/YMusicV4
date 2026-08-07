@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class QueueControllerTest {
-    private fun items(n: Int) = (0 until n).map { PlayableItem.LocalUri("file:///$it.mp3") }
+    private fun items(n: Int) = (0 until n).map { PlayableItem.LocalMedia("file:///$it.mp3") }
 
     private fun controller(n: Int, playIndex: Int = 0, seed: Int = 1) =
         QueueController(Random(seed)).apply { setQueue(items(n), playIndex) }
@@ -77,7 +77,7 @@ class QueueControllerTest {
     @Test
     fun add_before_current_shifts_current() {
         val q = controller(3, playIndex = 1)
-        q.add(listOf(PlayableItem.YtVideoId("a"), PlayableItem.YtVideoId("b")), at = 0)
+        q.add(listOf(PlayableItem.YtMedia("a"), PlayableItem.YtMedia("b")), at = 0)
         assertEquals(3, q.state.currentIndex)
         assertEquals(5, q.state.items.size)
     }
@@ -85,7 +85,7 @@ class QueueControllerTest {
     @Test
     fun add_next_inserts_after_current() {
         val q = controller(3, playIndex = 1)
-        val next = PlayableItem.YtVideoId("abc")
+        val next = PlayableItem.YtMedia("abc")
         q.addNext(listOf(next))
         assertEquals(next, q.state.items[2])
         assertEquals(1, q.state.currentIndex)

@@ -97,7 +97,7 @@ class DetailScreensTest {
                 assertEquals(4, queue.size, "$queue")
                 assertEquals(1, player.lastPlayIndex)
                 assertEquals(false, player.lastShuffle)
-                assertTrue(queue.all { it is PlayableItem.YtVideoId }, "$queue")
+                assertTrue(queue.all { it is PlayableItem.YtMedia }, "$queue")
 
                 // The FAB shuffles the whole playlist.
                 onNodeWithContentDescription("Shuffle").performClick()

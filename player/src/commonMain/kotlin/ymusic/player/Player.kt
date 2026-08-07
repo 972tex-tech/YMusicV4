@@ -9,7 +9,7 @@ import kotlin.random.Random
 /**
  * The playback facade the app talks to — one player, many items. Owns the queue
  * (shuffle/loop/reorder), routes each item to the engine that plays it ([LocalPlayer] for
- * [PlayableItem.LocalUri], [WebViewPlayer] for [PlayableItem.YtVideoId]), auto-advances at end of
+ * [PlayableItem.LocalMedia], [WebViewPlayer] for [PlayableItem.YtMedia]), auto-advances at end of
  * track, and re-exposes the **active** engine's flows so observers never care which engine is
  * playing (a switch-latest merge — when the engine changes, the facade flows follow the new one).
  *
@@ -149,7 +149,7 @@ interface Player {
 /**
  * Lazy engine factories — an engine is only constructed when the queue first needs its item type
  * (the WebView engine in particular is expensive: a whole WebView + injected bundle). [webView] may
- * be null on hosts without a WebView stack; a [PlayableItem.YtVideoId] then fails with `E60050`
+ * be null on hosts without a WebView stack; a [PlayableItem.YtMedia] then fails with `E60050`
  * through [Player.status] instead of crashing.
  */
 class PlayerEngines(

@@ -28,7 +28,7 @@ class NowPlayingQueueTest {
         val client = CannedHttp { request, _ -> textResponse(request, "{}", "application/json") }
         val engines = DynamicEngineManager(client, appVersion = 1)
         val player = StubPlayer()
-        val items = (0 until 8).map { PlayableItem.LocalUri("file:///m/song$it.mp3") }
+        val items = (0 until 8).map { PlayableItem.LocalMedia("file:///m/song$it.mp3") }
         player.queueState.value = QueueState(items = items, currentIndex = 0)
         try {
             runComposeUiTest {

@@ -7,7 +7,7 @@ import ymusic.player.webview.createWebViewBridge
 
 /**
  * The WebView-hosted YouTube [MediaEngine] — the second engine (alongside [LocalPlayer]), for
- * [PlayableItem.YtVideoId]. It hosts a platform WebView, injects the `webview-js` bundle at
+ * [PlayableItem.YtMedia]. It hosts a platform WebView, injects the `webview-js` bundle at
  * document-start, and drives YouTube's own JS player over the `ymusicAction`/`${sessionId}_*` bridge
  * (see [ymusic.player.webview.WebViewProtocol]). Beyond the narrow [MediaEngine] core it implements
  * the YouTube capability interfaces ([VideoQualitySelectable], [CaptionSelectable],
@@ -18,7 +18,7 @@ import ymusic.player.webview.createWebViewBridge
  * (container-injection, like the legacy player), rather than exposing a view to host.
  */
 interface WebViewPlayer :
-    MediaEngine<PlayableItem.YtVideoId>,
+    MediaEngine<PlayableItem.YtMedia>,
     VideoQualitySelectable,
     CaptionSelectable,
     AudioTrackSelectable {

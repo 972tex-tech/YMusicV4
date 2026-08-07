@@ -4,17 +4,18 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * A resolved, playable source. The `Player` router picks an engine by variant; each engine plays
- * only the variant it understands (a [LocalPlayer] only ever receives a [LocalUri]).
+ * only the variant it understands (a [LocalPlayer] only ever receives a [LocalMedia]). Both variants
+ * are self-describing — they carry their own display metadata — like the legacy LocalSong / YtVideo,
+ * so the UI never needs a side map to render a queue item.
  */
 sealed interface PlayableItem {
     /**
      * A local file. [uri] (a `file://` URI or an absolute path) is all the native-local engine needs;
      * the rest travels with the item so the UI (Now Playing display, play-count recording) never has
-     * to re-derive it from a side map — a queue item is self-describing, like the legacy LocalSong.
-     * [mediaId] is the media-store row id (null for a file with no library row, e.g. a download);
-     * [title]/[artist]/[album]/[thumbnailUrl] are its display metadata.
+     * to re-derive it. [mediaId] is the media-store row id (null for a file with no library row, e.g. a
+     * download); [title]/[artist]/[album]/[thumbnailUrl] are its display metadata.
      */
-    data class LocalUri(
+    data class LocalMedia(
         val uri: String,
         val mediaId: Long? = null,
         val title: String? = null,
@@ -23,8 +24,17 @@ sealed interface PlayableItem {
         val thumbnailUrl: String? = null,
     ) : PlayableItem
 
-    /** A YouTube video id. Played by the WebView engine (`MediaEngine<YtVideoId>`). */
-    data class YtVideoId(val videoId: String) : PlayableItem
+    /**
+     * A YouTube video, played by the WebView engine (`MediaEngine<YtMedia>`). [videoId] is all the
+     * engine needs; [title]/[artist] (channel) / [thumbnailUrl] / [duration] travel with it for the UI.
+     */
+    data class YtMedia(
+        val videoId: String,
+        val title: String? = null,
+        val artist: String? = null,
+        val thumbnailUrl: String? = null,
+        val duration: String? = null,
+    ) : PlayableItem
 }
 
 /**

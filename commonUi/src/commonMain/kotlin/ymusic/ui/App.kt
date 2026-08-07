@@ -457,7 +457,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // playback keeps going (the same single container just re-parents, which the engines tolerate).
         val queue by graph.player.queue.collectAsState()
         val status by graph.player.status.collectAsState()
-        val needsSurface = queue.currentItem is PlayableItem.YtVideoId || status.videoSize != null
+        val needsSurface = queue.currentItem is PlayableItem.YtMedia || status.videoSize != null
 
         BoxWithConstraints(Modifier.fillMaxSize().background(DesignColors.Surface).safeDrawingPadding()) {
             // design/final/home.html: landscape puts the tab row inline in the app bar.

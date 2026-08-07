@@ -42,7 +42,7 @@ class WebViewPlayerLifecycleTest {
             FakeBridge(sink).also { bridge = it }
         }
 
-        player.load(PlayableItem.YtVideoId("first"), config = PlaybackConfig())
+        player.load(PlayableItem.YtMedia("first"), config = PlaybackConfig())
         advanceUntilIdle()
         assertEquals(1, bridge.documentLoads)
         assertIs<PlaybackState.Uninitialized>(player.status.value.state)
@@ -57,7 +57,7 @@ class WebViewPlayerLifecycleTest {
         assertIs<PlaybackState.Prepared>(player.status.value.state)
 
         val evaluationsBefore = bridge.evaluations.size
-        player.load(PlayableItem.YtVideoId("second"), config = PlaybackConfig())
+        player.load(PlayableItem.YtMedia("second"), config = PlaybackConfig())
         advanceUntilIdle()
 
         assertEquals(1, bridge.documentLoads, "ordinary media loads must not navigate the initialized page")

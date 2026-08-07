@@ -1,12 +1,8 @@
 package ymusic.ui
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ymusic.dynamicengine.yt.YtFeedItem
 import ymusic.dynamicengine.yt.YtThumb
@@ -16,20 +12,16 @@ import ymusic.player.PlayableItem
 import ymusic.player.Player
 
 /**
- * UI-side playback glue over the [Player] facade. Local items are self-describing — a
- * [PlayableItem.LocalUri] carries its own id + display metadata — so only YouTube items need the
- * [metadata] side map (their metadata is fetched separately, e.g. watch-next). Implements "play now"
- * as YouTube-style autoplay — load the tapped video, then append its watch-next as the rest of the queue.
+ * UI-side playback glue over the [Player] facade. Every queue item is self-describing — a
+ * [PlayableItem.LocalMedia] / [PlayableItem.YtMedia] carries its own id + display metadata — so the
+ * coordinator holds NO side map: Now Playing reads [metadataFor]/[titleFor] straight off the item, and
+ * play-recording keys on the item's own id. Implements "play now" as YouTube-style autoplay — load the
+ * tapped video, then append its watch-next as the rest of the queue.
  */
 class PlaybackCoordinator(
     private val graph: AppGraph,
     private val scope: CoroutineScope,
 ) {
-    private val _metadata = MutableStateFlow<Map<String, YtFeedItem>>(emptyMap())
-
-    /** Display metadata for YouTube items, by video id (local items carry their own — see [LocalUri]). */
-    val metadata: StateFlow<Map<String, YtFeedItem>> = _metadata.asStateFlow()
-
     val player: Player get() = graph.player
 
     init {
@@ -44,7 +36,7 @@ class PlaybackCoordinator(
                     .map { it.currentItem }
                     .distinctUntilChanged()
                     .collect { item ->
-                        val id = (item as? PlayableItem.LocalUri)?.mediaId ?: return@collect
+                        val id = (item as? PlayableItem.LocalMedia)?.mediaId ?: return@collect
                         try {
                             store.recordLocalPlay(id)
                         } catch (e: Exception) {
@@ -56,32 +48,31 @@ class PlaybackCoordinator(
         }
     }
 
+    /** The Now Playing display model for [item], built from its own fields (no lookup). */
     fun metadataFor(item: PlayableItem?): YtFeedItem? = when (item) {
-        is PlayableItem.YtVideoId -> _metadata.value[item.videoId]
-        is PlayableItem.LocalUri -> item.toDisplay()
+        is PlayableItem.YtMedia -> item.toDisplay()
+        is PlayableItem.LocalMedia -> item.toDisplay()
         null -> null
     }
 
     fun titleFor(item: PlayableItem?): String = when (item) {
-        is PlayableItem.YtVideoId -> _metadata.value[item.videoId]?.title ?: item.videoId
-        is PlayableItem.LocalUri -> item.title ?: item.uri.substringAfterLast('/')
+        is PlayableItem.YtMedia -> item.title ?: item.videoId
+        is PlayableItem.LocalMedia -> item.title ?: item.uri.substringAfterLast('/')
         null -> ""
     }
 
     /** Play [video] now; its watch-next related videos become the rest of the queue (autoplay). */
     fun playNow(video: YtFeedItem) {
-        remember(listOf(video))
-        player.setQueue(listOf(PlayableItem.YtVideoId(video.id)))
+        player.setQueue(listOf(video.toYtMedia()))
         scope.launch {
             try {
                 val next = graph.engines.watchNext(videoId = video.id)
                 val related = next.sections.flatMap { it.items }
                     .filter { it.kind == YtFeedItem.KIND_VIDEO && it.id != video.id }
-                remember(related)
                 // The queue may have changed while we fetched — only extend our own load.
                 val current = player.queue.value
-                if ((current.currentItem as? PlayableItem.YtVideoId)?.videoId == video.id && current.items.size == 1) {
-                    player.add(related.map { PlayableItem.YtVideoId(it.id) })
+                if ((current.currentItem as? PlayableItem.YtMedia)?.videoId == video.id && current.items.size == 1) {
+                    player.add(related.map { it.toYtMedia() })
                 }
             } catch (e: Exception) {
                 // Autoplay fill is an enhancement, not the task — the tapped video still plays.
@@ -94,42 +85,51 @@ class PlaybackCoordinator(
     fun playAll(videos: List<YtFeedItem>, startIndex: Int = 0, shuffle: Boolean = false) {
         val playable = videos.filter { it.kind == YtFeedItem.KIND_VIDEO }
         if (playable.isEmpty()) return
-        remember(playable)
         player.setShuffle(shuffle)
         player.setQueue(
-            playable.map { PlayableItem.YtVideoId(it.id) },
+            playable.map { it.toYtMedia() },
             playIndex = startIndex.coerceIn(0, playable.size - 1),
         )
     }
 
     /** Play local library [songs] as the queue, starting at [index]. */
     fun playLocal(songs: List<MediaStoreItem>, index: Int) {
-        player.setQueue(songs.map { it.toLocalUri() }, playIndex = index)
+        player.setQueue(songs.map { it.toLocalMedia() }, playIndex = index)
     }
 
     /** Play just [song] now (queue of one). */
     fun playLocalSingle(song: MediaStoreItem) {
-        player.setQueue(listOf(song.toLocalUri()))
+        player.setQueue(listOf(song.toLocalMedia()))
     }
 
     /** Play a local file by uri now (queue of one) with the given display metadata — for a downloaded
-     *  item, which may not be a [MediaStoreItem] (no download location set, so no [LocalUri.mediaId]). */
+     *  item, which may not be a [MediaStoreItem] (no download location set, so no [PlayableItem.LocalMedia.mediaId]). */
     fun playLocalUri(uri: String, title: String, artist: String?, thumbnailUrl: String?) {
-        player.setQueue(listOf(PlayableItem.LocalUri(uri = uri, title = title, artist = artist, thumbnailUrl = thumbnailUrl)))
+        player.setQueue(listOf(PlayableItem.LocalMedia(uri = uri, title = title, artist = artist, thumbnailUrl = thumbnailUrl)))
     }
 
     /** Queue [song] right after the current item. */
     fun queueLocalNext(song: MediaStoreItem) {
-        player.addToPlayNext(listOf(song.toLocalUri()))
+        player.addToPlayNext(listOf(song.toLocalMedia()))
     }
 
     /** Append [song] to the end of the queue. */
     fun queueLocalLast(song: MediaStoreItem) {
-        player.add(listOf(song.toLocalUri()))
+        player.add(listOf(song.toLocalMedia()))
     }
 
+    fun playNext(video: YtFeedItem) {
+        player.addToPlayNext(listOf(video.toYtMedia()))
+    }
+
+    fun playLater(video: YtFeedItem) {
+        player.add(listOf(video.toYtMedia()))
+    }
+
+    // ---- self-describing queue items ----
+
     /** A library item as a self-describing queue item (id + display metadata travel with it). */
-    private fun MediaStoreItem.toLocalUri() = PlayableItem.LocalUri(
+    private fun MediaStoreItem.toLocalMedia() = PlayableItem.LocalMedia(
         uri = uri.toString(),
         mediaId = id,
         title = title,
@@ -138,8 +138,17 @@ class PlaybackCoordinator(
         thumbnailUrl = localArtUrl(this),
     )
 
-    /** Build the Now Playing display model from a local item's own fields (no side map). */
-    private fun PlayableItem.LocalUri.toDisplay() = YtFeedItem(
+    /** A scraped video as a self-describing queue item — keeps just what the UI + downloads need. */
+    private fun YtFeedItem.toYtMedia() = PlayableItem.YtMedia(
+        videoId = id,
+        title = title,
+        artist = subtitleLine1,
+        thumbnailUrl = thumbs.firstOrNull()?.url,
+        duration = duration,
+    )
+
+    /** Now Playing display for a local item, from its own fields. */
+    private fun PlayableItem.LocalMedia.toDisplay() = YtFeedItem(
         kind = KIND_LOCAL,
         id = uri,
         title = title ?: uri.substringAfterLast('/'),
@@ -147,23 +156,18 @@ class PlaybackCoordinator(
         thumbs = thumbnailUrl?.let { listOf(YtThumb(it)) } ?: emptyList(),
     )
 
-    fun playNext(video: YtFeedItem) {
-        remember(listOf(video))
-        player.addToPlayNext(listOf(PlayableItem.YtVideoId(video.id)))
-    }
-
-    fun playLater(video: YtFeedItem) {
-        remember(listOf(video))
-        player.add(listOf(PlayableItem.YtVideoId(video.id)))
-    }
-
-    private fun remember(items: List<YtFeedItem>) {
-        if (items.isEmpty()) return
-        _metadata.update { it + items.associateBy(YtFeedItem::id) }
-    }
+    /** Now Playing display for a YouTube item, from its own fields (kind = VIDEO, so it stays downloadable). */
+    private fun PlayableItem.YtMedia.toDisplay() = YtFeedItem(
+        kind = YtFeedItem.KIND_VIDEO,
+        id = videoId,
+        title = title ?: videoId,
+        subtitleLine1 = artist,
+        duration = duration,
+        thumbs = thumbnailUrl?.let { listOf(YtThumb(it)) } ?: emptyList(),
+    )
 
     private companion object {
-        /** Display-metadata kind for local library items (keyed by uri, never a YouTube id). */
+        /** Display-metadata kind for local library items. */
         const val KIND_LOCAL = "local"
     }
 }
