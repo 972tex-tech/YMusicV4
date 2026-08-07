@@ -97,6 +97,7 @@
     <string name="library_tab_genres">Genres</string>
     <string name="sort_name">Name</string>
     <string name="sort_date_added">Date added</string>
+    <string name="sort_last_added">Last added</string>
     <string name="sort_date_created">Date created</string>
     <string name="sort_type">Type</string>
     <string name="sort_duration">Duration</string>

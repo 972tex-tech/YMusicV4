@@ -95,6 +95,7 @@ import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.model.MediaStoreBucket
 import ymusic.mediastore.model.MediaStoreItem
 import ymusic.mediastore.model.Playlist
+import ymusic.mediastore.model.PlaylistItemDetail
 import ymusic.settings.AppSettings
 import ymusic.settings.flow
 import ymusic.settings.put
@@ -149,6 +150,7 @@ import ymusic.ui.resources.queue_last
 import ymusic.ui.resources.queue_next
 import ymusic.ui.resources.sort_date_added
 import ymusic.ui.resources.sort_date_created
+import ymusic.ui.resources.sort_last_added
 import ymusic.ui.resources.sort_name
 import ymusic.ui.resources.sort_song_count
 import ymusic.ui.resources.sort_type
@@ -594,6 +596,14 @@ private val playlistSortOptions = listOf(
     SortOption(Res.string.sort_song_count, compareBy { it.second }),
 )
 
+/** The songs inside a USER playlist: by when they were added to the playlist (default — matches the
+ *  order they were appended in) or by name. The system playlists (Recent play / Top tracks) keep their
+ *  intrinsic order and offer no sort. */
+private val playlistSongSortOptions = listOf(
+    SortOption<PlaylistItemDetail>(Res.string.sort_last_added, compareBy { it.addedAt }),
+    SortOption(Res.string.sort_name, compareBy { it.mediaItem.title.lowercase() }),
+)
+
 /** Artist / album / genre groups (name + member songs); "date created" = the group's earliest add. */
 private val groupSortOptions = listOf(
     SortOption<Pair<String, List<MediaStoreItem>>>(Res.string.sort_name, compareBy { it.first.lowercase() }),
@@ -804,7 +814,11 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
     // are the system playlists; the name is the resolved display title.
     var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
     var userLists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
-    var members by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
+    // A system playlist's songs (intrinsic order, no sort); a user playlist's ordered membership,
+    // kept as PlaylistItemDetail so it can be sorted by addedAt as well as by title.
+    var systemSongs by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
+    var userItems by remember { mutableStateOf<List<PlaylistItemDetail>?>(null) }
+    val playlistSongSort = rememberSortState("sort.playlist.songs")
     // Create/rename/delete don't emit itemsChanges, so the outer content tick won't reload the list —
     // bump this after any playlist mutation to reload playlists() + counts.
     var refreshTick by remember { mutableStateOf(0) }
@@ -820,14 +834,14 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
     }
     // The opened playlist's songs. System lists are one-shot queries (re-run when the library changes);
     // a user playlist reads its live membership so add/remove/reorder reflect at once. We DON'T clear
-    // members first — the previous songs stay until the new ones land (Folders-style), so drilling in
+    // the previous list first — it stays until the new one lands (Folders-style), so drilling in
     // doesn't flash empty then reflow.
     LaunchedEffect(selected?.first, content) {
         val id = selected?.first ?: return@LaunchedEffect
         when (id) {
-            SMART_RECENT_PLAY -> members = store.recentlyPlayed()
-            SMART_TOP_TRACKS -> members = store.topTracks()
-            else -> store.playlistChanges(id).collect { members = store.playlistItemDetails(id).map { it.mediaItem } }
+            SMART_RECENT_PLAY -> systemSongs = store.recentlyPlayed()
+            SMART_TOP_TRACKS -> systemSongs = store.topTracks()
+            else -> store.playlistChanges(id).collect { userItems = store.playlistItemDetails(id) }
         }
     }
 
@@ -866,21 +880,35 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
     }
 
     val open = selected
+    val isUser = open != null && open.first > 0
     val sort = rememberSortState("sort.playlists")
     // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
-    // use the same row padding/height, so it stays put across the drill-in.
+    // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
+    // sort control at the same end position as the list-level toolbar's (system playlists carry none).
     val header: @Composable () -> Unit = {
-        if (open == null) PlaylistsToolbar(sort) { showCreate = true } else DrillDownHeader(open.second, onBack = { selected = null })
+        if (open == null) {
+            PlaylistsToolbar(sort) { showCreate = true }
+        } else {
+            DrillDownHeader(
+                open.second,
+                onBack = { selected = null },
+                trailing = if (isUser) ({ SortControl(playlistSongSortOptions.map { it.label }, playlistSongSort) }) else null,
+            )
+        }
     }
     // Level content: system playlists (shown at once) + user playlists at the list level; the opened
-    // playlist's songs at the detail level.
+    // playlist's songs at the detail level (user playlists sorted by the detail sort control).
     val entries: List<PlaylistEntry> =
         if (open != null) {
             emptyList()
         } else {
             smartPlaylists + (userLists?.let { sort.sort(it, playlistSortOptions).map { p -> UserEntry(p.first, p.second) } } ?: emptyList())
         }
-    val songs: List<MediaStoreItem> = if (open != null) members.orEmpty() else emptyList()
+    val songs: List<MediaStoreItem> = when {
+        open == null -> emptyList()
+        isUser -> playlistSongSort.sort(userItems.orEmpty(), playlistSongSortOptions).map { it.mediaItem }
+        else -> systemSongs.orEmpty()
+    }
     // A user playlist offers "Remove from playlist" on each song row; the list level / system lists don't.
     val removeFromPlaylist: ((MediaStoreItem) -> Unit)? = remember(open?.first) {
         val id = open?.first
@@ -1502,7 +1530,7 @@ private fun LibraryGridCard(
  *  insets — so drilling in from the list level doesn't shift the content. Passed as [SongList]'s
  *  header so it scrolls with the list rather than pinning above it. */
 @Composable
-internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
+internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     Row(
         // The 24dp arrow is centred in a 32dp button, so it sits 4dp in from the button's edge. Pull
         // the row's start in by that 4dp (16 − 4) so the arrow GLYPH lines up with the list items'
@@ -1524,7 +1552,11 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit) {
             style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            // Fills the gap so [trailing] (a sort control) sits at the end padding — the same right
+            // edge as the list-level toolbar's sort control, so it doesn't shift on drill-in.
+            modifier = Modifier.weight(1f),
         )
+        trailing?.invoke()
     }
 }
 
