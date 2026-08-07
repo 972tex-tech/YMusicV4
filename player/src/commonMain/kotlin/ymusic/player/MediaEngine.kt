@@ -7,8 +7,21 @@ import kotlinx.coroutines.flow.StateFlow
  * only the variant it understands (a [LocalPlayer] only ever receives a [LocalUri]).
  */
 sealed interface PlayableItem {
-    /** A local file — a `file://` URI or an absolute path. Played by the native-local engine. */
-    data class LocalUri(val uri: String) : PlayableItem
+    /**
+     * A local file. [uri] (a `file://` URI or an absolute path) is all the native-local engine needs;
+     * the rest travels with the item so the UI (Now Playing display, play-count recording) never has
+     * to re-derive it from a side map — a queue item is self-describing, like the legacy LocalSong.
+     * [mediaId] is the media-store row id (null for a file with no library row, e.g. a download);
+     * [title]/[artist]/[album]/[thumbnailUrl] are its display metadata.
+     */
+    data class LocalUri(
+        val uri: String,
+        val mediaId: Long? = null,
+        val title: String? = null,
+        val artist: String? = null,
+        val album: String? = null,
+        val thumbnailUrl: String? = null,
+    ) : PlayableItem
 
     /** A YouTube video id. Played by the WebView engine (`MediaEngine<YtVideoId>`). */
     data class YtVideoId(val videoId: String) : PlayableItem

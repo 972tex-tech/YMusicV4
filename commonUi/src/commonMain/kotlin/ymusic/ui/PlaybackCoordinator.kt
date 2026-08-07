@@ -16,9 +16,10 @@ import ymusic.player.PlayableItem
 import ymusic.player.Player
 
 /**
- * UI-side playback glue over the [Player] facade: remembers the display metadata of every queued
- * item (the queue itself holds only [PlayableItem]s), and implements "play now" as YouTube-style
- * autoplay — load the tapped video, then append its watch-next as the rest of the queue.
+ * UI-side playback glue over the [Player] facade. Local items are self-describing — a
+ * [PlayableItem.LocalUri] carries its own id + display metadata — so only YouTube items need the
+ * [metadata] side map (their metadata is fetched separately, e.g. watch-next). Implements "play now"
+ * as YouTube-style autoplay — load the tapped video, then append its watch-next as the rest of the queue.
  */
 class PlaybackCoordinator(
     private val graph: AppGraph,
@@ -26,20 +27,16 @@ class PlaybackCoordinator(
 ) {
     private val _metadata = MutableStateFlow<Map<String, YtFeedItem>>(emptyMap())
 
-    /** Display metadata by [PlayableItem] key (videoId / local uri). */
+    /** Display metadata for YouTube items, by video id (local items carry their own — see [LocalUri]). */
     val metadata: StateFlow<Map<String, YtFeedItem>> = _metadata.asStateFlow()
-
-    // Library-item id by the exact uri string we put in the queue, filled whenever we queue a
-    // MediaStoreItem. Lets play-recording key on the row id (stable across moves/rescans) instead of
-    // re-matching the uri against the DB — the player only carries the uri, this bridges it to the id.
-    private val localIds = MutableStateFlow<Map<String, Long>>(emptyMap())
 
     val player: Player get() = graph.player
 
     init {
         // Record library plays for the computed "Recent play" / "Top tracks" playlists: every time a
-        // local library item becomes the current item, bump its play stats by row id. Items with no
-        // known id (a YouTube stream, or a download with no library row) simply aren't recorded.
+        // local library item becomes the current item, bump its play stats by row id (carried on the
+        // item, stable across moves/rescans). Items with no id (a stream, or a download with no
+        // library row) simply aren't recorded.
         val store = graph.mediaStore
         if (store != null) {
             scope.launch {
@@ -47,7 +44,7 @@ class PlaybackCoordinator(
                     .map { it.currentItem }
                     .distinctUntilChanged()
                     .collect { item ->
-                        val id = (item as? PlayableItem.LocalUri)?.let { localIds.value[it.uri] } ?: return@collect
+                        val id = (item as? PlayableItem.LocalUri)?.mediaId ?: return@collect
                         try {
                             store.recordLocalPlay(id)
                         } catch (e: Exception) {
@@ -59,21 +56,15 @@ class PlaybackCoordinator(
         }
     }
 
-    /** Remember the row id behind each song's uri, so a later "became current" can record it by id. */
-    private fun rememberLocalIds(songs: List<MediaStoreItem>) {
-        if (songs.isEmpty()) return
-        localIds.update { current -> current + songs.associate { it.uri.toString() to it.id } }
-    }
-
     fun metadataFor(item: PlayableItem?): YtFeedItem? = when (item) {
         is PlayableItem.YtVideoId -> _metadata.value[item.videoId]
-        is PlayableItem.LocalUri -> _metadata.value[item.uri]
+        is PlayableItem.LocalUri -> item.toDisplay()
         null -> null
     }
 
-    fun titleFor(item: PlayableItem?): String = metadataFor(item)?.title ?: when (item) {
-        is PlayableItem.YtVideoId -> item.videoId
-        is PlayableItem.LocalUri -> item.uri.substringAfterLast('/')
+    fun titleFor(item: PlayableItem?): String = when (item) {
+        is PlayableItem.YtVideoId -> _metadata.value[item.videoId]?.title ?: item.videoId
+        is PlayableItem.LocalUri -> item.title ?: item.uri.substringAfterLast('/')
         null -> ""
     }
 
@@ -113,53 +104,48 @@ class PlaybackCoordinator(
 
     /** Play local library [songs] as the queue, starting at [index]. */
     fun playLocal(songs: List<MediaStoreItem>, index: Int) {
-        _metadata.update { it + songs.map(::localDisplay).associateBy(YtFeedItem::id) }
-        rememberLocalIds(songs)
-        player.setQueue(songs.map { PlayableItem.LocalUri(it.uri.toString()) }, playIndex = index)
+        player.setQueue(songs.map { it.toLocalUri() }, playIndex = index)
     }
 
     /** Play just [song] now (queue of one). */
     fun playLocalSingle(song: MediaStoreItem) {
-        player.setQueue(listOf(rememberLocal(song)))
+        player.setQueue(listOf(song.toLocalUri()))
     }
 
     /** Play a local file by uri now (queue of one) with the given display metadata — for a downloaded
-     *  item, which may not be a [MediaStoreItem] (no download location set). */
+     *  item, which may not be a [MediaStoreItem] (no download location set, so no [LocalUri.mediaId]). */
     fun playLocalUri(uri: String, title: String, artist: String?, thumbnailUrl: String?) {
-        _metadata.update {
-            it + (
-                uri to YtFeedItem(
-                    kind = KIND_LOCAL, id = uri, title = title, subtitleLine1 = artist,
-                    thumbs = thumbnailUrl?.let { t -> listOf(YtThumb(t)) } ?: emptyList(),
-                )
-                )
-        }
-        player.setQueue(listOf(PlayableItem.LocalUri(uri)))
+        player.setQueue(listOf(PlayableItem.LocalUri(uri = uri, title = title, artist = artist, thumbnailUrl = thumbnailUrl)))
     }
 
     /** Queue [song] right after the current item. */
     fun queueLocalNext(song: MediaStoreItem) {
-        player.addToPlayNext(listOf(rememberLocal(song)))
+        player.addToPlayNext(listOf(song.toLocalUri()))
     }
 
     /** Append [song] to the end of the queue. */
     fun queueLocalLast(song: MediaStoreItem) {
-        player.add(listOf(rememberLocal(song)))
+        player.add(listOf(song.toLocalUri()))
     }
 
-    private fun localDisplay(s: MediaStoreItem) = YtFeedItem(
-        kind = KIND_LOCAL,
-        id = s.uri.toString(),
-        title = s.title,
-        subtitleLine1 = listOfNotNull(s.artist, s.album).joinToString(" · ").ifEmpty { null },
-        thumbs = localArtUrl(s)?.let { listOf(YtThumb(it)) } ?: emptyList(),
+    /** A library item as a self-describing queue item (id + display metadata travel with it). */
+    private fun MediaStoreItem.toLocalUri() = PlayableItem.LocalUri(
+        uri = uri.toString(),
+        mediaId = id,
+        title = title,
+        artist = artist,
+        album = album,
+        thumbnailUrl = localArtUrl(this),
     )
 
-    private fun rememberLocal(song: MediaStoreItem): PlayableItem {
-        _metadata.update { it + (song.uri.toString() to localDisplay(song)) }
-        rememberLocalIds(listOf(song))
-        return PlayableItem.LocalUri(song.uri.toString())
-    }
+    /** Build the Now Playing display model from a local item's own fields (no side map). */
+    private fun PlayableItem.LocalUri.toDisplay() = YtFeedItem(
+        kind = KIND_LOCAL,
+        id = uri,
+        title = title ?: uri.substringAfterLast('/'),
+        subtitleLine1 = listOfNotNull(artist, album).joinToString(" · ").ifEmpty { null },
+        thumbs = thumbnailUrl?.let { listOf(YtThumb(it)) } ?: emptyList(),
+    )
 
     fun playNext(video: YtFeedItem) {
         remember(listOf(video))
