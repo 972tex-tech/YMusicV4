@@ -244,6 +244,16 @@ class MediaStoreTest {
         assertTrue(again.id > i.id)
     }
 
+    @Test
+    fun differently_encoded_uris_resolve_to_the_same_row() = runTest {
+        val b = bucket("file:///music")
+        val stored = item(b.id, "file:///music/My Song.mp3", fileSize = 1)
+        // Looked up with the percent-encoded equivalent — a canonical match, not a miss.
+        assertEquals(stored.id, store.findItemByUri(Uri.parse("file:///music/My%20Song.mp3"))?.id)
+        // And re-adding the encoded form updates in place (no duplicate row).
+        assertEquals(stored.id, item(b.id, "file:///music/My%20Song.mp3", fileSize = 1).id)
+    }
+
     // ---- playlists ----
 
     @Test

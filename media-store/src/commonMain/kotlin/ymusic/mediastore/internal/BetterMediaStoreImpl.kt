@@ -5,6 +5,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.db.SqlDriver
 import kmpcommon.uri.Uri
+import kmpcommon.uri.canonicalString
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -45,7 +46,10 @@ internal class BetterMediaStoreImpl(
 
     override suspend fun upsertBucket(draft: BucketDraft): MediaStoreBucket = withContext(io) {
         db.transactionWithResult {
-            val uri = draft.uri.toString()
+            // Canonical form so a differently-encoded-but-equivalent uri (My Song vs My%20Song, scheme
+            // case) matches the stored row instead of inserting a duplicate. Reserved encoding (%2F/%3A
+            // in a SAF content:// id) is preserved, so playback/IO is unaffected.
+            val uri = draft.uri.canonicalString()
             val existing = bucketQ.findBucketByUriIncludingDeleted(uri).executeAsOneOrNull()
             val ts = now()
             val id = if (existing != null) {
@@ -100,7 +104,7 @@ internal class BetterMediaStoreImpl(
     }
 
     override suspend fun findBucketByUri(uri: Uri): MediaStoreBucket? = withContext(io) {
-        bucketQ.findBucketByUri(uri.toString()).executeAsOneOrNull()?.toModel()
+        bucketQ.findBucketByUri(uri.canonicalString()).executeAsOneOrNull()?.toModel()
     }
 
     override suspend fun childBuckets(parentId: Long?): List<MediaStoreBucket> = withContext(io) {
@@ -138,7 +142,10 @@ internal class BetterMediaStoreImpl(
     override suspend fun upsertItem(bucketId: Long?, draft: MediaItemDraft): MediaStoreItem =
         withContext(io) {
             db.transactionWithResult {
-                val uri = draft.uri.toString()
+                // Canonical form so a differently-encoded-but-equivalent uri (My Song vs My%20Song, scheme
+                // case) matches the stored row instead of inserting a duplicate. Reserved encoding (%2F/%3A
+                // in a SAF content:// id) is preserved, so playback/IO is unaffected.
+                val uri = draft.uri.canonicalString()
                 val ts = now()
                 val existingByUri = itemQ.findItemByUriIncludingDeleted(uri).executeAsOneOrNull()
                 val id = if (existingByUri != null) {
@@ -154,7 +161,7 @@ internal class BetterMediaStoreImpl(
 
     private fun insertItem(bucketId: Long?, d: MediaItemDraft, ts: Long) = itemQ.insertItem(
         bucketId = bucketId,
-        uri = d.uri.toString(),
+        uri = d.uri.canonicalString(),
         title = d.title,
         mimeType = d.mimeType,
         artist = d.artist,
@@ -180,7 +187,7 @@ internal class BetterMediaStoreImpl(
 
     private fun updateItem(bucketId: Long?, d: MediaItemDraft, ts: Long, id: Long) = itemQ.updateItem(
         bucketId = bucketId,
-        uri = d.uri.toString(),
+        uri = d.uri.canonicalString(),
         title = d.title,
         mimeType = d.mimeType,
         artist = d.artist,
@@ -209,7 +216,7 @@ internal class BetterMediaStoreImpl(
     }
 
     override suspend fun findItemByUri(uri: Uri): MediaStoreItem? = withContext(io) {
-        itemQ.findItemByUri(uri.toString()).executeAsOneOrNull()?.toModel()
+        itemQ.findItemByUri(uri.canonicalString()).executeAsOneOrNull()?.toModel()
     }
 
     override suspend fun findItemsByVideoId(videoId: String): List<MediaStoreItem> = withContext(io) {

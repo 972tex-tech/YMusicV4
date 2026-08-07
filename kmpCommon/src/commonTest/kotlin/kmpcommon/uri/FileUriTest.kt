@@ -35,4 +35,10 @@ class FileUriTest {
             Uri.parse("FILE:///x").canonicalString(),
         )
     }
+
+    @Test
+    fun canonical_preserves_saf_reserved_encoding() {
+        val saf = "content://com.android.externalstorage.documents/tree/primary%3AMusic/document/primary%3AMusic%2FSong.mp3"
+        assertEquals(saf, Uri.parse(saf).canonicalString())
+    }
 }
