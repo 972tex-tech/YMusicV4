@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,7 +29,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -1037,8 +1035,9 @@ private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
     }
 }
 
-/** Create / rename text-input dialog. [onConfirm] runs the store mutation; the dialog closes after it
- *  (or on cancel). Confirm is disabled while the field is blank or the mutation is running. */
+/** Create / rename text-input dialog, in the app's standard [ElevatedBarDialog] chrome. [onConfirm]
+ *  runs the store mutation; the dialog closes after it (or on cancel). Confirm is disabled while the
+ *  field is blank or the mutation is running. */
 @Composable
 private fun PlaylistNameDialog(
     title: String,
@@ -1050,18 +1049,14 @@ private fun PlaylistNameDialog(
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(initial) }
     var busy by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                placeholder = { Text(stringResource(Res.string.playlist_name_hint)) },
-            )
-        },
-        confirmButton = {
+    val dismiss = { if (!busy) onDismiss() }
+    ElevatedBarDialog(
+        title = title,
+        onDismiss = dismiss,
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = {
+            TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
             TextButton(
                 enabled = !busy && name.isNotBlank(),
                 onClick = {
@@ -1075,24 +1070,33 @@ private fun PlaylistNameDialog(
                         }
                     }
                 },
-            ) { Text(confirmLabel) }
+            ) { Text(confirmLabel, color = DesignColors.Accent) }
         },
-        dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
-        },
-    )
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            singleLine = true,
+            placeholder = { Text(stringResource(Res.string.playlist_name_hint)) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+        )
+    }
 }
 
-/** Delete-playlist confirm. Removes the playlist (its membership cascades); the songs stay in the library. */
+/** Delete-playlist confirm, in the standard [ElevatedBarDialog] chrome. Removes the playlist (its
+ *  membership cascades); the songs stay in the library. */
 @Composable
 private fun DeletePlaylistDialog(name: String, onDismiss: () -> Unit, delete: suspend () -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(Res.string.playlist_delete_title)) },
-        text = { Text(stringResource(Res.string.playlist_delete_message, name)) },
-        confirmButton = {
+    val dismiss = { if (!busy) onDismiss() }
+    ElevatedBarDialog(
+        title = stringResource(Res.string.playlist_delete_title),
+        onDismiss = dismiss,
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = {
+            TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
             TextButton(
                 enabled = !busy,
                 onClick = {
@@ -1108,14 +1112,18 @@ private fun DeletePlaylistDialog(name: String, onDismiss: () -> Unit, delete: su
                 },
             ) { Text(stringResource(Res.string.delete_from_disk_confirm), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
-        },
-    )
+    ) {
+        Text(
+            stringResource(Res.string.playlist_delete_message, name),
+            style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+        )
+    }
 }
 
-/** The "Add to playlist" picker: the user's playlists plus a "New playlist…" row. Picking a playlist
- *  appends [song] and closes; "New playlist…" swaps to the name dialog, then creates + appends. */
+/** The "Add to playlist" picker, in the standard [ElevatedBarDialog] chrome: the user's playlists
+ *  plus a "New playlist…" row. Picking a playlist appends [song] and closes; "New playlist…" swaps to
+ *  the name dialog, then creates + appends. */
 @Composable
 private fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -1137,41 +1145,47 @@ private fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, o
         return
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.cd_add_to_playlist)) },
-        text = {
-            val loaded = lists
-            if (loaded == null) {
-                CircularProgressIndicator()
-            } else {
-                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                    PlaylistPickRow(Icons.Default.Add, stringResource(Res.string.add_to_playlist_new)) { creating = true }
-                    loaded.forEach { pl ->
-                        PlaylistPickRow(Icons.AutoMirrored.Filled.PlaylistPlay, pl.name) {
-                            scope.launch {
-                                store.addToPlaylist(pl.id, listOf(song))
-                                onDismiss()
-                            }
+    val listState = rememberLazyListState()
+    ElevatedBarDialog(
+        title = stringResource(Res.string.cd_add_to_playlist),
+        onDismiss = onDismiss,
+        canScrollBackward = listState.canScrollBackward,
+        canScrollForward = listState.canScrollForward,
+        buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+    ) {
+        val loaded = lists
+        if (loaded == null) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
+            }
+        } else {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                item("new") {
+                    PlaylistPickRow(Icons.Default.Add, stringResource(Res.string.add_to_playlist_new), DesignColors.Accent) { creating = true }
+                }
+                items(loaded, key = { it.id }) { pl ->
+                    PlaylistPickRow(Icons.AutoMirrored.Filled.PlaylistPlay, pl.name, DesignColors.Ink) {
+                        scope.launch {
+                            store.addToPlaylist(pl.id, listOf(song))
+                            onDismiss()
                         }
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
-    )
+        }
+    }
 }
 
+/** A full-bleed picker row matching the region dialog's rows (24/12 inset, 14sp). */
 @Composable
-private fun PlaylistPickRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun PlaylistPickRow(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = DesignColors.InkSoft)
-        Text(label, style = ListTitleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(icon, null, Modifier.size(22.dp), tint = color)
+        Text(label, style = TextStyle(fontSize = 14.sp, color = color), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
