@@ -1390,18 +1390,29 @@ private fun GroupedList(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     val sort = rememberSortState("sort.group")
+    val songSort = rememberSortState("sort.group.songs")
     if (grouped == null) {
         CenteredBox { CircularProgressIndicator() }
         return
     }
 
     val selected = group
+    // Both levels sort: the group list by [groupSortOptions], a group's songs by [songSortOptions] —
+    // the detail's control sits at the same end position as the list-level one, so it doesn't jump.
     val header: @Composable () -> Unit = {
-        if (selected == null) SortBar(groupSortOptions.map { it.label }, sort)
-        else DrillDownHeader(selected, onBack = { group = null })
+        if (selected == null) {
+            SortBar(groupSortOptions.map { it.label }, sort)
+        } else {
+            DrillDownHeader(
+                selected,
+                onBack = { group = null },
+                trailing = { SortControl(songSortOptions.map { it.label }, songSort) },
+            )
+        }
     }
     val entries: List<Pair<String, List<MediaStoreItem>>> = if (selected == null) sort.sort(grouped, groupSortOptions) else emptyList()
-    val groupSongs: List<MediaStoreItem> = if (selected != null) grouped.firstOrNull { it.first == selected }?.second.orEmpty() else emptyList()
+    val groupSongs: List<MediaStoreItem> =
+        if (selected != null) songSort.sort(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), songSortOptions) else emptyList()
 
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(Modifier.fillMaxSize()) {
