@@ -801,15 +801,21 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
     // bump this after any playlist mutation to reload playlists() + counts.
     var refreshTick by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    // One list + one grid for BOTH levels (list of playlists / a playlist's songs). Because the same
+    // container is reused across the drill-in, only the header + rows change — the list never remounts,
+    // so opening a playlist doesn't jump. This mirrors how the Folders tab reuses one list root→subfolder.
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
 
     LaunchedEffect(content, refreshTick) {
         userLists = store.playlists().map { it to store.playlistItems(it.id).size }
     }
     // The opened playlist's songs. System lists are one-shot queries (re-run when the library changes);
-    // a user playlist reads its live membership so add/remove/reorder reflect at once.
+    // a user playlist reads its live membership so add/remove/reorder reflect at once. We DON'T clear
+    // members first — the previous songs stay until the new ones land (Folders-style), so drilling in
+    // doesn't flash empty then reflow.
     LaunchedEffect(selected?.first, content) {
         val id = selected?.first ?: return@LaunchedEffect
-        members = null
         when (id) {
             SMART_RECENT_PLAY -> members = store.recentlyPlayed()
             SMART_TOP_TRACKS -> members = store.topTracks()
@@ -852,68 +858,116 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
     }
 
     val open = selected
-    if (open == null) {
-        val loaded = userLists
-        if (loaded == null) {
-            CenteredBox { CircularProgressIndicator() }
+    val sort = rememberSortState("sort.playlists")
+    // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
+    // use the same row padding/height, so it stays put across the drill-in.
+    val header: @Composable () -> Unit = {
+        if (open == null) PlaylistsToolbar(sort) { showCreate = true } else DrillDownHeader(open.second, onBack = { selected = null })
+    }
+    // Level content: system playlists (shown at once) + user playlists at the list level; the opened
+    // playlist's songs at the detail level.
+    val entries: List<PlaylistEntry> =
+        if (open != null) {
+            emptyList()
         } else {
-            val sort = rememberSortState("sort.playlists")
-            // System playlists pinned first (fixed order); user playlists sorted below.
-            val entries: List<PlaylistEntry> =
-                smartPlaylists + sort.sort(loaded, playlistSortOptions).map { UserEntry(it.first, it.second) }
-            LibraryBrowseLevel(
-                entries = entries,
-                key = { it.id },
-                sortBar = { PlaylistsToolbar(sort) { showCreate = true } },
-                row = { entry ->
-                    val (title, sub, icon) = playlistDisplay(entry)
-                    val actions = (entry as? UserEntry)?.let {
-                        playlistActions(it.playlist, onRename = { renaming = it.playlist }, onDelete = { deleting = it.playlist })
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selected = entry.id to title }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        LibraryThumb(icon, badge = (entry as? UserEntry)?.count?.toString())
-                        Column(Modifier.weight(1f)) {
-                            Text(title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-                        }
-                        if (actions != null && actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.padding(top = 2.dp))
-                    }
-                },
-                card = { entry ->
-                    val (title, sub, icon) = playlistDisplay(entry)
-                    val actions = (entry as? UserEntry)?.let {
-                        playlistActions(it.playlist, onRename = { renaming = it.playlist }, onDelete = { deleting = it.playlist })
-                    }?.takeIf { it.entries.isNotEmpty() }
-                    LibraryGridCard(icon = icon, artUrl = null, title = title, subtitle = sub, menu = actions) {
-                        selected = entry.id to title
-                    }
-                },
-            )
+            smartPlaylists + (userLists?.let { sort.sort(it, playlistSortOptions).map { p -> UserEntry(p.first, p.second) } } ?: emptyList())
         }
-    } else {
-        val songs = members
-        val header: @Composable () -> Unit = { DrillDownHeader(open.second, onBack = { selected = null }) }
-        when {
-            songs == null -> Column(Modifier.fillMaxSize()) {
-                header()
-                CenteredBox { CircularProgressIndicator() }
+    val songs: List<MediaStoreItem> = if (open != null) members.orEmpty() else emptyList()
+    // A user playlist offers "Remove from playlist" on each song row; the list level / system lists don't.
+    val removeFromPlaylist: ((MediaStoreItem) -> Unit)? = remember(open?.first) {
+        val id = open?.first
+        if (id != null && id > 0) ({ song: MediaStoreItem -> scope.launch { store.removeFromPlaylist(id, song.playlistCode) }; Unit }) else null
+    }
+
+    TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
+    CompositionLocalProvider(LocalPlaylistRemove provides removeFromPlaylist) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            if (maxWidth >= LibraryGridMinWidth) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    state = gridState,
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { header() }
+                    if (open == null) {
+                        items(entries, key = { it.id }) { entry ->
+                            PlaylistCard(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
+                        }
+                    } else {
+                        val perRow = librarySongColumns(maxWidth)
+                        items(
+                            songs.indices.chunked(perRow),
+                            key = { songs[it.first()].id },
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) { group ->
+                            Row(Modifier.fillMaxWidth()) {
+                                group.forEach { i -> Box(Modifier.weight(1f)) { SongRow(songs[i], coordinator) { coordinator.playLocal(songs, i) } } }
+                                repeat(perRow - group.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                    item { header() }
+                    if (open == null) {
+                        items(entries, key = { it.id }) { entry ->
+                            PlaylistRow(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
+                        }
+                    } else {
+                        itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
+                            SongRow(song, coordinator) { coordinator.playLocal(songs, i) }
+                        }
+                    }
+                }
             }
-            // A user playlist offers "Remove from playlist" on each song; system lists don't.
-            open.first > 0 -> CompositionLocalProvider(
-                LocalPlaylistRemove provides { song ->
-                    scope.launch { store.removeFromPlaylist(open.first, song.playlistCode) }
-                },
-            ) { SongList(songs, coordinator, header = header) }
-            else -> SongList(songs, coordinator, header = header)
         }
     }
+}
+
+/** A playlist entry as a list row (phone widths). */
+@Composable
+private fun PlaylistRow(
+    entry: PlaylistEntry,
+    onOpen: (Pair<Long, String>) -> Unit,
+    onRename: (Playlist) -> Unit,
+    onDelete: (Playlist) -> Unit,
+) {
+    val (title, sub, icon) = playlistDisplay(entry)
+    val actions = (entry as? UserEntry)?.let {
+        playlistActions(it.playlist, onRename = { onRename(it.playlist) }, onDelete = { onDelete(it.playlist) })
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen(entry.id to title) }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        LibraryThumb(icon, badge = (entry as? UserEntry)?.count?.toString())
+        Column(Modifier.weight(1f)) {
+            Text(title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (actions != null && actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.padding(top = 2.dp))
+    }
+}
+
+/** A playlist entry as a grid card (wide widths). */
+@Composable
+private fun PlaylistCard(
+    entry: PlaylistEntry,
+    onOpen: (Pair<Long, String>) -> Unit,
+    onRename: (Playlist) -> Unit,
+    onDelete: (Playlist) -> Unit,
+) {
+    val (title, sub, icon) = playlistDisplay(entry)
+    val actions = (entry as? UserEntry)?.let {
+        playlistActions(it.playlist, onRename = { onRename(it.playlist) }, onDelete = { onDelete(it.playlist) })
+    }?.takeIf { it.entries.isNotEmpty() }
+    LibraryGridCard(icon = icon, artUrl = null, title = title, subtitle = sub, menu = actions) { onOpen(entry.id to title) }
 }
 
 /** A playlist row's (title, subtitle, icon): a system playlist shows its description, a user playlist
