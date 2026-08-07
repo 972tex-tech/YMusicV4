@@ -9,6 +9,13 @@ import kotlinx.coroutines.flow.StateFlow
  * so the UI never needs a side map to render a queue item.
  */
 sealed interface PlayableItem {
+    /** How the item shows in Now Playing — each variant describes itself (title/subtitle fallbacks,
+     *  "artist · album"), so the UI reads `item.displayTitle` with no adapter or external `when`. */
+    val displayTitle: String
+    val displaySubtitle: String?
+    val displayThumbnailUrl: String?
+    val displayDuration: String?
+
     /**
      * A local file. [uri] (a `file://` URI or an absolute path) is all the native-local engine needs;
      * the rest travels with the item so the UI (Now Playing display, play-count recording) never has
@@ -22,7 +29,12 @@ sealed interface PlayableItem {
         val artist: String? = null,
         val album: String? = null,
         val thumbnailUrl: String? = null,
-    ) : PlayableItem
+    ) : PlayableItem {
+        override val displayTitle: String get() = title ?: uri.substringAfterLast('/')
+        override val displaySubtitle: String? get() = listOfNotNull(artist, album).joinToString(" · ").ifEmpty { null }
+        override val displayThumbnailUrl: String? get() = thumbnailUrl
+        override val displayDuration: String? get() = null
+    }
 
     /**
      * A YouTube video, played by the WebView engine (`MediaEngine<YtMedia>`). [videoId] is all the
@@ -34,7 +46,12 @@ sealed interface PlayableItem {
         val artist: String? = null,
         val thumbnailUrl: String? = null,
         val duration: String? = null,
-    ) : PlayableItem
+    ) : PlayableItem {
+        override val displayTitle: String get() = title ?: videoId
+        override val displaySubtitle: String? get() = artist
+        override val displayThumbnailUrl: String? get() = thumbnailUrl
+        override val displayDuration: String? get() = duration
+    }
 }
 
 /**
