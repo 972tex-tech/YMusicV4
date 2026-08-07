@@ -1363,7 +1363,9 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
     )
 }
 
-/** Group rows (artist/album/genre) with a one-level drill-down into the group's songs. */
+/** Group rows (artist/album/genre) with a one-level drill-down into the group's songs. Like the
+ *  Folders/Playlists tabs, the group list and a group's songs share one scrolling container (only the
+ *  header + rows change), so drilling in/out doesn't jump. */
 @Composable
 private fun GroupedList(
     songs: List<MediaStoreItem>,
@@ -1385,68 +1387,22 @@ private fun GroupedList(
         }
     }
     val grouped = groups
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val sort = rememberSortState("sort.group")
     if (grouped == null) {
         CenteredBox { CircularProgressIndicator() }
         return
     }
 
     val selected = group
-    if (selected == null) {
-        val sort = rememberSortState("sort.group")
-        LibraryBrowseLevel(
-            entries = sort.sort(grouped, groupSortOptions),
-            key = { it.first },
-            sortBar = { SortBar(groupSortOptions.map { it.label }, sort) },
-            row = { (name, members) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { group = name }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    LibraryThumb(icon, badge = null, artUrl = members.firstNotNullOfOrNull(::localArtUrl))
-                    Column(Modifier.weight(1f)) {
-                        Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            pluralStringResource(Res.plurals.n_songs, members.size, members.size),
-                            style = ListSubStyle,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
-                }
-            },
-            card = { (name, members) ->
-                LibraryGridCard(
-                    icon = icon,
-                    artUrl = members.firstNotNullOfOrNull(::localArtUrl),
-                    title = name,
-                    subtitle = pluralStringResource(Res.plurals.n_songs, members.size, members.size),
-                ) { group = name }
-            },
-        )
-    } else {
-        SongList(
-            grouped.firstOrNull { it.first == selected }?.second.orEmpty(),
-            coordinator,
-            header = { DrillDownHeader(selected, onBack = { group = null }) },
-        )
+    val header: @Composable () -> Unit = {
+        if (selected == null) SortBar(groupSortOptions.map { it.label }, sort)
+        else DrillDownHeader(selected, onBack = { group = null })
     }
-}
+    val entries: List<Pair<String, List<MediaStoreItem>>> = if (selected == null) sort.sort(grouped, groupSortOptions) else emptyList()
+    val groupSongs: List<MediaStoreItem> = if (selected != null) grouped.firstOrNull { it.first == selected }?.second.orEmpty() else emptyList()
 
-/** One browse level (playlists / artists / albums / genres): rows on phone widths, an album-card
- *  grid on the feed's Grid band (≥470dp) — the legacy Albums tab's large-screen treatment. */
-@Composable
-private fun <T> LibraryBrowseLevel(
-    entries: List<T>,
-    key: (T) -> Any,
-    row: @Composable (T) -> Unit,
-    card: @Composable (T) -> Unit,
-    sortBar: @Composable () -> Unit = {},
-) {
-    val listState = rememberLazyListState()
-    val gridState = rememberLazyGridState()
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth >= LibraryGridMinWidth) {
@@ -1456,16 +1412,71 @@ private fun <T> LibraryBrowseLevel(
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 state = gridState,
             ) {
-                item(span = { GridItemSpan(maxLineSpan) }) { sortBar() }
-                items(entries, key = key) { entry -> card(entry) }
+                item(span = { GridItemSpan(maxLineSpan) }) { header() }
+                if (selected == null) {
+                    items(entries, key = { it.first }) { (name, members) -> GroupCard(icon, name, members) { group = name } }
+                } else {
+                    val perRow = librarySongColumns(maxWidth)
+                    items(
+                        groupSongs.indices.chunked(perRow),
+                        key = { groupSongs[it.first()].id },
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) { g ->
+                        Row(Modifier.fillMaxWidth()) {
+                            g.forEach { i -> Box(Modifier.weight(1f)) { SongRow(groupSongs[i], coordinator) { coordinator.playLocal(groupSongs, i) } } }
+                            repeat(perRow - g.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
             }
         } else {
             LazyColumn(Modifier.fillMaxSize(), state = listState) {
-                item { sortBar() }
-                items(entries, key = key) { entry -> row(entry) }
+                item { header() }
+                if (selected == null) {
+                    items(entries, key = { it.first }) { (name, members) -> GroupRow(icon, name, members) { group = name } }
+                } else {
+                    itemsIndexed(groupSongs, key = { _, s -> s.id }) { i, song ->
+                        SongRow(song, coordinator) { coordinator.playLocal(groupSongs, i) }
+                    }
+                }
             }
         }
     }
+}
+
+/** A group (artist/album/genre) as a list row. */
+@Composable
+private fun GroupRow(icon: ImageVector, name: String, members: List<MediaStoreItem>, onOpen: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        LibraryThumb(icon, badge = null, artUrl = members.firstNotNullOfOrNull(::localArtUrl))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                pluralStringResource(Res.plurals.n_songs, members.size, members.size),
+                style = ListSubStyle,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+/** A group (artist/album/genre) as a grid card. */
+@Composable
+private fun GroupCard(icon: ImageVector, name: String, members: List<MediaStoreItem>, onOpen: () -> Unit) {
+    LibraryGridCard(
+        icon = icon,
+        artUrl = members.firstNotNullOfOrNull(::localArtUrl),
+        title = name,
+        subtitle = pluralStringResource(Res.plurals.n_songs, members.size, members.size),
+        onClick = onOpen,
+    )
 }
 
 /** The grid form of a browse entry: square art tile (icon placeholder under the art) + title/count. */
