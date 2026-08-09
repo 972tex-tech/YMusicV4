@@ -14,10 +14,15 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,28 +41,38 @@ import ymusic.ui.AppGraph
 import androidx.media3.session.R as Media3R
 
 /**
- * The foreground playback host over the shared app-graph player: a media3 [MediaSessionService]
+ * The foreground playback host over the shared app-graph player: a media3 [MediaLibraryService]
  * provides the MediaSession surface (media buttons, lock screen, Bluetooth/Auto transport) via
- * [Media3PlayerAdapter], while the notification is built here directly from the `Player` flows —
- * playing keeps the service foreground; pausing demotes it but keeps a dismissible notification
- * (the legacy PlayerService behavior). Started by [YMusicApplication] whenever playback begins;
- * holds
- * wake/wifi locks while playing so the WebView engine keeps streaming with the screen off.
+ * [Media3PlayerAdapter] plus the Android Auto browse tree ([MediaBrowseTree]), while the
+ * notification is built here directly from the `Player` flows — playing keeps the service
+ * foreground; pausing demotes it but keeps a dismissible notification (the legacy PlayerService
+ * behavior). Started by [YMusicApplication] whenever playback begins; holds wake/wifi locks while
+ * playing so the WebView engine keeps streaming with the screen off.
+ *
+ * A browse tap arrives as the controller's setMediaItems: [LibraryCallback.onAddMediaItems]
+ * re-resolves the bare mediaIds through the tree, and [applyBrowseItems] turns them into facade
+ * queues with the phone app's own semantics — a YouTube video plays with watch-next autoplay
+ * ([ymusic.ui.PlaybackCoordinator.playNow]), a local song queues its whole containing list at its
+ * position ([ymusic.ui.PlaybackCoordinator.playLocal]).
  */
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
     private var player: Player? = null
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
+    private var tree: MediaBrowseTree? = null
+    private var coordinator: ymusic.ui.PlaybackCoordinator? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var art: Pair<String, Bitmap?>? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val searchResults = HashMap<String, List<MediaItem>>() // guarded by itself
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
         // The graph is normally long built when playback starts this service (await returns
-        // inline); the cold path (notification action after process death) initializes async —
-        // onStartCommand's placeholder covers the foreground contract meanwhile.
+        // inline); the cold path (notification action after process death, Auto connecting on a
+        // dead process) initializes async — onStartCommand's placeholder covers the foreground
+        // contract meanwhile. onGetSession answers null until this completes; Auto retries.
         serviceScope.launch {
             init((application as YMusicApplication).graphAsync().await())
         }
@@ -65,11 +80,14 @@ class PlaybackService : MediaSessionService() {
 
     private fun init(graph: AppGraph) {
         val player = graph.player.also { this.player = it }
+        val tree = MediaBrowseTree(this, graph).also { this.tree = it }
+        coordinator = ymusic.ui.PlaybackCoordinator(graph, serviceScope)
         val adapter = Media3PlayerAdapter(
             player,
             describe = { item -> item.toMediaMetadata(this) },
+            applyMediaItems = { items, startIndex, _ -> applyBrowseItems(items, startIndex) },
         )
-        session = MediaSession.Builder(this, adapter)
+        session = MediaLibrarySession.Builder(this, adapter, LibraryCallback(tree))
             .setSessionActivity(sessionActivityIntent())
             .apply {
                 // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
@@ -90,6 +108,116 @@ class PlaybackService : MediaSessionService() {
         holdLocksWhilePlaying(player)
     }
 
+    /** A controller's setMediaItems (Auto browse/search tap), applied with phone-app semantics. */
+    private fun applyBrowseItems(items: List<MediaItem>, startIndex: Int) {
+        val tree = this.tree ?: return
+        val coordinator = this.coordinator ?: return
+        val chosen = items.getOrNull(startIndex) ?: items.firstOrNull() ?: return
+        val id = chosen.mediaId
+        when {
+            id.startsWith(MediaBrowseTree.YT_SONG_PREFIX) -> {
+                val videoId = id.removePrefix(MediaBrowseTree.YT_SONG_PREFIX)
+                // A cache miss (process died since browsing) still plays from the id alone.
+                val video = tree.ytItem(videoId) ?: ymusic.dynamicengine.yt.YtFeedItem(
+                    kind = ymusic.dynamicengine.yt.YtFeedItem.KIND_VIDEO,
+                    id = videoId,
+                    title = chosen.mediaMetadata.title?.toString() ?: videoId,
+                    subtitleLine1 = chosen.mediaMetadata.artist?.toString(),
+                )
+                coordinator.playNow(video)
+            }
+            id.startsWith(MediaBrowseTree.LOCAL_SONG_PREFIX) -> {
+                val (containerId, rowId) = tree.parseLocalSongId(id) ?: return
+                serviceScope.launch {
+                    val songs = tree.localContext(containerId)
+                    val index = songs.indexOfFirst { it.id == rowId }
+                    if (index >= 0) coordinator.playLocal(songs, index)
+                }
+            }
+        }
+    }
+
+    /** The Auto browse surface — all list building lives in [MediaBrowseTree]. */
+    private inner class LibraryCallback(private val tree: MediaBrowseTree) : MediaLibrarySession.Callback {
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> =
+            future { LibraryResult.ofItem(tree.rootItem(), params) }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            LibraryResult.ofItemList(ImmutableList.copyOf(tree.children(parentId, page, pageSize)), params)
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> = future {
+            tree.item(mediaId)?.let { LibraryResult.ofItem(it, null) }
+                ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> = future {
+            val results = tree.searchItems(query)
+            synchronized(searchResults) { searchResults[query] = results }
+            session.notifySearchResultChanged(browser, query, results.size, params)
+            LibraryResult.ofVoid()
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            val all = synchronized(searchResults) { searchResults[query] } ?: tree.searchItems(query)
+            val sliced = if (pageSize > 0 && page >= 0) all.drop(page * pageSize).take(pageSize) else all
+            LibraryResult.ofItemList(ImmutableList.copyOf(sliced), params)
+        }
+
+        /** Controllers send bare mediaIds; refill each from the tree so the adapter's queue items
+         *  carry display metadata (an unknown id passes through — [applyBrowseItems] copes). */
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+        ): ListenableFuture<MutableList<MediaItem>> = future {
+            mediaItems.map { tree.item(it.mediaId) ?: it }.toMutableList()
+        }
+    }
+
+    /** Callback work on the service scope, bridged to the ListenableFuture media3 expects. */
+    private fun <T : Any> future(block: suspend () -> T): ListenableFuture<T> {
+        val future = SettableFuture.create<T>()
+        val job = serviceScope.launch(Dispatchers.Default) {
+            try {
+                future.set(block())
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                future.cancel(false)
+            } catch (e: Throwable) {
+                future.setException(e)
+            }
+        }
+        future.addListener({ if (future.isCancelled) job.cancel() }, Runnable::run)
+        return future
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISMISS) {
             player?.stop()
@@ -105,7 +233,7 @@ class PlaybackService : MediaSessionService() {
         return result
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onDestroy() {
         serviceScope.cancel()

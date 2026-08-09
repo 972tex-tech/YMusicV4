@@ -22,7 +22,7 @@ import ymusic.mediastore.model.MediaStoreItem
  * only when the store knows an artwork source exists, so art-less files never reach the fetcher
  * (every fetch spawns one ffmpeg).
  */
-internal fun localArtUrl(item: MediaStoreItem): String? =
+fun localArtUrl(item: MediaStoreItem): String? =
     if (item.thumbnailStreamIndex != null || item.videoCodec != null) {
         UriBuilder().scheme("art").authority("pic").appendPathSegment(item.id.toString()).buildString()
     } else {

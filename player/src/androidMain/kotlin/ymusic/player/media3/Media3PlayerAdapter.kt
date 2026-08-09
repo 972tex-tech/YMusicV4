@@ -43,6 +43,11 @@ class Media3PlayerAdapter(
     private val player: Player,
     private val describe: (PlayableItem) -> MediaMetadata,
     extraInvalidations: Flow<*> = emptyFlow<Unit>(),
+    /** Applies a controller's setMediaItems (an Android Auto browse tap arrives this way after the
+     *  session callback resolved the ids) onto the facade — the owner decides how a mediaId becomes
+     *  a queue (context expansion, watch-next autoplay). Null = the command is advertised but a
+     *  set is ignored (in-app UIs drive the facade directly). */
+    private val applyMediaItems: ((items: List<MediaItem>, startIndex: Int, startPositionMs: Long) -> Unit)? = null,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -143,6 +148,14 @@ class Media3PlayerAdapter(
         if (playWhenReady) player.play() else player.pause()
     }
 
+    override fun handleSetMediaItems(
+        mediaItems: MutableList<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long,
+    ): ListenableFuture<*> = done {
+        applyMediaItems?.invoke(mediaItems, startIndex, startPositionMs)
+    }
+
     override fun handlePrepare(): ListenableFuture<*> = done { player.play() }
 
     override fun handleStop(): ListenableFuture<*> = done { player.stop() }
@@ -200,6 +213,8 @@ class Media3PlayerAdapter(
                 Media3Player.COMMAND_PLAY_PAUSE,
                 Media3Player.COMMAND_PREPARE,
                 Media3Player.COMMAND_STOP,
+                Media3Player.COMMAND_SET_MEDIA_ITEM,
+                Media3Player.COMMAND_CHANGE_MEDIA_ITEMS,
                 Media3Player.COMMAND_SEEK_TO_DEFAULT_POSITION,
                 Media3Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
                 Media3Player.COMMAND_SEEK_TO_PREVIOUS,
