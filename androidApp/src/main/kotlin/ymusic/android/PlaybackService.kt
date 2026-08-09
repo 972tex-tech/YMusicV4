@@ -66,10 +66,17 @@ class PlaybackService : MediaSessionService() {
         val player = graph.player.also { this.player = it }
         val adapter = Media3PlayerAdapter(
             player,
-            describe = { item -> item.toMediaMetadata() },
+            describe = { item -> item.toMediaMetadata(this) },
         )
         session = MediaSession.Builder(this, adapter)
             .setSessionActivity(sessionActivityIntent())
+            .apply {
+                // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
+                // instead of media3's DataSource loader, which knows neither art:// nor our caches.
+                graph.imageLoader?.let {
+                    setBitmapLoader(ImageLoaderBitmapLoader(it, serviceScope, artworkAuthority(this@PlaybackService)))
+                }
+            }
             .build()
         serviceScope.launch {
             combine(player.status, player.queue) { status, queue ->
@@ -262,11 +269,13 @@ class PlaybackService : MediaSessionService() {
     }
 }
 
-/** Session/notification metadata for a queue item — items are self-describing. */
-private fun PlayableItem.toMediaMetadata(): MediaMetadata {
+/** Session/notification metadata for a queue item — items are self-describing. The artworkUri is
+ *  published in [artworkContentUri]-wrapped form: Android Auto resolves queue icons only from
+ *  local content uris (via [ArtworkProvider]); in-process, [ImageLoaderBitmapLoader] unwraps it. */
+private fun PlayableItem.toMediaMetadata(context: android.content.Context): MediaMetadata {
     val builder = MediaMetadata.Builder()
         .setTitle(displayTitle)
         .setArtist(displaySubtitle)
-    displayThumbnailUrl?.let { builder.setArtworkUri(Uri.parse(it)) }
+    displayThumbnailUrl?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
     return builder.build()
 }

@@ -58,6 +58,7 @@ import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.downloadCaptionPreference
 import ymusic.ui.downloadLocationFolder
 import ymusic.ui.ensureAppLanguage
+import ymusic.ui.localArtFetcher
 import ymusic.ui.registerCompletedDownload
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
@@ -143,16 +144,22 @@ class YMusicApplication : Application() {
         }.getOrNull()
 
         // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to
-        // the fetcher's disk cache, decode from file) + local files. Memory budget scales with the
-        // device's heap class; onTrimMemory (below) sheds it under pressure.
+        // the fetcher's disk cache, decode from file) + local files + art:// embedded covers via
+        // the bundled ffmpeg (absent binary keeps art:// unresolved → placeholders). Memory budget
+        // scales with the device's heap class; onTrimMemory (below) sheds it under pressure.
+        val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")
+            .takeIf { it.exists() }?.absolutePath
         val imageLoader = ImageLoader(
-            fetchers = listOf(
+            fetchers = listOfNotNull(
                 networkFetcher(
                     http.image,
                     FileSystem.SYSTEM,
                     cacheDir.resolve("image-source-cache").toOkioPath(),
                 ),
                 fileFetcher(),
+                ffmpegBin?.let {
+                    localArtFetcher(FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver)), mediaStore)
+                },
             ),
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
             logger = LogcatLogger(),

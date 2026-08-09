@@ -27,6 +27,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Queue/browse artwork for Android Auto & co: exported because the car host holds no
+             permission of ours; openFile validates every target (see ArtworkProvider). -->
+        <provider
+            android:name=".ArtworkProvider"
+            android:authorities="${applicationId}.artwork"
+            android:exported="true" />
+
         <service
             android:name=".PlaybackService"
             android:exported="true"
