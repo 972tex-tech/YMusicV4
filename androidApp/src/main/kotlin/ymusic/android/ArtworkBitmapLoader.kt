@@ -16,8 +16,11 @@ import ymusic.imageloader.ImageLoader
 
 /**
  * media3 [BitmapLoader] over the shared app [ImageLoader]: session + notification artwork resolves
- * through the same fetchers as the UI (https thumbs, `art://` ffmpeg extraction) and shares its
- * memory LRU and scaled disk cache — a thumb the UI already shows never refetches or re-decodes.
+ * through the same fetchers as the UI (https thumbs, `art://` ffmpeg extraction) and its source +
+ * scaled disk caches. The memory LRU is deliberately NOT written (`cacheInMemory = false`): media3
+ * holds/parcels its own bitmap, and the UI never peeks this size bucket, so an LRU entry would
+ * only evict thumbs the UI does reuse — wrap in media3's `CacheBitmapLoader` instead, which
+ * memoizes the one artwork the session republishes.
  *
  * [ArtworkProvider]-minted `content://` uris (what [MediaMetadata.artworkUri] carries so Android
  * Auto can resolve queue icons) are unwrapped back to their target url IN process — same
@@ -43,7 +46,7 @@ class ImageLoaderBitmapLoader(
         } else {
             uri.toString()
         }
-        imageLoader.load(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX).asAndroidBitmap()
+        imageLoader.load(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX, cacheInMemory = false).asAndroidBitmap()
     }
 
     private fun <T : Any> future(block: suspend () -> T): ListenableFuture<T> {

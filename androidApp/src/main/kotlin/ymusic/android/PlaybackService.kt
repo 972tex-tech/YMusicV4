@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaMetadata
+import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import kotlinx.coroutines.CoroutineScope
@@ -73,8 +74,11 @@ class PlaybackService : MediaSessionService() {
             .apply {
                 // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
                 // instead of media3's DataSource loader, which knows neither art:// nor our caches.
+                // CacheBitmapLoader memoizes the current artwork; our loader stays out of the LRU.
                 graph.imageLoader?.let {
-                    setBitmapLoader(ImageLoaderBitmapLoader(it, serviceScope, artworkAuthority(this@PlaybackService)))
+                    setBitmapLoader(
+                        CacheBitmapLoader(ImageLoaderBitmapLoader(it, serviceScope, artworkAuthority(this@PlaybackService))),
+                    )
                 }
             }
             .build()

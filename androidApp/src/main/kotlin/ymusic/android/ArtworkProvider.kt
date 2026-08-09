@@ -4,13 +4,10 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.ParcelFileDescriptor
-import androidx.compose.ui.graphics.asAndroidBitmap
 import kotlinx.coroutines.runBlocking
-import okio.ByteString.Companion.encodeUtf8
-import java.io.File
+import okio.Path
 import java.io.FileNotFoundException
 
 /**
@@ -21,10 +18,10 @@ import java.io.FileNotFoundException
  *
  * The provider is exported (Auto holds no permission of ours), so [openFile] trusts nothing: the
  * target must pass [isAllowedArtworkTarget] — our own `art://pic/<id>` or an https image on a
- * YouTube cdn host — anything else 404s. Resolution rides the shared app
- * [ymusic.imageloader.ImageLoader] (same fetchers, memory + scaled-disk caches as the UI); only
- * the final encoded file is provider-local, kept in cacheDir/artwork-provider keyed by target
- * hash so a repeat open serves bytes without re-encoding.
+ * YouTube cdn host — anything else 404s. The served file IS the shared app ImageLoader's scaled
+ * disk cache entry ([ymusic.imageloader.ImageLoader.loadFile]): no provider-local storage, no
+ * transient copy — the loader's journaled LRU owns write atomicity and eviction. A path can be
+ * evicted between resolve and open; one re-resolve covers that race.
  */
 class ArtworkProvider : ContentProvider() {
 
@@ -35,33 +32,30 @@ class ArtworkProvider : ContentProvider() {
         val target = uri.getQueryParameter(ARTWORK_URI_PARAM)
             ?.takeIf { isAllowedArtworkTarget(it) }
             ?: throw FileNotFoundException("refused artwork target: $uri")
-        val context = requireNotNull(context)
-        val dir = File(context.cacheDir, "artwork-provider").apply { mkdirs() }
-        val file = File(dir, target.encodeUtf8().sha256().hex() + ".img")
-        if (!file.exists()) {
+        repeat(2) { attempt ->
+            val path = resolve(target)
             try {
-                encodeTo(file, dir, context, target)
-            } catch (e: Exception) {
-                throw FileNotFoundException("artwork load failed for $target: $e")
+                return ParcelFileDescriptor.open(path.toFile(), ParcelFileDescriptor.MODE_READ_ONLY)
+            } catch (e: FileNotFoundException) {
+                if (attempt == 1) throw e // evicted twice in a row: give up
             }
         }
-        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        throw FileNotFoundException(target) // unreachable
     }
 
     /** Binder thread; the app ImageLoader is the async boundary, so blocking here is the contract
      *  (Auto shows its loading placeholder until the descriptor arrives). */
-    private fun encodeTo(file: File, dir: File, context: Context, target: String) {
-        val app = context.applicationContext as YMusicApplication
-        val bitmap = runBlocking {
-            app.services.await().imageLoader.load(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX)
-        }.asAndroidBitmap()
-        val tmp = File.createTempFile(file.name, ".tmp", dir)
-        tmp.outputStream().use { out ->
-            val format = if (bitmap.hasAlpha()) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
-            bitmap.compress(format, 90, out)
+    private fun resolve(target: String): Path {
+        val app = requireNotNull(context).applicationContext as YMusicApplication
+        try {
+            return runBlocking {
+                app.services.await().imageLoader.loadFile(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX)
+            } ?: throw FileNotFoundException("no scaled disk cache to serve artwork from")
+        } catch (e: FileNotFoundException) {
+            throw e
+        } catch (e: Exception) {
+            throw FileNotFoundException("artwork load failed for $target: $e")
         }
-        // A lost rename race just means the winner's identical file serves.
-        if (!tmp.renameTo(file)) tmp.delete()
     }
 
     override fun query(
