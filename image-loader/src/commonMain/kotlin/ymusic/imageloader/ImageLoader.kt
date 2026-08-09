@@ -67,8 +67,19 @@ class ImageLoader(
      * [cacheKey] keys the memory + scaled caches instead of the URL — pass a stable identity when
      * the URL carries volatile parts (rotating signature params, per-session CDN hosts), so a new
      * URL for the same image still hits the caches. The network fetch always uses the real [url].
+     *
+     * [cacheInMemory] false keeps the result OUT of the memory LRU (an existing entry is still
+     * used) — for callers that hand the bitmap off once at their own size bucket (media3 session
+     * artwork) instead of drawing it repeatedly, so the UI's entries aren't evicted for buckets
+     * nothing will ever peek.
      */
-    suspend fun load(url: String, maxWidth: Int, maxHeight: Int, cacheKey: String = url): ImageBitmap {
+    suspend fun load(
+        url: String,
+        maxWidth: Int,
+        maxHeight: Int,
+        cacheKey: String = url,
+        cacheInMemory: Boolean = true,
+    ): ImageBitmap {
         val w = bucketPx(maxWidth)
         val h = bucketPx(maxHeight)
         val key = "$cacheKey@${w}x$h"
@@ -76,8 +87,38 @@ class ImageLoader(
         return gate.withPermit {
             memory.peek(key)?.let { return@withPermit it } // raced with an identical load
             val bitmap = fromScaledCache(key) ?: fetchAndDecode(url, key, w, h)
-            memory.put(key, bitmap)
+            if (cacheInMemory) memory.put(key, bitmap)
             bitmap
+        }
+    }
+
+    /**
+     * The scaled image as a committed FILE in the scaled disk cache, or null when the loader has
+     * no [scaledCache]. For consumers that serve bytes across a process boundary (the Android
+     * artwork ContentProvider) and never draw: the memory LRU is untouched, and — unlike [load] —
+     * the entry is persisted even when the source already fit the request (`downscaled` or not),
+     * because the caller needs a file and some schemes (`art://`) have no other on-disk form. The
+     * transient decode is dropped after encoding. The path is a live LRU entry that can be evicted
+     * later — re-call on a missing file rather than holding the path.
+     */
+    suspend fun loadFile(url: String, maxWidth: Int, maxHeight: Int, cacheKey: String = url): okio.Path? {
+        val cache = scaledCache ?: return null
+        val w = bucketPx(maxWidth)
+        val h = bucketPx(maxHeight)
+        val key = "$cacheKey@${w}x$h"
+        val disk = diskKey(key)
+        cache.filePath(disk)?.let { return it }
+        return gate.withPermit {
+            cache.filePath(disk)?.let { return@withPermit it } // raced with an identical load
+            // A bitmap the UI already decoded at this bucket is persisted as-is; otherwise fetch,
+            // bypassing fetchAndDecode so its downscaled-only persist policy doesn't double-write.
+            val bitmap = memory.peek(key) ?: run {
+                val target = Uri.parse(url)
+                fetchers.firstNotNullOfOrNull { it.fetch(target, IntSize(w, h)) }?.bitmap
+                    ?: throw IOException("no fetcher handles: $url")
+            }
+            cache.put(disk, bitmap)
+            cache.filePath(disk) ?: throw IOException("scaled entry vanished after write: $url")
         }
     }
 

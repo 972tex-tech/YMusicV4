@@ -24,6 +24,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 
@@ -251,6 +252,67 @@ class ImageLoaderTest {
         val server = FakeImageServer("not an image".encodeToByteArray())
         val loader = ImageLoader(listOf(networkFetcher(server)))
         assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
+    }
+
+    @Test
+    fun cacheInMemoryFalseSkipsTheMemoryLru() = runTest {
+        val server = FakeImageServer(pngBytes(100, 100))
+        val loader = ImageLoader(listOf(networkFetcher(server)))
+        val url = "https://img.test/a.png"
+        loader.load(url, 64, 64, cacheInMemory = false)
+        assertEquals(null, loader.peek(url, 64, 64), "an opted-out load must not populate the LRU")
+        loader.load(url, 64, 64, cacheInMemory = false)
+        assertEquals(2, server.fetchCount, "without memory or scaled cache each load refetches")
+
+        // An entry someone else already cached is still used — only the PUT is skipped.
+        val cached = loader.load(url, 64, 64)
+        assertTrue(loader.load(url, 64, 64, cacheInMemory = false) === cached)
+    }
+
+    @Test
+    fun loadFileReturnsAPersistedScaledEntry() = runTest {
+        val fs = FakeFileSystem()
+        val cache = DiskScaledImageCache(fs, "/img".toPath())
+        val server = FakeImageServer(pngBytes(400, 200))
+        val loader = ImageLoader(listOf(networkFetcher(server)), scaledCache = cache)
+        val url = "https://img.test/a.png"
+
+        val path = loader.loadFile(url, 64, 64)
+        assertNotNull(path)
+        assertTrue(fs.exists(path), "the returned path must be a committed cache file")
+        assertEquals(1, server.fetchCount)
+        assertEquals(null, loader.peek(url, 64, 64), "loadFile must stay out of the memory LRU")
+
+        assertEquals(path, loader.loadFile(url, 64, 64))
+        assertEquals(1, server.fetchCount, "a repeat loadFile must serve the existing entry")
+
+        // load() at the same bucket rides the same entry — no refetch.
+        loader.load(url, 64, 64)
+        assertEquals(1, server.fetchCount, "load must decode from the entry loadFile persisted")
+    }
+
+    @Test
+    fun loadFilePersistsEvenUnscaledResults() = runTest {
+        val fs = FakeFileSystem()
+        val cache = DiskScaledImageCache(fs, "/img".toPath())
+        val serverA = FakeImageServer(pngBytes(40, 20))
+        val loader = ImageLoader(listOf(networkFetcher(serverA)), scaledCache = cache)
+        // 40x20 into 64x64 is not downscaled — load() wouldn't persist it, loadFile must (the
+        // caller needs a file, and an art:// source has no other on-disk form).
+        assertNotNull(loader.loadFile("https://img.test/small.png", 64, 64))
+
+        val serverB = FakeImageServer(pngBytes(40, 20))
+        val cold = ImageLoader(listOf(networkFetcher(serverB)), scaledCache = cache)
+        assertNotNull(cold.loadFile("https://img.test/small.png", 64, 64))
+        assertEquals(0, serverB.fetchCount, "the persisted un-downscaled entry must serve cold")
+    }
+
+    @Test
+    fun loadFileWithoutAScaledCacheReturnsNull() = runTest {
+        val server = FakeImageServer(pngBytes(100, 100))
+        val loader = ImageLoader(listOf(networkFetcher(server)))
+        assertEquals(null, loader.loadFile("https://img.test/a.png", 64, 64))
+        assertEquals(0, server.fetchCount, "no cache to persist into → nothing to fetch")
     }
 
     @Test

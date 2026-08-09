@@ -20,6 +20,11 @@ interface ScaledImageCache {
     suspend fun get(key: String): ImageBitmap?
 
     suspend fun put(key: String, bitmap: ImageBitmap)
+
+    /** The committed entry's backing FILE (LRU-refreshed), or null on a miss — for consumers that
+     *  serve bytes across a process boundary instead of drawing (see [ImageLoader.loadFile]).
+     *  Null also when the implementation has no file-backed storage. */
+    suspend fun filePath(key: String): Path? = null
 }
 
 /**
@@ -54,6 +59,10 @@ class DiskScaledImageCache(
             // Entries are pre-scaled: MAX/MAX clamps to nothing, single effective pass.
             decodeScaledFile(fileSystem, snapshot.getPath(0), Int.MAX_VALUE, Int.MAX_VALUE).bitmap
         }
+    }
+
+    override suspend fun filePath(key: String): Path? = withContext(Dispatchers.IO) {
+        cache.get(key)?.use { it.getPath(0) }
     }
 
     override suspend fun put(key: String, bitmap: ImageBitmap): Unit = withContext(Dispatchers.IO) {
