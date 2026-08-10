@@ -20,4 +20,12 @@
     <string name="browse_playlist_top">Top tracks</string>
     <string name="notifications_required">YMusic plays music from a background service that must show a playback notification. Allow notifications to continue.</string>
     <string name="notifications_allow">Allow notifications</string>
+    <string name="download_notification_channel">Downloads</string>
+    <string name="notification_downloads_running">Downloading…</string>
+    <string name="notification_downloads_multi">Downloading %1$d items</string>
+    <string name="download_state_preparing">Preparing…</string>
+    <string name="download_state_processing">Processing…</string>
+    <string name="downloads_pause_all">Pause all</string>
+    <string name="notification_downloads_done">%1$d download(s) finished</string>
+    <string name="notification_downloads_done_failed">%1$d finished · %2$d failed</string>
 </resources>

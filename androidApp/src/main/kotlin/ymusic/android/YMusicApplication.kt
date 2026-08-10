@@ -30,6 +30,8 @@ import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
+import ymusic.download.DownloadChange
+import ymusic.download.DownloadState
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.androidEngineCacheStore
 import ymusic.dynamicengine.yt.embedPage
@@ -194,6 +196,30 @@ class YMusicApplication : Application() {
             }
         }
         AudioFocusCoordinator(this, graph.player, appScope).start()
+        // Same pattern for downloads: any change that (re)starts work also (re)starts the
+        // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
+        // and resume are user actions with the app foregrounded, so FGS-start is permitted.
+        graph.downloads?.let { downloads ->
+            appScope.launch {
+                downloads.changes.collect { change ->
+                    val startsWork = change is DownloadChange.Added ||
+                        (
+                            change is DownloadChange.StateChanged &&
+                                (change.state == DownloadState.QUEUED || change.state.isActive)
+                            )
+                    if (startsWork) {
+                        try {
+                            ContextCompat.startForegroundService(
+                                this@YMusicApplication,
+                                Intent(this@YMusicApplication, DownloadForegroundService::class.java),
+                            )
+                        } catch (e: IllegalStateException) {
+                            Log.w("YMusic", "DownloadForegroundService start rejected", e)
+                        }
+                    }
+                }
+            }
+        }
         return graph
     }
 
