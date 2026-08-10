@@ -66,6 +66,11 @@ class PlaybackService : MediaLibraryService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var art: Pair<String, Bitmap?>? = null
+
+    /** Whether WE hold foreground — every promote/demote runs on the main thread through this
+     *  service, so the flag is authoritative: promotes are skipped when already foreground, and
+     *  a media3-triggered promotion that never leads to playback can be detected and demoted. */
+    private var foreground = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val searchResults = HashMap<String, List<MediaItem>>() // guarded by itself
 
@@ -246,7 +251,15 @@ class PlaybackService : MediaLibraryService() {
      *  the same notification. */
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (startInForegroundRequired) {
-            startForeground(NOTIFICATION_ID, buildNotification())
+            if (!foreground) {
+                startForeground(NOTIFICATION_ID, buildNotification())
+                foreground = true
+            }
+        } else if (foreground && player?.status?.value?.state?.isPlaying() != true) {
+            // The contract-promotion that never became playback (media-button start on a dead
+            // process, nothing restored): no (playing × item) transition will ever fire the
+            // collector, so demote through the one owner when media3 releases the contract.
+            updateNotification()
         }
     }
 
@@ -256,6 +269,7 @@ class PlaybackService : MediaLibraryService() {
             player?.stop()
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
+            foreground = false
             stopSelf()
             return START_NOT_STICKY
         }
@@ -263,6 +277,7 @@ class PlaybackService : MediaLibraryService() {
         val result = super.onStartCommand(intent, flags, startId)
         // The startForegroundService contract: enter foreground now; the collector demotes on pause.
         startForeground(NOTIFICATION_ID, buildNotification())
+        foreground = true
         return result
     }
 
@@ -286,15 +301,20 @@ class PlaybackService : MediaLibraryService() {
         if (player.queue.value.currentItem == null) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
+            foreground = false
             return
         }
         val playing = player.status.value.state.isPlaying()
         val notification = buildNotification()
         if (playing) {
+            // Repeat startForeground while already foreground is the content refresh, not a
+            // state change; the flag only records that the promotion happened.
             startForeground(NOTIFICATION_ID, notification)
+            foreground = true
         } else {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+            foreground = false
         }
     }
 
