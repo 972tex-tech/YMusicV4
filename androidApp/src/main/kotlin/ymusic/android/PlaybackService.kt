@@ -284,14 +284,17 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onDestroy() {
-        serviceScope.cancel()
+        // Teardown steps are independent: one failing must not skip the rest (a held wake lock
+        // or an unreleased session outliving the service is the real leak).
+        runCatching { serviceScope.cancel() }
         releaseLocks()
         session?.let {
             val adapter = it.player
-            it.release()
-            adapter.release()
+            runCatching { it.release() }
+            runCatching { adapter.release() }
         }
         session = null
+        art = null
         super.onDestroy()
     }
 
@@ -445,8 +448,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun releaseLocks() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wifiLock?.let { if (it.isHeld) it.release() }
+        // release() throws on a racy double-release; a swallowed race beats a crash loop here.
+        wakeLock?.let { runCatching { if (it.isHeld) it.release() } }
+        wifiLock?.let { runCatching { if (it.isHeld) it.release() } }
     }
 
     private companion object {

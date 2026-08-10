@@ -115,8 +115,11 @@ class DownloadForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        serviceScope.cancel()
+        // Teardown steps are independent: one failing must not skip the rest (a held wake lock
+        // outliving the service is the costliest leak here).
+        runCatching { serviceScope.cancel() }
         releaseLocks()
+        icons.clear()
         super.onDestroy()
     }
 
@@ -352,8 +355,9 @@ class DownloadForegroundService : Service() {
     }
 
     private fun releaseLocks() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wifiLock?.let { if (it.isHeld) it.release() }
+        // release() throws on a racy double-release; a swallowed race beats a crash loop here.
+        wakeLock?.let { runCatching { if (it.isHeld) it.release() } }
+        wifiLock?.let { runCatching { if (it.isHeld) it.release() } }
     }
 
     /** Lands on the Download manager. The distinct action keeps this PendingIntent from aliasing
