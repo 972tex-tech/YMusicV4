@@ -1,9 +1,9 @@
 package ymusic.android
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.unit.IntSize
 import androidx.media3.common.util.BitmapLoader
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import ymusic.imageloader.ImageLoader
+import ymusic.imageloader.decodeScaled
 
 /**
  * media3 [BitmapLoader] over the shared app [ImageLoader]: session + notification artwork resolves
@@ -35,8 +36,9 @@ class ImageLoaderBitmapLoader(
     override fun supportsMimeType(mimeType: String): Boolean = mimeType.startsWith("image/")
 
     override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> = future {
-        BitmapFactory.decodeByteArray(data, 0, data.size)
-            ?: throw IllegalArgumentException("could not decode image data")
+        // Bounded like every other artwork path: a controller can hand arbitrary artworkData, and
+        // a full-size decode of it is an unowned allocation (decodeScaled subsamples during decode).
+        decodeScaled(data, IntSize(ARTWORK_MAX_PX, ARTWORK_MAX_PX)).bitmap.asAndroidBitmap()
     }
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> = future {
