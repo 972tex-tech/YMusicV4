@@ -7,21 +7,33 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.runBlocking
+import okio.ByteString
+import okio.ByteString.Companion.decodeHex
+import okio.ByteString.Companion.encodeUtf8
+import okio.ByteString.Companion.toByteString
 import okio.Path
 import java.io.FileNotFoundException
+import java.security.MessageDigest
+import java.security.SecureRandom
 
 /**
- * `content://<pkg>.artwork/art?uri=<encoded target>` — read-only artwork for cross-process
- * consumers that cannot fetch our urls themselves. Android Auto / AAOS resolve queue and browse
- * icons ONLY from local content uris (they never download https, and `art://` is app-internal),
- * so [PlaybackService] publishes every artworkUri in this wrapped form.
+ * `content://<pkg>.artwork/art?uri=<encoded target>&sig=<hmac>` — read-only artwork for
+ * cross-process consumers that cannot fetch our urls themselves. Android Auto / AAOS resolve queue
+ * and browse icons ONLY from local content uris (they never download https, and `art://` is
+ * app-internal), so [PlaybackService] publishes every artworkUri in this wrapped form.
  *
- * The provider is exported (Auto holds no permission of ours), so [openFile] trusts nothing: the
- * target must pass [isAllowedArtworkTarget] — our own `art://pic/<id>` or an https image on a
- * YouTube cdn host — anything else 404s. The served file IS the shared app ImageLoader's scaled
- * disk cache entry ([ymusic.imageloader.ImageLoader.loadFile]): no provider-local storage, no
- * transient copy — the loader's journaled LRU owns write atomicity and eviction. A path can be
- * evicted between resolve and open; one re-resolve covers that race.
+ * The provider is exported (Auto holds no permission of ours), so [openFile] serves ONLY uris this
+ * install minted: [artworkContentUri] signs the target with a per-install secret
+ * (HMAC-SHA256, [artworkSignature]); a request whose signature doesn't verify 404s before anything
+ * is fetched. Another app can relay a uri it saw (that's the point — the car host does exactly
+ * that) but can never compose its own. The target must additionally pass [isAllowedArtworkTarget]
+ * — our own `art://pic/<id>` or an https image on a YouTube cdn host — defense in depth should the
+ * salt ever leak with a backup.
+ *
+ * The served file IS the shared app ImageLoader's scaled disk cache entry
+ * ([ymusic.imageloader.ImageLoader.loadFile]): no provider-local storage, no transient copy — the
+ * loader's journaled LRU owns write atomicity and eviction. A path can be evicted between resolve
+ * and open; one re-resolve covers that race.
  */
 class ArtworkProvider : ContentProvider() {
 
@@ -29,7 +41,9 @@ class ArtworkProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         if (mode != "r") throw SecurityException("artwork is read-only")
+        val context = requireNotNull(context)
         val target = uri.getQueryParameter(ARTWORK_URI_PARAM)
+            ?.takeIf { verifySignature(context, it, uri.getQueryParameter(ARTWORK_SIG_PARAM)) }
             ?.takeIf { isAllowedArtworkTarget(it) }
             ?: throw FileNotFoundException("refused artwork target: $uri")
         repeat(2) { attempt ->
@@ -81,14 +95,47 @@ class ArtworkProvider : ContentProvider() {
 /** Authority of [ArtworkProvider] for this install (manifest: `${applicationId}.artwork`). */
 fun artworkAuthority(context: Context): String = "${context.packageName}.artwork"
 
-/** [url] (an https thumb or `art://` uri) wrapped as a content uri Android Auto can resolve. */
+/** [url] (an https thumb or `art://` uri) wrapped as a signed content uri Android Auto can
+ *  resolve — [ArtworkProvider] serves only uris carrying this install's [artworkSignature]. */
 fun artworkContentUri(context: Context, url: String): Uri =
     Uri.Builder()
         .scheme("content")
         .authority(artworkAuthority(context))
         .path("art")
         .appendQueryParameter(ARTWORK_URI_PARAM, url)
+        .appendQueryParameter(ARTWORK_SIG_PARAM, artworkSignature(context, url))
         .build()
+
+/** HMAC-SHA256 of [target] under this install's secret salt — the mint mark on every exposed uri. */
+internal fun artworkSignature(context: Context, target: String): String =
+    target.encodeUtf8().hmacSha256(artworkSalt(context)).hex()
+
+/** Constant-time signature check; a missing or malformed [sig] never matches. */
+internal fun verifySignature(context: Context, target: String, sig: String?): Boolean {
+    if (sig == null) return false
+    val expected = artworkSignature(context, target)
+    return MessageDigest.isEqual(sig.lowercase().encodeToByteArray(), expected.encodeToByteArray())
+}
+
+/** The per-install artwork secret: generated once on first use, kept in its own prefs file. Only
+ *  uris minted by this install verify — a reinstall invalidates old uris, which are ephemeral
+ *  session metadata anyway. */
+private fun artworkSalt(context: Context): ByteString {
+    cachedSalt?.let { return it }
+    synchronized(saltLock) {
+        cachedSalt?.let { return it }
+        val prefs = context.getSharedPreferences("artwork_provider", Context.MODE_PRIVATE)
+        val salt = prefs.getString(SALT_KEY, null)?.decodeHex()
+            ?: ByteArray(32).also { SecureRandom().nextBytes(it) }.toByteString()
+                .also { prefs.edit().putString(SALT_KEY, it.hex()).apply() }
+        cachedSalt = salt
+        return salt
+    }
+}
+
+@Volatile private var cachedSalt: ByteString? = null
+private val saltLock = Any()
+private const val SALT_KEY = "salt"
 
 /** True for targets the exported provider serves: our own `art://pic/<media-id>` uris, or https
  *  images on YouTube's cdns (video thumbs / music covers / channel avatars). Everything else —
@@ -107,6 +154,7 @@ internal fun isAllowedArtworkTarget(target: String): Boolean {
 }
 
 internal const val ARTWORK_URI_PARAM = "uri"
+internal const val ARTWORK_SIG_PARAM = "sig"
 
 /** Session/notification/Auto artwork target size; [ymusic.imageloader.ImageLoader] never upscales. */
 internal const val ARTWORK_MAX_PX = 640
