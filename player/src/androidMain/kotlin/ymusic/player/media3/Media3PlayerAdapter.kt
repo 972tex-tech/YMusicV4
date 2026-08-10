@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(UnstableApi::class)
+
 package ymusic.player.media3
 
 import android.os.Looper
@@ -7,6 +9,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.SimpleBasePlayer
+import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
