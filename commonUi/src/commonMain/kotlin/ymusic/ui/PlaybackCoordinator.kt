@@ -136,6 +136,7 @@ class PlaybackCoordinator(
         artist = artist,
         album = album,
         thumbnailUrl = localArtUrl(this),
+        durationMs = durationMs,
     )
 
     /** A scraped video as a self-describing queue item — keeps just what the UI + downloads need. */
@@ -145,5 +146,7 @@ class PlaybackCoordinator(
         artist = subtitleLine1,
         thumbnailUrl = thumbs.firstOrNull()?.url,
         duration = duration,
+        durationMs = durationMs,
+        live = live,
     )
 }

@@ -40,6 +40,9 @@ data class YtFeedItem(
     val thumbs: List<YtThumb> = emptyList(),
     /** Thumbnail badge overlays (structural, fixed position — not subtitle text). */
     val duration: String? = null,
+    /** [duration] parsed to ms by the ENGINE when it is a clock badge ("3:14") — the app renders
+     *  [duration] verbatim and never parses it; LIVE etc. carry none. */
+    val durationMs: Long? = null,
     val itemCount: String? = null,
     val live: Boolean = false,
     /** The thumbnail's time-status overlay carried the MUSIC icon — a music video. */

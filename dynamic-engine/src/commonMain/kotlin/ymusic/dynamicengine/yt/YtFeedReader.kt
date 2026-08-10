@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 
 // Hand-parse the wire shapes (yt/wire.ts) straight off the streaming pipe with :kmpHttp:json's pull
 // reader — no reflective deserializer, nothing buffered whole. Unknown keys are skipped and absent
@@ -18,6 +19,9 @@ private suspend fun JsonReader.boolean(): Boolean = (nextValue() as? JsonPrimiti
 
 /** Read one scalar as an int (null for anything non-numeric). */
 private suspend fun JsonReader.intOrNull(): Int? = (nextValue() as? JsonPrimitive)?.intOrNull
+
+/** Read one scalar as a long (null for anything non-numeric). */
+private suspend fun JsonReader.longOrNull(): Long? = (nextValue() as? JsonPrimitive)?.longOrNull
 
 private suspend inline fun <T> JsonReader.readArrayOf(element: (JsonReader) -> T): List<T> {
     val out = mutableListOf<T>()
@@ -215,6 +219,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     var url: String? = null
     var thumbs: List<YtThumb> = emptyList()
     var duration: String? = null
+    var durationMs: Long? = null
     var itemCount: String? = null
     var live = false
     var musicVideo = false
@@ -234,6 +239,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
             "url" -> url = r.stringOrNull()
             "thumbs" -> thumbs = r.readArrayOf { readThumb(it) }
             "duration" -> duration = r.stringOrNull()
+            "durationMs" -> durationMs = r.longOrNull()
             "itemCount" -> itemCount = r.stringOrNull()
             "live" -> live = r.boolean()
             "musicVideo" -> musicVideo = r.boolean()
@@ -246,7 +252,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     r.endObject()
     return YtFeedItem(
         kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, url, thumbs,
-        duration, itemCount, live, musicVideo, album, ownerBadge, accent,
+        duration, durationMs, itemCount, live, musicVideo, album, ownerBadge, accent,
     )
 }
 

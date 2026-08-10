@@ -217,14 +217,18 @@ class Media3PlayerAdapter(
             builtDurationMs = durationMs
             builtPlaylist = items.mapIndexed { i, item ->
                 val key = item.mediaKey
+                // The engine's measured duration (current item only) beats the item's own
+                // source-declared one; other rows fall back to what they carried in.
+                val itemDurationMs = when {
+                    i == currentIndex && durationMs > 0 -> durationMs
+                    else -> item.durationMs?.takeIf { it > 0 }
+                }
                 MediaItemData.Builder("$i:$key")
                     .setMediaItem(
                         MediaItem.Builder().setMediaId(key).setMediaMetadata(describe(item)).build(),
                     )
-                    .setDurationUs(
-                        if (i == currentIndex && durationMs > 0) durationMs * 1000 else C.TIME_UNSET,
-                    )
-                    .setIsSeekable(true)
+                    .setDurationUs(itemDurationMs?.let { it * 1000 } ?: C.TIME_UNSET)
+                    .setIsSeekable((item as? PlayableItem.YtMedia)?.live != true)
                     .build()
             }
         }

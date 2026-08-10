@@ -16,6 +16,11 @@ sealed interface PlayableItem {
     val displayThumbnailUrl: String?
     val displayDuration: String?
 
+    /** The source-declared duration in ms, when known ahead of load (the store row, a scraped
+     *  badge); null = discovered only once the engine loads the item. Lets a session surface show
+     *  durations for every queue row, not just the loaded one. */
+    val durationMs: Long?
+
     /**
      * A local file. [uri] (a `file://` URI or an absolute path) is all the native-local engine needs;
      * the rest travels with the item so the UI (Now Playing display, play-count recording) never has
@@ -29,6 +34,7 @@ sealed interface PlayableItem {
         val artist: String? = null,
         val album: String? = null,
         val thumbnailUrl: String? = null,
+        override val durationMs: Long? = null,
     ) : PlayableItem {
         override val displayTitle: String get() = title ?: uri.substringAfterLast('/')
         override val displaySubtitle: String? get() = listOfNotNull(artist, album).joinToString(" · ").ifEmpty { null }
@@ -38,7 +44,8 @@ sealed interface PlayableItem {
 
     /**
      * A YouTube video, played by the WebView engine (`MediaEngine<YtMedia>`). [videoId] is all the
-     * engine needs; [title]/[artist] (channel) / [thumbnailUrl] / [duration] travel with it for the UI.
+     * engine needs; [title]/[artist] (channel) / [thumbnailUrl] / [duration] travel with it for the
+     * UI. [live] marks a live stream — no fixed duration, not seekable.
      */
     data class YtMedia(
         val videoId: String,
@@ -46,6 +53,8 @@ sealed interface PlayableItem {
         val artist: String? = null,
         val thumbnailUrl: String? = null,
         val duration: String? = null,
+        override val durationMs: Long? = null,
+        val live: Boolean = false,
     ) : PlayableItem {
         override val displayTitle: String get() = title ?: videoId
         override val displaySubtitle: String? get() = artist
