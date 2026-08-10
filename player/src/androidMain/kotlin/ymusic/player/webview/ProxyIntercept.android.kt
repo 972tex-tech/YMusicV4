@@ -36,17 +36,19 @@ internal fun proxyIntercept(proxy: LocalMediaProxy, target: String): WebResource
 } catch (e: Throwable) {
     // This runs inside a Chromium JNI callback: ANY escaping Java throwable is process-fatal
     // ([FATAL:jni_android.cc]). A failed forward (googlevideo read timeout mid-playback,
-    // observed live) must come back as a plain error response — the page's SABR layer retries
-    // failed fetches; a dead process doesn't.
+    // observed live) must come back as a response — the page's SABR layer retries failed
+    // fetches; a dead process doesn't. An IOException replays through the body stream, where
+    // Chromium handles it as a genuine network read failure; anything else serves empty bytes.
     Log.w("ProxyIntercept", "forward failed for $target", e)
-    WebResourceResponse(
-        "text/plain",
-        null,
-        504,
-        "Gateway Timeout",
-        emptyMap(),
-        ByteArrayInputStream(byteArrayOf()),
-    )
+    val body: InputStream = if (e is IOException) FailingInputStream(e) else ByteArrayInputStream(byteArrayOf())
+    WebResourceResponse("text/plain", null, 504, "Gateway Timeout", emptyMap(), body)
+}
+
+/** A body that fails on first read with the forward's own IOException — the failure surfaces to
+ *  the page as the network error it was, not as a mysteriously empty 504. */
+private class FailingInputStream(private val cause: IOException) : InputStream() {
+    override fun read(): Int = throw IOException(cause.message, cause)
+    override fun read(b: ByteArray, off: Int, len: Int): Int = throw IOException(cause.message, cause)
 }
 
 /** A blocking [InputStream] over the router's suspend body — each read blocks on one async read. */
