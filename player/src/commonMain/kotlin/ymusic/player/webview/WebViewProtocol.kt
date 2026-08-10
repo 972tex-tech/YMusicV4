@@ -85,6 +85,20 @@ object WebViewProtocol {
         }.toString()
     }
 
+    /**
+     * Batch several already-encoded commands into ONE `ymusicAction` round trip (the page's BULK
+     * action, applied in order within a single JS task — no page event can interleave). A single
+     * command passes through unwrapped; the list must not be empty.
+     */
+    fun encodeBulk(commands: List<String>): String {
+        require(commands.isNotEmpty()) { "empty bulk" }
+        commands.singleOrNull()?.let { return it }
+        return buildJsonObject {
+            put("what", JsonPrimitive(BULK))
+            put("actions", JsonArray(commands.map { json.parseToJsonElement(it).jsonObject }))
+        }.toString()
+    }
+
     fun encodePlay(): String = pwr(true)
 
     fun encodePause(): String = pwr(false)

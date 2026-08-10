@@ -89,9 +89,6 @@ internal class WebViewPlayerImpl(
     // /embed so the page runs under the new identity. The current song keeps playing on the old page.
     private var pendingRefresh = false
 
-    /** The last-applied config; [setConfig] diffs against it so only changed fields hit the page. */
-    private var appliedConfig = PlaybackConfig()
-
     override fun refreshOnNext() {
         if (released) return
         pendingRefresh = true
@@ -160,7 +157,6 @@ internal class WebViewPlayerImpl(
     }
 
     private fun sendLoad(request: PendingLoad) {
-        appliedConfig = request.config
         _progress.value = Progress(positionMs = request.startPositionMs)
         command(
             WebViewProtocol.encodeLoad(
@@ -195,38 +191,33 @@ internal class WebViewPlayerImpl(
 
     override fun setConfig(config: PlaybackConfig) {
         if (released) return
-        val prev = appliedConfig
-        appliedConfig = config
-
-        if (config.volume != prev.volume) {
-            val v = config.volume.coerceIn(0f, 1f)
-            _status.update { it.copy(volume = v) }
-            command(WebViewProtocol.encodeSetVolume(v))
+        // The FULL config is sent every time as one BULK — the host keeps no applied-config shadow
+        // and diffs nothing. The page owns the state diff (against the player's actual state where
+        // readable): a host-side compare swallowing a user re-assert was the config/state no-op
+        // bug, because what the host recorded as applied proves nothing about what the player is
+        // doing. Audio-only IS quality "zero", one SET_QUALITY action like legacy.
+        val v = config.volume.coerceIn(0f, 1f)
+        val s = config.speed.coerceAtLeast(0.01f)
+        _status.update {
+            it.copy(
+                volume = v,
+                speed = s,
+                // Video track goes away — the surface stays realized (see load()).
+                videoSize = if (config.audioOnly) null else it.videoSize,
+            )
         }
-        if (config.speed != prev.speed) {
-            val s = config.speed.coerceAtLeast(0.01f)
-            _status.update { it.copy(speed = s) }
-            command(WebViewProtocol.encodeSetSpeed(s))
-        }
-        val quality = config.preferVideoQuality.first
-        if (quality != prev.preferVideoQuality.first) {
-            if (config.audioOnly) {
-                // Disable the video track only — the surface stays realized (see load()).
-                _status.update { it.copy(videoSize = null) }
-                command(WebViewProtocol.encodeSetAudioOnly(true))
-            } else {
-                // A concrete quality re-enables video (audio-only off) then selects the tier.
-                command(WebViewProtocol.encodeSetAudioOnly(false))
-                command(WebViewProtocol.encodeSelectVideoQuality(quality))
-            }
-        }
-        if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first) {
-            val lang = config.preferCaptionLanguage.first
-            command(WebViewProtocol.encodeSelectCaption(lang.takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }))
-        }
-        if (config.captionVisible != prev.captionVisible) {
-            command(WebViewProtocol.encodeSetCaptionVisible(config.captionVisible))
-        }
+        val lang = config.preferCaptionLanguage.first
+        command(
+            WebViewProtocol.encodeBulk(
+                listOf(
+                    WebViewProtocol.encodeSetVolume(v),
+                    WebViewProtocol.encodeSetSpeed(s),
+                    WebViewProtocol.encodeSelectVideoQuality(config.preferVideoQuality.first),
+                    WebViewProtocol.encodeSelectCaption(lang.takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }),
+                    WebViewProtocol.encodeSetCaptionVisible(config.captionVisible),
+                ),
+            ),
+        )
         // pitchFactor / loop / scaleMode: no wire encoder yet — ignored per the setConfig contract.
     }
 

@@ -59,6 +59,19 @@ class WebViewProtocolTest {
     }
 
     @Test
+    fun bulk_wraps_commands_in_order_and_a_single_one_passes_through() {
+        val volume = WebViewProtocol.encodeSetVolume(0.5f)
+        val quality = WebViewProtocol.encodeSelectVideoQuality("hd720")
+        val bulk = parse(WebViewProtocol.encodeBulk(listOf(volume, quality)))
+        assertEquals(12, bulk["what"]!!.jsonPrimitive.content.toInt()) // BULK
+        val actions = bulk["actions"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(10, actions[0]["what"]!!.jsonPrimitive.content.toInt()) // SET_VOLUME first
+        assertEquals("hd720", actions[1]["quality"]!!.jsonPrimitive.content)
+
+        assertEquals(quality, WebViewProtocol.encodeBulk(listOf(quality)))
+    }
+
+    @Test
     fun decodes_state_changed_with_session_prefix() {
         val e = WebViewProtocol.decodeEvent(
             "1783842105_state_changed",
