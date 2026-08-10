@@ -125,28 +125,30 @@ class PlaybackCoordinator(
     fun playLater(video: YtFeedItem) {
         player.add(listOf(video.toYtMedia()))
     }
-
-    // ---- self-describing queue items ----
-
-    /** A library item as a self-describing queue item (id + display metadata travel with it). */
-    private fun MediaStoreItem.toLocalMedia() = PlayableItem.LocalMedia(
-        uri = uri.toString(),
-        mediaId = id,
-        title = title,
-        artist = artist,
-        album = album,
-        thumbnailUrl = localArtUrl(this),
-        durationMs = durationMs,
-    )
-
-    /** A scraped video as a self-describing queue item — keeps just what the UI + downloads need. */
-    private fun YtFeedItem.toYtMedia() = PlayableItem.YtMedia(
-        videoId = id,
-        title = title,
-        artist = subtitleLine1,
-        thumbnailUrl = thumbs.firstOrNull()?.url,
-        duration = duration,
-        durationMs = durationMs,
-        live = live,
-    )
 }
+
+// ---- self-describing queue items ----
+// Shared with the platform shells (the Android session service converts controller MediaItems
+// back through these), so the queue-item mapping never forks.
+
+/** A library item as a self-describing queue item (id + display metadata travel with it). */
+fun MediaStoreItem.toLocalMedia() = PlayableItem.LocalMedia(
+    uri = uri.toString(),
+    mediaId = id,
+    title = title,
+    artist = artist,
+    album = album,
+    thumbnailUrl = localArtUrl(this),
+    durationMs = durationMs,
+)
+
+/** A scraped video as a self-describing queue item — keeps just what the UI + downloads need. */
+fun YtFeedItem.toYtMedia() = PlayableItem.YtMedia(
+    videoId = id,
+    title = title,
+    artist = subtitleLine1,
+    thumbnailUrl = thumbs.firstOrNull()?.url,
+    duration = duration,
+    durationMs = durationMs,
+    live = live,
+)

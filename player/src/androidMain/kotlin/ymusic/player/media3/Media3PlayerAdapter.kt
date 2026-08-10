@@ -54,6 +54,11 @@ class Media3PlayerAdapter(
      *  a queue (context expansion, watch-next autoplay). Null = the command is advertised but a
      *  set is ignored (in-app UIs drive the facade directly). */
     private val applyMediaItems: ((items: List<MediaItem>, startIndex: Int, startPositionMs: Long) -> Unit)? = null,
+    /** Inserts controller-added items (addMediaItems / legacy addQueueItem) into the facade queue
+     *  at [MediaItem]-timeline position `index`. The items arrive pre-resolved by the session
+     *  callback's onAddMediaItems, so the owner converts them back to [PlayableItem]s. Null =
+     *  adds are dropped. */
+    private val insertMediaItems: ((index: Int, items: List<MediaItem>) -> Unit)? = null,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -164,11 +169,11 @@ class Media3PlayerAdapter(
 
     // COMMAND_CHANGE_MEDIA_ITEMS gates add/remove/move/replace together, and SimpleBasePlayer's
     // defaults THROW for any advertised-but-unimplemented one. Remove/move map onto the facade's
-    // queue edits; add is accepted and dropped — this layer has no MediaItem→PlayableItem
-    // resolver, and hiding the whole command to avoid the rare controller add would also hide
-    // remove/move, which are supported. (Replace = default add+remove composition.)
-    override fun handleAddMediaItems(index: Int, mediaItems: MutableList<MediaItem>): ListenableFuture<*> =
-        done {}
+    // queue edits; add routes to the owner's converter hook (dropped only when no hook is
+    // installed). Replace = the default add+remove composition.
+    override fun handleAddMediaItems(index: Int, mediaItems: MutableList<MediaItem>): ListenableFuture<*> = done {
+        insertMediaItems?.invoke(index, mediaItems)
+    }
 
     override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> = done {
         repeat((toIndex - fromIndex).coerceAtLeast(0)) { player.removeAt(fromIndex) }

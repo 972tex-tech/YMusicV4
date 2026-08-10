@@ -16,8 +16,11 @@ import ymusic.dynamicengine.yt.extractPlaylistDetail
 import ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import ymusic.dynamicengine.yt.search
 import ymusic.mediastore.model.MediaStoreItem
+import ymusic.player.PlayableItem
 import ymusic.ui.AppGraph
 import ymusic.ui.localArtUrl
+import ymusic.ui.toLocalMedia
+import ymusic.ui.toYtMedia
 
 /**
  * The Android Auto browse hierarchy over the [AppGraph] — three root tabs (the host renders root
@@ -112,6 +115,30 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
 
     /** Engine search, for the Auto search surface — playable videos only, shelf titles as groups. */
     suspend fun searchItems(query: String): List<MediaItem> = feedChildren(graph.engines.search(query = query))
+
+    /** A controller-supplied [MediaItem] (one this tree built — mediaIds round-trip) back as a
+     *  facade queue item; null for ids that aren't playable rows. The yt path prefers the
+     *  remembered feed item and falls back to the metadata the MediaItem itself carries (the
+     *  artworkUri is our wrapped content:// form — unwrap it back to the raw url). */
+    suspend fun toPlayableItem(mediaItem: MediaItem): PlayableItem? {
+        val id = mediaItem.mediaId
+        return when {
+            id.startsWith(YT_SONG_PREFIX) -> {
+                val videoId = id.removePrefix(YT_SONG_PREFIX)
+                ytItem(videoId)?.toYtMedia() ?: PlayableItem.YtMedia(
+                    videoId = videoId,
+                    title = mediaItem.mediaMetadata.title?.toString(),
+                    artist = mediaItem.mediaMetadata.artist?.toString(),
+                    thumbnailUrl = mediaItem.mediaMetadata.artworkUri?.getQueryParameter(ARTWORK_URI_PARAM),
+                )
+            }
+            id.startsWith(LOCAL_SONG_PREFIX) -> {
+                val (_, rowId) = parseLocalSongId(id) ?: return null
+                graph.mediaStore?.findItem(rowId)?.toLocalMedia()
+            }
+            else -> null
+        }
+    }
 
     // ---- local ----
 

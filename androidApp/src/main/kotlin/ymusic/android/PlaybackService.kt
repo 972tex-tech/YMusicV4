@@ -86,6 +86,7 @@ class PlaybackService : MediaLibraryService() {
             player,
             describe = { item -> item.toMediaMetadata(this) },
             applyMediaItems = { items, startIndex, _ -> applyBrowseItems(items, startIndex) },
+            insertMediaItems = { index, items -> insertBrowseItems(index, items) },
         )
         session = MediaLibrarySession.Builder(this, adapter, LibraryCallback(tree))
             .setSessionActivity(sessionActivityIntent())
@@ -133,6 +134,20 @@ class PlaybackService : MediaLibraryService() {
                     val index = songs.indexOfFirst { it.id == rowId }
                     if (index >= 0) coordinator.playLocal(songs, index)
                 }
+            }
+        }
+    }
+
+    /** Controller-added items (addMediaItems / legacy addQueueItem) — already resolved by
+     *  [LibraryCallback.onAddMediaItems] — converted back and inserted into the facade queue.
+     *  Local ids need one store lookup for the file uri, hence the launch. */
+    private fun insertBrowseItems(index: Int, items: List<MediaItem>) {
+        val tree = this.tree ?: return
+        val player = this.player ?: return
+        serviceScope.launch {
+            val playable = items.mapNotNull { tree.toPlayableItem(it) }
+            if (playable.isNotEmpty()) {
+                player.add(playable, at = index.coerceIn(0, player.queue.value.items.size))
             }
         }
     }
