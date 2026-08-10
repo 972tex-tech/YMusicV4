@@ -104,9 +104,24 @@ internal class PlayerImpl(
         publishQueue()
     }
 
+    override fun move(fromIndex: Int, toIndex: Int, newIndex: Int) {
+        if (released) return
+        controller.moveRange(fromIndex, toIndex, newIndex)
+        publishQueue()
+    }
+
     override fun removeAt(index: Int) {
         if (released) return
         val removedCurrent = controller.removeAt(index)
+        publishQueue()
+        if (removedCurrent) {
+            if (controller.state.currentIndex >= 0) loadCurrent(0L) else stopActive()
+        }
+    }
+
+    override fun remove(fromIndex: Int, toIndex: Int) {
+        if (released) return
+        val removedCurrent = controller.removeRange(fromIndex, toIndex)
         publishQueue()
         if (removedCurrent) {
             if (controller.state.currentIndex >= 0) loadCurrent(0L) else stopActive()

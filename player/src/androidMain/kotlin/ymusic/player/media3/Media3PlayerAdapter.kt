@@ -50,15 +50,15 @@ class Media3PlayerAdapter(
     private val describe: (PlayableItem) -> MediaMetadata,
     extraInvalidations: Flow<*> = emptyFlow<Unit>(),
     /** Applies a controller's setMediaItems (an Android Auto browse tap arrives this way after the
-     *  session callback resolved the ids) onto the facade — the owner decides how a mediaId becomes
-     *  a queue (context expansion, watch-next autoplay). Null = the command is advertised but a
-     *  set is ignored (in-app UIs drive the facade directly). */
-    private val applyMediaItems: ((items: List<MediaItem>, startIndex: Int, startPositionMs: Long) -> Unit)? = null,
-    /** Inserts controller-added items (addMediaItems / legacy addQueueItem) into the facade queue
-     *  at [MediaItem]-timeline position `index`. The items arrive pre-resolved by the session
-     *  callback's onAddMediaItems, so the owner converts them back to [PlayableItem]s. Null =
-     *  adds are dropped. */
-    private val insertMediaItems: ((index: Int, items: List<MediaItem>) -> Unit)? = null,
+     *  session callback resolved the ids) onto the passed facade — the owner decides how a mediaId
+     *  becomes a queue (context expansion, watch-next autoplay). Null = the command is advertised
+     *  but a set is ignored (in-app UIs drive the facade directly). */
+    private val applyMediaItems: ((player: Player, items: List<MediaItem>, startIndex: Int, startPositionMs: Long) -> Unit)? = null,
+    /** Inserts controller-added items (addMediaItems / legacy addQueueItem) into the passed
+     *  facade's queue at [MediaItem]-timeline position `index`. The items arrive pre-resolved by
+     *  the session callback's onAddMediaItems, so the owner converts them back to [PlayableItem]s.
+     *  Null = adds are dropped. */
+    private val insertMediaItems: ((player: Player, index: Int, items: List<MediaItem>) -> Unit)? = null,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -164,29 +164,32 @@ class Media3PlayerAdapter(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<*> = done {
-        applyMediaItems?.invoke(mediaItems, startIndex, startPositionMs)
+        applyMediaItems?.invoke(player, mediaItems, startIndex, startPositionMs)
     }
 
     // COMMAND_CHANGE_MEDIA_ITEMS gates add/remove/move/replace together, and SimpleBasePlayer's
     // defaults THROW for any advertised-but-unimplemented one. Remove/move map onto the facade's
-    // queue edits; add routes to the owner's converter hook (dropped only when no hook is
-    // installed). Replace = the default add+remove composition.
+    // range edits. The facade contract is STRICT (in-app index bugs must surface); THIS is the
+    // stranger boundary — controller edits arrive async and cross-process against a queue
+    // snapshot that may already be stale — so indices clamp here, and only here. Add routes to
+    // the owner's converter hook (dropped when no hook is installed). Replace = add+remove.
     override fun handleAddMediaItems(index: Int, mediaItems: MutableList<MediaItem>): ListenableFuture<*> = done {
-        insertMediaItems?.invoke(index, mediaItems)
+        insertMediaItems?.invoke(player, index, mediaItems)
     }
 
     override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> = done {
-        repeat((toIndex - fromIndex).coerceAtLeast(0)) { player.removeAt(fromIndex) }
+        val size = player.queue.value.items.size
+        val from = fromIndex.coerceIn(0, size)
+        val to = toIndex.coerceIn(from, size)
+        if (to > from) player.remove(from, to)
     }
 
     override fun handleMoveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int): ListenableFuture<*> = done {
-        val count = (toIndex - fromIndex).coerceAtLeast(0)
-        when {
-            count == 0 || newIndex == fromIndex -> Unit
-            // Block moves as single-item facade moves; verified orderings for both directions.
-            newIndex < fromIndex -> repeat(count) { i -> player.move(fromIndex + i, newIndex + i) }
-            else -> repeat(count) { player.move(fromIndex, newIndex + count - 1) }
-        }
+        val size = player.queue.value.items.size
+        val from = fromIndex.coerceIn(0, size)
+        val to = toIndex.coerceIn(from, size)
+        val target = newIndex.coerceIn(0, size - (to - from))
+        if (to > from) player.move(from, to, target)
     }
 
     override fun handlePrepare(): ListenableFuture<*> = done { player.play() }

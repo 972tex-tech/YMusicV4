@@ -62,7 +62,15 @@ interface Player {
 
     fun move(from: Int, to: Int)
 
+    /** Move the `[fromIndex, toIndex)` block so it starts at [newIndex] (post-removal indexing —
+     *  media3's moveMediaItems contract). STRICT: an invalid range throws — a boundary relaying
+     *  cross-process edits against a possibly-stale queue snapshot clamps before calling. */
+    fun move(fromIndex: Int, toIndex: Int, newIndex: Int)
+
     fun removeAt(index: Int)
+
+    /** Remove the `[fromIndex, toIndex)` range. Same strict contract as range [move]. */
+    fun remove(fromIndex: Int, toIndex: Int)
 
     fun clearQueue()
 

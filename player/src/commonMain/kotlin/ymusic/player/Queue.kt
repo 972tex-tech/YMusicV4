@@ -147,6 +147,39 @@ internal class QueueController(private val random: Random = Random.Default) {
         state = state.copy(items = items, currentIndex = shift(state.currentIndex))
     }
 
+    /**
+     * Removes the `[from, to)` range; true when the current item was removed. STRICT: an invalid
+     * range throws — an app-side caller with bad indices is a bug to surface early, and boundary
+     * callers relaying cross-process edits against a possibly-stale snapshot (the media3 adapter)
+     * clamp BEFORE calling. Composed from [removeAt] so the played-history/remap bookkeeping
+     * stays single-sourced. An empty (from == to) range is a valid no-op.
+     */
+    fun removeRange(from: Int, to: Int): Boolean {
+        require(from in 0..to && to <= state.items.size) {
+            "removeRange($from, $to) on ${state.items.size} items"
+        }
+        var removedCurrent = false
+        repeat(to - from) { removedCurrent = removeAt(from) || removedCurrent }
+        return removedCurrent
+    }
+
+    /**
+     * Moves the `[from, to)` block so it starts at [newIndex] — [newIndex] in post-removal
+     * indexing, media3's moveMediaItems contract. Same strict policy as [removeRange]; composed
+     * from single [move]s (orderings verified for both directions).
+     */
+    fun moveRange(from: Int, to: Int, newIndex: Int) {
+        val size = state.items.size
+        require(from in 0..to && to <= size) { "moveRange($from, $to, $newIndex) on $size items" }
+        val count = to - from
+        require(newIndex in 0..(size - count)) { "moveRange($from, $to, $newIndex) on $size items" }
+        when {
+            count == 0 || newIndex == from -> Unit
+            newIndex < from -> repeat(count) { i -> move(from + i, newIndex + i) }
+            else -> repeat(count) { move(from, newIndex + count - 1) }
+        }
+    }
+
     fun clear() {
         state = state.copy(items = emptyList(), currentIndex = -1)
         played.clear()

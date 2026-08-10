@@ -3,6 +3,7 @@ package ymusic.player
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -12,6 +13,34 @@ class QueueControllerTest {
 
     private fun controller(n: Int, playIndex: Int = 0, seed: Int = 1) =
         QueueController(Random(seed)).apply { setQueue(items(n), playIndex) }
+
+    @Test
+    fun removeRange_is_strict_and_reports_current() {
+        val q = controller(5, playIndex = 2)
+        // Strict contract: bad indices are an app-side bug, not something to degrade silently —
+        // the cross-process boundary (media3 adapter) clamps BEFORE calling.
+        assertFailsWith<IllegalArgumentException> { q.removeRange(2, 99) }
+        assertFailsWith<IllegalArgumentException> { q.removeRange(3, 2) }
+        assertTrue(q.removeRange(2, 5), "the current item was inside the removed range")
+        assertEquals(items(5).take(2), q.state.items)
+        assertEquals(1, q.state.currentIndex, "current lands on the last remaining item")
+        assertFalse(q.removeRange(1, 1), "an empty range is a valid no-op")
+    }
+
+    @Test
+    fun moveRange_moves_blocks_both_directions() {
+        fun uris(q: QueueController) = q.state.items.map { (it as PlayableItem.LocalMedia).uri }
+        fun expect(vararg i: Int) = i.map { "file:///$it.mp3" }
+
+        val q = controller(5) // [0 1 2 3 4]
+        q.moveRange(1, 3, 3) // block [1,2] to start at 3 (post-removal indexing)
+        assertEquals(expect(0, 3, 4, 1, 2), uris(q))
+        q.moveRange(3, 5, 0) // and back to the front
+        assertEquals(expect(1, 2, 0, 3, 4), uris(q))
+        assertFailsWith<IllegalArgumentException> { q.moveRange(4, 99, 0) }
+        assertFailsWith<IllegalArgumentException> { q.moveRange(1, 3, 4) } // target past size - count
+        assertEquals(expect(1, 2, 0, 3, 4), uris(q), "failed edits must not half-apply")
+    }
 
     @Test
     fun linear_advance_and_exhaustion() {

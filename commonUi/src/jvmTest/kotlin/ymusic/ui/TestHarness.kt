@@ -141,7 +141,11 @@ internal class StubPlayer : Player {
         )
     }
 
+    override fun move(fromIndex: Int, toIndex: Int, newIndex: Int) {}
+
     override fun removeAt(index: Int) {}
+
+    override fun remove(fromIndex: Int, toIndex: Int) {}
 
     override fun clearQueue() {}
 
