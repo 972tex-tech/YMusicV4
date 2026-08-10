@@ -96,8 +96,12 @@ class Media3PlayerAdapter(
         val prepared = status.state as? PlaybackState.Prepared
         val error = (status.state as? PlaybackState.Error)?.error
 
+        // media3 has no CONNECTING state: an engine still initializing with a queue reads as
+        // BUFFERING, so session surfaces show their loading treatment instead of a dead IDLE.
+        val initializing = (status.state as? PlaybackState.Uninitialized)?.isInitializing == true
         val playbackState = when {
-            items.isEmpty() || error != null || prepared == null -> Media3Player.STATE_IDLE
+            items.isEmpty() || error != null -> Media3Player.STATE_IDLE
+            prepared == null -> if (initializing) Media3Player.STATE_BUFFERING else Media3Player.STATE_IDLE
             prepared.ended -> Media3Player.STATE_ENDED
             prepared.buffering -> Media3Player.STATE_BUFFERING
             else -> Media3Player.STATE_READY
@@ -156,6 +160,28 @@ class Media3PlayerAdapter(
         startPositionMs: Long,
     ): ListenableFuture<*> = done {
         applyMediaItems?.invoke(mediaItems, startIndex, startPositionMs)
+    }
+
+    // COMMAND_CHANGE_MEDIA_ITEMS gates add/remove/move/replace together, and SimpleBasePlayer's
+    // defaults THROW for any advertised-but-unimplemented one. Remove/move map onto the facade's
+    // queue edits; add is accepted and dropped — this layer has no MediaItem→PlayableItem
+    // resolver, and hiding the whole command to avoid the rare controller add would also hide
+    // remove/move, which are supported. (Replace = default add+remove composition.)
+    override fun handleAddMediaItems(index: Int, mediaItems: MutableList<MediaItem>): ListenableFuture<*> =
+        done {}
+
+    override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> = done {
+        repeat((toIndex - fromIndex).coerceAtLeast(0)) { player.removeAt(fromIndex) }
+    }
+
+    override fun handleMoveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int): ListenableFuture<*> = done {
+        val count = (toIndex - fromIndex).coerceAtLeast(0)
+        when {
+            count == 0 || newIndex == fromIndex -> Unit
+            // Block moves as single-item facade moves; verified orderings for both directions.
+            newIndex < fromIndex -> repeat(count) { i -> player.move(fromIndex + i, newIndex + i) }
+            else -> repeat(count) { player.move(fromIndex, newIndex + count - 1) }
+        }
     }
 
     override fun handlePrepare(): ListenableFuture<*> = done { player.play() }
