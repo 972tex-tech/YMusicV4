@@ -16,7 +16,7 @@ object Versions {
     const val sqldelight = "2.3.2"
 
     // :player local-file backends (per platform; Apple uses AVFoundation cinterop, no dep)
-    const val media3 = "1.5.1"   // Android ExoPlayer
+    const val media3 = "1.11.0"   // Android ExoPlayer
     const val vlcj = "4.8.3"     // JVM desktop libVLC binding
     const val jcef = "146.0.10"  // JVM desktop Chromium (WebView YouTube host)
 

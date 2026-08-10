@@ -9,6 +9,7 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
+import android.support.v4.media.session.MediaSessionCompat
 import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -232,8 +233,23 @@ class PlaybackService : MediaLibraryService() {
         return future
     }
 
+    /** media3 posts its own DefaultMediaNotificationProvider notification for an active player
+     *  (1.5.1 never did without a bound controller — the gap the hand-built notification grew
+     *  in), and its default id is our 1001, which would silently swap styles under us. This
+     *  override is the sanctioned take-over point: the service's own collector keeps owning the
+     *  notification + foreground lifecycle. When media3 signals the foreground contract is due
+     *  (a media-button service start), promote immediately regardless of play state. */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (startInForegroundRequired) {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } else {
+            updateNotification()
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISMISS) {
+            super.onStartCommand(intent, flags, startId) // LifecycleService dispatches on super
             player?.stop()
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
@@ -310,7 +326,8 @@ class PlaybackService : MediaLibraryService() {
         session?.let { s ->
             builder.setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
-                    .setMediaSession(s.sessionCompatToken)
+                    // media3 1.7+ exposes only the platform token; MediaStyle still wants compat.
+                    .setMediaSession(MediaSessionCompat.Token.fromToken(s.platformToken))
                     .setShowActionsInCompactView(0, 1, 2),
             )
         }
