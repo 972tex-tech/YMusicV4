@@ -11,12 +11,14 @@ import android.os.Build
 import android.os.PowerManager
 import android.support.v4.media.session.MediaSessionCompat
 import android.view.KeyEvent
+import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
@@ -79,6 +81,7 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    @OptIn(UnstableApi::class)
     private fun init(graph: AppGraph) {
         val player = graph.player.also { this.player = it }
         val tree = MediaBrowseTree(this, graph).also { this.tree = it }
@@ -235,15 +238,15 @@ class PlaybackService : MediaLibraryService() {
 
     /** media3 posts its own DefaultMediaNotificationProvider notification for an active player
      *  (1.5.1 never did without a bound controller — the gap the hand-built notification grew
-     *  in), and its default id is our 1001, which would silently swap styles under us. This
-     *  override is the sanctioned take-over point: the service's own collector keeps owning the
-     *  notification + foreground lifecycle. When media3 signals the foreground contract is due
-     *  (a media-button service start), promote immediately regardless of play state. */
+     *  in), and its default id is our 1001, which would silently swap styles under us. THIS
+     *  OVERRIDE EXISTING (no super call) is what suppresses that. The body handles only what the
+     *  (status × queue) collector cannot see: media3 signaling the foreground contract is due (a
+     *  media-button service start on a dead process) — promote immediately regardless of play
+     *  state. Routine refreshes stay with the collector; mirroring them here would double-build
+     *  the same notification. */
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (startInForegroundRequired) {
             startForeground(NOTIFICATION_ID, buildNotification())
-        } else {
-            updateNotification()
         }
     }
 
@@ -348,13 +351,16 @@ class PlaybackService : MediaLibraryService() {
         val s = session ?: return
         art = url to null
         val future = s.bitmapLoader.loadBitmap(Uri.parse(url))
-        future.addListener({
-            val bitmap = runCatching { future.get() }.getOrNull() ?: return@addListener
-            if (art?.first == url) {
-                art = url to bitmap
-                updateNotification()
-            }
-        }, ContextCompat.getMainExecutor(this))
+        future.addListener(
+            {
+                val bitmap = runCatching { future.get() }.getOrNull() ?: return@addListener
+                if (art?.first == url) {
+                    art = url to bitmap
+                    updateNotification()
+                }
+            },
+            ContextCompat.getMainExecutor(this),
+        )
     }
 
     private fun sessionActivityIntent(): PendingIntent = PendingIntent.getActivity(
