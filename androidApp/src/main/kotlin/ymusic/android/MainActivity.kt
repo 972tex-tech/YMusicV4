@@ -2,9 +2,9 @@ package ymusic.android
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -12,9 +12,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.app.NotificationManagerCompat
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +40,22 @@ import ymusic.ui.AppGraph
  * Activity contributes only what needs one: the SAF folder pick and the notification permission.
  */
 class MainActivity : ComponentActivity() {
+    // Notifications are MANDATORY: playback lives in a foreground service whose notification is
+    // its lifeline. While disabled, a non-dismissible dialog sits over the app with granting as
+    // the only way out — [notificationsEnabled] is re-checked on every resume, so returning from
+    // the settings screen unblocks without a restart.
+    private val notificationsEnabled = mutableStateOf(true)
+    private var askedForNotifications = false
+    private val requestNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            askedForNotifications = true
+            notificationsEnabled.value = granted
+            // Second "Don't allow" is permanent on 13+ — the settings screen is the only path left.
+            if (!granted && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                openNotificationSettings()
+            }
+        }
+
     // Bridges the callback-based SAF folder pick to the shell's suspend ScanAction: launch() fires the
     // system ACTION_OPEN_DOCUMENT_TREE, the result callback completes the pending deferred.
     private var pendingPick: CompletableDeferred<Uri?>? = null
@@ -77,7 +98,6 @@ class MainActivity : ComponentActivity() {
                 android.util.Log.i("FreezeWatchdog", "lifecycle $event")
             },
         )
-        requestNotificationPermission()
         (application as YMusicApplication).folderPicker = pickFolder
         setContent {
             CompositionClockProbe()
@@ -95,17 +115,59 @@ class MainActivity : ComponentActivity() {
                 graph == null -> Booting { CircularProgressIndicator() }
                 else -> App(graph!!)
             }
+            val notificationsOk = notificationsEnabled.value
+            LaunchedEffect(notificationsOk) {
+                // First launch on 13+: fire the system dialog straight away; the dialog's button
+                // covers retries and the pre-13 app-setting case (which has no dialog to show).
+                if (!notificationsOk && Build.VERSION.SDK_INT >= 33 && !askedForNotifications) {
+                    requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            if (!notificationsOk) {
+                NotificationRequiredDialog(onAllow = ::requestNotificationAccess)
+            }
         }
     }
 
-    /** The playback notification needs POST_NOTIFICATIONS on 13+; ask up front, play works either way. */
-    private fun requestNotificationPermission() {
+    override fun onResume() {
+        super.onResume()
+        // Covers 13+ permission AND the pre-13 app-level notification toggle.
+        notificationsEnabled.value = NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }
+
+    private fun requestNotificationAccess() {
         if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            (!askedForNotifications || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))
         ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
+            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            openNotificationSettings()
         }
     }
+
+    private fun openNotificationSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= 26) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null))
+        }
+        startActivity(intent)
+    }
+}
+
+/** Notifications are mandatory (the playback service's notification is its lifeline): this sits
+ *  over whatever is showing and offers exactly one way out — granting. Not dismissible. */
+@androidx.compose.runtime.Composable
+private fun NotificationRequiredDialog(onAllow: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        text = { Text(stringResource(R.string.notifications_required)) },
+        confirmButton = {
+            TextButton(onClick = onAllow) { Text(stringResource(R.string.notifications_allow)) }
+        },
+    )
 }
 
 @androidx.compose.runtime.Composable

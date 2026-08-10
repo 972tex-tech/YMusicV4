@@ -18,4 +18,6 @@
     <string name="browse_ytmusic_charts">Charts</string>
     <string name="browse_playlist_recent">Recent plays</string>
     <string name="browse_playlist_top">Top tracks</string>
+    <string name="notifications_required">YMusic plays music from a background service that must show a playback notification. Allow notifications to continue.</string>
+    <string name="notifications_allow">Allow notifications</string>
 </resources>
