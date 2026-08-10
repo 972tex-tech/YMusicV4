@@ -60,7 +60,7 @@ class DownloadStore(driver: SqlDriver) {
 
     /** Reset every in-flight or queued task to PAUSED in one statement — startup crash recovery. */
     suspend fun pauseActiveAndQueued(updatedAt: Long): Unit = withContext(downloadDbDispatcher()) {
-        val states = DownloadState.entries.filter { it.isActive || it == DownloadState.QUEUED }.map { it.name }
+        val states = DownloadState.entries.filter { it.isActive }.map { it.name }
         queries.pauseActiveAndQueued(paused = DownloadState.PAUSED.name, updatedAt = updatedAt, states = states)
     }
 

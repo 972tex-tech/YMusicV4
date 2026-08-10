@@ -56,7 +56,10 @@ enum class DownloadState {
     ;
 
     val isTerminal: Boolean get() = this == COMPLETED || this == CANCELED
-    val isActive: Boolean get() = this == PREPARING || this == DOWNLOADING || this == PROCESSING
+
+    /** In flight from the user's perspective: waiting for a slot or actively being worked. NOT a
+     *  worker-slot predicate — the service picks work with explicit [QUEUED] checks. */
+    val isActive: Boolean get() = this == QUEUED || this == PREPARING || this == DOWNLOADING || this == PROCESSING
 }
 
 /** What the caller asks to download; the [videoId] plus display metadata and the desired output. */

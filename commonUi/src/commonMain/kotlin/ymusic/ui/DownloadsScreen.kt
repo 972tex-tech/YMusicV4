@@ -93,7 +93,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         }
         sorted.takeIf { it.isNotEmpty() }?.let { section to it }
     }
-    val running = visible.any { it.state == DownloadState.QUEUED || it.state.isActive }
+    val running = visible.any { it.state.isActive }
     val paused = visible.any { it.state == DownloadState.PAUSED }
 
     // Report scroll into the shell's ScrollHost so the shared app bar lifts on scroll, like Library/Discover.

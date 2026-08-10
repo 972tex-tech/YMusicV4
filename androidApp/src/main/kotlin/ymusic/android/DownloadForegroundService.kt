@@ -34,18 +34,18 @@ import ymusic.imageloader.ImageLoader
  * the queue drains. The download engine itself lives on the app graph and neither starts nor
  * stops with this service — the service only buys the process foreground standing while work runs.
  *
- * Notification model (one GROUP, never a loose stack):
- *  - Every task owns a card on a stable per-task id: title, small thumbnail (app ImageLoader),
- *    status line, progress. ONGOING only while the task actively works (preparing/downloading/
- *    processing); queued, paused, finished and failed cards are the user's to swipe away.
- *  - A card is posted ONLY on a state transition (recorded in the process-wide [postedStates]
- *    ledger, seeded from the first task snapshot so a fresh service instance never resurrects
- *    cards for historical tasks — especially finished ones the user already dismissed). While a
- *    task is active its card also refreshes in place for progress — it is ongoing then, so there
- *    is no swiped card to resurrect.
- *  - The group summary is the foreground notification while working. On drain it is DETACHED and
- *    morphed in place — canceling a group summary cancels its children (AOSP group semantics), so
- *    it is never removed while any card may still be in the shade.
+ * Notification model — the service OWNS cards only for tasks it has seen ACTIVE (isActive
+ * includes queued), all in one group:
+ *  - An active task gets an ONGOING card (title, thumbnail, status in the header, progress),
+ *    updated only when its rendered content changes — an unchanged task never touches the shade.
+ *  - When a task leaves the active set (finished / failed / paused) its card morphs ONCE into a
+ *    dismissible card on the same id, and the service FORGETS it — from then on the card is the
+ *    user's: swiped stays swiped, and only re-entering the active set (resume, retry) creates a
+ *    card again. Historical tasks are never posted at all, so a service restart cannot resurrect
+ *    anything by construction. Canceled/removed tasks take their card along.
+ *  - The group summary is the foreground notification while working. On drain it DETACHES and
+ *    morphs into a roll-up of what this run produced — canceling a group summary cancels its
+ *    children (AOSP group semantics), so it is never removed while morphs may sit in the shade.
  *
  * Android 15 caps dataSync foreground time (~6h/day): [onTimeout] demotes instead of crashing —
  * downloads continue while the process lives, and the queue is store-persisted either way.
@@ -59,11 +59,19 @@ class DownloadForegroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
-    /** Loaded thumbnails by task id (null = load in flight). Instance-local: after a process
-     *  restart the disk-cached image reloads cheaply on the next legitimate post. */
+    /** Cards this run owns: active-task id → last rendered signature. Leaving the active set
+     *  removes the entry (after the one dismissible morph). */
+    private val owned = HashMap<String, Int>()
+
+    /** Loaded thumbnails by owned-task id (null = load in flight). */
     private val icons = HashMap<String, Bitmap?>()
 
-    private var lastTasks: List<DownloadTask> = emptyList()
+    /** What this run produced, for the drained-queue summary. */
+    private var completedRun = 0
+    private var failedRun = 0
+    private var pausedRun = 0
+
+    private var lastSummarySignature = Int.MIN_VALUE
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -79,7 +87,7 @@ class DownloadForegroundService : Service() {
                 .conflate()
                 .collect { tasks ->
                     render(tasks)
-                    // Progress events arrive per chunk; conflate + this pace = ≤2 posts/s.
+                    // Progress events arrive per chunk; conflate + this pace = ≤2 renders/s.
                     delay(UPDATE_THROTTLE_MS)
                 }
         }
@@ -114,64 +122,70 @@ class DownloadForegroundService : Service() {
 
     private fun render(tasks: List<DownloadTask>) {
         val nm = NotificationManagerCompat.from(this)
-        lastTasks = tasks
+        val byId = tasks.associateBy { it.id }
 
-        // First sight in this process: record every task's current state WITHOUT posting.
-        // Their cards either still sit in the shade (notifications outlive the process) or were
-        // deliberately swiped — both must stay exactly as the user left them.
-        if (!seeded) {
-            seeded = true
-            for (task in tasks) postedStates[task.id] = task.state
-        }
-
-        // A task gone from the queue (removed) takes its card along; ledger entry too.
-        val present = tasks.mapTo(HashSet()) { it.id }
-        postedStates.keys.iterator().let { iter ->
+        // Owned cards whose task left the active set: one dismissible morph, then forget — the
+        // card is the user's now. A canceled/removed task takes its card along instead.
+        owned.keys.iterator().let { iter ->
             while (iter.hasNext()) {
                 val id = iter.next()
-                if (id !in present) {
-                    nm.cancel(childId(id))
-                    icons.remove(id)
-                    iter.remove()
+                val task = byId[id]
+                when {
+                    task == null || task.state == DownloadState.CANCELED -> {
+                        nm.cancel(childId(id))
+                        icons.remove(id)
+                        iter.remove()
+                    }
+                    !task.state.isActive -> {
+                        nm.notify(childId(id), taskCard(task))
+                        when (task.state) {
+                            DownloadState.COMPLETED -> completedRun++
+                            DownloadState.FAILED -> failedRun++
+                            DownloadState.PAUSED -> pausedRun++
+                            else -> Unit
+                        }
+                        icons.remove(id)
+                        iter.remove()
+                    }
                 }
             }
         }
 
+        // Active tasks: own them; post on first sight, re-post only when the rendered content
+        // (state, bar position, icon arrival) actually changed.
         for (task in tasks) {
-            if (task.state == DownloadState.CANCELED) {
-                if (postedStates.remove(task.id) != null) nm.cancel(childId(task.id))
-                icons.remove(task.id)
-                continue
-            }
+            if (!task.state.isActive) continue
             ensureIcon(task)
-            val transition = postedStates[task.id] != task.state
-            // Post on a transition (a swiped dismissible card only returns when the task
-            // genuinely changed state — resume, retry, completion), and refresh in place while
-            // active (the card is ongoing then; progress is the only thing changing).
-            if (transition || task.state.isActive) {
+            val signature = signature(task)
+            if (owned[task.id] != signature) {
                 nm.notify(childId(task.id), taskCard(task))
-                postedStates[task.id] = task.state
+                owned[task.id] = signature
             }
         }
 
-        val working = tasks.filter { it.state == DownloadState.QUEUED || it.state.isActive }
-        if (working.isEmpty()) {
-            finish(nm, tasks)
+        if (owned.isEmpty()) {
+            finish(nm)
         } else {
             holdLocks()
-            startForeground(SUMMARY_NOTIFICATION_ID, workingSummary(working))
+            // The summary is content-gated the same way as the cards.
+            val summarySignature = owned.size * 100_000 + aggregatePermille(tasks)
+            if (!foreground || summarySignature != lastSummarySignature) {
+                startForeground(SUMMARY_NOTIFICATION_ID, workingSummary(tasks))
+                lastSummarySignature = summarySignature
+            }
             foreground = true
         }
     }
 
-    /** Queue drained: drop the foreground contract but NEVER cancel the summary while cards may
-     *  remain — canceling a group summary cancels its children (AOSP group semantics). Morph it
-     *  in place into the idle roll-up instead; remove it only for a truly empty queue. */
-    private fun finish(nm: NotificationManagerCompat, tasks: List<DownloadTask>) {
+    /** Queue drained: drop the foreground contract but NEVER cancel the summary while this run's
+     *  morphed cards may remain — canceling a group summary cancels its children (AOSP group
+     *  semantics). Morph it into the run's roll-up instead; remove it when this run produced
+     *  nothing dismissible. */
+    private fun finish(nm: NotificationManagerCompat) {
         releaseLocks()
-        if (tasks.any { it.state != DownloadState.CANCELED }) {
+        if (completedRun + failedRun + pausedRun > 0) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
-            nm.notify(SUMMARY_NOTIFICATION_ID, idleSummary(tasks))
+            nm.notify(SUMMARY_NOTIFICATION_ID, idleSummary())
         } else {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         }
@@ -184,6 +198,14 @@ class DownloadForegroundService : Service() {
     /** Stable per-task notification id, so every state morphs the same card in place. */
     private fun childId(taskId: String): Int = CHILD_ID_BASE + (taskId.hashCode() and 0x7FFFFF)
 
+    /** What an owned card renders, packed for change detection: state + bar permille + icon
+     *  presence (owned cards are ongoing, so an icon-driven re-post is invisible). */
+    private fun signature(task: DownloadTask): Int {
+        val permille = ((task.progress ?: -1f) * 1000).toInt() + 1000
+        val icon = if (icons[task.id] != null) 1 else 0
+        return task.state.ordinal * 100_000 + permille * 10 + icon
+    }
+
     private fun taskCard(task: DownloadTask): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(
@@ -194,10 +216,15 @@ class DownloadForegroundService : Service() {
                 },
             )
             .setContentTitle(task.title)
+            // The platform template gives the progress bar the content-text row, so the status
+            // rides the HEADER (subText) where it is always visible; contentText still covers
+            // the barless states (finished/failed).
             .setContentText(statusLine(task))
+            .setSubText(statusLine(task))
             .setLargeIcon(icons[task.id])
             .setGroup(GROUP_KEY)
-            // The user's exact contract: non-dismissible only while the task actively works.
+            // Non-dismissible while in flight (isActive includes queued); a card that left the
+            // active set is the user's to swipe.
             .setOngoing(task.state.isActive)
             .setAutoCancel(!task.state.isActive)
             .setOnlyAlertOnce(true)
@@ -232,38 +259,37 @@ class DownloadForegroundService : Service() {
         DownloadState.CANCELED -> "" // never rendered
     }
 
-    /** Kick a one-time thumbnail load; refresh the card in place only while it is ongoing —
-     *  a dismissible card must not reappear just because its icon arrived. */
+    /** Kick a one-time thumbnail load for an owned card; the next render tick picks it up via the
+     *  signature (icon bit) — no direct posting from the load callback. */
     private fun ensureIcon(task: DownloadTask) {
         val url = task.thumbnailUrl ?: return
         val loader = imageLoader ?: return
         if (icons.containsKey(task.id)) return
         icons[task.id] = null
         serviceScope.launch {
-            val bitmap = runCatching {
+            icons[task.id] = runCatching {
                 loader.load(url, THUMB_PX, THUMB_PX, cacheInMemory = false).asAndroidBitmap()
-            }.getOrNull() ?: return@launch
-            icons[task.id] = bitmap
-            val current = lastTasks.firstOrNull { it.id == task.id } ?: return@launch
-            if (current.state.isActive) {
-                NotificationManagerCompat.from(this@DownloadForegroundService)
-                    .notify(childId(current.id), taskCard(current))
-            }
+            }.getOrNull()
         }
     }
 
     // ---- the group summary (doubles as the foreground notification) ----
 
-    private fun workingSummary(working: List<DownloadTask>): Notification {
-        val sized = working.filter { it.totalBytes > 0 }
-        val done = sized.sumOf { it.downloadedBytes }
+    private fun aggregatePermille(tasks: List<DownloadTask>): Int {
+        val sized = tasks.filter { it.state.isActive && it.totalBytes > 0 }
         val total = sized.sumOf { it.totalBytes }
+        return if (total > 0) (sized.sumOf { it.downloadedBytes } * 1000 / total).toInt() else -1
+    }
+
+    private fun workingSummary(tasks: List<DownloadTask>): Notification {
+        val active = tasks.filter { it.state.isActive }
+        val permille = aggregatePermille(tasks)
         return summaryBuilder()
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(getString(R.string.notification_downloads_multi, working.size))
+            .setContentTitle(getString(R.string.notification_downloads_multi, active.size))
             .setOngoing(true)
             .apply {
-                if (total > 0) setProgress(1000, (done * 1000 / total).toInt(), false)
+                if (permille >= 0) setProgress(1000, permille, false)
                 else setProgress(0, 0, true)
             }
             .addAction(0, getString(R.string.downloads_pause_all), pauseAllIntent())
@@ -277,16 +303,13 @@ class DownloadForegroundService : Service() {
         .setProgress(0, 0, true)
         .build()
 
-    /** The drained-queue roll-up: whatever mix remains, joined ("3 finished · 1 failed · 2 paused").
+    /** The drained-queue roll-up of what THIS run produced ("3 finished · 1 failed · 2 paused").
      *  Dismissing it clears the whole group — the standard "clear finished" affordance. */
-    private fun idleSummary(tasks: List<DownloadTask>): Notification {
-        val completed = tasks.count { it.state == DownloadState.COMPLETED }
-        val failed = tasks.count { it.state == DownloadState.FAILED }
-        val paused = tasks.count { it.state == DownloadState.PAUSED }
+    private fun idleSummary(): Notification {
         val text = listOfNotNull(
-            completed.takeIf { it > 0 }?.let { getString(R.string.downloads_summary_finished, it) },
-            failed.takeIf { it > 0 }?.let { getString(R.string.downloads_summary_failed, it) },
-            paused.takeIf { it > 0 }?.let { getString(R.string.downloads_summary_paused, it) },
+            completedRun.takeIf { it > 0 }?.let { getString(R.string.downloads_summary_finished, it) },
+            failedRun.takeIf { it > 0 }?.let { getString(R.string.downloads_summary_failed, it) },
+            pausedRun.takeIf { it > 0 }?.let { getString(R.string.downloads_summary_paused, it) },
         ).joinToString(" · ")
         return summaryBuilder()
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
@@ -371,11 +394,5 @@ class DownloadForegroundService : Service() {
         const val OPEN_REQUEST_CODE = 201
         const val UPDATE_THROTTLE_MS = 500L
         const val THUMB_PX = 256
-
-        /** Process-wide "last state a card was posted for" ledger — it must outlive service
-         *  instances (pause-all drains → service stops → resume starts a fresh one), or every
-         *  restart re-posts history. All access is main-thread. */
-        val postedStates = HashMap<String, DownloadState>()
-        var seeded = false
     }
 }

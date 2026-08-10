@@ -31,7 +31,6 @@ import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 import ymusic.download.DownloadChange
-import ymusic.download.DownloadState
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.androidEngineCacheStore
 import ymusic.dynamicengine.yt.embedPage
@@ -205,7 +204,7 @@ class YMusicApplication : Application() {
                     val startsWork = change is DownloadChange.Added ||
                         (
                             change is DownloadChange.StateChanged &&
-                                (change.state == DownloadState.QUEUED || change.state.isActive)
+                                change.state.isActive
                             )
                     if (startsWork) {
                         try {
