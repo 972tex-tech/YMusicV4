@@ -155,10 +155,12 @@ fun App(graph: AppGraph) {
     App(graph, section)
 }
 
-/** [sectionState] hoisted for tests: flipping it is exactly what a drawer selection does (on touch
- *  platforms the drawer edge-swipes open over ANY screen, which a headless jvm rig can't drive). */
+/** [sectionState] hoisted for tests and for shells that deep-link from platform surfaces (a
+ *  download notification tap lands on Downloads): flipping it is exactly what a drawer selection
+ *  does (on touch platforms the drawer edge-swipes open over ANY screen, which a headless jvm rig
+ *  can't drive). */
 @Composable
-internal fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<AppSection>) {
+fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<AppSection>) {
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     // ONE language, decided ONCE: the shell seeded the setting before the engine started
     // (ensureAppLanguage), so this is a concrete tag — the blank fallback only covers unseeded
@@ -485,7 +487,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 val scrollHost = remember { ScrollHost() }
                 // Touch platforms scroll the toolbar row away (enter-always) while the tab row
                 // stays pinned; with the tabs inline (wide) the bar carries them, so it stays put.
-                val collapsible = platformUsesTouch && !wide
+                // Downloads pins its bar outright: no tab row below it, and with the grid's status
+                // sections a vanishing toolbar reads as lost context, not gained space.
+                val collapsible = platformUsesTouch && !wide && section != AppSection.Downloads
                 var toolbarHeightPx by remember { mutableStateOf(0) }
                 var toolbarOffsetPx by remember { mutableStateOf(0f) }
                 LaunchedEffect(section, discoverTab, layers.isEmpty(), collapsible) {

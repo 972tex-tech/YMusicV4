@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ymusic.ui.App
 import ymusic.ui.AppGraph
+import ymusic.ui.AppSection
 
 /**
  * The Android UI shell: boots the shared :commonUi [App] over the application-scoped [AppGraph]
@@ -40,6 +42,10 @@ import ymusic.ui.AppGraph
  * Activity contributes only what needs one: the SAF folder pick and the notification permission.
  */
 class MainActivity : ComponentActivity() {
+    /** A section requested by a platform surface (download notification tap), consumed by the
+     *  composition once the graph is up — survives arriving before the app finishes booting. */
+    private val pendingSection = mutableStateOf<AppSection?>(null)
+
     // Notifications are MANDATORY: playback lives in a foreground service whose notification is
     // its lifeline. While disabled, a non-dismissible dialog sits over the app with granting as
     // the only way out — [notificationsEnabled] is re-checked on every resume, so returning from
@@ -99,6 +105,7 @@ class MainActivity : ComponentActivity() {
             },
         )
         (application as YMusicApplication).folderPicker = pickFolder
+        sectionFor(intent)?.let { pendingSection.value = it }
         setContent {
             CompositionClockProbe()
             var graph by remember { mutableStateOf<AppGraph?>(null) }
@@ -113,7 +120,16 @@ class MainActivity : ComponentActivity() {
             when {
                 error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
                 graph == null -> Booting { CircularProgressIndicator() }
-                else -> App(graph!!)
+                else -> {
+                    val section = rememberSaveable { mutableStateOf(AppSection.Discover) }
+                    LaunchedEffect(pendingSection.value) {
+                        pendingSection.value?.let {
+                            section.value = it
+                            pendingSection.value = null
+                        }
+                    }
+                    App(graph!!, section)
+                }
             }
             val notificationsOk = notificationsEnabled.value
             LaunchedEffect(notificationsOk) {
@@ -133,6 +149,21 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Covers 13+ permission AND the pre-13 app-level notification toggle.
         notificationsEnabled.value = NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        sectionFor(intent)?.let { pendingSection.value = it }
+    }
+
+    private fun sectionFor(intent: Intent?): AppSection? = when (intent?.action) {
+        ACTION_OPEN_DOWNLOADS -> AppSection.Downloads
+        else -> null
+    }
+
+    companion object {
+        /** Launch intent action landing on the Download manager (the download notifications). */
+        const val ACTION_OPEN_DOWNLOADS = "ymusic.android.action.OPEN_DOWNLOADS"
     }
 
     private fun requestNotificationAccess() {

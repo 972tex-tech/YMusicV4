@@ -285,10 +285,12 @@ class DownloadForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setContentIntent(openAppIntent())
 
+    /** Lands on the Download manager. The distinct action keeps this PendingIntent from aliasing
+     *  the playback notification's plain launch intent (filterEquals compares actions). */
     private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
         this,
-        0,
-        Intent(this, MainActivity::class.java),
+        OPEN_REQUEST_CODE,
+        Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN_DOWNLOADS),
         PendingIntent.FLAG_IMMUTABLE,
     )
 
@@ -318,6 +320,7 @@ class DownloadForegroundService : Service() {
         const val CHILD_ID_BASE = 0x100000
         const val ACTION_PAUSE_ALL = "ymusic.android.downloads.PAUSE_ALL"
         const val PAUSE_REQUEST_CODE = 200
+        const val OPEN_REQUEST_CODE = 201
         const val UPDATE_THROTTLE_MS = 500L
     }
 }
