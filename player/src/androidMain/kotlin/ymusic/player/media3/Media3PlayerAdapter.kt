@@ -4,6 +4,7 @@ package ymusic.player.media3
 
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -181,7 +182,12 @@ class Media3PlayerAdapter(
         val size = player.queue.value.items.size
         val from = fromIndex.coerceIn(0, size)
         val to = toIndex.coerceIn(from, size)
-        if (to > from) player.remove(from, to)
+        try {
+            if (to > from) player.remove(from, to)
+        } catch (e: IllegalArgumentException) {
+            // Belt over the clamp: a stale cross-process edit is dropped, never fatal.
+            Log.w(TAG, "stale removeMediaItems($fromIndex, $toIndex)", e)
+        }
     }
 
     override fun handleMoveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int): ListenableFuture<*> = done {
@@ -189,7 +195,11 @@ class Media3PlayerAdapter(
         val from = fromIndex.coerceIn(0, size)
         val to = toIndex.coerceIn(from, size)
         val target = newIndex.coerceIn(0, size - (to - from))
-        if (to > from) player.move(from, to, target)
+        try {
+            if (to > from) player.move(from, to, target)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "stale moveMediaItems($fromIndex, $toIndex, $newIndex)", e)
+        }
     }
 
     override fun handlePrepare(): ListenableFuture<*> = done { player.play() }
@@ -275,6 +285,7 @@ class Media3PlayerAdapter(
     }
 
     private companion object {
+        const val TAG = "Media3PlayerAdapter"
         const val SEEK_INCREMENT_MS = 10_000L
         const val POSITION_JUMP_MS = 2_000L
         const val DURATION_EPSILON_MS = 1_000L
