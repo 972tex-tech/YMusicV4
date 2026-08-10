@@ -3,6 +3,7 @@
 package ymusic.player.media3
 
 import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -20,11 +21,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import ymusic.player.LoopMode
 import ymusic.player.PlayableItem
 import ymusic.player.PlaybackState
 import ymusic.player.Player
+import ymusic.player.isPlaying
 import kotlin.math.abs
 import androidx.media3.common.Player as Media3Player
 
@@ -55,23 +58,33 @@ class Media3PlayerAdapter(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     init {
-        var lastPositionMs = 0L
-        var lastDurationMs = Long.MIN_VALUE
+        var prevPositionMs = 0L
+        var prevAtMs = SystemClock.elapsedRealtime()
+        var prevDurationMs = Long.MIN_VALUE
         scope.launch {
             merge(
                 player.status,
                 player.queue,
                 player.config,
                 // The play-head is read live via PositionSupplier — a tick needs no invalidation.
-                // A seek (position jump) or a newly-discovered duration re-anchors the snapshot.
+                // A seek re-anchors the snapshot, judged against the WALL CLOCK, not the previous
+                // tick: while playing, position is expected to advance by elapsed×speed, so slow
+                // or throttled ticks (screen-off WebView timers) don't masquerade as seeks. A
+                // duration re-anchors only when it meaningfully changes (appears, or moves >1s).
                 player.progress.mapNotNull { p ->
-                    val jumped = abs(p.positionMs - lastPositionMs) > POSITION_JUMP_MS
-                    val durationChanged = p.durationMs != lastDurationMs
-                    lastPositionMs = p.positionMs
-                    lastDurationMs = p.durationMs
+                    val now = SystemClock.elapsedRealtime()
+                    val status = player.status.value
+                    val expectedAdvance =
+                        if (status.state.isPlaying()) ((now - prevAtMs) * status.speed).toLong() else 0L
+                    val jumped = abs((p.positionMs - prevPositionMs) - expectedAdvance) > POSITION_JUMP_MS
+                    val durationChanged = meaningfulDurationChange(p.durationMs, prevDurationMs)
+                    prevPositionMs = p.positionMs
+                    prevAtMs = now
+                    prevDurationMs = p.durationMs
                     if (jumped || durationChanged) Unit else null
                 },
-                extraInvalidations,
+                // An external metadata source updated → cached snapshots describe() stale items.
+                extraInvalidations.onEach { builtFor = null },
             ).collect { invalidateState() }
         }
     }
@@ -122,21 +135,7 @@ class Media3PlayerAdapter(
 
         if (items.isNotEmpty()) {
             val currentIndex = queue.currentIndex.coerceIn(0, items.lastIndex)
-            val durationMs = player.progress.value.durationMs
-            builder.setPlaylist(
-                items.mapIndexed { i, item ->
-                    val key = item.mediaKey
-                    MediaItemData.Builder("$i:$key")
-                        .setMediaItem(
-                            MediaItem.Builder().setMediaId(key).setMediaMetadata(describe(item)).build(),
-                        )
-                        .setDurationUs(
-                            if (i == currentIndex && durationMs > 0) durationMs * 1000 else C.TIME_UNSET,
-                        )
-                        .setIsSeekable(true)
-                        .build()
-                },
-            )
+            builder.setPlaylist(playlist(items, currentIndex, player.progress.value.durationMs))
             builder.setCurrentMediaItemIndex(currentIndex)
             builder.setContentPositionMs { player.progress.value.positionMs }
             builder.setContentBufferedPositionMs { player.progress.value.bufferedPositionMs }
@@ -202,6 +201,36 @@ class Media3PlayerAdapter(
         player.setSpeed(playbackParameters.speed)
     }
 
+    // getState runs only on the main looper (as do the invalidation collectors), so the memo
+    // needs no locking. Rebuilding one MediaItemData per queue item on EVERY snapshot is the
+    // SimpleBasePlayer tax this avoids: the playlist part changes only when the queue instance,
+    // the current index, or the current item's (meaningful) duration does.
+    private var builtFor: List<PlayableItem>? = null
+    private var builtIndex = -1
+    private var builtDurationMs = Long.MIN_VALUE
+    private var builtPlaylist: List<MediaItemData> = emptyList()
+
+    private fun playlist(items: List<PlayableItem>, currentIndex: Int, durationMs: Long): List<MediaItemData> {
+        if (items !== builtFor || currentIndex != builtIndex || meaningfulDurationChange(durationMs, builtDurationMs)) {
+            builtFor = items
+            builtIndex = currentIndex
+            builtDurationMs = durationMs
+            builtPlaylist = items.mapIndexed { i, item ->
+                val key = item.mediaKey
+                MediaItemData.Builder("$i:$key")
+                    .setMediaItem(
+                        MediaItem.Builder().setMediaId(key).setMediaMetadata(describe(item)).build(),
+                    )
+                    .setDurationUs(
+                        if (i == currentIndex && durationMs > 0) durationMs * 1000 else C.TIME_UNSET,
+                    )
+                    .setIsSeekable(true)
+                    .build()
+            }
+        }
+        return builtPlaylist
+    }
+
     private inline fun done(block: () -> Unit): ListenableFuture<*> {
         block()
         return Futures.immediateVoidFuture()
@@ -210,6 +239,12 @@ class Media3PlayerAdapter(
     private companion object {
         const val SEEK_INCREMENT_MS = 10_000L
         const val POSITION_JUMP_MS = 2_000L
+        const val DURATION_EPSILON_MS = 1_000L
+
+        /** True when a duration re-anchor is worth a snapshot: it appeared/vanished, or moved by
+         *  more than the epsilon — engines refining a known duration by a few ms are noise. */
+        fun meaningfulDurationChange(durationMs: Long, prevMs: Long): Boolean =
+            (durationMs > 0) != (prevMs > 0) || (durationMs > 0 && abs(durationMs - prevMs) > DURATION_EPSILON_MS)
 
         val COMMANDS: Media3Player.Commands = Media3Player.Commands.Builder()
             .addAll(
