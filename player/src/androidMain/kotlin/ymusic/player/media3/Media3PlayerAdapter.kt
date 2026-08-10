@@ -42,6 +42,12 @@ import androidx.media3.common.Player as Media3Player
  * Never releases the shared facade: [handleRelease] only stops mirroring. Main-thread bound, like
  * the facade it wraps.
  *
+ * The published timeline is a FLOATING WINDOW of at most [QUEUE_WINDOW_MAX] items around the
+ * current one (the in-app UI reads the full queue off the facade directly): controllers speak
+ * window coordinates, so every index a command carries translates through [toAbsolute] before it
+ * touches the facade. Uids carry absolute indices, keeping item identity stable as the window
+ * slides.
+ *
  * [describe] supplies per-item display metadata (the queue holds only [PlayableItem]s);
  * [extraInvalidations] re-snapshots when an external metadata source updates (e.g. titles arriving
  * after the queue was set).
@@ -56,9 +62,10 @@ class Media3PlayerAdapter(
      *  but a set is ignored (in-app UIs drive the facade directly). */
     private val applyMediaItems: ((player: Player, items: List<MediaItem>, startIndex: Int, startPositionMs: Long) -> Unit)? = null,
     /** Inserts controller-added items (addMediaItems / legacy addQueueItem) into the passed
-     *  facade's queue at [MediaItem]-timeline position `index`. The items arrive pre-resolved by
-     *  the session callback's onAddMediaItems, so the owner converts them back to [PlayableItem]s.
-     *  Null = adds are dropped. */
+     *  facade's queue at absolute queue position `index` (already translated from the published
+     *  window's coordinates). The items arrive pre-resolved by the session callback's
+     *  onAddMediaItems, so the owner converts them back to [PlayableItem]s. Null = adds are
+     *  dropped. */
     private val insertMediaItems: ((player: Player, index: Int, items: List<MediaItem>) -> Unit)? = null,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -146,7 +153,7 @@ class Media3PlayerAdapter(
         if (items.isNotEmpty()) {
             val currentIndex = queue.currentIndex.coerceIn(0, items.lastIndex)
             builder.setPlaylist(playlist(items, currentIndex, player.progress.value.durationMs))
-            builder.setCurrentMediaItemIndex(currentIndex)
+            builder.setCurrentMediaItemIndex(currentIndex - windowStart(items.size, currentIndex))
             builder.setContentPositionMs { player.progress.value.positionMs }
             builder.setContentBufferedPositionMs { player.progress.value.bufferedPositionMs }
             builder.setTotalBufferedDurationMs {
@@ -171,17 +178,18 @@ class Media3PlayerAdapter(
     // COMMAND_CHANGE_MEDIA_ITEMS gates add/remove/move/replace together, and SimpleBasePlayer's
     // defaults THROW for any advertised-but-unimplemented one. Remove/move map onto the facade's
     // range edits. The facade contract is STRICT (in-app index bugs must surface); THIS is the
-    // stranger boundary — controller edits arrive async and cross-process against a queue
-    // snapshot that may already be stale — so indices clamp here, and only here. Add routes to
-    // the owner's converter hook (dropped when no hook is installed). Replace = add+remove.
+    // stranger boundary — controller edits arrive async and cross-process, in WINDOW coordinates,
+    // against a queue snapshot that may already be stale — so indices translate to absolute and
+    // clamp here, and only here. Add routes to the owner's converter hook (dropped when no hook
+    // is installed). Replace = add+remove.
     override fun handleAddMediaItems(index: Int, mediaItems: MutableList<MediaItem>): ListenableFuture<*> = done {
-        insertMediaItems?.invoke(player, index, mediaItems)
+        insertMediaItems?.invoke(player, toAbsolute(index), mediaItems)
     }
 
     override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> = done {
         val size = player.queue.value.items.size
-        val from = fromIndex.coerceIn(0, size)
-        val to = toIndex.coerceIn(from, size)
+        val from = toAbsolute(fromIndex).coerceIn(0, size)
+        val to = toAbsolute(toIndex).coerceIn(from, size)
         try {
             if (to > from) player.remove(from, to)
         } catch (e: IllegalArgumentException) {
@@ -192,14 +200,22 @@ class Media3PlayerAdapter(
 
     override fun handleMoveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int): ListenableFuture<*> = done {
         val size = player.queue.value.items.size
-        val from = fromIndex.coerceIn(0, size)
-        val to = toIndex.coerceIn(from, size)
-        val target = newIndex.coerceIn(0, size - (to - from))
+        val from = toAbsolute(fromIndex).coerceIn(0, size)
+        val to = toAbsolute(toIndex).coerceIn(from, size)
+        val target = toAbsolute(newIndex).coerceIn(0, size - (to - from))
         try {
             if (to > from) player.move(from, to, target)
         } catch (e: IllegalArgumentException) {
             Log.w(TAG, "stale moveMediaItems($fromIndex, $toIndex, $newIndex)", e)
         }
+    }
+
+    /** A controller index (window coordinates — what the published timeline showed) → the facade's
+     *  absolute queue index. */
+    private fun toAbsolute(windowIndex: Int): Int {
+        if (windowIndex == C.INDEX_UNSET) return C.INDEX_UNSET
+        val queue = player.queue.value
+        return windowIndex + windowStart(queue.items.size, queue.currentIndex.coerceAtLeast(0))
     }
 
     override fun handlePrepare(): ListenableFuture<*> = done { player.play() }
@@ -213,12 +229,14 @@ class Media3PlayerAdapter(
             Media3Player.COMMAND_SEEK_TO_NEXT, Media3Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> player.skipNext()
             Media3Player.COMMAND_SEEK_TO_PREVIOUS, Media3Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM ->
                 player.skipPrev()
-            Media3Player.COMMAND_SEEK_TO_MEDIA_ITEM ->
-                if (mediaItemIndex != C.INDEX_UNSET && mediaItemIndex != player.queue.value.currentIndex) {
-                    player.playAt(mediaItemIndex)
+            Media3Player.COMMAND_SEEK_TO_MEDIA_ITEM -> {
+                val absolute = toAbsolute(mediaItemIndex)
+                if (absolute != C.INDEX_UNSET && absolute != player.queue.value.currentIndex) {
+                    player.playAt(absolute) // lenient: a stale windowed index just misses
                 } else if (positionMs != C.TIME_UNSET) {
                     player.seekTo(positionMs)
                 }
+            }
             else -> player.seekTo(if (positionMs == C.TIME_UNSET) 0L else positionMs)
         }
     }
@@ -259,7 +277,15 @@ class Media3PlayerAdapter(
             builtFor = items
             builtIndex = currentIndex
             builtDurationMs = durationMs
-            builtPlaylist = items.mapIndexed { i, item ->
+            // The published timeline is a floating window around the current item (the legacy
+            // 15-item window, widened): the facade may hold a 1000-item queue, but controllers,
+            // car queue UIs and AVRCP get a usable slice without a full re-convert per change.
+            // The window is a pure function of (size, currentIndex), so the memo key above
+            // already covers every slide.
+            val start = windowStart(items.size, currentIndex)
+            val end = (start + QUEUE_WINDOW_MAX).coerceAtMost(items.size)
+            builtPlaylist = (start until end).map { i ->
+                val item = items[i]
                 val key = item.mediaKey
                 // The engine's measured duration (current item only) beats the item's own
                 // source-declared one; other rows fall back to what they carried in.
@@ -267,6 +293,7 @@ class Media3PlayerAdapter(
                     i == currentIndex && durationMs > 0 -> durationMs
                     else -> item.durationMs?.takeIf { it > 0 }
                 }
+                // Uid carries the ABSOLUTE index: a sliding window keeps unchanged items' identity.
                 MediaItemData.Builder("$i:$key")
                     .setMediaItem(
                         MediaItem.Builder().setMediaId(key).setMediaMetadata(describe(item)).build(),
@@ -287,6 +314,20 @@ class Media3PlayerAdapter(
     private companion object {
         const val TAG = "Media3PlayerAdapter"
         const val SEEK_INCREMENT_MS = 10_000L
+
+        /** Max published timeline items — the floating window around the current item. Media3
+         *  survives huge queues (ParceledListSlice chunks the platform parcel), but every
+         *  timeline change re-converts and re-streams the whole list to every controller, and a
+         *  car UI showing 1000 rows is its own failure; ±25 keeps the queue drawer useful. */
+        const val QUEUE_WINDOW_MAX = 51
+
+        /** First absolute index of the published window: centered on current, clamped so a full
+         *  window survives near either end. */
+        fun windowStart(size: Int, currentIndex: Int): Int {
+            if (size <= QUEUE_WINDOW_MAX) return 0
+            return (currentIndex - QUEUE_WINDOW_MAX / 2)
+                .coerceIn(0, size - QUEUE_WINDOW_MAX)
+        }
         const val POSITION_JUMP_MS = 2_000L
         const val DURATION_EPSILON_MS = 1_000L
 
