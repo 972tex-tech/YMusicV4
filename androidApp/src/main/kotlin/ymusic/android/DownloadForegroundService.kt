@@ -6,8 +6,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
@@ -44,6 +46,8 @@ class DownloadForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var downloads: DownloadService? = null
     private var foreground = false
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     /** Task ids whose child card currently shows progress (cancel it if the task vanishes). */
     private val showing = HashSet<String>()
@@ -97,6 +101,7 @@ class DownloadForegroundService : Service() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        releaseLocks()
         super.onDestroy()
     }
 
@@ -141,14 +146,42 @@ class DownloadForegroundService : Service() {
         if (working.isEmpty()) {
             finish(nm)
         } else {
+            holdLocks()
             startForeground(SUMMARY_NOTIFICATION_ID, workingSummary(working))
             foreground = true
         }
     }
 
+    /** Downloads are always network work: partial wake + high-perf wifi, held while the queue
+     *  works, released the moment it drains — no pause grace like playback, the queue state is
+     *  the whole truth here. */
+    private fun holdLocks() {
+        if (wakeLock == null) {
+            val power = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "YMusic:downloads")
+                .apply { setReferenceCounted(false) }
+
+            @Suppress("DEPRECATION")
+            wifiLock = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "YMusic:downloads")
+                .apply { setReferenceCounted(false) }
+        }
+        if (wakeLock?.isHeld != true) {
+            @Suppress("WakelockTimeout")
+            wakeLock?.acquire()
+        }
+        if (wifiLock?.isHeld != true) wifiLock?.acquire()
+    }
+
+    private fun releaseLocks() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wifiLock?.let { if (it.isHeld) it.release() }
+    }
+
     /** Queue drained: drop foreground; if finished cards remain, re-post the summary dismissible
      *  so they keep their group container instead of scattering loose into the shade. */
     private fun finish(nm: NotificationManagerCompat) {
+        releaseLocks()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         foreground = false
         if (completed > 0 || failed > 0) {
