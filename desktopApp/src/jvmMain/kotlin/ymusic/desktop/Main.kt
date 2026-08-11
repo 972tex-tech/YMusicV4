@@ -103,9 +103,6 @@ import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 
-/** Sentry project DSN (not a secret). Empty keeps the SDK off — crashes then go unreported. */
-private const val SENTRY_DSN = ""
-
 /**
  * The desktop shell: boots JCEF + the scraping engine, assembles the [AppGraph] (player facade over
  * VLCJ local + JCEF WebView engines, the shared WebView container as the video surface), and runs

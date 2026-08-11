@@ -11,6 +11,8 @@ plugins {
     kotlin("plugin.allopen") version Versions.kotlin apply false
     id("org.jetbrains.compose") version Versions.composeMultiplatform apply false
     id("org.jetbrains.kotlinx.benchmark") version Versions.kotlinxBenchmark apply false
+    id("io.sentry.android.gradle") version Versions.sentryGradlePlugin apply false
+    id("io.sentry.jvm.gradle") version Versions.sentryGradlePlugin apply false
     id("com.diffplug.spotless") version "8.8.0"
 }
 

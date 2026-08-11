@@ -33,6 +33,7 @@ object Versions {
 
     // Crash reporting (wraps sentry-java on Android/JVM, sentry-cocoa on Apple)
     const val sentry = "0.27.0"
+    const val sentryGradlePlugin = "6.18.0" // source-context upload (android + jvm plugin ids)
 
     // Benchmark
     const val kotlinxBenchmark = "0.4.17"
