@@ -1,21 +1,16 @@
 package ymusic.desktop
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -34,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -44,12 +38,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toAwtImage
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +51,7 @@ import androidx.compose.ui.window.rememberWindowState
 import ymusic.imageloader.AsyncImage
 import ymusic.player.isPlaying
 import ymusic.ui.AppGraph
+import ymusic.ui.SlimSeekBar
 import java.awt.SystemTray
 import java.awt.Toolkit
 import java.awt.TrayIcon
@@ -67,7 +59,6 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
-import kotlin.math.roundToInt
 
 /**
  * The tray's notification-style popup: a small always-on-top card near the tray corner with the
@@ -179,26 +170,20 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
 
         Spacer(Modifier.height(6.dp))
 
-        // Seek: drag holds a local value so the live position doesn't fight the thumb. A slim
-        // custom thumb/track — the default M3 slider doesn't fit a 22dp row and clips into a
-        // floating dot.
         val durationMs = progress.durationMs
-        var dragging by remember { mutableStateOf<Float?>(null) }
-        val fraction = when {
-            durationMs <= 0L -> 0f
-            else -> (dragging ?: (progress.positionMs.toFloat() / durationMs)).coerceIn(0f, 1f)
-        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(formatTime(progress.positionMs), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SeekBar(
-                fraction = fraction,
+            SlimSeekBar(
+                fraction = if (durationMs > 0) (progress.positionMs.toFloat() / durationMs) else 0f,
                 enabled = durationMs > 0,
-                onScrub = { dragging = it },
-                onCommit = { f ->
-                    dragging = null
-                    if (durationMs > 0) player.seekTo((f * durationMs).toLong())
-                },
+                onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                fillColor = MaterialTheme.colorScheme.primary,
+                thumbColor = MaterialTheme.colorScheme.primary,
+                thumbSize = 10.dp,
+                barHeight = 22.dp,
+                thumbShadow = 0.dp,
             )
             Text(
                 if (durationMs > 0) formatTime(durationMs) else "--:--",
@@ -230,72 +215,6 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
         }
     }
 }
-
-/**
- * A slim seek bar built from scratch: the M3 slider's internal layout doesn't center inside a
- * 22dp row, and here the track and thumb are both children of one CenterStart box, so they sit on
- * the row's centerline with the time labels by construction. Tap seeks; drag scrubs and commits
- * on release.
- */
-@Composable
-private fun SeekBar(
-    fraction: Float,
-    enabled: Boolean,
-    onScrub: (Float) -> Unit,
-    onCommit: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var widthPx by remember { mutableStateOf(0) }
-    Box(
-        modifier
-            .height(22.dp)
-            .onSizeChanged { widthPx = it.width }
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
-                detectTapGestures { offset ->
-                    val f = (offset.x / size.width).coerceIn(0f, 1f)
-                    onScrub(f)
-                    onCommit(f)
-                }
-            }
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
-                var f = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        f = (offset.x / size.width).coerceIn(0f, 1f)
-                        onScrub(f)
-                    },
-                    onHorizontalDrag = { change, _ ->
-                        f = (change.position.x / size.width).coerceIn(0f, 1f)
-                        onScrub(f)
-                    },
-                    onDragEnd = { onCommit(f) },
-                    onDragCancel = { onCommit(f) },
-                )
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(1.5.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
-        }
-        Box(
-            Modifier
-                .offset { IntOffset((fraction * (widthPx - THUMB_DP.dp.toPx())).roundToInt().coerceAtLeast(0), 0) }
-                .size(THUMB_DP.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-        )
-    }
-}
-
-private const val THUMB_DP = 10
 
 /**
  * The tray icon, managed straight through AWT — NOT the compose `Tray`, which always attaches a

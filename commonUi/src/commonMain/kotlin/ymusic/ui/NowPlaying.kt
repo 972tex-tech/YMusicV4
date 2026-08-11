@@ -56,13 +56,11 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -704,32 +702,14 @@ private fun SeekBar(player: ymusic.player.Player, positionMs: Long, durationMs: 
 
 /** The bare slider (3dp [trackColor] track, orange fill + thumb) — SeekBar's core, reused by the
  *  landscape video overlay. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeekSlider(player: ymusic.player.Player, positionMs: Long, durationMs: Long, trackColor: Color) {
-    Slider(
-        value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-        onValueChange = { if (durationMs > 0) player.seekTo((it * durationMs).toLong()) },
+    SlimSeekBar(
+        fraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
         enabled = durationMs > 0,
-        modifier = Modifier.fillMaxWidth().height(20.dp),
-        thumb = {
-            Box(
-                Modifier
-                    .size(13.dp)
-                    .shadow(1.dp, CircleShape)
-                    .background(DesignColors.Accent, CircleShape),
-            )
-        },
-        track = { state ->
-            Box(Modifier.fillMaxWidth().height(3.dp).background(trackColor, RoundedCornerShape(2.dp))) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(state.value)
-                        .height(3.dp)
-                        .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
-                )
-            }
-        },
+        onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
+        trackColor = trackColor,
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
