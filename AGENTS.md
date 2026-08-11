@@ -2,6 +2,8 @@
 
 This file provides guidance to AI coding agents working with code in this repository.
 
+Machine-local dev notes are imported when present: @~/.agents/AGENTS.md
+
 ## Project Overview
 
 YMusic V4 is a complete rewrite of `YMusicLegacy` (the previous YMusic Android app) on new tech stacks: Kotlin Multiplatform + Compose Multiplatform, targeting Android, desktop JVM, and iOS. The legacy sources are not published; if you have a copy it sits at `YMusicLegacy/` (gitignored) for reference.
