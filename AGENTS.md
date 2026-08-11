@@ -32,7 +32,7 @@ Each module has a one-line summary here; deeper detail lives in the module's own
 - **`:androidApp`** — the Android product shell (plain AGP 9 application module) booting the shared `App` over ExoPlayer + Android WebView engines. → [`androidApp/README.md`](androidApp/README.md)
 - **`iosApp`** *(not a Gradle module — the Xcode shell)* — the iOS product shell: SwiftUI `@main` hosting the same shared Compose `App` from the `:commonUi` framework, over AVFoundation local + WKWebView YouTube engines. → [`iosApp/README.md`](iosApp/README.md)
 - **`:settings`** — typed key-value `SettingsStore` (StateFlow reads, per-key distinct), in-memory + JVM Properties-file impls, `AppSettings` descriptors (hl/gl/theme accent/uiLanguage — hl/gl is InnerTube content language/region, uiLanguage is the app chrome; kept independent). Android persistence = the shell's SharedPreferences-backed store (`androidApp/PrefsSettingsStore`).
-- **`:playground`** — a Compose Multiplatform demo app to hand-check `:player` (desktop JVM only). → [`playground/README.md`](playground/README.md)
+- **`:playground`** — a Compose Multiplatform demo app to hand-check `:player` (desktop JVM only); the native Apple checks are the SwiftUI spikes `spikes/macos-player-lab/` and `spikes/ios-player-lab/`. → [`playground/README.md`](playground/README.md)
 
 ## Coding Rules
 

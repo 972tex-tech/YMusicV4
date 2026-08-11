@@ -22,11 +22,30 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **Follow-ups** — Android/iOS player-screen apps are a straightforward follow-up (each needs its own app module /
   Xcode entry).
 
-- **Native Apple checks** *(SwiftUI spike apps, not published)* — macOS and iOS spikes over `:player`'s exported
-  `Player.framework` drive BOTH Apple engines host-native, no Compose: **Local** = the AVFoundation `LocalPlayer`
-  (`AVPlayerLayer` video + transport + audio-only), **YouTube** = the WKWebView `WebViewPlayer` (shown via
-  `NSViewRepresentable`/`UIViewRepresentable` over the container the player injects into). They are the way to
-  hand-check the WKWebView engine on a Mac without an iOS simulator.
-  - Swift gotcha worth keeping: the exported facade protocol `Player` (swift_name `Player`) collides with the
-    framework module name `Player`, so `Player.Progress` mis-binds — read `Progress` fields off the inferred
-    `currentProgress()` value instead of naming the type.
+- **macOS spike: `spikes/macos-player-lab/`** — a native **macOS** check exists as a spike: a **SwiftUI** app over
+  `:player`'s exported `Player.framework` (macos `binaries.framework`, Swift interop in `appleMain/AppleInterop.kt`:
+  `avPlayer()` → `AVPlayerLayer`, `MediaEngine.currentStatus()`/`currentProgress()`, `createYtWebViewPlayer()`).
+  - A `TabView` drives BOTH Apple engines host-native — **no Compose, no iOS simulator**:
+    - **Local** = the AVFoundation `LocalPlayer` (`AVPlayerLayer` video + transport + audio-only)
+    - **YouTube** = the WKWebView `WebViewPlayer` (video-id → load → transport, the WKWebView shown via
+      `NSViewRepresentable` over the `NSView` container the player injects into).
+  - This is the way to hand-check the WKWebView engine on the Mac without an iOS simulator (the macOS target's main
+    job now that the desktop product is the JVM playground).
+  - `spikes/macos-player-lab/build.sh` links via `swiftc`, builds the `webview-js` bundle if missing and copies it
+    into the `.app` Resources (read via `Bundle.main`), bundles a `.app` (embeds the framework,
+    `@executable_path/../Frameworks` rpath, ad-hoc signed), and `open`s it.
+
+- **iOS spike: `spikes/ios-player-lab/`** — a sibling **iOS** spike exists — the same two-tab SwiftUI app (UIKit
+  `UIViewRepresentable` instead of `NSViewRepresentable`) over the **iOS** `Player.framework`, run in the
+  **iOS Simulator**.
+  - It's the runnable iOS demonstration on an Intel Mac: the only iOS target an x86_64 host builds is `iosX64`
+    (Compose MP 1.11.1 dropped all x86_64-Apple targets, so the shared `:commonUi` Compose UI needs Apple Silicon,
+    but `:player` has no Compose dep and still ships `iosX64`).
+  - `build.sh` links `linkDebugFrameworkIosX64`, `swiftc`-compiles for `x86_64-apple-ios*-simulator`, assembles a flat
+    `.app` (`@executable_path/Frameworks`), and `simctl` boot/install/launches it — the `[ios-lab]` stdout lines
+    (streamed by `simctl launch --console-pty`) show playback advancing.
+  - Verified: the AVFoundation `LocalPlayer` plays a bundled clip (`state=Ready`, `video=320x180`, position
+    0→20000→`Ended`).
+  - Swift gotcha: the exported facade protocol `Player` (swift_name `Player`) collides with the framework module name
+    `Player`, so `Player.Progress` mis-binds — read `Progress` fields off the inferred `currentProgress()` value
+    instead of naming the type.

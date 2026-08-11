@@ -24,7 +24,7 @@ Common commands (run from repo root):
 Notes:
 - Integration tests live in **`:kmpHttp:core`** (commonTest `HttpClientSmokeTests`, `InMemoryCookieJarTest`, `SslTest`; desktopTest `CurlSslTest`) and hit the **live** `https://httpbun.com` / `https://badssl.com` — they need network access; there is no local mock server. badssl can be flaky ("SSL connect error") under rapid sequential handshakes.
 - Versions/coordinates are centralized in `buildSrc/src/main/kotlin/Dependencies.kt` (`Versions`/`Libs`). KMP target/sourceset boilerplate is shared via the `KmpHttpCommon.gradle.kts` convention plugin and `kmpHttpCommonConfig()` / `withAppleTargets()` / `withLinuxTargets()` / `withMacosTargets()` / `withDesktopTargets()` in `KmpTargets.kt`.
-- **linuxX64 tests from a non-Linux host:** run the Linux native suite in any `linux/amd64` container with a JDK, `libcurl4-openssl-dev` + `libssl-dev` + `libunistring-dev` (curl engine + openssl cinterop link deps); keep Gradle/Konan caches in named volumes so re-runs skip the toolchain download.
+- **linuxX64 tests from a non-Linux host:** `docker compose run --rm linux-test` runs the Linux native suite in a container (`docker/linux-test.Dockerfile` + `docker-compose.yml`), pinned to `linux/amd64`, with `libcurl4-openssl-dev` + `libssl-dev` + `libunistring-dev` (curl engine + openssl cinterop link deps). Gradle/Konan caches persist in named volumes so re-runs skip the toolchain download.
 
 ## Modules
 
