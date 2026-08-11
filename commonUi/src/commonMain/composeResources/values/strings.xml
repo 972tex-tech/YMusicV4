@@ -165,6 +165,8 @@
     <string name="settings_theme_system">Follow system</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
+    <string name="settings_lockscreen_art">Album art on lock screen</string>
+    <string name="settings_lockscreen_art_hint">Show the playing song\'s artwork on the lock screen and system media controls.</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>

@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.support.v4.media.session.MediaSessionCompat
 import android.view.KeyEvent
+import android.view.View
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -42,6 +43,8 @@ import ymusic.player.PlayableItem
 import ymusic.player.Player
 import ymusic.player.isPlaying
 import ymusic.player.media3.Media3PlayerAdapter
+import ymusic.settings.AppSettings
+import ymusic.settings.flow
 import ymusic.ui.AppGraph
 import ymusic.ui.youtubeThumbUrl
 import androidx.media3.session.R as Media3R
@@ -94,9 +97,10 @@ class PlaybackService : MediaLibraryService() {
         val player = graph.player.also { this.player = it }
         val tree = MediaBrowseTree(this, graph).also { this.tree = it }
         coordinator = ymusic.ui.PlaybackCoordinator(graph, serviceScope)
+        val lockScreenArt = graph.settings.flow(AppSettings.lockScreenAlbumArt)
         val adapter = Media3PlayerAdapter(
             player,
-            describe = { item -> item.toMediaMetadata(this) },
+            describe = { item -> item.toMediaMetadata(this, sessionArt = lockScreenArt.value) },
             applyMediaItems = { _, items, startIndex, _ -> applyBrowseItems(items, startIndex) },
             insertMediaItems = { target, index, items -> insertBrowseItems(target, index, items) },
         )
@@ -374,10 +378,30 @@ class PlaybackService : MediaLibraryService() {
     private fun buildNotification(): android.app.Notification {
         val item = player?.queue?.value?.currentItem
         val playing = player?.status?.value?.state?.isPlaying() == true
+        // Legacy three-line shape: title / artist / album as subText — v4's joined "artist · album"
+        // subtitle would print the album twice, so a local item splits it here.
+        val contentText: String?
+        val subText: String?
+        when (item) {
+            is PlayableItem.LocalMedia -> {
+                contentText = item.artist ?: item.album
+                subText = item.album.takeIf { item.artist != null }
+            }
+            else -> {
+                contentText = item?.displaySubtitle
+                subText = null
+            }
+        }
+        // Legacy mirrored the outer actions manually in RTL: the glyph keeps its slot, the
+        // dispatched command and label swap, so after the system mirrors the row the skip
+        // directions still read correctly.
+        val rtl = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            // Legacy state-dependent glyph (playing shows the play arrow), not the launcher icon.
+            .setSmallIcon(if (playing) Media3R.drawable.media3_icon_play else Media3R.drawable.media3_icon_pause)
             .setContentTitle(item?.displayTitle ?: getString(R.string.app_name))
-            .setContentText(item?.displaySubtitle)
+            .setContentText(contentText)
+            .setSubText(subText)
             .setContentIntent(sessionActivityIntent())
             .setDeleteIntent(dismissIntent())
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -386,8 +410,8 @@ class PlaybackService : MediaLibraryService() {
             .setShowWhen(false)
             .addAction(
                 Media3R.drawable.media3_icon_previous,
-                getString(R.string.notification_previous),
-                mediaButtonIntent(KeyEvent.KEYCODE_MEDIA_PREVIOUS),
+                getString(if (rtl) R.string.notification_next else R.string.notification_previous),
+                mediaButtonIntent(if (rtl) KeyEvent.KEYCODE_MEDIA_NEXT else KeyEvent.KEYCODE_MEDIA_PREVIOUS),
             )
             .addAction(
                 if (playing) Media3R.drawable.media3_icon_pause else Media3R.drawable.media3_icon_play,
@@ -396,15 +420,17 @@ class PlaybackService : MediaLibraryService() {
             )
             .addAction(
                 Media3R.drawable.media3_icon_next,
-                getString(R.string.notification_next),
-                mediaButtonIntent(KeyEvent.KEYCODE_MEDIA_NEXT),
+                getString(if (rtl) R.string.notification_previous else R.string.notification_next),
+                mediaButtonIntent(if (rtl) KeyEvent.KEYCODE_MEDIA_PREVIOUS else KeyEvent.KEYCODE_MEDIA_NEXT),
             )
         session?.let { s ->
             builder.setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
                     // media3 1.7+ exposes only the platform token; MediaStyle still wants compat.
                     .setMediaSession(MediaSessionCompat.Token.fromToken(s.platformToken))
-                    .setShowActionsInCompactView(0, 1, 2),
+                    .setShowActionsInCompactView(0, 1, 2)
+                    .setShowCancelButton(true)
+                    .setCancelButtonIntent(dismissIntent()),
             )
         }
         val artUrl = item?.displayThumbnailUrl
@@ -524,18 +550,23 @@ class PlaybackService : MediaLibraryService() {
 
 /** Session/notification metadata for a queue item — items are self-describing. The artworkUri is
  *  published in [artworkContentUri]-wrapped form: Android Auto resolves queue icons only from
- *  local content uris (via [ArtworkProvider]); in-process, [ImageLoaderBitmapLoader] unwraps it. */
-private fun PlayableItem.toMediaMetadata(context: android.content.Context): MediaMetadata {
+ *  local content uris (via [ArtworkProvider]); in-process, [ImageLoaderBitmapLoader] unwraps it.
+ *  [sessionArt] false leaves the artwork OUT of the session metadata (nothing on the lock screen /
+ *  system media card, per [AppSettings.lockScreenAlbumArt]) — the app's own notification builds
+ *  its large icon separately and always carries the art. */
+private fun PlayableItem.toMediaMetadata(context: android.content.Context, sessionArt: Boolean): MediaMetadata {
     val builder = MediaMetadata.Builder()
         .setTitle(displayTitle)
         .setArtist(displaySubtitle)
-    // A YouTube item exposes the stable mqdefault url derived from its video id — feed thumb urls
-    // carry rotating signature params and expire inside long-lived session uris. Local items
-    // already carry the stable art://pic/<id>.
-    val target = when (this) {
-        is PlayableItem.YtMedia -> youtubeThumbUrl(videoId)
-        else -> displayThumbnailUrl
+    if (sessionArt) {
+        // A YouTube item exposes the stable mqdefault url derived from its video id — feed thumb
+        // urls carry rotating signature params and expire inside long-lived session uris. Local
+        // items already carry the stable art://pic/<id>.
+        val target = when (this) {
+            is PlayableItem.YtMedia -> youtubeThumbUrl(videoId)
+            else -> displayThumbnailUrl
+        }
+        target?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
     }
-    target?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
     return builder.build()
 }
