@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
-import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -58,6 +57,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
+import ymusic.desktop.media.MacDock
 import ymusic.desktop.media.connectMediaSession
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
@@ -80,7 +80,6 @@ import ymusic.player.WebViewPlayerContext
 import ymusic.player.createLocalPlayer
 import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
-import ymusic.player.isPlaying
 import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
@@ -126,9 +125,10 @@ fun main() {
         Window(
             visible = windowVisible,
             onCloseRequest = {
-                // Playing → the close button minimizes to the system tray and playback carries on
-                // (the OSR browser renders to its own fixed viewport, not the window); idle → quit.
-                if (graph?.player?.status?.value?.state?.isPlaying() == true) windowVisible = false else quit()
+                // A non-empty queue → the close button minimizes to the system tray and playback
+                // carries on (the OSR browser renders to its own fixed viewport, not the window);
+                // an empty queue → quit.
+                if (graph?.player?.queue?.value?.items?.isNotEmpty() == true) windowVisible = false else quit()
             },
             title = "YMusic",
             icon = painterResource(Res.drawable.ymusic_logo),
@@ -168,19 +168,35 @@ fun main() {
                 else -> App(graph!!)
             }
         }
-        // Present only while hidden: the icon is the way back (click restores) — no permanent
-        // tray residency when the window is on screen.
-        if (!windowVisible) {
-            Tray(
-                icon = painterResource(Res.drawable.ymusic_logo),
-                tooltip = "YMusic",
-                onAction = { windowVisible = true },
-                menu = {
-                    Item("Show YMusic", onClick = { windowVisible = true })
-                    Item("Quit", onClick = { quit() })
+        // The tray icon lives whenever there is a queue to control — window open or not — and
+        // always while the window is hidden (it is the only way back then). A plain click opens
+        // the notification-style mini player anchored under the icon; no context menu.
+        var miniOpen by remember { mutableStateOf(false) }
+        var miniAnchorX by remember { mutableStateOf<Int?>(null) }
+        var queueNotEmpty by remember { mutableStateOf(false) }
+        LaunchedEffect(graph) { graph?.player?.queue?.collect { queueNotEmpty = it.items.isNotEmpty() } }
+        if (queueNotEmpty || !windowVisible) {
+            PlayerTray(painterResource(Res.drawable.ymusic_logo)) { screenX ->
+                miniAnchorX = screenX
+                miniOpen = !miniOpen
+            }
+        }
+        val g = graph
+        if (miniOpen && g != null) {
+            MiniPlayerWindow(
+                graph = g,
+                anchorX = miniAnchorX,
+                onOpenApp = {
+                    windowVisible = true
+                    miniOpen = false
                 },
+                onQuit = { quit() },
+                onClose = { miniOpen = false },
             )
         }
+        // Tray-only mode also drops the Dock icon (macOS accessory activation); restoring the
+        // window brings it back and re-activates the app.
+        LaunchedEffect(windowVisible) { MacDock.setDockIconVisible(windowVisible) }
     }
 }
 
