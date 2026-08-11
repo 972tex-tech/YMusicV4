@@ -435,11 +435,20 @@ class PlaybackService : MediaLibraryService() {
             .apply { setReferenceCounted(false) }
             .also { wifiLock = it }
         serviceScope.launch {
-            player.status.map { it.state.isPlaying() }.distinctUntilChanged().collectLatest { playing ->
+            combine(
+                player.status.map { it.state.isPlaying() }.distinctUntilChanged(),
+                // The wifi lock is only worth its battery cost when something in the queue streams;
+                // pure-local playback keeps just the partial wake lock (legacy useWifi gating).
+                player.queue.map { q -> q.items.any { it is PlayableItem.YtMedia } }.distinctUntilChanged(),
+            ) { playing, online -> playing to online }.distinctUntilChanged().collectLatest { (playing, online) ->
                 if (playing) {
                     @Suppress("WakelockTimeout")
                     wake.acquire()
-                    net.acquire()
+                    if (online) {
+                        net.acquire()
+                    } else {
+                        runCatching { if (net.isHeld) net.release() }
+                    }
                 } else {
                     delay(LOCK_RELEASE_GRACE_MS)
                     releaseLocks()
