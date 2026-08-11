@@ -59,7 +59,7 @@ import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.downloadCaptionPreference
 import ymusic.ui.downloadLocationFolder
 import ymusic.ui.ensureAppLanguage
-import ymusic.ui.localArtFetcher
+import ymusic.ui.mediaStoreArtFetcher
 import ymusic.ui.registerCompletedDownload
 import ymusic.ytmedia.cache.DiskMediaBlobCache
 import ymusic.ytmedia.cache.MediaCache
@@ -150,16 +150,21 @@ class YMusicApplication : Application() {
         // scales with the device's heap class; onTrimMemory (below) sheds it under pressure.
         val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")
             .takeIf { it.exists() }?.absolutePath
+        val imageNetworkFetcher = networkFetcher(
+            http.image,
+            FileSystem.SYSTEM,
+            cacheDir.resolve("image-source-cache").toOkioPath(),
+        )
         val imageLoader = ImageLoader(
             fetchers = listOfNotNull(
-                networkFetcher(
-                    http.image,
-                    FileSystem.SYSTEM,
-                    cacheDir.resolve("image-source-cache").toOkioPath(),
-                ),
+                imageNetworkFetcher,
                 fileFetcher(),
                 ffmpegBin?.let {
-                    localArtFetcher(FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver)), mediaStore)
+                    mediaStoreArtFetcher(
+                        FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver)),
+                        mediaStore,
+                        imageNetworkFetcher,
+                    )
                 },
             ),
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),

@@ -41,6 +41,7 @@ import ymusic.player.Player
 import ymusic.player.isPlaying
 import ymusic.player.media3.Media3PlayerAdapter
 import ymusic.ui.AppGraph
+import ymusic.ui.youtubeThumbUrl
 import androidx.media3.session.R as Media3R
 
 /**
@@ -469,6 +470,13 @@ private fun PlayableItem.toMediaMetadata(context: android.content.Context): Medi
     val builder = MediaMetadata.Builder()
         .setTitle(displayTitle)
         .setArtist(displaySubtitle)
-    displayThumbnailUrl?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
+    // A YouTube item exposes the stable mqdefault url derived from its video id — feed thumb urls
+    // carry rotating signature params and expire inside long-lived session uris. Local items
+    // already carry the stable art://pic/<id>.
+    val target = when (this) {
+        is PlayableItem.YtMedia -> youtubeThumbUrl(videoId)
+        else -> displayThumbnailUrl
+    }
+    target?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
     return builder.build()
 }

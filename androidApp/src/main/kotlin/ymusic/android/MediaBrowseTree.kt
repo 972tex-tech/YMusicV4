@@ -21,6 +21,7 @@ import ymusic.ui.AppGraph
 import ymusic.ui.localArtUrl
 import ymusic.ui.toLocalMedia
 import ymusic.ui.toYtMedia
+import ymusic.ui.youtubeThumbUrl
 
 /**
  * The Android Auto browse hierarchy over the [AppGraph] — three root tabs (the host renders root
@@ -231,7 +232,9 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
             .setIsBrowsable(false)
             .setIsPlayable(true)
             .setExtras(styleExtras(group = groupTitle, style = null))
-        thumbs.lastOrNull()?.url?.let { metadata.setArtworkUri(artworkContentUri(context, it)) }
+        // The stable mqdefault url derived from the video id, NOT a feed thumb url — those carry
+        // rotating signature params and expire inside long-lived browse/session uris.
+        metadata.setArtworkUri(artworkContentUri(context, youtubeThumbUrl(id)))
         return MediaItem.Builder()
             .setMediaId(YT_SONG_PREFIX + id)
             .setMediaMetadata(metadata.build())

@@ -86,7 +86,7 @@ import ymusic.ui.WebViewSabrSpecResolver
 import ymusic.ui.downloadCaptionPreference
 import ymusic.ui.downloadLocationFolder
 import ymusic.ui.ensureAppLanguage
-import ymusic.ui.localArtFetcher
+import ymusic.ui.mediaStoreArtFetcher
 import ymusic.ui.registerCompletedDownload
 import ymusic.ui.resources.Res
 import ymusic.ui.resources.ymusic_logo
@@ -195,15 +195,16 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to the
     // fetcher's disk cache, decode from file) + local files + ffmpeg-extracted embedded art
     // (absent ffmpeg just keeps art:// urls unresolved → placeholder boxes).
+    val imageNetworkFetcher = networkFetcher(
+        http.image,
+        FileSystem.SYSTEM,
+        File(dataDir, "image-source-cache").absolutePath.toPath(),
+    )
     val imageLoader = ImageLoader(
         fetchers = listOfNotNull(
-            networkFetcher(
-                http.image,
-                FileSystem.SYSTEM,
-                File(dataDir, "image-source-cache").absolutePath.toPath(),
-            ),
+            imageNetworkFetcher,
             fileFetcher(),
-            findFfmpeg()?.let { localArtFetcher(FfmpegMetadataGetter(it), mediaStore) },
+            findFfmpeg()?.let { mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, imageNetworkFetcher) },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = StdoutLogger,

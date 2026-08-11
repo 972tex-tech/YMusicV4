@@ -4,10 +4,11 @@ import androidx.compose.ui.unit.IntSize
 import kmpcommon.uri.Uri
 import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kotlinx.coroutines.runBlocking
+import ymusic.imageloader.ImageFetcher
 import ymusic.mediastore.BetterMediaStore
 import ymusic.mediastore.mediaStoreJdbcDriver
 import ymusic.mediastore.model.MediaItemDraft
-import ymusic.ui.localArtFetcher
+import ymusic.ui.mediaStoreArtFetcher
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,7 +49,8 @@ class LocalArtFetcherTest {
                         thumbnailStreamIndex = 1,
                     ),
                 )
-                val fetcher = localArtFetcher(FfmpegMetadataGetter(ffmpeg), store)
+                val network = ImageFetcher { _, _ -> error("embedded covers must not hit the network") }
+                val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter(ffmpeg), store, network)
                 assertNull(
                     fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64)),
                     "fetcher must decline non-art urls",
