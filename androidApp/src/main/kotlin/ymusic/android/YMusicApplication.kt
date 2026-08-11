@@ -9,6 +9,7 @@ import android.webkit.WebSettings
 import android.widget.FrameLayout
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import io.sentry.kotlin.multiplatform.Sentry
 import kmpcommon.uri.Uri
 import kmpffmpeg.AndroidFfInputResolver
 import kmpffmpeg.metadata.FfmpegMetadataGetter
@@ -69,6 +70,9 @@ import ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import ymusic.ytmedia.proxy.LocalMediaProxy
 import java.io.File
 
+/** Sentry project DSN (not a secret). Empty keeps the SDK off — crashes then go unreported. */
+private const val SENTRY_DSN = ""
+
 /**
  * The PROCESS-scoped half of the app graph: everything that must exist exactly once no matter how
  * many times the Activity is recreated. AppHttpClients is the load-bearing member — a second
@@ -89,6 +93,18 @@ class SharedServices(
 )
 
 class YMusicApplication : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        if (SENTRY_DSN.isNotEmpty()) {
+            Sentry.init {
+                it.dsn = SENTRY_DSN
+                it.environment =
+                    if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) "debug"
+                    else "production"
+            }
+        }
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

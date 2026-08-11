@@ -38,6 +38,7 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import io.sentry.kotlin.multiplatform.Sentry
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpcommon.uri.filePath
@@ -102,12 +103,20 @@ import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 
+/** Sentry project DSN (not a secret). Empty keeps the SDK off — crashes then go unreported. */
+private const val SENTRY_DSN = ""
+
 /**
  * The desktop shell: boots JCEF + the scraping engine, assembles the [AppGraph] (player facade over
  * VLCJ local + JCEF WebView engines, the shared WebView container as the video surface), and runs
  * the shared [App].
  */
 fun main() {
+    if (SENTRY_DSN.isNotEmpty()) {
+        Sentry.init {
+            it.dsn = SENTRY_DSN
+        }
+    }
     // Both video engines (JCEF WebView + VLCJ local) now render off-screen and paint through a plain
     // Compose Image, so the app hosts no Swing interop on the hot path. Blending is kept as a harmless
     // safety net for any incidental lightweight interop; it must be set before the first ComposeWindow.

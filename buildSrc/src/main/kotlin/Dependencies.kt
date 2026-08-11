@@ -31,6 +31,9 @@ object Versions {
     const val esbuild = "0.25.12"
     const val typescript = "5.9.3"
 
+    // Crash reporting (wraps sentry-java on Android/JVM, sentry-cocoa on Apple)
+    const val sentry = "0.27.0"
+
     // Benchmark
     const val kotlinxBenchmark = "0.4.17"
 
@@ -127,5 +130,9 @@ object Libs {
 
     object Jna {
         const val core = "net.java.dev.jna:jna:${Versions.jna}"
+    }
+
+    object Sentry {
+        const val kmp = "io.sentry:sentry-kotlin-multiplatform:${Versions.sentry}"
     }
 }
