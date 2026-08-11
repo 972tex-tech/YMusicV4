@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -28,6 +29,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -161,8 +163,55 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    // Headset button multi-click (legacy MediaSessionManager port): media3 natively handles one
+    // click (toggle) and two (next) on HEADSETHOOK/PLAY_PAUSE but not three → previous, so those
+    // keys are intercepted whole and counted here — 300ms window, 1=toggle 2=next ≥3=prev (the
+    // third click resolves immediately).
+    private var headsetClickCount = 0
+    private var headsetClickJob: Job? = null
+
+    private fun onHeadsetButtonClick() {
+        headsetClickJob?.cancel()
+        headsetClickCount++
+        if (headsetClickCount > 2) {
+            resolveHeadsetClicks()
+        } else {
+            headsetClickJob = serviceScope.launch {
+                delay(HEADSET_CLICK_WINDOW_MS)
+                resolveHeadsetClicks()
+            }
+        }
+    }
+
+    private fun resolveHeadsetClicks() {
+        val clicks = headsetClickCount
+        headsetClickCount = 0
+        headsetClickJob = null
+        val player = this.player ?: return
+        when {
+            clicks == 1 -> player.togglePlay()
+            clicks == 2 -> player.skipNext()
+            clicks > 2 -> player.skipPrev()
+        }
+    }
+
     /** The Auto browse surface — all list building lives in [MediaBrowseTree]. */
     private inner class LibraryCallback(private val tree: MediaBrowseTree) : MediaLibrarySession.Callback {
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent,
+        ): Boolean {
+            val keyEvent = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            if (keyEvent != null &&
+                (keyEvent.keyCode == KeyEvent.KEYCODE_HEADSETHOOK || keyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            ) {
+                if (keyEvent.action == KeyEvent.ACTION_DOWN) onHeadsetButtonClick()
+                return true
+            }
+            return super.onMediaButtonEvent(session, controllerInfo, intent)
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
@@ -469,6 +518,7 @@ class PlaybackService : MediaLibraryService() {
         const val ACTION_DISMISS = "ymusic.android.playback.DISMISS"
         const val DISMISS_REQUEST_CODE = 100
         const val LOCK_RELEASE_GRACE_MS = 60_000L
+        const val HEADSET_CLICK_WINDOW_MS = 300L
     }
 }
 
