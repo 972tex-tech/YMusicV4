@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -79,6 +80,7 @@ import ymusic.player.WebViewPlayerContext
 import ymusic.player.createLocalPlayer
 import ymusic.player.createPlayer
 import ymusic.player.createWebViewPlayer
+import ymusic.player.isPlaying
 import ymusic.settings.FileSettingsStore
 import ymusic.ui.App
 import ymusic.ui.AppGraph
@@ -116,10 +118,17 @@ fun main() {
     application {
         val cefManager = remember { CefManager() }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
+        var windowVisible by remember { mutableStateOf(true) }
+        fun quit() {
+            cefManager.dispose()
+            exitApplication()
+        }
         Window(
+            visible = windowVisible,
             onCloseRequest = {
-                cefManager.dispose()
-                exitApplication()
+                // Playing → the close button minimizes to the system tray and playback carries on
+                // (the OSR browser renders to its own fixed viewport, not the window); idle → quit.
+                if (graph?.player?.status?.value?.state?.isPlaying() == true) windowVisible = false else quit()
             },
             title = "YMusic",
             icon = painterResource(Res.drawable.ymusic_logo),
@@ -158,6 +167,19 @@ fun main() {
                 }
                 else -> App(graph!!)
             }
+        }
+        // Present only while hidden: the icon is the way back (click restores) — no permanent
+        // tray residency when the window is on screen.
+        if (!windowVisible) {
+            Tray(
+                icon = painterResource(Res.drawable.ymusic_logo),
+                tooltip = "YMusic",
+                onAction = { windowVisible = true },
+                menu = {
+                    Item("Show YMusic", onClick = { windowVisible = true })
+                    Item("Quit", onClick = { quit() })
+                },
+            )
         }
     }
 }
