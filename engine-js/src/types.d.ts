@@ -1,0 +1,191 @@
+// The typed contract of the engine's global surface. transport.ts IMPLEMENTS ymix/pipes/timers
+// (checked against these declarations, like every other module that ASSIGNS a global here); the
+// C installs `versions`. Ambient (no import/export) so every module sees them.
+
+/** Pipe reads return the value when it is already buffered, else a Promise C settles — always
+ *  awaitable. Writes return undefined when done synchronously, else a Promise = backpressure
+ *  (test with `if (p) await p`). */
+type MaybePromise<T = void> = T | Promise<T>;
+
+/** The readable end (C-owned buffer). close() abandons it: the host's next send gets EPIPE. */
+interface PipeSource {
+  /** Up to `len` bytes into `buffer` at `offset`; resolves the count, -1 at EOF. */
+  receive(buffer: Uint8Array, offset?: number, len?: number): MaybePromise<number>;
+  readInt(): MaybePromise<number>;
+  /** number: loses precision above 2^53. */
+  readLong(): MaybePromise<number>;
+  /** strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF. */
+  readUtf8Line(strict?: boolean): MaybePromise<string | null>;
+  /** Streaming parse; stops at the value's end (trailing bytes stay queued); `{…}` root required. */
+  readJsonObject(): MaybePromise<Record<string, unknown>>;
+  /** As readJsonObject, `[…]` root required. */
+  readJsonArray(): MaybePromise<unknown[]>;
+  /** The rest of the stream to EOF, decoded as UTF-8. */
+  readUtf8(): MaybePromise<string>;
+  close(): void;
+}
+
+/** The writable end (buffered). close() = END; close(reason) = RESET (aborts a parked send). */
+interface PipeSink {
+  send(buffer: Uint8Array, offset?: number, len?: number): MaybePromise;
+  writeBytes(b: Uint8Array): MaybePromise;
+  writeInt(v: number): MaybePromise;
+  writeLong(v: number | bigint): MaybePromise;
+  writeUtf8(...parts: string[]): MaybePromise;
+  writeUtf8Range(str: string, from: number, to: number): MaybePromise;
+  writeUtf8Line(...parts: string[]): MaybePromise;
+  /** Matches JSON.stringify (a cycle throws); streams via the native encoder. */
+  writeObjectAsJson(value: unknown): MaybePromise;
+  flush(): MaybePromise;
+  close(reason?: string): MaybePromise;
+}
+
+/** The pair of ends this side holds, like pipe(2) fds. */
+interface Pipe {
+  readonly id: number;
+  readonly command: string;
+  readonly source: PipeSource;
+  readonly sink: PipeSink;
+}
+
+declare var ymix: {
+  /** Open a pipe to the host; fails AT THE OPEN (ECONNREFUSED-style) when nothing serves it. */
+  open(command: string): Pipe;
+  /** Handle pipes the host opens to us; returns a removable registration. */
+  onAccept(command: string, handler: (pipe: Pipe) => void | Promise<void>): { remove(): void };
+  utf8Encode(...parts: string[]): Uint8Array;
+  utf8Decode(bytes: Uint8Array, from?: number, to?: number): string;
+};
+
+/** Diagnostics to the host logger over the __consoleLog native (console.ts implements) —
+ *  developer breadcrumbs, never the error channel, never shown to the user. */
+declare var console: {
+  log(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+};
+
+/** Installed frozen from C before this bundle runs. The whole host (transport, protocols, app)
+ *  ships as one app build, so the app version identifies its full surface: branch on it
+ *  (`versions.app >= 123` / `typeof __x === "function"`) to adapt to the installed host. */
+declare var versions: {
+  readonly app: number;
+};
+
+// ---- compile-time define, inlined by esbuild --define (value in build.gradle.kts) ----
+
+/** The bundle's own revision — bumped manually on every remote push (build.gradle.kts).
+ *  (The host app's version needs no twin: read the `versions.app` global.) */
+declare const BACKEND_VERSION: number;
+
+// ---- host-scheduled timers (transport.ts over the "setTimeout"/"setInterval" pipe commands) ----
+// The handle is the timer's PIPE, not a number; clear*() closes it.
+
+declare var setTimeout: (cb: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => Pipe;
+declare var setInterval: (
+  cb: (...args: unknown[]) => void,
+  ms?: number,
+  ...args: unknown[]
+) => Pipe;
+declare var clearTimeout: (handle: Pipe | undefined) => void;
+declare var clearInterval: (handle: Pipe | undefined) => void;
+
+// ---- the error contract (protocol/command.ts; Kotlin mirror: WireError.kt) ----
+
+/** The wire error object a classified failure crosses the boundary as. */
+interface WireError {
+  code: string;
+  message: string;
+  name?: string;
+  userMessage?: string;
+  stack?: string;
+  cause?: { name?: string; message?: string };
+}
+
+interface JsEngineErrorOptions {
+  userMessage?: string;
+  cause?: unknown;
+}
+
+interface JsEngineError extends Error {
+  /** A category ("parse", "network", …) or a site code ("E2xxxx"). */
+  code: string;
+  userMessage?: string;
+}
+
+interface JsEngineErrorConstructor {
+  /** message first — the debug detail you read most — then the code (category or E2xxxx). */
+  new (message: string, code: string, opts?: JsEngineErrorOptions): JsEngineError;
+  parse(message: string, opts?: JsEngineErrorOptions): JsEngineError;
+  network(message: string, opts?: JsEngineErrorOptions): JsEngineError;
+}
+
+declare var JsEngineError: JsEngineErrorConstructor;
+
+/** A call handler: reads its own head off `src` (format not assumed), writes the result to `out`. */
+type CommandHandlerFn = (src: PipeSource, out: PipeSink, pipe: Pipe) => void | Promise<void>;
+
+/** Wrap a call handler in the error contract, producing a pipe handler for ymix.onAccept. */
+declare var commandHandler: (handler: CommandHandlerFn) => (pipe: Pipe) => Promise<void>;
+
+// ---- HTTP (protocol/http.ts; host side: HttpProtocol.kt) ----
+
+type HeaderEntry = [string, string];
+
+interface HttpBodyStream {
+  /** Up to `len` bytes into `buffer` at `offset`; resolves the count, -1 at EOF. */
+  read(buffer: Uint8Array, offset: number, len: number): Promise<number>;
+}
+
+interface HttpResponse {
+  readonly status: number;
+  readonly statusText: string;
+  /** Final URL, after redirects. */
+  readonly url: string;
+  readonly ok: boolean;
+  readonly headers: {
+    entries: HeaderEntry[];
+    get(name: string): string | null;
+    has(name: string): boolean;
+  };
+  text(): Promise<string>;
+  jsonObject(): Promise<Record<string, unknown>>;
+  jsonArray(): Promise<unknown[]>;
+  stream(): HttpBodyStream;
+  cancel(): void;
+  ignoreResult(): void;
+}
+
+interface HttpCall {
+  execute(): Promise<HttpResponse>;
+  cancel(): void;
+}
+
+/** The callback form streams to the body pipe's sink; its return value is awaited (so a returned
+ *  MaybePromise backpressure promise is honored). */
+type HttpBody = string | Uint8Array | ((io: PipeSink) => unknown);
+
+interface HttpRequestBuilder {
+  setHeader(name: string, value: string): this;
+  addHeader(name: string, value: string): this;
+  setHeaderSanitized(name: string, value: string): this;
+  addHeaderSanitized(name: string, value: string): this;
+  headers(h: HeaderEntry[] | Record<string, string>): this;
+  body(value: HttpBody): this;
+  json(value: unknown): this;
+  timeout(ms: number): this;
+  followRedirects(follow: boolean): this;
+  logContext(ctx: string[] | string): this;
+  build(): HttpCall;
+}
+
+declare var HttpRequest: {
+  get(url: string): HttpRequestBuilder;
+  post(url: string): HttpRequestBuilder;
+  put(url: string): HttpRequestBuilder;
+  delete(url: string): HttpRequestBuilder;
+  patch(url: string): HttpRequestBuilder;
+  head(url: string): HttpRequestBuilder;
+  method(m: string, url: string): HttpRequestBuilder;
+};

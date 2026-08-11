@@ -1,0 +1,23 @@
+{
+  "name": "@ymusic/webview-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Injected content script for the YMusic WebView YouTube player — runs at document-start on the YouTube embed page and rewrites the YouTube JS player's behavior.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "build:prod": "node build.mjs --prod",
+    "watch": "node build.mjs --watch"
+  },
+  "dependencies": {
+    "url-search-params-polyfill": "^8.2.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "esbuild": "^0.25.12",
+    "terser": "^5.36.0",
+    "typescript": "^5.9.3"
+  }
+}

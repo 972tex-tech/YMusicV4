@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>changeType cross-codec lab</title></head>
+<body>
+<video id="v" muted autoplay playsinline width="320" height="180"></video>
+<script src="blank_webm.js"></script>
+<script>
+// Cross-codec proof: real avc1 fMP4 video + opus audio; splice to blank vp9/webm via
+// changeType; then changeType back and resume real avc1 fragments.
+var v = document.getElementById('v');
+var events = [];
+function rec(ev, detail) {
+  var e = { t: performance.now() / 1000, ev: ev };
+  if (detail) for (var k in detail) e[k] = detail[k];
+  events.push(e);
+  console.log('[lab]', JSON.stringify(e));
+}
+['playing','waiting','stalled','seeking','seeked','error','ended'].forEach(function (n) {
+  v.addEventListener(n, function () { rec('video.' + n, { ct: v.currentTime, rs: v.readyState }); });
+});
+function fmtRanges(b) {
+  var out = [];
+  for (var i = 0; i < b.length; i++) out.push(b.start(i).toFixed(2) + '-' + b.end(i).toFixed(2));
+  return out.join(',');
+}
+var ms, sbA, sbV, realV, realA, frags = [], initEnd = 0, timescale = 0;
+
+// Scan fMP4: moof offsets + tfdt baseMediaDecodeTime; init = bytes before first moof.
+function scanMp4(u8) {
+  var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  var res = [], off = 0;
+  while (off + 8 <= u8.length) {
+    var size = dv.getUint32(off);
+    var type = String.fromCharCode(u8[off+4], u8[off+5], u8[off+6], u8[off+7]);
+    if (type === 'moof') {
+      var t = -1;
+      for (var i = off; i < Math.min(off + size, u8.length - 12); i++) {
+        if (u8[i] === 0x74 && u8[i+1] === 0x66 && u8[i+2] === 0x64 && u8[i+3] === 0x74) { // tfdt
+          var ver = u8[i+4];
+          t = ver === 1 ? dv.getUint32(i + 8) * 4294967296 + dv.getUint32(i + 12) : dv.getUint32(i + 8);
+          break;
+        }
+      }
+      res.push([off, t]);
+    } else if (type === 'moov') {
+      // find mdhd timescale for track timing
+      for (var j = off; j < Math.min(off + size, u8.length - 24); j++) {
+        if (u8[j] === 0x6d && u8[j+1] === 0x64 && u8[j+2] === 0x68 && u8[j+3] === 0x64) { // mdhd
+          var mver = u8[j+4];
+          timescale = mver === 1 ? dv.getUint32(j + 24) : dv.getUint32(j + 16);
+          break;
+        }
+      }
+    }
+    if (size < 8) break;
+    off += size;
+  }
+  return res;
+}
+function append(sb, data) {
+  return new Promise(function (resolve, reject) {
+    function done() { sb.removeEventListener('updateend', done); resolve(); }
+    sb.addEventListener('updateend', done);
+    try { sb.appendBuffer(data); } catch (e) { rec('appendError', { msg: '' + e }); reject(e); }
+  });
+}
+window.setup = async function () {
+  realV = new Uint8Array(await (await fetch('real_v_avc.mp4')).arrayBuffer());
+  realA = new Uint8Array(await (await fetch('real_a.webm')).arrayBuffer());
+  frags = scanMp4(realV);
+  initEnd = frags.length ? frags[0][0] : 0;
+  rec('assets', { v: realV.length, frags: frags.length, timescale: timescale });
+  ms = new MediaSource();
+  v.src = URL.createObjectURL(ms);
+  await new Promise(function (r) { ms.addEventListener('sourceopen', r, { once: true }); });
+  sbA = ms.addSourceBuffer('audio/webm; codecs="opus"');
+  sbV = ms.addSourceBuffer('video/mp4; codecs="avc1.42E01E"');
+  await append(sbA, realA);
+  var cut = realV.length;
+  for (var i = 0; i < frags.length; i++) {
+    if (frags[i][1] / timescale > 30) { cut = frags[i][0]; break; }
+  }
+  await append(sbV, realV.subarray(0, cut));
+  rec('setupDone', { aBuf: fmtRanges(sbA.buffered), vBuf: fmtRanges(sbV.buffered) });
+  v.play();
+  return 'ok';
+};
+window.spliceBlank = async function () {
+  var from = sbV.buffered.length ? sbV.buffered.end(sbV.buffered.length - 1) : v.currentTime;
+  try { sbV.changeType('video/webm; codecs="vp9"'); } catch (e) { rec('changeTypeError', { msg: '' + e }); return 'err'; }
+  rec('changeType->vp9/webm', {});
+  await append(sbV, window.blankWebm.buildInit(90000));
+  await append(sbV, window.blankWebm.buildClusters(Math.floor(from * 1000) - 1000, 90000, 10000));
+  rec('spliceDone', { vBuf: fmtRanges(sbV.buffered) });
+  return 'ok';
+};
+window.resumeReal = async function () {
+  var target = v.currentTime, startIdx = 0;
+  for (var i = 0; i < frags.length; i++) {
+    if (frags[i][1] / timescale <= target) startIdx = i; else break;
+  }
+  try { sbV.changeType('video/mp4; codecs="avc1.42E01E"'); } catch (e) { rec('changeTypeError', { msg: '' + e }); return 'err'; }
+  rec('changeType->avc1/mp4', { fromFragT: frags[startIdx][1] / timescale });
+  await append(sbV, realV.subarray(0, initEnd));
+  await append(sbV, realV.subarray(frags[startIdx][0]));
+  rec('resumeDone', { vBuf: fmtRanges(sbV.buffered) });
+  return 'ok';
+};
+window.snap = function () {
+  return JSON.stringify({
+    ct: v.currentTime, rs: v.readyState, paused: v.paused, vw: v.videoWidth,
+    a: sbA ? fmtRanges(sbA.buffered) : '', vb: sbV ? fmtRanges(sbV.buffered) : '',
+    waits: events.filter(function (e) { return e.ev === 'video.waiting'; }).length,
+    errs: events.filter(function (e) { return e.ev === 'video.error' || e.ev === 'appendError' || e.ev === 'changeTypeError'; }).length,
+  });
+};
+</script>
+</body>
+</html>

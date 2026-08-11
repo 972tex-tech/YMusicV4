@@ -1,0 +1,407 @@
+// InnerTube session bootstrap. The WEB client's clientVersion / visitorData / signatureTimestamp go
+// stale, so we DON'T hardcode them (docs/innertube/auth.md): we scrape them from the youtube.com
+// homepage's ytcfg the way the legacy app did, and cache them (in-memory + the host Cache) with a
+// 6h freshness window — never deleted for age; a held session answers immediately at any age,
+// revalidating in the background. The homepage fetch rides the cooked Cookie header (cookies.ts)
+// and its Set-Cookie
+// replies (VISITOR_INFO1_LIVE / YSC / consent) land back in the app's cookie store — required for a
+// normal feed even logged-out. On a 403 the caller refreshes the session once and retries (params
+// rotate server-side).
+
+import { JsEngineErrorImpl } from "../../protocol/command";
+import { HttpRequest } from "../../protocol/http";
+import { Cache } from "../../protocol/cache";
+import { executeWithCookies, pulledAppLanguage } from "./cookies";
+import { anchoredExec, asString, get } from "./scan";
+
+const ORIGIN = "https://www.youtube.com";
+// A desktop-Chrome UA so youtube.com serves the full-fat homepage whose ytcfg carries the params
+// (a bare/unknown UA gets a stripped page). Kept plausible next to the scraped clientVersion.
+export const DESKTOP_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
+
+const CACHE_SCOPE = "yt-session";
+const CACHE_KEY = "web";
+// The scraped homepage's ytInitialData payload, kept for yt/home's first load: it IS the home
+// feed answer the page rendered from, so the bootstrap fetch can replace the first /browse call.
+// Stored as UTF-8 from the assignment's `{` to the page end — the streaming parser stops at the
+// value's end, so the page tail never needs delimiting. Single-use — consuming it deletes it (see
+// consumeScrapedHomeData). An EMPTY entry marks a page that carried no payload: present-but-empty
+// reads differently from consumed, so no re-scrape gets spent on it.
+const HOMEPAGE_KEY = "homepage";
+// The FRESHNESS window, not a lifetime: past it the next ask kicks a BACKGROUND re-scrape while
+// the held session keeps answering (stale-while-revalidate) — the record itself is never deleted
+// for age and keeps serving whenever a re-scrape fails.
+const FRESH_MS = 6 * 60 * 60 * 1000;
+
+/** The scraped WEB-client session (structure — dotted in-bundle; quoted only when it crosses to cache/wire). */
+export interface YtSession {
+  clientName: string; // numeric, e.g. "1"
+  clientVersion: string; // e.g. "2.20260708.00.00"
+  visitorData: string;
+  apiKey: string | undefined;
+  signatureTimestamp: string | undefined;
+  // What YouTube says this connection IS, from its own homepage config — the server's answer
+  // under the CURRENT cookie identity: with a locale pick in PREF these echo the pick, with none
+  // the region is IP-derived and the language echoes the Accept-Language sent. "Selected" and
+  // "detected" are the same value here.
+  gl: string | undefined;
+  hl: string | undefined;
+  // The signed-in account's slot, scraped from ytcfg (legacy YTEssentialHeadersRefreshTask). The
+  // account index feeds X-Goog-AuthUser (NOT a hardcoded "0"), the delegated id feeds X-Goog-PageId
+  // for brand/delegated accounts. Absent = not signed in (or a single default account).
+  sessionIndex: string | undefined;
+  delegatedSessionId: string | undefined;
+  // ytcfg USER_SESSION_ID — folded into each SAPISIDHASH input and marked with the `_u` suffix when
+  // signed in (legacy getSAPISIDHASH). Absent = the plain (no-`_u`) hash form.
+  userSessionId: string | undefined;
+  fetchedAt: number; // epoch ms
+}
+
+let inMemory: YtSession | undefined;
+// The ONE running scrape — getSession is called from every surface, and the homepage scrape is
+// heavy enough that a burst of concurrent scrapes reads as bot traffic (BotGuard/captcha bait):
+// concurrent callers JOIN the in-flight scrape instead of starting their own.
+let inFlight: Promise<YtSession> | undefined;
+
+function fresh(s: YtSession | undefined): s is YtSession {
+  return s != null && Date.now() - s.fetchedAt < FRESH_MS;
+}
+
+/**
+ * The current session. `refresh` forces a re-scrape and waits for it (the 403 path, a locale
+ * change), stale-tolerant: a failed scrape falls back to the last known session — expired params
+ * usually still serve — and only throws when there has never been one. Without `refresh`, ANY held
+ * session answers IMMEDIATELY (in-memory → host Cache), no matter its age — consumers should never
+ * wait on freshness — and one past the window kicks the re-scrape in the BACKGROUND
+ * (stale-while-revalidate); only a caller with no session at all waits for the scrape. The scrape
+ * is SINGLE-FLIGHT either way: concurrent callers and the background revalidation all share one.
+ * The Cache is best-effort — absent (no store wired) or failing, we degrade to a live scrape,
+ * never an error.
+ */
+export async function getSession(refresh: boolean): Promise<YtSession> {
+  if (!refresh) {
+    if (inMemory == null) {
+      const cached = await readCache();
+      if (cached != null) inMemory = cached;
+    }
+    const held = inMemory;
+    if (held != null) {
+      if (!fresh(held)) {
+        scrapeInFlight().catch((e) => {
+          console.log("yt session revalidation failed, keeping the stale session: " + errText(e));
+        });
+      }
+      return held;
+    }
+  }
+
+  try {
+    return await scrapeInFlight();
+  } catch (e) {
+    const stale = inMemory ?? (await readCache());
+    if (stale != null) {
+      inMemory = stale;
+      console.log("yt session scrape failed, serving the stale session: " + errText(e));
+      return stale;
+    }
+    throw e;
+  }
+}
+
+/** The one running scrape, started if none is — every waiter and the background revalidation
+ *  share it. */
+function scrapeInFlight(): Promise<YtSession> {
+  if (inFlight == null) {
+    inFlight = (async () => {
+      try {
+        const scraped = await scrapeSession();
+        inMemory = scraped;
+        await writeCache(scraped);
+        return scraped;
+      } finally {
+        inFlight = undefined;
+      }
+    })();
+  }
+  return inFlight;
+}
+
+/**
+ * The pair every YouTube surface speaks: the app language (cookies.ts, cached settings pull) and
+ * the SESSION's parsed gl — the working region value YouTube controls (a pick seeds it via PREF +
+ * refresh, but the parsed answer always lands last). The session lookup is best-effort — offline
+ * with a cold session, the language still answers.
+ */
+export async function effectiveLocale(): Promise<{ hl: string; gl: string }> {
+  let hl = await pulledAppLanguage();
+  let gl: string | undefined;
+  let s: YtSession | undefined;
+  try {
+    s = await getSession(false);
+  } catch (e) {
+    s = undefined;
+  }
+  if (hl == null && s != null && s.hl != null && s.hl.length > 0) hl = s.hl;
+  if (s != null && s.gl != null && s.gl.length > 0) gl = s.gl;
+  return { hl: hl ?? "en", gl: (gl ?? "US").toUpperCase() };
+}
+
+/**
+ * Temporarily stamp a fresh pick onto the cached session while [getSession]`(true)` re-scrapes —
+ * concurrent requests speak the new locale before the server's echo confirms it. Blank halves
+ * ("automatic") keep the old value until the refresh answers with the real automatic one.
+ */
+export async function overrideSessionLocale(hl: string, gl: string): Promise<void> {
+  const held = inMemory;
+  if (held == null) return;
+  if (hl.length > 0) held.hl = hl;
+  if (gl.length > 0) held.gl = gl;
+  await writeCache(held);
+}
+
+/**
+ * Drop the bootstrapped session (in-memory + host Cache) so the next call re-scrapes. Needed when
+ * the cookie identity changes underneath it (a locale override written to PREF): the cached
+ * session's GL/HL answer the OLD identity.
+ */
+export async function invalidateSession(): Promise<void> {
+  inMemory = undefined;
+  try {
+    await Cache.delete(CACHE_SCOPE, CACHE_KEY);
+    // The kept homepage answered the old identity too.
+    await Cache.delete(CACHE_SCOPE, HOMEPAGE_KEY);
+  } catch (e) {
+    console.log("yt session cache clear skipped: " + errText(e));
+  }
+}
+
+/**
+ * Consume the kept ytInitialData — a SINGLE-USE read: the entry is deleted with the read, so a
+ * stale page can never serve the home feed twice. `found` answers "was there an entry at all"
+ * (false → the caller may spend ONE forced re-scrape); `data` is the parsed payload — the very
+ * browse answer the homepage rendered from, the same shape /browse returns, so collectPage reads
+ * it unchanged — absent on the empty no-payload marker or a payload that doesn't parse (found,
+ * but only /browse can answer). The payload is stream-parsed straight off the cache pipe with the
+ * native push parser: no byte buffer, and once the top-level value closes the page tail behind it
+ * is never even read. A RUNNING scrape is settled first — it is about to (re)write the entry, so
+ * the read sees the freshest completed state — and having settled one counts as `found` even on a
+ * miss: a scrape JUST ran, so the caller's forced refresh could only repeat what we watched
+ * (a success already wrote the entry; a failure would just fail again). A settle that failed with
+ * no session anywhere is the terminal cold-start error and RETHROWS.
+ */
+export async function consumeScrapedHomeData(): Promise<{
+  found: boolean;
+  data?: Record<string, unknown>;
+}> {
+  let settled = false;
+  if (inFlight != null) {
+    settled = true; // a scrape JUST ran either way — the caller must never spend another
+    try {
+      await inFlight;
+    } catch (e) {
+      const stale = inMemory ?? (await readCache());
+      if (stale == null) throw e;
+      inMemory = stale; // the entry (if any) still answers, and /browse rides the stale session
+    }
+  }
+  let read: { data?: Record<string, unknown> } | null = null;
+  try {
+    read = await Cache.get(CACHE_SCOPE, HOMEPAGE_KEY, async (source, meta) => {
+      // The no-payload marker: reads as found (non-null) with no data — never a re-scrape.
+      if (meta.size === 0) return {};
+      try {
+        const p = __jsonNew(1); // 1 = the root must be an object
+        const chunk = new Uint8Array(8192);
+        for (;;) {
+          const n = await source.receive(chunk, 0, chunk.length);
+          if (n < 0) break; // EOF — __jsonEnd throws below if the value never completed
+          if (__jsonPush(p, chunk, 0, n) < n) break; // value complete — the tail stays unread
+        }
+        return { data: __jsonEnd(p) as Record<string, unknown> };
+      } catch (e) {
+        return {}; // malformed or truncated — found, but nothing to serve
+      }
+    });
+  } catch (e) {
+    console.log("yt homepage cache read skipped: " + errText(e));
+    return { found: settled }; // just-scraped counts as found: a re-scrape can't cure a dead cache
+  }
+  if (read == null) return { found: settled };
+  try {
+    await Cache.delete(CACHE_SCOPE, HOMEPAGE_KEY);
+  } catch (e) {
+    console.log("yt homepage cache delete skipped: " + errText(e));
+  }
+  return read.data == null ? { found: true } : { found: true, data: read.data };
+}
+
+/**
+ * Where the homepage's inline `ytInitialData` payload starts — the assignment's `{` — or -1 when
+ * the page carries none (a consent shim, a stripped page).
+ */
+function initialDataStart(html: string): number {
+  let from = 0;
+  for (;;) {
+    const at = html.indexOf("ytInitialData", from);
+    if (at === -1) return -1;
+    from = at + "ytInitialData".length;
+    const brace = html.indexOf("{", from);
+    if (brace === -1) return -1;
+    // Only assignment glue may sit between the name and its object (`ytInitialData = {`,
+    // `window["ytInitialData"] = {`) — anything else is a mention, not the payload. Glue is a
+    // handful of chars; on a false anchor the next `{` can be megabytes away, so bound the gap
+    // BEFORE slicing it for the regex.
+    if (brace - from > 16) continue;
+    if (RE_INITIAL_GLUE.test(html.slice(from, brace))) return brace;
+  }
+}
+
+const RE_INITIAL_GLUE = /^['"\]\s]*=\s*$/;
+
+async function scrapeSession(): Promise<YtSession> {
+  // The app language rides Accept-Language (next to PREF), so the homepage answers in it and its
+  // ytcfg HL echoes the effective value back into this session.
+  const hl = await pulledAppLanguage();
+  const res = await executeWithCookies(
+    ORIGIN + "/",
+    HttpRequest.get(ORIGIN + "/")
+      .setHeader("User-Agent", DESKTOP_UA)
+      .setHeader("Accept", "text/html")
+      .setHeader("Accept-Language", hl != null ? hl + ",en;q=0.8" : "en-US,en;q=0.9")
+      .logContext("yt/session"),
+  );
+  if (!res.ok) {
+    res.ignoreResult();
+    throw JsEngineErrorImpl.network("yt session HTTP " + res.status);
+  }
+  const html = await res.text();
+  if (html.indexOf("INNERTUBE_") === -1)
+    throw JsEngineErrorImpl.parse("yt session: no ytcfg in homepage");
+
+  const clientVersion = firstMatch(html, "INNERTUBE_CONTEXT_CLIENT_VERSION", RE_CLIENT_VERSION);
+  const visitorData = firstMatch(html, "VISITOR_DATA", RE_VISITOR_DATA, -1);
+  if (clientVersion == null) throw JsEngineErrorImpl.parse("yt session: no clientVersion");
+  if (visitorData == null) throw JsEngineErrorImpl.parse("yt session: no visitorData");
+
+  // Keep the page's initial-data payload for yt/home's first load (empty = the page had none) —
+  // best-effort, like every cache touch here. writeUtf8Range encodes straight from the string's
+  // storage: no payload slice materializes.
+  const feedStart = initialDataStart(html);
+  try {
+    await Cache.put(CACHE_SCOPE, HOMEPAGE_KEY, (sink) => {
+      if (feedStart !== -1) return sink.writeUtf8Range(html, feedStart, html.length);
+    });
+  } catch (e) {
+    console.log("yt homepage cache write skipped: " + errText(e));
+  }
+
+  return {
+    clientName: firstMatch(html, "INNERTUBE_CONTEXT_CLIENT_NAME", RE_CLIENT_NAME) ?? "1",
+    clientVersion: clientVersion,
+    visitorData: visitorData,
+    apiKey: firstMatch(html, "INNERTUBE_API_KEY", RE_API_KEY),
+    signatureTimestamp:
+      firstMatch(html, "STS", RE_STS, -1) ?? firstMatch(html, "signatureTimestamp", RE_STS, -1),
+    gl: firstMatch(html, "GL", RE_GL, -1),
+    hl: firstMatch(html, "HL", RE_HL, -1),
+    sessionIndex:
+      firstMatch(html, "SESSION_INDEX", RE_SESSION_INDEX, -1) ??
+      firstMatch(html, "sessionIndex", RE_SESSION_INDEX, -1),
+    delegatedSessionId:
+      (firstMatch(html, "DELEGATED_SESSION_ID", RE_DELEGATED_SESSION, -1) ??
+        firstMatch(html, "delegatedSessionId", RE_DELEGATED_SESSION, -1)) ||
+      undefined,
+    userSessionId: firstMatch(html, "USER_SESSION_ID", RE_USER_SESSION_ID, -1) || undefined,
+    fetchedAt: Date.now(),
+  };
+}
+
+// ytcfg scrape regexes — the legacy YtClientStateHelper patterns, ported. The homepage embeds these
+// as JS object literals, so the value can be single- or double-quoted with loose whitespace.
+// All STICKY (/y), pinned to indexOf hits of their literal by anchoredExec (see scan.ts): the
+// ~2MB homepage never gets a full regex scan. Quote-prefixed patterns anchor at offset -1.
+const RE_CLIENT_NAME = /INNERTUBE_CONTEXT_CLIENT_NAME["']?\s*:\s*["']?(\d+)/y;
+const RE_CLIENT_VERSION = /INNERTUBE_CONTEXT_CLIENT_VERSION["']?\s*:\s*["']([^"']+)["']/y;
+const RE_API_KEY = /INNERTUBE_API_KEY["']?\s*:\s*["']([^"']+)["']/y;
+const RE_STS = /["'](?:STS|signatureTimestamp)["']\s*:\s*(\d+)/iy;
+const RE_VISITOR_DATA = /["']VISITOR_DATA["']\s*:\s*["']([^"']*)["']/y;
+const RE_GL = /["']GL["']\s*:\s*["']([A-Za-z]{2})["']/y;
+const RE_HL = /["']HL["']\s*:\s*["']([A-Za-z-]+)["']/y;
+// SESSION_INDEX is a bare or quoted integer; DELEGATED_SESSION_ID a quoted string (empty when none).
+const RE_SESSION_INDEX = /["'](?:SESSION_INDEX|sessionIndex)["']\s*:\s*["']?(\d+)/y;
+const RE_DELEGATED_SESSION =
+  /["'](?:DELEGATED_SESSION_ID|delegatedSessionId)["']\s*:\s*["']([^"']*)["']/y;
+const RE_USER_SESSION_ID = /["']USER_SESSION_ID["']\s*:\s*["']([^"']*)["']/y;
+
+function firstMatch(s: string, literal: string, re: RegExp, offset = 0): string | undefined {
+  const m = anchoredExec(s, literal, re, offset);
+  return m == null ? undefined : m[1];
+}
+
+// ---- host Cache (best-effort persistence across restarts) ----
+// The session is DATA when it crosses to the cache as JSON, so quoted keys (Closure never renames
+// them) — otherwise the round-tripped record wouldn't match the reader's bracket access.
+
+function toRecord(s: YtSession): Record<string, unknown> {
+  const r: Record<string, unknown> = {
+    "clientName": s.clientName,
+    "clientVersion": s.clientVersion,
+    "visitorData": s.visitorData,
+    "fetchedAt": s.fetchedAt,
+  };
+  if (s.apiKey != null) r["apiKey"] = s.apiKey;
+  if (s.signatureTimestamp != null) r["signatureTimestamp"] = s.signatureTimestamp;
+  if (s.gl != null) r["gl"] = s.gl;
+  if (s.hl != null) r["hl"] = s.hl;
+  if (s.sessionIndex != null) r["sessionIndex"] = s.sessionIndex;
+  if (s.delegatedSessionId != null) r["delegatedSessionId"] = s.delegatedSessionId;
+  if (s.userSessionId != null) r["userSessionId"] = s.userSessionId;
+  return r;
+}
+
+function fromRecord(o: unknown): YtSession | undefined {
+  const clientVersion = asString(get(o, "clientVersion"));
+  const visitorData = asString(get(o, "visitorData"));
+  const fetchedAt = get(o, "fetchedAt");
+  if (clientVersion == null || visitorData == null || typeof fetchedAt !== "number") {
+    return undefined;
+  }
+  return {
+    clientName: asString(get(o, "clientName")) ?? "1",
+    clientVersion: clientVersion,
+    visitorData: visitorData,
+    apiKey: asString(get(o, "apiKey")),
+    signatureTimestamp: asString(get(o, "signatureTimestamp")),
+    gl: asString(get(o, "gl")),
+    hl: asString(get(o, "hl")),
+    sessionIndex: asString(get(o, "sessionIndex")),
+    delegatedSessionId: asString(get(o, "delegatedSessionId")),
+    userSessionId: asString(get(o, "userSessionId")),
+    fetchedAt: fetchedAt,
+  };
+}
+
+async function readCache(): Promise<YtSession | undefined> {
+  try {
+    const raw = await Cache.getJson(CACHE_SCOPE, CACHE_KEY);
+    return raw == null ? undefined : fromRecord(raw);
+  } catch (e) {
+    // No cache store wired (capability inert) or a store error — a live scrape still works.
+    console.log("yt session cache read skipped: " + errText(e));
+    return undefined;
+  }
+}
+
+async function writeCache(s: YtSession): Promise<void> {
+  try {
+    await Cache.setJson(CACHE_SCOPE, CACHE_KEY, toRecord(s));
+  } catch (e) {
+    console.log("yt session cache write skipped: " + errText(e));
+  }
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
