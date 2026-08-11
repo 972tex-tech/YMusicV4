@@ -1,0 +1,38 @@
+# Run the kmpHttp Kotlin/Native linuxX64 tests in Linux (handy from a macOS dev host).
+#
+#   docker compose run --rm linux-test                 # full kmpHttp linuxX64 suite (default command)
+#   docker compose run --rm linux-test ./gradlew :kmpHttp:core:linuxX64Test -PkmpTargets=host
+#   docker compose run --rm linux-test ./gradlew --no-daemon :quickjs:linuxX64Test -PkmpTargets=host
+#   (:quickjs reuses this same image — its linuxX64 static lib builds with the image's cc/ar.)
+#
+# Notes:
+# - platform is pinned to linux/amd64 (libcurl.def's Linux linkerOpts point at x86_64-linux-gnu;
+#   on Apple Silicon this runs under emulation — slower but works).
+# - :kmpHttp:core runs its own local test-server/ (Node+Fastify, started by :startTestServer) instead of
+#   live hosts; the container still needs network for the one system-default-trust test (a public root).
+# - Gradle and Kotlin/Native caches are kept in named volumes so re-runs skip the toolchain download.
+services:
+  linux-test:
+    build:
+      context: .
+      dockerfile: docker/linux-test.Dockerfile
+    platform: linux/amd64
+    working_dir: /workspace
+    environment:
+      GRADLE_USER_HOME: /gradle-cache
+      KONAN_DATA_DIR: /konan-cache
+    volumes:
+      - .:/workspace
+      - kmphttp-gradle:/gradle-cache
+      - kmphttp-konan:/konan-cache
+    command:
+      - ./gradlew
+      - --no-daemon
+      - --continue
+      - :kmpHttp:core:linuxX64Test
+      - :kmpHttp:json:linuxX64Test
+      - -PkmpTargets=host
+
+volumes:
+  kmphttp-gradle:
+  kmphttp-konan:

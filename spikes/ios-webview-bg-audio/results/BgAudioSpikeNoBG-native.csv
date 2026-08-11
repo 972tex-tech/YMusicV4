@@ -1,0 +1,61 @@
+1,lifecycle,active,didFinishLaunching mode=native
+68,cfg,active,audio session .playback active
+110,native,active,AVAudioPlayer track1 play
+1111,native,active,tick nativeT=1.0 playing=true
+2111,native,active,tick nativeT=2.0 playing=true
+2948,lifecycle,active,openURL bgspike2://foreground
+3110,native,active,tick nativeT=3.0 playing=true
+3352,lifecycle,active,didBecomeActive
+4111,native,active,tick nativeT=4.0 playing=true
+5111,native,active,tick nativeT=5.0 playing=true
+6111,native,active,tick nativeT=6.0 playing=true
+7111,native,active,tick nativeT=7.0 playing=true
+8039,lifecycle,inactive,willResignActive
+8111,native,inactive,tick nativeT=8.0 playing=true
+8836,lifecycle,background,didEnterBackground
+9111,native,background,tick nativeT=9.0 playing=true
+10113,native,background,tick nativeT=10.0 playing=true
+11114,native,background,tick nativeT=11.0 playing=true
+12115,native,background,tick nativeT=12.0 playing=true
+13114,native,background,tick nativeT=13.0 playing=true
+14112,native,background,tick nativeT=14.0 playing=true
+15114,native,background,tick nativeT=15.0 playing=true
+16111,native,background,tick nativeT=16.0 playing=true
+17115,native,background,tick nativeT=17.0 playing=true
+18113,native,background,tick nativeT=18.0 playing=true
+19114,native,background,tick nativeT=19.0 playing=true
+20112,native,background,tick nativeT=20.0 playing=true
+20132,native,background,track finished ok=true
+20557,native,background,AVAudioPlayer track2 play
+21115,native,background,tick nativeT=0.5 playing=true
+22115,native,background,tick nativeT=1.5 playing=true
+23114,native,background,tick nativeT=2.5 playing=true
+24112,native,background,tick nativeT=3.5 playing=true
+25114,native,background,tick nativeT=4.5 playing=true
+26112,native,background,tick nativeT=5.5 playing=true
+27115,native,background,tick nativeT=6.5 playing=true
+28114,native,background,tick nativeT=7.5 playing=true
+29115,native,background,tick nativeT=8.5 playing=true
+30112,native,background,tick nativeT=9.5 playing=true
+31114,native,background,tick nativeT=10.5 playing=true
+32112,native,background,tick nativeT=11.5 playing=true
+33115,native,background,tick nativeT=12.5 playing=true
+34112,native,background,tick nativeT=13.5 playing=true
+35115,native,background,tick nativeT=14.5 playing=true
+36114,native,background,tick nativeT=15.5 playing=true
+37114,native,background,tick nativeT=16.5 playing=true
+38112,native,background,tick nativeT=17.5 playing=true
+39115,native,background,tick nativeT=18.5 playing=true
+40115,native,background,tick nativeT=19.5 playing=true
+41114,native,background,tick nativeT=20.5 playing=true
+42113,native,background,tick nativeT=21.5 playing=true
+43114,native,background,tick nativeT=22.5 playing=true
+43199,lifecycle,foreground(will),willEnterForeground
+43199,lifecycle,foreground(will),openURL bgspike2://foreground
+43640,lifecycle,active,didBecomeActive
+44115,native,active,tick nativeT=23.5 playing=true
+45112,native,active,tick nativeT=24.5 playing=true
+46112,native,active,tick nativeT=25.5 playing=true
+47112,native,active,tick nativeT=26.5 playing=true
+48112,native,active,tick nativeT=27.5 playing=true
+49112,native,active,tick nativeT=28.5 playing=true

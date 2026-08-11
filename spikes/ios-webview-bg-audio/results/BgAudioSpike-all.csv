@@ -1,0 +1,111 @@
+1,lifecycle,active,didFinishLaunching mode=all
+74,cfg,active,audio session .playback active
+118,cfg,active,silent keep-alive player running
+123,cfg,active,now-playing + remote commands registered
+124,cfg,active,private _alwaysRunsAtForegroundPriority=true
+217,lifecycle,active,didBecomeActive
+520,js-ev,active,js loaded, visibility=visible
+1167,native,active,tick
+1520,js-tick,active,t=0.0 paused=true
+1735,native,active,issuing start()
+1742,js-ev,active,play t=0.0 src=track1.wav
+1742,js-ev,active,waiting t=0.0 src=track1.wav
+1849,js-ev,active,suspend t=0.0 src=track1.wav
+1851,js-ev,active,playing t=0.0 src=track1.wav
+1851,js-ev,active,play() resolved
+2167,native,active,tick
+2520,js-tick,active,t=0.6 paused=false
+3168,native,active,tick
+3520,js-tick,active,t=1.6 paused=false
+4167,native,active,tick
+4521,js-tick,active,t=2.6 paused=false
+5168,native,active,tick
+5522,js-tick,active,t=3.6 paused=false
+6167,native,active,tick
+6523,js-tick,active,t=4.6 paused=false
+7167,native,active,tick
+7524,js-tick,active,t=5.6 paused=false
+8036,lifecycle,inactive,willResignActive
+8168,native,inactive,tick
+8524,js-tick,inactive,t=6.6 paused=false
+8831,lifecycle,background,didEnterBackground
+9003,js-ev,background,visibility=hidden
+9168,native,background,tick
+9525,js-tick,background,t=7.6 paused=false
+9559,kick,background,session re-activated (didEnterBackground)
+9560,kick,background,kick() issued (didEnterBackground)
+9561,js-ev,background,kick play ok
+10172,native,background,tick
+11170,native,background,tick
+11426,js-tick,background,t=9.5 paused=false
+12167,native,background,tick
+13170,native,background,tick
+13425,js-tick,background,t=11.5 paused=false
+14172,native,background,tick
+15170,native,background,tick
+15425,js-tick,background,t=13.5 paused=false
+16168,native,background,tick
+17170,native,background,tick
+17426,js-tick,background,t=15.5 paused=false
+18168,native,background,tick
+19170,native,background,tick
+19426,js-tick,background,t=17.5 paused=false
+20171,native,background,tick
+21173,native,background,tick
+21426,js-tick,background,t=19.5 paused=false
+21910,js-ev,background,pause t=20.0 src=track1.wav
+21910,js-ev,background,ended t=20.0 src=track1.wav
+21921,js-ev,background,play t=0.0 src=track2.wav
+21922,js-ev,background,waiting t=0.0 src=track2.wav
+21999,js-ev,background,suspend t=0.0 src=track2.wav
+22000,js-ev,background,playing t=0.0 src=track2.wav
+22000,js-ev,background,track2 play ok
+22168,native,background,tick
+23170,native,background,tick
+23426,js-tick,background,t=1.4 paused=false
+24172,native,background,tick
+25170,native,background,tick
+25426,js-tick,background,t=3.4 paused=false
+26169,native,background,tick
+27171,native,background,tick
+27426,js-tick,background,t=5.4 paused=false
+28168,native,background,tick
+29171,native,background,tick
+29426,js-tick,background,t=7.4 paused=false
+30170,native,background,tick
+31171,native,background,tick
+31426,js-tick,background,t=9.4 paused=false
+32170,native,background,tick
+33170,native,background,tick
+33427,js-tick,background,t=11.4 paused=false
+34171,native,background,tick
+35171,native,background,tick
+35426,js-tick,background,t=13.4 paused=false
+36168,native,background,tick
+37171,native,background,tick
+37426,js-tick,background,t=15.4 paused=false
+38171,native,background,tick
+39171,native,background,tick
+39427,js-tick,background,t=17.4 paused=false
+40172,native,background,tick
+41172,native,background,tick
+41427,js-tick,background,t=19.4 paused=false
+42172,native,background,tick
+43171,native,background,tick
+43185,lifecycle,foreground(will),willEnterForeground
+43185,lifecycle,foreground(will),openURL bgspike://foreground
+43187,js-tick,foreground(will),t=21.1 paused=false
+43187,js-ev,foreground(will),visibility=visible
+43621,lifecycle,active,didBecomeActive
+44172,native,active,tick
+44184,js-tick,active,t=22.1 paused=false
+45169,native,active,tick
+45185,js-tick,active,t=23.1 paused=false
+46169,native,active,tick
+46187,js-tick,active,t=24.1 paused=false
+47169,native,active,tick
+47187,js-tick,active,t=25.1 paused=false
+48169,native,active,tick
+48188,js-tick,active,t=26.1 paused=false
+49169,native,active,tick
+49189,js-tick,active,t=27.1 paused=false

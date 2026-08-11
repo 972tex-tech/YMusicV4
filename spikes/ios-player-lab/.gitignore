@@ -1,0 +1,6 @@
+# Xcode local state + build outputs (the .xcodeproj itself is committed for one-tap open/Run;
+# regenerate it with `ruby gen_xcodeproj.rb`).
+build/
+PlayerLab.xcodeproj/xcuserdata/
+PlayerLab.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate

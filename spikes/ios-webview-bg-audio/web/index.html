@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>bg-audio spike</title></head>
+  <body style="background:#111;color:#eee;font-family:-apple-system">
+    <p id="s">idle</p>
+    <audio id="a" playsinline></audio>
+    <script>
+      const a = document.getElementById('a');
+      const s = document.getElementById('s');
+      function post(d) { try { webkit.messageHandlers.log.postMessage(d); } catch (e) {} }
+      ['play', 'playing', 'pause', 'ended', 'error', 'stalled', 'suspend', 'waiting'].forEach((ev) =>
+        a.addEventListener(ev, () => {
+          const msg = ev + ' t=' + a.currentTime.toFixed(1) + ' src=' + (a.currentSrc.split('/').pop() || '?');
+          s.textContent = msg;
+          post({ 'k': 'ev', 'v': msg });
+        })
+      );
+      document.addEventListener('visibilitychange', () =>
+        post({ 'k': 'ev', 'v': 'visibility=' + document.visibilityState })
+      );
+      let track = 0;
+      a.addEventListener('ended', () => {
+        if (track === 1) {
+          track = 2;
+          a.src = 'track2.wav';
+          a.play()
+            .then(() => post({ 'k': 'ev', 'v': 'track2 play ok' }))
+            .catch((e) => post({ 'k': 'ev', 'v': 'track2 play rejected: ' + e }));
+        }
+      });
+      function start() {
+        track = 1;
+        a.src = 'track1.wav';
+        a.play()
+          .then(() => post({ 'k': 'ev', 'v': 'play() resolved' }))
+          .catch((e) => post({ 'k': 'ev', 'v': 'play() rejected: ' + e }));
+      }
+      function kick() {
+        a.play()
+          .then(() => post({ 'k': 'ev', 'v': 'kick play ok' }))
+          .catch((e) => post({ 'k': 'ev', 'v': 'kick rejected: ' + e }));
+      }
+      setInterval(() => post({ 'k': 'tick', 'v': 't=' + a.currentTime.toFixed(1) + ' paused=' + a.paused }), 1000);
+      post({ 'k': 'ev', 'v': 'js loaded, visibility=' + document.visibilityState });
+    </script>
+  </body>
+</html>

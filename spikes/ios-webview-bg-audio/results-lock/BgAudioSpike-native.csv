@@ -1,0 +1,53 @@
+1,lifecycle,active,didFinishLaunching mode=native
+72,cfg,active,audio session .playback active
+114,native,active,AVAudioPlayer track1 play
+233,lifecycle,active,didBecomeActive
+1115,native,active,tick nativeT=1.0 playing=true
+2115,native,active,tick nativeT=2.0 playing=true
+3115,native,active,tick nativeT=3.0 playing=true
+4115,native,active,tick nativeT=4.0 playing=true
+5115,native,active,tick nativeT=5.0 playing=true
+6115,native,active,tick nativeT=6.0 playing=true
+7115,native,active,tick nativeT=7.0 playing=true
+8115,native,active,tick nativeT=8.0 playing=true
+8598,lifecycle,inactive,willResignActive
+9115,native,inactive,tick nativeT=9.0 playing=true
+9938,lifecycle,active,didBecomeActive
+9938,lifecycle,inactive,willResignActive
+10007,lifecycle,background,didEnterBackground
+10115,native,background,tick nativeT=10.0 playing=true
+11115,native,background,tick nativeT=11.0 playing=true
+12119,native,background,tick nativeT=12.0 playing=true
+13117,native,background,tick nativeT=13.0 playing=true
+14119,native,background,tick nativeT=14.0 playing=true
+15117,native,background,tick nativeT=15.0 playing=true
+16117,native,background,tick nativeT=16.0 playing=true
+17117,native,background,tick nativeT=17.0 playing=true
+18116,native,background,tick nativeT=18.0 playing=true
+19118,native,background,tick nativeT=19.0 playing=true
+20118,native,background,tick nativeT=20.0 playing=true
+20136,native,background,track finished ok=true
+20561,native,background,AVAudioPlayer track2 play
+21117,native,background,tick nativeT=0.5 playing=true
+22119,native,background,tick nativeT=1.5 playing=true
+23117,native,background,tick nativeT=2.5 playing=true
+24118,native,background,tick nativeT=3.5 playing=true
+25117,native,background,tick nativeT=4.5 playing=true
+26119,native,background,tick nativeT=5.5 playing=true
+27117,native,background,tick nativeT=6.5 playing=true
+28120,native,background,tick nativeT=7.5 playing=true
+29117,native,background,tick nativeT=8.5 playing=true
+30119,native,background,tick nativeT=9.5 playing=true
+31117,native,background,tick nativeT=10.5 playing=true
+32116,native,background,tick nativeT=11.5 playing=true
+33117,native,background,tick nativeT=12.5 playing=true
+34119,native,background,tick nativeT=13.5 playing=true
+35117,native,background,tick nativeT=14.5 playing=true
+36120,native,background,tick nativeT=15.5 playing=true
+37117,native,background,tick nativeT=16.5 playing=true
+38120,native,background,tick nativeT=17.5 playing=true
+39118,native,background,tick nativeT=18.5 playing=true
+40120,native,background,tick nativeT=19.5 playing=true
+41117,native,background,tick nativeT=20.5 playing=true
+42120,native,background,tick nativeT=21.5 playing=true
+43118,native,background,tick nativeT=22.5 playing=true

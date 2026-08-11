@@ -1,0 +1,91 @@
+1,lifecycle,active,didFinishLaunching mode=plain
+16,cfg,active,audio session untouched
+230,lifecycle,active,didBecomeActive
+416,js-ev,active,js loaded, visibility=visible
+1056,native,active,tick
+1415,js-tick,active,t=0.0 paused=true
+1628,native,active,issuing start()
+1635,js-ev,active,play t=0.0 src=track1.wav
+1635,js-ev,active,waiting t=0.0 src=track1.wav
+1734,js-ev,active,suspend t=0.0 src=track1.wav
+1735,js-ev,active,playing t=0.0 src=track1.wav
+1735,js-ev,active,play() resolved
+2056,native,active,tick
+2416,js-tick,active,t=0.6 paused=false
+3056,native,active,tick
+3416,js-tick,active,t=1.6 paused=false
+4056,native,active,tick
+4417,js-tick,active,t=2.6 paused=false
+5056,native,active,tick
+5417,js-tick,active,t=3.6 paused=false
+6056,native,active,tick
+6418,js-tick,active,t=4.6 paused=false
+7056,native,active,tick
+7418,js-tick,active,t=5.6 paused=false
+8055,native,active,tick
+8419,js-tick,active,t=6.6 paused=false
+8861,lifecycle,inactive,willResignActive
+9056,native,inactive,tick
+9420,js-tick,inactive,t=7.6 paused=false
+10056,native,inactive,tick
+10200,lifecycle,active,didBecomeActive
+10225,lifecycle,inactive,willResignActive
+10228,lifecycle,background,didEnterBackground
+10384,js-ev,background,visibility=hidden
+10420,js-tick,background,t=8.6 paused=false
+11153,native,background,tick
+11946,js-tick,background,t=10.2 paused=false
+12154,native,background,tick
+13055,native,background,tick
+13946,js-tick,background,t=12.2 paused=false
+14154,native,background,tick
+15155,native,background,tick
+15947,js-tick,background,t=14.2 paused=false
+16154,native,background,tick
+17055,native,background,tick
+17947,js-tick,background,t=16.2 paused=false
+18153,native,background,tick
+19155,native,background,tick
+19946,js-tick,background,t=18.2 paused=false
+20152,native,background,tick
+21153,native,background,tick
+21796,js-ev,background,pause t=20.0 src=track1.wav
+21796,js-ev,background,ended t=20.0 src=track1.wav
+21806,js-ev,background,play t=0.0 src=track2.wav
+21807,js-ev,background,waiting t=0.0 src=track2.wav
+21873,js-ev,background,suspend t=0.0 src=track2.wav
+21875,js-ev,background,playing t=0.0 src=track2.wav
+21875,js-ev,background,track2 play ok
+21946,js-tick,background,t=0.0 paused=false
+22153,native,background,tick
+23056,native,background,tick
+23946,js-tick,background,t=2.0 paused=false
+24056,native,background,tick
+25154,native,background,tick
+25947,js-tick,background,t=4.0 paused=false
+26152,native,background,tick
+27154,native,background,tick
+27946,js-tick,background,t=6.0 paused=false
+28056,native,background,tick
+29153,native,background,tick
+29946,js-tick,background,t=8.0 paused=false
+30152,native,background,tick
+31154,native,background,tick
+31947,js-tick,background,t=10.0 paused=false
+32152,native,background,tick
+33154,native,background,tick
+33947,js-tick,background,t=12.0 paused=false
+34155,native,background,tick
+35154,native,background,tick
+35947,js-tick,background,t=14.0 paused=false
+36152,native,background,tick
+37154,native,background,tick
+37947,js-tick,background,t=16.0 paused=false
+38060,native,background,tick
+39058,native,background,tick
+40019,js-tick,background,t=18.1 paused=false
+40061,native,background,tick
+41061,native,background,tick
+42013,js-tick,background,t=20.1 paused=false
+42061,native,background,tick
+43056,native,background,tick

@@ -29,9 +29,10 @@ quickjs/src/androidDeviceTest/jniLibs/
 # quickjs: vendored QuickJS build commit marker is kept; build dirs are ignored via build/
 build-asan
 
-# built webview-js bundle, copied in by :androidApp copyWebViewJs / tools/mini.sh sync
+# built webview-js bundle, copied in at build time
 androidApp/src/main/assets/webview_ymusic.js
 iosApp/Resources/webview_ymusic.js
+spikes/ios-player-lab/Resources/webview_ymusic.js
 # compose resources copied in by :androidApp copyComposeResources (AGP9 KMP-plugin workaround)
 androidApp/src/main/assets/composeResources/
 
