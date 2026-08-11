@@ -1,8 +1,7 @@
 # :yt-media
 
 Pure Kotlin (commonMain) implementation of the googlevideo SABR/UMP protocol and the download
-logic built on it — ported from the legacy app (see `docs/player/sabr-protocol.md` for the
-protocol field guide and the legacy file map).
+logic built on it — ported from the legacy app.
 
 **Boundary rule:** this module knows nothing about the WebView, the JS engines, or the player.
 Everything the protocol needs per video — the SABR streaming URL (sig/n **already decoded**),

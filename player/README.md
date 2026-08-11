@@ -85,7 +85,7 @@ The cross-platform playback layer.
   - **Apple** `appleMain` = one AVFoundation `AVPlayer` impl for iOS **and** macOS (readiness + EOF detected by
     *polling* `AVPlayerItem.status`/play-head vs duration, so nothing depends on run-loop-delivered KVO — but
     AVFoundation still advances item readiness on the **main dispatch queue**, so a headless test must pump the
-    main run loop, see [[verify-platform-claims-with-a-test]]; audio-only disables the video `AVPlayerItemTrack`s).
+    main run loop; audio-only disables the video `AVPlayerItemTrack`s).
   - **Android** `androidMain` = Media3 ExoPlayer, bound to the main looper (caller must drive from main; no
     internal marshaling), `Player.Listener`-driven state (audio-only via `setTrackTypeDisabled(TRACK_TYPE_VIDEO)`).
   - **JVM desktop** `jvmMain` = VLCJ/libVLC via a `CallbackMediaPlayerComponent` so video renders into a Swing
@@ -95,8 +95,6 @@ The cross-platform playback layer.
 - **Targets** — jvm/android/ios/macos (`withIosTargets()`+`withMacosTargets()`).
 
 - **Verification** — verified end-to-end on macOS (`:player:macosX64Test` loads/plays/seeks a generated WAV);
-  iOS-simulator suites run on the mini with real-playback tests gated off (`canPlayRealMedia` — AVFoundation can't
+  iOS-simulator suites run on an Apple-Silicon box with real-playback tests gated off (`canPlayRealMedia` — AVFoundation can't
   open the media pipeline in a bare simctl-spawned sim process, CoreMedia -12746; app-context sim playback = the
   ios-player-lab spike); android/jvm compile-verified.
-
-- **Design** — [`docs/player/local-playback.md`](../docs/player/local-playback.md).
