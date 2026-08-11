@@ -39,6 +39,18 @@ kotlin {
 
 // Headless diagnostic for the WebView engine (see WebViewProbe.kt):
 //   ./gradlew :desktopApp:webviewProbe -PprobeArgs="realized"   (or "headless")
+// Manual check of the macOS Now Playing bridge (see NowPlayingProbe.kt):
+//   ./gradlew :desktopApp:nowPlayingProbe   — then press media keys / use Control Center.
+tasks.register<JavaExec>("nowPlayingProbe") {
+    group = "verification"
+    description = "Publish a Now Playing state and print every media command the OS delivers."
+    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
+    dependsOn(jvmMainCompilation.compileTaskProvider)
+    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
+    mainClass.set("ymusic.desktop.NowPlayingProbeKt")
+    args((providers.gradleProperty("npArgs").orNull ?: "").split(" ").filter { it.isNotBlank() })
+}
+
 tasks.register<JavaExec>("webviewProbe") {
     group = "verification"
     description = "Drive the JVM WebView YouTube engine headlessly and report whether playback advances."

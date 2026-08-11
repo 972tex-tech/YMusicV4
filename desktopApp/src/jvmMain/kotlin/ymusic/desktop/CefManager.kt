@@ -32,6 +32,12 @@ class CefManager {
             // gesture *inside the browser* — the app's own controls never count as one. Android's
             // WebView equivalent is mediaPlaybackRequiresUserGesture = false.
             addJcefArgs("--autoplay-policy=no-user-gesture-required")
+            // Chromium's own media-key integration registers with the SAME process-global
+            // MPRemoteCommandCenter as the app's DesktopMediaSession and takes it over on behalf
+            // of the embedded page: the page handles play/pause (so toggle appears to work) but
+            // declares no next/prev, which Chromium then disables — media keys half-work. The app
+            // owns the OS media surface; Chromium must not touch it.
+            addJcefArgs("--disable-features=HardwareMediaKeyHandling")
             // Google refuses sign-in from a browser it fingerprints as embedded/automated ("this
             // browser may not be secure"). Drop the AutomationControlled Blink flag (sets
             // navigator.webdriver=false, removes the automation signal) — the main tell beyond UA.
