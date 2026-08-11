@@ -34,6 +34,10 @@ class DownloadTasksAggregatorTest {
         val tasks = agg.tasks.stateIn(scope, SharingStarted.Eagerly, emptyList())
         try {
             withTimeout(5_000) { tasks.first { it.map { t -> t.id } == listOf("a") } }
+            // The seed emission doesn't imply the change collector has subscribed yet, and a
+            // replay-0 SharedFlow drops subscriber-less emissions. Production tolerates that gap
+            // (the seed re-reads the store); this static-seed test must not emit into it.
+            withTimeout(5_000) { changes.subscriptionCount.first { it > 0 } }
 
             changes.emit(DownloadChange.Added(task("b")))
             withTimeout(5_000) { tasks.first { it.map { t -> t.id }.toSet() == setOf("a", "b") } }
