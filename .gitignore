@@ -41,3 +41,6 @@ local.properties
 # private modules, not published (yet); restore locally to build the full app
 webview-js/
 engine-js/
+
+# legacy app sources, kept locally for reference only
+YMusicLegacy/
