@@ -1,0 +1,334 @@
+package io.ymusic.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.ymusic.dynamicengine.yt.YtFeedItem
+import io.ymusic.dynamicengine.yt.YtFeedPage
+import io.ymusic.dynamicengine.yt.YtPageHeader
+import io.ymusic.dynamicengine.yt.YtPageTab
+import io.ymusic.dynamicengine.yt.extractChannelDetail
+import io.ymusic.dynamicengine.yt.extractPlaylistDetail
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_add_to_playlist
+import io.ymusic.ui.resources.cd_download
+import io.ymusic.ui.resources.cd_share
+import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.detail_playlist
+import io.ymusic.ui.resources.subscribe
+import kotlinx.coroutines.CoroutineScope
+import org.jetbrains.compose.resources.stringResource
+
+/**
+ * Playlist detail's retained state (feed + scroll), created when the page is pushed. [url] is the
+ * engine-composed app link ("/playlist?…"), round-tripped VERBATIM — how it's served (VL browse,
+ * Mix watch-panel, seed videos…) is entirely the engine's business. [item] only seeds the header
+ * while the page loads.
+ */
+class PlaylistSession(graph: AppGraph, scope: CoroutineScope, val url: String, val item: YtFeedItem) {
+    val feed = FeedSession(scope) { continuation ->
+        graph.engines.extractPlaylistDetail(url, continuation = continuation)
+    }
+
+    init {
+        feed.pager.refresh()
+    }
+}
+
+/**
+ * Playlist detail (design/final/playlist-detail.html): back · "Playlist" · search app bar, then the
+ * header (title + meta + actions row + shuffle FAB) scrolling above the video feed. A video tap
+ * plays the playlist as the queue from that video; the FAB shuffles it.
+ */
+@Composable
+fun PlaylistDetailScreen(
+    coordinator: PlaybackCoordinator,
+    session: PlaylistSession,
+    onBack: () -> Unit,
+    onSearch: () -> Unit,
+) {
+    val s = session
+    val item = s.item
+    val state by s.feed.pager.state.collectAsState()
+    val ready = state as? Pager.State.Ready
+    val videos = ready?.sections.orEmpty().flatMap { it.items }.filter { it.kind == YtFeedItem.KIND_VIDEO }
+
+    Column(Modifier.fillMaxSize()) {
+        DetailAppBar(stringResource(Res.string.detail_playlist), onBack, onSearch)
+        FeedList(
+            s.feed.pager,
+            coordinator,
+            onPlayItem = { tapped ->
+                coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0))
+            },
+            topContent = {
+                PlaylistHeader(
+                    title = ready?.pageHeader?.title ?: item.title,
+                    meta = ready?.pageHeader?.subtitleLine1 ?: item.subtitleLine1,
+                    onShuffle = { coordinator.playAll(videos, shuffle = true) },
+                )
+            },
+            listState = s.feed.listState,
+        )
+    }
+}
+
+/** Title + meta, the actions row (design chrome until playlists/share/downloads land) and the
+ *  shuffle FAB, closed by the 16dp-inset divider. Shared by the WEB playlist detail and the YT Music
+ *  album/playlist detail so both read identically. */
+@Composable
+internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+            Text(
+                title,
+                style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.Ink, lineHeight = 25.sp),
+            )
+            meta?.let {
+                Text(
+                    it,
+                    style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist), enabled = false, onClick = {})
+            ActionIcon(Icons.Outlined.Share, stringResource(Res.string.cd_share), enabled = false, onClick = {})
+            ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = false, onClick = {})
+            Box(Modifier.weight(1f))
+            Box(
+                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(onClick = onShuffle),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = DesignColors.OnInk)
+            }
+        }
+        // 8dp under the divider + the first row's own 8dp = the list's 16dp item rhythm; without
+        // it the first video hugs the divider at half the spacing of every following row.
+        HorizontalDivider(color = DesignColors.StackNear, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
+    }
+}
+
+/**
+ * A generic feed page's retained state, created when pushed. [url] is an engine/app "/feed/…" link
+ * (the account's watch history, its all-playlists grid) served through the same yt/channel command
+ * — which decodes the path to its browseId — but rendered WITHOUT channel chrome (no header, no
+ * Subscribe): just the app bar and the feed. [title] seeds the bar until the page header answers.
+ */
+class FeedDetailSession(graph: AppGraph, scope: CoroutineScope, val url: String, val title: String?) {
+    val feed = FeedSession(scope) { continuation ->
+        graph.engines.extractChannelDetail(url, continuation = continuation)
+    }
+
+    init {
+        feed.pager.refresh()
+    }
+}
+
+/** A generic feed page: back · title · search app bar over the plain feed. Playlist/channel taps
+ *  open through [onOpen]; video taps autoplay as usual. */
+@Composable
+fun FeedDetailScreen(
+    coordinator: PlaybackCoordinator,
+    session: FeedDetailSession,
+    onBack: () -> Unit,
+    onSearch: () -> Unit,
+    onOpen: ((YtFeedItem) -> Unit)? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+) {
+    val state by session.feed.pager.state.collectAsState()
+    val ready = state as? Pager.State.Ready
+    Column(Modifier.fillMaxSize()) {
+        DetailAppBar(ready?.pageHeader?.title ?: session.title.orEmpty(), onBack, onSearch)
+        FeedList(
+            session.feed.pager,
+            coordinator,
+            onOpen = onOpen,
+            listState = session.feed.listState,
+            onDeeplink = onDeeplink,
+        )
+    }
+}
+
+/**
+ * Channel detail's retained state (feed + scroll + the picked tab), created when pushed. [url] is
+ * the engine-composed app link ("/channel/…", possibly pinned to a server tab), round-tripped
+ * VERBATIM; a tab switch just swaps in that tab's own engine link and refetches. [item] only seeds
+ * the header while the page loads.
+ */
+class ChannelSession(
+    graph: AppGraph,
+    scope: CoroutineScope,
+    val item: YtFeedItem,
+    initialUrl: String,
+    // Defaults to the WEB channel page; a YT Music artist reuses this whole screen but fetches its
+    // page via ytmusic/browse instead (it returns no pageTabs, so the tab row simply never shows).
+    fetch: suspend (url: String, continuation: String?) -> YtFeedPage = { url, continuation ->
+        graph.engines.extractChannelDetail(url, continuation = continuation)
+    },
+) {
+    var url by mutableStateOf(initialUrl)
+
+    /** The last non-empty tab row — survives a tab-switch reload (Loading has no page yet). */
+    var tabs by mutableStateOf(listOf<YtPageTab>())
+    val feed = FeedSession(scope) { continuation -> fetch(url, continuation) }
+
+    init {
+        feed.pager.refresh()
+    }
+}
+
+/**
+ * Channel detail (design/final/channel-detail.html): back · name · search app bar, the pinned text
+ * tab row (server tabs: Home / Videos / …), then banner + avatar header scrolling above the tab's
+ * feed. Playlist taps open through [onOpen] (playlist detail); video taps autoplay as usual.
+ */
+@Composable
+fun ChannelDetailScreen(
+    coordinator: PlaybackCoordinator,
+    session: ChannelSession,
+    onBack: () -> Unit,
+    onSearch: () -> Unit,
+    onOpen: ((YtFeedItem) -> Unit)? = null,
+    onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+) {
+    val s = session
+    val item = s.item
+    val state by s.feed.pager.state.collectAsState()
+    val ready = state as? Pager.State.Ready
+
+    LaunchedEffect(ready?.pageTabs) {
+        ready?.pageTabs?.takeIf { it.isNotEmpty() }?.let { s.tabs = it }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        DetailAppBar(ready?.pageHeader?.title ?: item.title, onBack, onSearch) {
+            if (s.tabs.isNotEmpty()) {
+                ChannelTabRow(s.tabs, activeUrl = s.url) { tab ->
+                    tab.url?.let {
+                        s.url = it
+                        s.feed.pager.refresh()
+                    }
+                }
+                HorizontalDivider(color = DesignColors.Divider)
+            }
+        }
+        // The channel header (banner · avatar · Subscribe) belongs to the FRONT tab only — content
+        // tabs (Videos / Shorts / …) start directly at their feed. Before tabs load, the page IS
+        // the front tab.
+        val onHomeTab = s.tabs.firstOrNull { it.url == s.url }?.home ?: true
+        FeedList(
+            s.feed.pager,
+            coordinator,
+            onOpen = onOpen,
+            topContent = if (onHomeTab) {
+                { ChannelHeader(ready?.pageHeader, fallback = item) }
+            } else {
+                null
+            },
+            listState = s.feed.listState,
+            onDeeplink = onDeeplink,
+        )
+    }
+}
+
+/** Banner strip (when the channel has one) + avatar · name/meta · the Subscribe pill (chrome until
+ *  accounts land). */
+@Composable
+private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
+    Column(Modifier.fillMaxWidth()) {
+        val banner = header?.banner.orEmpty()
+        if (banner.isNotEmpty()) {
+            Box(
+                Modifier
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .background(DesignColors.Placeholder, RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Image, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
+                ThumbImage(banner, 480.dp, RoundedCornerShape(12.dp))
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(64.dp).background(DesignColors.PlaceholderDim, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Person, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
+                ThumbImage(header?.thumbs ?: fallback.thumbs, 64.dp, CircleShape)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    header?.title ?: fallback.title,
+                    style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.Ink),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val meta = header?.subtitleLine2 ?: header?.subtitleLine1 ?: fallback.subtitleLine1
+                meta?.let {
+                    Text(
+                        it,
+                        style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            // Real action lands with accounts; filled pill per the mockup's channel header.
+            Text(
+                stringResource(Res.string.subscribe),
+                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(DesignColors.InkStrong)
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+            )
+        }
+    }
+}

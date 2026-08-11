@@ -8,7 +8,7 @@ plugins {
 }
 
 compose.resources {
-    packageOfResClass = "ymusic.ui.resources"
+    packageOfResClass = "io.ymusic.ui.resources"
     // The shells reuse the brand assets (desktop window icon).
     publicResClass = true
 }
@@ -19,7 +19,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.ui"
+        namespace = "io.ymusic.ui"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }

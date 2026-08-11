@@ -1,0 +1,99 @@
+package io.ymusic.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+
+/**
+ * The app's slim seek bar, built from scratch: the M3 `Slider`'s internal layout does not center
+ * its thumb/track slots inside a height-constrained row — the thumb clips into a floating dot and
+ * the bar sits off the row's centerline. Here the track and thumb are children of ONE CenterStart
+ * box, so everything sits on the centerline by construction, at any [barHeight].
+ *
+ * Tap seeks. A drag scrubs — the shown position holds locally so the live tick doesn't fight the
+ * thumb — and [onSeek] fires ONCE on release (a cancelled drag discards), so scrubbing never
+ * floods the engine with intermediate seeks.
+ */
+@Composable
+fun SlimSeekBar(
+    fraction: Float,
+    enabled: Boolean,
+    onSeek: (Float) -> Unit,
+    trackColor: Color,
+    modifier: Modifier = Modifier,
+    fillColor: Color = DesignColors.Accent,
+    thumbColor: Color = DesignColors.Accent,
+    thumbSize: Dp = 13.dp,
+    trackHeight: Dp = 3.dp,
+    barHeight: Dp = 20.dp,
+    thumbShadow: Dp = 1.dp,
+) {
+    var widthPx by remember { mutableStateOf(0) }
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val shown = (dragging ?: fraction).coerceIn(0f, 1f)
+    Box(
+        modifier
+            .height(barHeight)
+            .onSizeChanged { widthPx = it.width }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures { offset -> onSeek((offset.x / size.width).coerceIn(0f, 1f)) }
+            }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectHorizontalDragGestures(
+                    onDragStart = { offset -> dragging = (offset.x / size.width).coerceIn(0f, 1f) },
+                    onHorizontalDrag = { change, _ ->
+                        dragging = (change.position.x / size.width).coerceIn(0f, 1f)
+                    },
+                    onDragEnd = {
+                        dragging?.let(onSeek)
+                        dragging = null
+                    },
+                    onDragCancel = { dragging = null },
+                )
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(trackHeight)
+                .clip(RoundedCornerShape(trackHeight / 2))
+                .background(trackColor),
+        ) {
+            Box(Modifier.fillMaxWidth(shown).fillMaxHeight().background(fillColor))
+        }
+        Box(
+            Modifier
+                .offset { IntOffset((shown * (widthPx - thumbSize.toPx())).roundToInt().coerceAtLeast(0), 0) }
+                .size(thumbSize)
+                .shadow(thumbShadow, CircleShape)
+                .background(thumbColor, CircleShape),
+        )
+    }
+}

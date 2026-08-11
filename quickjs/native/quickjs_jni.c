@@ -41,7 +41,7 @@ typedef struct Engine {
     JSContext *ctx;
     JavaVM *jvm;
     QjsPipeCtx *pipe;
-    jclass bridgeClass;   /* global ref to ymusic.quickjs.QuickJsNative */
+    jclass bridgeClass;   /* global ref to io.ymusic.quickjs.QuickJsNative */
     jmethodID onOpen;     /* static int onOpen(long, int, String): 0 accepted / -1 refused */
     jmethodID onWrite;    /* static int  onWrite(long, int, ByteBuffer) */
     jmethodID onCloseWrite; /* static void onCloseWrite(long, int, String|null) */
@@ -129,7 +129,7 @@ static char *jstring_to_utf8(JNIEnv *env, jstring s, size_t *outLen) {
 }
 
 static void throw_qjs(JNIEnv *env, jstring msg) {
-    jclass ex = (*env)->FindClass(env, "ymusic/quickjs/QuickJsException");
+    jclass ex = (*env)->FindClass(env, "io/ymusic/quickjs/QuickJsException");
     jmethodID ctor = (*env)->GetMethodID(env, ex, "<init>", "(Ljava/lang/String;)V");
     jobject o = (*env)->NewObject(env, ex, ctor, msg);
     (*env)->Throw(env, (jthrowable)o);
@@ -349,7 +349,7 @@ static Engine *engine_new(JNIEnv *env, jint appVersion) {
     JS_SetContextOpaque(e->ctx, e);
     (*env)->GetJavaVM(env, &e->jvm);
 
-    jclass local = (*env)->FindClass(env, "ymusic/quickjs/QuickJsNative");
+    jclass local = (*env)->FindClass(env, "io/ymusic/quickjs/QuickJsNative");
     e->bridgeClass = (jclass)(*env)->NewGlobalRef(env, local);
     e->onOpen = (*env)->GetStaticMethodID(env, e->bridgeClass, "onOpen", "(JILjava/lang/String;)I");
     e->onWrite = (*env)->GetStaticMethodID(env, e->bridgeClass, "onWrite", "(JILjava/nio/ByteBuffer;)I");
@@ -392,12 +392,12 @@ static void engine_capture(Engine *e) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jint appVersion) {
+Java_io_ymusic_quickjs_QuickJsNative_create(JNIEnv *env, jobject thiz, jint appVersion) {
     return (jlong)(intptr_t)engine_new(env, appVersion);
 }
 
 JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong handle,
+Java_io_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong handle,
                                              jstring jscript) {
     Engine *e = (Engine *)(intptr_t)handle;
     size_t blen = 0;
@@ -418,7 +418,7 @@ Java_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong ha
 }
 
 JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_evalEngineBytecode(JNIEnv *env, jobject thiz, jlong handle,
+Java_io_ymusic_quickjs_QuickJsNative_evalEngineBytecode(JNIEnv *env, jobject thiz, jlong handle,
                                                      jbyteArray jbc) {
     Engine *e = (Engine *)(intptr_t)handle;
     jsize bclen = (*env)->GetArrayLength(env, jbc);
@@ -441,7 +441,7 @@ Java_ymusic_quickjs_QuickJsNative_evalEngineBytecode(JNIEnv *env, jobject thiz, 
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_ymusic_quickjs_QuickJsNative_compile(JNIEnv *env, jobject thiz, jstring jscript,
+Java_io_ymusic_quickjs_QuickJsNative_compile(JNIEnv *env, jobject thiz, jstring jscript,
                                           jstring jfilename) {
     size_t slen = 0;
     char *script = jstring_to_utf8(env, jscript, &slen);
@@ -479,7 +479,7 @@ Java_ymusic_quickjs_QuickJsNative_compile(JNIEnv *env, jobject thiz, jstring jsc
 }
 
 JNIEXPORT jstring JNICALL
-Java_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong handle,
+Java_io_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong handle,
                                            jstring jscript, jstring jfilename) {
     Engine *e = (Engine *)(intptr_t)handle;
     size_t slen = 0;
@@ -532,7 +532,7 @@ static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
 }
 
 JNIEXPORT jint JNICALL
-Java_ymusic_quickjs_QuickJsNative_open(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jcommand) {
+Java_io_ymusic_quickjs_QuickJsNative_open(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jcommand) {
     Engine *e = (Engine *)(intptr_t)handle;
     size_t len = 0;
     char *cmd = jstring_to_utf8(env, jcommand, &len);
@@ -544,7 +544,7 @@ Java_ymusic_quickjs_QuickJsNative_open(JNIEnv *env, jobject thiz, jlong handle, 
 /* write(id, bytes, off, len) -> accepted. The ByteArray is held with GetPrimitiveArrayCritical and
  * memcpy'd once into the C pipe buffer — see the file comment for the discipline. */
 JNIEXPORT jint JNICALL
-Java_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong handle, jint id,
+Java_io_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong handle, jint id,
                                         jbyteArray bytes, jint off, jint len) {
     Engine *e = (Engine *)(intptr_t)handle;
     if (len <= 0) return 0;
@@ -566,7 +566,7 @@ Java_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong handle,
 }
 
 JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_closeWrite(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jreason) {
+Java_io_ymusic_quickjs_QuickJsNative_closeWrite(JNIEnv *env, jobject thiz, jlong handle, jint id, jstring jreason) {
     Engine *e = (Engine *)(intptr_t)handle;
     if (jreason != NULL) {
         size_t rlen = 0;
@@ -581,21 +581,21 @@ Java_ymusic_quickjs_QuickJsNative_closeWrite(JNIEnv *env, jobject thiz, jlong ha
 }
 
 JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_closeRead(JNIEnv *env, jobject thiz, jlong handle, jint id) {
+Java_io_ymusic_quickjs_QuickJsNative_closeRead(JNIEnv *env, jobject thiz, jlong handle, jint id) {
     Engine *e = (Engine *)(intptr_t)handle;
     JSValue argv[1] = { JS_NewUint32(e->ctx, (uint32_t)id) };
     call_js(e, e->jsCloseRead, 1, argv, 0);
 }
 
 JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_drain(JNIEnv *env, jobject thiz, jlong handle, jint id) {
+Java_io_ymusic_quickjs_QuickJsNative_drain(JNIEnv *env, jobject thiz, jlong handle, jint id) {
     Engine *e = (Engine *)(intptr_t)handle;
     JSValue argv[1] = { JS_NewUint32(e->ctx, (uint32_t)id) };
     call_js(e, e->jsDrain, 1, argv, 0);
 }
 
 JNIEXPORT void JNICALL
-Java_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong handle) {
+Java_io_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong handle) {
     Engine *e = (Engine *)(intptr_t)handle;
     if (!e) return;
     JS_FreeValue(e->ctx, e->jsOpen);

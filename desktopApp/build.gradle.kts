@@ -24,7 +24,7 @@ val generateSentryConfig by tasks.registering {
         file.parentFile.mkdirs()
         file.writeText(
             """
-            package ymusic.desktop
+            package io.ymusic.desktop
 
             internal const val SENTRY_DSN = "$dsn"
             internal const val SENTRY_RELEASE = "$release"
@@ -76,7 +76,7 @@ tasks.register<JavaExec>("nowPlayingProbe") {
     val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
     dependsOn(jvmMainCompilation.compileTaskProvider)
     classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("ymusic.desktop.NowPlayingProbeKt")
+    mainClass.set("io.ymusic.desktop.NowPlayingProbeKt")
     args((providers.gradleProperty("npArgs").orNull ?: "").split(" ").filter { it.isNotBlank() })
 }
 
@@ -86,7 +86,7 @@ tasks.register<JavaExec>("webviewProbe") {
     val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
     dependsOn(jvmMainCompilation.compileTaskProvider)
     classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("ymusic.desktop.WebViewProbeKt")
+    mainClass.set("io.ymusic.desktop.WebViewProbeKt")
     jvmArgs(
         "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
         "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
@@ -103,7 +103,7 @@ tasks.register<JavaExec>("sabrDownload") {
     val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
     dependsOn(jvmMainCompilation.compileTaskProvider)
     classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("ymusic.desktop.SabrDownloadProbeKt")
+    mainClass.set("io.ymusic.desktop.SabrDownloadProbeKt")
     jvmArgs(
         "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
         "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
@@ -120,7 +120,7 @@ tasks.register<JavaExec>("downloadManager") {
     val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
     dependsOn(jvmMainCompilation.compileTaskProvider)
     classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("ymusic.desktop.DownloadManagerProbeKt")
+    mainClass.set("io.ymusic.desktop.DownloadManagerProbeKt")
     jvmArgs(
         "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
         "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
@@ -136,12 +136,12 @@ tasks.register<JavaExec>("catalogue") {
     val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
     dependsOn(jvmMainCompilation.compileTaskProvider)
     classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("ymusic.desktop.CatalogueMainKt")
+    mainClass.set("io.ymusic.desktop.CatalogueMainKt")
 }
 
 compose.desktop {
     application {
-        mainClass = "ymusic.desktop.MainKt"
+        mainClass = "io.ymusic.desktop.MainKt"
         // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",

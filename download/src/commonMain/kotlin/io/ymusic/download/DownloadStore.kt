@@ -1,0 +1,101 @@
+package io.ymusic.download
+
+import app.cash.sqldelight.db.SqlDriver
+import io.ymusic.download.db.DownloadDatabase
+import io.ymusic.download.internal.downloadDbDispatcher
+import kotlinx.coroutines.withContext
+
+/**
+ * Persistence for the download queue and the single source of truth — a thin suspend facade over the
+ * generated SqlDelight queries, all work confined to [downloadDbDispatcher]. The service writes here and
+ * the UI's [DownloadTasksAggregator] reads/observes here; nothing holds the whole list resident. Build the
+ * [driver] with the per-platform `downloadDatabase*Driver` factory.
+ */
+class DownloadStore(driver: SqlDriver) {
+
+    private val queries = DownloadDatabase(driver).downloadTaskQueries
+
+    suspend fun all(): List<DownloadTask> = withContext(downloadDbDispatcher()) {
+        queries.selectAll(::mapRow).executeAsList()
+    }
+
+    suspend fun get(id: String): DownloadTask? = withContext(downloadDbDispatcher()) {
+        queries.selectById(id, ::mapRow).executeAsOneOrNull()
+    }
+
+    /** The oldest [DownloadState.QUEUED] task — what the worker runs next. */
+    suspend fun nextQueued(): DownloadTask? = withContext(downloadDbDispatcher()) {
+        queries.selectNextQueued(DownloadState.QUEUED.name, ::mapRow).executeAsOneOrNull()
+    }
+
+    suspend fun upsert(task: DownloadTask): Unit = withContext(downloadDbDispatcher()) {
+        queries.upsert(
+            id = task.id,
+            video_id = task.videoId,
+            title = task.title,
+            artist = task.artist,
+            thumbnail_url = task.thumbnailUrl,
+            format = task.format.name,
+            requested_height = task.requestedHeight?.toLong(),
+            state = task.state.name,
+            downloaded_bytes = task.downloadedBytes,
+            total_bytes = task.totalBytes,
+            file_path = task.fileUri,
+            error_message = task.errorMessage,
+            created_at = task.createdAt,
+            updated_at = task.updatedAt,
+        )
+    }
+
+    suspend fun updateState(id: String, state: DownloadState, error: String?, updatedAt: Long): Unit =
+        withContext(downloadDbDispatcher()) { queries.updateState(state.name, error, updatedAt, id) }
+
+    suspend fun updateProgress(id: String, downloaded: Long, total: Long, updatedAt: Long): Unit =
+        withContext(downloadDbDispatcher()) { queries.updateProgress(downloaded, total, updatedAt, id) }
+
+    suspend fun updateCompleted(id: String, fileUri: String, bytes: Long, updatedAt: Long): Unit =
+        withContext(downloadDbDispatcher()) {
+            queries.updateCompleted(DownloadState.COMPLETED.name, fileUri, bytes, bytes, updatedAt, id)
+        }
+
+    /** Reset every in-flight or queued task to PAUSED in one statement — startup crash recovery. */
+    suspend fun pauseActiveAndQueued(updatedAt: Long): Unit = withContext(downloadDbDispatcher()) {
+        val states = DownloadState.entries.filter { it.isActive }.map { it.name }
+        queries.pauseActiveAndQueued(paused = DownloadState.PAUSED.name, updatedAt = updatedAt, states = states)
+    }
+
+    suspend fun delete(id: String): Unit = withContext(downloadDbDispatcher()) { queries.deleteById(id) }
+
+    @Suppress("LongParameterList")
+    private fun mapRow(
+        id: String,
+        video_id: String,
+        title: String,
+        artist: String?,
+        thumbnail_url: String?,
+        format: String,
+        requested_height: Long?,
+        state: String,
+        downloaded_bytes: Long,
+        total_bytes: Long,
+        file_path: String?,
+        error_message: String?,
+        created_at: Long,
+        updated_at: Long,
+    ) = DownloadTask(
+        id = id,
+        videoId = video_id,
+        title = title,
+        artist = artist,
+        thumbnailUrl = thumbnail_url,
+        format = runCatching { DownloadFormat.valueOf(format) }.getOrDefault(DownloadFormat.M4A),
+        requestedHeight = requested_height?.toInt(),
+        state = runCatching { DownloadState.valueOf(state) }.getOrDefault(DownloadState.FAILED),
+        downloadedBytes = downloaded_bytes,
+        totalBytes = total_bytes,
+        fileUri = file_path,
+        errorMessage = error_message,
+        createdAt = created_at,
+        updatedAt = updated_at,
+    )
+}

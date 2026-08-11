@@ -5,12 +5,12 @@ plugins {
 }
 
 android {
-    namespace = "ymusic.android"
+    namespace = "io.ymusic.android"
     // okhttp-android 5.4 (via :kmpHttp) demands API 36+ for apps; libraries stay on Versions.compileSdk.
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "ymusic.android"
+        applicationId = "io.ymusic.android"
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
         versionCode = 1
@@ -93,7 +93,7 @@ val copyWebViewJs by tasks.registering(Copy::class) {
 val copyComposeResources by tasks.registering(Copy::class) {
     dependsOn(":commonUi:prepareComposeResourcesTaskForCommonMain")
     from(rootProject.file("commonUi/build/generated/compose/resourceGenerator/preparedResources/commonMain/composeResources"))
-    into(layout.projectDirectory.dir("src/main/assets/composeResources/ymusic.ui.resources"))
+    into(layout.projectDirectory.dir("src/main/assets/composeResources/io.ymusic.ui.resources"))
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
     dependsOn(copyWebViewJs, copyComposeResources)

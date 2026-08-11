@@ -78,7 +78,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.quickjs"
+        namespace = "io.ymusic.quickjs"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         // Extract the .so to disk so System.loadLibrary always finds a real file.
@@ -320,7 +320,7 @@ val generateTestEngineJs by tasks.registering {
         val dir = testEngineJsKtDir.get().asFile.resolve("ymusic/quickjs").apply { mkdirs() }
         dir.resolve("TestEngineJs.kt").writeText(
             """
-            |package ymusic.quickjs
+            |package io.ymusic.quickjs
             |
             |// GENERATED — do not edit. The :engine-js bundle, for tests only.
             |${parts.joinToString("\n|")}

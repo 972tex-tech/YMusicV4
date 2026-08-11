@@ -12,7 +12,7 @@ plugins {
 sqldelight {
     databases {
         create("SegmentDatabase") {
-            packageName.set("ymusic.ytmedia.db")
+            packageName.set("io.ymusic.ytmedia.db")
         }
     }
 }
@@ -23,7 +23,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.ytmedia"
+        namespace = "io.ymusic.ytmedia"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }

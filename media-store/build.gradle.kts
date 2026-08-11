@@ -13,7 +13,7 @@ plugins {
 sqldelight {
     databases {
         create("MediaStoreDatabase") {
-            packageName.set("ymusic.mediastore.db")
+            packageName.set("io.ymusic.mediastore.db")
             // .sq lives in src/commonMain/sqldelight — one shared schema for every platform.
         }
     }
@@ -27,7 +27,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.mediastore"
+        namespace = "io.ymusic.mediastore"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }

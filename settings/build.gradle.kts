@@ -14,7 +14,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.settings"
+        namespace = "io.ymusic.settings"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }

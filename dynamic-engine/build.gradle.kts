@@ -12,7 +12,7 @@ plugins {
 sqldelight {
     databases {
         create("CacheDatabase") {
-            packageName.set("ymusic.dynamicengine.db")
+            packageName.set("io.ymusic.dynamicengine.db")
             // .sq lives in src/commonMain/sqldelight — one shared schema for every platform.
         }
     }
@@ -24,7 +24,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.dynamicengine"
+        namespace = "io.ymusic.dynamicengine"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -137,7 +137,7 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
             val dir = ktDir.get().asFile.resolve("ymusic/dynamicengine/internal").apply { mkdirs() }
             dir.resolve(ktFile).writeText(
                 """
-                |package ymusic.dynamicengine.internal
+                |package io.ymusic.dynamicengine.internal
                 |
                 |// GENERATED — do not edit. The :engine-js "$projectConfig" artifact, embedded at build time.
                 |${parts.joinToString("\n|")}

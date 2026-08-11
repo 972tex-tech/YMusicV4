@@ -12,7 +12,7 @@ plugins {
 sqldelight {
     databases {
         create("DownloadDatabase") {
-            packageName.set("ymusic.download.db")
+            packageName.set("io.ymusic.download.db")
         }
     }
 }
@@ -23,7 +23,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.download"
+        namespace = "io.ymusic.download"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }

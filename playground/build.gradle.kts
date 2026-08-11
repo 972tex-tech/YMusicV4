@@ -41,7 +41,7 @@ kotlin {
 
 compose.desktop {
     application {
-        mainClass = "ymusic.playground.MainKt"
+        mainClass = "io.ymusic.playground.MainKt"
         // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",

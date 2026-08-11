@@ -15,7 +15,7 @@ kotlin {
     }
 
     android {
-        namespace = "ymusic.mediascanner"
+        namespace = "io.ymusic.mediascanner"
         compileSdk = Versions.compileSdk
         minSdk = Versions.minSdk
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
