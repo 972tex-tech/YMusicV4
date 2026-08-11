@@ -1,14 +1,18 @@
 package ymusic.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -18,6 +22,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -100,7 +105,7 @@ fun ApplicationScope.MiniPlayerWindow(
         }
         Surface(
             modifier = Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,
             shadowElevation = 8.dp,
@@ -110,6 +115,7 @@ fun ApplicationScope.MiniPlayerWindow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class) // Slider thumb/track slots
 @Composable
 private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onQuit: () -> Unit) {
     val player = graph.player
@@ -119,12 +125,12 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onQuit: ()
     val item = queue.currentItem
     val playing = status.state.isPlaying()
 
-    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .size(44.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(5.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
@@ -166,7 +172,11 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onQuit: ()
             }
         }
 
-        // Seek: drag holds a local value so the live position doesn't fight the thumb.
+        Spacer(Modifier.height(6.dp))
+
+        // Seek: drag holds a local value so the live position doesn't fight the thumb. A slim
+        // custom thumb/track — the default M3 slider doesn't fit a 22dp row and clips into a
+        // floating dot.
         val durationMs = progress.durationMs
         var dragging by remember { mutableStateOf<Float?>(null) }
         val fraction = when {
@@ -184,7 +194,26 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onQuit: ()
                     if (target != null && durationMs > 0) player.seekTo((target * durationMs).toLong())
                 },
                 enabled = durationMs > 0,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(24.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(22.dp),
+                thumb = {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                },
+                track = {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(fraction)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.primary),
+                        )
+                    }
+                },
             )
             Text(
                 if (durationMs > 0) formatTime(durationMs) else "--:--",
@@ -193,23 +222,25 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onQuit: ()
             )
         }
 
+        Spacer(Modifier.height(2.dp))
+
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { player.skipPrev() }, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Default.SkipPrevious, "Previous", Modifier.size(22.dp))
+            IconButton(onClick = { player.skipPrev() }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.SkipPrevious, "Previous", Modifier.size(20.dp))
             }
-            IconButton(onClick = { player.togglePlay() }, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = { player.togglePlay() }, modifier = Modifier.size(36.dp)) {
                 Icon(
                     if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                     if (playing) "Pause" else "Play",
-                    Modifier.size(28.dp),
+                    Modifier.size(26.dp),
                 )
             }
-            IconButton(onClick = { player.skipNext() }, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Default.SkipNext, "Next", Modifier.size(22.dp))
+            IconButton(onClick = { player.skipNext() }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.SkipNext, "Next", Modifier.size(20.dp))
             }
         }
     }
@@ -254,4 +285,4 @@ private fun formatTime(ms: Long): String {
 }
 
 private const val WIDTH_DP = 340
-private const val HEIGHT_DP = 150
+private const val HEIGHT_DP = 132
