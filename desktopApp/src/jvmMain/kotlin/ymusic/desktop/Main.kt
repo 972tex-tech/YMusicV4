@@ -112,6 +112,8 @@ fun main() {
     if (SENTRY_DSN.isNotEmpty()) {
         Sentry.init {
             it.dsn = SENTRY_DSN
+            // The commit in the release traces an event to git history (no source upload).
+            it.release = SENTRY_RELEASE
         }
     }
     // Both video engines (JCEF WebView + VLCJ local) now render off-screen and paint through a plain

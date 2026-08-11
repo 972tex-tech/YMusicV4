@@ -96,6 +96,8 @@ class YMusicApplication : Application() {
         if (BuildConfig.SENTRY_DSN.isNotEmpty()) {
             Sentry.init {
                 it.dsn = BuildConfig.SENTRY_DSN
+                // The commit in the release traces an event to git history (no source upload).
+                it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
                 it.environment =
                     if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) "debug"
                     else "production"

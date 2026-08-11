@@ -20,7 +20,6 @@ rootProject.name = "YMusicV4"
 include(":commonUi")
 include(":image-loader")
 include(":desktopApp")
-include(":desktopApp:sentry")
 include(":androidApp")
 include(":kmpCommon")
 include(":kmpHttp:core")

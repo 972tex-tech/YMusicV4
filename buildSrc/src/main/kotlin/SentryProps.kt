@@ -1,16 +1,25 @@
 import org.gradle.api.Project
 import java.util.Properties
 
-/** Sentry credentials, kept out of VCS: env var first, then local.properties (gitignored). */
-private fun Project.sentryProp(env: String, key: String): String =
-    System.getenv(env)
+/** Sentry project DSN baked into the app at build time, kept out of VCS: the SENTRY_DSN env var,
+ *  else sentry.dsn in local.properties (gitignored). Empty keeps the SDK off — crashes go
+ *  unreported. */
+fun Project.sentryDsn(): String =
+    System.getenv("SENTRY_DSN")
         ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { file ->
-            Properties().apply { file.inputStream().use { load(it) } }.getProperty(key)
+            Properties().apply { file.inputStream().use { load(it) } }.getProperty("sentry.dsn")
         }
         ?: ""
 
-/** Project DSN baked into the app at build time; empty keeps the SDK off — crashes go unreported. */
-fun Project.sentryDsn(): String = sentryProp("SENTRY_DSN", "sentry.dsn")
-
-/** Org auth token for source-context upload at build time; empty skips the upload. */
-fun Project.sentryAuthToken(): String = sentryProp("SENTRY_AUTH_TOKEN", "sentry.auth.token")
+/** The git commit an app build was cut from — stamped into the Sentry release so an event traces
+ *  straight back to git history (no source-context upload needed while builds stay unobfuscated). */
+fun Project.gitCommit(): String =
+    runCatching {
+        val process = ProcessBuilder("git", "rev-parse", "--short=10", "HEAD")
+            .directory(rootProject.projectDir)
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.bufferedReader().readText().trim().takeIf {
+            process.waitFor() == 0 && it.isNotEmpty()
+        }
+    }.getOrNull() ?: "unknown"

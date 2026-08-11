@@ -2,7 +2,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("io.sentry.android.gradle")
 }
 
 android {
@@ -17,6 +16,7 @@ android {
         versionCode = 1
         versionName = "4.0.0"
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn()}\"")
+        buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")
     }
 
     buildFeatures {
@@ -47,28 +47,6 @@ android {
     // stageFfmpeg (below) fills the dir; the merge task depends on it explicitly (the source-set API
     // can't carry a Provider's task dependency, so a plain File + explicit dependsOn is required).
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
-}
-
-sentry {
-    org.set("na-6d")
-    projectName.set("ymusic-kmp")
-    authToken.set(sentryAuthToken())
-    includeSourceContext.set(true)
-    // :commonUi (KMP) can't take the plugin; its sources ride along so shared-code frames resolve too.
-    additionalSourceDirsForSourceContext.set(setOf("../commonUi/src/commonMain/kotlin", "../commonUi/src/androidMain/kotlin"))
-    // The KMP wrapper already pins its matching sentry-android; don't let the plugin re-manage it.
-    autoInstallation { enabled.set(false) }
-    telemetry.set(false)
-}
-
-// The plugin's own assemble hook doesn't engage under AGP 9, so the upload rides assemble
-// explicitly. Credentials-gated: without them packaging still works, just without source context.
-if (sentryAuthToken().isNotEmpty()) {
-    listOf("Debug", "Release").forEach { variant ->
-        tasks.matching { it.name == "assemble$variant" }.configureEach {
-            dependsOn("sentryUploadSourceBundle$variant")
-        }
-    }
 }
 
 val stageFfmpeg by tasks.registering(Copy::class) {
