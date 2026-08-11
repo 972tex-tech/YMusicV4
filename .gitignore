@@ -10,7 +10,11 @@ temp
 .claude
 kmpHttp/core/test-cache
 kmpHttp/test/test-cache
-design/logo/_mockups
+design
+docs
+ffmpeg-prebuilt-ymusic
+scripts
+tools
 test-cache
 ymusic-android
 
