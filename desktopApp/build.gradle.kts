@@ -23,6 +23,7 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.components.resources)
                 implementation(Libs.Jcef.maven)
+                implementation(Libs.Jna.core)
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":yt-media"))
                 implementation(Libs.Kotlinx.coroutinesCore)

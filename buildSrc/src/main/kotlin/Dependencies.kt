@@ -19,6 +19,7 @@ object Versions {
     const val media3 = "1.11.0"   // Android ExoPlayer
     const val vlcj = "4.8.3"     // JVM desktop libVLC binding
     const val jcef = "146.0.10"  // JVM desktop Chromium (WebView YouTube host)
+    const val jna = "5.17.0"     // JVM desktop native interop (macOS Now Playing bridge)
 
     // AndroidX
     const val coreKtx = "1.15.0"
@@ -122,5 +123,9 @@ object Libs {
 
     object Jcef {
         const val maven = "me.friwi:jcefmaven:${Versions.jcef}"
+    }
+
+    object Jna {
+        const val core = "net.java.dev.jna:jna:${Versions.jna}"
     }
 }

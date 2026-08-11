@@ -57,6 +57,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
+import ymusic.desktop.media.connectMediaSession
 import ymusic.dynamicengine.DynamicEngineManager
 import ymusic.dynamicengine.desktopEngineCacheStore
 import ymusic.dynamicengine.yt.embedPage
@@ -265,6 +266,10 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             ),
         )
     }
+
+    // OS media surface — macOS Now Playing widget + media keys (Linux MPRIS / Windows SMTC have no
+    // backend yet). Commands come back on the Main dispatcher, where the player is driven.
+    connectMediaSession(player, CoroutineScope(Dispatchers.Main))
 
     // Warm the YouTube engine ~5s after startup so the first play/download skips the WebView + /embed
     // build (mirrors legacy warmUpYtPlayer). Off the boot path; on the EDT since it hosts JCEF.
