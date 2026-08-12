@@ -244,9 +244,11 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // First launch decides the app language (device if supported, else English) and persists it —
     // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
     ensureAppLanguage(settings)
-    // Stable anonymous crash-reporting id: seeded once (random UUID) and persisted.
+    // Stable anonymous crash-reporting id: the persisted copy wins; a fresh (or wiped) install
+    // re-derives the same machine-seeded hash, so the id survives an app-data clear.
     val deviceId = settings.flow(AppSettings.deviceId).value.ifEmpty {
-        java.util.UUID.randomUUID().toString().also { settings.put(AppSettings.deviceId, it) }
+        (machineSeededDeviceId(rootLogger.fork("telemetry")) ?: java.util.UUID.randomUUID().toString())
+            .also { settings.put(AppSettings.deviceId, it) }
     }
     installSentryDeviceId(deviceId)
     val engines = withContext(Dispatchers.IO) {
