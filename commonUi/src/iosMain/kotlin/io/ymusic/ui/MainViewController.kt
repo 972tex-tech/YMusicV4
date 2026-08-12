@@ -74,6 +74,7 @@ private fun IosAppRoot() {
         try {
             graph = buildIosGraph(container)
         } catch (t: Throwable) {
+            IosLogger().fork("boot").captureError(t)
             error = t.message ?: t.toString()
         }
     }
@@ -111,7 +112,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         logger = rootLogger,
         cookieJar = cookies,
         settings = settings,
-        cacheStore = appleEngineCacheStore(),
+        cacheStore = appleEngineCacheStore(logger = rootLogger),
     )
     engines.start()
 

@@ -68,7 +68,9 @@ class ArtworkProvider : ContentProvider() {
         } catch (e: FileNotFoundException) {
             throw e
         } catch (e: Exception) {
-            throw FileNotFoundException("artwork load failed for $target: $e")
+            // FileNotFoundException is the one exception a ContentProvider open may throw; keep the
+            // real cause on its chain instead of flattening it into the message.
+            throw FileNotFoundException("artwork load failed for $target").apply { initCause(e) }
         }
     }
 

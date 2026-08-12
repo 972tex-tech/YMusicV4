@@ -52,6 +52,7 @@ import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
 import io.ymusic.ui.resources.settings_theme_system
+import kmpcommon.log.Logger
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -72,12 +73,15 @@ fun SettingsScreen(graph: AppGraph) {
     var localeRevision by remember { mutableStateOf(0) }
     LaunchedEffect(graph.engines, localeRevision) {
         loadingOptions = true
-        runCatching { graph.engines.ytLocaleOptions() }.onSuccess { options = it }
+        runCatching { graph.engines.ytLocaleOptions() }
+            .onSuccess { options = it }
+            .onFailure { graph.logger?.fork("settings")?.log(Logger.Level.WARN, "locale options fetch failed", it) }
         loadingOptions = false
     }
     fun pickLocale(gl: String) {
         scope.launch {
             runCatching { graph.engines.applyYtLocale(gl) }
+                .onFailure { graph.logger?.fork("settings")?.captureError(it, "applyYtLocale failed — UI reloads as if it changed") }
             localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
             graph.localeEpoch.value++ // locale-shaped caches (Discover feeds) refetch
         }

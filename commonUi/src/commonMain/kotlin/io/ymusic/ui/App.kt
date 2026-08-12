@@ -260,10 +260,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         LaunchedEffect(graph) {
             graph.player.watchNextSeen.collect { seen ->
                 runCatching { graph.engines.handleWebViewPlayNext(seen.videoId, seen.contentsJson) }
+                    .onFailure { graph.logger?.fork("watch-next-harvest")?.log(kmpcommon.log.Logger.Level.WARN, "harvest hand-off failed", it) }
             }
         }
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
-        val scanController = remember { ScanController(scope) }
+        val scanController = remember { ScanController(scope, graph.logger?.fork("library-scan")) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.

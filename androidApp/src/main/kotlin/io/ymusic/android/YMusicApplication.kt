@@ -3,7 +3,6 @@ package io.ymusic.android
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Intent
-import android.util.Log
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.widget.FrameLayout
@@ -159,7 +158,7 @@ class YMusicApplication : Application() {
             http.engine,
             appVersion = 1,
             logger = rootLogger,
-            cacheStore = androidEngineCacheStore(this),
+            cacheStore = androidEngineCacheStore(this, logger = rootLogger),
             cookieJar = cookies,
             settings = settings,
             // Debug builds crash on an engine-thread stall (StrictMode-style); release only logs.
@@ -169,9 +168,12 @@ class YMusicApplication : Application() {
 
         val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(this))
 
+        // A missing/corrupt bundle silently disables the whole player-cache path — that's a
+        // packaging bug, not a soft feature toggle.
         val webViewJs = runCatching {
             assets.open("webview_ymusic.js").readBytes().decodeToString()
-        }.getOrNull()
+        }.onFailure { rootLogger.fork("boot").captureError(it, "webview_ymusic.js asset unreadable — player cache disabled") }
+            .getOrNull()
 
         // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to
         // the fetcher's disk cache, decode from file) + local files + art:// embedded covers via
@@ -224,7 +226,7 @@ class YMusicApplication : Application() {
                         Intent(this@YMusicApplication, PlaybackService::class.java),
                     )
                 } catch (e: IllegalStateException) {
-                    Log.w("YMusic", "PlaybackService start rejected", e)
+                    rootLogger.fork("playback-service").log(Logger.Level.WARN, "foreground start rejected", e)
                 }
             }
         }
@@ -247,7 +249,7 @@ class YMusicApplication : Application() {
                                 Intent(this@YMusicApplication, DownloadForegroundService::class.java),
                             )
                         } catch (e: IllegalStateException) {
-                            Log.w("YMusic", "DownloadForegroundService start rejected", e)
+                            rootLogger.fork("download-service").log(Logger.Level.WARN, "foreground start rejected", e)
                         }
                     }
                 }
@@ -333,7 +335,7 @@ class YMusicApplication : Application() {
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
             }
             io.ymusic.download.DownloadService(
-                store = io.ymusic.download.DownloadStore(io.ymusic.download.downloadDatabaseAndroidDriver(applicationContext)),
+                store = io.ymusic.download.DownloadStore(io.ymusic.download.downloadDatabaseAndroidDriver(applicationContext), rootLogger),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
                 now = { System.currentTimeMillis() },
                 resolver = io.ymusic.download.SabrSpecResolver { videoId ->
@@ -455,7 +457,7 @@ class YMusicApplication : Application() {
         var failed = 0
         for (uri in uris) {
             val progress = scanner.scan(uri).onEach { onProgress(scanned + it.scanned) }.last()
-            progress.errors.forEach { Log.w("LibraryScan", "scan error at ${it.uri}", it.cause) }
+            progress.errors.forEach { rootLogger.fork("library-scan").log(Logger.Level.WARN, "scan error at ${it.uri}", it.cause) }
             scanned += progress.scanned
             added += progress.added
             updated += progress.updated

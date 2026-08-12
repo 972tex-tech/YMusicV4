@@ -65,6 +65,8 @@ import io.ymusic.ui.resources.signin_preface_title
 import io.ymusic.ui.resources.signin_screen_title
 import io.ymusic.ui.resources.signin_unavailable
 import io.ymusic.ui.resources.switch_account_hint
+import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,14 +140,22 @@ internal class AccountController(
     /** Bumped on every sign-in/out so the feed caches clear and reload (mirrors [AppGraph.localeEpoch]). */
     val loginEpoch = MutableStateFlow(0)
 
+    private val log = graph.logger?.fork("login")
+
     init {
         // The auth cookies persist in the platform jar across launches, so probe on start: an already
         // signed-in user comes back signed in without touching the login screen.
         scope.launch {
-            val ok = runCatching { graph.engines.ytLoginStatus() }.getOrDefault(false)
+            // An engine failure here is NOT "signed out" — log it, or a signed-in user silently
+            // landing on the login screen looks like a cookie bug.
+            val ok = runCatching { graph.engines.ytLoginStatus() }
+                .onFailure { log?.log(Logger.Level.WARN, "startup login-status probe failed", it) }
+                .getOrDefault(false)
             _signedIn.value = ok
             if (ok) {
-                val acct = runCatching { graph.engines.ytAccountInfo() }.getOrNull()
+                val acct = runCatching { graph.engines.ytAccountInfo() }
+                    .onFailure { log?.log(Logger.Level.WARN, "account info fetch failed", it) }
+                    .getOrNull()
                 if (acct != null && !acct.signedIn) {
                     // The engine found no account behind the cookies (a revoked jar — remote
                     // logout). Run the full sign-out so the state, session and feeds all reset
@@ -165,10 +175,14 @@ internal class AccountController(
         scope.launch {
             _signedIn.value = true
             // Re-scrape the session under the new cookies so authenticated calls carry the account's
-            // SESSION_INDEX before the account fetch and feed reload below.
+            // SESSION_INDEX before the account fetch and feed reload below. A failure means every
+            // later authenticated call runs under the wrong identity — log it loudly.
             runCatching { graph.engines.ytRefreshSession() }
+                .onFailure { log?.log(Logger.Level.WARN, "post-login session refresh failed", it) }
             // Force a fresh fetch (and re-cache) on sign-in; the startup probe below uses the cache.
-            _account.value = runCatching { graph.engines.ytAccountInfo(refresh = true) }.getOrNull()
+            _account.value = runCatching { graph.engines.ytAccountInfo(refresh = true) }
+                .onFailure { log?.log(Logger.Level.WARN, "post-login account fetch failed", it) }
+                .getOrNull()
             loginEpoch.value += 1
             graph.player.refreshOnNext()
             graph.requestRefresh()
@@ -177,9 +191,13 @@ internal class AccountController(
 
     fun signOut() {
         scope.launch {
+            // The UI flips to signed-out either way (the user asked to leave), but a failed engine
+            // logout leaves the jar authenticated — that mismatch must reach telemetry.
             runCatching { graph.engines.ytLogout() }
+                .onFailure { log?.captureError(it, "logout failed — jar may stay authenticated") }
             // Re-scrape anonymous so the account identifiers drop out of subsequent requests.
             runCatching { graph.engines.ytRefreshSession() }
+                .onFailure { log?.log(Logger.Level.WARN, "post-logout session refresh failed", it) }
             _signedIn.value = false
             _account.value = null
             loginEpoch.value += 1
@@ -212,7 +230,8 @@ internal fun YtLoginScreen(
     LaunchedEffect(Unit) {
         entryUrl = runCatching {
             if (switchAccount) graph.engines.ytSwitchAccountUrl() else graph.engines.ytLoginUrl()
-        }.getOrNull()
+        }.onFailure { graph.logger?.fork("login")?.captureError(it, "login entry url failed — blank login screen") }
+            .getOrNull()
     }
 
     val browser = graph.loginBrowser
@@ -224,7 +243,10 @@ internal fun YtLoginScreen(
         var done = false
         while (isActive && !done) {
             delay(LOGIN_POLL_MS)
-            if (runCatching { graph.engines.ytLoginStatus() }.getOrDefault(false)) {
+            if (runCatching { graph.engines.ytLoginStatus() }
+                    .onFailure { graph.logger?.fork("login")?.debug { "login poll failed: $it" } }
+                    .getOrDefault(false)
+            ) {
                 done = true
                 onComplete()
             }

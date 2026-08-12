@@ -145,7 +145,7 @@ class Pager(
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
                 readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: TimeoutCancellationException) {
-                logger?.log(Logger.Level.WARN, "fetch timed out after ${fetchTimeoutMs}ms")
+                logger?.log(Logger.Level.WARN, "fetch timed out after ${fetchTimeoutMs}ms", e)
                 State.Failed(TIMEOUT_CODE, "fetch timed out after ${fetchTimeoutMs}ms")
             } catch (e: CancellationException) {
                 throw e // a newer refresh took over the state — this coroutine just dies
@@ -177,7 +177,7 @@ class Pager(
                 readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
-                logger?.log(Logger.Level.WARN, "reload timed out after ${fetchTimeoutMs}ms")
+                logger?.log(Logger.Level.WARN, "reload timed out after ${fetchTimeoutMs}ms", e)
                 _errors.tryEmit(TIMEOUT_CODE)
                 current.copy(refreshing = false)
             } catch (e: Exception) {
@@ -239,7 +239,7 @@ class Pager(
                 )
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
-                logger?.log(Logger.Level.WARN, "loadMore timed out after ${fetchTimeoutMs}ms")
+                logger?.log(Logger.Level.WARN, "loadMore timed out after ${fetchTimeoutMs}ms", e)
                 current.copy(loadingMore = false) // timed out — the tail button stays for a retry
             } catch (e: Exception) {
                 logger?.captureError(e)

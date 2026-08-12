@@ -178,7 +178,10 @@ fun SearchScreen(
         delay(250)
         suggestions = try {
             s.suggest(s.field.text)
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
         } catch (e: Exception) {
+            s.log?.log(Logger.Level.WARN, "suggest failed", e)
             emptyList() // suggestions are best-effort sugar; the search box still works
         }
     }

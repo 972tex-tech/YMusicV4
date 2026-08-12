@@ -37,6 +37,7 @@ import io.ymusic.settings.flow
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.youtubeThumbUrl
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +111,7 @@ class PlaybackService : MediaLibraryService() {
         val adapter = Media3PlayerAdapter(
             player,
             describe = { item -> item.toMediaMetadata(this, sessionArt = lockScreenArt.value) },
+            logger = log,
             applyMediaItems = { _, items, startIndex, _ -> applyBrowseItems(items, startIndex) },
             insertMediaItems = { target, index, items -> insertBrowseItems(target, index, items) },
         )
@@ -461,7 +463,9 @@ class PlaybackService : MediaLibraryService() {
         val future = s.bitmapLoader.loadBitmap(Uri.parse(url))
         future.addListener(
             {
-                val bitmap = runCatching { future.get() }.getOrNull() ?: return@addListener
+                val bitmap = runCatching { future.get() }
+                    .onFailure { log?.debug { "notification artwork load failed for $url: $it" } }
+                    .getOrNull() ?: return@addListener
                 if (art?.first == url) {
                     art = url to bitmap
                     updateNotification()
@@ -531,6 +535,7 @@ class PlaybackService : MediaLibraryService() {
                     if (online) {
                         net.acquire()
                     } else {
+                        // release() throws on a racy double-release; a swallowed race beats a crash loop.
                         runCatching { if (net.isHeld) net.release() }
                     }
                 } else {

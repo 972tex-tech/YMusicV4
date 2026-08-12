@@ -159,7 +159,7 @@ object FreezeWatchdog {
                 choreographer.javaClass.getDeclaredField("mLastFrameTimeNanos")
                     .apply { isAccessible = true }
                     .setLong(choreographer, 0L)
-            }.onFailure { Log.e(TAG, "mLastFrameTimeNanos reset failed: $it") }
+            }.onFailure { Log.e(TAG, "mLastFrameTimeNanos reset failed", it) }
             choreographer.postFrameCallback(callback)
         }
         true

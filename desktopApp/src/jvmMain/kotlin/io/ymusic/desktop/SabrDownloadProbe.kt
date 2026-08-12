@@ -129,7 +129,7 @@ fun main(args: Array<String>) {
 
             val startedAt = System.currentTimeMillis()
             withContext(Dispatchers.IO) {
-                SabrSession(log = { println("[sabr] $it") }).download(
+                SabrSession(logger = sabrProbeLogger { println("[sabr] $it") }).download(
                     client = sabrClient,
                     userAgent = CefManager.CHROME_USER_AGENT,
                     spec = spec,
@@ -171,7 +171,7 @@ fun main(args: Array<String>) {
             var cacheServes = 0
             withContext(Dispatchers.IO) {
                 SabrSession(
-                    log = { line ->
+                    logger = sabrProbeLogger { line ->
                         if (line.startsWith("round rn=")) networkRounds++
                         if (line.startsWith("cache-serve")) cacheServes++
                         println("[sabr:reuse] $line")
@@ -294,4 +294,15 @@ private fun readWebViewJsForSabr(): String {
     val candidates = listOf("webview-js/dist/webview_ymusic.js", "../webview-js/dist/webview_ymusic.js")
     candidates.map(::File).firstOrNull { it.exists() }?.let { return it.readText() }
     error("webview_ymusic.js not found; run `npm run build` in webview-js/")
+}
+
+/** Probe-only logger: every line (any level) to [onLine]; forks collapse onto itself. */
+private fun sabrProbeLogger(onLine: (String) -> Unit): kmpcommon.log.Logger = object : kmpcommon.log.Logger {
+    override val trail: List<kmpcommon.log.Crumb> get() = emptyList()
+
+    override fun fork(tag: String, prop: Map<String, Any>?): kmpcommon.log.Logger = this
+
+    override fun forkAll(crumbs: List<kmpcommon.log.Crumb>): kmpcommon.log.Logger = this
+
+    override fun log(level: kmpcommon.log.Logger.Level, message: String, error: Throwable?) = onLine(message)
 }

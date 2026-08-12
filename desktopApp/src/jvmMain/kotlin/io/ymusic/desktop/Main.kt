@@ -113,7 +113,7 @@ import java.io.File
  * the shared [App].
  */
 // Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
-private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
+internal val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
 
 fun main() {
     if (SENTRY_DSN.isNotEmpty()) {
@@ -243,7 +243,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             http.engine,
             appVersion = 1,
             logger = rootLogger,
-            cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
+            cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache"), rootLogger),
             cookieJar = platformCookies,
             settings = settings,
         )
@@ -357,6 +357,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         }
         val store = io.ymusic.download.DownloadStore(
             io.ymusic.download.downloadDatabaseJdbcDriver("jdbc:sqlite:${File(dataDir, "downloads.db").absolutePath}"),
+            rootLogger,
         )
         val sabrClient = KmpHttpClient.create {
             cookieJar = platformCookies
@@ -418,6 +419,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             withContext(Dispatchers.IO) {
                 val path = Uri.parse(uri).filePath()
                 runCatching { ProcessBuilder("open", "-R", path).start() } // mac Finder reveal
+                    .onFailure { rootLogger.fork("reveal").log(Logger.Level.WARN, "Finder reveal failed for $path", it) }
             }
         },
         appVersion = "dev · jvm",
@@ -556,7 +558,7 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
     var failed = 0
     for (uri in uris) {
         val progress = scanner.scan(uri).onEach { onProgress(scanned + it.scanned) }.last()
-        progress.errors.forEach { println("scan error at ${it.uri}: ${it.cause}") }
+        progress.errors.forEach { rootLogger.fork("library-scan").log(Logger.Level.WARN, "scan error at ${it.uri}", it.cause) }
         scanned += progress.scanned
         added += progress.added
         updated += progress.updated

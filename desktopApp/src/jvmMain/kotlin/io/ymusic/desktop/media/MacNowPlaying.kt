@@ -4,6 +4,8 @@ import com.sun.jna.Callback
 import com.sun.jna.Function
 import com.sun.jna.NativeLibrary
 import com.sun.jna.Pointer
+import io.ymusic.desktop.rootLogger
+import kmpcommon.log.Logger
 
 /**
  * macOS Now Playing backend: publishes to `MPNowPlayingInfoCenter` (Control Center widget, lock
@@ -98,7 +100,9 @@ internal class MacNowPlayingSession(commands: MediaSessionCommands) : DesktopMed
 
         fun method(selName: String, body: (Pointer?) -> Unit) {
             val imp = CommandImp { _, _, event ->
+                // An OS media-key press that throws must not vanish — the key "did nothing".
                 runCatching { body(event) }
+                    .onFailure { rootLogger.fork("now-playing").log(Logger.Level.WARN, "media command $selName failed", it) }
                 COMMAND_HANDLED
             }
             imps += imp

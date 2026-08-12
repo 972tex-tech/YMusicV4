@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     graph = (application as YMusicApplication).graphAsync().await()
                 } catch (t: Throwable) {
+                    (application as YMusicApplication).rootLogger.fork("boot").captureError(t)
                     error = t.message ?: t.toString()
                 }
             }

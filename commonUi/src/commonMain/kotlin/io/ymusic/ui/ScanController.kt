@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.library_scan_failed
 import kmpcommon.error.CodedError
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,7 +22,7 @@ import org.jetbrains.compose.resources.getString
  * Hosted on [AppRoot]'s scope; its [summaries] are piped to the app snackbar there, so the completion
  * message shows on whatever screen is open — a notification, not a Library-only banner.
  */
-internal class ScanController(private val scope: CoroutineScope) {
+internal class ScanController(private val scope: CoroutineScope, private val log: Logger? = null) {
     /** True while a scan runs; [scanned] is its running file count (null before the first tick). */
     var running by mutableStateOf(false)
         private set
@@ -42,6 +43,7 @@ internal class ScanController(private val scope: CoroutineScope) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log?.captureError(e, "library scan failed")
                 _summaries.tryEmit(getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e"))
             } finally {
                 running = false

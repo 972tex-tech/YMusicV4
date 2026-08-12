@@ -3,6 +3,8 @@ package io.ymusic.desktop.media
 import com.sun.jna.Callback
 import com.sun.jna.NativeLibrary
 import com.sun.jna.Pointer
+import io.ymusic.desktop.rootLogger
+import kmpcommon.log.Logger
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
@@ -24,7 +26,7 @@ object MacDock {
                 // Re-entering Regular leaves the app background-ordered until reactivated.
                 if (visible) objc.msgSendVoid(app, "activateIgnoringOtherApps:", true)
             }
-        }.onFailure { println("MacDock unavailable: $it") }
+        }.onFailure { rootLogger.fork("mac-dock").log(Logger.Level.WARN, "MacDock unavailable", it) }
     }
 
     // --- main-queue trampoline: one static C callback draining a queue of pending blocks ---
@@ -36,7 +38,12 @@ object MacDock {
     }
 
     /** Referenced for the process lifetime — dispatch may fire after any narrower scope died. */
-    private val drain = DispatchWork { pending.poll()?.let { runCatching(it) } }
+    private val drain = DispatchWork {
+        pending.poll()?.let { block ->
+            runCatching(block)
+                .onFailure { rootLogger.fork("mac-dock").log(Logger.Level.WARN, "main-queue block failed", it) }
+        }
+    }
 
     private val system by lazy { NativeLibrary.getInstance("System") }
     private val objc by lazy { ObjCCalls() }

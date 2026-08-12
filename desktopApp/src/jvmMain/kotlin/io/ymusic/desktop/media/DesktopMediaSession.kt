@@ -1,7 +1,9 @@
 package io.ymusic.desktop.media
 
+import io.ymusic.desktop.rootLogger
 import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -58,7 +60,9 @@ interface DesktopMediaSession {
             val os = System.getProperty("os.name")?.lowercase() ?: return null
             return when {
                 "mac" in os -> runCatching { MacNowPlayingSession(commands) }
-                    .onFailure { println("macOS Now Playing bridge unavailable: $it") }
+                    .onFailure {
+                        rootLogger.fork("now-playing").log(Logger.Level.WARN, "macOS Now Playing bridge unavailable — media keys dead", it)
+                    }
                     .getOrNull()
                 else -> null
             }

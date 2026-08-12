@@ -145,6 +145,7 @@ import io.ymusic.ui.resources.sort_type
 import io.ymusic.ui.resources.unknown_album
 import io.ymusic.ui.resources.unknown_artist
 import io.ymusic.ui.resources.unknown_genre
+import kmpcommon.log.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -269,6 +270,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 DeleteFromDiskDialog(
                     doomed,
                     onDismiss = { confirmDelete = null },
+                    log = graph.logger?.fork("library"),
                     delete = {
                         graph.deleteFromDisk!!.invoke(doomed)
                         store.deleteItem(doomed.id, hard = true)
@@ -728,6 +730,7 @@ private val MediaStoreBucket.displayName: String get() = aliasName?.takeIf(Strin
 private fun DeleteFromDiskDialog(
     item: MediaStoreItem,
     onDismiss: () -> Unit,
+    log: Logger?,
     delete: suspend () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -750,7 +753,10 @@ private fun DeleteFromDiskDialog(
                         try {
                             delete()
                             onDismiss()
+                        } catch (c: kotlinx.coroutines.CancellationException) {
+                            throw c
                         } catch (t: Throwable) {
+                            log?.captureError(t, "delete from disk failed")
                             error = t.message ?: t.toString()
                         } finally {
                             busy = false
