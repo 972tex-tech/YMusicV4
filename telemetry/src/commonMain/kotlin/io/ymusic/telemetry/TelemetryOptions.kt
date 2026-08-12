@@ -23,6 +23,11 @@ fun SentryOptions.applyYMusicTelemetry() {
  * SDK captured itself) keep Sentry's default grouping.
  */
 internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
+    // TrailMark rides throws as a SUPPRESSED marker, but sentry-java serializes suppressed
+    // exceptions into the visible chain (exception groups) — it is transport, never a report.
+    if (event.exceptions.any { it.type == "TrailMark" }) {
+        event.exceptions = event.exceptions.filterNot { it.type == "TrailMark" }.toMutableList()
+    }
     val code = event.getTag(SentryLogger.CODE_TAG)
     val trail = event.getTag(SentryLogger.TRAIL_TAG)
     if (code != null) {

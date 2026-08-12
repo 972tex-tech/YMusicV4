@@ -36,6 +36,16 @@ class TelemetryOptionsTest {
     }
 
     @Test
+    fun trail_marks_are_stripped_from_the_exception_chain() {
+        val event = SentryEvent()
+        event.exceptions = mutableListOf(
+            SentryException(type = "TechnicalException", value = "[E20011] boom"),
+            SentryException(type = "TrailMark", value = "Discover/task/http"),
+        )
+        assertEquals(listOf("TechnicalException"), fingerprintPolicy(event).exceptions.map { it.type })
+    }
+
+    @Test
     fun set_cookie_values_are_redacted_from_breadcrumbs() {
         val crumb = Breadcrumb(message = "HTTP 200 youtube.com set-cookie=[SID=secret; Path=/ | HSID=alsosecret]")
         assertEquals("HTTP 200 youtube.com set-cookie=[redacted]", scrubBreadcrumb(crumb).message)
