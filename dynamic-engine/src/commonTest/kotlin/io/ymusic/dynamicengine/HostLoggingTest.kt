@@ -1,5 +1,6 @@
 package io.ymusic.dynamicengine
 
+import io.ymusic.dynamicengine.yt.jsonCommand
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
@@ -22,12 +23,19 @@ class HostLoggingTest {
     ) : CrumbLogger(crumbs) {
         constructor() : this(emptyList(), mutableListOf())
 
-        data class Entry(val level: Logger.Level, val tags: List<String>, val message: String, val error: Throwable?)
+        data class Entry(
+            val level: Logger.Level,
+            val crumbs: List<Crumb>,
+            val message: String,
+            val error: Throwable?,
+        ) {
+            val tags: List<String> get() = crumbs.map { it.tag }
+        }
 
         override fun fork(crumbs: List<Crumb>): CrumbLogger = Capture(crumbs, calls)
 
         override fun log(level: Logger.Level, message: String, error: Throwable?) {
-            calls += Entry(level, crumbs.map { it.tag }, message, error)
+            calls += Entry(level, crumbs, message, error)
         }
     }
 
@@ -69,6 +77,30 @@ class HostLoggingTest {
         try {
             engine.probe("""{"url":"https://x/"}""")
             assertEquals(listOf("http"), log.calls.single { it.level == Logger.Level.WARN }.tags)
+        } finally {
+            engine.close()
+        }
+    }
+
+    @Test
+    fun parked_caller_logger_joins_the_js_trail() = runTest {
+        val log = Capture()
+        val engine = createTestEngine(FakeHttpClient { throw IOException("connect refused") }, 1, log)
+        try {
+            val caller = log.fork("Discover").fork("task", mapOf("id" to "a1"))
+            engine.jsonCommand(
+                "test/http-log",
+                { w -> w.name("url").value("https://youtube.com/watch") },
+                caller,
+            ) { it.skipValue() }
+
+            // The birth-site WARN carries the Kotlin caller's trail (via the parked key), the JS
+            // side's forks WITH their props (by value), and the protocol's own hop.
+            val entry = log.calls.single { it.level == Logger.Level.WARN }
+            assertEquals(listOf("Discover", "task", "js:fetch", "sub", "http"), entry.tags)
+            assertEquals(mapOf("id" to "a1"), entry.crumbs[1].prop)
+            assertEquals(mapOf<String, Any?>("n" to 1L), entry.crumbs[3].prop)
+            assertTrue(entry.error is IOException)
         } finally {
             engine.close()
         }

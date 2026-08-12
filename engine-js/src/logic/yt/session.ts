@@ -8,6 +8,7 @@
 // normal feed even logged-out. On a 403 the caller refreshes the session once and retries (params
 // rotate server-side).
 
+import { jsLogger } from "../../protocol/logger";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { Cache } from "../../protocol/cache";
@@ -270,7 +271,7 @@ async function scrapeSession(): Promise<YtSession> {
       .setHeader("User-Agent", DESKTOP_UA)
       .setHeader("Accept", "text/html")
       .setHeader("Accept-Language", hl != null ? hl + ",en;q=0.8" : "en-US,en;q=0.9")
-      .logContext("yt/session"),
+      .logger(jsLogger("yt/session")),
   );
   if (!res.ok) {
     res.ignoreResult();

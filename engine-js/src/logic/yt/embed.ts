@@ -12,6 +12,7 @@
 //   yt/embed  JS<-K {"userAgent":…}   K<-JS {"html":"<!doctype …INJECT_JS_HERE…"}
 
 import { onAccept } from "../../transport";
+import { hostLogger } from "../../protocol/logger";
 import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { executeWithCookies } from "./cookies";
@@ -62,7 +63,7 @@ onAccept(
       HttpRequest.get(EMBED_URL)
         .setHeader("User-Agent", userAgent)
         .setHeader("Accept", "text/html")
-        .logContext("yt/embed"),
+        .logger(hostLogger(args, "yt/embed")),
     );
     if (!res.ok) {
       res.ignoreResult();

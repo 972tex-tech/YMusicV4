@@ -10,6 +10,7 @@ import {
   sanitizeHeaderValue,
 } from "./headers";
 import { utf8ByteLength } from "./util";
+import type { JsLogger } from "../logger";
 import type { BodyKind, RequestOpts } from "./wire";
 
 export class HttpRequestBuilderImpl implements HttpRequestBuilder {
@@ -20,6 +21,7 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
   private _timeoutMs?: number;
   private _followRedirects?: boolean;
   private _logCtx?: string[];
+  private _log?: JsLogger;
 
   constructor(method: string, url: string) {
     this._method = checkMethod(method);
@@ -86,6 +88,12 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
     this._logCtx = Array.isArray(ctx) ? ctx.slice() : [String(ctx)];
     return this;
   }
+  // The caller's crumb-trail logger — supersedes logContext when both are set: rides the head as
+  // {"key","trail"} so host birth-site logs join the Kotlin caller's parked trail (logger.ts).
+  logger(l: JsLogger): this {
+    this._log = l;
+    return this;
+  }
 
   // Snapshot this builder into an executable, cancellable call.
   build(): HttpCall {
@@ -124,6 +132,7 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
       len,
       opts,
       this._logCtx || null,
+      this._log || null,
     );
   }
 }

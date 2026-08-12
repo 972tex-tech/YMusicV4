@@ -49,11 +49,11 @@ import okio.use
  * Failures RESET the typed [WireError] contract: `E20050` (missing/blank `scope`/`key` or a malformed
  * head) and `E20051` (the store threw), a [CodedError] from the store keeping its own code.
  */
-internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
+internal fun QuickJsRuntime.installCache(store: CacheStore, parked: ParkedLoggers) {
     // Every store touch leaves the engine thread (the engine-thread rule, AGENTS.md): SQLite
     // behind a lock or slow disk on the engine thread would wedge every command at once.
     onAccept("cache/get") { pipe ->
-        serve(pipe, logger, "cache/get") { head, _ ->
+        serve(pipe, parked, "cache/get") { head, _ ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             val entry = withContext(Dispatchers.IO) { store.get(scope, key) }
@@ -66,7 +66,7 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
         }
     }
     onAccept("cache/put") { pipe ->
-        serve(pipe, logger, "cache/put") { head, body ->
+        serve(pipe, parked, "cache/put") { head, body ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             val custom = head.readCustom()
@@ -75,14 +75,14 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
         }
     }
     onAccept("cache/delete") { pipe ->
-        serve(pipe, logger, "cache/delete") { head, _ ->
+        serve(pipe, parked, "cache/delete") { head, _ ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             withContext(Dispatchers.IO) { store.delete(scope, key) }
         }
     }
     onAccept("cache/list") { pipe ->
-        serve(pipe, logger, "cache/list") { head, _ ->
+        serve(pipe, parked, "cache/list") { head, _ ->
             val scope = head.requireString("scope")
             val listed = withContext(Dispatchers.IO) { store.list(scope) }
             pipe.sink.writeJson(buildJsonArray { for (m in listed) add(metaJson(m, hit = null)) })
@@ -94,11 +94,11 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
  *  body (for `cache/put`). Same error contract as the other host protocols. */
 private suspend fun serve(
     pipe: Pipe,
-    logger: Logger?,
+    parked: ParkedLoggers,
     tag: String,
     handle: suspend (JsonObject, AsyncSource) -> Unit,
 ) {
-    var log = logger?.fork(tag)
+    var log = parked.root?.fork(tag)
     try {
         val src = BufferedAsyncSource(pipe.source.asAsyncSource())
         val head = try {
@@ -112,7 +112,7 @@ private suspend fun serve(
             pipe.sink.close(reason(WireError(code = "E20050", message = "malformed cache head: ${e.message}")))
             return
         }
-        log = protocolLogger(logger, head, tag)
+        log = protocolLogger(parked, head, tag)
         try {
             handle(head, src)
             pipe.sink.close() // END

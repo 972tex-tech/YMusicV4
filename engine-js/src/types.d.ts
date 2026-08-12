@@ -177,6 +177,7 @@ interface HttpRequestBuilder {
   timeout(ms: number): this;
   followRedirects(follow: boolean): this;
   logContext(ctx: string[] | string): this;
+  logger(l: import("./protocol/logger").JsLogger): this;
   build(): HttpCall;
 }
 

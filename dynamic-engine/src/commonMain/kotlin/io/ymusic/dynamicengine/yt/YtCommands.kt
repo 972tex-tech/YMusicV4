@@ -4,9 +4,11 @@ import io.ymusic.dynamicengine.DynamicEngine
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.EngineError
 import io.ymusic.dynamicengine.decodeEngineError
+import io.ymusic.dynamicengine.internal.ParkedLoggers
 import io.ymusic.quickjs.PipeResetException
 import io.ymusic.quickjs.asAsyncSink
 import io.ymusic.quickjs.asBufferedSource
+import kmpcommon.log.Logger
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kotlinx.coroutines.CancellationException
@@ -30,10 +32,9 @@ import kotlinx.coroutines.CancellationException
  */
 suspend fun DynamicEngineManager.extractHomeFeed(
     continuation: String? = null,
-): YtFeedPage = feedCommand("yt/home") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("yt/home", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /**
@@ -43,10 +44,9 @@ suspend fun DynamicEngineManager.extractHomeFeed(
  */
 suspend fun DynamicEngineManager.extractAccountLibrary(
     continuation: String? = null,
-): YtFeedPage = feedCommand("yt/library") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("yt/library", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /**
@@ -55,13 +55,11 @@ suspend fun DynamicEngineManager.extractAccountLibrary(
  * The engine parses and stores it; it is the only thing feeding [getRecommendedFeed]. Fire and
  * forget: nothing comes back, and a failure here must never disturb playback.
  */
-suspend fun DynamicEngineManager.handleWebViewPlayNext(videoId: String, contents: String) {
+suspend fun DynamicEngineManager.handleWebViewPlayNext(videoId: String, contents: String, logger: Logger? = null) {
     use { engine ->
-        engine.jsonCommand("yt/webview-next", { w ->
-            w.beginObject()
+        engine.jsonCommand("yt/webview-next", log = logger, writeFields = { w ->
             w.name("videoId").value(videoId)
             w.name("contents").value(contents)
-            w.endObject()
         }) { it.skipValue() }
     }
 }
@@ -70,10 +68,8 @@ suspend fun DynamicEngineManager.handleWebViewPlayNext(videoId: String, contents
  * The Recommended feed — built entirely from what [handleWebViewPlayNext] harvested, so it needs no
  * network and returns an empty page until something has been played. Re-shuffled on every call.
  */
-suspend fun DynamicEngineManager.getRecommendedFeed(): YtFeedPage = feedCommand("yt/recommended") { w ->
-    w.beginObject()
-    w.endObject()
-}
+suspend fun DynamicEngineManager.getRecommendedFeed(logger: Logger? = null): YtFeedPage =
+    feedCommand("yt/recommended", logger) {}
 
 /**
  * The Trending Music feed — the charts YouTube publishes for the engine-resolved region (the user's
@@ -81,10 +77,8 @@ suspend fun DynamicEngineManager.getRecommendedFeed(): YtFeedPage = feedCommand(
  * top songs on Shorts. One page: charts publish no continuation. Section titles are
  * engine-synthesized and carry a [YtSectionHeader.titleKey] the app localizes.
  */
-suspend fun DynamicEngineManager.extractTrendingMusicFeed(): YtFeedPage = feedCommand("yt/trending") { w ->
-    w.beginObject()
-    w.endObject()
-}
+suspend fun DynamicEngineManager.extractTrendingMusicFeed(logger: Logger? = null): YtFeedPage =
+    feedCommand("yt/trending", logger) {}
 
 /**
  * A playlist detail page. [url] is an engine-composed app link ("/playlist?list=…", possibly with
@@ -94,11 +88,10 @@ suspend fun DynamicEngineManager.extractTrendingMusicFeed(): YtFeedPage = feedCo
 suspend fun DynamicEngineManager.extractPlaylistDetail(
     url: String,
     continuation: String? = null,
-): YtFeedPage = feedCommand("yt/playlist") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("yt/playlist", logger) { w ->
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /** A channel detail page. [url] is an engine-composed "/channel/…" app link (an item's, a tab's, or
@@ -106,42 +99,37 @@ suspend fun DynamicEngineManager.extractPlaylistDetail(
 suspend fun DynamicEngineManager.extractChannelDetail(
     url: String,
     continuation: String? = null,
-): YtFeedPage = feedCommand("yt/channel") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("yt/channel", logger) { w ->
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 suspend fun DynamicEngineManager.search(
     query: String? = null,
     params: String? = null,
     continuation: String? = null,
-): YtFeedPage = feedCommand("yt/search") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("yt/search", logger) { w ->
     w.optionalField("query", query)
     w.optionalField("params", params)
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /** Watch-next: related items + [YtFeedPage.autoplayVideoId] for [videoId] (or a continuation). */
 suspend fun DynamicEngineManager.watchNext(
     videoId: String? = null,
     continuation: String? = null,
-): YtFeedPage = feedCommand("yt/next") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("yt/next", logger) { w ->
     w.optionalField("videoId", videoId)
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
-suspend fun DynamicEngineManager.searchSuggestions(query: String): List<String> =
+suspend fun DynamicEngineManager.searchSuggestions(query: String, logger: Logger? = null): List<String> =
     use { engine ->
-        engine.jsonCommand("yt/suggest", { w ->
-            w.beginObject()
+        engine.jsonCommand("yt/suggest", log = logger, writeFields = { w ->
             w.name("query").value(query)
-            w.endObject()
         }) { readSuggestions(it) }
     }
 
@@ -156,11 +144,9 @@ suspend fun DynamicEngineManager.searchSuggestions(query: String): List<String> 
  * becomes the working region value — YouTube outranks the pick. Call when the user picks a region
  * OR a language (after persisting the language setting) — never on start.
  */
-suspend fun DynamicEngineManager.applyYtLocale(gl: String): Unit = use { engine ->
-    engine.jsonCommand("yt/locale/apply", { w ->
-        w.beginObject()
+suspend fun DynamicEngineManager.applyYtLocale(gl: String, logger: Logger? = null): Unit = use { engine ->
+    engine.jsonCommand("yt/locale/apply", log = logger, writeFields = { w ->
         w.name("gl").value(gl)
-        w.endObject()
     }) { it.skipValue() }
 }
 
@@ -171,10 +157,8 @@ suspend fun DynamicEngineManager.applyYtLocale(gl: String): Unit = use { engine 
  * with the pair it was fetched under: it re-fetches only when the effective pair changed or the
  * copy is over a week old, and a failed re-fetch falls back to the cached copy instead of erroring.
  */
-suspend fun DynamicEngineManager.ytLocaleOptions(): YtLocales = use { engine ->
-    engine.jsonCommand("yt/locales", { w ->
-        w.beginObject()
-        w.endObject()
+suspend fun DynamicEngineManager.ytLocaleOptions(logger: Logger? = null): YtLocales = use { engine ->
+    engine.jsonCommand("yt/locales", log = logger, writeFields = { w ->
     }) { readLocales(it) }
 }
 
@@ -187,11 +171,9 @@ suspend fun DynamicEngineManager.ytLocaleOptions(): YtLocales = use { engine ->
  * The returned HTML holds the `INJECT_JS_HERE` placeholder where the caller splices its boot
  * script (session globals + the `webview_ymusic.js` bundle, which stays app-side).
  */
-suspend fun DynamicEngineManager.embedPage(userAgent: String): String = use { engine ->
-    engine.jsonCommand("yt/embed", { w ->
-        w.beginObject()
+suspend fun DynamicEngineManager.embedPage(userAgent: String, logger: Logger? = null): String = use { engine ->
+    engine.jsonCommand("yt/embed", log = logger, writeFields = { w ->
         w.name("userAgent").value(userAgent)
-        w.endObject()
     }) { readEmbedHtml(it) }
 }
 
@@ -202,23 +184,45 @@ internal suspend fun JsonWriter.optionalField(key: String, value: String?) {
 
 internal suspend fun DynamicEngineManager.feedCommand(
     command: String,
-    writeArgs: suspend (JsonWriter) -> Unit,
-): YtFeedPage = use { engine -> engine.jsonCommand(command, writeArgs) { readFeedPage(it) } }
+    log: Logger?,
+    writeFields: suspend (JsonWriter) -> Unit,
+): YtFeedPage = use { engine -> engine.jsonCommand(command, writeFields, log) { readFeedPage(it) } }
 
 /**
- * Stream the args head to the pipe sink with [writeArgs], then stream-parse the result off the pipe
- * source with [read] — neither side is buffered whole. A RESET decodes to the typed [EngineError]; a
- * malformed body surfaces as `E20030`.
+ * Stream the args head to the pipe sink — jsonCommand owns the envelope: `{` + the parked [log]'s
+ * key + [writeFields]'s fields + `}` — then stream-parse the result off the pipe source with
+ * [read]; neither side is buffered whole. [log] is parked for exactly this command's lifetime so
+ * the JS side's host callbacks join the caller's trail (see [ParkedLoggers]). A RESET decodes to
+ * the typed [EngineError]; a malformed body surfaces as `E20030`.
  */
 internal suspend fun <R> DynamicEngine.jsonCommand(
     command: String,
-    writeArgs: suspend (JsonWriter) -> Unit,
+    writeFields: suspend (JsonWriter) -> Unit,
+    log: Logger? = null,
+    read: suspend (JsonReader) -> R,
+): R {
+    if (log == null) return jsonCommandPipe(command, 0, writeFields, read)
+    val key = loggers.park(log)
+    try {
+        return jsonCommandPipe(command, key, writeFields, read)
+    } finally {
+        loggers.unpark(key)
+    }
+}
+
+private suspend fun <R> DynamicEngine.jsonCommandPipe(
+    command: String,
+    key: Int,
+    writeFields: suspend (JsonWriter) -> Unit,
     read: suspend (JsonReader) -> R,
 ): R {
     val pipe = openPipe(command)
     try {
         val writer = JsonWriter(pipe.sink.asAsyncSink())
-        writeArgs(writer)
+        writer.beginObject()
+        if (key != 0) writer.name("logKey").value(key)
+        writeFields(writer)
+        writer.endObject()
         writer.flush()
         pipe.sink.close()
         return try {

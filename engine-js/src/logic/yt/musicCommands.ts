@@ -6,6 +6,8 @@
 import { onAccept } from "../../transport";
 import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { musicJson } from "./ytmusic";
+import { hostLogger } from "../../protocol/logger";
+import type { JsLogger } from "../../protocol/logger";
 import { collectMusicPage, parseMusicChipToken, parseMusicLibraryChipToken } from "./musicParse";
 import { parseSearchChipToken } from "./parse";
 import { asString, get, isObj, textOf, walk } from "./scan";
@@ -40,8 +42,11 @@ function urlQuery(url: string): Record<string, string> {
   return out;
 }
 
-async function musicBrowsePage(fields: Record<string, unknown>): Promise<WireFeedPage> {
-  return collectMusicPage(await musicJson("browse", fields));
+async function musicBrowsePage(
+  fields: Record<string, unknown>,
+  log?: JsLogger,
+): Promise<WireFeedPage> {
+  return collectMusicPage(await musicJson("browse", fields, log));
 }
 
 /**
@@ -69,7 +74,13 @@ onAccept(
   "ytmusic/home",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
-    await writePage(out, await musicBrowsePage(musicFeedFields(args, "FEmusic_home")));
+    await writePage(
+      out,
+      await musicBrowsePage(
+        musicFeedFields(args, "FEmusic_home"),
+        hostLogger(args, "ytmusic/home"),
+      ),
+    );
   }),
 );
 
@@ -78,7 +89,13 @@ onAccept(
   "ytmusic/explore",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
-    await writePage(out, await musicBrowsePage(musicFeedFields(args, "FEmusic_explore")));
+    await writePage(
+      out,
+      await musicBrowsePage(
+        musicFeedFields(args, "FEmusic_explore"),
+        hostLogger(args, "ytmusic/explore"),
+      ),
+    );
   }),
 );
 
@@ -87,7 +104,13 @@ onAccept(
   "ytmusic/new-releases",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
-    await writePage(out, await musicBrowsePage(musicFeedFields(args, "FEmusic_new_releases")));
+    await writePage(
+      out,
+      await musicBrowsePage(
+        musicFeedFields(args, "FEmusic_new_releases"),
+        hostLogger(args, "ytmusic/new-releases"),
+      ),
+    );
   }),
 );
 
@@ -97,7 +120,13 @@ onAccept(
   "ytmusic/charts",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
-    await writePage(out, await musicBrowsePage(musicFeedFields(args, "FEmusic_charts")));
+    await writePage(
+      out,
+      await musicBrowsePage(
+        musicFeedFields(args, "FEmusic_charts"),
+        hostLogger(args, "ytmusic/charts"),
+      ),
+    );
   }),
 );
 
@@ -113,11 +142,12 @@ onAccept(
     const args = await src.readJsonObject();
     const fields: Record<string, unknown> = {};
     const continuation = asString(args["continuation"]);
-    const chipBrowseId = continuation !== undefined ? parseMusicLibraryChipToken(continuation) : null;
+    const chipBrowseId =
+      continuation !== undefined ? parseMusicLibraryChipToken(continuation) : null;
     if (chipBrowseId !== null) fields["browseId"] = chipBrowseId;
     else if (continuation !== undefined) fields["continuation"] = continuation;
     else fields["browseId"] = "FEmusic_library_landing";
-    const page = await musicBrowsePage(fields);
+    const page = await musicBrowsePage(fields, hostLogger(args, "ytmusic/library"));
     page["chipsWrap"] = true;
     await writePage(out, page);
   }),
@@ -142,7 +172,7 @@ onAccept(
       // Charts / a mood-genre category need their params alongside the browseId.
       if (query["params"] !== undefined) fields["params"] = query["params"];
     }
-    await writePage(out, await musicBrowsePage(fields));
+    await writePage(out, await musicBrowsePage(fields, hostLogger(args, "ytmusic/browse")));
   }),
 );
 
@@ -165,7 +195,10 @@ onAccept(
         throw JsEngineErrorImpl.parse("ytmusic/search needs query or continuation");
       putIfString(fields, args, "params");
     }
-    await writePage(out, collectMusicPage(await musicJson("search", fields)));
+    await writePage(
+      out,
+      collectMusicPage(await musicJson("search", fields, hostLogger(args, "ytmusic/search"))),
+    );
   }),
 );
 
@@ -178,7 +211,11 @@ onAccept(
     const args = await src.readJsonObject();
     const query = asString(args["query"]);
     if (query === undefined) throw JsEngineErrorImpl.parse("ytmusic/suggest needs query");
-    const root = await musicJson("music/get_search_suggestions", { "input": query });
+    const root = await musicJson(
+      "music/get_search_suggestions",
+      { "input": query },
+      hostLogger(args, "ytmusic/suggest"),
+    );
     const suggestions: string[] = [];
     const seen: Record<string, true> = {};
     walk(root, (key, value) => {

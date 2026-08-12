@@ -8,6 +8,8 @@ import { HttpRequest } from "../../protocol/http";
 import { DESKTOP_UA, effectiveLocale, getSession } from "./session";
 import type { YtSession } from "./session";
 import { executeWithCookies } from "./cookies";
+import { jsLogger } from "../../protocol/logger";
+import type { JsLogger } from "../../protocol/logger";
 
 const ORIGIN = "https://www.youtube.com";
 
@@ -20,13 +22,14 @@ const ORIGIN = "https://www.youtube.com";
 export async function innertubeJson(
   endpoint: string,
   fields: Record<string, unknown>,
+  log?: JsLogger,
 ): Promise<Record<string, unknown>> {
   let session = await getSession(false);
-  let res = await post(endpoint, fields, session);
+  let res = await post(endpoint, fields, session, log);
   if (res.status === 403) {
     res.ignoreResult();
     session = await getSession(true); // rotate: re-scrape the homepage, then retry once
-    res = await post(endpoint, fields, session);
+    res = await post(endpoint, fields, session, log);
   }
   if (!res.ok) {
     res.ignoreResult();
@@ -39,6 +42,7 @@ async function post(
   endpoint: string,
   fields: Record<string, unknown>,
   session: YtSession,
+  log?: JsLogger,
 ): Promise<HttpResponse> {
   const locale = await effectiveLocale();
   const client: Record<string, unknown> = {
@@ -66,7 +70,7 @@ async function post(
     .setHeader("X-Origin", ORIGIN)
     .setHeader("Referer", ORIGIN + "/")
     .setHeaderSanitized("X-Goog-Visitor-Id", session.visitorData)
-    .logContext("yt/" + endpoint);
+    .logger((log ?? jsLogger("yt")).fork(endpoint));
 
   return executeWithCookies(url, builder, {
     sessionIndex: session.sessionIndex,

@@ -6,6 +6,8 @@
 // construction. The control pipe's outbound side carries NOTHING after the head except a possible
 // [int32 -1] — cancellation is observable at every stage.
 
+import type { LogWire } from "../logger";
+
 export type BodyKind = "text" | "bytes" | "callback" | null;
 
 export interface RequestOpts {
@@ -21,4 +23,5 @@ export interface RequestHead {
   bodyCmd?: string;
   opts?: RequestOpts;
   logCtx?: string[];
+  log?: LogWire;
 }

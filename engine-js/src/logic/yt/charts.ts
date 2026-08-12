@@ -10,6 +10,8 @@
 // (falling back to `title` for a key it doesn't know — an older app meeting a newer bundle).
 
 import { JsEngineErrorImpl } from "../../protocol/command";
+import { jsLogger } from "../../protocol/logger";
+import type { JsLogger } from "../../protocol/logger";
 import { HttpRequest } from "../../protocol/http";
 import { executeWithCookies } from "./cookies";
 import { setDurationBadge } from "./parse";
@@ -25,7 +27,7 @@ const CHARTS_ORIGIN = "https://charts.youtube.com";
  * CHART_HOME serves every region tried (including the ones legacy's hardcoded table routed to the
  * location-insights perspective instead).
  */
-async function chartsBrowse(): Promise<Record<string, unknown>> {
+async function chartsBrowse(log?: JsLogger): Promise<Record<string, unknown>> {
   const locale = await effectiveLocale();
   const client: Record<string, unknown> = {
     "clientName": "WEB_MUSIC_ANALYTICS",
@@ -45,7 +47,7 @@ async function chartsBrowse(): Promise<Record<string, unknown>> {
     .setHeader("User-Agent", DESKTOP_UA)
     .setHeader("Origin", CHARTS_ORIGIN)
     .setHeader("Referer", CHARTS_ORIGIN + "/")
-    .logContext("yt/trending");
+    .logger(log ?? jsLogger("yt/trending"));
   const res = await executeWithCookies(url, builder);
   if (!res.ok) {
     res.ignoreResult();
@@ -151,13 +153,17 @@ interface ChartSpec {
 }
 
 function periodSpec(period: string | undefined, base: string, label: string): ChartSpec {
-  if (period === "CHART_PERIOD_TYPE_DAILY") return { key: base + "_daily", title: "Daily " + label };
+  if (period === "CHART_PERIOD_TYPE_DAILY")
+    return { key: base + "_daily", title: "Daily " + label };
   if (period === "CHART_PERIOD_TYPE_WEEKLY")
     return { key: base + "_weekly", title: "Weekly " + label };
   return { key: base, title: label };
 }
 
-function chartSection(spec: ChartSpec, chart: Record<string, unknown> | undefined): WireSection | null {
+function chartSection(
+  spec: ChartSpec,
+  chart: Record<string, unknown> | undefined,
+): WireSection | null {
   if (chart === undefined) return null;
   const entries = chart["videoViews"] ?? chart["trackViews"];
   if (!Array.isArray(entries)) return null;
@@ -193,8 +199,8 @@ function analyticsContent(root: Record<string, unknown>): Record<string, unknown
  * (`trackTypes` = songs, `videos` = music videos), each tagged with a `listType` and a chart period;
  * the shown set — and which period wins when a chart ships both — mirrors legacy's picks.
  */
-export async function trendingMusicPage(): Promise<WireFeedPage> {
-  const content = analyticsContent(await chartsBrowse());
+export async function trendingMusicPage(log?: JsLogger): Promise<WireFeedPage> {
+  const content = analyticsContent(await chartsBrowse(log));
   if (content === undefined)
     throw JsEngineErrorImpl.parse("yt/trending: no musicAnalyticsSectionRenderer content");
 

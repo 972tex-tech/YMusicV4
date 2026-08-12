@@ -119,6 +119,25 @@ Carriers, per hop:
 Rendering, at the UI edge only, fixed precedence: known category → localized string; `userMessage`
 present → show it verbatim + code; else → generic "Something went wrong (code)".
 
+### Logging context — the caller's trail, threaded down  *(implemented in `:dynamic-engine`)*
+
+The value channel above goes **up**; the logging channel goes **down** (AGENTS.md "Error
+Handling"). A Kotlin task call (`jsonCommand`) **parks** its caller's `kmpcommon.log.Logger` for
+exactly the command's lifetime and sends the key in the args head as `"logKey": <int>`; the bundle
+mints a `JsLogger` from it (`engine-js/src/protocol/logger.ts`), forks its own hops (`[tag]` or
+`[tag, {props}]` — tags are STABLE names, anything variable goes in props), and attaches it to
+every host call as a head field:
+
+```
+"log": {"key": 3, "trail": [["yt/home"], ["browse"]]}
+```
+
+The host protocol resolves the key back to the parked logger (absent/unknown/late → the engine
+root logger; JS-initiated work — session bootstrap, crons — is keyless by design), grafts the JS
+trail on **by value**, appends its own hop, and tags every birth-site log with the result — one
+job's story, stitched across the pipe. Pre-v2 heads carrying `"logCtx": ["tag", …]` still decode
+as bare tags.
+
 ### Cancellation
 
 Client abandons an in-flight call → it RESETs its pipe (`sink.close(reason)`), the server's read
@@ -159,7 +178,8 @@ value is just data — head injection is impossible by construction.
 ### Control pipe  (`"http"`)
 ```
 JS → K:  {"method":"POST","url":"https://…","headers":[["k","v"],…],
-          "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8"}
+          "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8",
+          "log":{"key":3,"trail":[["yt/home"],["browse"]]}}
          …then NOTHING, except an optional [int32 -1] = cancel        (write side stays open)
 K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…]}
          <raw response body bytes> … then close() (END)
@@ -245,14 +265,14 @@ JS client: `Cookies.get(url): Promise<Record<string,string>>` / `Cookies.set(url
 
 ### `cookie/get`
 ```
-JS→K  head: {"url":"https://…","logCtx":[…]?}   then half-close (no body)
+JS→K  head: {"url":"https://…","log":{…}?}   then half-close (no body)
 K→JS  {"<name>":"<value>", …}                    then EOF          // a bare name→value object
 ```
 `cookieJar.loadForRequest(url)` → the name→value map. An empty jar for that URL is `{}`.
 
 ### `cookie/set`
 ```
-JS→K  head: {"url":"https://…","setCookie":["SID=…; Path=/; …", …],"logCtx":[…]?}   then half-close
+JS→K  head: {"url":"https://…","setCookie":["SID=…; Path=/; …", …],"log":{…}?}   then half-close
 K→JS  (no body — clean END)
 ```
 Each value is `parseCookie(url, …)`d (unparseable ones dropped, OkHttp-style) and handed to

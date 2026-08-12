@@ -1,6 +1,7 @@
 package io.ymusic.dynamicengine.yt
 
 import io.ymusic.dynamicengine.DynamicEngineManager
+import kmpcommon.log.Logger
 
 /**
  * The music.youtube.com (WEB_REMIX) extraction surface — intent-level twins of the engine bundle's
@@ -15,37 +16,33 @@ import io.ymusic.dynamicengine.DynamicEngineManager
  *  (FEmusic_home) — the region's music home: regional charts / start-radio cold, personalized warmed. */
 suspend fun DynamicEngineManager.extractMusicHome(
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/home") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/home", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /** The Music Explore feed (FEmusic_explore — new releases, moods & genres, charts entry points). */
 suspend fun DynamicEngineManager.extractMusicExplore(
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/explore") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/explore", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /** The Music New releases feed (FEmusic_new_releases — new albums & singles). */
 suspend fun DynamicEngineManager.extractMusicNewReleases(
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/new-releases") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/new-releases", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /** The Music Charts feed (FEmusic_charts — the region's charts, region from the engine locale). */
 suspend fun DynamicEngineManager.extractMusicCharts(
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/charts") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/charts", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /**
@@ -56,10 +53,9 @@ suspend fun DynamicEngineManager.extractMusicCharts(
  */
 suspend fun DynamicEngineManager.extractMusicLibrary(
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/library") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/library", logger) { w ->
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /**
@@ -70,11 +66,10 @@ suspend fun DynamicEngineManager.extractMusicLibrary(
 suspend fun DynamicEngineManager.extractMusicBrowse(
     url: String,
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/browse") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/browse", logger) { w ->
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /**
@@ -86,21 +81,18 @@ suspend fun DynamicEngineManager.musicSearch(
     query: String? = null,
     params: String? = null,
     continuation: String? = null,
-): YtFeedPage = feedCommand("ytmusic/search") { w ->
-    w.beginObject()
+    logger: Logger? = null,
+): YtFeedPage = feedCommand("ytmusic/search", logger) { w ->
     w.optionalField("query", query)
     w.optionalField("params", params)
     w.optionalField("continuation", continuation)
-    w.endObject()
 }
 
 /** Music search autocomplete — the richer music/get_search_suggestions endpoint, flattened to query
  *  strings for the search box. */
-suspend fun DynamicEngineManager.musicSearchSuggestions(query: String): List<String> =
+suspend fun DynamicEngineManager.musicSearchSuggestions(query: String, logger: Logger? = null): List<String> =
     use { engine ->
-        engine.jsonCommand("ytmusic/suggest", { w ->
-            w.beginObject()
+        engine.jsonCommand("ytmusic/suggest", log = logger, writeFields = { w ->
             w.name("query").value(query)
-            w.endObject()
         }) { readSuggestions(it) }
     }

@@ -1,6 +1,7 @@
 package io.ymusic.dynamicengine
 
 import io.ymusic.dynamicengine.internal.ENGINE_JS
+import io.ymusic.dynamicengine.internal.ParkedLoggers
 import io.ymusic.dynamicengine.internal.installCache
 import io.ymusic.dynamicengine.internal.installCookies
 import io.ymusic.dynamicengine.internal.installHttp
@@ -47,6 +48,7 @@ import kotlinx.serialization.json.Json
 class DynamicEngine private constructor(
     private val runtime: QuickJsRuntime,
     internal val logger: Logger?,
+    internal val loggers: ParkedLoggers,
 ) {
 
     /** The bundle's self-declared revision (its `BACKEND_VERSION`); null until [healthCheck] ran. */
@@ -134,12 +136,12 @@ class DynamicEngine private constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
-        ): DynamicEngine = boot(logger) {
+        ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
             QuickJsRuntime.create(engineJs, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
-                it.installHttp(client, logger)
-                it.installCookies(cookieJar, logger)
-                if (cacheStore != null) it.installCache(cacheStore, logger)
-                if (settings != null) it.installSettings(settings, logger)
+                it.installHttp(client, parked)
+                it.installCookies(cookieJar, parked)
+                if (cacheStore != null) it.installCache(cacheStore, parked)
+                if (settings != null) it.installSettings(settings, parked)
             }
         }
 
@@ -155,12 +157,12 @@ class DynamicEngine private constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
-        ): DynamicEngine = boot(logger) {
+        ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
             QuickJsRuntime.create(engineBytecode, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
-                it.installHttp(client, logger)
-                it.installCookies(cookieJar, logger)
-                if (cacheStore != null) it.installCache(cacheStore, logger)
-                if (settings != null) it.installSettings(settings, logger)
+                it.installHttp(client, parked)
+                it.installCookies(cookieJar, parked)
+                if (cacheStore != null) it.installCache(cacheStore, parked)
+                if (settings != null) it.installSettings(settings, parked)
             }
         }
 
@@ -169,13 +171,17 @@ class DynamicEngine private constructor(
          *  a remote bundle), persist, and create from the bytes on later launches. */
         suspend fun compile(engineJs: String): ByteArray = QuickJsRuntime.compile(engineJs)
 
-        private fun boot(logger: Logger?, createRuntime: () -> QuickJsRuntime): DynamicEngine {
+        private fun boot(
+            logger: Logger?,
+            parked: ParkedLoggers,
+            createRuntime: (ParkedLoggers) -> QuickJsRuntime,
+        ): DynamicEngine {
             val runtime = try {
-                createRuntime()
+                createRuntime(parked)
             } catch (e: QuickJsException) {
                 throw EngineError.Technical("E20020", "engine bundle failed to load: ${e.message}", null, null, null, e)
             }
-            return DynamicEngine(runtime, logger)
+            return DynamicEngine(runtime, logger, parked)
         }
 
         private val initJson = Json { ignoreUnknownKeys = true }

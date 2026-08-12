@@ -44,17 +44,17 @@ import okio.Buffer
  * JSON, no session state. `Set-Cookie` values are parsed with `kmphttp.parseCookie` (OkHttp's
  * grammar — domain/path/expiry), so the host, not the JS, owns cookie *parsing*.
  * ```
- * cookie/get  JS→K: {"url":…,"logCtx":?}                 K→JS: {"<name>":"<value>",…}   (then EOF)
- * cookie/set  JS→K: {"url":…,"setCookie":[…],"logCtx":?}  K→JS: (no body, clean END)
+ * cookie/get  JS→K: {"url":…,"log":?}                    K→JS: {"<name>":"<value>",…}   (then EOF)
+ * cookie/set  JS→K: {"url":…,"setCookie":[…],"log":?}     K→JS: (no body, clean END)
  * ```
  * Expected failures RESET with the typed [WireError] contract, classified HERE: `E20040` (missing/
  * blank/invalid `url`, missing `setCookie`, or a malformed head — a caller bug) and `E20041` (the
  * jar itself threw — a persistent jar's I/O failure), a [CodedError] from the jar keeping its own
  * code. The bundle's `hostError` adopts the code as-is.
  */
-internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?) {
+internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, parked: ParkedLoggers) {
     onAccept("cookie/get") { pipe ->
-        serveCookie(pipe, logger, "cookie/get") { head, _ ->
+        serveCookie(pipe, parked, "cookie/get") { head, _ ->
             val url = head.requireHttpUrl("url")
             // The jar call leaves the engine thread (the engine-thread rule, AGENTS.md): the
             // Android jar is CookieManager, which can block against Chromium startup — on the
@@ -67,7 +67,7 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
         }
     }
     onAccept("cookie/set") { pipe ->
-        serveCookie(pipe, logger, "cookie/set") { head, log ->
+        serveCookie(pipe, parked, "cookie/set") { head, log ->
             val url = head.requireHttpUrl("url")
             val raw = head.requireStringList("setCookie")
             log?.log(
@@ -83,11 +83,11 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
 
 private suspend fun serveCookie(
     pipe: Pipe,
-    logger: Logger?,
+    parked: ParkedLoggers,
     tag: String,
     handle: suspend (JsonObject, Logger?) -> Unit,
 ) {
-    var log = logger?.fork(tag) // caller trail + this command; this fallback until the head parses
+    var log = parked.root?.fork(tag) // caller trail + this command; this fallback until the head parses
     try {
         val src = BufferedAsyncSource(pipe.source.asAsyncSource())
         val head = try {
@@ -101,7 +101,7 @@ private suspend fun serveCookie(
             pipe.sink.close(reason(WireError(code = "E20040", message = "malformed cookie head: ${e.message}")))
             return
         }
-        log = protocolLogger(logger, head, tag)
+        log = protocolLogger(parked, head, tag)
         try {
             handle(head, log)
             pipe.sink.close() // clean END (no-op after an in-place RESET)

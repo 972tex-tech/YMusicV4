@@ -2,6 +2,7 @@ import { open, onAccept } from "../../transport";
 import { hostError } from "../command";
 import { Response } from "./response";
 import type { BodyKind, RequestHead, RequestOpts } from "./wire";
+import type { JsLogger } from "../logger";
 
 // One request execution. execute() resolves the Response (once); cancel() aborts at ANY stage:
 // before execute() (it refuses to start), mid-flight (a RESET of the control pipe's request
@@ -17,6 +18,7 @@ export class HttpCallImpl implements HttpCall {
   private _len: number;
   private _opts: RequestOpts | null;
   private _logCtx: string[] | null; // the caller's logging-context trail for birth-site logs
+  private _log: JsLogger | null; // the crumb-trail logger form; wins over _logCtx when set
   private _io: Pipe | null = null;
   private _response: Response | null = null;
   private _bodyReg: { remove(): void } | null = null; // the body pipe's one-shot accept registration, until opened
@@ -33,6 +35,7 @@ export class HttpCallImpl implements HttpCall {
     len: number,
     opts: RequestOpts | null,
     logCtx: string[] | null,
+    log: JsLogger | null,
   ) {
     this._method = method;
     this._url = url;
@@ -42,6 +45,7 @@ export class HttpCallImpl implements HttpCall {
     this._len = len;
     this._opts = opts;
     this._logCtx = logCtx;
+    this._log = log;
   }
   // Retire the body plumbing: unregister a never-opened body command, abort an in-flight body
   // transfer. Runs on every terminal path (response consumed, cancel, failure) — a request
@@ -111,7 +115,8 @@ export class HttpCallImpl implements HttpCall {
     if (this._opts) head["opts"] = this._opts;
     // Threads the caller's logging context to the host so a transport failure (request/response
     // body) logs at its birth site with the full trail (HOST_PROTOCOLS "Logging context").
-    if (this._logCtx) head["logCtx"] = this._logCtx;
+    if (this._log) head["log"] = this._log.wire();
+    else if (this._logCtx) head["logCtx"] = this._logCtx;
     try {
       // control pipe: the JSON head (self-framing), then NOTHING outbound except a possible -1
       // cancel — the channel stays unobstructed at every stage.

@@ -4,6 +4,7 @@
 import { onAccept } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
+import { hostLogger } from "../../protocol/logger";
 
 onAccept(
   "test/http-log",
@@ -12,12 +13,15 @@ onAccept(
     const b = HttpRequest.get(String(args["url"]));
     const ctx = args["ctx"];
     if (ctx !== undefined) b.logContext(ctx as string[]);
+    // The v2 path: the Kotlin caller's parked key + a JS-side fork with props.
+    if (typeof args["logKey"] === "number")
+      b.logger(hostLogger(args, "js:fetch").fork("sub", { "n": 1 }));
     try {
       await (await b.build().execute()).text();
     } catch (e) {
       // swallowed: the assertion target is the host-side birth-site log
     }
-    const p = out.writeUtf8("done");
+    const p = out.writeObjectAsJson({ "done": true });
     if (p) await p;
   }),
 );

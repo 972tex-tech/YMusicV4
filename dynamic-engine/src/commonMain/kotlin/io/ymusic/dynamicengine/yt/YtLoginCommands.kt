@@ -16,8 +16,6 @@ import io.ymusic.dynamicengine.DynamicEngineManager
  */
 suspend fun DynamicEngineManager.ytLoginUrl(): String = use { engine ->
     engine.jsonCommand("yt/login/url", { w ->
-        w.beginObject()
-        w.endObject()
     }) { readLoginUrl(it) }
 }
 
@@ -28,8 +26,6 @@ suspend fun DynamicEngineManager.ytLoginUrl(): String = use { engine ->
  */
 suspend fun DynamicEngineManager.ytSwitchAccountUrl(): String = use { engine ->
     engine.jsonCommand("yt/login/switch-url", { w ->
-        w.beginObject()
-        w.endObject()
     }) { readLoginUrl(it) }
 }
 
@@ -41,8 +37,6 @@ suspend fun DynamicEngineManager.ytSwitchAccountUrl(): String = use { engine ->
  */
 suspend fun DynamicEngineManager.ytLoginStatus(): Boolean = use { engine ->
     engine.jsonCommand("yt/login/status", { w ->
-        w.beginObject()
-        w.endObject()
     }) { readSignedIn(it) }
 }
 
@@ -54,17 +48,13 @@ suspend fun DynamicEngineManager.ytLoginStatus(): Boolean = use { engine ->
  */
 suspend fun DynamicEngineManager.ytAccountInfo(refresh: Boolean = false): YtAccountInfo = use { engine ->
     engine.jsonCommand("yt/account", { w ->
-        w.beginObject()
         if (refresh) w.name("refresh").value(true)
-        w.endObject()
     }) { readAccount(it) }
 }
 
 /** Sign out — drops the auth cookies in both jars, keeping the anonymous identity (PREF/visitor/YSC). */
 suspend fun DynamicEngineManager.ytLogout(): Unit = use { engine ->
     engine.jsonCommand("yt/logout", { w ->
-        w.beginObject()
-        w.endObject()
     }) { it.skipValue() }
 }
 
@@ -75,7 +65,5 @@ suspend fun DynamicEngineManager.ytLogout(): Unit = use { engine ->
  */
 suspend fun DynamicEngineManager.ytRefreshSession(): Unit = use { engine ->
     engine.jsonCommand("yt/session/refresh", { w ->
-        w.beginObject()
-        w.endObject()
     }) { it.skipValue() }
 }

@@ -63,12 +63,12 @@ import kotlin.time.Duration.Companion.milliseconds
  * after the head). http.js adopts the code as-is. Only protocol violations and bugs propagate to the
  * runtime's generic throw→RESET backstop.
  */
-internal fun QuickJsRuntime.installHttp(client: KmpHttpClient, logger: Logger?) {
+internal fun QuickJsRuntime.installHttp(client: KmpHttpClient, parked: ParkedLoggers) {
     val runtime = this
-    onAccept("http") { pipe -> serveHttp(runtime, pipe, client, logger) }
+    onAccept("http") { pipe -> serveHttp(runtime, pipe, client, parked) }
 }
 
-private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHttpClient, logger: Logger?) {
+private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHttpClient, parked: ParkedLoggers) {
     // Every EXPECTED failure is handled in place with a stage-tagged RESET reason — the runtime's
     // throw→RESET backstop is reserved for bugs and protocol violations. The finally must never
     // touch the sink: closeWrite is first-close-wins, so a clean END there would preempt the
@@ -76,7 +76,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
     // Each in-place RESET is also a birth-site log: the caller's context (threaded down in the head)
     // plus the native cause, logged HERE where the fidelity is (HOST_PROTOCOLS "Logging context").
     var bodyPipe: Pipe? = null
-    var log = logger?.fork("http") // caller trail + "http"; this fallback until the head parses
+    var log = parked.root?.fork("http") // caller trail + "http"; this fallback until the head parses
     try {
         coroutineScope {
             val requestScope = this
@@ -84,7 +84,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
 
             val prepared = try {
                 val head = JsonReader(src).readObject()
-                log = protocolLogger(logger, head, "http")
+                log = protocolLogger(parked, head, "http")
                 val method = head["method"]?.jsonPrimitive?.content ?: "GET"
                 val url = head["url"]?.jsonPrimitive?.content ?: ""
                 val headers = (head["headers"] as? JsonArray).orEmpty().map { entry ->

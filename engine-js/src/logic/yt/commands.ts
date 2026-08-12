@@ -5,6 +5,8 @@ import { onAccept } from "../../transport";
 import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { innertubeJson } from "./innertube";
+import { hostLogger } from "../../protocol/logger";
+import type { JsLogger } from "../../protocol/logger";
 import { trendingMusicPage } from "./charts";
 import { applyLocaleCookie, invalidateAppLanguage, pulledAppLanguage } from "./cookies";
 import {
@@ -66,8 +68,8 @@ function urlQuery(url: string): Record<string, string> {
   return out;
 }
 
-async function browsePage(fields: Record<string, unknown>): Promise<WireFeedPage> {
-  return collectPage(await innertubeJson("browse", fields));
+async function browsePage(fields: Record<string, unknown>, log?: JsLogger): Promise<WireFeedPage> {
+  return collectPage(await innertubeJson("browse", fields, log));
 }
 
 // The Home feed: {"continuation"?}. The engine owns the front-door browseId. The FIRST fresh load
@@ -92,7 +94,7 @@ onAccept(
         }
       }
     }
-    await writePage(out, await browsePage(fields));
+    await writePage(out, await browsePage(fields, hostLogger(args, "yt/home")));
   }),
 );
 
@@ -129,7 +131,7 @@ onAccept(
       fields["browseId"] = "FElibrary";
       fields["params"] = "KgN5b3U%3D";
     }
-    const page = await browsePage(fields);
+    const page = await browsePage(fields, hostLogger(args, "yt/library"));
     if (fresh) {
       // The design leads with the user's playlists; YouTube serves History first. The shelf is
       // recognized by its own-feed deeplink, never its localized title.
@@ -173,8 +175,8 @@ onAccept(
 onAccept(
   "yt/trending",
   commandHandler(async (src, out) => {
-    await src.readJsonObject();
-    await writePage(out, await trendingMusicPage());
+    const args = await src.readJsonObject();
+    await writePage(out, await trendingMusicPage(hostLogger(args, "yt/trending")));
   }),
 );
 
@@ -187,6 +189,7 @@ onAccept(
   "yt/playlist",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
+    const log = hostLogger(args, "yt/playlist");
     const continuation = asString(args["continuation"]);
     if (continuation !== undefined) {
       // Our fabricated Mix continuation (see mixToken): re-call /next around the token's video and
@@ -194,11 +197,15 @@ onAccept(
       const mix = parseMixToken(continuation);
       if (mix !== null) {
         const windowPage = collectPage(
-          await innertubeJson("next", {
-            "videoId": mix.videoId,
-            "playlistId": mix.playlistId,
-            "playlistIndex": mix.index,
-          }),
+          await innertubeJson(
+            "next",
+            {
+              "videoId": mix.videoId,
+              "playlistId": mix.playlistId,
+              "playlistIndex": mix.index,
+            },
+            log,
+          ),
         );
         // The panel (when present) is always collectPage's first section. Bracket access only:
         // wire objects are quoted-key, dotted access renames apart under Closure ADVANCED.
@@ -221,7 +228,7 @@ onAccept(
         await writePage(out, page);
         return;
       }
-      await writePage(out, await browsePage({ "continuation": continuation }));
+      await writePage(out, await browsePage({ "continuation": continuation }, log));
       return;
     }
     const url = asString(args["url"]);
@@ -233,12 +240,15 @@ onAccept(
       const fields: Record<string, unknown> = { "playlistId": list, "params": "wAEB" };
       const seed = query["v"] ?? mixSeedVideoId(list);
       if (seed !== undefined) fields["videoId"] = seed;
-      const page = collectPage(await innertubeJson("next", fields));
+      const page = collectPage(await innertubeJson("next", fields, log));
       page["sections"] = page["sections"].slice(0, 1);
       await writePage(out, page);
       return;
     }
-    await writePage(out, await browsePage({ "browseId": list.indexOf("VL") === 0 ? list : "VL" + list }));
+    await writePage(
+      out,
+      await browsePage({ "browseId": list.indexOf("VL") === 0 ? list : "VL" + list }, log),
+    );
   }),
 );
 
@@ -309,9 +319,12 @@ onAccept(
         shortsTab = channelPath.slug === "shorts";
       }
     }
-    const page = collectPage(await innertubeJson("browse", fields), {
-      shorts: shortsTab,
-    });
+    const page = collectPage(
+      await innertubeJson("browse", fields, hostLogger(args, "yt/channel")),
+      {
+        shorts: shortsTab,
+      },
+    );
     if (shortsTab) {
       // Paging AND the sort chips must stay in Shorts mode — wrap every token the app can send back.
       const cont = page["continuation"];
@@ -345,7 +358,7 @@ onAccept(
         throw JsEngineErrorImpl.parse("yt/search needs query or continuation");
       putIfString(fields, args, "params");
     }
-    const page = collectPage(await innertubeJson("search", fields));
+    const page = collectPage(await innertubeJson("search", fields, hostLogger(args, "yt/search")));
     // Music-first ranking applies to the loose results runs only (headerless sections); the
     // artist card's sections and titled shelves keep their order.
     for (const s of page["sections"]) {
@@ -366,7 +379,7 @@ onAccept(
       if (!putIfString(fields, args, "videoId"))
         throw JsEngineErrorImpl.parse("yt/next needs videoId or continuation");
     }
-    const root = await innertubeJson("next", fields);
+    const root = await innertubeJson("next", fields, hostLogger(args, "yt/next"));
     const page = collectPage(root);
     // The end screen is the better related list — YouTube's own "watch next" picks, and it carries
     // the Mix/radio tiles the secondary column can miss. It sits outside collectPage's scanned
@@ -421,7 +434,7 @@ onAccept(
       encodeURIComponent(hl) +
       "&gl=" +
       encodeURIComponent(gl);
-    const res = await HttpRequest.get(url).logContext("yt/suggest").build().execute();
+    const res = await HttpRequest.get(url).logger(hostLogger(args, "yt/suggest")).build().execute();
     if (!res.ok) {
       res.ignoreResult();
       throw JsEngineErrorImpl.network("yt suggest HTTP " + res.status);
@@ -435,7 +448,8 @@ onAccept(
     const bracket = text.indexOf("[");
     if (open !== -1 && (bracket === -1 || open < bracket)) {
       const close = text.lastIndexOf(")");
-      if (close > open && text.slice(close + 1).trim() === "") payload = text.slice(open + 1, close);
+      if (close > open && text.slice(close + 1).trim() === "")
+        payload = text.slice(open + 1, close);
     }
     const arr = JSON.parse(payload) as unknown[];
     const suggestions: string[] = [];

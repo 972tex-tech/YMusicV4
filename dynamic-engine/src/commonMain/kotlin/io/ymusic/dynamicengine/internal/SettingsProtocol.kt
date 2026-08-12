@@ -27,12 +27,12 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okio.Buffer
 
-internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Logger?) {
+internal fun QuickJsRuntime.installSettings(settings: SettingsStore, parked: ParkedLoggers) {
     // Store touches leave the engine thread (the engine-thread rule, AGENTS.md):
     // SharedPreferences' first read blocks on disk, and on the engine thread that wedges every
     // command at once.
     onAccept("settings/get") { pipe ->
-        serveSettings(pipe, logger, "settings/get") { head ->
+        serveSettings(pipe, parked, "settings/get") { head ->
             val key = head.requireString("key")
             val type = head.requireString("type")
             val value = withContext(Dispatchers.IO) {
@@ -48,7 +48,7 @@ internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Log
         }
     }
     onAccept("settings/set") { pipe ->
-        serveSettings(pipe, logger, "settings/set") { head ->
+        serveSettings(pipe, parked, "settings/set") { head ->
             val key = head.requireString("key")
             val value = head.requirePrimitive("value")
             val type = head.requireString("type")
@@ -66,11 +66,11 @@ internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Log
 
 private suspend fun serveSettings(
     pipe: Pipe,
-    logger: Logger?,
+    parked: ParkedLoggers,
     tag: String,
     handle: suspend (JsonObject) -> Unit,
 ) {
-    var log = logger?.fork(tag)
+    var log = parked.root?.fork(tag)
     try {
         val head = try {
             JsonReader(BufferedAsyncSource(pipe.source.asAsyncSource())).readObject()
@@ -83,7 +83,7 @@ private suspend fun serveSettings(
             pipe.sink.close(reason(WireError(code = "E20060", message = "malformed settings head: ${e.message}")))
             return
         }
-        log = protocolLogger(logger, head, tag)
+        log = protocolLogger(parked, head, tag)
         try {
             handle(head)
             pipe.sink.close()
