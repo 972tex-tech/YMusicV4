@@ -50,6 +50,7 @@ import io.ymusic.ui.resources.cd_share
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.detail_playlist
 import io.ymusic.ui.resources.subscribe
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.compose.resources.stringResource
 
@@ -59,8 +60,14 @@ import org.jetbrains.compose.resources.stringResource
  * Mix watch-panel, seed videos…) is entirely the engine's business. [item] only seeds the header
  * while the page loads.
  */
-class PlaylistSession(graph: AppGraph, scope: CoroutineScope, val url: String, val item: YtFeedItem) {
-    private val log = graph.logger?.fork("PlaylistDetail", mapOf("url" to url))
+class PlaylistSession(
+    graph: AppGraph,
+    scope: CoroutineScope,
+    val url: String,
+    val item: YtFeedItem,
+    parentLog: Logger?,
+) {
+    internal val log = parentLog?.fork("PlaylistDetail", mapOf("url" to url))
     val feed = FeedSession(scope, log) { continuation ->
         graph.engines.extractPlaylistDetail(url, continuation = continuation, logger = log)
     }
@@ -155,8 +162,14 @@ internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit)
  * — which decodes the path to its browseId — but rendered WITHOUT channel chrome (no header, no
  * Subscribe): just the app bar and the feed. [title] seeds the bar until the page header answers.
  */
-class FeedDetailSession(graph: AppGraph, scope: CoroutineScope, val url: String, val title: String?) {
-    private val log = graph.logger?.fork("FeedDetail", mapOf("url" to url))
+class FeedDetailSession(
+    graph: AppGraph,
+    scope: CoroutineScope,
+    val url: String,
+    val title: String?,
+    parentLog: Logger?,
+) {
+    internal val log = parentLog?.fork("FeedDetail", mapOf("url" to url))
     val feed = FeedSession(scope, log) { continuation ->
         graph.engines.extractChannelDetail(url, continuation = continuation, logger = log)
     }
@@ -202,17 +215,20 @@ class ChannelSession(
     scope: CoroutineScope,
     val item: YtFeedItem,
     initialUrl: String,
+    parentLog: Logger?,
     // Defaults to the WEB channel page; a YT Music artist reuses this whole screen but fetches its
     // page via ytmusic/browse instead (it returns no pageTabs, so the tab row simply never shows).
-    fetch: suspend (url: String, continuation: String?) -> YtFeedPage = { url, continuation ->
-        graph.engines.extractChannelDetail(url, continuation = continuation)
+    fetch: suspend (url: String, continuation: String?, log: Logger?) -> YtFeedPage = { url, continuation, log ->
+        graph.engines.extractChannelDetail(url, continuation = continuation, logger = log)
     },
 ) {
+    internal val log = parentLog?.fork("ChannelDetail", mapOf("url" to initialUrl))
+
     var url by mutableStateOf(initialUrl)
 
     /** The last non-empty tab row — survives a tab-switch reload (Loading has no page yet). */
     var tabs by mutableStateOf(listOf<YtPageTab>())
-    val feed = FeedSession(scope) { continuation -> fetch(url, continuation) }
+    val feed = FeedSession(scope, log) { continuation -> fetch(url, continuation, log) }
 
     init {
         feed.pager.refresh()

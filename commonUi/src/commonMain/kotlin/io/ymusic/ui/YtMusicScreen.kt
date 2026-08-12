@@ -29,6 +29,7 @@ import io.ymusic.ui.resources.ytmusic_tab_explore
 import io.ymusic.ui.resources.ytmusic_tab_home
 import io.ymusic.ui.resources.ytmusic_tab_library
 import io.ymusic.ui.resources.ytmusic_tab_new_releases
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -140,8 +141,14 @@ private fun YtMusicTabRow(selected: YtMusicTab, dragProgress: Float, onSelect: (
  * engine-composed "/ytmusic/browse?id=<browseId>" link, round-tripped VERBATIM; [item] seeds the
  * header while it loads.
  */
-class MusicBrowseSession(graph: AppGraph, scope: CoroutineScope, val url: String, val item: YtFeedItem) {
-    private val log = graph.logger?.fork("MusicBrowse", mapOf("url" to url))
+class MusicBrowseSession(
+    graph: AppGraph,
+    scope: CoroutineScope,
+    val url: String,
+    val item: YtFeedItem,
+    parentLog: Logger?,
+) {
+    internal val log = parentLog?.fork("MusicBrowse", mapOf("url" to url))
     val feed = FeedSession(scope, log) { continuation ->
         graph.engines.extractMusicBrowse(url, continuation = continuation, logger = log)
     }

@@ -230,6 +230,17 @@ private sealed interface AppLayer {
     class Login(val state: LoginWebViewState, val switchAccount: Boolean = false) : AppLayer
 }
 
+/** The layer's scope logger, the parent for anything opened on top of it (null = the root). */
+private val AppLayer.log: kmpcommon.log.Logger?
+    get() = when (this) {
+        is AppLayer.Search -> session.log
+        is AppLayer.Playlist -> session.log
+        is AppLayer.Channel -> session.log
+        is AppLayer.Feed -> session.log
+        is AppLayer.MusicBrowse -> session.log
+        is AppLayer.LibrarySearch, is AppLayer.Login -> null
+    }
+
 @Composable
 private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection) -> Unit) {
     run {
@@ -286,6 +297,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // Navigation is url-driven: every openable target carries an engine-composed app link
         // (item.url / tab.url / a shelf CTA's deeplink) that the app routes on and round-trips
         // verbatim — the tapped item itself only seeds the header while the page loads.
+        // The parent trail for a newly opened layer: the layer it was opened FROM, else the root.
+        // Resolved per open (the stack top changes between opens), never captured once.
+        fun parentLog() = layers.lastOrNull()?.log ?: graph.logger
         val openItem: (io.ymusic.dynamicengine.yt.YtFeedItem) -> Unit = { item ->
             val url = item.url
             if (url != null) {
@@ -299,20 +313,20 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     if (item.kind == io.ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL) {
                         layers.add(
                             AppLayer.Channel(
-                                ChannelSession(graph, scope, item, initialUrl = url) { u, c ->
-                                    graph.engines.extractMusicBrowse(u, c)
+                                ChannelSession(graph, scope, item, initialUrl = url, parentLog = parentLog()) { u, c, l ->
+                                    graph.engines.extractMusicBrowse(u, c, logger = l)
                                 },
                             ),
                         )
                     } else {
-                        layers.add(AppLayer.MusicBrowse(MusicBrowseSession(graph, scope, url, item)))
+                        layers.add(AppLayer.MusicBrowse(MusicBrowseSession(graph, scope, url, item, parentLog())))
                     }
                 } else {
                     when (item.kind) {
                         io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST ->
-                            layers.add(AppLayer.Playlist(PlaylistSession(graph, scope, url, item)))
+                            layers.add(AppLayer.Playlist(PlaylistSession(graph, scope, url, item, parentLog())))
                         io.ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL ->
-                            layers.add(AppLayer.Channel(ChannelSession(graph, scope, item, initialUrl = url)))
+                            layers.add(AppLayer.Channel(ChannelSession(graph, scope, item, initialUrl = url, parentLog = parentLog())))
                     }
                 }
             }
@@ -326,13 +340,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             if (link.startsWith(MusicBrowsePrefix)) {
                 layers.add(
                     AppLayer.MusicBrowse(
-                        MusicBrowseSession(graph, scope, link, seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST)),
+                        MusicBrowseSession(graph, scope, link, seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST), parentLog()),
                     ),
                 )
             } else when (val target = parseDeeplink(link)) {
                 is Deeplink.Playlist -> layers.add(
                     AppLayer.Playlist(
-                        PlaylistSession(graph, scope, target.url, seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST)),
+                        PlaylistSession(graph, scope, target.url, seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST), parentLog()),
                     ),
                 )
                 is Deeplink.Channel -> layers.add(
@@ -342,11 +356,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             scope,
                             seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL),
                             initialUrl = target.url,
+                            parentLog = parentLog(),
                         ),
                     ),
                 )
                 is Deeplink.Feed -> layers.add(
-                    AppLayer.Feed(FeedDetailSession(graph, scope, target.url, title)),
+                    AppLayer.Feed(FeedDetailSession(graph, scope, target.url, title, parentLog())),
                 )
                 null -> Unit // an older app meeting a newer bundle's scheme — the CTA is inert
             }

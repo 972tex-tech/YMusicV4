@@ -78,7 +78,7 @@ class DetailScreensTest {
                     id = "PLL6O4RnjOZCVbxKNDznzuBYtI9cQfFmkY",
                     title = "fallback title",
                 )
-                val session = PlaylistSession(graph, scope, "/playlist?list=PLL6O4RnjOZCVbxKNDznzuBYtI9cQfFmkY", item)
+                val session = PlaylistSession(graph, scope, "/playlist?list=PLL6O4RnjOZCVbxKNDznzuBYtI9cQfFmkY", item, parentLog = null)
                 setContent {
                     YMusicTheme {
                         PlaylistDetailScreen(coordinator, session, onBack = {}, onSearch = {})
@@ -127,7 +127,7 @@ class DetailScreensTest {
                     title = "Mix - Adele",
                 )
                 // The engine-composed url; the RD-embedded seed video is the ENGINE's to derive.
-                val session = PlaylistSession(graph, scope, "/playlist?list=RDrYEDA3JcQqw", item)
+                val session = PlaylistSession(graph, scope, "/playlist?list=RDrYEDA3JcQqw", item, parentLog = null)
                 setContent {
                     YMusicTheme {
                         PlaylistDetailScreen(coordinator, session, onBack = {}, onSearch = {})
@@ -182,7 +182,7 @@ class DetailScreensTest {
                     id = "UClyA28-01x4z60eWQ2kiNbA",
                     title = "Sơn Tùng M-TP Official",
                 )
-                val session = ChannelSession(graph, scope, item, initialUrl = "/channel/UClyA28-01x4z60eWQ2kiNbA")
+                val session = ChannelSession(graph, scope, item, initialUrl = "/channel/UClyA28-01x4z60eWQ2kiNbA", parentLog = null)
                 setContent {
                     YMusicTheme {
                         ChannelDetailScreen(
@@ -224,7 +224,7 @@ class DetailScreensTest {
                     id = "UClyA28-01x4z60eWQ2kiNbA",
                     title = "Sơn Tùng M-TP Official",
                 )
-                val session = ChannelSession(graph, scope, item, initialUrl = "/channel/UClyA28-01x4z60eWQ2kiNbA")
+                val session = ChannelSession(graph, scope, item, initialUrl = "/channel/UClyA28-01x4z60eWQ2kiNbA", parentLog = null)
                 setContent {
                     YMusicTheme {
                         // Phone-ish width: the 7 server tabs cannot fit.
