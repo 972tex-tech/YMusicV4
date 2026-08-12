@@ -11,15 +11,15 @@ class TeeLogger(private val first: Logger, private val second: Logger) : Logger 
     override fun forkAll(crumbs: List<Crumb>): Logger =
         if (crumbs.isEmpty()) this else TeeLogger(first.forkAll(crumbs), second.forkAll(crumbs))
 
-    // Legs isolated: a throwing sink must neither skip the other leg nor throw INTO the error
-    // path that was logging.
+    // No leg isolation on purpose: a logger sink must not throw, and one that does is a
+    // programming error worth crashing on — swallowing it here would hide broken telemetry.
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
-        runCatching { first.log(level, message, error) }
-        runCatching { second.log(level, message, error) }
+        first.log(level, message, error)
+        second.log(level, message, error)
     }
 
     override fun captureError(error: Throwable, message: String?, prop: Map<String, Any>?) {
-        runCatching { first.captureError(error, message, prop) }
-        runCatching { second.captureError(error, message, prop) }
+        first.captureError(error, message, prop)
+        second.captureError(error, message, prop)
     }
 }
