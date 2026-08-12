@@ -45,12 +45,13 @@ export class JsLogger {
   }
 }
 
-// The logger for one host-command invocation. A parked Kotlin caller (a "logKey" in the args
-// head) already forked its own hop naming this call — starting the JS trail empty avoids the
-// duplicate; only a keyless invocation keeps the command [tag] so its trail isn't anonymous.
+// The logger for one host-command invocation: the Kotlin caller's parked key from the args head
+// (absent on JS-initiated work) plus this command's own hop — always, even when the Kotlin hop
+// names the same call: the boundary crossing is its own event, and this side's name is the
+// BUNDLE's (remotely updatable, free to diverge from the app-side function).
 export function hostLogger(args: Record<string, unknown>, tag: string): JsLogger {
   const k = args["logKey"];
-  return typeof k === "number" ? new JsLogger(k, []) : new JsLogger(null, [[jsTag(tag)]]);
+  return new JsLogger(typeof k === "number" ? k : null, [[jsTag(tag)]]);
 }
 
 // A keyless logger for JS-initiated work (session bootstrap, crons) — resolves to the engine's
