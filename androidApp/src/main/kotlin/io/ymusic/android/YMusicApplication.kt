@@ -32,8 +32,12 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.isPlaying
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
+import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.WebViewSabrSpecResolver
@@ -151,6 +155,7 @@ class YMusicApplication : Application() {
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
         val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath(), logger = rootLogger)
         val settings = PrefsSettingsStore.open(this)
+        installSentryDeviceId(anonymousDeviceId(settings))
         // First launch decides the app language (device if supported, else English) and persists
         // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
         ensureAppLanguage(settings)
@@ -482,4 +487,16 @@ class YMusicApplication : Application() {
             level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> loader.trimMemoryCache(0.5f)
         }
     }
+}
+
+/** The stable anonymous crash-reporting id: persisted on first launch (seeded from ANDROID_ID —
+ *  per app-signing-key + device, no PII — falling back to a random UUID) and reused forever. */
+private suspend fun YMusicApplication.anonymousDeviceId(settings: io.ymusic.settings.SettingsStore): String {
+    val saved = settings.flow(AppSettings.deviceId).value
+    if (saved.isNotEmpty()) return saved
+    val seeded = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+        ?.takeIf { it.isNotEmpty() }
+        ?: java.util.UUID.randomUUID().toString()
+    settings.put(AppSettings.deviceId, seeded)
+    return seeded
 }

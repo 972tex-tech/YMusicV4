@@ -62,9 +62,13 @@ import io.ymusic.player.WebViewPlayerContext
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
+import io.ymusic.settings.AppSettings
 import io.ymusic.settings.FileSettingsStore
+import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
+import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -240,6 +244,11 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // First launch decides the app language (device if supported, else English) and persists it —
     // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
     ensureAppLanguage(settings)
+    // Stable anonymous crash-reporting id: seeded once (random UUID) and persisted.
+    val deviceId = settings.flow(AppSettings.deviceId).value.ifEmpty {
+        java.util.UUID.randomUUID().toString().also { settings.put(AppSettings.deviceId, it) }
+    }
+    installSentryDeviceId(deviceId)
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             http.engine,

@@ -1,5 +1,6 @@
 package io.ymusic.telemetry
 
+import io.sentry.kotlin.multiplatform.Sentry
 import io.sentry.kotlin.multiplatform.SentryEvent
 import io.sentry.kotlin.multiplatform.SentryOptions
 import io.sentry.kotlin.multiplatform.log.SentryLog
@@ -49,6 +50,12 @@ private val SET_COOKIE = Regex("""set-cookie=\[[^\]]*]""", RegexOption.IGNORE_CA
 internal fun scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb {
     crumb.message?.let { crumb.message = SET_COOKIE.replace(it, "set-cookie=[redacted]") }
     return crumb
+}
+
+/** Attach the anonymous stable device id to every event this process sends (crash grouping across
+ *  sessions, "how many devices" triage). No-op until Sentry.init ran. */
+fun installSentryDeviceId(id: String) {
+    Sentry.configureScope { scope -> scope.setContext("DEVICE_ID", id) }
 }
 
 internal fun scrubLog(log: SentryLog): SentryLog {
