@@ -33,6 +33,8 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.isPlaying
+import io.ymusic.telemetry.SentryLogger
+import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.WebViewSabrSpecResolver
@@ -47,6 +49,7 @@ import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.Logger
 import kmpcommon.uri.Uri
 import kmpffmpeg.AndroidFfInputResolver
 import kmpffmpeg.metadata.FfmpegMetadataGetter
@@ -95,6 +98,7 @@ class YMusicApplication : Application() {
         super.onCreate()
         if (BuildConfig.SENTRY_DSN.isNotEmpty()) {
             Sentry.init {
+                it.applyYMusicTelemetry()
                 it.dsn = BuildConfig.SENTRY_DSN
                 // The commit in the release traces an event to git history (no source upload).
                 it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
@@ -104,6 +108,9 @@ class YMusicApplication : Application() {
             }
         }
     }
+
+    /** The app's root logger: Sentry breadcrumbs/captures (no-op until Sentry.init) echoed to logcat. */
+    val rootLogger: Logger = SentryLogger(LogcatLogger()::log)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -144,7 +151,7 @@ class YMusicApplication : Application() {
         val engines = DynamicEngineManager(
             http.engine,
             appVersion = 1,
-            logger = LogcatLogger(),
+            logger = rootLogger,
             cacheStore = androidEngineCacheStore(this),
             cookieJar = cookies,
             settings = settings,
@@ -183,7 +190,7 @@ class YMusicApplication : Application() {
                 },
             ),
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
-            logger = LogcatLogger(),
+            logger = rootLogger,
             memoryCacheBytes = defaultMemoryCacheBudget(this),
         ).also { builtImageLoader = it }
 
@@ -268,7 +275,7 @@ class YMusicApplication : Application() {
                 playerCache,
                 client,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
-                logger = LogcatLogger(),
+                logger = rootLogger,
                 verbose = true,
             )
         }
@@ -351,7 +358,7 @@ class YMusicApplication : Application() {
                 onCompleted = { task, result ->
                     registerCompletedDownload(shared.mediaStore, shared.settings, downloadScanner, task, result)
                 },
-                logger = LogcatLogger(),
+                logger = rootLogger,
             )
         }
 

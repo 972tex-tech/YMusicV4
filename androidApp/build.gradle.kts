@@ -70,7 +70,7 @@ dependencies {
     implementation(project(":kmpHttp:core"))
     implementation(project(":yt-media")) // the player-cache router (LocalMediaProxy) for the WebView
     implementation(Libs.Media3.session)
-    implementation(Libs.Sentry.kmp)
+    implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
     // androidx.media.app.NotificationCompat.MediaStyle for the playback notification.
     implementation("androidx.media:media:1.7.0")
     implementation(compose.material3)

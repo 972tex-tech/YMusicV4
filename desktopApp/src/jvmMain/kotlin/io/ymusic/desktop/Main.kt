@@ -63,6 +63,8 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.settings.FileSettingsStore
+import io.ymusic.telemetry.SentryLogger
+import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -80,6 +82,7 @@ import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.Logger
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpcommon.uri.filePath
@@ -111,6 +114,7 @@ import java.io.File
 fun main() {
     if (SENTRY_DSN.isNotEmpty()) {
         Sentry.init {
+            it.applyYMusicTelemetry()
             it.dsn = SENTRY_DSN
             // The commit in the release traces an event to git history (no source upload).
             it.release = SENTRY_RELEASE
@@ -215,6 +219,8 @@ fun main() {
 }
 
 private suspend fun buildGraph(cefManager: CefManager): AppGraph {
+    // Sentry breadcrumbs/captures (no-op when Sentry wasn't initialized) echoed to stdout.
+    val rootLogger: Logger = SentryLogger(StdoutLogger()::log)
     val dataDir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
     // Init CEF first: the cookie store is JCEF's global one (needs CefApp initialized before the
     // first access), shared with the WebView player and persisted on disk. The engine's OWN HTTP
@@ -233,7 +239,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         DynamicEngineManager(
             http.engine,
             appVersion = 1,
-            logger = StdoutLogger(),
+            logger = rootLogger,
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
             cookieJar = platformCookies,
             settings = settings,
@@ -260,7 +266,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             findFfmpeg()?.let { mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, imageNetworkFetcher) },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
-        logger = StdoutLogger(),
+        logger = rootLogger,
         memoryCacheBytes = defaultMemoryCacheBudget(),
     )
 
@@ -290,7 +296,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         LocalMediaProxy(
             playerCache, client,
             userAgent = CefManager.CHROME_USER_AGENT,
-            logger = StdoutLogger(),
+            logger = rootLogger,
             // Chatty per-part/decision logs; -Dymusic.player.verbose=false to quiet them (or flip at runtime).
             verbose = System.getProperty("io.ymusic.player.verbose", "true").toBoolean(),
             // -Dymusic.player.serveSabrHits=false → fill-only, to test whether synthesized hits wedge switches.
@@ -385,7 +391,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             // before enqueue.
             downloadFolder = { settings.downloadLocationFolder()!! },
             onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, downloadScanner, task, result) },
-            logger = StdoutLogger(),
+            logger = rootLogger,
         )
     }
 

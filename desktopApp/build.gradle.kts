@@ -52,7 +52,7 @@ kotlin {
                 implementation(compose.components.resources)
                 implementation(Libs.Jcef.maven)
                 implementation(Libs.Jna.core)
-                implementation(Libs.Sentry.kmp)
+                implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":yt-media"))
                 implementation(Libs.Kotlinx.coroutinesCore)
