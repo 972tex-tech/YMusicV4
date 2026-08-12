@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
@@ -100,6 +102,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -143,6 +146,17 @@ fun main() {
             cefManager.dispose()
             exitApplication()
         }
+        val windowState = rememberWindowState(size = rememberedWindowSize())
+        // Persist the size the user settles on (debounced past the live-resize churn); a maximized/
+        // fullscreen size is the placement's, not the user's chosen floating size, so it's skipped.
+        LaunchedEffect(windowState) {
+            snapshotFlow { windowState.size to windowState.placement }.collectLatest { (size, placement) ->
+                delay(500)
+                if (placement == WindowPlacement.Floating) {
+                    withContext(Dispatchers.IO) { saveWindowSize(size) }
+                }
+            }
+        }
         Window(
             visible = windowVisible,
             onCloseRequest = {
@@ -153,7 +167,7 @@ fun main() {
             },
             title = "YMusic",
             icon = painterResource(Res.drawable.ymusic_logo),
-            state = rememberWindowState(size = DpSize(480.dp, 860.dp)),
+            state = windowState,
             onPreviewKeyEvent = { event ->
                 val refresh = event.type == KeyEventType.KeyDown &&
                     (event.key == Key.F5 || ((event.isMetaPressed || event.isCtrlPressed) && event.key == Key.R))
@@ -586,6 +600,33 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
     return buildString {
         append("Scanned $scanned: $added added, $updated updated, $deleted removed")
         if (failed > 0) append(", $failed failed")
+    }
+}
+
+// The window-size memory lives in its OWN tiny file, read synchronously before the first frame —
+// the settings store only exists once the async graph build runs, too late to size the window.
+private val windowPrefsFile = File(System.getProperty("user.home"), ".ymusic/window.properties")
+private val defaultWindowSize = DpSize(480.dp, 860.dp)
+
+private fun rememberedWindowSize(): DpSize = runCatching {
+    val p = java.util.Properties()
+    windowPrefsFile.inputStream().use(p::load)
+    val w = p.getProperty("width")?.toFloatOrNull()
+    val h = p.getProperty("height")?.toFloatOrNull()
+    // Sanity floor: never restore a degenerate size a bad write (or a past bug) left behind.
+    if (w != null && h != null && w >= 320f && h >= 480f) DpSize(w.dp, h.dp) else defaultWindowSize
+}.getOrDefault(defaultWindowSize) // no file yet / unreadable → default
+
+private fun saveWindowSize(size: DpSize) {
+    val p = java.util.Properties()
+    p.setProperty("width", size.width.value.toString())
+    p.setProperty("height", size.height.value.toString())
+    try {
+        windowPrefsFile.parentFile?.mkdirs()
+        windowPrefsFile.outputStream().use { p.store(it, null) }
+    } catch (e: java.io.IOException) {
+        // Environmental (disk full, permissions) — the window still works, only the memory is lost.
+        rootLogger.fork("window").log(Logger.Level.WARN, "window size save failed", e)
     }
 }
 
