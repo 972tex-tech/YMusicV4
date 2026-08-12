@@ -51,6 +51,9 @@ class DynamicEngineManager(
     private val strictStints: Boolean = false,
 ) {
 
+    private val stintLog = logger?.fork("engine-stint")
+    private val mgrLog = logger?.fork("engine-manager")
+
     private class Slot(val engine: DynamicEngine) {
         val inFlight = AtomicInt(0)
         val retired = AtomicBoolean(false)
@@ -90,7 +93,7 @@ class DynamicEngineManager(
             { ms ->
                 val message = "engine thread held for ${ms}ms by one task (budget ${SLOW_STINT_MS}ms) — " +
                     "every pipe, timer and command stalls while the thread is held"
-                runCatching { logger?.log(Logger.Level.ERROR, listOf("engine-stint"), message, null) }
+                runCatching { stintLog?.log(Logger.Level.ERROR, message) }
                 throw IllegalStateException(message)
             }
         },
@@ -100,12 +103,10 @@ class DynamicEngineManager(
         } else {
             { ms ->
                 runCatching {
-                    logger?.log(
+                    stintLog?.log(
                         Logger.Level.WARN,
-                        listOf("engine-stint"),
                         "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
                             "the thread was congested, though no single task held it over budget",
-                        null,
                     )
                 }
             }
@@ -145,9 +146,8 @@ class DynamicEngineManager(
             try {
                 createEngine(remoteJs)
             } catch (e: EngineError) {
-                logger?.log(
+                mgrLog?.log(
                     Logger.Level.WARN,
-                    listOf("engine-manager"),
                     "${e.code} remote bundle rejected at boot, falling back to baseline: ${e.message}",
                     e,
                 )
@@ -172,11 +172,9 @@ class DynamicEngineManager(
             active = Slot(fresh)
             prev
         }
-        logger?.log(
+        mgrLog?.log(
             Logger.Level.INFO,
-            listOf("engine-manager"),
             "engine ${old?.engine?.backendVersion} -> ${fresh.backendVersion}",
-            null,
         )
         if (old != null) retire(old)
         checkNotNull(fresh.backendVersion) // createEngine health-checked
@@ -214,11 +212,9 @@ class DynamicEngineManager(
         } != null
         lastRetirementDrained = drained
         if (!drained) {
-            logger?.log(
+            mgrLog?.log(
                 Logger.Level.WARN,
-                listOf("engine-manager"),
                 "retired engine ${slot.engine.backendVersion} did not drain in ${drainTimeoutMs}ms — force-closing",
-                null,
             )
         }
         slot.engine.close()

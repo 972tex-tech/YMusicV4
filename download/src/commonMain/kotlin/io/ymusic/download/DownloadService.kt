@@ -49,7 +49,7 @@ class DownloadService(
     mediaCache: MediaCache? = null,
     /** Persistent segment index used to resume SABR downloads (share the player cache's index). */
     segmentIndex: SegmentIndex? = null,
-    private val logger: Logger? = null,
+    logger: Logger? = null,
     /** Current caption selection, read fresh per download (the shell sources it from settings). Keeps the
      *  service headless and avoids persisting the preference on each task. Defaults to no captions. */
     private val captionPreference: suspend () -> CaptionPreference = { CaptionPreference.None },
@@ -62,6 +62,8 @@ class DownloadService(
 ) {
     /** True where ffmpeg exists (Android/desktop). False on iOS — the UI hides MP3/video outputs there. */
     val ffmpegAvailable: Boolean = ffmpeg != null
+
+    private val log = logger?.fork("download")?.fork("service")
 
     private val pipeline = DownloadPipeline(
         resolver, client, userAgent, ffmpeg, storage, mediaCache, segmentIndex, logger,
@@ -267,7 +269,7 @@ class DownloadService(
         } catch (e: Throwable) {
             // Log the full technical failure here; the user sees only a code. An uncoded exception
             // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
-            logger?.log(Logger.Level.WARN, LOG_CTX, "download ${task.id} failed: ${e.message}", e)
+            log?.log(Logger.Level.WARN, "download ${task.id} failed: ${e.message}", e)
             setState(task.id, DownloadState.FAILED, error = userFacingError(e))
         }
     }
@@ -300,9 +302,5 @@ class DownloadService(
 
     private fun cleanupTemp(id: String) {
         runCatching { storage.deleteScratch(id) }
-    }
-
-    private companion object {
-        val LOG_CTX = listOf("download", "service")
     }
 }

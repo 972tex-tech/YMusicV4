@@ -63,7 +63,7 @@ class LocalMediaProxy(
     private val cache: MediaCache,
     private val client: KmpHttpClient,
     private val userAgent: String,
-    private val logger: Logger? = null,
+    logger: Logger? = null,
     /** Per-request/part chatter (cache hit-miss decisions, fill sizes, UMP parts). Toggle at runtime;
      *  WARN-level events (cache-serve faults, SABR errors, protection rejects) always log if [logger] is set. */
     var verbose: Boolean = false,
@@ -74,9 +74,11 @@ class LocalMediaProxy(
      *  forward SABR; the tee still caches) until the hit builder replays those control parts. */
     var serveSabrHits: Boolean = true,
 ) {
+    private val log = logger?.fork("mediaproxy")
+
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
-        if (verbose) logger?.log(Logger.Level.DEBUG, LOG_CTX, message())
+        if (verbose) log?.log(Logger.Level.DEBUG, message())
     }
 
     /** One-line dump of what the player is asking for — the state the serve decision is made against.
@@ -113,7 +115,7 @@ class LocalMediaProxy(
         // A cache-serve fault must never fail the request — fall through to the network — but it's a real
         // bug (bad parse, cache read), so log it as a breadcrumb rather than swallowing it silently.
         val hit = runCatching { serveFromCache(url, method, body) }
-            .onFailure { logger?.log(Logger.Level.WARN, LOG_CTX, "cache serve failed, forwarding: $url", it) }
+            .onFailure { log?.log(Logger.Level.WARN, "cache serve failed, forwarding: $url", it) }
             .getOrNull()
         return hit ?: forward(url, method, body)
     }
@@ -192,7 +194,7 @@ class LocalMediaProxy(
             return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
         if (isSabr(url)) {
-            return ProxyResponse(response.code, "OK", headers, SabrCacheTee(networkBody, cache, logger, verbose), length, url = effectiveUrl)
+            return ProxyResponse(response.code, "OK", headers, SabrCacheTee(networkBody, cache, log, verbose), length, url = effectiveUrl)
         }
         return ProxyResponse(response.code, "OK", headers, fillProgressive(effectiveUrl, networkBody) ?: networkBody, length, url = effectiveUrl)
     }
@@ -256,7 +258,6 @@ class LocalMediaProxy(
     companion object {
         const val FORWARD_PATH = "/ymusicForward"
         const val HEALTH_PATH = "/health"
-        private val LOG_CTX = listOf("mediaproxy")
     }
 }
 

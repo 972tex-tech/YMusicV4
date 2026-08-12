@@ -30,7 +30,7 @@ fun main() = application {
         val loader = remember {
             ImageLoader(
                 fetchers = listOf(networkFetcher(KmpHttpClient.create { })),
-                logger = StdoutLogger,
+                logger = StdoutLogger(),
                 memoryCacheBytes = defaultMemoryCacheBudget(),
             )
         }

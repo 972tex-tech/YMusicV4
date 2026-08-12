@@ -53,11 +53,7 @@ fun main(args: Array<String>) {
 
     val httpClient: KmpHttpClient = KmpHttpClient.create {}
     // The embed page now comes from the scraping engine (yt/embed) — boot the baseline bundle.
-    val probeLogger = object : kmpcommon.log.Logger {
-        override fun log(level: kmpcommon.log.Logger.Level, tags: List<String>, message: String, error: Throwable?) {
-            println("[engine] $level ${tags.joinToString("/")}: $message" + (error?.let { " (${it.message})" } ?: ""))
-        }
-    }
+    val probeLogger = PrefixLogger("[engine]")
     val engines = DynamicEngineManager(httpClient, appVersion = 1, logger = probeLogger)
     runBlocking { engines.start() }
     if (mode == "embed") {

@@ -93,8 +93,10 @@ class YtStreamDownloader(
     /** Persistent segment index — records each downloaded segment's byte range and seeds the SABR resume
      *  cursor from the on-disk file length. Null → no resume (re-downloads from zero on pause/resume). */
     private val segmentIndex: SegmentIndex?,
-    private val logger: Logger?,
+    logger: Logger?,
 ) {
+
+    private val log = logger?.fork("download")?.fork("streams")
 
     suspend fun download(
         task: DownloadTask,
@@ -121,7 +123,7 @@ class YtStreamDownloader(
         // Best-effort: a caption that fails to download is logged and skipped — it must not fail the media.
         val captionFiles = captionPicks.mapNotNull { track ->
             runCatching { downloadCaption(task.id, track) }
-                .onFailure { logger?.log(Logger.Level.WARN, LOG_CTX, "caption ${track.languageCode} failed: ${it.message}") }
+                .onFailure { log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}") }
                 .getOrNull()
         }
 
@@ -193,7 +195,7 @@ class YtStreamDownloader(
         var reAttested = false
         while (true) {
             try {
-                SabrSession(log = { logger?.log(Logger.Level.DEBUG, LOG_CTX, it) }).download(
+                SabrSession(log = { log?.log(Logger.Level.DEBUG, it) }).download(
                     client = client,
                     userAgent = userAgent,
                     spec = current,
@@ -208,13 +210,9 @@ class YtStreamDownloader(
             } catch (e: SabrPoTokenExpired) {
                 if (reAttested) throw e
                 reAttested = true
-                logger?.log(Logger.Level.WARN, LOG_CTX, "PO token rejected, re-attesting: ${e.message}")
+                log?.log(Logger.Level.WARN, "PO token rejected, re-attesting: ${e.message}")
                 current = reAttest()
             }
         }
-    }
-
-    private companion object {
-        val LOG_CTX = listOf("download", "streams")
     }
 }

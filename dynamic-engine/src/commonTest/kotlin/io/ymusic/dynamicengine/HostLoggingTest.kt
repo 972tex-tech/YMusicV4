@@ -1,5 +1,7 @@
 package io.ymusic.dynamicengine
 
+import kmpcommon.log.Crumb
+import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
@@ -14,12 +16,18 @@ import kotlin.test.assertTrue
  *  (engine-js/src/test/fixtures/logging.ts). */
 class HostLoggingTest {
 
-    private class Capture : Logger {
+    private class Capture private constructor(
+        crumbs: List<Crumb>,
+        val calls: MutableList<Entry>,
+    ) : CrumbLogger(crumbs) {
+        constructor() : this(emptyList(), mutableListOf())
+
         data class Entry(val level: Logger.Level, val tags: List<String>, val message: String, val error: Throwable?)
 
-        val calls = mutableListOf<Entry>()
-        override fun log(level: Logger.Level, tags: List<String>, message: String, error: Throwable?) {
-            calls += Entry(level, tags, message, error)
+        override fun fork(crumbs: List<Crumb>): CrumbLogger = Capture(crumbs, calls)
+
+        override fun log(level: Logger.Level, message: String, error: Throwable?) {
+            calls += Entry(level, crumbs.map { it.tag }, message, error)
         }
     }
 

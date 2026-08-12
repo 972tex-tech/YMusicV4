@@ -22,7 +22,6 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -54,7 +53,7 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
     // Every store touch leaves the engine thread (the engine-thread rule, AGENTS.md): SQLite
     // behind a lock or slow disk on the engine thread would wedge every command at once.
     onAccept("cache/get") { pipe ->
-        serve(pipe, logger, GET_SCOPE) { head, _ ->
+        serve(pipe, logger, "cache/get") { head, _ ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             val entry = withContext(Dispatchers.IO) { store.get(scope, key) }
@@ -67,7 +66,7 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
         }
     }
     onAccept("cache/put") { pipe ->
-        serve(pipe, logger, PUT_SCOPE) { head, body ->
+        serve(pipe, logger, "cache/put") { head, body ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             val custom = head.readCustom()
@@ -76,14 +75,14 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
         }
     }
     onAccept("cache/delete") { pipe ->
-        serve(pipe, logger, DELETE_SCOPE) { head, _ ->
+        serve(pipe, logger, "cache/delete") { head, _ ->
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             withContext(Dispatchers.IO) { store.delete(scope, key) }
         }
     }
     onAccept("cache/list") { pipe ->
-        serve(pipe, logger, LIST_SCOPE) { head, _ ->
+        serve(pipe, logger, "cache/list") { head, _ ->
             val scope = head.requireString("scope")
             val listed = withContext(Dispatchers.IO) { store.list(scope) }
             pipe.sink.writeJson(buildJsonArray { for (m in listed) add(metaJson(m, hit = null)) })
@@ -96,10 +95,10 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, logger: Logger?) {
 private suspend fun serve(
     pipe: Pipe,
     logger: Logger?,
-    scope: List<String>,
+    tag: String,
     handle: suspend (JsonObject, AsyncSource) -> Unit,
 ) {
-    var logCtx = scope
+    var log = logger?.fork(tag)
     try {
         val src = BufferedAsyncSource(pipe.source.asAsyncSource())
         val head = try {
@@ -109,11 +108,11 @@ private suspend fun serve(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            logger?.log(Logger.Level.WARN, logCtx, "E20050 malformed cache head: ${e.message}", e)
+            log?.log(Logger.Level.WARN, "E20050 malformed cache head: ${e.message}", e)
             pipe.sink.close(reason(WireError(code = "E20050", message = "malformed cache head: ${e.message}")))
             return
         }
-        logCtx = readLogCtx(head, scope)
+        log = protocolLogger(logger, head, tag)
         try {
             handle(head, src)
             pipe.sink.close() // END
@@ -123,7 +122,7 @@ private suspend fun serve(
             // the engine hung up mid-call
         } catch (e: Throwable) {
             val wire = classify(e)
-            logger?.log(Logger.Level.WARN, logCtx, "${wire.code} ${wire.message}", e)
+            log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
             runCatching { pipe.sink.close(reason(wire)) }
         }
     } finally {
@@ -131,10 +130,6 @@ private suspend fun serve(
     }
 }
 
-private val GET_SCOPE = listOf("cache/get")
-private val PUT_SCOPE = listOf("cache/put")
-private val DELETE_SCOPE = listOf("cache/delete")
-private val LIST_SCOPE = listOf("cache/list")
 private val SITE_CODE = Regex("""E\d{5}""")
 private const val STACK_CAP = 4096
 
@@ -180,6 +175,3 @@ private fun classify(e: Throwable): WireError {
 }
 
 private fun reason(wire: WireError): String = Json.encodeToString(wire)
-
-private fun readLogCtx(head: JsonObject, scope: List<String>): List<String> =
-    (head["logCtx"] as? JsonArray).orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull } + scope

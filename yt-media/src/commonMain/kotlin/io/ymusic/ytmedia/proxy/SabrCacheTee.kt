@@ -41,13 +41,15 @@ import okio.EOFException
 internal class SabrCacheTee(
     private val network: AsyncSource,
     private val cache: MediaCache,
-    private val logger: Logger? = null,
+    logger: Logger? = null,
     private val verbose: Boolean = false, // per-part chatter; WARN events (errors, protection rejects) always log
 ) : AsyncSource {
 
+    private val logger = logger?.fork("sabr-fill")
+
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
-        if (verbose) logger?.log(Logger.Level.DEBUG, LOG_CTX, message())
+        if (verbose) logger?.log(Logger.Level.DEBUG, message())
     }
 
     /** A segment being mirrored: its writer, declared [length], and how many media bytes are still owed. */
@@ -299,7 +301,7 @@ internal class SabrCacheTee(
     private fun markIllegal(reason: String) {
         if (illegalState) return
         illegalState = true
-        logger?.log(Logger.Level.WARN, LOG_CTX, "sabr-fill disabled (illegal state): $reason")
+        logger?.log(Logger.Level.WARN, "sabr-fill disabled (illegal state): $reason")
         abortOpen()
     }
 
@@ -317,13 +319,13 @@ internal class SabrCacheTee(
             UmpPart.STREAM_PROTECTION_STATUS -> {
                 val s = SabrParts.parseStreamProtectionStatus(payload)
                 if (s == 2 || s == 3) { // PO token rejected → media will stop — always warn
-                    log.log(Logger.Level.WARN, LOG_CTX, "stream-protection-status=$s (PO token rejected — media will stop)")
+                    log.log(Logger.Level.WARN, "stream-protection-status=$s (PO token rejected — media will stop)")
                 } else {
                     logVerbose { "stream-protection-status=$s" }
                 }
             }
 
-            UmpPart.SABR_ERROR -> log.log(Logger.Level.WARN, LOG_CTX, "sabr-error: ${SabrParts.parseErrorMessage(payload)}")
+            UmpPart.SABR_ERROR -> log.log(Logger.Level.WARN, "sabr-error: ${SabrParts.parseErrorMessage(payload)}")
             UmpPart.SABR_REDIRECT -> logVerbose { "sabr-redirect → ${SabrParts.parseRedirectUrl(payload)}" }
         }
     }
@@ -354,9 +356,5 @@ internal class SabrCacheTee(
         UmpPart.SABR_CONTEXT_UPDATE -> "SABR_CONTEXT_UPDATE"
         UmpPart.STREAM_PROTECTION_STATUS -> "STREAM_PROTECTION_STATUS"
         else -> "UNKNOWN"
-    }
-
-    private companion object {
-        val LOG_CTX = listOf("mediaproxy", "sabr-fill")
     }
 }

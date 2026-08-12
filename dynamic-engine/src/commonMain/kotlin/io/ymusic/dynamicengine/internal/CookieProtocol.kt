@@ -54,7 +54,7 @@ import okio.Buffer
  */
 internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?) {
     onAccept("cookie/get") { pipe ->
-        serveCookie(pipe, logger, GET_SCOPE) { head ->
+        serveCookie(pipe, logger, "cookie/get") { head, _ ->
             val url = head.requireHttpUrl("url")
             // The jar call leaves the engine thread (the engine-thread rule, AGENTS.md): the
             // Android jar is CookieManager, which can block against Chromium startup — on the
@@ -67,12 +67,11 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
         }
     }
     onAccept("cookie/set") { pipe ->
-        serveCookie(pipe, logger, SET_SCOPE) { head ->
+        serveCookie(pipe, logger, "cookie/set") { head, log ->
             val url = head.requireHttpUrl("url")
             val raw = head.requireStringList("setCookie")
-            logger?.log(
+            log?.log(
                 Logger.Level.DEBUG,
-                SET_SCOPE,
                 "${url.host} set-cookie=[${raw.joinToString(" | ")}]",
             )
             // Unparseable Set-Cookie values are dropped (OkHttp semantics), not an error.
@@ -85,10 +84,10 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, logger: Logger?
 private suspend fun serveCookie(
     pipe: Pipe,
     logger: Logger?,
-    scope: List<String>,
-    handle: suspend (JsonObject) -> Unit,
+    tag: String,
+    handle: suspend (JsonObject, Logger?) -> Unit,
 ) {
-    var logCtx = scope // caller trail + this command; the fallback until the head parses
+    var log = logger?.fork(tag) // caller trail + this command; this fallback until the head parses
     try {
         val src = BufferedAsyncSource(pipe.source.asAsyncSource())
         val head = try {
@@ -98,13 +97,13 @@ private suspend fun serveCookie(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            logger?.log(Logger.Level.WARN, logCtx, "E20040 malformed cookie head: ${e.message}", e)
+            log?.log(Logger.Level.WARN, "E20040 malformed cookie head: ${e.message}", e)
             pipe.sink.close(reason(WireError(code = "E20040", message = "malformed cookie head: ${e.message}")))
             return
         }
-        logCtx = readLogCtx(head, scope)
+        log = protocolLogger(logger, head, tag)
         try {
-            handle(head)
+            handle(head, log)
             pipe.sink.close() // clean END (no-op after an in-place RESET)
         } catch (e: CancellationException) {
             throw e
@@ -113,7 +112,7 @@ private suspend fun serveCookie(
         } catch (e: Throwable) {
             // Birth-site log with full native fidelity; only the {code, message} value crosses.
             val wire = classify(e)
-            logger?.log(Logger.Level.WARN, logCtx, "${wire.code} ${wire.message}", e)
+            log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
             runCatching { pipe.sink.close(reason(wire)) }
         }
     } finally {
@@ -121,8 +120,6 @@ private suspend fun serveCookie(
     }
 }
 
-private val GET_SCOPE = listOf("cookie/get")
-private val SET_SCOPE = listOf("cookie/set")
 private val SITE_CODE = Regex("""E\d{5}""")
 private const val STACK_CAP = 4096
 
@@ -162,7 +159,3 @@ private fun classify(e: Throwable): WireError {
 }
 
 private fun reason(wire: WireError): String = Json.encodeToString(wire)
-
-/** The caller's logging-context trail (threaded down in the head) with this command's hop appended. */
-private fun readLogCtx(head: JsonObject, scope: List<String>): List<String> =
-    (head["logCtx"] as? JsonArray).orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull } + scope

@@ -32,7 +32,7 @@ internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Log
     // SharedPreferences' first read blocks on disk, and on the engine thread that wedges every
     // command at once.
     onAccept("settings/get") { pipe ->
-        serveSettings(pipe, logger, GET_SCOPE) { head ->
+        serveSettings(pipe, logger, "settings/get") { head ->
             val key = head.requireString("key")
             val type = head.requireString("type")
             val value = withContext(Dispatchers.IO) {
@@ -48,7 +48,7 @@ internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Log
         }
     }
     onAccept("settings/set") { pipe ->
-        serveSettings(pipe, logger, SET_SCOPE) { head ->
+        serveSettings(pipe, logger, "settings/set") { head ->
             val key = head.requireString("key")
             val value = head.requirePrimitive("value")
             val type = head.requireString("type")
@@ -67,10 +67,10 @@ internal fun QuickJsRuntime.installSettings(settings: SettingsStore, logger: Log
 private suspend fun serveSettings(
     pipe: Pipe,
     logger: Logger?,
-    scope: List<String>,
+    tag: String,
     handle: suspend (JsonObject) -> Unit,
 ) {
-    var logCtx = scope
+    var log = logger?.fork(tag)
     try {
         val head = try {
             JsonReader(BufferedAsyncSource(pipe.source.asAsyncSource())).readObject()
@@ -79,11 +79,11 @@ private suspend fun serveSettings(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            logger?.log(Logger.Level.WARN, logCtx, "E20060 malformed settings head: ${e.message}", e)
+            log?.log(Logger.Level.WARN, "E20060 malformed settings head: ${e.message}", e)
             pipe.sink.close(reason(WireError(code = "E20060", message = "malformed settings head: ${e.message}")))
             return
         }
-        logCtx = readLogCtx(head, scope)
+        log = protocolLogger(logger, head, tag)
         try {
             handle(head)
             pipe.sink.close()
@@ -92,7 +92,7 @@ private suspend fun serveSettings(
         } catch (_: BrokenPipeException) {
         } catch (e: Throwable) {
             val wire = classify(e)
-            logger?.log(Logger.Level.WARN, logCtx, "${wire.code} ${wire.message}", e)
+            log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
             runCatching { pipe.sink.close(reason(wire)) }
         }
     } finally {
@@ -129,11 +129,3 @@ private fun classify(error: Throwable): WireError {
 }
 
 private fun reason(wire: WireError): String = Json.encodeToString(wire)
-
-private fun readLogCtx(head: JsonObject, scope: List<String>): List<String> =
-    (head["logCtx"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull {
-        it.jsonPrimitive.contentOrNull
-    } + scope
-
-private val GET_SCOPE = listOf("settings/get")
-private val SET_SCOPE = listOf("settings/set")

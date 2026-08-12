@@ -233,7 +233,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         DynamicEngineManager(
             http.engine,
             appVersion = 1,
-            logger = StdoutLogger,
+            logger = StdoutLogger(),
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache")),
             cookieJar = platformCookies,
             settings = settings,
@@ -260,7 +260,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             findFfmpeg()?.let { mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, imageNetworkFetcher) },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
-        logger = StdoutLogger,
+        logger = StdoutLogger(),
         memoryCacheBytes = defaultMemoryCacheBudget(),
     )
 
@@ -290,7 +290,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         LocalMediaProxy(
             playerCache, client,
             userAgent = CefManager.CHROME_USER_AGENT,
-            logger = StdoutLogger,
+            logger = StdoutLogger(),
             // Chatty per-part/decision logs; -Dymusic.player.verbose=false to quiet them (or flip at runtime).
             verbose = System.getProperty("io.ymusic.player.verbose", "true").toBoolean(),
             // -Dymusic.player.serveSabrHits=false → fill-only, to test whether synthesized hits wedge switches.
@@ -385,7 +385,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             // before enqueue.
             downloadFolder = { settings.downloadLocationFolder()!! },
             onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, downloadScanner, task, result) },
-            logger = StdoutLogger,
+            logger = StdoutLogger(),
         )
     }
 

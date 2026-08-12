@@ -52,11 +52,7 @@ fun main(args: Array<String>) {
     }
     println("[dl] videoId=$videoId out=$outDir ffmpeg=$ffmpegBin")
 
-    val logger = object : kmpcommon.log.Logger {
-        override fun log(level: kmpcommon.log.Logger.Level, tags: List<String>, message: String, error: Throwable?) {
-            println("[dl] $level ${tags.joinToString("/")}: $message" + (error?.let { " (${it.message})" } ?: ""))
-        }
-    }
+    val logger = PrefixLogger("[dl]")
     val engines = DynamicEngineManager(KmpHttpClient.create {}, appVersion = 1, logger = logger)
     runBlocking { engines.start() }
 

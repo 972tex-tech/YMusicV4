@@ -88,7 +88,7 @@ fun AsyncImage(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                loader.logger?.log(Logger.Level.WARN, listOf("image-loader"), "load failed: $url", e)
+                loader.logger?.log(Logger.Level.WARN, "load failed: $url", e)
                 // A failed sharper re-decode keeps the bitmap already showing.
                 failed = loaded == null
             }

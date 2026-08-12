@@ -183,18 +183,19 @@ class DynamicEngine private constructor(
         @Serializable
         private data class InitHead(val backendVersion: Int)
 
-        private val JS_LOG_CTX = listOf("engine-js")
-
         /** The bundle's console + the unhandled-rejection tracker onto the app [Logger] —
          *  developer breadcrumbs (never shown to the user, per the two-channel error contract). */
-        private fun jsLog(logger: Logger): (Int, String) -> Unit = { level, message ->
-            when (level) {
-                QuickJsRuntime.LOG_DEBUG -> logger.log(Logger.Level.DEBUG, JS_LOG_CTX, message)
-                QuickJsRuntime.LOG_INFO -> logger.log(Logger.Level.INFO, JS_LOG_CTX, message)
-                QuickJsRuntime.LOG_WARN -> logger.log(Logger.Level.WARN, JS_LOG_CTX, message)
-                QuickJsRuntime.LOG_REJECTION ->
-                    logger.log(Logger.Level.ERROR, JS_LOG_CTX, "unhandled promise rejection: $message")
-                else -> logger.log(Logger.Level.ERROR, JS_LOG_CTX, message)
+        private fun jsLog(logger: Logger): (Int, String) -> Unit {
+            val js = logger.fork("engine-js")
+            return { level, message ->
+                when (level) {
+                    QuickJsRuntime.LOG_DEBUG -> js.log(Logger.Level.DEBUG, message)
+                    QuickJsRuntime.LOG_INFO -> js.log(Logger.Level.INFO, message)
+                    QuickJsRuntime.LOG_WARN -> js.log(Logger.Level.WARN, message)
+                    QuickJsRuntime.LOG_REJECTION ->
+                        js.log(Logger.Level.ERROR, "unhandled promise rejection: $message")
+                    else -> js.log(Logger.Level.ERROR, message)
+                }
             }
         }
     }

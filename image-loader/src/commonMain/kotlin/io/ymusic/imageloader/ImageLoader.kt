@@ -27,10 +27,11 @@ import kotlin.concurrent.Volatile
 class ImageLoader(
     private val fetchers: List<ImageFetcher>,
     private val scaledCache: ScaledImageCache? = null,
-    internal val logger: Logger? = null,
+    logger: Logger? = null,
     memoryCacheBytes: Long = 32L * 1024 * 1024,
     parallelism: Int = 4,
 ) {
+    internal val logger = logger?.fork("image-loader")
     private val memory = MemoryImageCache(memoryCacheBytes)
     private val gate = LifoGate(parallelism)
 
@@ -130,7 +131,7 @@ class ImageLoader(
             throw e
         } catch (e: Throwable) {
             // A corrupt or unreadable entry falls through to a fresh fetch (which overwrites it).
-            logger?.log(Logger.Level.WARN, TAG, "scaled cache read failed: ${e.message}", e)
+            logger?.log(Logger.Level.WARN, "scaled cache read failed: ${e.message}", e)
             null
         }
     }
@@ -150,7 +151,7 @@ class ImageLoader(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
-                    logger?.log(Logger.Level.WARN, TAG, "scaled cache write failed: ${e.message}", e)
+                    logger?.log(Logger.Level.WARN, "scaled cache write failed: ${e.message}", e)
                 }
             }
         }
@@ -158,10 +159,6 @@ class ImageLoader(
     }
 
     private fun diskKey(key: String): String = key.encodeUtf8().sha256().hex()
-
-    private companion object {
-        val TAG = listOf("image-loader")
-    }
 }
 
 /** Round the target up to a 64px step: stable cache keys across ±layout-pixel jitter. */

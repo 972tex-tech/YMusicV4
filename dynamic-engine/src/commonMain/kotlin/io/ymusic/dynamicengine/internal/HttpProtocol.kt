@@ -28,7 +28,6 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -77,7 +76,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
     // Each in-place RESET is also a birth-site log: the caller's context (threaded down in the head)
     // plus the native cause, logged HERE where the fidelity is (HOST_PROTOCOLS "Logging context").
     var bodyPipe: Pipe? = null
-    var logCtx: List<String> = HTTP_SCOPE // caller trail + "http"; the fallback until the head parses
+    var log = logger?.fork("http") // caller trail + "http"; this fallback until the head parses
     try {
         coroutineScope {
             val requestScope = this
@@ -85,7 +84,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
 
             val prepared = try {
                 val head = JsonReader(src).readObject()
-                logCtx = readLogCtx(head)
+                log = protocolLogger(logger, head, "http")
                 val method = head["method"]?.jsonPrimitive?.content ?: "GET"
                 val url = head["url"]?.jsonPrimitive?.content ?: ""
                 val headers = (head["headers"] as? JsonArray).orEmpty().map { entry ->
@@ -153,7 +152,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             } catch (e: Throwable) {
                 // Malformed head JSON, missing fields, or a URL/header kmpHttp rejects — all the
                 // client's fault, none of them started an exchange.
-                logger?.log(Logger.Level.WARN, logCtx, "E20011 invalid request: ${e.message}", e)
+                log?.log(Logger.Level.WARN, "E20011 invalid request: ${e.message}", e)
                 pipe.sink.close(errorReason("E20011", "invalid request: ${e.message}"))
                 return@coroutineScope
             }
@@ -163,9 +162,8 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     ?.split(';')
                     ?.mapNotNull { it.substringBefore('=').trim().takeIf(String::isNotEmpty) }
                     .orEmpty()
-                logger?.log(
+                log?.log(
                     Logger.Level.DEBUG,
-                    logCtx,
                     "${prepared.request.method} ${prepared.request.url.host}${prepared.request.url.encodedPath} " +
                         "cookies=${cookieNames.joinToString(",")}",
                 )
@@ -173,7 +171,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     client.execute(prepared.request, prepared.redirects, prepared.timeout)
                 } catch (e: IOException) {
                     // The ROUTINE failure (DNS/connect/TLS/timeout) — reported, never thrown.
-                    logger?.log(Logger.Level.WARN, logCtx, "request failed: ${e.message}", e)
+                    log?.log(Logger.Level.WARN, "request failed: ${e.message}", e)
                     pipe.sink.close(errorReason("network", "request failed: ${e.message}"))
                     return@launch
                 }
@@ -181,9 +179,8 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     val setCookies = response.headers.mapNotNull { (name, value) ->
                         if (name.equals("Set-Cookie", ignoreCase = true)) value else null
                     }
-                    logger?.log(
+                    log?.log(
                         Logger.Level.DEBUG,
-                        logCtx,
                         "HTTP ${response.code} ${response.request.url.host}" +
                             if (setCookies.isEmpty()) "" else " set-cookie=[${setCookies.joinToString(" | ")}]",
                     )
@@ -219,7 +216,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                 } catch (e: IOException) {
                     // The head is already out, so RESET is the only channel left: a clean EOF here
                     // would read as a complete (silently truncated) body.
-                    logger?.log(Logger.Level.WARN, logCtx, "response body failed: ${e.message}", e)
+                    log?.log(Logger.Level.WARN, "response body failed: ${e.message}", e)
                     pipe.sink.close(errorReason("network", "response body failed: ${e.message}"))
                 } finally {
                     response.closeQuietly()
@@ -261,13 +258,6 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
  *  emits, so http.js (and `decodeEngineError`) adopt the origin's code directly, no text matching. */
 private fun errorReason(code: String, message: String): String =
     Json.encodeToString(WireError(code = code, message = message))
-
-private val HTTP_SCOPE = listOf("http")
-
-/** The caller's logging-context trail (threaded down in the head) with this protocol's hop appended
- *  — the trail every birth-site log here is tagged with. Absent/garbage degrades to just `["http"]`. */
-private fun readLogCtx(head: JsonObject): List<String> =
-    (head["logCtx"] as? JsonArray).orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull } + "http"
 
 private class PreparedRequest(val request: Request, val redirects: RedirectOptions, val timeout: Duration?)
 

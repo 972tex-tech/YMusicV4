@@ -31,12 +31,13 @@ internal fun interface CommandHandler {
  * `callHost`/`hostError` rebuild a coded error. The transport's own throw→RESET is only a dumb
  * backstop (message, no code); this is where the `{code, …}` contract is minted on the host side.
  *
- * [logCtx] is the scope trail these birth-site logs are tagged with (the caller's trail plus this
- * command's hop). A caller that hung up ([BrokenPipeException]) is the one silent path; real
- * cancellation propagates so the runtime can tear down.
+ * [log] is the scope-trail logger these birth-site logs go through (the caller's trail plus this
+ * command's hop; defaults to the engine's root logger). A caller that hung up
+ * ([BrokenPipeException]) is the one silent path; real cancellation propagates so the runtime can
+ * tear down.
  */
 internal fun DynamicEngine.commandHandler(
-    logCtx: List<String> = emptyList(),
+    log: Logger? = logger,
     handler: CommandHandler,
 ): suspend (Pipe) -> Unit = { pipe ->
     try {
@@ -50,7 +51,7 @@ internal fun DynamicEngine.commandHandler(
         val wire = classify(e)
         // Birth-site log: the real Throwable (stack, cause) stays here where the fidelity is; only
         // the {code, message} value crosses to the caller. A breadcrumb/warning, not a crash record.
-        logger?.log(Logger.Level.WARN, logCtx, "${wire.code} ${wire.message}", e)
+        log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
         // The RESET is first-close-wins; a failure of the close itself has nowhere to go — swallow.
         runCatching { pipe.sink.close(Json.encodeToString(wire)) }
     } finally {

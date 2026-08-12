@@ -107,7 +107,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 1,
-        logger = IosLogger,
+        logger = IosLogger(),
         cookieJar = cookies,
         settings = settings,
         cacheStore = appleEngineCacheStore(),
