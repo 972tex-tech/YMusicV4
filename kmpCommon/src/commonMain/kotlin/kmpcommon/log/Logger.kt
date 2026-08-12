@@ -109,6 +109,6 @@ object LogConfig {
 /** A DEBUG line whose message is built ONLY while debug logging is on — the form for chatty paths
  *  (per-request lines, per-part transfer chatter). Inlined, so a release binary's optimizer
  *  removes the whole site via [debugBinary]. */
-inline fun Logger?.debug(message: () -> String) {
-    if (this != null && debugBinary && LogConfig.debugLogs) log(Logger.Level.DEBUG, message())
+inline fun Logger.debug(message: () -> String) {
+    if (debugBinary && LogConfig.debugLogs) log(Logger.Level.DEBUG, message())
 }

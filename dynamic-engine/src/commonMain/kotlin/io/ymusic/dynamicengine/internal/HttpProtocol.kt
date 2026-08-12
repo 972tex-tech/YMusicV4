@@ -163,7 +163,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     ?.split(';')
                     ?.mapNotNull { it.substringBefore('=').trim().takeIf(String::isNotEmpty) }
                     .orEmpty()
-                log.debug {
+                log?.debug {
                     "${prepared.request.method} ${prepared.request.url.host}${prepared.request.url.encodedPath} " +
                         "cookies=${cookieNames.joinToString(",")}"
                 }
@@ -179,7 +179,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     val setCookies = response.headers.mapNotNull { (name, value) ->
                         if (name.equals("Set-Cookie", ignoreCase = true)) value else null
                     }
-                    log.debug {
+                    log?.debug {
                         "HTTP ${response.code} ${response.request.url.host}" +
                             if (setCookies.isEmpty()) "" else " set-cookie=[${setCookies.joinToString(" | ")}]"
                     }

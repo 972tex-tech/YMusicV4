@@ -79,7 +79,7 @@ class LocalMediaProxy(
 
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
-        if (verbose) log.debug(message)
+        if (verbose) log?.debug(message)
     }
 
     /** One-line dump of what the player is asking for — the state the serve decision is made against.

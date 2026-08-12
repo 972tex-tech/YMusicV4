@@ -196,7 +196,7 @@ class YtStreamDownloader(
         var reAttested = false
         while (true) {
             try {
-                SabrSession(log = { line -> log.debug { line } }).download(
+                SabrSession(log = { line -> log?.debug { line } }).download(
                     client = client,
                     userAgent = userAgent,
                     spec = current,
