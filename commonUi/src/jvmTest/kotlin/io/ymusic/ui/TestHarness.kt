@@ -46,6 +46,7 @@ internal class CannedHttp(
         RedirectOptions(followRedirects = true, followSslRedirects = true)
     override val defaultExecuteTimeout: Duration? = null
     override val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+    override val logger: kmpcommon.log.Logger? = null
 
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
         // Off the engine thread: a streamed body's writeTo runBlocking-pulls pipe reads that must

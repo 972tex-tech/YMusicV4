@@ -84,13 +84,13 @@ class SslConfig(
  */
 fun SslConfig.warnIfClientCertsUnsupported(
     engine: String,
+    logger: kmpcommon.log.Logger? = null,
     isSupported: (SslConfig.ClientCert) -> Boolean
 ) {
     if (clientCerts.isNotEmpty() && clientCerts.none(isSupported)) {
-        println(
-            "kmpHttp: $engine supports none of the configured client certificate formats " +
-                "(${clientCerts.map { it::class.simpleName }}); mutual TLS will not be configured."
-        )
+        val message = "$engine supports none of the configured client certificate formats " +
+            "(${clientCerts.map { it::class.simpleName }}); mutual TLS will not be configured."
+        logger?.log(kmpcommon.log.Logger.Level.WARN, message) ?: println("kmpHttp: $message")
     }
 }
 

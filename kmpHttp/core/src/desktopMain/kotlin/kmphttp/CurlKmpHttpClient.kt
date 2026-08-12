@@ -39,6 +39,7 @@ class CurlKmpHttpClient(builder: Builder) : KmpHttpClient {
     override val defaultRedirectOptions: RedirectOptions = builder.defaultRedirectOptions
     override val defaultExecuteTimeout: Duration? = builder.defaultExecuteTimeout
     override val defaultDispatcher: CoroutineDispatcher = builder.defaultDispatcher
+    override val logger: kmpcommon.log.Logger? = builder.logger
 
     /** The shared curl multi handle (its own event-loop worker), reused across [newBuilder]. */
     val curlMultiApi: CurlMultiApi = builder.curlMultiApi ?: CurlMultiApi()
@@ -50,7 +51,8 @@ class CurlKmpHttpClient(builder: Builder) : KmpHttpClient {
 
     init {
         curl_global_init(CURL_GLOBAL_DEFAULT.convert())
-        sslConfig.warnIfClientCertsUnsupported("CurlKmpHttpClient") {
+        cache?.logger = logger
+        sslConfig.warnIfClientCertsUnsupported("CurlKmpHttpClient", logger) {
             it is SslConfig.ClientCert.Pem
         }
     }
@@ -63,7 +65,7 @@ class CurlKmpHttpClient(builder: Builder) : KmpHttpClient {
         val chain = AsyncChain(
             interceptors = buildList {
                 addAll(interceptors)
-                add(RetryOnConnectionFailureInterceptor())
+                add(RetryOnConnectionFailureInterceptor(logger = logger))
                 add(FollowUpInterceptor())
                 add(BridgeInterceptor(cookieJar, userAgent))
                 add(CacheInterceptor(cache))

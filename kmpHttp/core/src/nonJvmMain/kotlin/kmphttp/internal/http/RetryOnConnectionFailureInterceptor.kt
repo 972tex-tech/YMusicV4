@@ -1,5 +1,6 @@
 package kmphttp.internal.http
 
+import kmpcommon.log.debug
 import kmphttp.AsyncInterceptor
 import kmphttp.Request
 import kmphttp.Response
@@ -29,6 +30,7 @@ internal class RecoverableIOException(message: String, cause: Throwable? = null)
 internal class RetryOnConnectionFailureInterceptor(
     private val maxRetries: Int = 3,
     private val baseBackoff: Duration = 150.milliseconds,
+    private val logger: kmpcommon.log.Logger? = null,
 ) : AsyncInterceptor {
 
     override suspend fun intercept(chain: AsyncInterceptor.Chain): Response {
@@ -39,6 +41,8 @@ internal class RetryOnConnectionFailureInterceptor(
             } catch (e: RecoverableIOException) {
                 if (attempt >= maxRetries || !chain.request.isRetryable()) throw e
                 attempt++
+                // Silent retries make a flaky network look like a slow one — leave a trace.
+                logger?.debug { "retry $attempt/$maxRetries for ${chain.request.url.host}: ${e.message}" }
                 val jitter = Random.nextLong(0, baseBackoff.inWholeMilliseconds + 1).milliseconds
                 delay(baseBackoff * attempt + jitter)
             }

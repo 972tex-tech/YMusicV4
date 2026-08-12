@@ -49,6 +49,13 @@ class DefaultCache(
     fileSystem: FileSystem = FileSystem.SYSTEM
 ) : HttpCache {
 
+    /** Diagnostics sink, attached by the owning client at build time (journal faults surface here). */
+    var logger: kmpcommon.log.Logger?
+        get() = cache.logger
+        set(value) {
+            cache.logger = value
+        }
+
     internal val cache =
         DiskLruCache(
             fileSystem = fileSystem,
@@ -189,6 +196,7 @@ class DefaultCache(
         try {
             editor.abort()
         } catch (_: IOException) {
+            // Editor abort is best-effort cleanup; the caller already has the real failure.
         }
     }
 
@@ -225,6 +233,7 @@ class DefaultCache(
                         try {
                             editor.commit()
                         } catch (_: IOException) {
+                            // Editor abort is best-effort cleanup; the caller already has the real failure.
                         }
                     }
                 }
@@ -238,6 +247,7 @@ class DefaultCache(
                     try {
                         editor.abort()
                     } catch (_: IOException) {
+                        // Editor abort is best-effort cleanup; the caller already has the real failure.
                     }
                 }
             }

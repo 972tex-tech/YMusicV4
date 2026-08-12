@@ -25,13 +25,19 @@ class AppHttpClients(
     cacheDir: Path,
     maxSizeBytes: Long = DefaultHttpCacheBytes,
     fileSystem: FileSystem = FileSystem.SYSTEM,
+    logger: kmpcommon.log.Logger? = null,
 ) {
+
+    private val httpLogger = logger?.fork("kmphttp")
     private val diskCache: Cache = run {
         fileSystem.createDirectories(cacheDir)
         DefaultPlatformCache(cacheDir, maxSizeBytes)
     }
 
-    val engine: KmpHttpClient = KmpHttpClient.create { cache = diskCache }
+    val engine: KmpHttpClient = KmpHttpClient.create {
+        cache = diskCache
+        this.logger = httpLogger // `logger` alone resolves to the constructor parameter
+    }
 
     /**
      * The image loader's client — derived from [engine] so the whole app shares one connection

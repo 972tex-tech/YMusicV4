@@ -2,6 +2,7 @@
 
 package kmphttp.cache
 
+import kmpcommon.log.Logger
 import kmpcommon.nowMs
 import kmpcommon.removeAll
 import kmphttp.internal.DefaultIODispatcher
@@ -40,6 +41,10 @@ private class CacheState(
     private var journalWriter: JournalWriter? = null
     private var journalOpCount: Int = 0
     private var hasJournalErrors: Boolean = false
+
+    /** Attached by the owning client; a journal fault disables persistence for the process life,
+     *  so the FIRST one is worth a warning — later ones are the same incident. */
+    internal var logger: Logger? = null
     private var initialized: Boolean = false
     private var closed = false
     private var mostRecentTrimFailed: Boolean = false
@@ -60,6 +65,13 @@ private class CacheState(
 
     /** Provides controlled access to mutable state - only usable within withState block */
     inner class StateAccessor() {
+        fun journalError(e: IOException) {
+            if (!hasJournalErrors) {
+                logger?.log(Logger.Level.WARN, "cache journal write failed — cache persistence disabled until restart", e)
+            }
+            hasJournalErrors = true
+            setJournalWriter(null)
+        }
 
         fun getMaxSize(): Long = maxSize
         fun setMaxSize(value: Long) {
@@ -133,9 +145,8 @@ private class CacheState(
                 try {
                     journalWriter?.writeRead(key)
                     journalOpCount++
-                } catch (_: IOException) {
-                    hasJournalErrors = true
-                    setJournalWriter(null)
+                } catch (e: IOException) {
+                    journalError(e)
                 }
             }
             return entry
@@ -162,8 +173,7 @@ private class CacheState(
                 journalWriter?.writeCommit(entry)
                 journalOpCount++
             } catch (e: IOException) {
-                hasJournalErrors = true
-                setJournalWriter(null)
+                journalError(e)
             }
         }
 
@@ -175,9 +185,8 @@ private class CacheState(
                 try {
                     journalWriter?.writeRemove(entry.key)
                     journalOpCount++
-                } catch (_: IOException) {
-                    hasJournalErrors = true
-                    setJournalWriter(null)
+                } catch (e: IOException) {
+                    journalError(e)
                 }
             }
             return entry
@@ -207,6 +216,13 @@ class DiskLruCache(
 
     // Thread-safe state container
     private val state = CacheState(maxSize, valueCount)
+
+    /** Diagnostics sink, attached by the owning client (journal faults warn once). */
+    internal var logger: Logger?
+        get() = state.logger
+        set(value) {
+            state.logger = value
+        }
 
     private val tempDir = directory / TEMP_DIR
 

@@ -100,6 +100,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
             .toPath()
             .resolve("ymusic-http-cache"),
+        logger = rootLogger,
     )
     val settings = IosSettingsStore()
     // First launch decides the app language (device if supported, else English) and persists it —

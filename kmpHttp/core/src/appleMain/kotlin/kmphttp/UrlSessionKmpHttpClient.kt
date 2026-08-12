@@ -113,6 +113,7 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
     override val defaultRedirectOptions: RedirectOptions = builder.defaultRedirectOptions
     override val defaultExecuteTimeout: Duration? = builder.defaultExecuteTimeout
     override val defaultDispatcher: CoroutineDispatcher = builder.defaultDispatcher
+    override val logger: kmpcommon.log.Logger? = builder.logger
 
     private val sessionConfig: NSURLSessionConfiguration = builder.sessionConfig
     private val onReceiveChallenge: AuthChallengeHandler? = builder.onReceiveChallenge
@@ -125,7 +126,8 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
     private val released = AtomicBoolean(false)
 
     init {
-        sslConfig.warnIfClientCertsUnsupported("UrlSessionKmpHttpClient") {
+        cache?.logger = logger
+        sslConfig.warnIfClientCertsUnsupported("UrlSessionKmpHttpClient", logger) {
             it is SslConfig.ClientCert.Pkcs12
         }
 
@@ -159,7 +161,7 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
         val chain = AsyncChain(
             interceptors = buildList {
                 addAll(interceptors)
-                add(RetryOnConnectionFailureInterceptor())
+                add(RetryOnConnectionFailureInterceptor(logger = logger))
                 add(FollowUpInterceptor())
                 add(BridgeInterceptor(cookieJar, userAgent))
                 add(CacheInterceptor(cache))

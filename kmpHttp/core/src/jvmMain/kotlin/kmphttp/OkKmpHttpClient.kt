@@ -23,6 +23,7 @@ class OkKmpHttpClient : KmpHttpClient {
     override val defaultRedirectOptions: RedirectOptions
     override val defaultExecuteTimeout: Duration?
     override val defaultDispatcher: CoroutineDispatcher
+    override val logger: kmpcommon.log.Logger?
 
     val okHttp: OkHttpClient
 
@@ -42,6 +43,7 @@ class OkKmpHttpClient : KmpHttpClient {
         this.defaultRedirectOptions = builder.defaultRedirectOptions
         this.defaultExecuteTimeout = builder.defaultExecuteTimeout
         this.defaultDispatcher = builder.defaultDispatcher
+        this.logger = builder.logger
 
         this.okHttp = builder
             .okHttpBuilder

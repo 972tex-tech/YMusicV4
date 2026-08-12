@@ -1,5 +1,6 @@
 package kmphttp
 
+import kmpcommon.log.Logger
 import kmphttp.internal.DefaultIODispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlin.time.Duration
@@ -14,6 +15,10 @@ interface KmpHttpClient {
     val defaultRedirectOptions: RedirectOptions
     val defaultExecuteTimeout: Duration?
     val defaultDispatcher: CoroutineDispatcher
+
+    /** Client-internal diagnostics (retries, cache-journal faults, TLS config warnings) — never
+     *  request bodies or cookie values. Null = off. */
+    val logger: Logger?
 
     suspend fun execute(
         request: Request,
@@ -32,6 +37,7 @@ interface KmpHttpClient {
         var defaultRedirectOptions: RedirectOptions
         var defaultExecuteTimeout: Duration?
         var defaultDispatcher: CoroutineDispatcher
+        var logger: Logger?
 
         constructor() {
             this.interceptors = mutableListOf()
@@ -45,6 +51,7 @@ interface KmpHttpClient {
             )
             this.defaultExecuteTimeout = 15.seconds
             this.defaultDispatcher = DefaultIODispatcher
+            this.logger = null
         }
 
         constructor(copy: T) {
@@ -56,6 +63,7 @@ interface KmpHttpClient {
             this.defaultRedirectOptions = copy.defaultRedirectOptions
             this.defaultExecuteTimeout = copy.defaultExecuteTimeout
             this.defaultDispatcher = copy.defaultDispatcher
+            this.logger = copy.logger
         }
 
         abstract fun build(): T

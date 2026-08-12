@@ -45,6 +45,7 @@ class FakeHttpClient(
         RedirectOptions(followRedirects = true, followSslRedirects = true)
     override val defaultExecuteTimeout: Duration? = null
     override val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+    override val logger: kmpcommon.log.Logger? = null
 
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
         lastRequest = request

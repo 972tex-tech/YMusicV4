@@ -149,7 +149,7 @@ class YMusicApplication : Application() {
         // protocol), so cookie policy lives in the remotely-updatable bundle.
         val cookies = WebViewCookieJar()
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
-        val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath())
+        val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath(), logger = rootLogger)
         val settings = PrefsSettingsStore.open(this)
         // First launch decides the app language (device if supported, else English) and persists
         // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
@@ -277,6 +277,7 @@ class YMusicApplication : Application() {
         }
         val mediaProxy = shared.webViewJs?.let {
             val client = KmpHttpClient.create {
+                logger = rootLogger.fork("kmphttp")
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
             }
@@ -331,6 +332,7 @@ class YMusicApplication : Application() {
                 )
             }
             val sabrClient = KmpHttpClient.create {
+                logger = rootLogger.fork("kmphttp")
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
             }

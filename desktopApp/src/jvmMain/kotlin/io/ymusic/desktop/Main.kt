@@ -233,7 +233,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val platformCookies = JcefCookieJar(cefManager.awaitCookieManager())
     // One client stack, one disk cache: the engine (no cookie jar — the scraping JS owns cookie
     // policy) and the player's embed fetch (platform cookies) share it.
-    val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath())
+    val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath(), logger = rootLogger)
     val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
     // First launch decides the app language (device if supported, else English) and persists it —
     // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
@@ -293,6 +293,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     }
     val mediaProxy = withContext(Dispatchers.IO) {
         val client = KmpHttpClient.create {
+            logger = rootLogger.fork("kmphttp")
             cookieJar = platformCookies
             defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
         }
@@ -360,6 +361,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             rootLogger,
         )
         val sabrClient = KmpHttpClient.create {
+            logger = rootLogger.fork("kmphttp")
             cookieJar = platformCookies
             defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
         }
