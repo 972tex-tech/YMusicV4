@@ -50,6 +50,7 @@ import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
 import kmpcommon.log.Logger
+import kmpcommon.log.TeeLogger
 import kmpcommon.uri.Uri
 import kmpffmpeg.AndroidFfInputResolver
 import kmpffmpeg.metadata.FfmpegMetadataGetter
@@ -110,8 +111,8 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** The app's root logger: Sentry breadcrumbs/captures (no-op until Sentry.init) echoed to logcat. */
-    val rootLogger: Logger = SentryLogger(LogcatLogger()::log)
+    /** The app's root logger: Sentry logs/captures (no-op until Sentry.init) teed with logcat. */
+    val rootLogger: Logger = TeeLogger(SentryLogger(), LogcatLogger())
 
     /** Escaped coroutine failures are still one job dying — capture, don't crash the process. */
     private fun uncaught(scopeName: String) = CoroutineExceptionHandler { _, e ->

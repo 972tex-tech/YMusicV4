@@ -83,6 +83,7 @@ import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
 import kmpcommon.log.Logger
+import kmpcommon.log.TeeLogger
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpcommon.uri.filePath
@@ -111,8 +112,8 @@ import java.io.File
  * VLCJ local + JCEF WebView engines, the shared WebView container as the video surface), and runs
  * the shared [App].
  */
-// Sentry breadcrumbs/captures (no-op when Sentry wasn't initialized) echoed to stdout.
-private val rootLogger: Logger = SentryLogger(StdoutLogger()::log)
+// Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
+private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
 
 fun main() {
     if (SENTRY_DSN.isNotEmpty()) {

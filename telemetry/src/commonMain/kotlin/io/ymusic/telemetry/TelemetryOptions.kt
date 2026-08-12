@@ -2,6 +2,7 @@ package io.ymusic.telemetry
 
 import io.sentry.kotlin.multiplatform.SentryEvent
 import io.sentry.kotlin.multiplatform.SentryOptions
+import io.sentry.kotlin.multiplatform.log.SentryLog
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 
 /**
@@ -13,6 +14,9 @@ fun SentryOptions.applyYMusicTelemetry() {
     maxBreadcrumbs = 200
     beforeBreadcrumb = ::scrubBreadcrumb
     beforeSend = ::fingerprintPolicy
+    // Sentry Logs are OFF by default — without this every Sentry.logger call is dropped.
+    logs.enabled = true
+    logs.beforeSend = ::scrubLog
 }
 
 /**
@@ -45,4 +49,9 @@ private val SET_COOKIE = Regex("""set-cookie=\[[^\]]*]""", RegexOption.IGNORE_CA
 internal fun scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb {
     crumb.message?.let { crumb.message = SET_COOKIE.replace(it, "set-cookie=[redacted]") }
     return crumb
+}
+
+internal fun scrubLog(log: SentryLog): SentryLog {
+    log.body = SET_COOKIE.replace(log.body, "set-cookie=[redacted]")
+    return log
 }
