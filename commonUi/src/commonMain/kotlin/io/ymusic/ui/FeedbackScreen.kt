@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -78,10 +79,14 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
     val snackbar = LocalSnackbar.current
     val scrollState = rememberScrollState()
     TrackScroll { scrollState.canScrollBackward }
-    // Large windows: the column caps at FormMaxWidth and centers — full-bleed fields on an
-    // expanded window read as ribbons. Margin follows the window class like the grids do.
+    // Large windows: the column caps at FormMaxWidth and centers both ways — full-bleed fields on
+    // an expanded window read as ribbons, and a short form pinned to the top of a tall window
+    // leaves a dead lower half. The min-height keeps the centering inside the scroll content, so
+    // an overflowing form (many attachments, small window) still just scrolls from the top.
+    // Margin follows the window class like the grids do.
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val margin = gridMetricsFor(maxWidth).margin
+        val viewportHeight = maxHeight
         Column(
             Modifier.fillMaxSize().verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -90,8 +95,9 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                 Modifier
                     .widthIn(max = DesignSpacing.FormMaxWidth)
                     .fillMaxWidth()
+                    .heightIn(min = viewportHeight)
                     .padding(horizontal = margin, vertical = DesignSpacing.Space16),
-                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16, Alignment.CenterVertically),
             ) {
                 Text(
                     stringResource(Res.string.feedback_hint),

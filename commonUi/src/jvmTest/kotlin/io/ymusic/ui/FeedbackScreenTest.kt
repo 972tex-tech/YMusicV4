@@ -106,7 +106,7 @@ class FeedbackScreenTest {
     }
 
     @Test
-    fun a_wide_window_caps_and_centers_the_form() {
+    fun a_large_window_caps_the_form_and_centers_it_both_ways() {
         Locale.setDefault(Locale.ENGLISH)
         val graph = AppGraph(
             engines = engines(),
@@ -129,6 +129,15 @@ class FeedbackScreenTest {
             val leftGap = send.left
             val rightGap = rootWidth - send.right
             assertTrue((leftGap - rightGap).value < 2f, "form should center: left=$leftGap right=$rightGap")
+
+            // Vertically centered too: the gap above the first content (the hint) matches the gap
+            // below the last (the send button).
+            val hint = onNodeWithText("Tell us", substring = true).getBoundsInRoot()
+            val rootHeight = root.bottom - root.top
+            val topGap = hint.top
+            val bottomGap = rootHeight - send.bottom
+            assertTrue(topGap.value > 50f, "a short form on a tall surface should not pin to the top (topGap=$topGap)")
+            assertTrue((topGap - bottomGap).value < 2f, "form should center vertically: top=$topGap bottom=$bottomGap")
         }
     }
 
