@@ -1,6 +1,5 @@
 package io.ymusic.desktop.media
 
-import io.ymusic.desktop.rootLogger
 import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
 import kmpcommon.log.Logger
@@ -56,12 +55,12 @@ interface DesktopMediaSession {
 
     companion object {
         /** The backend for this OS, or null (no backend, or its native setup failed — never fatal). */
-        fun create(commands: MediaSessionCommands): DesktopMediaSession? {
+        fun create(commands: MediaSessionCommands, logger: Logger? = null): DesktopMediaSession? {
             val os = System.getProperty("os.name")?.lowercase() ?: return null
             return when {
-                "mac" in os -> runCatching { MacNowPlayingSession(commands) }
+                "mac" in os -> runCatching { MacNowPlayingSession(commands, logger) }
                     .onFailure {
-                        rootLogger.fork("now-playing").log(Logger.Level.WARN, "macOS Now Playing bridge unavailable — media keys dead", it)
+                        logger?.log(Logger.Level.WARN, "macOS Now Playing bridge unavailable — media keys dead", it)
                     }
                     .getOrNull()
                 else -> null
@@ -75,9 +74,9 @@ interface DesktopMediaSession {
  * duration, speed) and on position jumps the OS cannot extrapolate (seeks); commands flow back in
  * on [scope]'s main dispatcher. Returns null when this OS has no backend.
  */
-fun connectMediaSession(player: Player, scope: CoroutineScope): DesktopMediaSession? {
+fun connectMediaSession(player: Player, scope: CoroutineScope, logger: Logger? = null): DesktopMediaSession? {
     val session = DesktopMediaSession.create(
-        object : MediaSessionCommands {
+        commands = object : MediaSessionCommands {
             override fun togglePlay() {
                 scope.launch { player.togglePlay() }
             }
@@ -102,6 +101,7 @@ fun connectMediaSession(player: Player, scope: CoroutineScope): DesktopMediaSess
                 scope.launch { player.seekTo(positionMs) }
             }
         },
+        logger = logger,
     ) ?: return null
     scope.launch {
         var last: MediaSessionState? = null

@@ -117,7 +117,7 @@ import java.io.File
  * the shared [App].
  */
 // Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
-internal val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
+private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
 
 fun main() {
     if (SENTRY_DSN.isNotEmpty()) {
@@ -225,7 +225,7 @@ fun main() {
         }
         // Tray-only mode also drops the Dock icon (macOS accessory activation); restoring the
         // window brings it back and re-activates the app.
-        LaunchedEffect(windowVisible) { MacDock.setDockIconVisible(windowVisible) }
+        LaunchedEffect(windowVisible) { MacDock.setDockIconVisible(windowVisible, rootLogger.fork("mac-dock")) }
     }
 }
 
@@ -343,7 +343,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
 
     // OS media surface — macOS Now Playing widget + media keys (Linux MPRIS / Windows SMTC have no
     // backend yet). Commands come back on the Main dispatcher, where the player is driven.
-    connectMediaSession(player, CoroutineScope(Dispatchers.Main))
+    connectMediaSession(player, CoroutineScope(Dispatchers.Main), rootLogger.fork("now-playing"))
 
     // Warm the YouTube engine ~5s after startup so the first play/download skips the WebView + /embed
     // build (mirrors legacy warmUpYtPlayer). Off the boot path; on the EDT since it hosts JCEF.

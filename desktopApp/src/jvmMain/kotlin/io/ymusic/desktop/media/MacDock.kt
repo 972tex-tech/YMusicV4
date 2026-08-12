@@ -3,7 +3,6 @@ package io.ymusic.desktop.media
 import com.sun.jna.Callback
 import com.sun.jna.NativeLibrary
 import com.sun.jna.Pointer
-import io.ymusic.desktop.rootLogger
 import kmpcommon.log.Logger
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -17,7 +16,11 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 object MacDock {
 
-    fun setDockIconVisible(visible: Boolean) {
+    // Kept for the process-lifetime [drain] callback, which outlives any caller's scope.
+    private var log: Logger? = null
+
+    fun setDockIconVisible(visible: Boolean, logger: Logger? = null) {
+        logger?.let { log = it }
         if ("mac" !in (System.getProperty("os.name")?.lowercase() ?: "")) return
         runCatching {
             onMainQueue {
@@ -26,7 +29,7 @@ object MacDock {
                 // Re-entering Regular leaves the app background-ordered until reactivated.
                 if (visible) objc.msgSendVoid(app, "activateIgnoringOtherApps:", true)
             }
-        }.onFailure { rootLogger.fork("mac-dock").log(Logger.Level.WARN, "MacDock unavailable", it) }
+        }.onFailure { log?.log(Logger.Level.WARN, "MacDock unavailable", it) }
     }
 
     // --- main-queue trampoline: one static C callback draining a queue of pending blocks ---
@@ -41,7 +44,7 @@ object MacDock {
     private val drain = DispatchWork {
         pending.poll()?.let { block ->
             runCatching(block)
-                .onFailure { rootLogger.fork("mac-dock").log(Logger.Level.WARN, "main-queue block failed", it) }
+                .onFailure { log?.log(Logger.Level.WARN, "main-queue block failed", it) }
         }
     }
 

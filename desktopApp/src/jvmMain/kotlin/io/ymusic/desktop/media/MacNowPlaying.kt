@@ -4,7 +4,6 @@ import com.sun.jna.Callback
 import com.sun.jna.Function
 import com.sun.jna.NativeLibrary
 import com.sun.jna.Pointer
-import io.ymusic.desktop.rootLogger
 import kmpcommon.log.Logger
 
 /**
@@ -19,7 +18,7 @@ import kmpcommon.log.Logger
  * Command handlers arrive on an AppKit thread: they only forward to [MediaSessionCommands], which
  * the wiring re-dispatches to the app main thread.
  */
-internal class MacNowPlayingSession(commands: MediaSessionCommands) : DesktopMediaSession {
+internal class MacNowPlayingSession(commands: MediaSessionCommands, private val log: Logger? = null) : DesktopMediaSession {
 
     private val objc = NativeLibrary.getInstance("objc")
     private val msgSend: Function = objc.getFunction("objc_msgSend")
@@ -102,7 +101,7 @@ internal class MacNowPlayingSession(commands: MediaSessionCommands) : DesktopMed
             val imp = CommandImp { _, _, event ->
                 // An OS media-key press that throws must not vanish — the key "did nothing".
                 runCatching { body(event) }
-                    .onFailure { rootLogger.fork("now-playing").log(Logger.Level.WARN, "media command $selName failed", it) }
+                    .onFailure { log?.log(Logger.Level.WARN, "media command $selName failed", it) }
                 COMMAND_HANDLED
             }
             imps += imp
