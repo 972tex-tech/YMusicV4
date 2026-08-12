@@ -170,6 +170,8 @@ fun main() {
             LaunchedEffect(Unit) {
                 try {
                     graph = buildGraph(cefManager)
+                } catch (c: kotlinx.coroutines.CancellationException) {
+                    throw c // the effect was disposed — not a boot failure
                 } catch (t: Throwable) {
                     rootLogger.fork("boot").captureError(t)
                     error = t.message ?: t.toString()

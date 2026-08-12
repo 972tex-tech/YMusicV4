@@ -57,6 +57,8 @@ class PlaybackCoordinator(
                         val id = (item as? PlayableItem.LocalMedia)?.mediaId ?: return@collect
                         try {
                             store.recordLocalPlay(id)
+                        } catch (c: kotlinx.coroutines.CancellationException) {
+                            throw c
                         } catch (e: Exception) {
                             // Play stats are best-effort; a failure never interrupts playback.
                             log?.log(Logger.Level.WARN, "recordLocalPlay failed", e)
@@ -92,6 +94,8 @@ class PlaybackCoordinator(
                 if ((current.currentItem as? PlayableItem.YtMedia)?.videoId == video.id && current.items.size == 1) {
                     player.add(related.map { it.toYtMedia() })
                 }
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
             } catch (e: Exception) {
                 // Autoplay fill is an enhancement, not the task — the tapped video still plays.
                 log?.log(Logger.Level.WARN, "watch-next fill failed", e)

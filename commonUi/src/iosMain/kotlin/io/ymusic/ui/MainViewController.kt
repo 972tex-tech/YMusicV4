@@ -73,6 +73,8 @@ private fun IosAppRoot() {
     LaunchedEffect(Unit) {
         try {
             graph = buildIosGraph(container)
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c // the effect was disposed — not a boot failure
         } catch (t: Throwable) {
             IosLogger().fork("boot").captureError(t)
             error = t.message ?: t.toString()

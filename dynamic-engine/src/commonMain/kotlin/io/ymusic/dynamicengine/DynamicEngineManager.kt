@@ -93,7 +93,7 @@ class DynamicEngineManager(
             { ms ->
                 val message = "engine thread held for ${ms}ms by one task (budget ${SLOW_STINT_MS}ms) — " +
                     "every pipe, timer and command stalls while the thread is held"
-                runCatching { stintLog?.log(Logger.Level.ERROR, message) }
+                stintLog?.log(Logger.Level.ERROR, message)
                 throw IllegalStateException(message)
             }
         },
@@ -102,13 +102,11 @@ class DynamicEngineManager(
             null
         } else {
             { ms ->
-                runCatching {
-                    stintLog?.log(
-                        Logger.Level.WARN,
-                        "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
-                            "the thread was congested, though no single task held it over budget",
-                    )
-                }
+                stintLog?.log(
+                    Logger.Level.WARN,
+                    "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
+                        "the thread was congested, though no single task held it over budget",
+                )
             }
         },
     )

@@ -113,6 +113,8 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 try {
                     graph = (application as YMusicApplication).graphAsync().await()
+                } catch (c: kotlinx.coroutines.CancellationException) {
+                    throw c // the effect was disposed — not a boot failure
                 } catch (t: Throwable) {
                     (application as YMusicApplication).rootLogger.fork("boot").captureError(t)
                     error = t.message ?: t.toString()
