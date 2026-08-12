@@ -4,11 +4,13 @@ import io.ymusic.dynamicengine.yt.jsonCommand
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
+import kmpcommon.log.trailMark
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** The HTTP protocol's birth-site logging: the scraper tags a request with `logContext`, it rides
@@ -101,6 +103,23 @@ class HostLoggingTest {
             assertEquals(mapOf("id" to "a1"), entry.crumbs[1].prop)
             assertEquals(mapOf<String, Any?>("n" to 1L), entry.crumbs[3].prop)
             assertTrue(entry.error is IOException)
+        } finally {
+            engine.close()
+        }
+    }
+
+    @Test
+    fun a_throw_out_of_jsonCommand_carries_the_deepest_trail() = runTest {
+        val log = Capture()
+        val engine = createTestEngine(FakeHttpClient { throw IOException("unused") }, 1, log)
+        try {
+            val caller = log.fork("Discover").fork("extractBoom", mapOf("url" to "/x"))
+            val e = assertFailsWith<EngineError> {
+                engine.jsonCommand("test/boom", { }, caller) { it.skipValue() }
+            }
+            // The trail would have died with the unwind — jsonCommand stamped it in flight.
+            assertEquals(listOf("Discover", "extractBoom"), e.trailMark()?.map { it.tag })
+            assertEquals(mapOf<String, Any?>("url" to "/x"), e.trailMark()?.last()?.prop)
         } finally {
             engine.close()
         }

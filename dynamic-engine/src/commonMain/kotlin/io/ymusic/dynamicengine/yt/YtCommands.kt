@@ -9,6 +9,7 @@ import io.ymusic.quickjs.PipeResetException
 import io.ymusic.quickjs.asAsyncSink
 import io.ymusic.quickjs.asBufferedSource
 import kmpcommon.log.Logger
+import kmpcommon.log.markTrail
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kotlinx.coroutines.CancellationException
@@ -226,6 +227,12 @@ internal suspend fun <R> DynamicEngine.jsonCommand(
     val key = loggers.park(log)
     try {
         return jsonCommandPipe(command, key, writeFields, read)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        // The trail would die with the unwind — stamp it so the eventual captureError (frames up,
+        // on a shallower logger) still reports this call's full story.
+        throw e.markTrail(log)
     } finally {
         loggers.unpark(key)
     }

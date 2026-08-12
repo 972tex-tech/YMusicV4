@@ -7,6 +7,7 @@ import kmpcommon.error.codedError
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
+import kmpcommon.log.trailMark
 
 /**
  * The app's root [Logger] over Sentry: every [log] is a breadcrumb (category = the crumb-tag path,
@@ -51,12 +52,16 @@ class SentryLogger private constructor(
     }
 
     override fun captureError(error: Throwable, message: String?, prop: Map<String, Any?>?) {
-        echo?.invoke(Logger.Level.ERROR, "$path: capture ${message ?: error.message ?: error}", error)
+        // A trail stamped in-flight (Throwable.markTrail, deepest frame wins) beats this catch
+        // site's shallower one — the exception outranks the catcher on where it has been.
+        val trail = error.trailMark() ?: crumbs
+        val trailPath = trail.joinToString("/") { it.tag }
+        echo?.invoke(Logger.Level.ERROR, "$trailPath: capture ${message ?: error.message ?: error}", error)
         val coded = error.codedError()
         Sentry.captureException(error) { scope ->
-            scope.setTag(TRAIL_TAG, path)
+            scope.setTag(TRAIL_TAG, trailPath)
             coded?.code?.let { scope.setTag(CODE_TAG, it) }
-            scope.setContext("trail", crumbs.map { c -> c.tag + (c.prop?.let { " $it" } ?: "") })
+            scope.setContext("trail", trail.map { c -> c.tag + (c.prop?.let { " $it" } ?: "") })
             message?.let { scope.setExtra("capture.message", it) }
             prop?.forEach { (k, v) -> if (v != null) scope.setExtra("capture.$k", v.toString()) }
         }
