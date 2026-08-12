@@ -18,11 +18,21 @@ import kotlinx.serialization.json.longOrNull
  * the engine root), gets the JS-side trail grafted on by value, and this protocol's [tag] hop
  * appended. The pre-v2 `logCtx: ["tag", …]` head field still decodes (older remote bundles).
  */
-internal suspend fun protocolLogger(parked: ParkedLoggers, head: JsonObject, tag: String): Logger? {
+internal suspend fun protocolLogger(
+    parked: ParkedLoggers,
+    head: JsonObject,
+    tag: String,
+    prop: Map<String, Any>? = null,
+): Logger? {
     val wire = head["log"] as? JsonObject
     val key = (wire?.get("key") as? JsonPrimitive)?.intOrNull
-    return parked.resolve(key)?.forkAll(readTrail(wire, head))?.fork(tag)
+    return parked.resolve(key)?.forkAll(readTrail(wire, head))?.fork(tag, prop)
 }
+
+/** A head's string field as a one-entry prop map, the query string stripped (PII rule: never log
+ *  query parameters). Absent/malformed → null, never a throw — props must not break the serve. */
+internal fun JsonObject.propOf(field: String): Map<String, Any>? =
+    (this[field] as? JsonPrimitive)?.contentOrNull?.substringBefore('?')?.let { mapOf(field to it) }
 
 private fun readTrail(wire: JsonObject?, head: JsonObject): List<Crumb> {
     val trail = wire?.get("trail") as? JsonArray

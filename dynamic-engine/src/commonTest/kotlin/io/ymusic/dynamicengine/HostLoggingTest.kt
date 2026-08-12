@@ -64,6 +64,7 @@ class HostLoggingTest {
             val entry = log.calls.single { it.level == Logger.Level.WARN }
             assertEquals(Logger.Level.WARN, entry.level)
             assertEquals(listOf("download#a1b2", "js:fetchForLinkParser", "http"), entry.tags)
+            assertEquals(mapOf<String, Any>("url" to "https://youtube.com/watch"), entry.crumbs.last().prop)
             assertTrue(entry.message.startsWith("request failed:"), "message was: ${entry.message}")
             assertTrue(entry.message.contains("connect refused"), "message was: ${entry.message}")
             assertTrue(entry.error is IOException, "the native cause is logged for fidelity")

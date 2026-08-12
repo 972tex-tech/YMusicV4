@@ -112,7 +112,7 @@ private suspend fun serve(
             pipe.sink.close(reason(WireError(code = "E20050", message = "malformed cache head: ${e.message}")))
             return
         }
-        log = protocolLogger(parked, head, tag)
+        log = protocolLogger(parked, head, tag, (head.propOf("scope").orEmpty() + head.propOf("key").orEmpty()).ifEmpty { null })
         try {
             handle(head, src)
             pipe.sink.close() // END

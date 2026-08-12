@@ -101,7 +101,7 @@ private suspend fun serveCookie(
             pipe.sink.close(reason(WireError(code = "E20040", message = "malformed cookie head: ${e.message}")))
             return
         }
-        log = protocolLogger(parked, head, tag)
+        log = protocolLogger(parked, head, tag, head.propOf("url"))
         try {
             handle(head, log)
             pipe.sink.close() // clean END (no-op after an in-place RESET)

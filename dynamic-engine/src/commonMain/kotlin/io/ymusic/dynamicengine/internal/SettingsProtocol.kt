@@ -83,7 +83,7 @@ private suspend fun serveSettings(
             pipe.sink.close(reason(WireError(code = "E20060", message = "malformed settings head: ${e.message}")))
             return
         }
-        log = protocolLogger(parked, head, tag)
+        log = protocolLogger(parked, head, tag, head.propOf("key"))
         try {
             handle(head)
             pipe.sink.close()

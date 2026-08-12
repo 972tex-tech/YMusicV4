@@ -84,7 +84,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
 
             val prepared = try {
                 val head = JsonReader(src).readObject()
-                log = protocolLogger(parked, head, "http")
+                log = protocolLogger(parked, head, "http", head.propOf("url"))
                 val method = head["method"]?.jsonPrimitive?.content ?: "GET"
                 val url = head["url"]?.jsonPrimitive?.content ?: ""
                 val headers = (head["headers"] as? JsonArray).orEmpty().map { entry ->
