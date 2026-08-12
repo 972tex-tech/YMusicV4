@@ -1,6 +1,5 @@
 package io.ymusic.player.webview
 
-import android.util.Log
 import android.webkit.WebResourceResponse
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
 import kotlinx.coroutines.runBlocking
@@ -18,7 +17,7 @@ import java.io.InputStream
  * `shouldInterceptRequest` runs on a WebView background thread and wants a (blocking) [InputStream], so we
  * `runBlocking` the suspend serve to get headers, then stream the body through a blocking bridge.
  */
-internal fun proxyIntercept(proxy: LocalMediaProxy, target: String): WebResourceResponse = try {
+internal fun proxyIntercept(proxy: LocalMediaProxy, target: String, log: kmpcommon.log.Logger?): WebResourceResponse = try {
     runBlocking {
         val response = proxy.serve(target)
         val contentType = response.headers.firstOrNull { it.first.equals("Content-Type", ignoreCase = true) }?.second
@@ -39,7 +38,7 @@ internal fun proxyIntercept(proxy: LocalMediaProxy, target: String): WebResource
     // observed live) must come back as a response — the page's SABR layer retries failed
     // fetches; a dead process doesn't. An IOException replays through the body stream, where
     // Chromium handles it as a genuine network read failure; anything else serves empty bytes.
-    Log.w("ProxyIntercept", "forward failed for $target", e)
+    log?.log(kmpcommon.log.Logger.Level.WARN, "forward failed for $target", e)
     val body: InputStream = if (e is IOException) FailingInputStream(e) else ByteArrayInputStream(byteArrayOf())
     WebResourceResponse("text/plain", null, 504, "Gateway Timeout", emptyMap(), body)
 }

@@ -105,7 +105,8 @@ class Ffmpeg(
         }
         val code = process.exitCode.await()
         runCatching { progress?.await() }
-        val log = runCatching { stderr.await() }.getOrDefault("")
+        // The E70021 diagnostic below IS this text — a failed collector must say so, not report "".
+        val log = runCatching { stderr.await() }.getOrElse { "stderr collector failed: $it" }
         process.close()
         if (code != 0) throw TechnicalException("E70021", "ffmpeg exited $code:\n$log")
     }

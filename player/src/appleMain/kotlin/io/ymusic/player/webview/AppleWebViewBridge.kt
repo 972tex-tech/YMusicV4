@@ -40,6 +40,7 @@ const val APPLE_WEBVIEW_USER_AGENT: String =
 internal class AppleWebViewBridge(
     sink: WebViewMessageSink,
     mediaProxy: LocalMediaProxy? = null,
+    logger: kmpcommon.log.Logger? = null,
     configure: WKWebViewConfiguration.() -> Unit = {},
 ) : WebViewBridge {
     override val platform: String = "darwin"
@@ -51,7 +52,7 @@ internal class AppleWebViewBridge(
     // The player-cache delivery channel: WKWebView can't intercept https, so webview-js on darwin serves
     // /videoplayback over this WKScriptMessageHandlerWithReply channel (see AppleProxyChannel). Only
     // installed when a cache is wired; a with-reply handler must register in a specific content world.
-    private val proxyChannel = mediaProxy?.let { AppleProxyChannel(it) }
+    private val proxyChannel = mediaProxy?.let { AppleProxyChannel(it, logger?.fork("proxy-channel")) }
 
     private val config = WKWebViewConfiguration().apply {
         preferences.javaScriptEnabled = true

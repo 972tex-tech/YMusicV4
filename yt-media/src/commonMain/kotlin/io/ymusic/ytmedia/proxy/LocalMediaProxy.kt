@@ -102,7 +102,13 @@ class LocalMediaProxy(
         val params = parseQuery(target.substringAfter('?', ""))
         val url = params["url"] ?: return text(400, "Bad Request", "missing url")
         val method = params["method"] ?: "GET"
-        val body = params["body"]?.let { runCatching { Base64.decode(it) }.getOrNull() }
+        // A body that fails to decode must not silently forward the request bodiless — a SABR POST
+        // without its proto answers with a mystery failure downstream.
+        val body = params["body"]?.let {
+            runCatching { Base64.decode(it) }
+                .onFailure { e -> log?.log(Logger.Level.WARN, "forward body base64 decode failed", e) }
+                .getOrNull()
+        }
         return serveRequest(url, method, body)
     }
 

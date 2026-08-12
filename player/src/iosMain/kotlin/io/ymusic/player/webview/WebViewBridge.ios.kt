@@ -9,8 +9,9 @@ import platform.UIKit.UIViewAutoresizingFlexibleWidth
 internal actual fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
+    logger: kmpcommon.log.Logger?,
 ): WebViewBridge {
-    val bridge = AppleWebViewBridge(sink, context.mediaProxy) {
+    val bridge = AppleWebViewBridge(sink, context.mediaProxy, logger) {
         allowsInlineMediaPlayback = true
         allowsPictureInPictureMediaPlayback = false
     }

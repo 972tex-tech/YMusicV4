@@ -37,7 +37,8 @@ import kotlin.math.min
 internal actual fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
-): WebViewBridge = JcefWebViewBridge(context, sink)
+    logger: kmpcommon.log.Logger?,
+): WebViewBridge = JcefWebViewBridge(context, sink, logger)
 
 private const val EMBED_URL = "https://www.youtube.com/embed"
 
@@ -56,6 +57,7 @@ private const val DO_NOT_BLOCK = "_doNotBlock=42"
 private class JcefWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
+    private val log: kmpcommon.log.Logger?,
 ) : WebViewBridge {
     override val platform: String = "jvm"
 
@@ -137,7 +139,7 @@ private class JcefWebViewBridge(
                 val target = url.substring(url.indexOf(LocalMediaProxy.FORWARD_PATH)) // strip origin → path+query
                 return object : CefResourceRequestHandlerAdapter() {
                     override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?) =
-                        ProxyResourceHandler(proxy::serve, target, proxyScope)
+                        ProxyResourceHandler(proxy::serve, target, proxyScope, log)
                 }
             }
             // Block any *.js the content-script hook didn't route through the transform pipeline (which

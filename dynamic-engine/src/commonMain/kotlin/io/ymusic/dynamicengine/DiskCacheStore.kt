@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.SqlDriver
 import io.ymusic.dynamicengine.db.CacheDatabase
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.writeAll
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -48,7 +49,10 @@ class DiskCacheStore(
     private val fileSystem: FileSystem,
     private val now: () -> Long,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    logger: Logger? = null,
 ) : CacheStore {
+
+    private val log = logger?.fork("engine-cache")
 
     private val queries = CacheDatabase(driver).cacheEntryQueries
     private val writeLock = Mutex()
@@ -126,8 +130,8 @@ class DiskCacheStore(
 
     private fun decodeCustom(text: String): Map<String, String> = try {
         json.decodeFromString(text)
-    } catch (_: SerializationException) {
-        emptyMap()
+    } catch (e: SerializationException) {
+        emptyMap<String, String>().also { log?.log(Logger.Level.WARN, "corrupt cache meta dropped", e) }
     }
 
     private fun blobPath(scope: String, key: String) = directory / "${stem(scope, key)}$BLOB_EXT"

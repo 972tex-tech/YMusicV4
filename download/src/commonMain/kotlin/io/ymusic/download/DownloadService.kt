@@ -303,5 +303,6 @@ class DownloadService(
 
     private fun cleanupTemp(id: String) {
         runCatching { storage.deleteScratch(id) }
+            .onFailure { log?.log(Logger.Level.WARN, "scratch cleanup failed for $id (files leak until next run)", it) }
     }
 }

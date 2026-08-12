@@ -267,7 +267,7 @@ internal class SabrCacheTee(
                     null
                 }
                 if (fmt == null) {
-                    markIllegal("parse FORMAT_INITIALIZATION_METADATA failed ${error?.message}")
+                    markIllegal("parse FORMAT_INITIALIZATION_METADATA failed ${error?.message}", error)
                 } else {
                     cache.index.putFormatInit(fmt.itag, fmt.lmt, buf.readByteArray())
                     logVerbose { "stored format-init for itag=${fmt.itag} ($size bytes)" }
@@ -299,10 +299,10 @@ internal class SabrCacheTee(
 
     /** Corrupt/inconsistent stream (or a cache-write failure): drop every open fill and stop caching for the
      *  rest of this response. Pass-through to the player is untouched — only the tee gives up. Idempotent. */
-    private fun markIllegal(reason: String) {
+    private fun markIllegal(reason: String, cause: Throwable? = null) {
         if (illegalState) return
         illegalState = true
-        logger?.log(Logger.Level.WARN, "sabr-fill disabled (illegal state): $reason")
+        logger?.log(Logger.Level.WARN, "sabr-fill disabled (illegal state): $reason", cause)
         abortOpen()
     }
 

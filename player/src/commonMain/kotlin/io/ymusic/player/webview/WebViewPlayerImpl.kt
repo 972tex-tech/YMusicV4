@@ -11,6 +11,7 @@ import io.ymusic.player.Progress
 import io.ymusic.player.VideoQualityState
 import io.ymusic.player.WebViewPlayer
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,7 +148,7 @@ internal class WebViewPlayerImpl(
         scope.launch {
             val html = runCatching { embedHtml(bridge.userAgent) }.getOrElse {
                 // The page never came up — the legacy WV_LOAD_ERROR shape: retryable, dead session.
-                fail("E60031", "failed to fetch the YouTube embed page: ${it.message}", needReset = true)
+                fail("E60031", "failed to fetch the YouTube embed page: ${it.message}", error = it, needReset = true)
                 return@launch
             }
             if (!html.contains(INJECT_PLACEHOLDER)) {
@@ -322,21 +323,23 @@ internal class WebViewPlayerImpl(
             is WebViewEvent.AudioTracksChanged -> _audioTracks.value = e.state
             is WebViewEvent.WatchNextSeen -> _watchNextSeen.tryEmit(e)
             is WebViewEvent.PlayerResponse -> playerResWaiters.remove(e.videoId)?.complete(e.dataJson)
+            // A page-reported anomaly the session usually survives — WARN, not the one crash record
+            // (playback death is captured off the PlaybackStatus.error transition, app-side).
             is WebViewEvent.ReportError ->
                 log?.log(
-                    Logger.Level.ERROR,
+                    Logger.Level.WARN,
                     listOfNotNull(e.message, e.extras).joinToString("\n").take(4096).ifEmpty { "report_error" },
                 )
             is WebViewEvent.PoToken -> poTokenWaiters.remove(e.videoId)?.let { waiter ->
                 if (e.token != null) waiter.complete(e.token)
                 else waiter.completeExceptionally(IllegalStateException("po token failed: ${e.errorMessage}"))
             }
-            null -> Unit
+            null -> log?.debug { "undecoded page event on channel $channel" }
         }
     }
 
-    private fun fail(code: String, message: String, needReset: Boolean = false) = _status.update {
-        log?.log(Logger.Level.WARN, "$code $message")
+    private fun fail(code: String, message: String, error: Throwable? = null, needReset: Boolean = false) = _status.update {
+        log?.log(Logger.Level.WARN, "$code $message", error)
         bridge.setVisible(false)
         it.copy(state = PlaybackState.Error(PlayerError(code, message, needReset = needReset)))
     }

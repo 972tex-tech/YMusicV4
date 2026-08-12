@@ -14,6 +14,8 @@ import io.ymusic.ytmedia.ump.readUmpPartHeader
 import io.ymusic.ytmedia.ump.skipFully
 import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.io.asAsyncSource
+import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmphttp.KmpHttpClient
 import kmphttp.MediaTypeX.toMediaTypeOrNull
 import kmphttp.RedirectOptions
@@ -61,8 +63,8 @@ class SabrSession(
     private val viewportWidth: Int = 640,
     private val viewportHeight: Int = 360,
     private val maxConsecutiveEmptyRounds: Int = 3,
-    /** Optional per-round diagnostics. */
-    private val log: (String) -> Unit = {},
+    /** Per-round diagnostics ride DEBUG; failures the session absorbs ride WARN. */
+    private val logger: Logger? = null,
 ) {
     private val cpn = generateCpn(random)
     private var rn = 0
@@ -135,9 +137,14 @@ class SabrSession(
             // Reuse the player cache first: if it can serve this request's segments locally, parse that
             // synthesized UMP instead of hitting the network. A re-download of an already-cached track is
             // served entirely from cache (zero network); a partial/absent cache falls through below.
-            val served = mediaCache?.let { runCatching { it.serveSabr(request) }.getOrNull() }
+            // A throwing cache-serve degrades this round to full network — worth a trace, never fatal.
+            val served = mediaCache?.let {
+                runCatching { it.serveSabr(request) }
+                    .onFailure { e -> logger?.log(Logger.Level.WARN, "cache serve failed, using network", e) }
+                    .getOrNull()
+            }
             if (served is SabrServe.Hit) {
-                log("cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}")
+                logger?.debug { "cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}" }
                 val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use {
                     readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
                 }
@@ -149,11 +156,11 @@ class SabrSession(
             val requestUrl = url
                 .setQueryParam("cpn", cpn)
                 .setQueryParam("rn", (++rn).toString())
-            log(
+            logger?.debug {
                 "round rn=$rn playerTime=${request.clientAbrState.playerTimeMs} " +
                     "audioSeg=${audioSegment?.segmentIndex} videoSeg=${videoSegment?.segmentIndex} " +
-                    "selected=${request.selectedFormats.size} cookieLen=${playbackCookie.size}",
-            )
+                    "selected=${request.selectedFormats.size} cookieLen=${playbackCookie.size}"
+            }
 
             val httpRequest = RequestBuilder()
                 .url(requestUrl)
@@ -182,10 +189,10 @@ class SabrSession(
             }
             if (outcome == null) continue // HTTP redirect — retry at the new url
 
-            log(
+            logger?.debug {
                 "  resp headers=${outcome.headers} seg=[${outcome.segRange()}] completed=${outcome.completedSegments} " +
-                    "backoffMs=${outcome.backoffMs} protection=${outcome.protectionStatus} audioBytes=${audio.file.length()}",
-            )
+                    "backoffMs=${outcome.backoffMs} protection=${outcome.protectionStatus} audioBytes=${audio.file.length()}"
+            }
             if (outcome.redirect != null) {
                 url = outcome.redirect
                 continue
@@ -355,9 +362,11 @@ class SabrSession(
                     }
 
                     UmpPart.SABR_CONTEXT_UPDATE -> {
+                        // A dropped update changes what the server does next round — record the drop.
                         val update = runCatching {
                             SabrContextUpdate.fromUmpResponse(body.readFields(partSize))
-                        }.getOrNull()
+                        }.onFailure { e -> logger?.log(Logger.Level.WARN, "SABR_CONTEXT_UPDATE parse failed, dropped", e) }
+                            .getOrNull()
                         if (update != null) sabrContextUpdates[update.type] = update
                     }
 

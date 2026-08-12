@@ -173,7 +173,10 @@ private fun inboundTrampoline(user: COpaquePointer?, op: Int, id: UInt, data: CP
             else -> 0
         }
     } catch (e: Throwable) {
-        println("quickjs: host callback failed (op=$op id=$idInt): $e")
+        // Route the failure onto the runtime's log channel (→ the app Logger at ERROR); println is
+        // the last resort if the log hook itself is what threw.
+        runCatching { cb.onLog(3, "host callback failed (op=$op id=$idInt): ${e.stackTraceToString().take(2000)}") }
+            .onFailure { println("quickjs: host callback failed (op=$op id=$idInt): $e") }
         -1
     }
 }

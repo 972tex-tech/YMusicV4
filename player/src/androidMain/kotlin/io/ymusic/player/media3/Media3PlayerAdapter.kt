@@ -4,7 +4,6 @@ package io.ymusic.player.media3
 
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -55,6 +54,7 @@ import androidx.media3.common.Player as Media3Player
 class Media3PlayerAdapter(
     private val player: Player,
     private val describe: (PlayableItem) -> MediaMetadata,
+    private val logger: kmpcommon.log.Logger? = null,
     extraInvalidations: Flow<*> = emptyFlow<Unit>(),
     /** Applies a controller's setMediaItems (an Android Auto browse tap arrives this way after the
      *  session callback resolved the ids) onto the passed facade — the owner decides how a mediaId
@@ -194,7 +194,7 @@ class Media3PlayerAdapter(
             if (to > from) player.remove(from, to)
         } catch (e: IllegalArgumentException) {
             // Belt over the clamp: a stale cross-process edit is dropped, never fatal.
-            Log.w(TAG, "stale removeMediaItems($fromIndex, $toIndex)", e)
+            logger?.log(kmpcommon.log.Logger.Level.WARN, "stale removeMediaItems($fromIndex, $toIndex)", e)
         }
     }
 
@@ -206,7 +206,7 @@ class Media3PlayerAdapter(
         try {
             if (to > from) player.move(from, to, target)
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "stale moveMediaItems($fromIndex, $toIndex, $newIndex)", e)
+            logger?.log(kmpcommon.log.Logger.Level.WARN, "stale moveMediaItems($fromIndex, $toIndex, $newIndex)", e)
         }
     }
 

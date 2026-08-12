@@ -71,5 +71,5 @@ fun createWebViewPlayer(
     embedHtml: suspend (userAgent: String) -> String,
     logger: kmpcommon.log.Logger? = null,
 ): WebViewPlayer = WebViewPlayerImpl(engineJs, appVersion, embedHtml, logger) { sink ->
-    createWebViewBridge(context, sink)
+    createWebViewBridge(context, sink, logger)
 }

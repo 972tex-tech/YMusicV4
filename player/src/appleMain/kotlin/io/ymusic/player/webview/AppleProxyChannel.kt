@@ -48,7 +48,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 @OptIn(ExperimentalForeignApi::class, ExperimentalEncodingApi::class)
 internal class AppleProxyChannel(
     private val proxy: LocalMediaProxy,
-    private val log: (String) -> Unit = {},
+    private val log: kmpcommon.log.Logger? = null,
 ) : NSObject(), WKScriptMessageHandlerWithReplyProtocol {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -69,7 +69,7 @@ internal class AppleProxyChannel(
             try {
                 replyHandler(handle(raw), null)
             } catch (t: Throwable) {
-                log("proxy channel error: ${t.message}")
+                log?.log(kmpcommon.log.Logger.Level.WARN, "proxy channel error", t)
                 replyHandler(null, t.message ?: "proxy error")
             }
         }
@@ -115,7 +115,7 @@ internal class AppleProxyChannel(
 
     /** Closing the body releases the upstream network response (the tee / caching source forwards close). */
     private fun close(id: String) {
-        streams.remove(id)?.let { runCatching { it.close() } }
+        streams.remove(id)?.let { runCatching { it.close() } } // best-effort: the page cancelled; a failing close has no consumer
     }
 
     fun release() {

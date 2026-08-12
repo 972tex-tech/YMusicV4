@@ -3,6 +3,7 @@ package io.ymusic.download
 import app.cash.sqldelight.db.SqlDriver
 import io.ymusic.download.db.DownloadDatabase
 import io.ymusic.download.internal.downloadDbDispatcher
+import kmpcommon.log.Logger
 import kotlinx.coroutines.withContext
 
 /**
@@ -11,9 +12,10 @@ import kotlinx.coroutines.withContext
  * the UI's [DownloadTasksAggregator] reads/observes here; nothing holds the whole list resident. Build the
  * [driver] with the per-platform `downloadDatabase*Driver` factory.
  */
-class DownloadStore(driver: SqlDriver) {
+class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
 
     private val queries = DownloadDatabase(driver).downloadTaskQueries
+    private val log = logger?.fork("download-store")
 
     suspend fun all(): List<DownloadTask> = withContext(downloadDbDispatcher()) {
         queries.selectAll(::mapRow).executeAsList()
@@ -88,9 +90,13 @@ class DownloadStore(driver: SqlDriver) {
         title = title,
         artist = artist,
         thumbnailUrl = thumbnail_url,
-        format = runCatching { DownloadFormat.valueOf(format) }.getOrDefault(DownloadFormat.M4A),
+        format = runCatching { DownloadFormat.valueOf(format) }
+            .onFailure { log?.log(Logger.Level.WARN, "task $id has unknown format '$format', defaulting M4A", it) }
+            .getOrDefault(DownloadFormat.M4A),
         requestedHeight = requested_height?.toInt(),
-        state = runCatching { DownloadState.valueOf(state) }.getOrDefault(DownloadState.FAILED),
+        state = runCatching { DownloadState.valueOf(state) }
+            .onFailure { log?.log(Logger.Level.WARN, "task $id has unknown state '$state', defaulting FAILED", it) }
+            .getOrDefault(DownloadState.FAILED),
         downloadedBytes = downloaded_bytes,
         totalBytes = total_bytes,
         fileUri = file_path,

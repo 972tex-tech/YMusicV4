@@ -12,7 +12,6 @@ import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import io.ymusic.ytmedia.sabr.SabrTrack
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
-import kmpcommon.log.debug
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
 import kmphttp.byteString
@@ -124,7 +123,7 @@ class YtStreamDownloader(
         // Best-effort: a caption that fails to download is logged and skipped — it must not fail the media.
         val captionFiles = captionPicks.mapNotNull { track ->
             runCatching { downloadCaption(task.id, track) }
-                .onFailure { log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}") }
+                .onFailure { log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}", it) }
                 .getOrNull()
         }
 
@@ -196,7 +195,7 @@ class YtStreamDownloader(
         var reAttested = false
         while (true) {
             try {
-                SabrSession(log = { line -> log?.debug { line } }).download(
+                SabrSession(logger = log).download(
                     client = client,
                     userAgent = userAgent,
                     spec = current,

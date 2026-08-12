@@ -32,6 +32,7 @@ internal class ProxyResourceHandler(
     private val serve: suspend (String) -> ProxyResponse,
     private val target: String,
     parentScope: CoroutineScope,
+    private val log: kmpcommon.log.Logger? = null,
 ) : CefResourceHandlerAdapter() {
 
     // Header fields: written in [processRequest]'s coroutine before its Continue(), read by CEF in
@@ -64,6 +65,7 @@ internal class ProxyResourceHandler(
                 serve(target)
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
+                log?.log(kmpcommon.log.Logger.Level.WARN, "proxy serve failed: $target", error)
                 status = 502
                 synchronized(lock) { eof = true }
                 callback.cancel()
@@ -108,6 +110,7 @@ internal class ProxyResourceHandler(
                 // A mid-stream read failure must NOT masquerade as a clean EOF — that would serve the
                 // truncated body as a complete response. Flag it and abort any parked read; readResponse
                 // cancels the request once the already-buffered bytes drain.
+                log?.log(kmpcommon.log.Logger.Level.WARN, "proxy body read failed: $target", t)
                 synchronized(lock) {
                     failed = true
                     dataCallback?.cancel()

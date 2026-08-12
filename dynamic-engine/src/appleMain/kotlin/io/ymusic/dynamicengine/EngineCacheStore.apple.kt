@@ -19,7 +19,7 @@ import platform.Foundation.timeIntervalSince1970
  * Application Support, not the caches directory: the Recommended feed lives in this store and has
  * no other copy, so an OS purge would silently delete user-visible content.
  */
-fun appleEngineCacheStore(directory: Path = defaultEngineCacheDirectory()): CacheStore {
+fun appleEngineCacheStore(directory: Path = defaultEngineCacheDirectory(), logger: kmpcommon.log.Logger? = null): CacheStore {
     FileSystem.SYSTEM.createDirectories(directory)
     val driver = NativeSqliteDriver(
         schema = CacheDatabase.Schema,
@@ -33,6 +33,7 @@ fun appleEngineCacheStore(directory: Path = defaultEngineCacheDirectory()): Cach
         directory / "blobs",
         FileSystem.SYSTEM,
         now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+        logger = logger,
     )
 }
 

@@ -120,7 +120,7 @@ class DynamicEngineManager(
         try {
             engine.healthCheck()
         } catch (t: Throwable) {
-            runCatching { engine.closeNow() }
+            runCatching { engine.closeNow() } // best-effort teardown; the boot failure below is the story
             throw t
         }
         engine

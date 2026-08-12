@@ -57,4 +57,5 @@ internal fun interface WebViewMessageSink {
 internal expect fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
+    logger: kmpcommon.log.Logger?,
 ): WebViewBridge

@@ -18,6 +18,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.ymusic.player.WebViewPlayerContext
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import java.io.ByteArrayInputStream
 import kotlin.random.Random
 
@@ -31,7 +33,8 @@ import kotlin.random.Random
 internal actual fun createWebViewBridge(
     context: WebViewPlayerContext,
     sink: WebViewMessageSink,
-): WebViewBridge = AndroidWebViewBridge(context.context, context.container, context.mediaProxy, sink)
+    logger: Logger?,
+): WebViewBridge = AndroidWebViewBridge(context.context, context.container, context.mediaProxy, sink, logger)
 
 @SuppressLint("SetJavaScriptEnabled")
 private class AndroidWebViewBridge(
@@ -39,7 +42,10 @@ private class AndroidWebViewBridge(
     private val container: ViewGroup,
     private val mediaProxy: LocalMediaProxy?,
     sink: WebViewMessageSink,
+    logger: Logger?,
 ) : WebViewBridge {
+
+    private val log = logger?.fork("webview")
 
     override val platform: String = "android"
 
@@ -77,8 +83,8 @@ private class AndroidWebViewBridge(
             0,
             0,
         )
-        webViewClient = WebViewClientImpl(mediaProxy)
-        webChromeClient = WebChromeClientImpl()
+        webViewClient = WebViewClientImpl(mediaProxy, log)
+        webChromeClient = WebChromeClientImpl(log)
     }
 
     override val userAgent: String = webView.settings.userAgentString
@@ -132,7 +138,7 @@ private class AndroidWebViewBridge(
         }
     }
 
-    private class WebViewClientImpl(private val mediaProxy: LocalMediaProxy?) : WebViewClient() {
+    private class WebViewClientImpl(private val mediaProxy: LocalMediaProxy?, private val log: Logger?) : WebViewClient() {
         override fun shouldOverrideUrlLoading(
             view: WebView?,
             request: WebResourceRequest?
@@ -151,7 +157,7 @@ private class AndroidWebViewBridge(
             val proxy = mediaProxy
             if (proxy != null && url.contains(LocalMediaProxy.FORWARD_PATH)) {
                 val target = url.substring(url.indexOf(LocalMediaProxy.FORWARD_PATH)) // strip origin → path+query
-                return proxyIntercept(proxy, target)
+                return proxyIntercept(proxy, target, log)
             }
             if (url.matches(Regex(".*\\.js([?#].*)*$")) && !url.contains("_doNotBlock=42")) {
                 return WebResourceResponse(
@@ -169,9 +175,14 @@ private class AndroidWebViewBridge(
         }
     }
 
-    private class WebChromeClientImpl : WebChromeClient() {
+    private class WebChromeClientImpl(private val log: Logger?) : WebChromeClient() {
         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-            println("[${consoleMessage.messageLevel()}] ${consoleMessage.message()}\nSource: ${consoleMessage.sourceId()} (${consoleMessage.lineNumber()})")
+            val line = "${consoleMessage.message()} — ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()}"
+            when (consoleMessage.messageLevel()) {
+                ConsoleMessage.MessageLevel.ERROR, ConsoleMessage.MessageLevel.WARNING ->
+                    log?.fork("console")?.log(Logger.Level.WARN, line)
+                else -> log?.fork("console")?.debug { line }
+            }
             return true
         }
 
