@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
@@ -146,16 +147,19 @@ fun main() {
             cefManager.dispose()
             exitApplication()
         }
-        val windowState = rememberWindowState(size = rememberedWindowSize())
-        // Persist the size the user settles on (debounced past the live-resize churn); a maximized/
-        // fullscreen size is the placement's, not the user's chosen floating size, so it's skipped.
+        val (initialSize, initialPosition) = remember { loadWindowPrefs() }
+        val windowState = rememberWindowState(size = initialSize, position = initialPosition)
+        // Persist the size/position the user settles on (debounced past the live drag/resize
+        // churn); a maximized/fullscreen geometry is the placement's, not the user's chosen
+        // floating one, so it's skipped.
         LaunchedEffect(windowState) {
-            snapshotFlow { windowState.size to windowState.placement }.collectLatest { (size, placement) ->
-                delay(500)
-                if (placement == WindowPlacement.Floating) {
-                    withContext(Dispatchers.IO) { saveWindowSize(size) }
+            snapshotFlow { Triple(windowState.size, windowState.position, windowState.placement) }
+                .collectLatest { (size, position, placement) ->
+                    delay(500)
+                    if (placement == WindowPlacement.Floating) {
+                        withContext(Dispatchers.IO) { saveWindowPrefs(size, position) }
+                    }
                 }
-            }
         }
         Window(
             visible = windowVisible,
@@ -603,30 +607,53 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
     }
 }
 
-// The window-size memory lives in its OWN tiny file, read synchronously before the first frame —
-// the settings store only exists once the async graph build runs, too late to size the window.
+// The window-geometry memory lives in its OWN tiny file, read synchronously before the first
+// frame — the settings store only exists once the async graph build runs, too late to size the
+// window.
 private val windowPrefsFile = File(System.getProperty("user.home"), ".ymusic/window.properties")
 private val defaultWindowSize = DpSize(480.dp, 860.dp)
 
-private fun rememberedWindowSize(): DpSize = runCatching {
+private fun loadWindowPrefs(): Pair<DpSize, WindowPosition> {
     val p = java.util.Properties()
-    windowPrefsFile.inputStream().use(p::load)
+    runCatching { windowPrefsFile.inputStream().use(p::load) } // no file yet / unreadable → defaults
     val w = p.getProperty("width")?.toFloatOrNull()
     val h = p.getProperty("height")?.toFloatOrNull()
     // Sanity floor: never restore a degenerate size a bad write (or a past bug) left behind.
-    if (w != null && h != null && w >= 320f && h >= 480f) DpSize(w.dp, h.dp) else defaultWindowSize
-}.getOrDefault(defaultWindowSize) // no file yet / unreadable → default
+    val size = if (w != null && h != null && w >= 320f && h >= 480f) DpSize(w.dp, h.dp) else defaultWindowSize
+    val x = p.getProperty("x")?.toFloatOrNull()
+    val y = p.getProperty("y")?.toFloatOrNull()
+    val position = when {
+        x == null || y == null -> WindowPosition.PlatformDefault
+        // The saved spot may be gone (monitor unplugged, resolution change) — a window whose title
+        // bar lands on no screen can't be grabbed back, so it resets to center instead.
+        isOnScreen(x, y) -> WindowPosition(x.dp, y.dp)
+        else -> WindowPosition.Aligned(Alignment.Center)
+    }
+    return size to position
+}
 
-private fun saveWindowSize(size: DpSize) {
+/** True when a title-bar point of a window at ([x], [y]) lands on some connected screen. */
+private fun isOnScreen(x: Float, y: Float): Boolean = runCatching {
+    java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.any { device ->
+        val b = device.defaultConfiguration.bounds
+        x + 100 > b.x && x + 100 < b.x + b.width && y + 20 > b.y && y + 20 < b.y + b.height
+    }
+}.getOrDefault(true) // can't enumerate screens → don't block the restore
+
+private fun saveWindowPrefs(size: DpSize, position: WindowPosition) {
     val p = java.util.Properties()
     p.setProperty("width", size.width.value.toString())
     p.setProperty("height", size.height.value.toString())
+    if (position.isSpecified) {
+        p.setProperty("x", position.x.value.toString())
+        p.setProperty("y", position.y.value.toString())
+    }
     try {
         windowPrefsFile.parentFile?.mkdirs()
         windowPrefsFile.outputStream().use { p.store(it, null) }
     } catch (e: java.io.IOException) {
         // Environmental (disk full, permissions) — the window still works, only the memory is lost.
-        rootLogger.fork("window").log(Logger.Level.WARN, "window size save failed", e)
+        rootLogger.fork("window").log(Logger.Level.WARN, "window prefs save failed", e)
     }
 }
 
