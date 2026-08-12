@@ -32,26 +32,25 @@ class SentryLogger private constructor(
      *  how one job's lines stay separable from a concurrent twin's (natural ids over minted ones). */
     private val props: MutableMap<String, Any> by lazy(LazyThreadSafetyMode.NONE) {
         val merged = mutableMapOf<String, Any>()
-        for (c in crumbs) c.prop?.forEach { (k, v) -> if (v != null) merged[k] = v }
+        for (c in crumbs) c.prop?.let(merged::putAll)
         merged
     }
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
         echo?.invoke(level, if (crumbs.isEmpty()) message else "$path: $message", error)
-        val crumb = Breadcrumb(level = level.toSentry(), message = message, category = path)
-        if (props.isNotEmpty() || error != null) {
-            // Copied per crumb: setData may keep the reference, and `props` is shared by every log
-            // on this logger.
-            val data = HashMap<String, Any>(props)
-            // The birth-site log carries the native stack; keep a capped copy on the breadcrumb so
-            // the eventual capture (which crossed a boundary as {code, message}) still shows it.
-            if (error != null) data["error"] = error.stackTraceToString().take(STACK_CAP)
-            crumb.setData(data)
+        val data = if (props.isEmpty() && error == null) {
+            null
+        } else {
+            HashMap<String, Any>(props).also {
+                // The birth-site log carries the native stack; a capped copy on the breadcrumb is
+                // what survives once the failure crosses a boundary as {code, message}.
+                if (error != null) it["error"] = error.stackTraceToString().take(STACK_CAP)
+            }
         }
-        Sentry.addBreadcrumb(crumb)
+        Sentry.addBreadcrumb(Breadcrumb(level = level.toSentry(), message = message, category = path, data = data))
     }
 
-    override fun captureError(error: Throwable, message: String?, prop: Map<String, Any?>?) {
+    override fun captureError(error: Throwable, message: String?, prop: Map<String, Any>?) {
         // The deepest trail stamped in flight (Throwable.markTrail), else this catch site's.
         val trail = error.trailMark() ?: crumbs
         val trailPath = trail.joinToString("/") { it.tag }
@@ -62,23 +61,18 @@ class SentryLogger private constructor(
             coded?.code?.let { scope.setTag(CODE_TAG, it) }
             // The trail rendered as this event's closing breadcrumbs — one row per hop, props as
             // data — right where the reader already is, in step with every other crumb.
-            for (c in trail) {
-                val hop = Breadcrumb(level = SentryLevel.ERROR, message = c.tag, category = "trail")
-                c.prop?.let { p ->
-                    hop.setData(HashMap<String, Any>().apply { p.forEach { (k, v) -> if (v != null) put(k, v) } })
-                }
-                scope.addBreadcrumb(hop)
-            }
+            for (c in trail) scope.addBreadcrumb(Breadcrumb(message = c.tag, data = c.prop?.let(::HashMap)))
             message?.let { scope.setExtra("capture.message", it) }
-            prop?.forEach { (k, v) -> if (v != null) scope.setExtra("capture.$k", v.toString()) }
+            prop?.forEach { (k, v) -> scope.setExtra("capture.$k", v.toString()) }
         }
     }
 
+    // Sentry's ERROR level is reserved for captured events (the fatal record); breadcrumbs top
+    // out at WARNING so the timeline never shouts louder than the event it decorates.
     private fun Logger.Level.toSentry(): SentryLevel = when (this) {
         Logger.Level.DEBUG -> SentryLevel.DEBUG
         Logger.Level.INFO -> SentryLevel.INFO
-        Logger.Level.WARN -> SentryLevel.WARNING
-        Logger.Level.ERROR -> SentryLevel.ERROR
+        Logger.Level.WARN, Logger.Level.ERROR -> SentryLevel.WARNING
     }
 
     internal companion object {

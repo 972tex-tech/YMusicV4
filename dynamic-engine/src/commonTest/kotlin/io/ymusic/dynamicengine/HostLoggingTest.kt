@@ -100,8 +100,8 @@ class HostLoggingTest {
             // side's forks WITH their props (by value), and the protocol's own hop.
             val entry = log.calls.single { it.level == Logger.Level.WARN }
             assertEquals(listOf("Discover", "task", "js:fetch", "js:sub", "http"), entry.tags)
-            assertEquals(mapOf("id" to "a1"), entry.crumbs[1].prop)
-            assertEquals(mapOf<String, Any?>("n" to 1L), entry.crumbs[3].prop)
+            assertEquals(mapOf<String, Any>("id" to "a1"), entry.crumbs[1].prop)
+            assertEquals(mapOf<String, Any>("n" to 1L), entry.crumbs[3].prop)
             assertTrue(entry.error is IOException)
         } finally {
             engine.close()
@@ -119,7 +119,7 @@ class HostLoggingTest {
             }
             // The trail would have died with the unwind — jsonCommand stamped it in flight.
             assertEquals(listOf("Discover", "extractBoom"), e.trailMark()?.map { it.tag })
-            assertEquals(mapOf<String, Any?>("url" to "/x"), e.trailMark()?.last()?.prop)
+            assertEquals(mapOf<String, Any>("url" to "/x"), e.trailMark()?.last()?.prop)
         } finally {
             engine.close()
         }

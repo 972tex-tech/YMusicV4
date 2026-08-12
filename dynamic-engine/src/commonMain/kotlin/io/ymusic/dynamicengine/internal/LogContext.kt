@@ -31,7 +31,7 @@ private fun readTrail(wire: JsonObject?, head: JsonObject): List<Crumb> {
             val arr = entry as? JsonArray ?: return@mapNotNull null
             val tag = (arr.getOrNull(0) as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
             val prop = (arr.getOrNull(1) as? JsonObject)
-                ?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.let { k to it.toPropValue() } }
+                ?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.toPropValue()?.let { k to it } }
                 ?.toMap()
             Crumb(tag, prop?.takeIf { it.isNotEmpty() })
         }

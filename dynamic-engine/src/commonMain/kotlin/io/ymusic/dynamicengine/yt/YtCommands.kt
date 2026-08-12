@@ -195,7 +195,7 @@ suspend fun DynamicEngineManager.embedPage(userAgent: String, logger: Logger? = 
  *  opaque tokens truncated). Free-text user input (a search query) is deliberately NOT a prop —
  *  props reach crash reports. */
 internal fun Logger?.cmd(tag: String, vararg props: Pair<String, Any?>): Logger? =
-    this?.fork(tag, props.mapNotNull { (k, v) -> v?.let { k to it } }.toMap().ifEmpty { null })
+    this?.fork(tag, props.mapNotNull { (k, v) -> v?.let { k to it } }.toMap<String, Any>().ifEmpty { null })
 
 internal fun String?.crumbToken(): String? = this?.take(100)
 

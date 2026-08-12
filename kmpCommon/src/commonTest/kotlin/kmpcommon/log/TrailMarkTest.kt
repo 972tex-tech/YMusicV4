@@ -18,7 +18,7 @@ class TrailMarkTest {
         val inner = Exception("boom").markTrail(deep)
         val wrapped = RuntimeException("wrap", inner).markTrail(Probe().fork("outer"))
         assertEquals(listOf("a", "b"), wrapped.trailMark()?.map { it.tag })
-        assertEquals(mapOf<String, Any?>("id" to 1), wrapped.trailMark()?.last()?.prop)
+        assertEquals(mapOf<String, Any>("id" to 1), wrapped.trailMark()?.last()?.prop)
     }
 
     @Test

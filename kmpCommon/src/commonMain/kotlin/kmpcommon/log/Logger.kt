@@ -4,9 +4,9 @@ package kmpcommon.log
  * One scope hop in a logger's trail. [tag] is a stable, code-location-like name
  * (`fetchHomeFeed`, `http`) — grouping keys are built from tag paths, so a variable tag silently
  * shatters crash grouping. Anything variable (ids, urls, params) goes in [prop], whose values must
- * be JSON primitives (String/Number/Boolean/null) — they cross the JS wire and Sentry serialization.
+ * be JSON primitives (String/Number/Boolean) — they cross the JS wire and Sentry serialization.
  */
-data class Crumb(val tag: String, val prop: Map<String, Any?>? = null)
+data class Crumb(val tag: String, val prop: Map<String, Any>? = null)
 
 /**
  * An immutable scope-trail logger the app wires to its platform sink (logcat / stdout / Sentry).
@@ -29,13 +29,13 @@ interface Logger {
     /** The scope trail this logger carries (root → leaf). */
     val trail: List<Crumb>
 
-    fun fork(tag: String, prop: Map<String, Any?>? = null): Logger
+    fun fork(tag: String, prop: Map<String, Any>? = null): Logger
 
     fun forkAll(crumbs: List<Crumb>): Logger
 
     fun log(level: Level, message: String, error: Throwable? = null)
 
-    fun captureError(error: Throwable, message: String? = null, prop: Map<String, Any?>? = null) {
+    fun captureError(error: Throwable, message: String? = null, prop: Map<String, Any>? = null) {
         log(Level.ERROR, message ?: error.message ?: error.toString(), error)
     }
 
@@ -51,7 +51,7 @@ abstract class CrumbLogger protected constructor(
 
     protected abstract fun fork(crumbs: List<Crumb>): CrumbLogger
 
-    final override fun fork(tag: String, prop: Map<String, Any?>?): Logger = fork(crumbs + Crumb(tag, prop))
+    final override fun fork(tag: String, prop: Map<String, Any>?): Logger = fork(crumbs + Crumb(tag, prop))
 
     final override fun forkAll(crumbs: List<Crumb>): Logger =
         if (crumbs.isEmpty()) this else fork(this.crumbs + crumbs)
