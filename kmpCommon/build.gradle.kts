@@ -4,6 +4,29 @@ plugins {
     kotlin("multiplatform")
 }
 
+// Compile-time build flags baked into generated source: a Kotlin `const val` inlines as a literal
+// into every (inline) call site downstream, and the compiler eliminates dead `if (false)` branches
+// — debug log sites are REMOVED from release output on every platform, no optimizer involved.
+// Dev default: true. Release builds pass -Pymusic.debugLogs=false.
+val debugLogs = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).getOrElse(true)
+val buildFlagsDir = layout.buildDirectory.dir("generated/buildFlags")
+val generateBuildFlags by tasks.registering {
+    inputs.property("debugLogs", debugLogs)
+    outputs.dir(buildFlagsDir)
+    doLast {
+        buildFlagsDir.get().file("kmpcommon/log/BuildFlags.kt").asFile.apply { parentFile.mkdirs() }.writeText(
+            """
+            |package kmpcommon.log
+            |
+            |object BuildFlags {
+            |    /** Baked at build time from -Pymusic.debugLogs (default true). */
+            |    const val DEBUG_LOGS: Boolean = $debugLogs
+            |}
+            |""".trimMargin(),
+        )
+    }
+}
+
 kotlin {
     sourceSets.all {
         languageSettings.optIn("kotlin.ExperimentalMultiplatform")
@@ -28,8 +51,11 @@ kotlin {
     withLinuxTargets()
 
     sourceSets {
-        commonMain.dependencies {
-            api(Libs.Okio.core) // kmpcommon.io: AsyncSource/AsyncSink surface okio's Buffer
+        commonMain {
+            kotlin.srcDir(generateBuildFlags)
+            dependencies {
+                api(Libs.Okio.core) // kmpcommon.io: AsyncSource/AsyncSink surface okio's Buffer
+            }
         }
 
         commonTest.dependencies {
