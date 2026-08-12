@@ -37,11 +37,12 @@ export class JsLogger {
   }
 }
 
-// The logger for one host-command invocation: the Kotlin caller's parked key from the args head
-// (absent on JS-initiated work) plus this command's own hop.
+// The logger for one host-command invocation. A parked Kotlin caller (a "logKey" in the args
+// head) already forked its own hop naming this call — starting the JS trail empty avoids the
+// duplicate; only a keyless invocation keeps the command [tag] so its trail isn't anonymous.
 export function hostLogger(args: Record<string, unknown>, tag: string): JsLogger {
   const k = args["logKey"];
-  return new JsLogger(typeof k === "number" ? k : null, [[tag]]);
+  return typeof k === "number" ? new JsLogger(k, []) : new JsLogger(null, [[tag]]);
 }
 
 // A keyless logger for JS-initiated work (session bootstrap, crons) — resolves to the engine's
