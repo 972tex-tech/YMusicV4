@@ -17,7 +17,7 @@ import kmpcommon.log.Logger
 suspend fun DynamicEngineManager.extractMusicHome(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/home", logger) { w ->
+): YtFeedPage = feedCommand("ytmusic/home", logger.cmd("extractMusicHome", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -25,7 +25,7 @@ suspend fun DynamicEngineManager.extractMusicHome(
 suspend fun DynamicEngineManager.extractMusicExplore(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/explore", logger) { w ->
+): YtFeedPage = feedCommand("ytmusic/explore", logger.cmd("extractMusicExplore", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -33,7 +33,7 @@ suspend fun DynamicEngineManager.extractMusicExplore(
 suspend fun DynamicEngineManager.extractMusicNewReleases(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/new-releases", logger) { w ->
+): YtFeedPage = feedCommand("ytmusic/new-releases", logger.cmd("extractMusicNewReleases", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -41,7 +41,7 @@ suspend fun DynamicEngineManager.extractMusicNewReleases(
 suspend fun DynamicEngineManager.extractMusicCharts(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/charts", logger) { w ->
+): YtFeedPage = feedCommand("ytmusic/charts", logger.cmd("extractMusicCharts", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -54,7 +54,7 @@ suspend fun DynamicEngineManager.extractMusicCharts(
 suspend fun DynamicEngineManager.extractMusicLibrary(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/library", logger) { w ->
+): YtFeedPage = feedCommand("ytmusic/library", logger.cmd("extractMusicLibrary", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -67,7 +67,10 @@ suspend fun DynamicEngineManager.extractMusicBrowse(
     url: String,
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/browse", logger) { w ->
+): YtFeedPage = feedCommand(
+    "ytmusic/browse",
+    logger.cmd("extractMusicBrowse", "url" to url, "continuation" to continuation.crumbToken()),
+) { w ->
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
 }
@@ -82,7 +85,11 @@ suspend fun DynamicEngineManager.musicSearch(
     params: String? = null,
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("ytmusic/search", logger) { w ->
+): YtFeedPage = feedCommand(
+    "ytmusic/search",
+    // query is user input — never a prop
+    logger.cmd("musicSearch", "params" to params, "continuation" to continuation.crumbToken()),
+) { w ->
     w.optionalField("query", query)
     w.optionalField("params", params)
     w.optionalField("continuation", continuation)
@@ -92,7 +99,7 @@ suspend fun DynamicEngineManager.musicSearch(
  *  strings for the search box. */
 suspend fun DynamicEngineManager.musicSearchSuggestions(query: String, logger: Logger? = null): List<String> =
     use { engine ->
-        engine.jsonCommand("ytmusic/suggest", log = logger, writeFields = { w ->
+        engine.jsonCommand("ytmusic/suggest", log = logger.cmd("musicSearchSuggestions"), writeFields = { w ->
             w.name("query").value(query)
         }) { readSuggestions(it) }
     }

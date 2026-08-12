@@ -33,7 +33,7 @@ import kotlinx.coroutines.CancellationException
 suspend fun DynamicEngineManager.extractHomeFeed(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("yt/home", logger) { w ->
+): YtFeedPage = feedCommand("yt/home", logger.cmd("extractHomeFeed", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -45,7 +45,7 @@ suspend fun DynamicEngineManager.extractHomeFeed(
 suspend fun DynamicEngineManager.extractAccountLibrary(
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("yt/library", logger) { w ->
+): YtFeedPage = feedCommand("yt/library", logger.cmd("extractAccountLibrary", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
 }
 
@@ -57,7 +57,7 @@ suspend fun DynamicEngineManager.extractAccountLibrary(
  */
 suspend fun DynamicEngineManager.handleWebViewPlayNext(videoId: String, contents: String, logger: Logger? = null) {
     use { engine ->
-        engine.jsonCommand("yt/webview-next", log = logger, writeFields = { w ->
+        engine.jsonCommand("yt/webview-next", log = logger.cmd("handleWebViewPlayNext", "videoId" to videoId), writeFields = { w ->
             w.name("videoId").value(videoId)
             w.name("contents").value(contents)
         }) { it.skipValue() }
@@ -69,7 +69,7 @@ suspend fun DynamicEngineManager.handleWebViewPlayNext(videoId: String, contents
  * network and returns an empty page until something has been played. Re-shuffled on every call.
  */
 suspend fun DynamicEngineManager.getRecommendedFeed(logger: Logger? = null): YtFeedPage =
-    feedCommand("yt/recommended", logger) {}
+    feedCommand("yt/recommended", logger.cmd("getRecommendedFeed")) {}
 
 /**
  * The Trending Music feed — the charts YouTube publishes for the engine-resolved region (the user's
@@ -78,7 +78,7 @@ suspend fun DynamicEngineManager.getRecommendedFeed(logger: Logger? = null): YtF
  * engine-synthesized and carry a [YtSectionHeader.titleKey] the app localizes.
  */
 suspend fun DynamicEngineManager.extractTrendingMusicFeed(logger: Logger? = null): YtFeedPage =
-    feedCommand("yt/trending", logger) {}
+    feedCommand("yt/trending", logger.cmd("extractTrendingMusicFeed")) {}
 
 /**
  * A playlist detail page. [url] is an engine-composed app link ("/playlist?list=…", possibly with
@@ -89,7 +89,10 @@ suspend fun DynamicEngineManager.extractPlaylistDetail(
     url: String,
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("yt/playlist", logger) { w ->
+): YtFeedPage = feedCommand(
+    "yt/playlist",
+    logger.cmd("extractPlaylistDetail", "url" to url, "continuation" to continuation.crumbToken()),
+) { w ->
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
 }
@@ -100,7 +103,10 @@ suspend fun DynamicEngineManager.extractChannelDetail(
     url: String,
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("yt/channel", logger) { w ->
+): YtFeedPage = feedCommand(
+    "yt/channel",
+    logger.cmd("extractChannelDetail", "url" to url, "continuation" to continuation.crumbToken()),
+) { w ->
     w.name("url").value(url)
     w.optionalField("continuation", continuation)
 }
@@ -110,7 +116,11 @@ suspend fun DynamicEngineManager.search(
     params: String? = null,
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("yt/search", logger) { w ->
+): YtFeedPage = feedCommand(
+    "yt/search",
+    // query is user input — never a prop
+    logger.cmd("search", "params" to params, "continuation" to continuation.crumbToken()),
+) { w ->
     w.optionalField("query", query)
     w.optionalField("params", params)
     w.optionalField("continuation", continuation)
@@ -121,14 +131,17 @@ suspend fun DynamicEngineManager.watchNext(
     videoId: String? = null,
     continuation: String? = null,
     logger: Logger? = null,
-): YtFeedPage = feedCommand("yt/next", logger) { w ->
+): YtFeedPage = feedCommand(
+    "yt/next",
+    logger.cmd("watchNext", "videoId" to videoId, "continuation" to continuation.crumbToken()),
+) { w ->
     w.optionalField("videoId", videoId)
     w.optionalField("continuation", continuation)
 }
 
 suspend fun DynamicEngineManager.searchSuggestions(query: String, logger: Logger? = null): List<String> =
     use { engine ->
-        engine.jsonCommand("yt/suggest", log = logger, writeFields = { w ->
+        engine.jsonCommand("yt/suggest", log = logger.cmd("searchSuggestions"), writeFields = { w ->
             w.name("query").value(query)
         }) { readSuggestions(it) }
     }
@@ -145,7 +158,7 @@ suspend fun DynamicEngineManager.searchSuggestions(query: String, logger: Logger
  * OR a language (after persisting the language setting) — never on start.
  */
 suspend fun DynamicEngineManager.applyYtLocale(gl: String, logger: Logger? = null): Unit = use { engine ->
-    engine.jsonCommand("yt/locale/apply", log = logger, writeFields = { w ->
+    engine.jsonCommand("yt/locale/apply", log = logger.cmd("applyYtLocale", "gl" to gl), writeFields = { w ->
         w.name("gl").value(gl)
     }) { it.skipValue() }
 }
@@ -158,7 +171,7 @@ suspend fun DynamicEngineManager.applyYtLocale(gl: String, logger: Logger? = nul
  * copy is over a week old, and a failed re-fetch falls back to the cached copy instead of erroring.
  */
 suspend fun DynamicEngineManager.ytLocaleOptions(logger: Logger? = null): YtLocales = use { engine ->
-    engine.jsonCommand("yt/locales", log = logger, writeFields = { w ->
+    engine.jsonCommand("yt/locales", log = logger.cmd("ytLocaleOptions"), writeFields = { w ->
     }) { readLocales(it) }
 }
 
@@ -172,10 +185,18 @@ suspend fun DynamicEngineManager.ytLocaleOptions(logger: Logger? = null): YtLoca
  * script (session globals + the `webview_ymusic.js` bundle, which stays app-side).
  */
 suspend fun DynamicEngineManager.embedPage(userAgent: String, logger: Logger? = null): String = use { engine ->
-    engine.jsonCommand("yt/embed", log = logger, writeFields = { w ->
+    engine.jsonCommand("yt/embed", log = logger.cmd("embedPage"), writeFields = { w ->
         w.name("userAgent").value(userAgent)
     }) { readEmbedHtml(it) }
 }
+
+/** This API layer's own hop: the function name plus its call args as props (null args omitted,
+ *  opaque tokens truncated). Free-text user input (a search query) is deliberately NOT a prop —
+ *  props reach crash reports. */
+internal fun Logger?.cmd(tag: String, vararg props: Pair<String, Any?>): Logger? =
+    this?.fork(tag, props.mapNotNull { (k, v) -> v?.let { k to it } }.toMap().ifEmpty { null })
+
+internal fun String?.crumbToken(): String? = this?.take(100)
 
 /** Write `"key":value` only when [value] is present — absent optional fields are omitted, not null. */
 internal suspend fun JsonWriter.optionalField(key: String, value: String?) {
