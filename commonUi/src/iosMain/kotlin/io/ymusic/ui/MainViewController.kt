@@ -154,7 +154,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val player = createPlayer(
         PlayerEngines(
             local = { createLocalPlayer(LocalPlayerContext(container)) },
-            webView = { createWebViewPlayer(WebViewPlayerContext(container, mediaProxy), engineJs, appVersion = 1, { ua -> engines.embedPage(ua) }) },
+            webView = { createWebViewPlayer(WebViewPlayerContext(container, mediaProxy), engineJs, appVersion = 1, { ua -> engines.embedPage(ua) }, logger = rootLogger) },
         ),
     )
 

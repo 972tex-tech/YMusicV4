@@ -10,6 +10,7 @@ import io.ymusic.player.PlayerError
 import io.ymusic.player.Progress
 import io.ymusic.player.VideoQualityState
 import io.ymusic.player.WebViewPlayer
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +40,11 @@ internal class WebViewPlayerImpl(
     private val engineJs: String,
     private val appVersion: Int,
     private val embedHtml: suspend (userAgent: String) -> String,
+    logger: Logger? = null,
     bridgeFactory: (WebViewMessageSink) -> WebViewBridge,
 ) : WebViewPlayer {
+
+    private val log = logger?.fork("webview-js")
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val bridge = bridgeFactory(WebViewMessageSink(::onMessage))
@@ -301,7 +305,7 @@ internal class WebViewPlayerImpl(
                             e.errorCode ?: "E60033", e.errorMessage,
                             canRetry = e.errorCanRetry, needReset = e.errorNeedReset,
                         ),
-                    )
+                    ).also { err -> log?.log(Logger.Level.WARN, "page error ${err.error.code}: ${err.error.message}") }
                 }
                 bridge.setVisible(state is PlaybackState.Prepared || state is PlaybackState.Error && state.error.code != "E60031")
                 it.copy(state = state)
@@ -318,6 +322,11 @@ internal class WebViewPlayerImpl(
             is WebViewEvent.AudioTracksChanged -> _audioTracks.value = e.state
             is WebViewEvent.WatchNextSeen -> _watchNextSeen.tryEmit(e)
             is WebViewEvent.PlayerResponse -> playerResWaiters.remove(e.videoId)?.complete(e.dataJson)
+            is WebViewEvent.ReportError ->
+                log?.log(
+                    Logger.Level.ERROR,
+                    listOfNotNull(e.message, e.extras).joinToString("\n").take(4096).ifEmpty { "report_error" },
+                )
             is WebViewEvent.PoToken -> poTokenWaiters.remove(e.videoId)?.let { waiter ->
                 if (e.token != null) waiter.complete(e.token)
                 else waiter.completeExceptionally(IllegalStateException("po token failed: ${e.errorMessage}"))
@@ -327,6 +336,7 @@ internal class WebViewPlayerImpl(
     }
 
     private fun fail(code: String, message: String, needReset: Boolean = false) = _status.update {
+        log?.log(Logger.Level.WARN, "$code $message")
         bridge.setVisible(false)
         it.copy(state = PlaybackState.Error(PlayerError(code, message, needReset = needReset)))
     }

@@ -299,6 +299,7 @@ class YMusicApplication : Application() {
                             engineJs = js,
                             appVersion = 5000,
                             embedHtml = { ua -> shared.engines.embedPage(ua) },
+                            logger = rootLogger,
                         ).also { downloadWebViewPlayer = it }
                     }
                 },

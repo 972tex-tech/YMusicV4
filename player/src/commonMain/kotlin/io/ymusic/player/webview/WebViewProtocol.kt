@@ -188,6 +188,7 @@ object WebViewProtocol {
         val obj = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: return null
         return when (name) {
             "connected" -> WebViewEvent.Connected
+            "report_error" -> WebViewEvent.ReportError(obj.string("message"), obj.string("extras"))
             "state_changed" -> WebViewEvent.StateChanged(
                 state = mapState(obj.string("newState")),
                 playWhenReady = obj.bool("playWhenReady"),
@@ -323,6 +324,10 @@ object WebViewProtocol {
 sealed interface WebViewEvent {
     /** The page agent booted and connected (the injected bundle is live). */
     data object Connected : WebViewEvent
+
+    /** The bundle's `wvApi.reportError` channel: an in-page anomaly worth reporting (signature
+     *  decode failed, intercept failed, …) that is not itself a playback-state change. */
+    data class ReportError(val message: String?, val extras: String?) : WebViewEvent
 
     data class StateChanged(
         val state: WebPlaybackState,

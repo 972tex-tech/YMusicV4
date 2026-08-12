@@ -321,6 +321,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                         engineJs = readWebViewJs(),
                         appVersion = 5000,
                         embedHtml = { ua -> engines.embedPage(ua) },
+                        logger = rootLogger,
                     ).also { downloadWebViewPlayer = it }
                 },
             ),
