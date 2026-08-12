@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Strip Logger.debug {} call sites from release builds: pin the flag false so R8 constant-folds
+# the inlined check and removes the message-building code entirely (takes effect once
+# isMinifyEnabled = true on the release build type).
+-assumevalues class kmpcommon.log.LogConfig {
+    boolean getDebugLogs() return false;
+    boolean debugLogs return false;
+}

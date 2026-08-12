@@ -89,3 +89,20 @@ fun Throwable.trailMark(): List<Crumb>? {
     }
     return deepest
 }
+
+/**
+ * The global switch for [debug] call sites. Shells set it once at startup from their build type
+ * (Android: `BuildConfig.DEBUG`, iOS: `Platform.isDebugBinary`). On a minified Android release
+ * build, proguard-rules.pro pins the getter false via `-assumevalues`, so R8 constant-folds every
+ * inlined check and strips the message-building code from the binary — removed, not silently
+ * dropped.
+ */
+object LogConfig {
+    var debugLogs: Boolean = true
+}
+
+/** A DEBUG line whose message is built ONLY while debug logging is on — the form for chatty paths
+ *  (per-request lines, per-part transfer chatter). */
+inline fun Logger?.debug(message: () -> String) {
+    if (this != null && LogConfig.debugLogs) log(Logger.Level.DEBUG, message())
+}

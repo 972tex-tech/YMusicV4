@@ -49,6 +49,7 @@ import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.LogConfig
 import kmpcommon.log.Logger
 import kmpcommon.log.TeeLogger
 import kmpcommon.uri.Uri
@@ -98,6 +99,7 @@ class YMusicApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        LogConfig.debugLogs = BuildConfig.DEBUG
         if (BuildConfig.SENTRY_DSN.isNotEmpty()) {
             Sentry.init {
                 it.applyYMusicTelemetry()

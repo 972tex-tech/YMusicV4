@@ -9,6 +9,7 @@ import io.ymusic.quickjs.asAsyncSource
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.Request
@@ -162,11 +163,10 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     ?.split(';')
                     ?.mapNotNull { it.substringBefore('=').trim().takeIf(String::isNotEmpty) }
                     .orEmpty()
-                log?.log(
-                    Logger.Level.DEBUG,
+                log.debug {
                     "${prepared.request.method} ${prepared.request.url.host}${prepared.request.url.encodedPath} " +
-                        "cookies=${cookieNames.joinToString(",")}",
-                )
+                        "cookies=${cookieNames.joinToString(",")}"
+                }
                 val response = try {
                     client.execute(prepared.request, prepared.redirects, prepared.timeout)
                 } catch (e: IOException) {
@@ -179,11 +179,10 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     val setCookies = response.headers.mapNotNull { (name, value) ->
                         if (name.equals("Set-Cookie", ignoreCase = true)) value else null
                     }
-                    log?.log(
-                        Logger.Level.DEBUG,
+                    log.debug {
                         "HTTP ${response.code} ${response.request.url.host}" +
-                            if (setCookies.isEmpty()) "" else " set-cookie=[${setCookies.joinToString(" | ")}]",
-                    )
+                            if (setCookies.isEmpty()) "" else " set-cookie=[${setCookies.joinToString(" | ")}]"
+                    }
                     val tmp = Buffer()
                     tmp.writeUtf8(
                         buildJsonObject {

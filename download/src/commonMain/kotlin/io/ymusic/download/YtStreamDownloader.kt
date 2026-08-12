@@ -12,6 +12,7 @@ import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import io.ymusic.ytmedia.sabr.SabrTrack
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
 import kmphttp.byteString
@@ -195,7 +196,7 @@ class YtStreamDownloader(
         var reAttested = false
         while (true) {
             try {
-                SabrSession(log = { log?.log(Logger.Level.DEBUG, it) }).download(
+                SabrSession(log = { line -> log.debug { line } }).download(
                     client = client,
                     userAgent = userAgent,
                     spec = current,

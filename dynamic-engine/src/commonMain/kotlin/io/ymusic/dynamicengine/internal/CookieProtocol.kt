@@ -10,6 +10,7 @@ import kmpcommon.error.CodedError
 import kmpcommon.error.codedError
 import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmphttp.CookieJar
 import kmphttp.HttpUrl
 import kmphttp.json.JsonReader
@@ -70,10 +71,7 @@ internal fun QuickJsRuntime.installCookies(cookieJar: CookieJar, parked: ParkedL
         serveCookie(pipe, parked, "cookie/set") { head, log ->
             val url = head.requireHttpUrl("url")
             val raw = head.requireStringList("setCookie")
-            log?.log(
-                Logger.Level.DEBUG,
-                "${url.host} set-cookie=[${raw.joinToString(" | ")}]",
-            )
+            log.debug { "${url.host} set-cookie=[${raw.joinToString(" | ")}]" }
             // Unparseable Set-Cookie values are dropped (OkHttp semantics), not an error.
             val cookies = raw.mapNotNull { parseCookie(url, it) }
             withContext(Dispatchers.IO) { cookieJar.saveFromResponse(url, cookies) }

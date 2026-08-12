@@ -12,6 +12,7 @@ import io.ymusic.quickjs.QuickJsException
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CoroutineDispatcher
@@ -195,7 +196,7 @@ class DynamicEngine private constructor(
             val js = logger.fork("engine-js")
             return { level, message ->
                 when (level) {
-                    QuickJsRuntime.LOG_DEBUG -> js.log(Logger.Level.DEBUG, message)
+                    QuickJsRuntime.LOG_DEBUG -> js.debug { message }
                     QuickJsRuntime.LOG_INFO -> js.log(Logger.Level.INFO, message)
                     QuickJsRuntime.LOG_WARN -> js.log(Logger.Level.WARN, message)
                     QuickJsRuntime.LOG_REJECTION ->

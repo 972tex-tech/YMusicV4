@@ -16,6 +16,7 @@ import io.ymusic.ytmedia.ump.UmpPart
 import io.ymusic.ytmedia.ump.readUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import okio.Buffer
 import okio.EOFException
 
@@ -49,7 +50,7 @@ internal class SabrCacheTee(
 
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
-        if (verbose) logger?.log(Logger.Level.DEBUG, message())
+        if (verbose) logger.debug(message)
     }
 
     /** A segment being mirrored: its writer, declared [length], and how many media bytes are still owed. */

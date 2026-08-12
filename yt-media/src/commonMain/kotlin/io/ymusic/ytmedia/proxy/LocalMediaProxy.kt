@@ -11,6 +11,7 @@ import io.ymusic.ytmedia.sabr.formatCacheKey
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.asAsyncSource
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmpcommon.uri.PercentEncoder
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
@@ -78,7 +79,7 @@ class LocalMediaProxy(
 
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
-        if (verbose) log?.log(Logger.Level.DEBUG, message())
+        if (verbose) log.debug(message)
     }
 
     /** One-line dump of what the player is asking for — the state the serve decision is made against.
