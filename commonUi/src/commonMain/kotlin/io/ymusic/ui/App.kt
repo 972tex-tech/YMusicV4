@@ -228,9 +228,6 @@ private sealed interface AppLayer {
     /** [switchAccount]: the browser opens YouTube's channel switcher instead of sign-in — no cookie
      *  polling; CLOSING the layer is the completion signal (popLayer refreshes session+account). */
     class Login(val state: LoginWebViewState, val switchAccount: Boolean = false) : AppLayer
-
-    /** The Settings "Send feedback" form; the session keeps the draft while layers stack above. */
-    class Feedback(val session: FeedbackSession) : AppLayer
 }
 
 /** The layer's scope logger, the parent for anything opened on top of it (null = the root). */
@@ -241,7 +238,6 @@ private val AppLayer.log: kmpcommon.log.Logger?
         is AppLayer.Channel -> session.log
         is AppLayer.Feed -> session.log
         is AppLayer.MusicBrowse -> session.log
-        is AppLayer.Feedback -> session.log
         is AppLayer.LibrarySearch, is AppLayer.Login -> null
     }
 
@@ -279,6 +275,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
         // YT Music's per-tab feed cache — same lifetime/locale rules as Discover's above.
         val ytMusicSessions = remember { mutableMapOf<YtMusicTab, FeedSession>() }
+        // The Feedback section's draft — lives here so a half-written report survives a section
+        // switch (the section's composable is disposed while another section shows).
+        val feedbackSession = remember { FeedbackSession(graph.logger) }
         // The content locale decides what every feed CONTAINS and the language of its
         // server-composed text — but it lives in the ENGINE, so the app only hears "it changed"
         // ([AppGraph.localeEpoch], bumped by the Settings pickers) and throws the cached pages
@@ -415,15 +414,6 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 existing >= 0 && existing == layers.lastIndex -> Unit
                 existing >= 0 -> layers.add(layers.removeAt(existing))
                 else -> layers.add(AppLayer.Login(LoginWebViewState(), switchAccount = true))
-            }
-        }
-        // Settings' feedback form — single-instance like login (one draft at a time).
-        val openFeedback: () -> Unit = {
-            val existing = layers.indexOfFirst { it is AppLayer.Feedback }
-            when {
-                existing >= 0 && existing == layers.lastIndex -> Unit
-                existing >= 0 -> layers.add(layers.removeAt(existing))
-                else -> layers.add(AppLayer.Feedback(FeedbackSession(parentLog())))
             }
         }
         // Library's own search flow (local files, filter-as-you-type) — a different surface from
@@ -706,14 +696,6 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         switchAccount = top.switchAccount,
                                     )
                                 }
-                                is AppLayer.Feedback -> key(top) {
-                                    FeedbackScreen(
-                                        graph,
-                                        top.session,
-                                        onBack = popLayer,
-                                        onSent = popLayer,
-                                    )
-                                }
                                 // Saveable state (tab picks, folder crumbs, scroll positions) is
                                 // kept per section while its content is out of composition —
                                 // Library must come back on the tab and folder it was left on.
@@ -757,10 +739,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         )
                                         AppSection.Library -> LibraryScreen(graph, coordinator)
                                         AppSection.Downloads -> DownloadsScreen(graph, coordinator)
-                                        AppSection.Settings -> SettingsScreen(
-                                            graph,
-                                            onSendFeedback = if (graph.sendFeedback != null) openFeedback else null,
-                                        )
+                                        AppSection.Settings -> SettingsScreen(graph)
+                                        AppSection.Feedback ->
+                                            if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
+                                            else ComingSoon(section)
                                         AppSection.Catalogue -> CatalogueScreen()
                                         else -> ComingSoon(section)
                                     }

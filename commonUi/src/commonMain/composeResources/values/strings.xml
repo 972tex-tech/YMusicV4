@@ -169,7 +169,6 @@
     <string name="settings_lockscreen_art_hint">Show the playing song\'s artwork on the lock screen and system media controls.</string>
 
     <!-- Feedback -->
-    <string name="settings_send_feedback">Send feedback</string>
     <string name="feedback_hint">Tell us what broke or what you\'d like to see. Screenshots or log files help.</string>
     <string name="feedback_message_label">What happened?</string>
     <string name="feedback_name_label">Name (optional)</string>

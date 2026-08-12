@@ -18,8 +18,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** The feedback form: composing a report with attachments hands ONE [FeedbackDraft] to the shell's
- *  sender; an over-limit pick is refused with a message instead of attached. */
+/** The drawer's Feedback section: composing a report with attachments hands ONE [FeedbackDraft] to
+ *  the shell's sender; an over-limit pick is refused with a message instead of attached. */
 @OptIn(ExperimentalTestApi::class)
 class FeedbackScreenTest {
 
@@ -31,7 +31,7 @@ class FeedbackScreenTest {
         Locale.setDefault(Locale.ENGLISH)
         var sent: FeedbackDraft? = null
         val snackbars = mutableListOf<String>()
-        var closed = false
+        val session = FeedbackSession(parentLog = null)
         val graph = AppGraph(
             engines = engines(),
             player = StubPlayer(),
@@ -48,7 +48,7 @@ class FeedbackScreenTest {
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalSnackbar provides { snackbars.add(it) }) {
-                    FeedbackScreen(graph, FeedbackSession(parentLog = null), onBack = {}, onSent = { closed = true })
+                    FeedbackScreen(graph, session)
                 }
             }
             // Fields in declaration order: message, name, email.
@@ -61,13 +61,16 @@ class FeedbackScreenTest {
             assertTrue(snackbars.any { "huge.bin" in it }, "oversized pick should be refused with a message: $snackbars")
 
             onNodeWithText("SEND").performClick()
-            waitUntil(timeoutMillis = 5_000) { sent != null && closed }
+            waitUntil(timeoutMillis = 5_000) { sent != null }
             val draft = sent!!
             assertEquals("The app broke", draft.message)
             assertEquals(null, draft.name)
             assertEquals("jane@example.com", draft.email)
             assertEquals(listOf("log.txt"), draft.attachments.map { it.filename })
             assertTrue(snackbars.any { "thank you" in it }, "sent confirmation expected: $snackbars")
+            // The report resets for a fresh one; the sender identity stays.
+            waitUntil(timeoutMillis = 5_000) { session.message.isEmpty() && session.attachments.isEmpty() }
+            assertEquals("jane@example.com", session.email)
         }
     }
 
@@ -85,7 +88,7 @@ class FeedbackScreenTest {
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalSnackbar provides {}) {
-                    FeedbackScreen(graph, FeedbackSession(parentLog = null), onBack = {}, onSent = {})
+                    FeedbackScreen(graph, FeedbackSession(parentLog = null))
                 }
             }
             onAllNodes(hasSetTextAction())[0].performTextInput("Report")
@@ -101,7 +104,7 @@ class FeedbackScreenTest {
     }
 
     @Test
-    fun settings_offers_send_feedback_only_when_the_shell_can_send() {
+    fun feedback_section_shows_the_form_only_when_the_shell_can_send() {
         Locale.setDefault(Locale.ENGLISH)
         val engines = engines()
         val withSender = AppGraph(
@@ -111,11 +114,8 @@ class FeedbackScreenTest {
             sendFeedback = {},
         )
         runComposeUiTest {
-            setContent { App(withSender, mutableStateOf(AppSection.Settings)) }
-            waitUntilAtLeastOneExists(hasText("Send feedback"), 20_000)
-            onNodeWithText("Send feedback").performClick()
-            // The feedback layer opened over Settings.
-            waitUntilAtLeastOneExists(hasText("What happened?"), 5_000)
+            setContent { App(withSender, mutableStateOf(AppSection.Feedback)) }
+            waitUntilAtLeastOneExists(hasText("What happened?"), 20_000)
         }
         val withoutSender = AppGraph(
             engines = engines,
@@ -123,9 +123,10 @@ class FeedbackScreenTest {
             playerSurface = {},
         )
         runComposeUiTest {
-            setContent { App(withoutSender, mutableStateOf(AppSection.Settings)) }
-            waitUntilAtLeastOneExists(hasText("Theme"), 20_000)
-            onNodeWithText("Send feedback").assertDoesNotExist()
+            setContent { App(withoutSender, mutableStateOf(AppSection.Feedback)) }
+            // No sender → the section still exists but only announces itself as coming later.
+            waitUntilAtLeastOneExists(hasText("coming", substring = true), 20_000)
+            onNodeWithText("What happened?").assertDoesNotExist()
         }
     }
 }
