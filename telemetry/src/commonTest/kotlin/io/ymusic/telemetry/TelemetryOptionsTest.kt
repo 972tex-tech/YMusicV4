@@ -1,7 +1,6 @@
 package io.ymusic.telemetry
 
 import io.sentry.kotlin.multiplatform.SentryEvent
-import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import io.sentry.kotlin.multiplatform.protocol.SentryException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,10 +45,15 @@ class TelemetryOptionsTest {
     }
 
     @Test
-    fun set_cookie_values_are_redacted_from_breadcrumbs() {
-        val crumb = Breadcrumb(message = "HTTP 200 youtube.com set-cookie=[SID=secret; Path=/ | HSID=alsosecret]")
-        assertEquals("HTTP 200 youtube.com set-cookie=[redacted]", scrubBreadcrumb(crumb).message)
-        val names = Breadcrumb(message = "GET youtube.com/watch cookies=SID,HSID")
-        assertEquals("GET youtube.com/watch cookies=SID,HSID", scrubBreadcrumb(names).message)
+    fun category_code_groups_per_trail_site_code_groups_alone() {
+        val network = SentryEvent()
+        network.setTag(SentryLogger.CODE_TAG, "network")
+        network.setTag(SentryLogger.TRAIL_TAG, "Search/search/js:search/http")
+        assertEquals(listOf("network", "Search/search/js:search/http"), fingerprintPolicy(network).fingerprint?.toList())
+
+        val site = SentryEvent()
+        site.setTag(SentryLogger.CODE_TAG, "E20011")
+        site.setTag(SentryLogger.TRAIL_TAG, "Search/search/js:search/http")
+        assertEquals(listOf("E20011"), fingerprintPolicy(site).fingerprint?.toList())
     }
 }
