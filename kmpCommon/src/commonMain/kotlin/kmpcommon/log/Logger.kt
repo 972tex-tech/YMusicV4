@@ -78,18 +78,6 @@ fun Throwable.markTrail(logger: Logger?): Throwable {
     return this
 }
 
-/**
- * The trail to report for this throwable captured at [catchSite]: a stamped trail that EXTENDS the
- * catch site wins outright (same tree, just deeper — the common case); a stamp from a different
- * lineage is appended AFTER the catch site (an uncaught-handler's `app-main/uncaught` context must
- * not vanish because the exception was stamped elsewhere); no stamp = the catch site alone.
- */
-fun Throwable.resolveTrail(catchSite: List<Crumb>): List<Crumb> {
-    val marked = trailMark() ?: return catchSite
-    val extends = marked.size >= catchSite.size && marked.subList(0, catchSite.size) == catchSite
-    return if (extends) marked else catchSite + marked
-}
-
 /** The deepest trail stamped anywhere on this throwable's cause chain, or null. */
 fun Throwable.trailMark(): List<Crumb>? {
     var deepest: List<Crumb>? = null

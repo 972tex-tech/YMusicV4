@@ -34,33 +34,6 @@ class TrailMarkTest {
     }
 
     @Test
-    fun resolve_extension_of_the_catch_site_wins_outright() {
-        val screen = Probe().fork("Discover")
-        val deep = screen.fork("extractHomeFeed", mapOf("continuation" to "c"))
-        val e = Exception("boom").markTrail(deep)
-        assertEquals(
-            listOf("Discover", "extractHomeFeed"),
-            e.resolveTrail(screen.trail).map { it.tag },
-        )
-    }
-
-    @Test
-    fun resolve_divergent_mark_is_appended_after_the_catch_site() {
-        val e = Exception("boom").markTrail(Probe().fork("Discover").fork("extractHomeFeed"))
-        val uncaught = Probe().fork("app-main").fork("uncaught")
-        assertEquals(
-            listOf("app-main", "uncaught", "Discover", "extractHomeFeed"),
-            e.resolveTrail(uncaught.trail).map { it.tag },
-        )
-    }
-
-    @Test
-    fun resolve_without_a_mark_is_the_catch_site() {
-        val site = Probe().fork("player").trail
-        assertEquals(site, Exception("x").resolveTrail(site))
-    }
-
-    @Test
     fun null_logger_stamps_nothing() {
         assertNull(Exception("x").markTrail(null).trailMark())
     }

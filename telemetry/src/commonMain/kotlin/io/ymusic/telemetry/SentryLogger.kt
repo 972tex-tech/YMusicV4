@@ -7,7 +7,7 @@ import kmpcommon.error.codedError
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
-import kmpcommon.log.resolveTrail
+import kmpcommon.log.trailMark
 
 /**
  * The app's root [Logger] over Sentry: every [log] is a breadcrumb (category = the crumb-tag path,
@@ -52,16 +52,23 @@ class SentryLogger private constructor(
     }
 
     override fun captureError(error: Throwable, message: String?, prop: Map<String, Any?>?) {
-        // A stamped trail extending this catch site wins (same tree, deeper); one from a different
-        // lineage is appended after it — the catch site's own context must survive either way.
-        val trail = error.resolveTrail(crumbs)
+        // The deepest trail stamped in flight (Throwable.markTrail), else this catch site's.
+        val trail = error.trailMark() ?: crumbs
         val trailPath = trail.joinToString("/") { it.tag }
         echo?.invoke(Logger.Level.ERROR, "$trailPath: capture ${message ?: error.message ?: error}", error)
         val coded = error.codedError()
         Sentry.captureException(error) { scope ->
             scope.setTag(TRAIL_TAG, trailPath)
             coded?.code?.let { scope.setTag(CODE_TAG, it) }
-            scope.setContext("trail", trail.map { c -> c.tag + (c.prop?.let { " $it" } ?: "") })
+            // The trail rendered as this event's closing breadcrumbs — one row per hop, props as
+            // data — right where the reader already is, in step with every other crumb.
+            for (c in trail) {
+                val hop = Breadcrumb(level = SentryLevel.ERROR, message = c.tag, category = "trail")
+                c.prop?.let { p ->
+                    hop.setData(HashMap<String, Any>().apply { p.forEach { (k, v) -> if (v != null) put(k, v) } })
+                }
+                scope.addBreadcrumb(hop)
+            }
             message?.let { scope.setExtra("capture.message", it) }
             prop?.forEach { (k, v) -> if (v != null) scope.setExtra("capture.$k", v.toString()) }
         }
