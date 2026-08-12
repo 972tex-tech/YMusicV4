@@ -115,7 +115,7 @@ class YMusicApplication : Application() {
 
     /** Escaped coroutine failures are still one job dying — capture, don't crash the process. */
     private fun uncaught(scopeName: String) = CoroutineExceptionHandler { _, e ->
-        rootLogger.fork("uncaught", mapOf("scope" to scopeName)).captureError(e)
+        rootLogger.fork(scopeName).fork("uncaught").captureError(e)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("app-default"))

@@ -20,6 +20,7 @@ import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.imageloader.ImageLoader
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,12 +54,12 @@ import kotlinx.coroutines.launch
  */
 class DownloadForegroundService : Service() {
 
+    // Set in onCreate — getApplication() is null until the service is attached.
+    private var log: Logger? = null
+
     private val serviceScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main.immediate +
-            CoroutineExceptionHandler { _, e ->
-                (application as YMusicApplication).rootLogger
-                    .fork("uncaught", mapOf("scope" to "download-service")).captureError(e)
-            },
+            CoroutineExceptionHandler { _, e -> log?.fork("uncaught")?.captureError(e) },
     )
     private var downloads: DownloadService? = null
     private var imageLoader: ImageLoader? = null
@@ -84,6 +85,7 @@ class DownloadForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        log = (application as YMusicApplication).rootLogger.fork("download-service")
         createChannel()
         serviceScope.launch {
             val graph = (application as YMusicApplication).graphAsync().await()
