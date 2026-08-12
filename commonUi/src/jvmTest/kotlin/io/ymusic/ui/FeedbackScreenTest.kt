@@ -3,10 +3,12 @@ package io.ymusic.ui
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -100,6 +102,33 @@ class FeedbackScreenTest {
             onNodeWithText("SEND").performClick()
             waitUntil(timeoutMillis = 5_000) { sent != null }
             assertEquals(emptyList(), sent!!.attachments)
+        }
+    }
+
+    @Test
+    fun a_wide_window_caps_and_centers_the_form() {
+        Locale.setDefault(Locale.ENGLISH)
+        val graph = AppGraph(
+            engines = engines(),
+            player = StubPlayer(),
+            playerSurface = {},
+            sendFeedback = {},
+        )
+        runComposeUiTest {
+            setContent {
+                CompositionLocalProvider(LocalSnackbar provides {}) {
+                    FeedbackScreen(graph, FeedbackSession(parentLog = null))
+                }
+            }
+            val root = onRoot().getBoundsInRoot()
+            val send = onNodeWithText("SEND").getBoundsInRoot()
+            val rootWidth = root.right - root.left
+            val sendWidth = send.right - send.left
+            assertTrue(rootWidth > DesignSpacing.FormMaxWidth, "test surface should be wider than the cap ($rootWidth)")
+            assertTrue(sendWidth <= DesignSpacing.FormMaxWidth, "form should cap at FormMaxWidth, was $sendWidth")
+            val leftGap = send.left
+            val rightGap = rootWidth - send.right
+            assertTrue((leftGap - rightGap).value < 2f, "form should center: left=$leftGap right=$rightGap")
         }
     }
 

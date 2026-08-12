@@ -4,12 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -76,83 +78,93 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
     val snackbar = LocalSnackbar.current
     val scrollState = rememberScrollState()
     TrackScroll { scrollState.canScrollBackward }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space16),
-        verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-    ) {
-        Text(
-            stringResource(Res.string.feedback_hint),
-            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-        )
-        AppTextField(
-            value = session.message,
-            onValueChange = { session.message = it },
-            label = stringResource(Res.string.feedback_message_label),
-            singleLine = false,
-        )
-        AppTextField(
-            value = session.name,
-            onValueChange = { session.name = it },
-            label = stringResource(Res.string.feedback_name_label),
-        )
-        AppTextField(
-            value = session.email,
-            onValueChange = { session.email = it },
-            label = stringResource(Res.string.feedback_email_label),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-        )
-        for (file in session.attachments) {
-            AttachmentRow(file, onRemove = { session.attachments.remove(file) })
-        }
-        val picker = graph.pickFeedbackFiles
-        if (picker != null) {
-            TextButton(
-                enabled = !session.sending,
-                onClick = {
-                    scope.launch {
-                        try {
-                            for (file in picker()) {
-                                if (file.bytes == null) {
-                                    snackbar(getString(Res.string.feedback_file_too_large, file.filename))
-                                } else {
-                                    session.attachments.add(file)
+    // Large windows: the column caps at FormMaxWidth and centers — full-bleed fields on an
+    // expanded window read as ribbons. Margin follows the window class like the grids do.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val margin = gridMetricsFor(maxWidth).margin
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scrollState),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(
+                Modifier
+                    .widthIn(max = DesignSpacing.FormMaxWidth)
+                    .fillMaxWidth()
+                    .padding(horizontal = margin, vertical = DesignSpacing.Space16),
+                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+            ) {
+                Text(
+                    stringResource(Res.string.feedback_hint),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+                )
+                AppTextField(
+                    value = session.message,
+                    onValueChange = { session.message = it },
+                    label = stringResource(Res.string.feedback_message_label),
+                    singleLine = false,
+                )
+                AppTextField(
+                    value = session.name,
+                    onValueChange = { session.name = it },
+                    label = stringResource(Res.string.feedback_name_label),
+                )
+                AppTextField(
+                    value = session.email,
+                    onValueChange = { session.email = it },
+                    label = stringResource(Res.string.feedback_email_label),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                )
+                for (file in session.attachments) {
+                    AttachmentRow(file, onRemove = { session.attachments.remove(file) })
+                }
+                val picker = graph.pickFeedbackFiles
+                if (picker != null) {
+                    TextButton(
+                        enabled = !session.sending,
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    for (file in picker()) {
+                                        if (file.bytes == null) {
+                                            snackbar(getString(Res.string.feedback_file_too_large, file.filename))
+                                        } else {
+                                            session.attachments.add(file)
+                                        }
+                                    }
+                                } catch (c: kotlinx.coroutines.CancellationException) {
+                                    throw c
+                                } catch (e: Exception) {
+                                    session.log?.captureError(e, "attachment pick failed")
                                 }
                             }
+                        },
+                    ) {
+                        Text(stringResource(Res.string.feedback_attach), color = DesignColors.Accent)
+                    }
+                }
+                SendButton(session, enabled = session.message.isNotBlank() && !session.sending) {
+                    scope.launch {
+                        session.sending = true
+                        try {
+                            graph.sendFeedback?.invoke(
+                                FeedbackDraft(
+                                    message = session.message.trim(),
+                                    name = session.name.trim().ifEmpty { null },
+                                    email = session.email.trim().ifEmpty { null },
+                                    attachments = session.attachments.filter { it.bytes != null },
+                                ),
+                            )
+                            snackbar(getString(Res.string.feedback_sent))
+                            session.clearReport()
                         } catch (c: kotlinx.coroutines.CancellationException) {
                             throw c
                         } catch (e: Exception) {
-                            session.log?.captureError(e, "attachment pick failed")
+                            session.log?.captureError(e, "feedback send failed")
+                            snackbar(getString(Res.string.feedback_send_failed))
+                        } finally {
+                            session.sending = false
                         }
                     }
-                },
-            ) {
-                Text(stringResource(Res.string.feedback_attach), color = DesignColors.Accent)
-            }
-        }
-        SendButton(session, enabled = session.message.isNotBlank() && !session.sending) {
-            scope.launch {
-                session.sending = true
-                try {
-                    graph.sendFeedback?.invoke(
-                        FeedbackDraft(
-                            message = session.message.trim(),
-                            name = session.name.trim().ifEmpty { null },
-                            email = session.email.trim().ifEmpty { null },
-                            attachments = session.attachments.filter { it.bytes != null },
-                        ),
-                    )
-                    snackbar(getString(Res.string.feedback_sent))
-                    session.clearReport()
-                } catch (c: kotlinx.coroutines.CancellationException) {
-                    throw c
-                } catch (e: Exception) {
-                    session.log?.captureError(e, "feedback send failed")
-                    snackbar(getString(Res.string.feedback_send_failed))
-                } finally {
-                    session.sending = false
                 }
             }
         }

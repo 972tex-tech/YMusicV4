@@ -163,6 +163,11 @@ object DesignSpacing {
      *  with the title (24) and take a 12 midpoint vertical, matching the content-region picker. */
     val DialogRowHorizontal = Space24
     val DialogRowVertical = 12.dp
+
+    /** Max width for a single-column form (Feedback) — full-bleed text fields on an expanded
+     *  window read as ribbons, so the column caps here and centers; matches [ElevatedBarDialog]'s
+     *  560 max so forms and dialogs share one content width. */
+    val FormMaxWidth = 560.dp
 }
 
 /**
