@@ -1,7 +1,10 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
@@ -14,6 +17,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.test.waitUntilDoesNotExist
+import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
 import java.util.Locale
 import kotlin.test.Test
@@ -130,14 +134,37 @@ class FeedbackScreenTest {
             val rightGap = rootWidth - send.right
             assertTrue((leftGap - rightGap).value < 2f, "form should center: left=$leftGap right=$rightGap")
 
-            // Vertically centered too: the gap above the first content (the hint) matches the gap
-            // below the last (the send button).
+            // Vertically centered too (both dimensions are large here): the gap above the first
+            // content (the hint) matches the gap below the last (the send button).
             val hint = onNodeWithText("Tell us", substring = true).getBoundsInRoot()
             val rootHeight = root.bottom - root.top
             val topGap = hint.top
             val bottomGap = rootHeight - send.bottom
             assertTrue(topGap.value > 50f, "a short form on a tall surface should not pin to the top (topGap=$topGap)")
             assertTrue((topGap - bottomGap).value < 2f, "form should center vertically: top=$topGap bottom=$bottomGap")
+        }
+    }
+
+    @Test
+    fun a_compact_width_window_keeps_the_form_top_anchored() {
+        Locale.setDefault(Locale.ENGLISH)
+        val graph = AppGraph(
+            engines = engines(),
+            player = StubPlayer(),
+            playerSurface = {},
+            sendFeedback = {},
+        )
+        runComposeUiTest {
+            setContent {
+                CompositionLocalProvider(LocalSnackbar provides {}) {
+                    // A tall phone-shaped viewport: large height but compact width → no centering.
+                    Box(Modifier.size(400.dp, 700.dp)) {
+                        FeedbackScreen(graph, FeedbackSession(parentLog = null))
+                    }
+                }
+            }
+            val hint = onNodeWithText("Tell us", substring = true).getBoundsInRoot()
+            assertTrue(hint.top.value < 50f, "compact width should stay top-anchored (topGap=${hint.top})")
         }
     }
 

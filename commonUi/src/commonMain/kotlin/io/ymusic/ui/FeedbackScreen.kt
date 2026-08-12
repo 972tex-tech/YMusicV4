@@ -79,13 +79,16 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
     val snackbar = LocalSnackbar.current
     val scrollState = rememberScrollState()
     TrackScroll { scrollState.canScrollBackward }
-    // Large windows: the column caps at FormMaxWidth and centers both ways — full-bleed fields on
-    // an expanded window read as ribbons, and a short form pinned to the top of a tall window
-    // leaves a dead lower half. The min-height keeps the centering inside the scroll content, so
-    // an overflowing form (many attachments, small window) still just scrolls from the top.
-    // Margin follows the window class like the grids do.
+    // Large windows: the column caps at FormMaxWidth and centers — full-bleed fields on an
+    // expanded window read as ribbons. Margin follows the window class like the grids do.
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val margin = gridMetricsFor(maxWidth).margin
+        // Vertical centering only when BOTH dimensions are large (a desktop/tablet window): a short
+        // form at the top of a tall window leaves a dead lower half there. A compact-width window
+        // (phone) stays top-anchored — reachable fields, and the IME pushes content up anyway. The
+        // min-height keeps the centering inside the scroll content, so an overflowing form still
+        // just scrolls from the top.
+        val centerVertically = maxWidth >= 840.dp && maxHeight >= 600.dp
         val viewportHeight = maxHeight
         Column(
             Modifier.fillMaxSize().verticalScroll(scrollState),
@@ -95,9 +98,13 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                 Modifier
                     .widthIn(max = DesignSpacing.FormMaxWidth)
                     .fillMaxWidth()
-                    .heightIn(min = viewportHeight)
+                    .then(if (centerVertically) Modifier.heightIn(min = viewportHeight) else Modifier)
                     .padding(horizontal = margin, vertical = DesignSpacing.Space16),
-                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16, Alignment.CenterVertically),
+                verticalArrangement = if (centerVertically) {
+                    Arrangement.spacedBy(DesignSpacing.Space16, Alignment.CenterVertically)
+                } else {
+                    Arrangement.spacedBy(DesignSpacing.Space16)
+                },
             ) {
                 Text(
                     stringResource(Res.string.feedback_hint),
