@@ -99,7 +99,7 @@ class HostLoggingTest {
             // tag itself is absent: the parked Kotlin hop already names the call (hostLogger only
             // keeps it for keyless invocations).
             val entry = log.calls.single { it.level == Logger.Level.WARN }
-            assertEquals(listOf("Discover", "task", "sub", "http"), entry.tags)
+            assertEquals(listOf("Discover", "task", "js:sub", "http"), entry.tags)
             assertEquals(mapOf("id" to "a1"), entry.crumbs[1].prop)
             assertEquals(mapOf<String, Any?>("n" to 1L), entry.crumbs[2].prop)
             assertTrue(entry.error is IOException)

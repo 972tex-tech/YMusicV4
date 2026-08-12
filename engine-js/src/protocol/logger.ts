@@ -10,6 +10,13 @@
 // Wire keys quoted — these cross to Kotlin as JSON (LogContext.kt).
 export type LogCrumb = [string] | [string, Record<string, unknown>];
 
+// Every JS-side tag is "js:"-prefixed (JS hops stay distinguishable from Kotlin ones in a trail)
+// and slash-free ("/" is the rendered path separator — a slash inside a tag would fake two hops).
+function jsTag(tag: string): string {
+  const t = tag.replace(/\//g, "-");
+  return t.indexOf("js:") === 0 ? t : "js:" + t;
+}
+
 export interface LogWire {
   "key"?: number;
   "trail": LogCrumb[];
@@ -26,7 +33,8 @@ export class JsLogger {
 
   fork(tag: string, prop?: Record<string, unknown>): JsLogger {
     const t = this.trail.slice();
-    t.push(prop === undefined ? [tag] : [tag, prop]);
+    const name = jsTag(tag);
+    t.push(prop === undefined ? [name] : [name, prop]);
     return new JsLogger(this.key, t);
   }
 
@@ -42,11 +50,11 @@ export class JsLogger {
 // duplicate; only a keyless invocation keeps the command [tag] so its trail isn't anonymous.
 export function hostLogger(args: Record<string, unknown>, tag: string): JsLogger {
   const k = args["logKey"];
-  return typeof k === "number" ? new JsLogger(k, []) : new JsLogger(null, [[tag]]);
+  return typeof k === "number" ? new JsLogger(k, []) : new JsLogger(null, [[jsTag(tag)]]);
 }
 
 // A keyless logger for JS-initiated work (session bootstrap, crons) — resolves to the engine's
 // root logger host-side.
 export function jsLogger(tag: string): JsLogger {
-  return new JsLogger(null, [[tag]]);
+  return new JsLogger(null, [[jsTag(tag)]]);
 }

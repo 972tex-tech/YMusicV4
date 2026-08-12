@@ -125,11 +125,11 @@ The value channel above goes **up**; the logging channel goes **down** (AGENTS.m
 Handling"). A Kotlin task call (`jsonCommand`) **parks** its caller's `kmpcommon.log.Logger` for
 exactly the command's lifetime and sends the key in the args head as `"logKey": <int>`; the bundle
 mints a `JsLogger` from it (`engine-js/src/protocol/logger.ts`), forks its own hops (`[tag]` or
-`[tag, {props}]` — tags are STABLE names, anything variable goes in props), and attaches it to
-every host call as a head field:
+`[tag, {props}]` — tags are STABLE names, `js:`-prefixed and slash-free, anything variable goes
+in props), and attaches it to every host call as a head field:
 
 ```
-"log": {"key": 3, "trail": [["yt/home"], ["browse"]]}
+"log": {"key": 3, "trail": [["js:yt-home"], ["js:browse"]]}
 ```
 
 The host protocol resolves the key back to the parked logger (absent/unknown/late → the engine
@@ -179,7 +179,7 @@ value is just data — head injection is impossible by construction.
 ```
 JS → K:  {"method":"POST","url":"https://…","headers":[["k","v"],…],
           "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8",
-          "log":{"key":3,"trail":[["yt/home"],["browse"]]}}
+          "log":{"key":3,"trail":[["js:yt-home"],["js:browse"]]}}
          …then NOTHING, except an optional [int32 -1] = cancel        (write side stays open)
 K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…]}
          <raw response body bytes> … then close() (END)
