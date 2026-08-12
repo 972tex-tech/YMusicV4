@@ -104,10 +104,11 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     // First launch decides the app language (device if supported, else English) and persists it —
     // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
     ensureAppLanguage(settings)
+    val rootLogger = IosLogger()
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 1,
-        logger = IosLogger(),
+        logger = rootLogger,
         cookieJar = cookies,
         settings = settings,
         cacheStore = appleEngineCacheStore(),
@@ -160,6 +161,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     return AppGraph(
         engines = engines,
         player = player,
+        logger = rootLogger,
         mediaStore = null,
         scanLibraryFolder = null,
         imageLoader = imageLoader,

@@ -36,6 +36,7 @@ import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.youtubeThumbUrl
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -77,7 +78,13 @@ class PlaybackService : MediaLibraryService() {
      *  service, so the flag is authoritative: promotes are skipped when already foreground, and
      *  a media3-triggered promotion that never leads to playback can be detected and demoted. */
     private var foreground = false
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val serviceScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate +
+            CoroutineExceptionHandler { _, e ->
+                (application as YMusicApplication).rootLogger
+                    .fork("uncaught", mapOf("scope" to "playback-service")).captureError(e)
+            },
+    )
     private val searchResults = HashMap<String, List<MediaItem>>() // guarded by itself
 
     override fun onCreate() {

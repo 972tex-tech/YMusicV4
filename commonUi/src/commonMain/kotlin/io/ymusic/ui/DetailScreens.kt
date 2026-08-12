@@ -60,8 +60,9 @@ import org.jetbrains.compose.resources.stringResource
  * while the page loads.
  */
 class PlaylistSession(graph: AppGraph, scope: CoroutineScope, val url: String, val item: YtFeedItem) {
-    val feed = FeedSession(scope) { continuation ->
-        graph.engines.extractPlaylistDetail(url, continuation = continuation)
+    private val log = graph.logger?.fork("PlaylistDetail", mapOf("url" to url))
+    val feed = FeedSession(scope, log) { continuation ->
+        graph.engines.extractPlaylistDetail(url, continuation = continuation, logger = log)
     }
 
     init {
@@ -155,8 +156,9 @@ internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit)
  * Subscribe): just the app bar and the feed. [title] seeds the bar until the page header answers.
  */
 class FeedDetailSession(graph: AppGraph, scope: CoroutineScope, val url: String, val title: String?) {
-    val feed = FeedSession(scope) { continuation ->
-        graph.engines.extractChannelDetail(url, continuation = continuation)
+    private val log = graph.logger?.fork("FeedDetail", mapOf("url" to url))
+    val feed = FeedSession(scope, log) { continuation ->
+        graph.engines.extractChannelDetail(url, continuation = continuation, logger = log)
     }
 
     init {

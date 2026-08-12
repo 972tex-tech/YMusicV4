@@ -20,6 +20,7 @@ import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.imageloader.ImageLoader
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,7 +53,13 @@ import kotlinx.coroutines.launch
  */
 class DownloadForegroundService : Service() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val serviceScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate +
+            CoroutineExceptionHandler { _, e ->
+                (application as YMusicApplication).rootLogger
+                    .fork("uncaught", mapOf("scope" to "download-service")).captureError(e)
+            },
+    )
     private var downloads: DownloadService? = null
     private var imageLoader: ImageLoader? = null
     private var foreground = false

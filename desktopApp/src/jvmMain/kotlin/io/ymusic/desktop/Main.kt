@@ -111,6 +111,9 @@ import java.io.File
  * VLCJ local + JCEF WebView engines, the shared WebView container as the video surface), and runs
  * the shared [App].
  */
+// Sentry breadcrumbs/captures (no-op when Sentry wasn't initialized) echoed to stdout.
+private val rootLogger: Logger = SentryLogger(StdoutLogger()::log)
+
 fun main() {
     if (SENTRY_DSN.isNotEmpty()) {
         Sentry.init {
@@ -167,6 +170,7 @@ fun main() {
                 try {
                     graph = buildGraph(cefManager)
                 } catch (t: Throwable) {
+                    rootLogger.fork("boot").captureError(t)
                     error = t.message ?: t.toString()
                 }
             }
@@ -219,8 +223,6 @@ fun main() {
 }
 
 private suspend fun buildGraph(cefManager: CefManager): AppGraph {
-    // Sentry breadcrumbs/captures (no-op when Sentry wasn't initialized) echoed to stdout.
-    val rootLogger: Logger = SentryLogger(StdoutLogger()::log)
     val dataDir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
     // Init CEF first: the cookie store is JCEF's global one (needs CefApp initialized before the
     // first access), shared with the WebView player and persisted on disk. The engine's OWN HTTP
@@ -398,6 +400,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     return AppGraph(
         engines,
         player,
+        logger = rootLogger,
         mediaStore = mediaStore,
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
         libraryFolderPicker = { pickAndRegisterFolder(mediaStore) },

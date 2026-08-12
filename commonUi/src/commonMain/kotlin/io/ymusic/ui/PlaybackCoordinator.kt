@@ -6,6 +6,8 @@ import io.ymusic.dynamicengine.yt.watchNext
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.Player
+import kmpcommon.error.TechnicalException
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -24,7 +26,23 @@ class PlaybackCoordinator(
 ) {
     val player: Player get() = graph.player
 
+    private val log = graph.logger?.fork("player")
+
     init {
+        // The player surfaces failure as state, not a throw — this transition IS the job-death
+        // frame, so the one crash record per playback failure is captured here.
+        if (log != null) {
+            scope.launch {
+                player.status.map { it.error }.distinctUntilChanged().collect { err ->
+                    if (err != null) {
+                        log.captureError(
+                            TechnicalException(err.code, err.message ?: "player error"),
+                            prop = mapOf("canRetry" to err.canRetry, "needReset" to err.needReset),
+                        )
+                    }
+                }
+            }
+        }
         // Record library plays for the computed "Recent play" / "Top tracks" playlists: every time a
         // local library item becomes the current item, bump its play stats by row id (carried on the
         // item, stable across moves/rescans). Items with no id (a stream, or a download with no
@@ -41,7 +59,7 @@ class PlaybackCoordinator(
                             store.recordLocalPlay(id)
                         } catch (e: Exception) {
                             // Play stats are best-effort; a failure never interrupts playback.
-                            println("recordLocalPlay failed: $e")
+                            log?.log(Logger.Level.WARN, "recordLocalPlay failed", e)
                         }
                     }
             }
@@ -76,7 +94,7 @@ class PlaybackCoordinator(
                 }
             } catch (e: Exception) {
                 // Autoplay fill is an enhancement, not the task — the tapped video still plays.
-                println("watch-next fill failed: $e")
+                log?.log(Logger.Level.WARN, "watch-next fill failed", e)
             }
         }
     }

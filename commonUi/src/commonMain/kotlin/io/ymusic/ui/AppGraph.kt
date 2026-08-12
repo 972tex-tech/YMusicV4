@@ -62,6 +62,8 @@ class AppGraph(
     val appVersion: String? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
     val imageLoader: ImageLoader? = null,
+    /** The app's root logger (Sentry-backed in the shells); screens fork their own scope off it. */
+    val logger: kmpcommon.log.Logger? = null,
     /** App settings (UI language, theme, …); the in-memory default works but doesn't persist. */
     val settings: SettingsStore = InMemorySettingsStore(),
     /**

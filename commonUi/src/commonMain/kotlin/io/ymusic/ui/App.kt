@@ -829,8 +829,9 @@ private fun DiscoverFeed(
             // Cached like the other tabs (cleared with them on a locale/login epoch change).
             val session = remember(tab, localeEpoch, loginEpoch) {
                 sessions.getOrPut(tab.name) {
-                    FeedSession(scope) { continuation ->
-                        graph.engines.extractAccountLibrary(continuation = continuation)
+                    val log = graph.logger?.fork("AccountLibrary")
+                    FeedSession(scope, log) { continuation ->
+                        graph.engines.extractAccountLibrary(continuation = continuation, logger = log)
                     }.also { it.pager.refresh() }
                 }
             }
@@ -864,15 +865,18 @@ private fun DiscoverFeed(
         // sign-in/out rebuilds the feed under the new (personalized/anonymous) identity.
         val session = remember(tab, localeEpoch, loginEpoch) {
             if (recommended) {
-                FeedSession(localScope) { graph.engines.getRecommendedFeed() }.also { it.pager.refresh() }
+                FeedSession(localScope, graph.logger?.fork("Recommended")) {
+                    graph.engines.getRecommendedFeed()
+                }.also { it.pager.refresh() }
             } else {
                 sessions.getOrPut(tab.name) {
-                    FeedSession(scope) { continuation ->
+                    val log = graph.logger?.fork(tab.name)
+                    FeedSession(scope, log) { continuation ->
                         when (tab) {
                             // The region's music charts — one page, no continuation ever arrives.
-                            DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed()
+                            DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(logger = log)
                             else -> {
-                                val page = graph.engines.extractHomeFeed(continuation = continuation)
+                                val page = graph.engines.extractHomeFeed(continuation = continuation, logger = log)
                                 // Home is a music app's front door: music first (per section —
                                 // reordering across sections would tear headers off their items).
                                 page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })

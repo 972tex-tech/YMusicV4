@@ -66,6 +66,7 @@ import io.ymusic.ui.resources.show_less
 import io.ymusic.ui.resources.show_more
 import io.ymusic.ui.resources.show_more_n
 import kmpcommon.error.CodedError
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -85,6 +86,7 @@ import org.jetbrains.compose.resources.stringResource
 class Pager(
     private val scope: CoroutineScope,
     private val fetchTimeoutMs: Long = 45_000,
+    private val logger: Logger? = null,
     private val fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
 ) {
     sealed interface State {
@@ -143,10 +145,12 @@ class Pager(
                 val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
                 readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: TimeoutCancellationException) {
+                logger?.log(Logger.Level.WARN, "fetch timed out after ${fetchTimeoutMs}ms")
                 State.Failed(TIMEOUT_CODE, "fetch timed out after ${fetchTimeoutMs}ms")
             } catch (e: CancellationException) {
                 throw e // a newer refresh took over the state — this coroutine just dies
             } catch (e: Exception) {
+                logger?.captureError(e)
                 State.Failed((e as? CodedError)?.code ?: "E20030", e.message)
             }
         }
@@ -173,9 +177,11 @@ class Pager(
                 readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
+                logger?.log(Logger.Level.WARN, "reload timed out after ${fetchTimeoutMs}ms")
                 _errors.tryEmit(TIMEOUT_CODE)
                 current.copy(refreshing = false)
             } catch (e: Exception) {
+                logger?.captureError(e)
                 _errors.tryEmit((e as? CodedError)?.code ?: "E20030")
                 current.copy(refreshing = false)
             }
@@ -233,8 +239,10 @@ class Pager(
                 )
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
+                logger?.log(Logger.Level.WARN, "loadMore timed out after ${fetchTimeoutMs}ms")
                 current.copy(loadingMore = false) // timed out — the tail button stays for a retry
             } catch (e: Exception) {
+                logger?.captureError(e)
                 // Keep what we have; the tail button stays for a retry.
                 current.copy(loadingMore = false)
             }
@@ -261,8 +269,12 @@ class Pager(
  * above the navigation switch (the app's layer stack, the Discover tab cache) so leaving and
  * returning to the surface shows it exactly as it was instead of reloading from the top.
  */
-class FeedSession(scope: CoroutineScope, fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage) {
-    val pager = Pager(scope, fetch = fetch)
+class FeedSession(
+    scope: CoroutineScope,
+    logger: Logger? = null,
+    fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
+) {
+    val pager = Pager(scope, logger = logger, fetch = fetch)
     val listState = LazyListState()
 }
 

@@ -69,6 +69,7 @@ import io.ymusic.ui.resources.search_no_results
 import io.ymusic.ui.resources.search_type_to_search
 import io.ymusic.ui.resources.search_youtube
 import io.ymusic.ui.resources.ytmusic_search_hint
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -90,6 +91,7 @@ private const val HistoryLimit = 20
 class SearchSession(
     scope: CoroutineScope,
     val hint: StringResource,
+    logger: Logger? = null,
     private val onSuggest: suspend (String) -> List<String>,
     private val onSearch: suspend (query: String?, params: String?, continuation: String?) -> YtFeedPage,
 ) {
@@ -98,7 +100,7 @@ class SearchSession(
     var editing by mutableStateOf(true)
     var filterParams by mutableStateOf<String?>(null)
     val listState = LazyListState()
-    val pager = Pager(scope) { continuation ->
+    val pager = Pager(scope, logger = logger) { continuation ->
         onSearch(
             if (continuation == null) submitted else null,
             if (continuation == null) filterParams else null,
@@ -110,20 +112,28 @@ class SearchSession(
 
     companion object {
         /** YouTube search (the Discover surface): `yt/search` + `yt/suggest`. */
-        fun youtube(graph: AppGraph, scope: CoroutineScope) = SearchSession(
-            scope,
-            Res.string.search_youtube,
-            onSuggest = { graph.engines.searchSuggestions(it) },
-            onSearch = { q, p, c -> graph.engines.search(query = q, params = p, continuation = c) },
-        )
+        fun youtube(graph: AppGraph, scope: CoroutineScope): SearchSession {
+            val log = graph.logger?.fork("Search")
+            return SearchSession(
+                scope,
+                Res.string.search_youtube,
+                log,
+                onSuggest = { graph.engines.searchSuggestions(it, logger = log) },
+                onSearch = { q, p, c -> graph.engines.search(query = q, params = p, continuation = c, logger = log) },
+            )
+        }
 
         /** YouTube Music search (the YT Music surface): `ytmusic/search` + `ytmusic/suggest`. */
-        fun music(graph: AppGraph, scope: CoroutineScope) = SearchSession(
-            scope,
-            Res.string.ytmusic_search_hint,
-            onSuggest = { graph.engines.musicSearchSuggestions(it) },
-            onSearch = { q, p, c -> graph.engines.musicSearch(query = q, params = p, continuation = c) },
-        )
+        fun music(graph: AppGraph, scope: CoroutineScope): SearchSession {
+            val log = graph.logger?.fork("MusicSearch")
+            return SearchSession(
+                scope,
+                Res.string.ytmusic_search_hint,
+                log,
+                onSuggest = { graph.engines.musicSearchSuggestions(it, logger = log) },
+                onSearch = { q, p, c -> graph.engines.musicSearch(query = q, params = p, continuation = c, logger = log) },
+            )
+        }
     }
 }
 

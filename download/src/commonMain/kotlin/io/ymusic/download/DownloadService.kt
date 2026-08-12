@@ -269,7 +269,8 @@ class DownloadService(
         } catch (e: Throwable) {
             // Log the full technical failure here; the user sees only a code. An uncoded exception
             // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
-            log?.log(Logger.Level.WARN, "download ${task.id} failed: ${e.message}", e)
+            log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
+                ?.captureError(e, "download failed")
             setState(task.id, DownloadState.FAILED, error = userFacingError(e))
         }
     }

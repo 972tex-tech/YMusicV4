@@ -56,6 +56,7 @@ import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.create
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -112,10 +113,15 @@ class YMusicApplication : Application() {
     /** The app's root logger: Sentry breadcrumbs/captures (no-op until Sentry.init) echoed to logcat. */
     val rootLogger: Logger = SentryLogger(LogcatLogger()::log)
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Escaped coroutine failures are still one job dying — capture, don't crash the process. */
+    private fun uncaught(scopeName: String) = CoroutineExceptionHandler { _, e ->
+        rootLogger.fork("uncaught", mapOf("scope" to scopeName)).captureError(e)
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("app-default"))
 
     /** Main-thread, app-lifetime scope for playback glue (service start, audio focus). */
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + uncaught("app-main"))
 
     /** The current Activity's SAF folder pick, registered while it lives. The graph is app-scoped
      *  but a pick needs an Activity; a scan is always user-driven, so one is up when this runs. */
@@ -326,7 +332,7 @@ class YMusicApplication : Application() {
             }
             io.ymusic.download.DownloadService(
                 store = io.ymusic.download.DownloadStore(io.ymusic.download.downloadDatabaseAndroidDriver(applicationContext)),
-                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
                 now = { System.currentTimeMillis() },
                 resolver = io.ymusic.download.SabrSpecResolver { videoId ->
                     // Force-init the WebView engine if it isn't up yet (the factory sets downloadWebViewPlayer).
@@ -366,6 +372,7 @@ class YMusicApplication : Application() {
         return AppGraph(
             shared.engines,
             player,
+            logger = rootLogger,
             mediaStore = shared.mediaStore,
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },

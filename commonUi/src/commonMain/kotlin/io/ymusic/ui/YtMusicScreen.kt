@@ -95,13 +95,14 @@ fun YtMusicScreen(
             } else {
                 val session = remember(current, localeEpoch) {
                     sessions.getOrPut(current) {
-                        FeedSession(scope) { continuation ->
+                        val log = graph.logger?.fork("YtMusic" + current.name)
+                        FeedSession(scope, log) { continuation ->
                             when (current) {
-                                YtMusicTab.Explore -> graph.engines.extractMusicExplore(continuation)
-                                YtMusicTab.NewReleases -> graph.engines.extractMusicNewReleases(continuation)
-                                YtMusicTab.Charts -> graph.engines.extractMusicCharts(continuation)
-                                YtMusicTab.Library -> graph.engines.extractMusicLibrary(continuation)
-                                else -> graph.engines.extractMusicHome(continuation)
+                                YtMusicTab.Explore -> graph.engines.extractMusicExplore(continuation, log)
+                                YtMusicTab.NewReleases -> graph.engines.extractMusicNewReleases(continuation, log)
+                                YtMusicTab.Charts -> graph.engines.extractMusicCharts(continuation, log)
+                                YtMusicTab.Library -> graph.engines.extractMusicLibrary(continuation, log)
+                                else -> graph.engines.extractMusicHome(continuation, log)
                             }
                         }.also { it.pager.refresh() }
                     }
@@ -140,8 +141,9 @@ private fun YtMusicTabRow(selected: YtMusicTab, dragProgress: Float, onSelect: (
  * header while it loads.
  */
 class MusicBrowseSession(graph: AppGraph, scope: CoroutineScope, val url: String, val item: YtFeedItem) {
-    val feed = FeedSession(scope) { continuation ->
-        graph.engines.extractMusicBrowse(url, continuation = continuation)
+    private val log = graph.logger?.fork("MusicBrowse", mapOf("url" to url))
+    val feed = FeedSession(scope, log) { continuation ->
+        graph.engines.extractMusicBrowse(url, continuation = continuation, logger = log)
     }
 
     init {
