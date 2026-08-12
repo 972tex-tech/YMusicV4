@@ -91,18 +91,24 @@ fun Throwable.trailMark(): List<Crumb>? {
 }
 
 /**
- * The global switch for [debug] call sites. Shells set it once at startup from their build type
- * (Android: `BuildConfig.DEBUG`, iOS: `Platform.isDebugBinary`). On a minified Android release
- * build, proguard-rules.pro pins the getter false via `-assumevalues`, so R8 constant-folds every
- * inlined check and strips the message-building code from the binary — removed, not silently
- * dropped.
+ * Whether this BINARY carries debug log sites — a compile-time constant inlined into every [debug]
+ * call site on every platform. Kotlin/Native: `Platform.isDebugBinary`, false at a release
+ * framework's final codegen (klibs ship IR, so the optimizer folds the inlined check and DROPS the
+ * sites, message-building and all). JVM/Android: true, pinned false by R8 `-assumevalues` on
+ * minified release builds (androidApp/proguard-rules.pro) for the same fold-and-strip.
  */
+@PublishedApi
+internal expect val debugBinary: Boolean
+
+/** The runtime switch layered under [debugBinary] — covers builds no optimizer processed (today's
+ *  unminified Android release sets it from `BuildConfig.DEBUG`). Dev default: on. */
 object LogConfig {
     var debugLogs: Boolean = true
 }
 
 /** A DEBUG line whose message is built ONLY while debug logging is on — the form for chatty paths
- *  (per-request lines, per-part transfer chatter). */
+ *  (per-request lines, per-part transfer chatter). Inlined, so a release binary's optimizer
+ *  removes the whole site via [debugBinary]. */
 inline fun Logger?.debug(message: () -> String) {
-    if (this != null && LogConfig.debugLogs) log(Logger.Level.DEBUG, message())
+    if (this != null && debugBinary && LogConfig.debugLogs) log(Logger.Level.DEBUG, message())
 }
