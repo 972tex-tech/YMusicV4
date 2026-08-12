@@ -117,6 +117,17 @@
     <string name="settings_theme_system">Theo hệ thống</string>
     <string name="settings_theme_light">Sáng</string>
     <string name="settings_theme_dark">Tối</string>
+    <string name="settings_send_feedback">Gửi phản hồi</string>
+    <string name="feedback_hint">Cho chúng tôi biết lỗi bạn gặp hoặc điều bạn muốn thấy. Ảnh chụp màn hình hoặc tệp log sẽ rất hữu ích.</string>
+    <string name="feedback_message_label">Điều gì đã xảy ra?</string>
+    <string name="feedback_name_label">Tên (không bắt buộc)</string>
+    <string name="feedback_email_label">Email (không bắt buộc)</string>
+    <string name="feedback_attach">Đính kèm tệp</string>
+    <string name="feedback_send">Gửi</string>
+    <string name="feedback_sent">Đã gửi phản hồi — cảm ơn bạn!</string>
+    <string name="feedback_send_failed">Không gửi được phản hồi — vui lòng thử lại</string>
+    <string name="feedback_file_too_large">“%1$s” quá lớn để đính kèm (tối đa 10 MB)</string>
+    <string name="cd_remove_attachment">Xóa tệp đính kèm</string>
 
     <string name="cd_menu">Menu</string>
     <string name="cd_search">Tìm kiếm</string>

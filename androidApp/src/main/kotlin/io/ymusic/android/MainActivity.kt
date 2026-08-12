@@ -31,6 +31,7 @@ import androidx.core.app.NotificationManagerCompat
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppSection
+import io.ymusic.ui.FeedbackFile
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -84,12 +85,64 @@ class MainActivity : ComponentActivity() {
         deferred.await()
     }
 
+    // Same deferred bridge for the feedback attachment pick (any file type, multi-select).
+    private var pendingFilePick: CompletableDeferred<List<android.net.Uri>>? = null
+    private val openFiles =
+        registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+            pendingFilePick?.complete(uris)
+            pendingFilePick = null
+        }
+
+    /** Launches the system file picker and reads each pick into a [FeedbackFile]; an over-limit
+     *  file comes back name-only (null bytes) so the form can refuse it with its name. */
+    private val pickFeedbackFiles: suspend () -> List<FeedbackFile> = {
+        pendingFilePick?.complete(emptyList()) // a prior pick still open → abandon it
+        val deferred = CompletableDeferred<List<android.net.Uri>>()
+        pendingFilePick = deferred
+        withContext(Dispatchers.Main) { openFiles.launch("*/*") }
+        val uris = deferred.await()
+        withContext(Dispatchers.IO) { uris.map(::readFeedbackFile) }
+    }
+
+    private fun readFeedbackFile(uri: android.net.Uri): FeedbackFile {
+        var name: String? = null
+        var size = -1L
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val nameIdx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIdx >= 0) name = c.getString(nameIdx)
+                val sizeIdx = c.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                if (sizeIdx >= 0 && !c.isNull(sizeIdx)) size = c.getLong(sizeIdx)
+            }
+        }
+        val filename = name ?: uri.lastPathSegment ?: "attachment"
+        if (size > FeedbackFile.MAX_BYTES) return FeedbackFile(filename, bytes = null, sizeBytes = size)
+        // Size can be unknown (-1): read capped, and past the cap it degrades to name-only the same way.
+        val bytes = contentResolver.openInputStream(uri)?.use { input ->
+            val out = java.io.ByteArrayOutputStream()
+            val chunk = ByteArray(64 * 1024)
+            var total = 0L
+            while (true) {
+                val n = input.read(chunk)
+                if (n < 0) break
+                out.write(chunk, 0, n)
+                total += n
+                if (total > FeedbackFile.MAX_BYTES) return FeedbackFile(filename, bytes = null, sizeBytes = total)
+            }
+            out.toByteArray()
+        } ?: error("unreadable attachment: $filename")
+        return FeedbackFile(filename, bytes, contentType = contentResolver.getType(uri))
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         val app = application as YMusicApplication
         if (app.folderPicker === pickFolder) app.folderPicker = null
         pendingPick?.complete(null)
         pendingPick = null
+        if (app.feedbackFilePicker === pickFeedbackFiles) app.feedbackFilePicker = null
+        pendingFilePick?.complete(emptyList())
+        pendingFilePick = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,6 +158,7 @@ class MainActivity : ComponentActivity() {
             },
         )
         (application as YMusicApplication).folderPicker = pickFolder
+        (application as YMusicApplication).feedbackFilePicker = pickFeedbackFiles
         sectionFor(intent)?.let { pendingSection.value = it }
         setContent {
             CompositionClockProbe()

@@ -1,0 +1,221 @@
+package io.ymusic.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_back
+import io.ymusic.ui.resources.cd_remove_attachment
+import io.ymusic.ui.resources.feedback_attach
+import io.ymusic.ui.resources.feedback_email_label
+import io.ymusic.ui.resources.feedback_file_too_large
+import io.ymusic.ui.resources.feedback_hint
+import io.ymusic.ui.resources.feedback_message_label
+import io.ymusic.ui.resources.feedback_name_label
+import io.ymusic.ui.resources.feedback_send
+import io.ymusic.ui.resources.feedback_send_failed
+import io.ymusic.ui.resources.feedback_sent
+import io.ymusic.ui.resources.settings_send_feedback
+import kmpcommon.log.Logger
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
+
+/** Per-open state of the feedback form, owned by its layer so a draft survives navigation above it. */
+internal class FeedbackSession(parentLog: Logger?) {
+    internal val log = parentLog?.fork("Feedback")
+    var message by mutableStateOf("")
+    var name by mutableStateOf("")
+    var email by mutableStateOf("")
+    val attachments = mutableStateListOf<FeedbackFile>()
+    var sending by mutableStateOf(false)
+}
+
+/**
+ * The "Send feedback" form (Settings → Send feedback): a free-text report with optional
+ * name/email and file attachments, delivered through [AppGraph.sendFeedback] (Sentry user
+ * feedback in the shells). Attach is hidden when the shell provides no picker.
+ */
+@Composable
+internal fun FeedbackScreen(
+    graph: AppGraph,
+    session: FeedbackSession,
+    onBack: () -> Unit,
+    onSent: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
+    Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
+        ElevatedBarColumn {
+            AppBarRow {
+                ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back), onClick = onBack)
+                Text(
+                    stringResource(Res.string.settings_send_feedback),
+                    style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space16),
+            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+        ) {
+            Text(
+                stringResource(Res.string.feedback_hint),
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+            )
+            AppTextField(
+                value = session.message,
+                onValueChange = { session.message = it },
+                label = stringResource(Res.string.feedback_message_label),
+                singleLine = false,
+                autoFocus = true,
+            )
+            AppTextField(
+                value = session.name,
+                onValueChange = { session.name = it },
+                label = stringResource(Res.string.feedback_name_label),
+            )
+            AppTextField(
+                value = session.email,
+                onValueChange = { session.email = it },
+                label = stringResource(Res.string.feedback_email_label),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            )
+            for (file in session.attachments) {
+                AttachmentRow(file, onRemove = { session.attachments.remove(file) })
+            }
+            val picker = graph.pickFeedbackFiles
+            if (picker != null) {
+                TextButton(
+                    enabled = !session.sending,
+                    onClick = {
+                        scope.launch {
+                            try {
+                                for (file in picker()) {
+                                    if (file.bytes == null) {
+                                        snackbar(getString(Res.string.feedback_file_too_large, file.filename))
+                                    } else {
+                                        session.attachments.add(file)
+                                    }
+                                }
+                            } catch (c: kotlinx.coroutines.CancellationException) {
+                                throw c
+                            } catch (e: Exception) {
+                                session.log?.captureError(e, "attachment pick failed")
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(Res.string.feedback_attach), color = DesignColors.Accent)
+                }
+            }
+            SendButton(session, enabled = session.message.isNotBlank() && !session.sending) {
+                scope.launch {
+                    session.sending = true
+                    try {
+                        graph.sendFeedback?.invoke(
+                            FeedbackDraft(
+                                message = session.message.trim(),
+                                name = session.name.trim().ifEmpty { null },
+                                email = session.email.trim().ifEmpty { null },
+                                attachments = session.attachments.filter { it.bytes != null },
+                            ),
+                        )
+                        snackbar(getString(Res.string.feedback_sent))
+                        onSent()
+                    } catch (c: kotlinx.coroutines.CancellationException) {
+                        throw c
+                    } catch (e: Exception) {
+                        session.log?.captureError(e, "feedback send failed")
+                        snackbar(getString(Res.string.feedback_send_failed))
+                    } finally {
+                        session.sending = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentRow(file: FeedbackFile, onRemove: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            file.filename,
+            style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        Text(sizeLabel(file.sizeBytes), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
+        ActionIcon(Icons.Default.Close, stringResource(Res.string.cd_remove_attachment), onClick = onRemove)
+    }
+}
+
+/** The accent primary button, mirroring the sign-in preface's; a spinner replaces the label mid-send. */
+@Composable
+private fun SendButton(session: FeedbackSession, enabled: Boolean, onSend: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(
+                if (enabled || session.sending) DesignColors.Accent else DesignColors.Accent.copy(alpha = 0.4f),
+                RoundedCornerShape(8.dp),
+            )
+            .clickable(enabled = enabled, onClick = onSend)
+            .padding(vertical = DesignSpacing.Space16),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (session.sending) {
+            CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.OnInk, strokeWidth = 2.dp)
+        } else {
+            Text(
+                stringResource(Res.string.feedback_send).uppercase(),
+                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
+            )
+        }
+    }
+}
+
+private fun sizeLabel(bytes: Long): String = when {
+    bytes >= 1_048_576 -> "${(bytes * 10 / 1_048_576) / 10.0} MB"
+    bytes >= 1024 -> "${bytes / 1024} KB"
+    else -> "$bytes B"
+}

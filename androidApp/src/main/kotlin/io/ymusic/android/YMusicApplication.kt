@@ -38,6 +38,7 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.installSentryDeviceId
+import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.WebViewSabrSpecResolver
@@ -130,6 +131,9 @@ class YMusicApplication : Application() {
     /** The current Activity's SAF folder pick, registered while it lives. The graph is app-scoped
      *  but a pick needs an Activity; a scan is always user-driven, so one is up when this runs. */
     @Volatile var folderPicker: (suspend () -> Uri?)? = null
+
+    /** The current Activity's feedback-attachment file pick — same lifecycle as [folderPicker]. */
+    @Volatile var feedbackFilePicker: (suspend () -> List<io.ymusic.ui.FeedbackFile>)? = null
 
     // For onTrimMemory, which cannot await the deferred; set once the build completes.
     @Volatile private var builtImageLoader: ImageLoader? = null
@@ -408,6 +412,8 @@ class YMusicApplication : Application() {
                 AndroidLoginBrowser(url, state, onPageChanged, modifier)
             },
             downloads = downloadService,
+            sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
+            pickFeedbackFiles = { feedbackFilePicker?.invoke() ?: emptyList() },
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the
@@ -421,6 +427,23 @@ class YMusicApplication : Application() {
                 update = { host ->
                     (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
                     host.addView(videoContainer)
+                },
+            )
+        }
+    }
+
+    /** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
+    private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
+        withContext(Dispatchers.IO) {
+            sendSentryFeedback(
+                comments = draft.message,
+                name = draft.name,
+                email = draft.email,
+                attachments = draft.attachments.mapNotNull { f ->
+                    f.bytes?.let { b ->
+                        f.contentType?.let { type -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename, type) }
+                            ?: io.sentry.kotlin.multiplatform.Attachment(b, f.filename)
+                    }
                 },
             )
         }

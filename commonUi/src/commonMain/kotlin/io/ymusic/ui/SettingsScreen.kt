@@ -48,6 +48,7 @@ import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_lockscreen_art
 import io.ymusic.ui.resources.settings_lockscreen_art_hint
+import io.ymusic.ui.resources.settings_send_feedback
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
@@ -58,7 +59,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun SettingsScreen(graph: AppGraph) {
+fun SettingsScreen(graph: AppGraph, onSendFeedback: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
@@ -122,6 +123,9 @@ fun SettingsScreen(graph: AppGraph) {
             onToggle = { value -> scope.launch { graph.settings.put(AppSettings.lockScreenAlbumArt, value) } },
         )
         DownloadSettingsSection(graph)
+        if (onSendFeedback != null) {
+            SettingRow(stringResource(Res.string.settings_send_feedback), value = "", onClick = onSendFeedback)
+        }
     }
 }
 

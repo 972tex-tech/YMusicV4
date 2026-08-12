@@ -69,6 +69,7 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.installSentryDeviceId
+import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -446,6 +447,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             DesktopLoginBrowser(url, state, onPageChanged, modifier)
         },
         downloads = downloadService,
+        sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
+        pickFeedbackFiles = ::pickFeedbackFiles,
     ) { modifier ->
         DesktopPlayerSurface(localSurface, webViewSurface, modifier)
     }
@@ -583,6 +586,38 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
     return buildString {
         append("Scanned $scanned: $added added, $updated updated, $deleted removed")
         if (failed > 0) append(", $failed failed")
+    }
+}
+
+/** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
+private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
+    withContext(Dispatchers.IO) {
+        sendSentryFeedback(
+            comments = draft.message,
+            name = draft.name,
+            email = draft.email,
+            attachments = draft.attachments.mapNotNull { f ->
+                f.bytes?.let { b -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename) }
+            },
+        )
+    }
+}
+
+/** Multi-select file pick for feedback attachments; an over-limit file comes back name-only (null
+ *  bytes) so the form can refuse it with its name. */
+private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
+    val picked = withContext(Dispatchers.Main) {
+        val dialog = FileDialog(null as Frame?, "Attach files", FileDialog.LOAD)
+        dialog.isMultipleMode = true
+        dialog.isVisible = true
+        dialog.files.toList()
+    }
+    return withContext(Dispatchers.IO) {
+        picked.map { file ->
+            val size = file.length()
+            if (size > io.ymusic.ui.FeedbackFile.MAX_BYTES) io.ymusic.ui.FeedbackFile(file.name, bytes = null, sizeBytes = size)
+            else io.ymusic.ui.FeedbackFile(file.name, file.readBytes())
+        }
     }
 }
 

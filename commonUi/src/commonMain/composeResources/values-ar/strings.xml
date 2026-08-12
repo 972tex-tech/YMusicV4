@@ -122,6 +122,17 @@
     <string name="settings_theme_system">حسب النظام</string>
     <string name="settings_theme_light">فاتح</string>
     <string name="settings_theme_dark">داكن</string>
+    <string name="settings_send_feedback">إرسال ملاحظات</string>
+    <string name="feedback_hint">أخبرنا بما تعطّل أو بما تودّ رؤيته. لقطات الشاشة أو ملفات السجلّ مفيدة.</string>
+    <string name="feedback_message_label">ماذا حدث؟</string>
+    <string name="feedback_name_label">الاسم (اختياري)</string>
+    <string name="feedback_email_label">البريد الإلكتروني (اختياري)</string>
+    <string name="feedback_attach">إرفاق ملفات</string>
+    <string name="feedback_send">إرسال</string>
+    <string name="feedback_sent">تم إرسال الملاحظات — شكرًا لك!</string>
+    <string name="feedback_send_failed">تعذّر إرسال الملاحظات — يُرجى المحاولة مرة أخرى</string>
+    <string name="feedback_file_too_large">‏«%1$s» أكبر من أن يُرفَق (الحد الأقصى 10 ميغابايت)</string>
+    <string name="cd_remove_attachment">إزالة المرفق</string>
 
     <string name="cd_menu">القائمة</string>
     <string name="cd_search">بحث</string>

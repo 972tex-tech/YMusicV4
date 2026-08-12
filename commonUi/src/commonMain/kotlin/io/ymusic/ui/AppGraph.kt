@@ -86,6 +86,18 @@ class AppGraph(
      * like [mediaStore].
      */
     val downloads: io.ymusic.download.DownloadService? = null,
+    /**
+     * Delivers a user feedback report to the crash-reporting backend (Sentry user feedback in the
+     * shells). Null hides Settings' "Send feedback" entry entirely — e.g. a build with no DSN, or a
+     * platform without the telemetry module.
+     */
+    val sendFeedback: (suspend (FeedbackDraft) -> Unit)? = null,
+    /**
+     * The OS file picker for feedback attachments, reading each picked file's bytes (an over-limit
+     * file comes back with null bytes — see [FeedbackFile]). Null hides the attach button while the
+     * rest of the feedback form still works.
+     */
+    val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
