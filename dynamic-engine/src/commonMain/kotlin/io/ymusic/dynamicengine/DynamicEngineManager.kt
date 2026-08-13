@@ -7,6 +7,7 @@ import io.ymusic.settings.SettingsStore
 import kmpcommon.log.Logger
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +15,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -63,6 +66,14 @@ class DynamicEngineManager(
     /** Fired with the running bundle's self-declared revision each time one goes live ([start]
      *  and every successful [swap]) — the shells stamp it onto the Sentry scope. */
     private val onBackendVersion: ((Int) -> Unit)? = null,
+    /**
+     * Where the engine bundle comes from (embed asset + cached remote + remote config). When set,
+     * [start] boots `getCached() ?: getEmbed()` (a rejected cache falls back to the embed) and a
+     * periodic update check runs every [updateCheckIntervalMs], swapping in anything newer that
+     * passes the boot gate. When null, [baselineJs] boots as before (tests).
+     */
+    private val jsSource: JsSourceProvider? = null,
+    private val updateCheckIntervalMs: Long = 6 * 60 * 60 * 1000L,
 ) {
 
     private val stintLog = logger?.fork("engine-stint")
@@ -223,10 +234,8 @@ class DynamicEngineManager(
      */
     suspend fun start(remoteJs: String? = null): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
-        val slot = if (remoteJs == null) {
-            createEngine(baselineJs)
-        } else {
-            try {
+        val slot = when {
+            remoteJs != null -> try {
                 createEngineWithDeadline(remoteJs)
             } catch (e: EngineError) {
                 mgrLog?.log(
@@ -236,9 +245,69 @@ class DynamicEngineManager(
                 )
                 createEngine(baselineJs)
             }
+            jsSource != null -> bootFromSource(jsSource)
+            else -> createEngine(baselineJs)
         }
         activeLock.withLock { active = slot }
+        startUpdateLoop()
         checkNotNull(slot.engine.backendVersion).also { onBackendVersion?.invoke(it) } // health-checked
+    }
+
+    /** Boot the provider's best bundle: the cached remote copy behind the deadline (untrusted),
+     *  falling back to the always-present embed (trusted, no deadline) when absent or rejected. */
+    private suspend fun bootFromSource(source: JsSourceProvider): Slot {
+        val cached = try {
+            source.getCached()
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            mgrLog?.log(Logger.Level.WARN, "cached bundle unavailable — booting the embed", e)
+            null
+        }
+        if (cached != null) {
+            try {
+                return createEngineWithDeadline(cached.first)
+            } catch (e: EngineError) {
+                mgrLog?.log(
+                    Logger.Level.WARN,
+                    "${e.code} cached bundle rejected at boot, falling back to the embed: ${e.message}",
+                    e,
+                )
+            }
+        }
+        return createEngine(source.getEmbed().first)
+    }
+
+    /** The periodic remote-update check, armed once per manager on the first successful [start]. */
+    private var updateLoopStarted = false
+
+    private fun startUpdateLoop() {
+        if (jsSource == null || updateCheckIntervalMs <= 0 || updateLoopStarted) return
+        updateLoopStarted = true
+        bootScope.launch {
+            while (isActive) {
+                delay(updateCheckIntervalMs)
+                try {
+                    checkForUpdates()
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (e: Exception) {
+                    mgrLog?.log(Logger.Level.WARN, "bundle update check failed", e)
+                }
+            }
+        }
+    }
+
+    /**
+     * One remote-update check, callable eagerly (app foreground, network regained) on top of the
+     * periodic loop: anything newer than the running bundle downloads, boots through the full
+     * swap gate (rejection = nothing cached), and goes live. Returns the new version, or null
+     * when nothing newer exists.
+     */
+    suspend fun checkForUpdates(): Int? {
+        val source = jsSource ?: return null
+        val current = backendVersion()?.toLong() ?: return null
+        return source.fetchIfAny(current) { js, _ -> swap(js) }
     }
 
     /**
