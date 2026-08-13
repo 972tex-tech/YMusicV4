@@ -13,6 +13,8 @@ import kmpcommon.log.markTrail
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * The YouTube extraction surface — intent-level twins of the engine bundle's `yt/…` commands
@@ -234,7 +236,10 @@ internal suspend fun <R> DynamicEngine.jsonCommand(
         // on a shallower logger) still reports this call's full story.
         throw e.markTrail(log)
     } finally {
-        loggers.unpark(key)
+        // This finally often runs in an already-cancelled coroutine (screen navigation cancels the
+        // command); the mutex's prompt-cancellation guarantee would then skip the remove under
+        // contention and leak the parked logger for the engine's lifetime.
+        withContext(NonCancellable) { loggers.unpark(key) }
     }
 }
 
