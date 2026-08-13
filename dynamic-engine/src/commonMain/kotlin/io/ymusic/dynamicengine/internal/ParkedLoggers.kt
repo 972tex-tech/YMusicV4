@@ -1,8 +1,9 @@
 package io.ymusic.dynamicengine.internal
 
 import kmpcommon.log.Logger
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 
 /**
  * The Kotlin callers' loggers a JS command can call back against: `jsonCommand` parks its caller's
@@ -11,25 +12,24 @@ import kotlinx.atomicfu.locks.synchronized
  * trail across the pipe. A missing/absent/late key degrades to [root] (fire-and-forget JS jobs —
  * session bootstrap, crons — and callbacks racing the unpark), never an error.
  *
- * Plain synchronized, never a suspending Mutex: unpark runs in an already-cancelled coroutine's
- * finally, where a Mutex's prompt cancellation would skip the remove and leak the entry. The
- * lock exists only because park() has concurrent writers (commands launch from any dispatcher
- * thread): `++next` and a racing HashMap put need the fence; nanoseconds, uncontended.
+ * Deliberately unlocked: keys are unique via the atomic counter, entries are never iterated, and
+ * this is logging-only data whose designed fallback IS the miss — a racy read just resolves to
+ * [root]. No suspension anywhere, so unpark in a cancelled coroutine's finally always runs.
  */
+@OptIn(ExperimentalAtomicApi::class)
 internal class ParkedLoggers(val root: Logger?) {
-    private val lock = SynchronizedObject()
     private val parked = HashMap<Int, Logger>()
-    private var next = 0
+    private val next = AtomicInt(0)
 
-    fun park(logger: Logger): Int = synchronized(lock) {
-        val key = ++next
+    fun park(logger: Logger): Int {
+        val key = next.incrementAndFetch()
         parked[key] = logger
-        key
+        return key
     }
 
     fun unpark(key: Int) {
-        synchronized(lock) { parked.remove(key) }
+        parked.remove(key)
     }
 
-    fun resolve(key: Int?): Logger? = key?.let { synchronized(lock) { parked[it] } } ?: root
+    fun resolve(key: Int?): Logger? = key?.let { parked[it] } ?: root
 }
