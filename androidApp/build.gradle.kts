@@ -19,6 +19,16 @@ sentry {
     autoInstallation { enabled.set(false) }
     tracingInstrumentation { enabled.set(false) }
     includeSourceContext.set(sentryAuthToken().isNotEmpty())
+    // The plugin only collects THIS module's sources; the app's frames live in the library
+    // modules. Bundle every subproject source set that compiles into the Android app —
+    // other targets' sets (jvmMain/desktop/apple) stay out, their actuals would collide.
+    additionalSourceDirsForSourceContext.set(
+        rootProject.subprojects
+            .flatMap { p -> listOf("commonMain", "androidMain", "jvmCommonMain").map { p.file("src/$it/kotlin") } }
+            .filter { it.isDirectory }
+            .map { it.absolutePath }
+            .toSet(),
+    )
     telemetry.set(false)
 }
 
