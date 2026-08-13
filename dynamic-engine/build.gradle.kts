@@ -63,6 +63,7 @@ kotlin {
                 api(Libs.SqlDelight.runtime)
                 implementation(project(":kmpHttp:json"))
                 implementation(Libs.Kotlinx.coroutinesCore)
+                implementation(Libs.Kotlinx.atomicfu) // SynchronizedObject for ParkedLoggers
             }
         }
 
