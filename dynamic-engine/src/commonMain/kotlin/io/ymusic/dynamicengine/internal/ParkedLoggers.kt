@@ -21,6 +21,11 @@ internal class ParkedLoggers(val root: Logger?) {
     private val parked = HashMap<Int, Logger>()
     private val next = AtomicInt(0)
 
+    /** The engine's self-declared bundle revision, set at init — every JS-side trail is prefixed
+     *  `js:<version>` so a report names the bundle that produced it. Per-engine (this object is). */
+    @kotlin.concurrent.Volatile
+    var backendVersion: Int? = null
+
     fun park(logger: Logger): Int {
         val key = next.incrementAndFetch()
         parked[key] = logger

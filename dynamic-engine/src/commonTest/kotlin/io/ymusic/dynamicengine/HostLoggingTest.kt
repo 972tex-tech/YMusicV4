@@ -63,7 +63,7 @@ class HostLoggingTest {
             // The failure is logged once, where it's born, with the trail + this protocol's hop.
             val entry = log.calls.single { it.level == Logger.Level.WARN }
             assertEquals(Logger.Level.WARN, entry.level)
-            assertEquals(listOf("download#a1b2", "js:fetchForLinkParser", "http"), entry.tags)
+            assertEquals(listOf("js:20", "download#a1b2", "js:fetchForLinkParser", "http"), entry.tags)
             assertEquals(mapOf<String, Any>("url" to "https://youtube.com/watch"), entry.crumbs.last().prop)
             assertTrue(entry.message.startsWith("request failed:"), "message was: ${entry.message}")
             assertTrue(entry.message.contains("connect refused"), "message was: ${entry.message}")
@@ -79,7 +79,7 @@ class HostLoggingTest {
         val engine = createTestEngine(FakeHttpClient { throw IOException("dns") }, 1, log)
         try {
             engine.probe("""{"url":"https://x/"}""")
-            assertEquals(listOf("http"), log.calls.single { it.level == Logger.Level.WARN }.tags)
+            assertEquals(listOf("js:20", "http"), log.calls.single { it.level == Logger.Level.WARN }.tags)
         } finally {
             engine.close()
         }
@@ -100,9 +100,9 @@ class HostLoggingTest {
             // The birth-site WARN carries the Kotlin caller's trail (via the parked key), the JS
             // side's forks WITH their props (by value), and the protocol's own hop.
             val entry = log.calls.single { it.level == Logger.Level.WARN }
-            assertEquals(listOf("Discover", "task", "js:fetch", "js:sub", "http"), entry.tags)
+            assertEquals(listOf("Discover", "task", "js:20", "js:fetch", "js:sub", "http"), entry.tags)
             assertEquals(mapOf<String, Any>("id" to "a1"), entry.crumbs[1].prop)
-            assertEquals(mapOf<String, Any>("n" to 1L), entry.crumbs[3].prop)
+            assertEquals(mapOf<String, Any>("n" to 1L), entry.crumbs[4].prop)
             assertTrue(entry.error is IOException)
         } finally {
             engine.close()

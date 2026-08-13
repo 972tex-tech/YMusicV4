@@ -38,6 +38,7 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.installSentryDeviceId
+import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -172,6 +173,8 @@ class YMusicApplication : Application() {
             settings = settings,
             // Debug builds crash on an engine-thread stall (StrictMode-style); release only logs.
             strictStints = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+            // Every Sentry event names the engine-js bundle that was live (start + each swap).
+            onBackendVersion = ::installSentryEngineVersion,
         )
         engines.start()
 

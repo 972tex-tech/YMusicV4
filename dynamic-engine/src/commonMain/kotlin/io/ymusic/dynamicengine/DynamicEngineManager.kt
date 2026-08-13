@@ -59,6 +59,9 @@ class DynamicEngineManager(
     /** Deadline for booting a REMOTE bundle ([start]'s remoteJs / [swap]) — untrusted code must
      *  not be able to hang the boot path. The baked-in baseline boots without one. */
     private val remoteBootTimeoutMs: Long = 10_000L,
+    /** Fired with the running bundle's self-declared revision each time one goes live ([start]
+     *  and every successful [swap]) — the shells stamp it onto the Sentry scope. */
+    private val onBackendVersion: ((Int) -> Unit)? = null,
 ) {
 
     private val stintLog = logger?.fork("engine-stint")
@@ -229,7 +232,7 @@ class DynamicEngineManager(
             }
         }
         activeLock.withLock { active = slot }
-        checkNotNull(slot.engine.backendVersion) // createEngine health-checked
+        checkNotNull(slot.engine.backendVersion).also { onBackendVersion?.invoke(it) } // health-checked
     }
 
     /**
@@ -251,7 +254,7 @@ class DynamicEngineManager(
             "engine ${old?.engine?.backendVersion} -> ${fresh.engine.backendVersion}",
         )
         if (old != null) retire(old)
-        checkNotNull(fresh.engine.backendVersion) // createEngine health-checked
+        checkNotNull(fresh.engine.backendVersion).also { onBackendVersion?.invoke(it) } // health-checked
     }
 
     /** Run a task on the engine that is current NOW — pinned for the whole block, so a concurrent

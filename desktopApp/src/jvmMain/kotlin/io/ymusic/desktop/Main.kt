@@ -72,6 +72,7 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.installSentryDeviceId
+import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
@@ -283,6 +284,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache"), rootLogger),
             cookieJar = platformCookies,
             settings = settings,
+            // Every Sentry event names the engine-js bundle that was live (start + each swap).
+            onBackendVersion = ::installSentryEngineVersion,
         )
     }
     engines.start()
