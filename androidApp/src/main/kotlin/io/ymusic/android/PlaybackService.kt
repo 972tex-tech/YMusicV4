@@ -32,8 +32,6 @@ import io.ymusic.player.PlayableItem
 import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
 import io.ymusic.player.media3.Media3PlayerAdapter
-import io.ymusic.settings.AppSettings
-import io.ymusic.settings.flow
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.youtubeThumbUrl
 import kmpcommon.log.Logger
@@ -107,10 +105,9 @@ class PlaybackService : MediaLibraryService() {
         val player = graph.player.also { this.player = it }
         val tree = MediaBrowseTree(this, graph).also { this.tree = it }
         coordinator = io.ymusic.ui.PlaybackCoordinator(graph, serviceScope)
-        val lockScreenArt = graph.settings.flow(AppSettings.lockScreenAlbumArt)
         val adapter = Media3PlayerAdapter(
             player,
-            describe = { item -> item.toMediaMetadata(this, sessionArt = lockScreenArt.value) },
+            describe = { item -> item.toMediaMetadata(this) },
             logger = log,
             applyMediaItems = { _, items, startIndex, _ -> applyBrowseItems(items, startIndex) },
             insertMediaItems = { target, index, items -> insertBrowseItems(target, index, items) },
@@ -564,23 +561,18 @@ class PlaybackService : MediaLibraryService() {
 
 /** Session/notification metadata for a queue item — items are self-describing. The artworkUri is
  *  published in [artworkContentUri]-wrapped form: Android Auto resolves queue icons only from
- *  local content uris (via [ArtworkProvider]); in-process, [ImageLoaderBitmapLoader] unwraps it.
- *  [sessionArt] false leaves the artwork OUT of the session metadata (nothing on the lock screen /
- *  system media card, per [AppSettings.lockScreenAlbumArt]) — the app's own notification builds
- *  its large icon separately and always carries the art. */
-private fun PlayableItem.toMediaMetadata(context: android.content.Context, sessionArt: Boolean): MediaMetadata {
+ *  local content uris (via [ArtworkProvider]); in-process, [ImageLoaderBitmapLoader] unwraps it. */
+private fun PlayableItem.toMediaMetadata(context: android.content.Context): MediaMetadata {
     val builder = MediaMetadata.Builder()
         .setTitle(displayTitle)
         .setArtist(displaySubtitle)
-    if (sessionArt) {
-        // A YouTube item exposes the stable mqdefault url derived from its video id — feed thumb
-        // urls carry rotating signature params and expire inside long-lived session uris. Local
-        // items already carry the stable art://pic/<id>.
-        val target = when (this) {
-            is PlayableItem.YtMedia -> youtubeThumbUrl(videoId)
-            else -> displayThumbnailUrl
-        }
-        target?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
+    // A YouTube item exposes the stable mqdefault url derived from its video id — feed thumb
+    // urls carry rotating signature params and expire inside long-lived session uris. Local
+    // items already carry the stable art://pic/<id>.
+    val target = when (this) {
+        is PlayableItem.YtMedia -> youtubeThumbUrl(videoId)
+        else -> displayThumbnailUrl
     }
+    target?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
     return builder.build()
 }

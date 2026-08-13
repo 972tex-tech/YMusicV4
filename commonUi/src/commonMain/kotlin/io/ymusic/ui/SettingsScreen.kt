@@ -47,8 +47,6 @@ import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_language
-import io.ymusic.ui.resources.settings_lockscreen_art
-import io.ymusic.ui.resources.settings_lockscreen_art_hint
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
@@ -114,13 +112,6 @@ fun SettingsScreen(graph: AppGraph) {
             options = options.regions,
             loading = loadingOptions,
             onSelect = { code -> pickLocale(gl = code) },
-        )
-        val lockScreenArt by remember(graph) { graph.settings.flow(AppSettings.lockScreenAlbumArt) }.collectAsState()
-        SwitchRow(
-            title = stringResource(Res.string.settings_lockscreen_art),
-            subtitle = stringResource(Res.string.settings_lockscreen_art_hint),
-            checked = lockScreenArt,
-            onToggle = { value -> scope.launch { graph.settings.put(AppSettings.lockScreenAlbumArt, value) } },
         )
         DownloadSettingsSection(graph)
     }
@@ -237,32 +228,6 @@ private fun LocalePickerDialog(
                 }
             }
         }
-    }
-}
-
-/** A two-line on/off row — the whole row is the tap target, mirroring [ContentLocaleRow]'s shape. */
-@Composable
-private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable { onToggle(!checked) }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-            )
-            Text(
-                subtitle,
-                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
-                modifier = Modifier.padding(top = DesignSpacing.Space2),
-            )
-        }
-        CompactSwitch(checked)
     }
 }
 

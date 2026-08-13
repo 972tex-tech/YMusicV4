@@ -65,7 +65,6 @@ object AppSettings {
      * controls show (the app's own notification always carries the art). The v4 form of legacy's
      * albumArtOnLockScreen ALBUM_ART/ALBUM_ART2 trick.
      */
-    val lockScreenAlbumArt = BoolSetting("player.lockScreenAlbumArt", true)
 
     /** UI language override (BCP-47); empty = follow the system locale. */
     val uiLanguage = StringSetting("app.uiLanguage", "")
