@@ -91,10 +91,16 @@ class DynamicEngineManager(
             null
         } else {
             { ms ->
-                val message = "engine thread held for ${ms}ms by one task (budget ${SLOW_STINT_MS}ms) — " +
-                    "every pipe, timer and command stalls while the thread is held"
-                stintLog?.log(Logger.Level.ERROR, message)
-                throw IllegalStateException(message)
+                // Engine boot (the bundle eval + health check) is one irreducible >50ms stint by
+                // nature — crashing on it teaches nothing, so boot answers to the relaxed
+                // BOOT_STINT_MS instead; past even that, a boot stall is a real bug again.
+                if (!booting || ms >= BOOT_STINT_MS) {
+                    val budget = if (booting) BOOT_STINT_MS else SLOW_STINT_MS
+                    val message = "engine thread held for ${ms}ms by one task (budget ${budget}ms) — " +
+                        "every pipe, timer and command stalls while the thread is held"
+                    stintLog?.log(Logger.Level.ERROR, message)
+                    throw IllegalStateException(message)
+                }
             }
         },
         slowWaitMs = if (strictStints) SLOW_STINT_MS else 0L,
@@ -111,17 +117,30 @@ class DynamicEngineManager(
         },
     )
 
+    /** True while [createEngine] runs — the stint watchdog answers to [BOOT_STINT_MS] then. Other
+     *  tasks landing on the engine thread inside the window share the grace; the window is ~1s.
+     *  Volatile: set on the caller's thread, read by the watchdog on the engine thread. */
+    @kotlin.concurrent.Volatile
+    private var booting = false
+
     // Boot + gate: the manager is the accept/reject seam for bundles, so IT drives the health
     // check — create itself just boots. A failed check closes the half-born engine here.
-    private suspend fun createEngine(js: String): DynamicEngine = withContext(engineDispatcher) {
-        val engine = DynamicEngine.create(client, appVersion, engineDispatcher, logger, js, cacheStore, cookieJar, settings)
+    private suspend fun createEngine(js: String): DynamicEngine {
+        booting = true
         try {
-            engine.healthCheck()
-        } catch (t: Throwable) {
-            runCatching { engine.closeNow() } // best-effort teardown; the boot failure below is the story
-            throw t
+            return withContext(engineDispatcher) {
+                val engine = DynamicEngine.create(client, appVersion, engineDispatcher, logger, js, cacheStore, cookieJar, settings)
+                try {
+                    engine.healthCheck()
+                } catch (t: Throwable) {
+                    runCatching { engine.closeNow() } // best-effort teardown; the boot failure below is the story
+                    throw t
+                }
+                engine
+            }
+        } finally {
+            booting = false
         }
-        engine
     }
 
     /** Whether the last retirement drained inside the deadline (vs. force-closed). Test seam. */
@@ -237,5 +256,10 @@ class DynamicEngineManager(
     private companion object {
         /** One stint at/over this holds the engine thread long enough to feel: log it. */
         const val SLOW_STINT_MS = 50L
+
+        /** The stint budget while an engine BOOTS ([booting]): the bundle eval + health check is
+         *  one irreducible stint that runs ~50-100ms on real phones (YMUSIC-KMP-5 crashed a debug
+         *  launch at 56ms) — only a stall past this still throws during boot. */
+        const val BOOT_STINT_MS = 500L
     }
 }
