@@ -166,18 +166,18 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_lockscreen_art">Album art on lock screen</string>
-    <string name="settings_lockscreen_art_hint">Show the playing song\'s artwork on the lock screen and system media controls.</string>
+    <string name="settings_lockscreen_art_hint">Show the playing song’s artwork on the lock screen and system media controls.</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Tell us what broke or what you\'d like to see. Screenshots or log files help.</string>
+    <string name="feedback_hint">Tell us what broke or what you’d like to see. Screenshots or log files help.</string>
     <string name="feedback_message_label">What happened?</string>
     <string name="feedback_name_label">Name (optional)</string>
     <string name="feedback_email_label">Email (optional)</string>
     <string name="feedback_attach">Attach files</string>
     <string name="feedback_send">Send</string>
     <string name="feedback_sent">Feedback sent — thank you!</string>
-    <string name="feedback_send_failed">Couldn\'t send feedback — please try again</string>
-    <string name="feedback_attach_failed">Couldn\'t read the selected file — it wasn\'t attached</string>
+    <string name="feedback_send_failed">Couldn’t send feedback — please try again</string>
+    <string name="feedback_attach_failed">Couldn’t read the selected file — it wasn’t attached</string>
     <string name="feedback_file_too_large">“%1$s” is too large to attach (max 10 MB)</string>
     <string name="cd_remove_attachment">Remove attachment</string>
 
@@ -225,7 +225,7 @@
     <string name="signin_button">Sign in</string>
     <string name="signin_screen_title">Sign in</string>
     <string name="signin_loading">Loading sign-in…</string>
-    <string name="signin_unavailable">Sign-in isn\'t available on this device yet</string>
+    <string name="signin_unavailable">Sign-in isn’t available on this device yet</string>
     <string name="account_sign_out">Sign out</string>
     <string name="account_switch">Switch account</string>
     <string name="switch_account_hint">Pick the account you want, then close this screen with the back arrow — the app refreshes under the new account.</string>
