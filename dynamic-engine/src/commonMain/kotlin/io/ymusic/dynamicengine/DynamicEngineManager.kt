@@ -1,5 +1,6 @@
 package io.ymusic.dynamicengine
 
+import io.ymusic.dynamicengine.DynamicEngineManager.Companion.BOOT_STINT_MS
 import io.ymusic.dynamicengine.internal.ENGINE_JS
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
@@ -186,6 +187,11 @@ class DynamicEngineManager(
      * and treats it like any rejected bundle; the serving engine is untouched throughout.
      */
     private suspend fun createEngineWithDeadline(js: String): Slot {
+        // NOT a plain withTimeout(createEngine(js)): a timeout only DELIVERS at a suspension
+        // point, and a bundle stuck in its eval never reaches one — the caller would stay
+        // suspended (holding swapLock) for as long as the hostile eval runs, and the eval's own
+        // eventual error would outrace the timeout. The boot must be detached (bootScope) so the
+        // caller can stop AWAITING at the deadline while the boot runs on to self-dispose.
         val boot = bootScope.async { createEngine(js) }
         return try {
             // Wall-clock deadline (Dispatchers.Default): virtual-time test dispatchers must not skip it.
@@ -308,7 +314,8 @@ class DynamicEngineManager(
             try {
                 pipe.sink.close()
                 val buf = Buffer()
-                while (pipe.source.receive(buf, 4096L) != -1L) { /* EOF = the quiesced ack */ }
+                while (pipe.source.receive(buf, 4096L) != -1L) { /* EOF = the quiesced ack */
+                }
             } finally {
                 pipe.source.close()
             }
