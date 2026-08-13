@@ -62,7 +62,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -666,7 +665,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
                 text = { Text(stringResource(Res.string.audio_only)) },
-                trailingIcon = { Switch(checked = config.audioOnly, onCheckedChange = null) },
+                trailingIcon = { CompactSwitch(config.audioOnly) },
                 onClick = { player.setAudioOnly(!config.audioOnly) },
             )
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose

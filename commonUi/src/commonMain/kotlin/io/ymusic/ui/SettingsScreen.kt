@@ -30,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -261,8 +262,15 @@ private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onToggl
                 modifier = Modifier.padding(top = DesignSpacing.Space2),
             )
         }
-        Switch(checked = checked, onCheckedChange = null)
+        CompactSwitch(checked)
     }
+}
+
+/** M3's stock 52×32 Switch reads oversized against the 14sp row text — scaled to row weight.
+ *  scale() shrinks the visual only (the layout slot stays M3's), which is fine in a text-tall row. */
+@Composable
+internal fun CompactSwitch(checked: Boolean) {
+    Switch(checked = checked, onCheckedChange = null, modifier = Modifier.scale(0.8f))
 }
 
 /** "" = follow system, per [AppSettings.theme]. */
