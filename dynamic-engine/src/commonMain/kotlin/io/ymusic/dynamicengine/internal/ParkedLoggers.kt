@@ -31,5 +31,6 @@ internal class ParkedLoggers(val root: Logger?) {
         parked.remove(key)
     }
 
-    fun resolve(key: Int?): Logger? = key?.let { parked[it] } ?: root
+    /** The parked logger for [key], or [root] when it already unparked (a late callback). */
+    fun resolve(key: Int): Logger? = parked[key] ?: root
 }

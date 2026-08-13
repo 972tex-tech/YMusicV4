@@ -25,8 +25,10 @@ internal fun protocolLogger(
     prop: Map<String, Any>? = null,
 ): Logger? {
     val wire = head["log"] as? JsonObject
+    // No key on the wire (fire-and-forget JS jobs, pre-v2 bundles) → the engine root.
     val key = (wire?.get("key") as? JsonPrimitive)?.intOrNull
-    return parked.resolve(key)?.forkAll(readTrail(wire, head))?.fork(tag, prop)
+    val caller = if (key == null) parked.root else parked.resolve(key)
+    return caller?.forkAll(readTrail(wire, head))?.fork(tag, prop)
 }
 
 /** A head's string field as a one-entry prop map, the query string stripped (PII rule: never log
