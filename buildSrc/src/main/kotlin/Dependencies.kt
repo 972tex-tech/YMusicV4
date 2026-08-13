@@ -1,7 +1,9 @@
 object Versions {
     const val kotlin = "2.4.0"
     const val agp = "9.2.1"
-    const val compileSdk = 35
+    // 36: okhttp-android 5.4 (selected for Android consumers of :kmpHttp via Gradle metadata)
+    // requires it of every module that compiles against it, not just the app.
+    const val compileSdk = 36
     const val minSdk = 24
     const val targetSdk = 35
 

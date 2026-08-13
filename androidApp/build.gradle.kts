@@ -25,8 +25,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Debug-signed so the release build installs for on-device testing; a real release
+            // keystore replaces this before any distribution.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -96,5 +100,10 @@ val copyComposeResources by tasks.registering(Copy::class) {
     into(layout.projectDirectory.dir("src/main/assets/composeResources/io.ymusic.ui.resources"))
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(copyWebViewJs, copyComposeResources)
+}
+
+// Release builds also read src/main/assets from lintVital's model writer — same staged inputs.
+tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
     dependsOn(copyWebViewJs, copyComposeResources)
 }

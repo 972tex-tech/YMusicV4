@@ -1,22 +1,28 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.kts.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# QuickJS JNI bridge: quickjs_jni.c resolves the class and these members BY NAME
+# (FindClass / GetStaticMethodID / the exception ctor) — renaming any of them breaks
+# every engine callback at runtime.
+-keep class io.ymusic.quickjs.QuickJsNative { *; }
+-keep class io.ymusic.quickjs.QuickJsException { <init>(java.lang.String); }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# WebView page JS calls bridge methods through addJavascriptInterface.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# kotlinx.serialization: plugin-generated serializers are looked up via the Companion.
+# The library ships consumer rules, but the named-companion lookup needs the app side too.
+-keepattributes RuntimeVisibleAnnotations,AnnotationDefault
+-if @kotlinx.serialization.Serializable class **
+-keepclassmembers class <1> {
+    static <1>$Companion Companion;
+}
+-if @kotlinx.serialization.Serializable class ** {
+    static **$Companion Companion;
+}
+-keep,allowshrinking,allowobfuscation class <2>$Companion {
+    kotlinx.serialization.KSerializer serializer(...);
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
+# Sentry events must map back to source lines; the file name is renamed, not dropped.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

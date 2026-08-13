@@ -163,17 +163,23 @@ class MainActivity : ComponentActivity() {
         // icon color must not follow the SYSTEM dark-mode setting — that yields white-on-white.
         val light = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = light, navigationBarStyle = light)
-        FreezeWatchdog.start()
-        lifecycle.addObserver(
-            androidx.lifecycle.LifecycleEventObserver { _, event ->
-                android.util.Log.i("FreezeWatchdog", "lifecycle $event")
-            },
-        )
+        // Diagnosis-only instrumentation: the watchdog probes the main looper/choreographer/frame
+        // clock every 3s and the composition probe forces a frame request every 500ms — never in a
+        // release build (it keeps the UI from idling).
+        val debuggable = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (debuggable) {
+            FreezeWatchdog.start()
+            lifecycle.addObserver(
+                androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    android.util.Log.i("FreezeWatchdog", "lifecycle $event")
+                },
+            )
+        }
         (application as YMusicApplication).folderPicker = pickFolder
         (application as YMusicApplication).feedbackFilePicker = pickFeedbackFiles
         sectionFor(intent)?.let { pendingSection.value = it }
         setContent {
-            CompositionClockProbe()
+            if (debuggable) CompositionClockProbe()
             var graph by remember { mutableStateOf<AppGraph?>(null) }
             var error by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(Unit) {

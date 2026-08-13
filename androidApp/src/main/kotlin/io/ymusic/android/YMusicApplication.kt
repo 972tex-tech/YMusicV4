@@ -295,7 +295,8 @@ class YMusicApplication : Application() {
                 client,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 logger = rootLogger,
-                verbose = true,
+                // Per-request media-path logging — debug builds only, it narrates the hot path.
+                verbose = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
             )
         }
 
