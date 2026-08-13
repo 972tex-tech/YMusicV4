@@ -101,7 +101,19 @@ class MainActivity : ComponentActivity() {
         pendingFilePick = deferred
         withContext(Dispatchers.Main) { openFiles.launch("*/*") }
         val uris = deferred.await()
-        withContext(Dispatchers.IO) { uris.map(::readFeedbackFile) }
+        withContext(Dispatchers.IO) {
+            // Per-file isolation: one unreadable pick (an offline cloud-provider entry, a revoked
+            // grant) must not abort the whole batch — the rest still attach.
+            uris.mapNotNull { uri ->
+                try {
+                    readFeedbackFile(uri)
+                } catch (e: Exception) {
+                    (application as YMusicApplication).rootLogger.fork("feedback")
+                        .log(kmpcommon.log.Logger.Level.WARN, "attachment read failed: $uri", e)
+                    null
+                }
+            }
+        }
     }
 
     private fun readFeedbackFile(uri: android.net.Uri): FeedbackFile {

@@ -177,6 +177,7 @@
     <string name="feedback_send">Send</string>
     <string name="feedback_sent">Feedback sent — thank you!</string>
     <string name="feedback_send_failed">Couldn\'t send feedback — please try again</string>
+    <string name="feedback_attach_failed">Couldn\'t read the selected file — it wasn\'t attached</string>
     <string name="feedback_file_too_large">“%1$s” is too large to attach (max 10 MB)</string>
     <string name="cd_remove_attachment">Remove attachment</string>
 

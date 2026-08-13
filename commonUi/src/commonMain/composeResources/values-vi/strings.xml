@@ -125,6 +125,7 @@
     <string name="feedback_send">Gửi</string>
     <string name="feedback_sent">Đã gửi phản hồi — cảm ơn bạn!</string>
     <string name="feedback_send_failed">Không gửi được phản hồi — vui lòng thử lại</string>
+    <string name="feedback_attach_failed">Không đọc được tệp đã chọn — tệp chưa được đính kèm</string>
     <string name="feedback_file_too_large">“%1$s” quá lớn để đính kèm (tối đa 10 MB)</string>
     <string name="cd_remove_attachment">Xóa tệp đính kèm</string>
 

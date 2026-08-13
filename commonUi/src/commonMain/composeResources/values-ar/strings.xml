@@ -130,6 +130,7 @@
     <string name="feedback_send">إرسال</string>
     <string name="feedback_sent">تم إرسال الملاحظات — شكرًا لك!</string>
     <string name="feedback_send_failed">تعذّر إرسال الملاحظات — يُرجى المحاولة مرة أخرى</string>
+    <string name="feedback_attach_failed">تعذّرت قراءة الملف المحدد — لم يتم إرفاقه</string>
     <string name="feedback_file_too_large">‏«%1$s» أكبر من أن يُرفَق (الحد الأقصى 10 ميغابايت)</string>
     <string name="cd_remove_attachment">إزالة المرفق</string>
 

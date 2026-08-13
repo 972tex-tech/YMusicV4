@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_remove_attachment
 import io.ymusic.ui.resources.feedback_attach
+import io.ymusic.ui.resources.feedback_attach_failed
 import io.ymusic.ui.resources.feedback_email_label
 import io.ymusic.ui.resources.feedback_file_too_large
 import io.ymusic.ui.resources.feedback_hint
@@ -148,6 +149,7 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                                     throw c
                                 } catch (e: Exception) {
                                     session.log?.captureError(e, "attachment pick failed")
+                                    snackbar(getString(Res.string.feedback_attach_failed))
                                 }
                             }
                         },
@@ -157,6 +159,9 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                 }
                 SendButton(session, enabled = session.message.isNotBlank() && !session.sending) {
                     scope.launch {
+                        // Two taps can land before the first launch flips the flag through
+                        // recomposition — only one send goes out.
+                        if (session.sending) return@launch
                         session.sending = true
                         try {
                             graph.sendFeedback?.invoke(
