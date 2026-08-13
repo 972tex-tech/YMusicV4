@@ -143,12 +143,17 @@ fun main() {
         val cefManager = remember { CefManager() }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
         var windowVisible by remember { mutableStateOf(true) }
+        val (initialSize, initialPosition) = remember { loadWindowPrefs() }
+        val windowState = rememberWindowState(size = initialSize, position = initialPosition)
         fun quit() {
+            // Flush the geometry synchronously — a move/resize inside the debounce window would
+            // otherwise be lost with the cancelled save (every exit path funnels through here).
+            if (windowState.placement == WindowPlacement.Floating) {
+                saveWindowPrefs(windowState.size, windowState.position)
+            }
             cefManager.dispose()
             exitApplication()
         }
-        val (initialSize, initialPosition) = remember { loadWindowPrefs() }
-        val windowState = rememberWindowState(size = initialSize, position = initialPosition)
         // Persist the size/position the user settles on (debounced past the live drag/resize
         // churn); a maximized/fullscreen geometry is the placement's, not the user's chosen
         // floating one, so it's skipped.
