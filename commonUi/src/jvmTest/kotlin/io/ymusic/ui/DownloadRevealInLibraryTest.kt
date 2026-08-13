@@ -18,6 +18,7 @@ import io.ymusic.download.DownloadTask
 import io.ymusic.download.SabrSpecResolver
 import io.ymusic.download.downloadDatabaseJdbcDriver
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
@@ -51,7 +52,7 @@ class DownloadRevealInLibraryTest {
     fun reveal_in_library_opens_the_files_folder() {
         Locale.setDefault(Locale.ENGLISH)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val engines = DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1)
+        val engines = DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
 
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.player.PlayableItem
 import kmphttp.Request
@@ -51,7 +52,7 @@ class DetailScreensTest {
                 handler(request, body)
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {

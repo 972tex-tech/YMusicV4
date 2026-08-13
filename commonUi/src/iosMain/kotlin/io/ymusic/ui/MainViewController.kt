@@ -18,6 +18,7 @@ import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.window.ComposeUIViewController
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.appleEngineCacheStore
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
@@ -112,6 +113,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 1,
+        jsSource = embeddedEngineJsSource(),
         logger = rootLogger,
         cookieJar = cookies,
         settings = settings,

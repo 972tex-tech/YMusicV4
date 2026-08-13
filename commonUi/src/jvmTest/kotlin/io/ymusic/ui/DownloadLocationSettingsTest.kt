@@ -16,6 +16,7 @@ import io.ymusic.download.DownloadStore
 import io.ymusic.download.SabrSpecResolver
 import io.ymusic.download.downloadDatabaseJdbcDriver
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
@@ -61,7 +62,7 @@ class DownloadLocationSettingsTest {
     )
 
     private fun engines() =
-        DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1)
+        DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1, jsSource = embeddedEngineJsSource())
 
     @Test
     fun download_with_no_location_goes_straight_to_the_folder_picker() {

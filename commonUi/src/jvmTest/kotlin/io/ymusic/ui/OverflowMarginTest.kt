@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.mediastore.model.MediaStoreItem
 import kmpcommon.uri.Uri
@@ -58,7 +59,7 @@ class OverflowMarginTest {
             setContent {
                 val scope = rememberCoroutineScope()
                 val graph = AppGraph(
-                    engines = DynamicEngineManager(CannedHttp { request, _ -> textResponse(request, "{}", "application/json") }, appVersion = 1),
+                    engines = DynamicEngineManager(CannedHttp { request, _ -> textResponse(request, "{}", "application/json") }, appVersion = 1, jsSource = embeddedEngineJsSource()),
                     player = StubPlayer(),
                     playerSurface = {},
                 )

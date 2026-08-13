@@ -1,6 +1,7 @@
 package io.ymusic.desktop
 
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
@@ -54,7 +55,7 @@ fun main(args: Array<String>) {
     val httpClient: KmpHttpClient = KmpHttpClient.create {}
     // The embed page now comes from the scraping engine (yt/embed) — boot the baseline bundle.
     val probeLogger = PrefixLogger("[engine]")
-    val engines = DynamicEngineManager(httpClient, appVersion = 1, logger = probeLogger)
+    val engines = DynamicEngineManager(httpClient, appVersion = 1, logger = probeLogger, jsSource = embeddedEngineJsSource())
     runBlocking { engines.start() }
     if (mode == "embed") {
         // Diagnostic: just the engine's yt/embed round trip — no WebView at all.

@@ -1,7 +1,6 @@
 package io.ymusic.dynamicengine
 
 import io.ymusic.dynamicengine.DynamicEngineManager.Companion.BOOT_STINT_MS
-import io.ymusic.dynamicengine.internal.ENGINE_JS
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
 import kmpcommon.log.Logger
@@ -48,7 +47,12 @@ class DynamicEngineManager(
     private val client: KmpHttpClient,
     private val appVersion: Int,
     private val logger: Logger? = null,
-    private val baselineJs: String = ENGINE_JS,
+    /** Where the engine bundle comes from: [start] boots `getCached() ?: getEmbed()` (a rejected
+     *  cache falls back to the embed) and the periodic update check swaps in anything newer that
+     *  passes the boot gate. Apps wire a [DefaultJsSourceProvider] over the asset-shipped bundle;
+     *  fixed-bundle callers (tests, probes, the iOS lab) use [StaticJsSource] /
+     *  [embeddedEngineJsSource]. */
+    private val jsSource: JsSourceProvider,
     private val cacheStore: CacheStore? = null,
     private val drainTimeoutMs: Long = 30_000L,
     /** The app-owned cookie store the cookie protocol serves (see [DynamicEngine.create]). */
@@ -66,13 +70,6 @@ class DynamicEngineManager(
     /** Fired with the running bundle's self-declared revision each time one goes live ([start]
      *  and every successful [swap]) — the shells stamp it onto the Sentry scope. */
     private val onBackendVersion: ((Int) -> Unit)? = null,
-    /**
-     * Where the engine bundle comes from (embed asset + cached remote + remote config). When set,
-     * [start] boots `getCached() ?: getEmbed()` (a rejected cache falls back to the embed) and a
-     * periodic update check runs every [updateCheckIntervalMs], swapping in anything newer that
-     * passes the boot gate. When null, [baselineJs] boots as before (tests).
-     */
-    private val jsSource: JsSourceProvider? = null,
     private val updateCheckIntervalMs: Long = 6 * 60 * 60 * 1000L,
 ) {
 
@@ -227,27 +224,14 @@ class DynamicEngineManager(
     suspend fun backendVersion(): Int? = activeLock.withLock { active?.engine?.backendVersion }
 
     /**
-     * Boot the first engine. [remoteJs] is the persisted remotely-updated bundle, if any: when it
-     * fails to load or health-check, the failure is LOGGED and the baked-in baseline boots instead
-     * (a bad push must never brick the engine). A baseline failure is a build defect — it throws.
-     * Returns the running bundle's backendVersion.
+     * Boot the first engine from [jsSource]: the cached remote bundle when one exists (a boot
+     * failure is LOGGED and the embed boots instead — a bad push must never brick the engine),
+     * else the embed. An embed failure is a build defect — it throws. Returns the running
+     * bundle's backendVersion.
      */
-    suspend fun start(remoteJs: String? = null): Int = swapLock.withLock {
+    suspend fun start(): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
-        val slot = when {
-            remoteJs != null -> try {
-                createEngineWithDeadline(remoteJs)
-            } catch (e: EngineError) {
-                mgrLog?.log(
-                    Logger.Level.WARN,
-                    "${e.code} remote bundle rejected at boot, falling back to baseline: ${e.message}",
-                    e,
-                )
-                createEngine(baselineJs)
-            }
-            jsSource != null -> bootFromSource(jsSource)
-            else -> createEngine(baselineJs)
-        }
+        val slot = bootFromSource(jsSource)
         activeLock.withLock { active = slot }
         startUpdateLoop()
         checkNotNull(slot.engine.backendVersion).also { onBackendVersion?.invoke(it) } // health-checked
@@ -282,7 +266,7 @@ class DynamicEngineManager(
     private var updateLoopStarted = false
 
     private fun startUpdateLoop() {
-        if (jsSource == null || updateCheckIntervalMs <= 0 || updateLoopStarted) return
+        if (updateCheckIntervalMs <= 0 || updateLoopStarted) return
         updateLoopStarted = true
         bootScope.launch {
             while (isActive) {
@@ -305,9 +289,8 @@ class DynamicEngineManager(
      * when nothing newer exists.
      */
     suspend fun checkForUpdates(): Int? {
-        val source = jsSource ?: return null
         val current = backendVersion()?.toLong() ?: return null
-        return source.fetchIfAny(current) { js, _ -> swap(js) }
+        return jsSource.fetchIfAny(current) { js, _ -> swap(js) }
     }
 
     /**

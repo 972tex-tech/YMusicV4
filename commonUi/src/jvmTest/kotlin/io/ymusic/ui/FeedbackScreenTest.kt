@@ -19,6 +19,7 @@ import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.test.waitUntilDoesNotExist
 import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,7 +31,7 @@ import kotlin.test.assertTrue
 class FeedbackScreenTest {
 
     private fun engines() =
-        DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1)
+        DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1, jsSource = embeddedEngineJsSource())
 
     @Test
     fun composing_and_sending_a_report_delivers_one_draft() {

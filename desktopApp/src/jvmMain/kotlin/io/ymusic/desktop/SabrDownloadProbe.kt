@@ -1,6 +1,7 @@
 package io.ymusic.desktop
 
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
@@ -60,7 +61,7 @@ fun main(args: Array<String>) {
 
     val logger = PrefixLogger("[engine]", kmpcommon.log.Logger.Level.WARN)
     val httpClient = kmphttp.KmpHttpClient.create {}
-    val engines = DynamicEngineManager(httpClient, appVersion = 1, logger = logger)
+    val engines = DynamicEngineManager(httpClient, appVersion = 1, logger = logger, jsSource = embeddedEngineJsSource())
     runBlocking { engines.start() }
 
     val cef = CefManager()

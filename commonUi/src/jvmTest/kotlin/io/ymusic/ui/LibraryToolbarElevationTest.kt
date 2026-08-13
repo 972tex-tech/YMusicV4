@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.runComposeUiTest
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.MediaItemDraft
@@ -27,7 +28,7 @@ class LibraryToolbarElevationTest {
     @Test
     fun scrolling_the_song_list_reports_scroll_to_the_shell() {
         val client = CannedHttp { request, _ -> textResponse(request, "{}", "application/json") }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         val songs = runBlocking {
             repeat(60) { i ->

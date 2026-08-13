@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +49,7 @@ class SearchScreenTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {

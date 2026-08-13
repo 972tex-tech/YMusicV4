@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.extractMusicLibrary
 import kmphttp.CookieBuilder
 import kmphttp.saveFromResponse
@@ -49,7 +50,7 @@ class TombstoneCookiesTest {
                     cookie("__Secure-3PAPISID", "papisid-value"),
                 ),
             )
-            val engines = DynamicEngineManager(client, appVersion = 1)
+            val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
             try {
                 engines.start()
                 engines.extractMusicLibrary()

@@ -3,6 +3,7 @@ package io.ymusic.dynamicengine.yt
 import io.ymusic.dynamicengine.CannedResponse
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.FakeHttpClient
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kmphttp.CookieJar
 import kmphttp.InMemoryCookieJar
 import kmphttp.Request
@@ -46,7 +47,7 @@ class YtLoginCommandsTest {
             }
         }
         if (jar != null) client.cookieJar = jar
-        return DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore).also { it.start() }
+        return DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = cacheStore).also { it.start() }
     }
 
     /** A wiped, deterministic on-disk cache (SQLite index + temp blobs on a ticking clock). */

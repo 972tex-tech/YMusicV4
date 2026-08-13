@@ -11,10 +11,22 @@ import kotlin.test.assertTrue
 
 class DynamicEngineManagerTest {
 
-    private fun manager(drainTimeoutMs: Long = 30_000L, remoteBootTimeoutMs: Long = 10_000L) = DynamicEngineManager(
+    /** A source with a (possibly hostile) cached remote copy over the test-bundle embed. */
+    private class CachedSource(private val cached: String?) : JsSourceProvider {
+        override suspend fun getCached() = cached?.let { it to 99L }
+        override suspend fun getEmbed() = ENGINE_TEST_JS to 20L
+        override suspend fun lastFetch() = 0L
+        override suspend fun <T> fetchIfAny(currentVersion: Long, consume: suspend (String, Long) -> T): T? = null
+    }
+
+    private fun manager(
+        drainTimeoutMs: Long = 30_000L,
+        remoteBootTimeoutMs: Long = 10_000L,
+        cachedJs: String? = null,
+    ) = DynamicEngineManager(
         client = FakeHttpClient(CannedResponse.ofText("")),
         appVersion = 1,
-        baselineJs = ENGINE_TEST_JS,
+        jsSource = CachedSource(cachedJs),
         drainTimeoutMs = drainTimeoutMs,
         remoteBootTimeoutMs = remoteBootTimeoutMs,
     )
@@ -105,9 +117,9 @@ class DynamicEngineManagerTest {
 
     @Test
     fun a_hung_remote_boot_times_out_and_falls_back_at_start() = runTest {
-        val m = manager(remoteBootTimeoutMs = 300)
+        val m = manager(remoteBootTimeoutMs = 300, cachedJs = spinningBundle)
         try {
-            m.start(remoteJs = spinningBundle)
+            m.start()
             assertEquals("fallback-alive", m.ping("fallback-alive")) // the baseline serves
         } finally {
             m.close()
@@ -129,9 +141,9 @@ class DynamicEngineManagerTest {
 
     @Test
     fun a_bad_remote_bundle_falls_back_to_the_baseline_at_start() = runTest {
-        val m = manager()
+        val m = manager(cachedJs = "throw new Error('corrupt download')")
         try {
-            val v = m.start(remoteJs = "throw new Error('corrupt download')")
+            val v = m.start()
             assertTrue(v >= 1)
             assertEquals("baseline", m.ping("baseline"))
         } finally {

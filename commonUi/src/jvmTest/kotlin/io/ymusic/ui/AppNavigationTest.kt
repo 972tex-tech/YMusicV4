@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
@@ -49,7 +50,7 @@ class AppNavigationTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -100,7 +101,7 @@ class AppNavigationTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -148,7 +149,7 @@ class AppNavigationTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -200,7 +201,7 @@ class AppNavigationTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -230,7 +231,7 @@ class AppNavigationTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         runBlocking {
@@ -302,7 +303,7 @@ class AppNavigationTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         runBlocking {

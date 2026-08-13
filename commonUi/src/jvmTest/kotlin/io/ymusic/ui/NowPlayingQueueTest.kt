@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.QueueState
 import kotlinx.coroutines.runBlocking
@@ -26,7 +27,7 @@ class NowPlayingQueueTest {
     @Test
     fun dragging_the_handle_reorders_the_queue() {
         val client = CannedHttp { request, _ -> textResponse(request, "{}", "application/json") }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         val player = StubPlayer()
         val items = (0 until 8).map { PlayableItem.LocalMedia("file:///m/song$it.mp3") }
         player.queueState.value = QueueState(items = items, currentIndex = 0)

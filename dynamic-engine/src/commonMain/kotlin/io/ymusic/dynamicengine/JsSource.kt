@@ -46,6 +46,13 @@ fun interface JsConfigProvider {
     suspend fun fetchConfig(): Pair<String, Long>?
 }
 
+/**
+ * The BUILD-EMBEDDED engine bundle as a source — for the iOS lab shell, desktop probes and test
+ * rigs. The Android/desktop apps load the same bundle from app assets instead
+ * ([DefaultJsSourceProvider]), never call this, and R8 strips the embedded constant with it.
+ */
+fun embeddedEngineJsSource(): JsSourceProvider = StaticJsSource(io.ymusic.dynamicengine.internal.ENGINE_JS)
+
 /** An embed-only [JsSourceProvider] — no cache, no remote. Tests and fixed-bundle callers. */
 class StaticJsSource(private val source: String, private val version: Long = 0L) : JsSourceProvider {
     override suspend fun getCached(): Pair<String, Long>? = null

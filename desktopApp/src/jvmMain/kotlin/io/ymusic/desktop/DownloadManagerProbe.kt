@@ -8,6 +8,7 @@ import io.ymusic.download.DownloadStore
 import io.ymusic.download.Ffmpeg
 import io.ymusic.download.downloadDatabaseJdbcDriver
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
@@ -53,7 +54,7 @@ fun main(args: Array<String>) {
     println("[dl] videoId=$videoId out=$outDir ffmpeg=$ffmpegBin")
 
     val logger = PrefixLogger("[dl]")
-    val engines = DynamicEngineManager(KmpHttpClient.create {}, appVersion = 1, logger = logger)
+    val engines = DynamicEngineManager(KmpHttpClient.create {}, appVersion = 1, logger = logger, jsSource = embeddedEngineJsSource())
     runBlocking { engines.start() }
 
     val cef = CefManager()

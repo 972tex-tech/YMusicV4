@@ -4,6 +4,7 @@ import io.ymusic.dynamicengine.CannedResponse
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.EngineError
 import io.ymusic.dynamicengine.FakeHttpClient
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,7 +35,7 @@ class YtEmbedTest {
             cookieHeader = request.header("Cookie")
             CannedResponse.ofText(embedFixture, headers = listOf("Content-Type" to "text/html")).build(request)
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         m.start()
         try {
             val html = m.embedPage("Mozilla/5.0 (Linux; Android 14) SomeWebView/1.0")
@@ -60,7 +61,7 @@ class YtEmbedTest {
         val client = FakeHttpClient { request ->
             CannedResponse.ofText("nope", status = 403).build(request)
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         m.start()
         try {
             val e = assertFailsWith<EngineError> { m.embedPage("UA") }

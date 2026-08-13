@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.applyYtLocale
 import io.ymusic.settings.InMemorySettingsStore
 import kotlinx.coroutines.runBlocking
@@ -64,7 +65,7 @@ class ContentLocaleTest {
     fun the_region_youtube_reports_seeds_the_context_without_any_user_choice() {
         Locale.setDefault(Locale.US)
         val charts = CopyOnWriteArrayList<String>()
-        val engines = DynamicEngineManager(chartsClient(charts), appVersion = 1)
+        val engines = DynamicEngineManager(chartsClient(charts), appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -115,6 +116,7 @@ class ContentLocaleTest {
                 }
             },
             appVersion = 1,
+            jsSource = embeddedEngineJsSource(),
         )
         runBlocking { engines.start() }
         try {
@@ -154,7 +156,7 @@ class ContentLocaleTest {
     fun choosing_a_region_overrides_it_and_drops_the_cached_feed() {
         Locale.setDefault(Locale.US)
         val charts = CopyOnWriteArrayList<String>()
-        val engines = DynamicEngineManager(chartsClient(charts), appVersion = 1)
+        val engines = DynamicEngineManager(chartsClient(charts), appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {

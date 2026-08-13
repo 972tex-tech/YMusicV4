@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.extractMusicLibrary
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +57,7 @@ class MusicLibraryScreenTest {
     fun library_page_parses_chips_sort_and_mixed_grid() {
         Locale.setDefault(Locale.ENGLISH)
         val bodies = CopyOnWriteArrayList<String>()
-        val engines = DynamicEngineManager(libraryClient(bodies), appVersion = 1)
+        val engines = DynamicEngineManager(libraryClient(bodies), appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking {
             try {
                 engines.start()
@@ -111,7 +112,7 @@ class MusicLibraryScreenTest {
     fun library_tab_renders_grid_chips_and_sort_menu() {
         Locale.setDefault(Locale.ENGLISH)
         val bodies = CopyOnWriteArrayList<String>()
-        val engines = DynamicEngineManager(libraryClient(bodies), appVersion = 1)
+        val engines = DynamicEngineManager(libraryClient(bodies), appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {

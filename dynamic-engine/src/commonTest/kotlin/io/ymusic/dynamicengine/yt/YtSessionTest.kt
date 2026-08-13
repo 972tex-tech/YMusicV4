@@ -3,6 +3,7 @@ package io.ymusic.dynamicengine.yt
 import io.ymusic.dynamicengine.CannedResponse
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.FakeHttpClient
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +41,7 @@ class YtSessionTest {
                 searchOk(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         m.start()
         try {
             m.search(query = "a")
@@ -65,7 +66,7 @@ class YtSessionTest {
                 searchOk(request, status = if (apiHits == 1) 403 else 200)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         m.start()
         try {
             val page = m.search(query = "a")

@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.extractAccountLibrary
 import io.ymusic.dynamicengine.yt.extractChannelDetail
 import kmphttp.CookieBuilder
@@ -88,7 +89,7 @@ class AccountLibraryScreenTest {
         val bodies = CopyOnWriteArrayList<String>()
         val client = libraryClient(bodies)
         signIn(client)
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking {
             try {
                 engines.start()
@@ -154,7 +155,7 @@ class AccountLibraryScreenTest {
             }
         }
         signIn(client)
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -186,7 +187,7 @@ class AccountLibraryScreenTest {
             }
         }
         signIn(client)
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -217,7 +218,7 @@ class AccountLibraryScreenTest {
         val bodies = CopyOnWriteArrayList<String>()
         val client = libraryClient(bodies)
         signIn(client)
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {

@@ -14,6 +14,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.test.waitUntilDoesNotExist
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
@@ -40,7 +41,7 @@ class LibraryPlaylistTest {
                 textResponse(request, HOMEPAGE_FIXTURE, "text/html")
             else textResponse(request, "{}", "application/json")
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         runBlocking {
@@ -105,7 +106,7 @@ class LibraryPlaylistTest {
                 textResponse(request, HOMEPAGE_FIXTURE, "text/html")
             else textResponse(request, "{}", "application/json")
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         runBlocking {

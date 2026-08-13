@@ -4,6 +4,7 @@ import io.ymusic.dynamicengine.CannedResponse
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.EngineError
 import io.ymusic.dynamicengine.FakeHttpClient
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.readAll
 import kmpcommon.io.asAsyncSource
 import kmphttp.loadForRequest
@@ -49,7 +50,7 @@ class YtCommandsTest {
             }
         }
         if (jar != null) client.cookieJar = jar
-        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore, settings = settings)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = cacheStore, settings = settings)
         m.start()
         return m to client
     }
@@ -944,7 +945,7 @@ class YtCommandsTest {
                 jsonResponse("{}").build(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         m.start()
         try {
             val first = backgroundScope.launch { runCatching { m.search(query = "a") } }
@@ -997,7 +998,7 @@ class YtCommandsTest {
                 jsonResponse(SEARCH_FIXTURE).build(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = store)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
         m.start()
         try {
             val page = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
@@ -1029,7 +1030,7 @@ class YtCommandsTest {
                 jsonResponse("{}").build(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         m.start()
         try {
             m.search(query = "seed") // bootstrap succeeds
@@ -1101,7 +1102,7 @@ class YtCommandsTest {
     @Test
     fun the_first_home_load_rides_the_bootstrap_homepage_not_browse() = runTest {
         val counting = CountingClient(HOMEPAGE_WITH_FEED_FIXTURE)
-        val m = DynamicEngineManager(counting.client, appVersion = 1, cacheStore = cacheStore())
+        val m = DynamicEngineManager(counting.client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = cacheStore())
         m.start()
         try {
             // The session bootstrap's page IS the first answer: one fetch, zero /browse.
@@ -1128,7 +1129,7 @@ class YtCommandsTest {
     fun a_restart_re_scrapes_the_homepage_for_the_first_home_load() = runTest {
         val store = cacheStore()
         val first = CountingClient(HOMEPAGE_WITH_FEED_FIXTURE)
-        val m = DynamicEngineManager(first.client, appVersion = 1, cacheStore = store)
+        val m = DynamicEngineManager(first.client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
         m.start()
         try {
             m.extractHomeFeed() // consumes the kept bootstrap page
@@ -1142,7 +1143,7 @@ class YtCommandsTest {
         // the first home load forces ONE re-scrape and serves from that — still no /browse.
         val second = CountingClient(HOMEPAGE_WITH_FEED_FIXTURE)
         second.client.cookieJar = first.client.cookieJar
-        val m2 = DynamicEngineManager(second.client, appVersion = 1, cacheStore = store)
+        val m2 = DynamicEngineManager(second.client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
         m2.start()
         try {
             val page = m2.extractHomeFeed()
@@ -1177,7 +1178,7 @@ class YtCommandsTest {
                 jsonResponse(SEARCH_FIXTURE).build(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = store)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
         m.start()
         try {
             val search = backgroundScope.launch { runCatching { m.search(query = "seed") } } // kicks the scrape
@@ -1224,7 +1225,7 @@ class YtCommandsTest {
                 jsonResponse(SEARCH_FIXTURE).build(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore())
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = cacheStore())
         m.start()
         try {
             val search = backgroundScope.launch { runCatching { m.search(query = "seed") } }
@@ -1287,7 +1288,7 @@ class YtCommandsTest {
                 jsonResponse(BROWSE_FIXTURE).build(request)
             }
         }
-        val m = DynamicEngineManager(client, appVersion = 1, cacheStore = store)
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
         m.start()
         try {
             m.search(query = "seed") // rides the stale session; kicks the background revalidation
@@ -1317,7 +1318,7 @@ class YtCommandsTest {
     @Test
     fun a_homepage_without_initial_data_falls_back_to_browse_directly() = runTest {
         val counting = CountingClient(HOMEPAGE_FIXTURE) // ytcfg only, no ytInitialData
-        val m = DynamicEngineManager(counting.client, appVersion = 1, cacheStore = cacheStore())
+        val m = DynamicEngineManager(counting.client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = cacheStore())
         m.start()
         try {
             val page = m.extractHomeFeed()

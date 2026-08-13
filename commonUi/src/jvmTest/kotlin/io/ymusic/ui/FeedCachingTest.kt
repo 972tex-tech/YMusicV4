@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
@@ -37,7 +38,7 @@ class FeedCachingTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {

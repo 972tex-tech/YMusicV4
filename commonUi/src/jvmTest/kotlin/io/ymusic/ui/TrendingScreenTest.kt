@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtSectionHeader
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
@@ -43,7 +44,7 @@ class TrendingScreenTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
@@ -83,7 +84,7 @@ class TrendingScreenTest {
                 else -> textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1)
+        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {

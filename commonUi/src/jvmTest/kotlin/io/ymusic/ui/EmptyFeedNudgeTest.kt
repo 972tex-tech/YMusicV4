@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.extractHomeFeed
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
@@ -37,7 +38,7 @@ class EmptyFeedNudgeTest {
     @Test
     fun the_nudge_reaches_the_wire_as_the_pages_empty_explainer() {
         Locale.setDefault(Locale.ENGLISH)
-        val engines = DynamicEngineManager(nudgeClient(), appVersion = 1)
+        val engines = DynamicEngineManager(nudgeClient(), appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking {
             try {
                 engines.start()
@@ -57,7 +58,7 @@ class EmptyFeedNudgeTest {
     @Test
     fun the_empty_home_shows_youtubes_words_not_the_generic_message() {
         Locale.setDefault(Locale.ENGLISH)
-        val engines = DynamicEngineManager(nudgeClient(), appVersion = 1)
+        val engines = DynamicEngineManager(nudgeClient(), appVersion = 1, jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {

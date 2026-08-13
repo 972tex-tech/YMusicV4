@@ -9,6 +9,7 @@ import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.desktopEngineCacheStore
+import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.player.WatchNextSeen
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
@@ -49,7 +50,7 @@ class RecommendedScreenTest {
                 textResponse(request, "{}", "application/json")
             }
         }
-        val engines = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore())
+        val engines = DynamicEngineManager(client, appVersion = 1, cacheStore = cacheStore(), jsSource = embeddedEngineJsSource())
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
