@@ -18,7 +18,7 @@ import kotlinx.serialization.json.longOrNull
  * the engine root), gets the JS-side trail grafted on by value, and this protocol's [tag] hop
  * appended. The pre-v2 `logCtx: ["tag", …]` head field still decodes (older remote bundles).
  */
-internal suspend fun protocolLogger(
+internal fun protocolLogger(
     parked: ParkedLoggers,
     head: JsonObject,
     tag: String,
