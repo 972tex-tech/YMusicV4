@@ -179,9 +179,10 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     val setCookies = response.headers.mapNotNull { (name, value) ->
                         if (name.equals("Set-Cookie", ignoreCase = true)) value else null
                     }
+                    // Cookie NAMES only — values are session credentials and must never enter a log line.
                     log?.debug {
                         "HTTP ${response.code} ${response.request.url.host}" +
-                            if (setCookies.isEmpty()) "" else " set-cookie=[${setCookies.joinToString(" | ")}]"
+                            if (setCookies.isEmpty()) "" else " set-cookie=${setCookies.joinToString(",") { it.substringBefore('=') }}"
                     }
                     val tmp = Buffer()
                     tmp.writeUtf8(
