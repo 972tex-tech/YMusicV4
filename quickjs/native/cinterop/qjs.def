@@ -1,4 +1,4 @@
-package = ymusic.quickjs.cinterop
+package = io.ymusic.quickjs.cinterop
 headers = quickjs_native.h
 headerFilter = quickjs_native.h
 # Embed the QuickJS core static lib INTO the klib (konan copies it to `included/`), so it propagates
