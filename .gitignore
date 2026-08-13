@@ -45,3 +45,6 @@ local.properties
 
 # legacy app sources, kept locally for reference only
 YMusicLegacy/
+
+# Build-staged app assets (copied by gradle from webview-js/engine-js/commonUi outputs)
+androidApp/src/main/assets/

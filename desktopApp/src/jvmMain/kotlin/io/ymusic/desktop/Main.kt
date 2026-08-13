@@ -44,6 +44,7 @@ import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
+import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.desktopEngineCacheStore
 import io.ymusic.dynamicengine.yt.embedPage
@@ -276,6 +277,19 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             .also { settings.put(AppSettings.deviceId, it) }
     }
     installSentryDeviceId(deviceId)
+    // The engine bundle: jar-resource embed (no compiled-in constant) + file cache + remote
+    // config (fetchConfig answers null until a config service exists). The manager boots
+    // cached-or-embed and runs the periodic update check itself.
+    val engineSource = DefaultJsSourceProvider(
+        client = http.engine,
+        config = { null },
+        embedVersion = readAppResource("engine_ymusic.version").trim().toLong(),
+        embedSource = { readAppResource("engine_ymusic.js") },
+        fileSystem = FileSystem.SYSTEM,
+        directory = File(dataDir, "engine-js").absolutePath.toPath(),
+        now = { System.currentTimeMillis() },
+        logger = rootLogger,
+    )
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             http.engine,
@@ -286,9 +300,26 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             settings = settings,
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
             onBackendVersion = ::installSentryEngineVersion,
+            jsSource = engineSource,
         )
     }
     engines.start()
+
+    // The injected player script through the same seam. Never swapped in a RUNNING player: the
+    // cached remote copy (when a config service exists) wins at player build; else the dev dist
+    // re-read keeps "Reload player" picking up a fresh npm build. Version 0 until the config
+    // service defines webview-js numbering.
+    val webViewSource = DefaultJsSourceProvider(
+        client = http.engine,
+        config = { null },
+        embedVersion = 0L,
+        embedSource = { readWebViewJs() },
+        fileSystem = FileSystem.SYSTEM,
+        directory = File(dataDir, "webview-js").absolutePath.toPath(),
+        now = { System.currentTimeMillis() },
+        logger = rootLogger,
+    )
+    val cachedWebViewJs = webViewSource.getCached()?.first
 
     val mediaStore = withContext(Dispatchers.IO) {
         BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
@@ -360,7 +391,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
                 webView = {
                     createWebViewPlayer(
                         WebViewPlayerContext(cefClient, webViewSurface, mediaProxy),
-                        engineJs = readWebViewJs(),
+                        engineJs = cachedWebViewJs ?: readWebViewJs(),
                         appVersion = 5000,
                         embedHtml = { ua -> engines.embedPage(ua) },
                         logger = rootLogger,
@@ -718,6 +749,11 @@ internal fun findFfmpeg(): String? {
         listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
     return dirs.asSequence().map { File(it, "ffmpeg") }.firstOrNull { it.canExecute() }?.absolutePath
 }
+
+/** A file packed into the app jar (the staged engine bundle + version — see stageEngineJs). */
+private fun readAppResource(name: String): String =
+    checkNotNull(object {}.javaClass.getResourceAsStream("/" + name)) { name + " missing from app resources" }
+        .readBytes().decodeToString()
 
 /** The built webview-js bundle — the injected YouTube player script (run `npm run build` there). */
 private fun readWebViewJs(): String {

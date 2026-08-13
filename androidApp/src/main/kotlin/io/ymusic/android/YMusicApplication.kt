@@ -10,6 +10,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.download.DownloadChange
+import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.yt.embedPage
@@ -164,6 +165,19 @@ class YMusicApplication : Application() {
         // First launch decides the app language (device if supported, else English) and persists
         // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
         ensureAppLanguage(settings)
+        // The engine bundle: asset embed (no compiled-in constant) + file cache + remote config
+        // (a config service comes later — fetchConfig answers null until then). The manager boots
+        // cached-or-embed and runs the periodic update check itself.
+        val engineSource = DefaultJsSourceProvider(
+            client = http.engine,
+            config = { null },
+            embedVersion = assets.open("engine_ymusic.version").readBytes().decodeToString().trim().toLong(),
+            embedSource = { assets.open("engine_ymusic.js").readBytes().decodeToString() },
+            fileSystem = FileSystem.SYSTEM,
+            directory = File(filesDir, "engine-js").toOkioPath(),
+            now = { System.currentTimeMillis() },
+            logger = rootLogger,
+        )
         val engines = DynamicEngineManager(
             http.engine,
             appVersion = 1,
@@ -175,17 +189,46 @@ class YMusicApplication : Application() {
             strictStints = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
             onBackendVersion = ::installSentryEngineVersion,
+            jsSource = engineSource,
         )
         engines.start()
 
         val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(this))
 
+        // The injected player script through the same provider seam — but NEVER swapped on the
+        // fly: a cached remote copy applies at the next process start (the running WebView keeps
+        // the script it was injected with). No version constant yet (embed = 0); the config
+        // service will define the numbering when it exists.
+        val webViewSource = DefaultJsSourceProvider(
+            client = http.engine,
+            config = { null },
+            embedVersion = 0L,
+            embedSource = { assets.open("webview_ymusic.js").readBytes().decodeToString() },
+            fileSystem = FileSystem.SYSTEM,
+            directory = File(filesDir, "webview-js").toOkioPath(),
+            now = { System.currentTimeMillis() },
+            logger = rootLogger,
+        )
         // A missing/corrupt bundle silently disables the whole player-cache path — that's a
         // packaging bug, not a soft feature toggle.
-        val webViewJs = runCatching {
-            assets.open("webview_ymusic.js").readBytes().decodeToString()
+        val loadedWebView = runCatching {
+            webViewSource.getCached() ?: webViewSource.getEmbed()
         }.onFailure { rootLogger.fork("boot").captureError(it, "webview_ymusic.js asset unreadable — player cache disabled") }
             .getOrNull()
+        val webViewJs = loadedWebView?.first
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(WEBVIEW_UPDATE_CHECK_MS)
+                try {
+                    // Validation is a sanity floor only — the real gate is the next boot's load.
+                    webViewSource.fetchIfAny(loadedWebView?.second ?: 0L) { js, _ -> check(js.isNotBlank()) }
+                } catch (c: kotlinx.coroutines.CancellationException) {
+                    throw c
+                } catch (e: Exception) {
+                    rootLogger.fork("webview-js").log(Logger.Level.WARN, "update check failed", e)
+                }
+            }
+        }
 
         // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to
         // the fetcher's disk cache, decode from file) + local files + art:// embedded covers via
@@ -527,3 +570,6 @@ private suspend fun YMusicApplication.anonymousDeviceId(settings: io.ymusic.sett
     settings.put(AppSettings.deviceId, seeded)
     return seeded
 }
+
+/** Cadence of the webview-js remote-update check (a saved copy applies at the next boot). */
+private const val WEBVIEW_UPDATE_CHECK_MS = 6 * 60 * 60 * 1000L

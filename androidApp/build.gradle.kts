@@ -89,6 +89,26 @@ val copyWebViewJs by tasks.registering(Copy::class) {
     into(layout.projectDirectory.dir("src/main/assets"))
 }
 
+// The engine bundle ships as an ASSET (+ its version file), not a compiled-in constant — the
+// JsSourceProvider reads it lazily and a cached remote update supersedes it at boot.
+val engineJsBundle = configurations.create("engineJsBundle") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+val engineJsVersionCfg = configurations.create("engineJsVersionCfg") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+dependencies {
+    "engineJsBundle"(project(":engine-js", "engineJs"))
+    "engineJsVersionCfg"(project(":engine-js", "engineJsVersion"))
+}
+val copyEngineJs by tasks.registering(Copy::class) {
+    from(engineJsBundle) { rename { "engine_ymusic.js" } }
+    from(engineJsVersionCfg) { rename { "engine_ymusic.version" } }
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+
 // :commonUi's compose resources: the compose plugin doesn't package them into an Android artifact
 // under AGP 9's com.android.kotlin.multiplatform.library, so the app ships them as assets itself
 // (the Android resource reader resolves "composeResources/<package>/…" from assets). Must copy the
@@ -100,10 +120,10 @@ val copyComposeResources by tasks.registering(Copy::class) {
     into(layout.projectDirectory.dir("src/main/assets/composeResources/io.ymusic.ui.resources"))
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
-    dependsOn(copyWebViewJs, copyComposeResources)
+    dependsOn(copyWebViewJs, copyComposeResources, copyEngineJs)
 }
 
 // Release builds also read src/main/assets from lintVital's model writer — same staged inputs.
 tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
-    dependsOn(copyWebViewJs, copyComposeResources)
+    dependsOn(copyWebViewJs, copyComposeResources, copyEngineJs)
 }
