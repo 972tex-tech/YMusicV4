@@ -1,4 +1,4 @@
-package io.ymusic.ui
+package io.ymusic.ios
 
 import kmphttp.Cookie
 import kmphttp.CookieBuilder

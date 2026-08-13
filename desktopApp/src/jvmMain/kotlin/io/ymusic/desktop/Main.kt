@@ -289,6 +289,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         directory = File(dataDir, "engine-js").absolutePath.toPath(),
         now = { System.currentTimeMillis() },
         logger = rootLogger,
+        ioDispatcher = Dispatchers.IO,
     )
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
@@ -318,6 +319,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         directory = File(dataDir, "webview-js").absolutePath.toPath(),
         now = { System.currentTimeMillis() },
         logger = rootLogger,
+        ioDispatcher = Dispatchers.IO,
     )
     val cachedWebViewJs = webViewSource.getCached()?.first
 

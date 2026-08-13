@@ -177,6 +177,7 @@ class YMusicApplication : Application() {
             directory = File(filesDir, "engine-js").toOkioPath(),
             now = { System.currentTimeMillis() },
             logger = rootLogger,
+            ioDispatcher = Dispatchers.IO,
         )
         val engines = DynamicEngineManager(
             http.engine,
@@ -208,6 +209,7 @@ class YMusicApplication : Application() {
             directory = File(filesDir, "webview-js").toOkioPath(),
             now = { System.currentTimeMillis() },
             logger = rootLogger,
+            ioDispatcher = Dispatchers.IO,
         )
         // A missing/corrupt bundle silently disables the whole player-cache path — that's a
         // packaging bug, not a soft feature toggle.

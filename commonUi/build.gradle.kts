@@ -27,19 +27,8 @@ kotlin {
 
     // Shared Compose UI for iOS — arm64 device + arm64 simulator only (Compose MP has no iosX64).
     // On this Intel host this compiles only under -PkmpTargets=all (cross-compiled for a device).
-    // Exports one framework the iOS app embeds; MainViewController() is its Swift entry point.
-    withComposeIosTargets {
-        binaries.framework {
-            baseName = "YMusicApp"
-            isStatic = false
-            // Compose MP 1.11.1's ui-uikit links iOS 26 symbols (UIViewLayoutRegion), which need the
-            // iOS 26 SDK / Xcode 26. To build on an older Xcode, allow those undefined at link — Compose
-            // @available-guards their use, so they're never touched below iOS 26. Drop when on Xcode 26.
-            if (providers.gradleProperty("iosAllowUndefined").orNull == "true") {
-                linkerOpts("-undefined", "dynamic_lookup")
-            }
-        }
-    }
+    // :iosAppKotlin (the iOS shell / composition root) produces the framework the Xcode app embeds.
+    withComposeIosTargets()
 
     sourceSets {
         /**

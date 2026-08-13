@@ -11,7 +11,9 @@ import io.ymusic.settings.SettingsStore
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 
-internal const val PlaybackQualitySettingKey = "player.preferVideoQuality"
+/** The player-quality settings key — public because shell settings stores (iOS NSUserDefaults
+ *  seeding) enumerate the keys they persist. */
+const val PlaybackQualitySettingKey = "player.preferVideoQuality"
 
 /**
  * A shell scan/rescan action: reports the running scanned-file count through [onProgress] while it

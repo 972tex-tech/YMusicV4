@@ -1,4 +1,4 @@
-package io.ymusic.ui
+package io.ymusic.ios
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +31,10 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.webview.APPLE_WEBVIEW_USER_AGENT
+import io.ymusic.ui.App
+import io.ymusic.ui.AppGraph
+import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -54,7 +58,6 @@ import platform.Foundation.stringWithContentsOfFile
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
-
 /**
  * The iOS entry point — the Swift app hosts `MainViewControllerKt.MainViewController()`. Builds the
  * [AppGraph] (scraping engine + player facade over the AVFoundation local + WKWebView YouTube
@@ -97,6 +100,7 @@ private fun Center(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 private suspend fun buildIosGraph(container: UIView): AppGraph {
+    val rootLogger = IosLogger()
     // One live store shared by InnerTube HTTP and WKWebView's own YouTube requests.
     val cookies = IosWebViewCookieJar()
     val http = AppHttpClients(
@@ -109,7 +113,6 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     // First launch decides the app language (device if supported, else English) and persists it —
     // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
     ensureAppLanguage(settings)
-    val rootLogger = IosLogger()
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 1,

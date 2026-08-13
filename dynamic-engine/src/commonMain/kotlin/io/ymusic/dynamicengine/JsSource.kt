@@ -76,7 +76,9 @@ class DefaultJsSourceProvider(
     private val directory: Path,
     private val now: () -> Long,
     private val logger: Logger? = null,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Blocking file IO runs here — `Dispatchers.IO` on the JVM shells; not a common API
+     *  (internal on native), so the default matches DiskCacheStore's. */
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : JsSourceProvider {
 
     private val log = logger?.fork("js-source")

@@ -1,4 +1,4 @@
-package io.ymusic.ui
+package io.ymusic.ios
 
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger

@@ -1,8 +1,8 @@
-package io.ymusic.ui
+package io.ymusic.ios
 
 import io.ymusic.settings.StringBackedSettingsStore
+import io.ymusic.ui.PlaybackQualitySettingKey
 import platform.Foundation.NSUserDefaults
-
 internal class IosSettingsStore(
     private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults,
 ) : StringBackedSettingsStore() {
