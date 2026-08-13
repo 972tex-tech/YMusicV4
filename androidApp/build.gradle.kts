@@ -2,6 +2,24 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.sentry.android.gradle") version "6.18.0"
+}
+
+// Upload-only Sentry integration: the plugin injects the proguard UUID and ships release
+// mapping.txt + the Kotlin sources to Sentry, so events symbolicate with source context.
+// Runtime stays out of the plugin's hands — the SDK arrives via :telemetry
+// (sentry-kotlin-multiplatform), not auto-install, and bytecode instrumentation has no
+// consumer here (no performance tracing).
+sentry {
+    org.set("na-6d")
+    projectName.set("ymusic-kmp")
+    authToken.set(sentryAuthToken())
+    includeProguardMapping.set(true)
+    autoUploadProguardMapping.set(sentryAuthToken().isNotEmpty())
+    autoInstallation { enabled.set(false) }
+    tracingInstrumentation { enabled.set(false) }
+    includeSourceContext.set(sentryAuthToken().isNotEmpty())
+    telemetry.set(false)
 }
 
 android {
