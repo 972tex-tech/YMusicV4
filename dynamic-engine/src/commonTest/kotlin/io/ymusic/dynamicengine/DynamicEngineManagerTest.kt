@@ -11,12 +11,17 @@ import kotlin.test.assertTrue
 
 class DynamicEngineManagerTest {
 
-    private fun manager(drainTimeoutMs: Long = 30_000L) = DynamicEngineManager(
+    private fun manager(drainTimeoutMs: Long = 30_000L, remoteBootTimeoutMs: Long = 10_000L) = DynamicEngineManager(
         client = FakeHttpClient(CannedResponse.ofText("")),
         appVersion = 1,
         baselineJs = ENGINE_TEST_JS,
         drainTimeoutMs = drainTimeoutMs,
+        remoteBootTimeoutMs = remoteBootTimeoutMs,
     )
+
+    /** A hostile bundle whose eval spins well past any boot deadline before failing on its own —
+     *  the uninterruptible-boot case (the orphaned daemon thread self-disposes when the spin ends). */
+    private val spinningBundle = "var t = Date.now(); while (Date.now() - t < 3000) {} throw new Error('late');"
 
     /** Echo through the prod "ping" diagnostic — a real job on whatever engine is current. */
     private suspend fun DynamicEngineManager.ping(text: String): String = use { e ->
@@ -93,6 +98,30 @@ class DynamicEngineManagerTest {
             m.swap(ENGINE_TEST_JS)
             assertFalse(m.lastRetirementDrained)
             assertEquals("recovered", m.ping("recovered")) // new engine unaffected
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun a_hung_remote_boot_times_out_and_falls_back_at_start() = runTest {
+        val m = manager(remoteBootTimeoutMs = 300)
+        try {
+            m.start(remoteJs = spinningBundle)
+            assertEquals("fallback-alive", m.ping("fallback-alive")) // the baseline serves
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun a_hung_swap_times_out_typed_and_keeps_the_current_engine() = runTest {
+        val m = manager(remoteBootTimeoutMs = 300)
+        try {
+            m.start()
+            val err = assertFailsWith<EngineError.Technical> { m.swap(spinningBundle) }
+            assertEquals("E20022", err.code)
+            assertEquals("survived", m.ping("survived"))
         } finally {
             m.close()
         }

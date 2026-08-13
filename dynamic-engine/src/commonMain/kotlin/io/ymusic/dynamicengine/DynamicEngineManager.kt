@@ -7,10 +7,17 @@ import kmpcommon.log.Logger
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import okio.Buffer
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -49,10 +56,16 @@ class DynamicEngineManager(
      *  logs WARN (congestion, possibly just load). When false (release), no watchdog is armed at
      *  all: zero overhead, zero output. */
     private val strictStints: Boolean = false,
+    /** Deadline for booting a REMOTE bundle ([start]'s remoteJs / [swap]) — untrusted code must
+     *  not be able to hang the boot path. The baked-in baseline boots without one. */
+    private val remoteBootTimeoutMs: Long = 10_000L,
 ) {
 
     private val stintLog = logger?.fork("engine-stint")
     private val mgrLog = logger?.fork("engine-manager")
+
+    /** Hosts remote boots so a timed-out (orphaned) one outlives its caller; cancelled on [close]. */
+    private val bootScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** A booted engine + the JS thread it lives on ([dispatcher] closes after the engine does). */
     private class Slot(val engine: DynamicEngine, val dispatcher: kotlinx.coroutines.CloseableCoroutineDispatcher) {
@@ -91,68 +104,99 @@ class DynamicEngineManager(
     // engine thread, so the stall is unmissable in development; a task that WAITED 50ms+ for the
     // thread (the victim — cumulative congestion, possibly just load) only logs WARN. Release
     // arms nothing: zero overhead, zero output.
-    private fun newEngineDispatcher() = QuickJsRuntime.newDispatcher(
-        slowStintMs = if (strictStints) SLOW_STINT_MS else 0L,
-        onSlowStint = if (!strictStints) {
-            null
-        } else {
-            { ms ->
-                // Engine boot (the bundle eval + health check) is one irreducible >50ms stint by
-                // nature — crashing on it teaches nothing, so boot answers to the relaxed
-                // BOOT_STINT_MS instead; past even that, a boot stall is a real bug again.
-                if (!booting || ms >= BOOT_STINT_MS) {
-                    val budget = if (booting) BOOT_STINT_MS else SLOW_STINT_MS
-                    val message = "engine thread held for ${ms}ms by one task (budget ${budget}ms) — " +
-                        "every pipe, timer and command stalls while the thread is held"
-                    stintLog?.log(Logger.Level.ERROR, message)
-                    throw IllegalStateException(message)
-                }
-            }
-        },
-        slowWaitMs = if (strictStints) SLOW_STINT_MS else 0L,
-        onSlowWait = if (!strictStints) {
-            null
-        } else {
-            { ms ->
-                stintLog?.log(
-                    Logger.Level.WARN,
-                    "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
-                        "the thread was congested, though no single task held it over budget",
-                )
-            }
-        },
-    )
+    /**
+     * An engine's private JS thread. [booting] is THIS thread's stint grace: while the engine on
+     * it boots, the watchdog answers to [BOOT_STINT_MS] — the bundle eval + health check is one
+     * irreducible >50ms stint by nature, and crashing on it teaches nothing (YMUSIC-KMP-5); past
+     * even the boot budget, a stall is a real bug again. Per-thread state, so a boot never
+     * relaxes another engine's watchdog. Volatile: cleared on the boot caller's thread, read by
+     * the watchdog on this thread.
+     */
+    private inner class EngineThread {
+        @kotlin.concurrent.Volatile
+        var booting = true
 
-    /** True while [createEngine] runs — the stint watchdog answers to [BOOT_STINT_MS] then. Boots
-     *  are serialized under [swapLock]; the flag is manager-wide, so during a swap's ~1s boot the
-     *  OLD engine's watchdog shares the grace — acceptable slack for one window per swap.
-     *  Volatile: set on the caller's thread, read by the watchdog on the engine threads. */
-    @kotlin.concurrent.Volatile
-    private var booting = false
+        val dispatcher = QuickJsRuntime.newDispatcher(
+            slowStintMs = if (strictStints) SLOW_STINT_MS else 0L,
+            onSlowStint = if (!strictStints) {
+                null
+            } else {
+                { ms ->
+                    if (!booting || ms >= BOOT_STINT_MS) {
+                        val budget = if (booting) BOOT_STINT_MS else SLOW_STINT_MS
+                        val message = "engine thread held for ${ms}ms by one task (budget ${budget}ms) — " +
+                            "every pipe, timer and command stalls while the thread is held"
+                        stintLog?.log(Logger.Level.ERROR, message)
+                        throw IllegalStateException(message)
+                    }
+                }
+            },
+            slowWaitMs = if (strictStints) SLOW_STINT_MS else 0L,
+            onSlowWait = if (!strictStints) {
+                null
+            } else {
+                { ms ->
+                    stintLog?.log(
+                        Logger.Level.WARN,
+                        "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
+                            "the thread was congested, though no single task held it over budget",
+                    )
+                }
+            },
+        )
+    }
 
     // Boot + gate: the manager is the accept/reject seam for bundles, so IT drives the health
     // check — create itself just boots. The engine boots on its OWN fresh dispatcher (a serving
     // engine is never stalled by a boot); a failed boot closes the half-born engine AND its
     // never-activated thread here.
     private suspend fun createEngine(js: String): Slot {
-        val dispatcher = newEngineDispatcher()
-        booting = true
+        val thread = EngineThread()
         try {
-            return withContext(dispatcher) {
-                val engine = DynamicEngine.create(client, appVersion, dispatcher, logger, js, cacheStore, cookieJar, settings)
+            return withContext(thread.dispatcher) {
+                val engine = DynamicEngine.create(client, appVersion, thread.dispatcher, logger, js, cacheStore, cookieJar, settings)
                 try {
                     engine.healthCheck()
                 } catch (t: Throwable) {
                     runCatching { engine.closeNow() } // best-effort teardown; the boot failure below is the story
                     throw t
                 }
-                Slot(engine, dispatcher)
+                // Orphaned by the boot deadline (cancelled while the eval held this thread):
+                // withContext discards the result, so nobody can ever receive this engine — free
+                // it now, before the cancellation propagates.
+                if (!isActive) runCatching { engine.closeNow() }
+                Slot(engine, thread.dispatcher)
             }
         } catch (t: Throwable) {
-            dispatcher.close()
+            thread.dispatcher.close()
             throw t
         } finally {
-            booting = false
+            thread.booting = false
+        }
+    }
+
+    /**
+     * Boot an UNTRUSTED (remote) bundle with a deadline. A hostile or broken bundle can hang boot
+     * two ways: a stuck eval (uninterruptible — the boot is orphaned and its daemon thread lives
+     * until the eval ends, self-disposing then) or a health check that never answers (cancellable
+     * — clean teardown). Either way the caller gets the typed E20022 inside [remoteBootTimeoutMs]
+     * and treats it like any rejected bundle; the serving engine is untouched throughout.
+     */
+    private suspend fun createEngineWithDeadline(js: String): Slot {
+        val boot = bootScope.async { createEngine(js) }
+        return try {
+            // Wall-clock deadline (Dispatchers.Default): virtual-time test dispatchers must not skip it.
+            withContext(Dispatchers.Default) { withTimeout(remoteBootTimeoutMs) { boot.await() } }
+        } catch (e: TimeoutCancellationException) {
+            boot.cancel()
+            throw EngineError.Technical(
+                "E20022",
+                "remote bundle boot timed out after ${remoteBootTimeoutMs}ms",
+                null,
+                null,
+                null,
+                e,
+            )
         }
     }
 
@@ -174,7 +218,7 @@ class DynamicEngineManager(
             createEngine(baselineJs)
         } else {
             try {
-                createEngine(remoteJs)
+                createEngineWithDeadline(remoteJs)
             } catch (e: EngineError) {
                 mgrLog?.log(
                     Logger.Level.WARN,
@@ -196,7 +240,7 @@ class DynamicEngineManager(
      * the outgoing engine. Returns the new bundle's backendVersion.
      */
     suspend fun swap(newJs: String): Int = swapLock.withLock {
-        val fresh = createEngine(newJs) // throws typed on rejection; boots on its own thread
+        val fresh = createEngineWithDeadline(newJs) // throws typed on rejection/timeout; boots on its own thread
         val old = activeLock.withLock {
             val prev = active
             active = fresh
@@ -228,6 +272,7 @@ class DynamicEngineManager(
         val slot = activeLock.withLock { val s = active; active = null; s }
         slot?.engine?.close()
         slot?.dispatcher?.close()
+        bootScope.cancel()
     }
 
     private suspend fun retire(slot: Slot) {
