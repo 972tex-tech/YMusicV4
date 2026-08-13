@@ -54,7 +54,8 @@ class DynamicEngineManager(
     private val stintLog = logger?.fork("engine-stint")
     private val mgrLog = logger?.fork("engine-manager")
 
-    private class Slot(val engine: DynamicEngine) {
+    /** A booted engine + the JS thread it lives on ([dispatcher] closes after the engine does). */
+    private class Slot(val engine: DynamicEngine, val dispatcher: kotlinx.coroutines.CloseableCoroutineDispatcher) {
         val inFlight = AtomicInt(0)
         val retired = AtomicBoolean(false)
         val drained = CompletableDeferred<Unit>()
@@ -78,14 +79,19 @@ class DynamicEngineManager(
 
     private val swapLock = Mutex() // serializes start/swap/close end to end
 
-    // The ONE JS thread every engine this manager boots is confined to, across swaps — created
-    // engines run on it for life (DynamicEngine.create's synchronous contract), so it outlives
-    // each engine and closes with the manager. [strictStints] (debug builds) arms the watchdog:
-    // a task that HELD the thread 50ms+ in one stretch (the culprit — a definite bug) logs ERROR
-    // and throws on the engine thread, so the stall is unmissable in development; a task that
-    // WAITED 50ms+ for the thread (the victim — cumulative congestion, possibly just load) only
-    // logs WARN. Release arms nothing: zero overhead, zero output.
-    private val engineDispatcher = QuickJsRuntime.newDispatcher(
+    // Each engine gets its OWN JS thread for life (DynamicEngine.create's synchronous contract),
+    // created with the engine and closed after it retires — so booting a new engine (bundle eval +
+    // health check, easily 100ms+) never holds the thread the SERVING engine runs on: during a
+    // swap the old engine keeps answering on its thread while the new one boots on a fresh one.
+    // Shared host state tolerates the brief two-thread overlap: DiskCacheStore serializes on its
+    // own Mutex + IO dispatcher, the cookie jar is the platform's thread-safe store, and
+    // ParkedLoggers is deliberately unlocked (misses degrade to root).
+    // [strictStints] (debug builds) arms the watchdog on every engine thread: a task that HELD
+    // the thread 50ms+ in one stretch (the culprit — a definite bug) logs ERROR and throws on the
+    // engine thread, so the stall is unmissable in development; a task that WAITED 50ms+ for the
+    // thread (the victim — cumulative congestion, possibly just load) only logs WARN. Release
+    // arms nothing: zero overhead, zero output.
+    private fun newEngineDispatcher() = QuickJsRuntime.newDispatcher(
         slowStintMs = if (strictStints) SLOW_STINT_MS else 0L,
         onSlowStint = if (!strictStints) {
             null
@@ -117,27 +123,34 @@ class DynamicEngineManager(
         },
     )
 
-    /** True while [createEngine] runs — the stint watchdog answers to [BOOT_STINT_MS] then. Other
-     *  tasks landing on the engine thread inside the window share the grace; the window is ~1s.
-     *  Volatile: set on the caller's thread, read by the watchdog on the engine thread. */
+    /** True while [createEngine] runs — the stint watchdog answers to [BOOT_STINT_MS] then. Boots
+     *  are serialized under [swapLock]; the flag is manager-wide, so during a swap's ~1s boot the
+     *  OLD engine's watchdog shares the grace — acceptable slack for one window per swap.
+     *  Volatile: set on the caller's thread, read by the watchdog on the engine threads. */
     @kotlin.concurrent.Volatile
     private var booting = false
 
     // Boot + gate: the manager is the accept/reject seam for bundles, so IT drives the health
-    // check — create itself just boots. A failed check closes the half-born engine here.
-    private suspend fun createEngine(js: String): DynamicEngine {
+    // check — create itself just boots. The engine boots on its OWN fresh dispatcher (a serving
+    // engine is never stalled by a boot); a failed boot closes the half-born engine AND its
+    // never-activated thread here.
+    private suspend fun createEngine(js: String): Slot {
+        val dispatcher = newEngineDispatcher()
         booting = true
         try {
-            return withContext(engineDispatcher) {
-                val engine = DynamicEngine.create(client, appVersion, engineDispatcher, logger, js, cacheStore, cookieJar, settings)
+            return withContext(dispatcher) {
+                val engine = DynamicEngine.create(client, appVersion, dispatcher, logger, js, cacheStore, cookieJar, settings)
                 try {
                     engine.healthCheck()
                 } catch (t: Throwable) {
                     runCatching { engine.closeNow() } // best-effort teardown; the boot failure below is the story
                     throw t
                 }
-                engine
+                Slot(engine, dispatcher)
             }
+        } catch (t: Throwable) {
+            dispatcher.close()
+            throw t
         } finally {
             booting = false
         }
@@ -157,7 +170,7 @@ class DynamicEngineManager(
      */
     suspend fun start(remoteJs: String? = null): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
-        val engine = if (remoteJs == null) {
+        val slot = if (remoteJs == null) {
             createEngine(baselineJs)
         } else {
             try {
@@ -171,8 +184,8 @@ class DynamicEngineManager(
                 createEngine(baselineJs)
             }
         }
-        activeLock.withLock { active = Slot(engine) }
-        checkNotNull(engine.backendVersion) // createEngine health-checked
+        activeLock.withLock { active = slot }
+        checkNotNull(slot.engine.backendVersion) // createEngine health-checked
     }
 
     /**
@@ -183,18 +196,18 @@ class DynamicEngineManager(
      * the outgoing engine. Returns the new bundle's backendVersion.
      */
     suspend fun swap(newJs: String): Int = swapLock.withLock {
-        val fresh = createEngine(newJs) // throws typed on rejection
+        val fresh = createEngine(newJs) // throws typed on rejection; boots on its own thread
         val old = activeLock.withLock {
             val prev = active
-            active = Slot(fresh)
+            active = fresh
             prev
         }
         mgrLog?.log(
             Logger.Level.INFO,
-            "engine ${old?.engine?.backendVersion} -> ${fresh.backendVersion}",
+            "engine ${old?.engine?.backendVersion} -> ${fresh.engine.backendVersion}",
         )
         if (old != null) retire(old)
-        checkNotNull(fresh.backendVersion) // createEngine health-checked
+        checkNotNull(fresh.engine.backendVersion) // createEngine health-checked
     }
 
     /** Run a task on the engine that is current NOW — pinned for the whole block, so a concurrent
@@ -214,7 +227,7 @@ class DynamicEngineManager(
     suspend fun close(): Unit = swapLock.withLock {
         val slot = activeLock.withLock { val s = active; active = null; s }
         slot?.engine?.close()
-        engineDispatcher.close()
+        slot?.dispatcher?.close()
     }
 
     private suspend fun retire(slot: Slot) {
@@ -235,6 +248,7 @@ class DynamicEngineManager(
             )
         }
         slot.engine.close()
+        slot.dispatcher.close() // the retired engine's thread dies with it
     }
 
     /** SIGINT, best-effort: a bundle without the lifecycle module refuses the open — skip (the
