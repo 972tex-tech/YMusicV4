@@ -184,6 +184,18 @@ tasks.register<JavaExec>("downloadManager") {
     args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
 }
 
+// Local stand-in for the release/config service (see MockUpdateServer.kt):
+//   ./gradlew :desktopApp:mockUpdateServer -PmockArgs="8899 build/mock-update 9.9.9"
+tasks.register<JavaExec>("mockUpdateServer") {
+    group = "verification"
+    description = "Serve a signed update manifest + JS remote config from localhost."
+    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
+    dependsOn(jvmMainCompilation.compileTaskProvider)
+    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
+    mainClass.set("io.ymusic.desktop.update.MockUpdateServer")
+    args((providers.gradleProperty("mockArgs").orNull ?: "").split(" ").filter { it.isNotBlank() })
+}
+
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
 tasks.register<JavaExec>("catalogue") {
     group = "application"
