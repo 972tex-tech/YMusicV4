@@ -93,7 +93,15 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
-                implementation(Libs.Jcef.maven)
+                implementation(Libs.Jcef.maven) {
+                    // JCEF's own OSR path (CefBrowserOsr) renders through a jogl GLCanvas; ours is
+                    // ImageOsrBrowser (pure AWT image painting) and the windowed login browser uses
+                    // no GL either — jogl+gluegen (~7MB) are dead weight. CefBrowserOsr stays on
+                    // the classpath but is never instantiated (ImageOsrBrowser extends CefBrowser_N
+                    // directly; only the dev NowPlayingProbe asks the factory for OSR).
+                    exclude(group = "me.friwi", module = "jogl-all")
+                    exclude(group = "me.friwi", module = "gluegen-rt")
+                }
                 implementation(Libs.Jna.core)
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
@@ -194,6 +202,15 @@ compose.desktop {
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
         )
+        // Release packaging (packageReleaseDmg etc.) runs ProGuard SHRINK-ONLY: no obfuscation, no
+        // optimization — dead-code removal is the point (material-icons-extended alone is 37MB of
+        // mostly-unused icon classes). Reflection/JNI/ServiceLoader keeps: proguard-rules.pro.
+        buildTypes.release.proguard {
+            version.set("7.7.0")
+            optimize.set(false)
+            obfuscate.set(false)
+            configurationFiles.from(project.file("proguard-rules.pro"))
+        }
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "YMusic"
@@ -203,6 +220,39 @@ compose.desktop {
             // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec
             // (TLS for jcefmaven's first-run CEF download).
             modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec")
+        }
+    }
+}
+
+// sqlite-jdbc (~12MB of it) and JNA bundle natives for EVERY OS/arch; a package needs only the
+// host OS's (packaging is per-OS anyway). Strip the rest from the ProGuard output jars — that's
+// what jpackage consumes for the release tasks. zip exit 12 = "nothing matched", fine.
+tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+    val proguardOut = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+    doLast {
+        val os = org.gradle.internal.os.OperatingSystem.current()
+        val sqliteKeep = if (os.isMacOsX) "Mac" else if (os.isLinux) "Linux" else "Windows"
+        val jnaKeep = if (os.isMacOsX) "darwin" else if (os.isLinux) "linux" else "win32"
+        // Dash-suffixed on purpose: com/sun/jna/win32/ (no dash) is a CLASS package, not natives.
+        val jnaOses = listOf("aix", "darwin", "dragonflybsd", "freebsd", "linux", "openbsd", "sunos", "win32")
+        fun strip(jar: java.io.File, patterns: List<String>) {
+            val p = ProcessBuilder(listOf("zip", "-q", "-d", jar.absolutePath) + patterns)
+                .redirectErrorStream(true).start()
+            val out = p.inputStream.readBytes().decodeToString()
+            check(p.waitFor() in setOf(0, 12)) { "zip -d ${jar.name} failed: $out" }
+        }
+        proguardOut.get().asFile.listFiles().orEmpty().forEach { jar ->
+            when {
+                jar.name.startsWith("sqlite-jdbc") -> strip(
+                    jar,
+                    listOf("FreeBSD", "Linux", "Mac", "Windows").filter { it != sqliteKeep }
+                        .map { "org/sqlite/native/$it/*" },
+                )
+                jar.name.matches(Regex("jna(-jpms)?-[0-9].*\\.jar")) -> strip(
+                    jar,
+                    jnaOses.filter { it != jnaKeep }.map { "com/sun/jna/$it-*" },
+                )
+            }
         }
     }
 }
