@@ -133,6 +133,7 @@ fun main() {
             it.dsn = SENTRY_DSN
             // The commit in the release traces an event to git history (no source upload).
             it.release = SENTRY_RELEASE
+            it.environment = if (DEBUG_BUILD) "debug" else "production"
         }
     }
     // Both video engines (JCEF WebView + VLCJ local) now render off-screen and paint through a plain
@@ -299,6 +300,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache"), rootLogger),
             cookieJar = platformCookies,
             settings = settings,
+            strictStints = DEBUG_BUILD,
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
             onBackendVersion = ::installSentryEngineVersion,
             jsSource = engineSource,
@@ -374,8 +376,8 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             playerCache, client,
             userAgent = CefManager.CHROME_USER_AGENT,
             logger = rootLogger,
-            // Chatty per-part/decision logs; -Dymusic.player.verbose=false to quiet them (or flip at runtime).
-            verbose = System.getProperty("io.ymusic.player.verbose", "true").toBoolean(),
+            // Chatty per-part/decision logs; -Dio.ymusic.player.verbose overrides the build default.
+            verbose = System.getProperty("io.ymusic.player.verbose")?.toBoolean() ?: DEBUG_BUILD,
             // -Dymusic.player.serveSabrHits=false → fill-only, to test whether synthesized hits wedge switches.
             serveSabrHits = System.getProperty("io.ymusic.player.serveSabrHits", "true").toBoolean(),
         )
@@ -757,11 +759,13 @@ private fun readAppResource(name: String): String =
     checkNotNull(object {}.javaClass.getResourceAsStream("/" + name)) { name + " missing from app resources" }
         .readBytes().decodeToString()
 
-/** The built webview-js bundle — the injected YouTube player script (run `npm run build` there). */
+/** The built webview-js bundle — the injected YouTube player script. The dev dist file wins when
+ *  running from a checkout ("Reload player" picks up a fresh `npm run build`); the packaged app
+ *  has no checkout and falls back to the prod copy staged into the jar (stageWebViewJs). */
 private fun readWebViewJs(): String {
     val candidates = listOf("webview-js/dist/webview_ymusic.js", "../webview-js/dist/webview_ymusic.js")
     candidates.map(::File).firstOrNull { it.exists() }?.let { return it.readText() }
-    error("webview_ymusic.js not found (cwd=${System.getProperty("user.dir")}); run `npm run build` in webview-js/")
+    return readAppResource("webview_ymusic.js")
 }
 
 @Composable

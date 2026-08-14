@@ -17,10 +17,14 @@ import { transformAsync } from '@babel/core';
 import presetEnv from '@babel/preset-env';
 import { minify } from 'terser';
 import { mkdir, writeFile, watch as fsWatch } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 const prod = process.argv.includes('--prod');
 const watch = process.argv.includes('--watch');
-const OUT = 'dist/webview_ymusic.js';
+// --out <path>: write elsewhere (Gradle packaging builds into its own build dir so the dev dist/
+// stays whatever the dev loop last produced).
+const outIdx = process.argv.indexOf('--out');
+const OUT = outIdx !== -1 ? process.argv[outIdx + 1] : 'dist/webview_ymusic.js';
 
 // The oldest browser we intentionally reach. ES5 output parses far below this; the effective floor is
 // bounded by the code's unpolyfilled APIs (Map/Set → Chrome 38, iterable spread → Chrome 45).
@@ -66,7 +70,7 @@ async function runOnce() {
     code = min.code;
   }
 
-  await mkdir('dist', { recursive: true });
+  await mkdir(dirname(OUT), { recursive: true });
   await writeFile(OUT, code);
   console.log(
     `webview-js: built ${OUT} (${prod ? 'prod' : 'dev'}, ES5/chrome${BROWSER_TARGET.chrome}, ` +

@@ -43,9 +43,9 @@ class CefManager {
             // navigator.webdriver=false, removes the automation signal) — the main tell beyond UA.
             addJcefArgs("--disable-blink-features=AutomationControlled")
             // DevTools: point a real Chrome at http://localhost:9222 to inspect ANY JCEF browser
-            // (the login window AND the OSR player). Dev-only — it exposes the browser to local
-            // processes; drop before shipping.
-            addJcefArgs("--remote-debugging-port=9222")
+            // (the login window AND the OSR player). Debug builds only — it exposes the browser
+            // to local processes.
+            if (DEBUG_BUILD) addJcefArgs("--remote-debugging-port=9222")
             setAppHandler(object : MavenCefAppHandlerAdapter() {
                 override fun onBeforeTerminate(): Boolean = true
             })

@@ -9,19 +9,25 @@ plugins {
 
 val desktopVersion = "1.0.0"
 
+// Android's BuildConfig.DEBUG equivalent, compile-time: true unless the build ran with
+// -Pymusic.debugLogs=false — the ONE release knob, shared with :kmpCommon's BuildFlags (so a
+// release package strips debug logs and flips these gates in the same build).
+val debugBuild = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).getOrElse(true)
+
 // The DSN is machine-local (see SentryProps in buildSrc), so it reaches the app as generated
 // source rather than a checked-in constant. The release carries the git commit — that's how an
 // event traces back to git history without a source-context upload.
-val generateSentryConfig by tasks.registering {
+val generateBuildConfig by tasks.registering {
     val dsn = sentryDsn()
     val release = "ymusic-desktop@$desktopVersion+${gitCommit()}"
-    val outDir = layout.buildDirectory.dir("generated/sentry/kotlin")
+    val outDir = layout.buildDirectory.dir("generated/buildconfig/kotlin")
     inputs.property("dsn", dsn)
     inputs.property("release", release)
     inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
+    inputs.property("debugBuild", debugBuild)
     outputs.dir(outDir)
     doLast {
-        val file = outDir.get().asFile.resolve("SentryConfig.kt")
+        val file = outDir.get().asFile.resolve("BuildConfig.kt")
         file.parentFile.mkdirs()
         file.writeText(
             """
@@ -32,6 +38,10 @@ val generateSentryConfig by tasks.registering {
 
             // The jar's engine_ymusic.js resource revision (Versions.engineJsBackendVersion).
             internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsBackendVersion}L
+
+            // Compile-time debug flag (Android's BuildConfig.DEBUG): false when the build ran
+            // with -Pymusic.debugLogs=false — gates Sentry environment, CEF debug port, etc.
+            internal const val DEBUG_BUILD: Boolean = $debugBuild
             """.trimIndent() + "\n",
         )
     }
@@ -52,6 +62,20 @@ val stageEngineJs by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("engineJsResources"))
 }
 
+// The injected WebView player script, PROD build (terser-minified, DEBUG=false), staged into the
+// jar for the packaged app. webview-js is not a Gradle module — this drives its npm pipeline
+// directly, into our build dir so the dev dist/ stays whatever the dev loop last produced (the
+// runtime prefers the dist file when running from a checkout; the jar copy is the fallback).
+// Needs node + webview-js/node_modules (npm install) on the build host, like :engine-js needs npx.
+val stageWebViewJs by tasks.registering(Exec::class) {
+    val outFile = layout.buildDirectory.file("webviewJsResources/webview_ymusic.js")
+    workingDir = rootProject.file("webview-js")
+    inputs.dir(rootProject.file("webview-js/src"))
+    inputs.files(rootProject.file("webview-js/build.mjs"), rootProject.file("webview-js/package.json"))
+    outputs.file(outFile)
+    commandLine("node", "build.mjs", "--prod", "--out", outFile.get().asFile.absolutePath)
+}
+
 kotlin {
     jvm {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -61,7 +85,7 @@ kotlin {
         /** The desktop (JVM) product shell: builds the AppGraph (JCEF, engines, player) and boots
          *  the shared :commonUi App. `./gradlew :desktopApp:run`. */
         val jvmMain by getting {
-            kotlin.srcDir(generateSentryConfig)
+            kotlin.srcDir(generateBuildConfig)
             dependencies {
                 implementation(project(":commonUi"))
                 implementation(project(":media-scanner"))
@@ -171,8 +195,14 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "YMusic"
             packageVersion = desktopVersion
+            // jlink modules the default set misses but the runtime graph uses: java.sql
+            // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/vlcj/JOGL/coroutines/okio),
+            // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec
+            // (TLS for jcefmaven's first-run CEF download).
+            modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec")
         }
     }
 }
 
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("engineJsResources")).builtBy(stageEngineJs))
+kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("webviewJsResources")).builtBy(stageWebViewJs))
