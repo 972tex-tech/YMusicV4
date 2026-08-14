@@ -14,6 +14,10 @@ plugins {
     id("com.diffplug.spotless") version "8.8.0"
 }
 
+subprojects {
+    installDebugBuildFlag()
+}
+
 spotless {
     kotlin {
         target("**/src/**/*.kt")
