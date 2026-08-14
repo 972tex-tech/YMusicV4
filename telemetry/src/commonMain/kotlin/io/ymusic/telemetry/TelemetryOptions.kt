@@ -53,7 +53,8 @@ fun installSentryDeviceId(id: String) {
 
 /** Attach the RUNNING engine-js bundle's self-declared revision to every event — set at start and
  *  again on every remote swap (the manager's onBackendVersion callback), so a report always names
- *  the bundle that was live. */
+ *  the bundle that was live. A tag, not a context: tags are indexed (searchable, and issues show
+ *  their value distribution), a context is display-only. */
 fun installSentryEngineVersion(version: Int) {
-    Sentry.configureScope { scope -> scope.setContext("ENGINE_JS_VERSION", version) }
+    Sentry.configureScope { scope -> scope.setTag("engine.version", version.toString()) }
 }
