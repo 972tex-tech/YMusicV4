@@ -179,14 +179,24 @@ val javaHomeForJni: String = run {
         ?: error("No JDK with JNI headers (include/jni.h) found. Checked: $candidates")
 }
 
+// Without an explicit deployment target, the MachO header records the BUILD HOST's SDK as the
+// minimum OS — a lib built here refused to load on anything below macOS 14.8. 11.0 is Compose
+// Desktop's own floor (and the first Apple-silicon release).
+val macDeploymentTarget = "11.0"
+
 val cmakeConfigure by tasks.registering(Exec::class) {
     val out = quickJsJniDir.get().asFile
     doFirst { out.mkdirs() }
     inputs.dir(nativeSrc)
     inputs.property("javaHome", javaHomeForJni)
+    inputs.property("macDeploymentTarget", macDeploymentTarget)
     outputs.file(File(out, "CMakeCache.txt"))
     environment("JAVA_HOME", javaHomeForJni)
-    commandLine("cmake", "-S", nativeSrc.absolutePath, "-B", out.absolutePath, "-DCMAKE_BUILD_TYPE=Release")
+    commandLine(
+        "cmake", "-S", nativeSrc.absolutePath, "-B", out.absolutePath,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_OSX_DEPLOYMENT_TARGET=$macDeploymentTarget",
+    )
 }
 
 val cmakeBuild by tasks.registering(Exec::class) {
