@@ -12,6 +12,7 @@ val debugLogs = providers.gradleProperty("ymusic.debugLogs").map(String::toBoole
 val buildFlagsDir = layout.buildDirectory.dir("generated/buildFlags")
 val generateBuildFlags by tasks.registering {
     inputs.property("debugLogs", debugLogs)
+    inputs.property("flags", "DEBUG_LOGS,DEBUG_BUILD")
     outputs.dir(buildFlagsDir)
     doLast {
         buildFlagsDir.get().file("kmpcommon/log/BuildFlags.kt").asFile.apply { parentFile.mkdirs() }.writeText(
@@ -21,6 +22,8 @@ val generateBuildFlags by tasks.registering {
             |object BuildFlags {
             |    /** Baked at build time from -Pymusic.debugLogs (default true). */
             |    const val DEBUG_LOGS: Boolean = $debugLogs
+            |    /** Same bake as [DEBUG_LOGS] — compile-time debug/release switch. */
+            |    const val DEBUG_BUILD: Boolean = $debugLogs
             |}
             |""".trimMargin(),
         )
