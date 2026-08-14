@@ -20,7 +20,6 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
   private _body: HttpBody | null = null;
   private _timeoutMs?: number;
   private _followRedirects?: boolean;
-  private _logCtx?: string[];
   private _log?: JsLogger;
 
   constructor(method: string, url: string) {
@@ -81,15 +80,9 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
     this._followRedirects = !!follow;
     return this;
   }
-  // Logging context: a logical scope trail (["downloadController","js:resolve",…]) the host tags a
-  // birth-site failure (request/response body) with. Developer-only (scope labels, never data/PII)
-  // — it never reaches the user; the error code does. Rides the head to HttpProtocol.
-  logContext(ctx: string[] | string): this {
-    this._logCtx = Array.isArray(ctx) ? ctx.slice() : [String(ctx)];
-    return this;
-  }
-  // The caller's crumb-trail logger — supersedes logContext when both are set: rides the head as
-  // {"key","trail"} so host birth-site logs join the Kotlin caller's parked trail (logger.ts).
+  // The caller's crumb-trail logger — rides the head as {"key","trail"} so host birth-site logs
+  // (a request/response-body failure) join the Kotlin caller's parked trail (logger.ts).
+  // Developer-only (scope labels, never data/PII) — it never reaches the user; the error code does.
   logger(l: JsLogger): this {
     this._log = l;
     return this;
@@ -131,7 +124,6 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
       body,
       len,
       opts,
-      this._logCtx || null,
       this._log || null,
     );
   }

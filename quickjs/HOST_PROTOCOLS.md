@@ -126,17 +126,18 @@ Handling"). A Kotlin task call (`jsonCommand`) **parks** its caller's `kmpcommon
 exactly the command's lifetime and sends the key in the args head as `"logKey": <int>`; the bundle
 mints a `JsLogger` from it (`engine-js/src/protocol/logger.ts`), forks its own hops (`[tag]` or
 `[tag, {props}]` — tags are STABLE names, `js:`-prefixed and slash-free, anything variable goes
-in props), and attaches it to every host call as a head field:
+in props), and attaches it to every host call as a head field. The trail always opens with the
+bundle's own revision (`js:<BACKEND_VERSION>`, baked in at logger construction — the version is
+the bundle's fact, not the host's), so every report names the bundle that produced it:
 
 ```
-"log": {"key": 3, "trail": [["js:yt-home"], ["js:browse"]]}
+"log": {"key": 3, "trail": [["js:20"], ["js:yt-home"], ["js:browse"]]}
 ```
 
 The host protocol resolves the key back to the parked logger (absent/unknown/late → the engine
 root logger; JS-initiated work — session bootstrap, crons — is keyless by design), grafts the JS
 trail on **by value**, appends its own hop, and tags every birth-site log with the result — one
-job's story, stitched across the pipe. Pre-v2 heads carrying `"logCtx": ["tag", …]` still decode
-as bare tags.
+job's story, stitched across the pipe.
 
 ### Cancellation
 

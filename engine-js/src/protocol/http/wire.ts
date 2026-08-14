@@ -22,6 +22,5 @@ export interface RequestHead {
   headers: HeaderEntry[];
   bodyCmd?: string;
   opts?: RequestOpts;
-  logCtx?: string[];
   log?: LogWire;
 }

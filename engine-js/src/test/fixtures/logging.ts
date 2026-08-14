@@ -4,16 +4,18 @@
 import { onAccept } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
-import { hostLogger } from "../../protocol/logger";
+import { hostLogger, jsLogger } from "../../protocol/logger";
 
 onAccept(
   "test/http-log",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
     const b = HttpRequest.get(String(args["url"]));
+    // Keyless multi-hop trail (JS-initiated work): ctx tags become jsLogger forks.
     const ctx = args["ctx"];
-    if (ctx !== undefined) b.logContext(ctx as string[]);
-    // The v2 path: the Kotlin caller's parked key + a JS-side fork with props.
+    if (Array.isArray(ctx) && ctx.length)
+      b.logger((ctx as string[]).slice(1).reduce((l, t) => l.fork(t), jsLogger(String(ctx[0]))));
+    // The parked-caller path: the Kotlin caller's key + a JS-side fork with props.
     if (typeof args["logKey"] === "number")
       b.logger(hostLogger(args, "js:fetch").fork("sub", { "n": 1 }));
     try {

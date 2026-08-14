@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-/** The HTTP protocol's birth-site logging: the scraper tags a request with `logContext`, it rides
+/** The HTTP protocol's birth-site logging: the scraper attaches a crumb-trail logger, it rides
  *  the head to [HttpProtocol], and a transport failure is logged there — where it's born, with the
  *  trail + the native cause — through the app's [Logger]. Driven via the `test/http-log` fixture
  *  (engine-js/src/test/fixtures/logging.ts). */
@@ -58,12 +58,13 @@ class HostLoggingTest {
         val log = Capture()
         val engine = createTestEngine(FakeHttpClient { throw IOException("connect refused") }, 1, log)
         try {
-            engine.probe("""{"url":"https://youtube.com/watch","ctx":["download#a1b2","js:fetchForLinkParser"]}""")
+            engine.probe("""{"url":"https://youtube.com/watch","ctx":["download","fetchForLinkParser"]}""")
 
             // The failure is logged once, where it's born, with the trail + this protocol's hop.
+            // The bundle bakes its own js:<version> as the trail root (logger.ts VERSION_TAG).
             val entry = log.calls.single { it.level == Logger.Level.WARN }
             assertEquals(Logger.Level.WARN, entry.level)
-            assertEquals(listOf("js:20", "download#a1b2", "js:fetchForLinkParser", "http"), entry.tags)
+            assertEquals(listOf("js:20", "js:download", "js:fetchForLinkParser", "http"), entry.tags)
             assertEquals(mapOf<String, Any>("url" to "https://youtube.com/watch"), entry.crumbs.last().prop)
             assertTrue(entry.message.startsWith("request failed:"), "message was: ${entry.message}")
             assertTrue(entry.message.contains("connect refused"), "message was: ${entry.message}")

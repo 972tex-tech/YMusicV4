@@ -2,7 +2,7 @@ import { open, onAccept } from "../../transport";
 import { hostError } from "../command";
 import { Response } from "./response";
 import type { BodyKind, RequestHead, RequestOpts } from "./wire";
-import type { JsLogger } from "../logger";
+import type { JsLogger, LogCrumb } from "../logger";
 import { VERSION_TAG } from "../logger";
 
 // One request execution. execute() resolves the Response (once); cancel() aborts at ANY stage:
@@ -18,8 +18,7 @@ export class HttpCallImpl implements HttpCall {
   private _body: HttpBody | null;
   private _len: number;
   private _opts: RequestOpts | null;
-  private _logCtx: string[] | null; // the caller's logging-context trail for birth-site logs
-  private _log: JsLogger | null; // the crumb-trail logger form; wins over _logCtx when set
+  private _log: JsLogger | null; // the caller's crumb-trail logger for birth-site logs
   private _io: Pipe | null = null;
   private _response: Response | null = null;
   private _bodyReg: { remove(): void } | null = null; // the body pipe's one-shot accept registration, until opened
@@ -35,7 +34,6 @@ export class HttpCallImpl implements HttpCall {
     body: HttpBody | null,
     len: number,
     opts: RequestOpts | null,
-    logCtx: string[] | null,
     log: JsLogger | null,
   ) {
     this._method = method;
@@ -45,7 +43,6 @@ export class HttpCallImpl implements HttpCall {
     this._body = body;
     this._len = len;
     this._opts = opts;
-    this._logCtx = logCtx;
     this._log = log;
   }
   // Retire the body plumbing: unregister a never-opened body command, abort an in-flight body
@@ -116,9 +113,8 @@ export class HttpCallImpl implements HttpCall {
     if (this._opts) head["opts"] = this._opts;
     // Threads the caller's logging context to the host so a transport failure (request/response
     // body) logs at its birth site with the full trail (HOST_PROTOCOLS "Logging context"). Even a
-    // context-free request gets the bundle-revision root — every serve names its bundle.
-    if (this._log) head["log"] = this._log.wire();
-    else head["logCtx"] = [VERSION_TAG].concat(this._logCtx || []);
+    // logger-less request carries the bundle-revision root — every serve names its bundle.
+    head["log"] = this._log ? this._log.wire() : { "trail": [[VERSION_TAG] as LogCrumb] };
     try {
       // control pipe: the JSON head (self-framing), then NOTHING outbound except a possible -1
       // cancel — the channel stays unobstructed at every stage.

@@ -43,7 +43,7 @@ export class JsLogger {
   }
 
   wire(): LogWire {
-    const w: LogWire = { "trail": ([[VERSION_TAG]] as LogCrumb[]).concat(this.trail) };
+    const w: LogWire = { "trail": this.trail };
     if (this.key !== null) w["key"] = this.key;
     return w;
   }
@@ -55,11 +55,11 @@ export class JsLogger {
 // BUNDLE's (remotely updatable, free to diverge from the app-side function).
 export function hostLogger(args: Record<string, unknown>, tag: string): JsLogger {
   const k = args["logKey"];
-  return new JsLogger(typeof k === "number" ? k : null, [[jsTag(tag)]]);
+  return new JsLogger(typeof k === "number" ? k : null, [[VERSION_TAG], [jsTag(tag)]]);
 }
 
 // A keyless logger for JS-initiated work (session bootstrap, crons) — resolves to the engine's
 // root logger host-side.
 export function jsLogger(tag: string): JsLogger {
-  return new JsLogger(null, [[jsTag(tag)]]);
+  return new JsLogger(null, [[VERSION_TAG], [jsTag(tag)]]);
 }
