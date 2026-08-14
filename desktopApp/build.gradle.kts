@@ -185,6 +185,9 @@ tasks.register<JavaExec>("catalogue") {
 compose.desktop {
     application {
         mainClass = "io.ymusic.desktop.MainKt"
+        // jpackage/jlink live in a full JDK; the Gradle daemon often runs on a JBR without them.
+        // Point packaging at one via -Pymusic.jdkHome=<path> (defaults to the Gradle JVM).
+        providers.gradleProperty("ymusic.jdkHome").orNull?.let { javaHome = it }
         // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
