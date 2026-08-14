@@ -45,6 +45,8 @@ android {
         versionName = "4.0.0"
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")
+        // The shipped engine_ymusic.js asset's revision (Versions.engineJsBackendVersion).
+        buildConfigField("long", "ENGINE_JS_VERSION", "${Versions.engineJsBackendVersion}L")
     }
 
     buildFeatures {

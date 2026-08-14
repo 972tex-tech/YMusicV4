@@ -45,10 +45,8 @@ tasks.matching { it.name == "clean" }.configureEach {
 tasks.register("syncEngineJs") {
     dependsOn(
         ":engine-js:closureJs", // build/dist/engine.js (typecheck + esbuild + Closure)
-        ":engine-js:writeEngineVersion", // build/dist/engine.version
         ":androidApp:copyEngineJs", // → androidApp/src/main/assets/engine_ymusic.js
         ":desktopApp:stageEngineJs", // → desktopApp jar resources
-        ":dynamic-engine:generateEngineJsBundleKt", // → embedded ENGINE_JS (tests + iOS lab)
-        ":dynamic-engine:generateEngineJsVersionKt", // → ENGINE_JS_EMBED_VERSION const
+        ":dynamic-engine:generateEngineJsBundleKt", // → embedded ENGINE_JS + its version const
     )
 }

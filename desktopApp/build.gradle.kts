@@ -18,6 +18,7 @@ val generateSentryConfig by tasks.registering {
     val outDir = layout.buildDirectory.dir("generated/sentry/kotlin")
     inputs.property("dsn", dsn)
     inputs.property("release", release)
+    inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("SentryConfig.kt")
@@ -28,6 +29,9 @@ val generateSentryConfig by tasks.registering {
 
             internal const val SENTRY_DSN = "$dsn"
             internal const val SENTRY_RELEASE = "$release"
+
+            // The jar's engine_ymusic.js resource revision (Versions.engineJsBackendVersion).
+            internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsBackendVersion}L
             """.trimIndent() + "\n",
         )
     }

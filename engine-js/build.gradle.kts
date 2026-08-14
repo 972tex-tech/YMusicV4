@@ -27,10 +27,10 @@ plugins {
     base
 }
 
-// The bundle's own revision — BUMP MANUALLY on every remote push. Inlined by esbuild --define
-// (`declare const` in types.d.ts): the "init" health check reports it; the host logs it on swaps
-// and stamps it into error reports, so a bad push is attributable per revision.
-val backendVersion = 20
+// The bundle's own revision — Versions.engineJsBackendVersion (buildSrc), BUMP THERE on every
+// remote push. Inlined by esbuild --define (`declare const` in types.d.ts): the "init" health
+// check reports it; the host logs it on swaps and stamps it into error reports.
+val backendVersion = Versions.engineJsBackendVersion
 
 // Compile-time define: a bare `declare const` identifier substituted inline at bundle time —
 // no runtime global, no extern.
@@ -236,20 +236,7 @@ val engineTestJs by configurations.creating {
     isCanBeConsumed = true
     isCanBeResolved = false
 }
-// The bundle's revision as a tiny artifact of its own — the app shells ship it as an asset next
-// to engine.js so JsSourceProvider knows the EMBED's version without booting it.
-val versionFile = layout.buildDirectory.file("dist/engine.version")
-val writeEngineVersion by tasks.registering {
-    inputs.property("backendVersion", backendVersion)
-    outputs.file(versionFile)
-    doLast { versionFile.get().asFile.writeText(backendVersion.toString()) }
-}
-val engineJsVersion by configurations.creating {
-    isCanBeConsumed = true
-    isCanBeResolved = false
-}
 artifacts {
     add(engineJs.name, bundleFile) { builtBy(closureJs) }
     add(engineTestJs.name, testBundleFile) { builtBy(bundleTestJs) }
-    add(engineJsVersion.name, versionFile) { builtBy(writeEngineVersion) }
 }

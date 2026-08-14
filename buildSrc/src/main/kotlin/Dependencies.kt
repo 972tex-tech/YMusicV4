@@ -5,6 +5,11 @@ object Versions {
     // requires it of every module that compiles against it, not just the app.
     const val compileSdk = 36
     const val minSdk = 24
+
+    /** The engine-js bundle's self-declared revision — BUMP MANUALLY on every remote push. One
+     *  value feeds the bundle's inlined BACKEND_VERSION, the embedded-const version, and each
+     *  shell's embed-version constant (configuration-time, no artifact plumbing). */
+    const val engineJsBackendVersion = 20L
     const val targetSdk = 35
 
     // KMP
