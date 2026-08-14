@@ -5,13 +5,9 @@ plugins {
     kotlin("multiplatform")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
-    // Exports the app's config (main class, jars, JVM args) to Conveyor, the packaging tool that
-    // builds self-updating installers for all three OSes — see conveyor.conf at the repo root.
-    id("dev.hydraulic.conveyor") version "2.0"
 }
 
 val desktopVersion = "1.0.0"
-// Conveyor reads the standard Gradle project version (compose packaging reads packageVersion).
 version = desktopVersion
 
 /** The first candidate JDK that carries jpackage — the marker for "full JDK, not a JBR/JRE". */
@@ -105,10 +101,7 @@ kotlin {
             dependencies {
                 implementation(project(":commonUi"))
                 implementation(project(":media-scanner"))
-                // NOT currentOs: that would bake the build host's skiko into the shared
-                // classpath. Per-machine variants are declared below; the Conveyor plugin puts the
-                // host-matching one back on the run classpath.
-                implementation(compose.desktop.common)
+                implementation(compose.desktop.currentOs)
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
@@ -126,15 +119,6 @@ kotlin {
             implementation(kotlin("test"))
         }
     }
-}
-
-// Per-machine Compose runtimes (skiko natives) for Conveyor's cross-platform packages — these
-// configurations come from the Conveyor plugin, which exports each to that machine's inputs.
-dependencies {
-    "macAmd64"(compose.desktop.macos_x64)
-    "macAarch64"(compose.desktop.macos_arm64)
-    "windowsAmd64"(compose.desktop.windows_x64)
-    "linuxAmd64"(compose.desktop.linux_x64)
 }
 
 // Headless diagnostic for the WebView engine (see WebViewProbe.kt):
@@ -250,18 +234,37 @@ compose.desktop {
 // but GROWS the DMG 72.2→76.1MiB: the DMG's zlib squeezes the raw jimage better than jlink's
 // per-resource zip, which is opaque to it. Download size is the goal → runtime stays uncompressed.
 
-// What Conveyor packages, in place of the raw dependency classpath its plugin exports.
-// Sync, not Copy: the ProGuard dir accumulates hash-named jars across builds, and stale copies
-// would ship alongside (or instead of) the current ones.
-// skiko is excluded because each package takes its own from the machine configurations above.
-// Foreign-platform natives stay in the jars — Conveyor drops them per target; stripping to the
-// build host's would leave every other platform's package without any.
-val conveyorJars by tasks.registering(Sync::class) {
-    dependsOn("proguardReleaseJars")
-    from(layout.buildDirectory.dir("compose/tmp/main-release/proguard")) {
-        exclude("skiko-awt-runtime-*.jar")
+// sqlite-jdbc and JNA carry natives for every OS/arch; a package is per-OS, so the rest is dead
+// weight. Stripped from the ProGuard output, which is what jpackage consumes. zip exit 12 =
+// "nothing matched", which is fine.
+tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+    val proguardOut = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+    doLast {
+        val os = org.gradle.internal.os.OperatingSystem.current()
+        val sqliteKeep = if (os.isMacOsX) "Mac" else if (os.isLinux) "Linux" else "Windows"
+        val jnaKeep = if (os.isMacOsX) "darwin" else if (os.isLinux) "linux" else "win32"
+        // Dash-suffixed on purpose: com/sun/jna/win32/ (no dash) is a CLASS package, not natives.
+        val jnaOses = listOf("aix", "darwin", "dragonflybsd", "freebsd", "linux", "openbsd", "sunos", "win32")
+        fun strip(jar: java.io.File, patterns: List<String>) {
+            val p = ProcessBuilder(listOf("zip", "-q", "-d", jar.absolutePath) + patterns)
+                .redirectErrorStream(true).start()
+            val out = p.inputStream.readBytes().decodeToString()
+            check(p.waitFor() in setOf(0, 12)) { "zip -d ${jar.name} failed: $out" }
+        }
+        proguardOut.get().asFile.listFiles().orEmpty().forEach { jar ->
+            when {
+                jar.name.startsWith("sqlite-jdbc") -> strip(
+                    jar,
+                    listOf("FreeBSD", "Linux", "Mac", "Windows").filter { it != sqliteKeep }
+                        .map { "org/sqlite/native/$it/*" },
+                )
+                jar.name.matches(Regex("jna(-jpms)?-[0-9].*\\.jar")) -> strip(
+                    jar,
+                    jnaOses.filter { it != jnaKeep }.map { "com/sun/jna/$it-*" },
+                )
+            }
+        }
     }
-    into(layout.buildDirectory.dir("conveyorJars"))
 }
 
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("engineJsResources")).builtBy(stageEngineJs))
