@@ -47,6 +47,8 @@ import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_language
+import io.ymusic.ui.resources.settings_licenses
+import io.ymusic.ui.resources.settings_licenses_intro
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
@@ -114,6 +116,67 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
+        LicensesRow()
+    }
+}
+
+/** Settings → Open source licenses: the shipped third-party components ([OssComponents]) in the
+ *  ElevatedBarDialog idiom (see [LocalePickerDialog]). */
+@Composable
+private fun LicensesRow() {
+    var open by remember { mutableStateOf(false) }
+    Text(
+        stringResource(Res.string.settings_licenses),
+        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+    )
+    if (open) {
+        val listState = rememberLazyListState()
+        ElevatedBarDialog(
+            title = stringResource(Res.string.settings_licenses),
+            onDismiss = { open = false },
+            canScrollBackward = listState.canScrollBackward,
+            canScrollForward = listState.canScrollForward,
+            buttons = { TextButton(onClick = { open = false }) { Text(stringResource(Res.string.dialog_cancel)) } },
+        ) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                item("intro") {
+                    Text(
+                        stringResource(Res.string.settings_licenses_intro),
+                        style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                    )
+                }
+                items(OssComponents, key = { it.name }) { c ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                c.name,
+                                style = TextStyle(fontSize = 13.sp, color = DesignColors.Ink),
+                            )
+                            c.scope?.let {
+                                Text(
+                                    it,
+                                    style = TextStyle(fontSize = 11.sp, color = DesignColors.InkMuted),
+                                    modifier = Modifier.padding(top = DesignSpacing.Space2),
+                                )
+                            }
+                        }
+                        Text(
+                            c.license,
+                            style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

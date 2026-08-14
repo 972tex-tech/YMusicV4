@@ -165,6 +165,8 @@
     <string name="settings_theme_system">Follow system</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
+    <string name="settings_licenses">Open source licenses</string>
+    <string name="settings_licenses_intro">YMusic is open source under the GNU GPL v3.0. It includes these components:</string>
 
     <!-- Feedback -->
     <string name="feedback_hint">Tell us what broke or what you’d like to see. Screenshots or log files help.</string>

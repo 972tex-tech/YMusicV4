@@ -117,6 +117,8 @@
     <string name="settings_theme_system">Theo hệ thống</string>
     <string name="settings_theme_light">Sáng</string>
     <string name="settings_theme_dark">Tối</string>
+    <string name="settings_licenses">Giấy phép mã nguồn mở</string>
+    <string name="settings_licenses_intro">YMusic là phần mềm mã nguồn mở theo giấy phép GNU GPL v3.0. Ứng dụng bao gồm các thành phần sau:</string>
     <string name="feedback_hint">Cho chúng tôi biết lỗi bạn gặp hoặc điều bạn muốn thấy. Ảnh chụp màn hình hoặc tệp log sẽ rất hữu ích.</string>
     <string name="feedback_message_label">Điều gì đã xảy ra?</string>
     <string name="feedback_name_label">Tên (không bắt buộc)</string>
