@@ -4,15 +4,12 @@ plugins {
     kotlin("multiplatform")
 }
 
-// Compile-time build flags baked into generated source: a Kotlin `const val` inlines as a literal
-// into every (inline) call site downstream, and the compiler eliminates dead `if (false)` branches
-// — debug log sites are REMOVED from release output on every platform, no optimizer involved.
-// Dev default: true. Release builds pass -Pymusic.debugLogs=false.
+// Public so the inline [Logger.debug] can see it. Feature gates use each module's own
+// DEBUG_BUILD (same -Pymusic.debugLogs bake).
 val debugLogs = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).getOrElse(true)
 val buildFlagsDir = layout.buildDirectory.dir("generated/buildFlags")
 val generateBuildFlags by tasks.registering {
     inputs.property("debugLogs", debugLogs)
-    inputs.property("flags", "DEBUG_LOGS,DEBUG_BUILD")
     outputs.dir(buildFlagsDir)
     doLast {
         buildFlagsDir.get().file("kmpcommon/log/BuildFlags.kt").asFile.apply { parentFile.mkdirs() }.writeText(
@@ -22,8 +19,6 @@ val generateBuildFlags by tasks.registering {
             |object BuildFlags {
             |    /** Baked at build time from -Pymusic.debugLogs (default true). */
             |    const val DEBUG_LOGS: Boolean = $debugLogs
-            |    /** Same bake as [DEBUG_LOGS] — compile-time debug/release switch. */
-            |    const val DEBUG_BUILD: Boolean = $debugLogs
             |}
             |""".trimMargin(),
         )

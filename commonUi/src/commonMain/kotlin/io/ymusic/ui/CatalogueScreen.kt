@@ -52,18 +52,17 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtSectionHeader
 import io.ymusic.dynamicengine.yt.YtThumb
-import kmpcommon.log.BuildFlags
 
 /**
  * Development-only component catalogue (a Storybook, not a product screen): every shared UI
  * component rendered on mock data, for design iteration and feedback. Reached from the drawer
  * ("UI catalogue") or standalone via `./gradlew :desktopApp:catalogue` — the standalone window
  * skips the whole engine/CEF boot, so the design loop is seconds. Compiled out when
- * [BuildFlags.DEBUG_BUILD] is false (`-Pymusic.debugLogs=false`).
+ * [DEBUG_BUILD] is false (`-Pymusic.debugLogs=false`).
  */
 @Composable
 fun CatalogueScreen(modifier: Modifier = Modifier) {
-    if (BuildFlags.DEBUG_BUILD) CatalogueScreenContent(modifier)
+    if (DEBUG_BUILD) CatalogueScreenContent(modifier)
 }
 
 @Composable

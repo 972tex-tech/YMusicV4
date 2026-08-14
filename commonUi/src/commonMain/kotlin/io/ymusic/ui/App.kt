@@ -108,7 +108,6 @@ import io.ymusic.ui.resources.tab_home
 import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
-import kmpcommon.log.BuildFlags
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -267,7 +266,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
         val scanController = remember { ScanController(scope, graph.logger?.fork("library-scan")) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
-        if (!BuildFlags.DEBUG_BUILD) {
+        if (!DEBUG_BUILD) {
             LaunchedEffect(section) {
                 if (section == AppSection.Catalogue) onSection(AppSection.Discover)
             }
@@ -750,7 +749,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
                                             else ComingSoon(section)
                                         AppSection.Catalogue ->
-                                            if (BuildFlags.DEBUG_BUILD) CatalogueScreen() else ComingSoon(section)
+                                            if (DEBUG_BUILD) CatalogueScreen() else ComingSoon(section)
                                         else -> ComingSoon(section)
                                     }
                                 }

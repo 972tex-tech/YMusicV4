@@ -33,7 +33,6 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.app_name
 import io.ymusic.ui.resources.badge_premium
 import io.ymusic.ui.resources.ymusic_logo
-import kmpcommon.log.BuildFlags
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -48,7 +47,7 @@ fun AppDrawer(
     section: AppSection,
     appVersion: String?,
     onSelect: (AppSection) -> Unit,
-    showCatalogue: Boolean = BuildFlags.DEBUG_BUILD,
+    showCatalogue: Boolean = DEBUG_BUILD,
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp),
