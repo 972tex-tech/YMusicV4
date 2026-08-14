@@ -108,6 +108,7 @@ import io.ymusic.ui.resources.tab_home
 import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
+import kmpcommon.log.BuildFlags
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -266,6 +267,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
         val scanController = remember { ScanController(scope, graph.logger?.fork("library-scan")) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
+        if (!BuildFlags.DEBUG_BUILD) {
+            LaunchedEffect(section) {
+                if (section == AppSection.Catalogue) onSection(AppSection.Discover)
+            }
+        }
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
         var discoverDrag by remember { mutableFloatStateOf(0f) }
@@ -743,7 +749,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         AppSection.Feedback ->
                                             if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
                                             else ComingSoon(section)
-                                        AppSection.Catalogue -> CatalogueScreen()
+                                        AppSection.Catalogue ->
+                                            if (BuildFlags.DEBUG_BUILD) CatalogueScreen() else ComingSoon(section)
                                         else -> ComingSoon(section)
                                     }
                                 }

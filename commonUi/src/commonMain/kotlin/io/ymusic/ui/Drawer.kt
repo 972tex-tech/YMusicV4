@@ -33,6 +33,7 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.app_name
 import io.ymusic.ui.resources.badge_premium
 import io.ymusic.ui.resources.ymusic_logo
+import kmpcommon.log.BuildFlags
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -47,6 +48,7 @@ fun AppDrawer(
     section: AppSection,
     appVersion: String?,
     onSelect: (AppSection) -> Unit,
+    showCatalogue: Boolean = BuildFlags.DEBUG_BUILD,
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp),
@@ -57,12 +59,18 @@ fun AppDrawer(
             DrawerHeader(appVersion)
             HorizontalDivider(color = DesignColors.Divider)
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-                AppSection.entries.groupBy { it.group }.entries.forEachIndexed { index, (_, sections) ->
-                    if (index > 0) HorizontalDivider(color = DesignColors.Divider, modifier = Modifier.padding(vertical = 4.dp))
-                    sections.forEach { s ->
-                        DrawerItem(s, active = s == section) { onSelect(s) }
+                AppSection.entries
+                    .filter { it != AppSection.Catalogue || showCatalogue }
+                    .groupBy { it.group }
+                    .entries
+                    .forEachIndexed { index, (_, sections) ->
+                        if (index > 0) {
+                            HorizontalDivider(color = DesignColors.Divider, modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        sections.forEach { s ->
+                            DrawerItem(s, active = s == section) { onSelect(s) }
+                        }
                     }
-                }
             }
         }
     }
