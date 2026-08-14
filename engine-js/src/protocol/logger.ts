@@ -17,6 +17,10 @@ function jsTag(tag: string): string {
   return t.indexOf("js:") === 0 ? t : "js:" + t;
 }
 
+// Every trail this bundle emits opens with its own revision (js:<version>/js:<job>/…) so a report
+// names the bundle that produced it. Baked here, not host-side: the version is the bundle's fact.
+export const VERSION_TAG: string = "js:" + BACKEND_VERSION;
+
 export interface LogWire {
   "key"?: number;
   "trail": LogCrumb[];
@@ -39,7 +43,7 @@ export class JsLogger {
   }
 
   wire(): LogWire {
-    const w: LogWire = { "trail": this.trail };
+    const w: LogWire = { "trail": ([[VERSION_TAG]] as LogCrumb[]).concat(this.trail) };
     if (this.key !== null) w["key"] = this.key;
     return w;
   }

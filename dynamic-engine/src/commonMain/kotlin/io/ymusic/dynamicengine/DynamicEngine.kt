@@ -85,7 +85,6 @@ class DynamicEngine private constructor(
             )
         }
         backendVersion = head.backendVersion
-        loggers.backendVersion = head.backendVersion // JS trails carry js:<version> from here on
         return head.backendVersion
     }
 

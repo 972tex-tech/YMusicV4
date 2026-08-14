@@ -3,6 +3,7 @@ import { hostError } from "../command";
 import { Response } from "./response";
 import type { BodyKind, RequestHead, RequestOpts } from "./wire";
 import type { JsLogger } from "../logger";
+import { VERSION_TAG } from "../logger";
 
 // One request execution. execute() resolves the Response (once); cancel() aborts at ANY stage:
 // before execute() (it refuses to start), mid-flight (a RESET of the control pipe's request
@@ -114,9 +115,10 @@ export class HttpCallImpl implements HttpCall {
     }
     if (this._opts) head["opts"] = this._opts;
     // Threads the caller's logging context to the host so a transport failure (request/response
-    // body) logs at its birth site with the full trail (HOST_PROTOCOLS "Logging context").
+    // body) logs at its birth site with the full trail (HOST_PROTOCOLS "Logging context"). Even a
+    // context-free request gets the bundle-revision root — every serve names its bundle.
     if (this._log) head["log"] = this._log.wire();
-    else if (this._logCtx) head["logCtx"] = this._logCtx;
+    else head["logCtx"] = [VERSION_TAG].concat(this._logCtx || []);
     try {
       // control pipe: the JSON head (self-framing), then NOTHING outbound except a possible -1
       // cancel — the channel stays unobstructed at every stage.

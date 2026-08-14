@@ -28,11 +28,9 @@ internal fun protocolLogger(
     // No key on the wire (fire-and-forget JS jobs, pre-v2 bundles) → the engine root.
     val key = (wire?.get("key") as? JsonPrimitive)?.intOrNull
     val caller = if (key == null) parked.root else parked.resolve(key)
-    // Every serve is JS-initiated: the JS leg of the trail opens with the bundle's revision, so a
-    // report names the bundle that produced it (js:<version>/js:<job>/…).
-    val version = parked.backendVersion
-    val trail = readTrail(wire, head).let { if (version == null) it else listOf(Crumb("js:$version")) + it }
-    return caller?.forkAll(trail)?.fork(tag, prop)
+    // The JS leg of the trail already opens with the bundle's revision (js:<version>/js:<job>/…) —
+    // the bundle bakes its own version in, this side just grafts the trail as sent.
+    return caller?.forkAll(readTrail(wire, head))?.fork(tag, prop)
 }
 
 /** A head's string field as a one-entry prop map, the query string stripped (PII rule: never log
