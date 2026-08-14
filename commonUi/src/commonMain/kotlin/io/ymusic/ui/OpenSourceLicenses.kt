@@ -23,7 +23,7 @@ internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("QuickJS (Fabrice Bellard, Charlie Gordon)", "MIT"),
     OssComponent("Sentry SDK", "MIT"),
     OssComponent("normalize (Doist)", "MIT"),
-    OssComponent("FFmpeg (bundled executable, with LAME and Shine)", "LGPL-2.1+"),
+    OssComponent("FFmpeg (separate executable, with LAME and Shine)", "LGPL-2.1+", scope = "Android / Desktop"),
     OssComponent("SQLite", "Public Domain"),
     OssComponent("AndroidX (core, lifecycle, activity)", "Apache-2.0", scope = "Android"),
     OssComponent("Media3 / ExoPlayer", "Apache-2.0", scope = "Android"),
