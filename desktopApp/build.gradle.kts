@@ -5,9 +5,14 @@ plugins {
     kotlin("multiplatform")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+    // Exports the app's config (main class, jars, JVM args) to Conveyor, the packaging tool that
+    // builds self-updating installers for all three OSes — see conveyor.conf at the repo root.
+    id("dev.hydraulic.conveyor") version "2.0"
 }
 
 val desktopVersion = "1.0.0"
+// Conveyor reads the standard Gradle project version (compose packaging reads packageVersion).
+version = desktopVersion
 
 // Android's BuildConfig.DEBUG equivalent, compile-time: true unless the build ran with
 // -Pymusic.debugLogs=false — the ONE release knob, shared with :kmpCommon's BuildFlags (so a
@@ -76,6 +81,16 @@ val stageWebViewJs by tasks.registering(Exec::class) {
     commandLine("node", "build.mjs", "--prod", "--out", outFile.get().asFile.absolutePath)
 }
 
+// JCEF's own OSR path (CefBrowserOsr) renders through a jogl GLCanvas; ours is ImageOsrBrowser
+// (pure AWT image painting, in :player) and the windowed login browser uses no GL either —
+// jogl+gluegen (~7MB) are dead weight. Excluded at configuration level because jcefmaven reaches
+// this app through TWO declarations (:player's and ours) and jcef-api re-declares jogl itself.
+// CefBrowserOsr stays on the classpath but is never instantiated.
+configurations.all {
+    exclude(group = "me.friwi", module = "jogl-all")
+    exclude(group = "me.friwi", module = "gluegen-rt")
+}
+
 kotlin {
     jvm {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -89,19 +104,15 @@ kotlin {
             dependencies {
                 implementation(project(":commonUi"))
                 implementation(project(":media-scanner"))
-                implementation(compose.desktop.currentOs)
+                // NOT currentOs: that bakes the BUILD HOST's skiko into the one shared classpath,
+                // which is wrong for Conveyor's cross-platform packages. The per-machine variants
+                // are declared in the machine configurations below; the Conveyor plugin adds the
+                // host-matching one to the run classpath, so :run keeps working.
+                implementation(compose.desktop.common)
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
-                implementation(Libs.Jcef.maven) {
-                    // JCEF's own OSR path (CefBrowserOsr) renders through a jogl GLCanvas; ours is
-                    // ImageOsrBrowser (pure AWT image painting) and the windowed login browser uses
-                    // no GL either — jogl+gluegen (~7MB) are dead weight. CefBrowserOsr stays on
-                    // the classpath but is never instantiated (ImageOsrBrowser extends CefBrowser_N
-                    // directly; only the dev NowPlayingProbe asks the factory for OSR).
-                    exclude(group = "me.friwi", module = "jogl-all")
-                    exclude(group = "me.friwi", module = "gluegen-rt")
-                }
+                implementation(Libs.Jcef.maven)
                 implementation(Libs.Jna.core)
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
@@ -115,6 +126,15 @@ kotlin {
             implementation(kotlin("test"))
         }
     }
+}
+
+// Per-machine Compose runtimes (skiko natives) for Conveyor's cross-platform packages — these
+// configurations come from the Conveyor plugin, which exports each to that machine's inputs.
+dependencies {
+    "macAmd64"(compose.desktop.macos_x64)
+    "macAarch64"(compose.desktop.macos_arm64)
+    "windowsAmd64"(compose.desktop.windows_x64)
+    "linuxAmd64"(compose.desktop.linux_x64)
 }
 
 // Headless diagnostic for the WebView engine (see WebViewProbe.kt):

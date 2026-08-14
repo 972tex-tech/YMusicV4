@@ -33,6 +33,9 @@ quickjs/src/androidDeviceTest/jniLibs/
 # quickjs: vendored QuickJS build commit marker is kept; build dirs are ignored via build/
 build-asan
 
+# Conveyor's build output (packages + update site)
+output/
+
 # built webview-js bundle, copied in at build time
 androidApp/src/main/assets/webview_ymusic.js
 iosApp/Resources/webview_ymusic.js
