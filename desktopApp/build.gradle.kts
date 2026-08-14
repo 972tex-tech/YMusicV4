@@ -1,11 +1,15 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.nio.file.Files
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.Signature
 import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Base64
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 plugins {
     kotlin("multiplatform")
@@ -247,8 +251,19 @@ tasks.register("signUpdateManifest") {
             os.isWindows -> "windows-$arch"
             else -> "linux-$arch"
         }
-        val sha256 = MessageDigest.getInstance("SHA-256")
-            .digest(artifact.readBytes()).joinToString("") { "%02x".format(it) }
+        fun hash(f: File): String {
+            val md = MessageDigest.getInstance("SHA-256")
+            f.inputStream().buffered().use { ins ->
+                val buf = ByteArray(1 shl 16)
+                while (true) {
+                    val n = ins.read(buf)
+                    if (n <= 0) break
+                    md.update(buf, 0, n)
+                }
+            }
+            return md.digest().joinToString("") { "%02x".format(it) }
+        }
+        val sha256 = hash(artifact)
         val baseUrl = (baseUrlProp ?: "https://example.invalid/releases/v$versionName").trimEnd('/')
 
         // Entries from other machines' runs survive, so one manifest can cover every platform.
@@ -259,13 +274,39 @@ tasks.register("signUpdateManifest") {
             Regex(""""([a-z]+-[a-z0-9]+)":(\{[^}]*\})""").findAll(store.readText())
                 .forEach { entries[it.groupValues[1]] = it.groupValues[2] }
         }
-        entries[platformKey] =
-            """{"url":"$baseUrl/${artifact.name}","sha256":"$sha256","size":"${artifact.length()}"}"""
+        // Every file of the installed app, addressed by content hash: an update fetches only the
+        // hashes it does not already have, so an unchanged JVM or dependency costs nothing.
+        val appImage = binariesDir.get().asFile.resolve("main-release/app").listFiles().orEmpty()
+            .firstOrNull { it.isDirectory }
+            ?: error("no app image under ${binariesDir.get().asFile}/main-release/app")
+        val blobs = File(outDir.get().asFile, "blobs").apply { mkdirs() }
+        val fileEntries = StringBuilder()
+        var files = 0
+        var reusedBlobs = 0
+        appImage.walkTopDown().filter { it.isFile }.forEach { f ->
+            val h = hash(f)
+            val rel = f.relativeTo(appImage).path
+            val blob = File(blobs, h)
+            if (blob.exists()) {
+                reusedBlobs++
+            } else {
+                // Hardlink when the filesystem allows it — a release is ~125MB and copying every
+                // build is pure waste.
+                runCatching { Files.createLink(blob.toPath(), f.toPath()) }
+                    .onFailure { f.copyTo(blob, overwrite = true) }
+            }
+            if (files++ > 0) fileEntries.append(",")
+            fileEntries.append("""{"path":"${rel.replace("\\", "/")}","sha256":"$h","size":"${f.length()}"}""")
+        }
+
+        entries[platformKey] = """{"installer":{"url":"$baseUrl/${artifact.name}","sha256":"$sha256",""" +
+            """"size":"${artifact.length()}"},"blobBaseUrl":"$baseUrl/blobs",""" +
+            """"root":"${appImage.name}","files":[$fileEntries]}"""
         val platformsJson = entries.entries.joinToString(",") { """"${it.key}":${it.value}""" }
         store.writeText(platformsJson)
 
         val notes = notesProp.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
-        val payload = """{"versionCode":$versionCode,"versionName":"$versionName",""" +
+        val payload = """{"manifestVersion":2,"versionCode":$versionCode,"versionName":"$versionName",""" +
             """"notes":"$notes","platforms":{$platformsJson}}"""
         val key = KeyFactory.getInstance("Ed25519")
             .generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(privateKey)))
@@ -277,6 +318,7 @@ tasks.register("signUpdateManifest") {
         val escaped = payload.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
         File(out, "update.json").writeText("""{"payload":"$escaped","signature":"$signature"}""")
         logger.lifecycle("signed update.json: $platformKey, versionCode $versionCode, ${artifact.name}")
+        logger.lifecycle("  $files files -> ${blobs.name}/ ($reusedBlobs already present from an earlier release)")
     }
 }
 
@@ -362,6 +404,28 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
             val out = p.inputStream.readBytes().decodeToString()
             check(p.waitFor() in setOf(0, 12)) { "zip -d ${jar.name} failed: $out" }
         }
+        // ProGuard stamps the CURRENT TIME into every entry it writes, so a jar with identical
+        // content hashes differently on each build. Content-addressed updates would then refetch
+        // every unchanged library (measured: 36MB of a 124MB app). Normalize to a fixed instant.
+        fun normalizeTimestamps(jar: File) {
+            val entries = LinkedHashMap<String, ByteArray>()
+            ZipFile(jar).use { zip ->
+                for (e in zip.entries()) {
+                    if (!e.isDirectory) entries[e.name] = zip.getInputStream(e).readBytes()
+                }
+            }
+            val tmp = File(jar.absolutePath + ".norm")
+            ZipOutputStream(tmp.outputStream().buffered()).use { out ->
+                for ((name, bytes) in entries) {
+                    // 1980-01-01, the earliest a zip entry can express.
+                    out.putNextEntry(ZipEntry(name).apply { time = 315_532_800_000L })
+                    out.write(bytes)
+                    out.closeEntry()
+                }
+            }
+            check(tmp.renameTo(jar)) { "could not replace ${jar.name} with its normalized copy" }
+        }
+
         proguardOut.get().asFile.listFiles().orEmpty().forEach { jar ->
             when {
                 jar.name.startsWith("sqlite-jdbc") -> strip(
@@ -375,6 +439,9 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
                 )
             }
         }
+        proguardOut.get().asFile.listFiles().orEmpty()
+            .filter { it.isFile && it.extension == "jar" }
+            .forEach(::normalizeTimestamps)
     }
 }
 

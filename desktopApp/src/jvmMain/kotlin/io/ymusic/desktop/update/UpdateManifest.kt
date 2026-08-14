@@ -24,9 +24,25 @@ data class Release(
     val sha256: String,
     val sizeBytes: Long,
     val notes: String,
+    /**
+     * Every file of the installed app, each addressed by content hash. Empty on a v1 manifest, and
+     * then the only route is downloading [url] whole — which is also the fallback whenever a
+     * file-level update cannot complete.
+     */
+    val files: List<FileEntry> = emptyList(),
+    /** Where the content-addressed blobs live; a file's blob is `$blobBaseUrl/<sha256>`. */
+    val blobBaseUrl: String = "",
 ) {
     fun isNewerThan(currentVersionCode: Int): Boolean = versionCode > currentVersionCode
+
+    /** File-level updating needs both the file list and somewhere to fetch blobs from. */
+    val supportsFileLevelUpdate: Boolean get() = files.isNotEmpty() && blobBaseUrl.isNotEmpty()
+
+    fun blobUrl(entry: FileEntry): String = blobBaseUrl.trimEnd('/') + "/" + entry.sha256
 }
+
+/** One file of a release: [path] is relative to the app root, [sha256] identifies its content. */
+data class FileEntry(val path: String, val sha256: String, val size: Long)
 
 class UpdateVerificationException(message: String) : Exception(message)
 
@@ -72,14 +88,24 @@ object UpdateManifest {
             ?: throw UpdateVerificationException("payload has no usable versionCode")
         val platform = (body["platforms"] as? JsonObject)?.get(platformKey)?.let { it as? JsonObject }
             ?: return null
+        val installer = (platform["installer"] as? JsonObject) ?: platform
+        val files = (platform["files"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { entry ->
+            val o = entry as? JsonObject ?: return@mapNotNull null
+            val path = o["path"]?.jsonPrimitive?.contentOrNullSafe() ?: return@mapNotNull null
+            val hash = o["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase() ?: return@mapNotNull null
+            FileEntry(path, hash, o["size"]?.jsonPrimitive?.contentOrNullSafe()?.toLongOrNull() ?: -1L)
+        }
         return Release(
             versionCode = versionCode,
+            files = files,
+            blobBaseUrl = platform["blobBaseUrl"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
             versionName = body["versionName"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
-            url = platform["url"]?.jsonPrimitive?.contentOrNullSafe()
-                ?: throw UpdateVerificationException("platform entry has no url"),
-            sha256 = platform["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase()
-                ?: throw UpdateVerificationException("platform entry has no sha256"),
-            sizeBytes = platform["size"]?.jsonPrimitive?.contentOrNullSafe()?.toLongOrNull() ?: -1L,
+            // v2 nests the full download under "installer"; v1 put it flat on the platform entry.
+            url = installer["url"]?.jsonPrimitive?.contentOrNullSafe()
+                ?: throw UpdateVerificationException("platform entry has no installer url"),
+            sha256 = installer["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase()
+                ?: throw UpdateVerificationException("platform entry has no installer sha256"),
+            sizeBytes = installer["size"]?.jsonPrimitive?.contentOrNullSafe()?.toLongOrNull() ?: -1L,
             notes = body["notes"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
         )
     }

@@ -99,6 +99,29 @@ class UpdateManifestTest {
     }
 
     @Test
+    fun a_v2_manifest_carries_the_file_list_and_blob_base() {
+        val v2 = """
+            {"versionCode":3,"versionName":"1.0.2","manifestVersion":2,"platforms":{"mac-x64":{
+              "installer":{"url":"https://e.test/a.dmg","sha256":"AA","size":"9"},
+              "blobBaseUrl":"https://e.test/blobs",
+              "files":[{"path":"app/x.jar","sha256":"BB","size":"5"}]}}}
+        """.trimIndent()
+        val release = UpdateManifest.parseVerified(manifest(v2), publicKey, "mac-x64")!!
+        assertEquals("https://e.test/a.dmg", release.url, "the installer stays the fallback route")
+        assertTrue(release.supportsFileLevelUpdate)
+        assertEquals(1, release.files.size)
+        assertEquals("bb", release.files.first().sha256, "hashes compare lowercase")
+        assertEquals("https://e.test/blobs/bb", release.blobUrl(release.files.first()))
+    }
+
+    @Test
+    fun a_v1_manifest_still_parses_as_installer_only() {
+        val release = UpdateManifest.parseVerified(manifest(payload()), publicKey, "mac-x64")!!
+        assertEquals("https://example.test/a.zip", release.url)
+        assertTrue(!release.supportsFileLevelUpdate, "no files means installer-only")
+    }
+
+    @Test
     fun the_platform_key_matches_the_manifest_vocabulary() {
         assertTrue(
             currentPlatformKey() in setOf("mac-x64", "mac-arm64", "windows-x64", "linux-x64", "linux-arm64"),
