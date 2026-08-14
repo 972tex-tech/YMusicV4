@@ -582,7 +582,7 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
     }
 }
 
-/** chevron-down · [right:] download · sleep timer · quality chip · ⋮ (audio-only + tracks). */
+/** chevron-down · [right:] download · sleep timer · quality chip · ⋮ (reload + tracks). */
 @Composable
 private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClose: () -> Unit) {
     val player = coordinator.player
@@ -652,22 +652,17 @@ internal fun QualityChip(
     }
 }
 
-/** The ⋮ menu: audio-only toggle + audio-track selection. Captions live on the video CC control. */
+/** The ⋮ menu: reload + audio-track selection. Captions live on the video CC control; audio-only
+ *  is a quality-chip option, not a toggle here. */
 @Composable
 private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
-    val config by player.config.collectAsState()
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.audio_only)) },
-                trailingIcon = { CompactSwitch(config.audioOnly) },
-                onClick = { player.setAudioOnly(!config.audioOnly) },
-            )
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
