@@ -165,9 +165,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = light, navigationBarStyle = light)
         // Diagnosis-only instrumentation: the watchdog probes the main looper/choreographer/frame
         // clock every 3s and the composition probe forces a frame request every 500ms — never in a
-        // release build (it keeps the UI from idling).
-        val debuggable = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        if (debuggable) {
+        // release build. BuildConfig.DEBUG is a compile-time constant, so R8 strips these branches
+        // (and the watchdog classes with them) from the release dex entirely.
+        if (BuildConfig.DEBUG) {
             FreezeWatchdog.start()
             lifecycle.addObserver(
                 androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity() {
         (application as YMusicApplication).feedbackFilePicker = pickFeedbackFiles
         sectionFor(intent)?.let { pendingSection.value = it }
         setContent {
-            if (debuggable) CompositionClockProbe()
+            if (BuildConfig.DEBUG) CompositionClockProbe()
             var graph by remember { mutableStateOf<AppGraph?>(null) }
             var error by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(Unit) {

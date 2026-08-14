@@ -110,9 +110,7 @@ class YMusicApplication : Application() {
                 it.dsn = BuildConfig.SENTRY_DSN
                 // The commit in the release traces an event to git history (no source upload).
                 it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
-                it.environment =
-                    if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) "debug"
-                    else "production"
+                it.environment = if (BuildConfig.DEBUG) "debug" else "production"
             }
         }
     }
@@ -187,7 +185,7 @@ class YMusicApplication : Application() {
             cookieJar = cookies,
             settings = settings,
             // Debug builds crash on an engine-thread stall (StrictMode-style); release only logs.
-            strictStints = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+            strictStints = BuildConfig.DEBUG,
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
             onBackendVersion = ::installSentryEngineVersion,
             jsSource = engineSource,
@@ -344,7 +342,7 @@ class YMusicApplication : Application() {
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 logger = rootLogger,
                 // Per-request media-path logging — debug builds only, it narrates the hot path.
-                verbose = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+                verbose = BuildConfig.DEBUG,
             )
         }
 
