@@ -46,6 +46,7 @@ import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.ENGINE_JS_EMBED_VERSION
 import io.ymusic.dynamicengine.desktopEngineCacheStore
 import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.imageloader.DiskScaledImageCache
@@ -283,7 +284,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     val engineSource = DefaultJsSourceProvider(
         client = http.engine,
         config = { null },
-        embedVersion = readAppResource("engine_ymusic.version").trim().toLong(),
+        embedVersion = ENGINE_JS_EMBED_VERSION,
         embedSource = { readAppResource("engine_ymusic.js") },
         fileSystem = FileSystem.SYSTEM,
         directory = File(dataDir, "engine-js").absolutePath.toPath(),

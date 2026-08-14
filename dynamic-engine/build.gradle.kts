@@ -151,4 +151,32 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
 }
 
 embedBundle("engineJsBundle", "engineJs", "ENGINE_JS", "EngineJsPreamble.kt", "commonMain")
+
+// The embedded bundle's revision as a COMPILE-TIME constant (no runtime file read on any
+// platform): generated from :engine-js's version artifact, so engine-js/build.gradle.kts's
+// backendVersion stays the single source of truth.
+val engineJsVersionConst = configurations.create("engineJsVersionConst") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+dependencies { engineJsVersionConst(project(":engine-js", "engineJsVersion")) }
+val engineJsVersionKtDir = layout.buildDirectory.dir("generated/engineJsVersion")
+val generateEngineJsVersionKt = tasks.register("generateEngineJsVersionKt") {
+    inputs.files(engineJsVersionConst)
+    outputs.dir(engineJsVersionKtDir)
+    doLast {
+        val version = engineJsVersionConst.singleFile.readText().trim().toLong()
+        val dir = engineJsVersionKtDir.get().asFile.resolve("io/ymusic/dynamicengine").apply { mkdirs() }
+        dir.resolve("EngineJsVersion.kt").writeText(
+            """
+            |package io.ymusic.dynamicengine
+            |
+            |// GENERATED — do not edit. :engine-js's backendVersion (its build.gradle.kts): the
+            |// EMBEDDED bundle's revision, compared against cached remote pushes at boot.
+            |const val ENGINE_JS_EMBED_VERSION: Long = ${version}L
+            |""".trimMargin(),
+        )
+    }
+}
+kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(files(engineJsVersionKtDir).builtBy(generateEngineJsVersionKt))
 embedBundle("engineTestJsBundle", "engineTestJs", "ENGINE_TEST_JS", "EngineTestJsPreamble.kt", "commonTest")

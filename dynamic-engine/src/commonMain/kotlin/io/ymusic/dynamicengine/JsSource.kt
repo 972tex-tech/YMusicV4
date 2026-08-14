@@ -51,7 +51,8 @@ fun interface JsConfigProvider {
  * rigs. The Android/desktop apps load the same bundle from app assets instead
  * ([DefaultJsSourceProvider]), never call this, and R8 strips the embedded constant with it.
  */
-fun embeddedEngineJsSource(): JsSourceProvider = StaticJsSource(io.ymusic.dynamicengine.internal.ENGINE_JS)
+fun embeddedEngineJsSource(): JsSourceProvider =
+    StaticJsSource(io.ymusic.dynamicengine.internal.ENGINE_JS, ENGINE_JS_EMBED_VERSION)
 
 /** An embed-only [JsSourceProvider] — no cache, no remote. Tests and fixed-bundle callers. */
 class StaticJsSource(private val source: String, private val version: Long = 0L) : JsSourceProvider {

@@ -33,23 +33,18 @@ val generateSentryConfig by tasks.registering {
     }
 }
 
-// The engine bundle ships inside the jar (+ its version file) — JsSourceProvider's embed copy,
+// The engine bundle ships inside the jar — JsSourceProvider's embed copy (version = the
+// generated ENGINE_JS_EMBED_VERSION const),
 // no compiled-in constant.
 val engineJsBundle = configurations.create("engineJsBundle") {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
-val engineJsVersionCfg = configurations.create("engineJsVersionCfg") {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
 dependencies {
     "engineJsBundle"(project(":engine-js", "engineJs"))
-    "engineJsVersionCfg"(project(":engine-js", "engineJsVersion"))
 }
 val stageEngineJs by tasks.registering(Copy::class) {
     from(engineJsBundle) { rename { "engine_ymusic.js" } }
-    from(engineJsVersionCfg) { rename { "engine_ymusic.version" } }
     into(layout.buildDirectory.dir("engineJsResources"))
 }
 

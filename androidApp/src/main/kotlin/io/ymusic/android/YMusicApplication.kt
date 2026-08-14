@@ -12,6 +12,7 @@ import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.download.DownloadChange
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.ENGINE_JS_EMBED_VERSION
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.imageloader.DiskScaledImageCache
@@ -171,7 +172,7 @@ class YMusicApplication : Application() {
         val engineSource = DefaultJsSourceProvider(
             client = http.engine,
             config = { null },
-            embedVersion = assets.open("engine_ymusic.version").readBytes().decodeToString().trim().toLong(),
+            embedVersion = ENGINE_JS_EMBED_VERSION,
             embedSource = { assets.open("engine_ymusic.js").readBytes().decodeToString() },
             fileSystem = FileSystem.SYSTEM,
             directory = File(filesDir, "engine-js").toOkioPath(),

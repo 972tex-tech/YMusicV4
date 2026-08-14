@@ -117,23 +117,18 @@ val copyWebViewJs by tasks.registering(Copy::class) {
     into(layout.projectDirectory.dir("src/main/assets"))
 }
 
-// The engine bundle ships as an ASSET (+ its version file), not a compiled-in constant — the
+// The engine bundle ships as an ASSET, not a compiled-in constant (its version is the
+// generated ENGINE_JS_EMBED_VERSION const) — the
 // JsSourceProvider reads it lazily and a cached remote update supersedes it at boot.
 val engineJsBundle = configurations.create("engineJsBundle") {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
-val engineJsVersionCfg = configurations.create("engineJsVersionCfg") {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
 dependencies {
     "engineJsBundle"(project(":engine-js", "engineJs"))
-    "engineJsVersionCfg"(project(":engine-js", "engineJsVersion"))
 }
 val copyEngineJs by tasks.registering(Copy::class) {
     from(engineJsBundle) { rename { "engine_ymusic.js" } }
-    from(engineJsVersionCfg) { rename { "engine_ymusic.version" } }
     into(layout.projectDirectory.dir("src/main/assets"))
 }
 
