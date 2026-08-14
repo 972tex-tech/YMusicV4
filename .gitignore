@@ -49,3 +49,6 @@ YMusicLegacy/
 
 # Build-staged app assets (copied by gradle from webview-js/engine-js/commonUi outputs)
 androidApp/src/main/assets/
+
+# release signing scratch (never commit a signed manifest or key material)
+desktopApp/build/update/

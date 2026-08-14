@@ -1,5 +1,11 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.KeyFactory
+import java.security.KeyPairGenerator
+import java.security.MessageDigest
+import java.security.Signature
+import java.security.spec.PKCS8EncodedKeySpec
+import java.util.Base64
 
 plugins {
     kotlin("multiplatform")
@@ -190,6 +196,88 @@ tasks.register<JavaExec>("downloadManager") {
         "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
     )
     args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
+}
+
+// Producer side of the update flow (client side: io.ymusic.desktop.update):
+//   ./gradlew :desktopApp:packageReleaseDmg -Pymusic.debugLogs=false
+//   ./gradlew :desktopApp:signUpdateManifest -Pymusic.updateBaseUrl=https://.../download/v1.0.0
+// Each platform is built on its own machine; signUpdateManifest merges its entry into
+// build/update/platforms.json so one manifest can describe all of them.
+// These import java.security rather than qualifying it: inside a task action `java` resolves to
+// the Java plugin extension, not the package root.
+tasks.register("generateUpdateKey") {
+    group = "distribution"
+    description = "Print a fresh Ed25519 key pair for signing update manifests."
+    doLast {
+        val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val enc = Base64.getEncoder()
+        logger.lifecycle(
+            "Add to local.properties (NEVER commit the private key):\n\n" +
+                "update.public.key=" + enc.encodeToString(pair.public.encoded) + "\n" +
+                "update.private.key=" + enc.encodeToString(pair.private.encoded),
+        )
+    }
+}
+
+tasks.register("signUpdateManifest") {
+    group = "distribution"
+    description = "Hash this platform's release artifact and write a signed update manifest."
+    val outDir = layout.buildDirectory.dir("update")
+    val binariesDir = layout.buildDirectory.dir("compose/binaries")
+    val privateKey = updatePrivateKey()
+    val versionCode = desktopVersionCode
+    val versionName = desktopVersion
+    val baseUrlProp = providers.gradleProperty("ymusic.updateBaseUrl").orNull
+    val notesProp = providers.gradleProperty("ymusic.releaseNotes").orNull
+    outputs.dir(outDir)
+    doLast {
+        check(privateKey.isNotBlank()) {
+            "no signing key: set YMUSIC_UPDATE_PRIVATE_KEY or update.private.key in local.properties " +
+                "(:desktopApp:generateUpdateKey mints one)"
+        }
+        val artifact = binariesDir.get().asFile.walkTopDown()
+            .filter { it.isFile && it.extension in setOf("dmg", "msi", "deb") }
+            .maxByOrNull { it.lastModified() }
+            ?: error("no release artifact under ${binariesDir.get().asFile} — run a packageRelease* task first")
+
+        val os = org.gradle.internal.os.OperatingSystem.current()
+        val arch = if (System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")) "arm64" else "x64"
+        val platformKey = when {
+            os.isMacOsX -> "mac-$arch"
+            os.isWindows -> "windows-$arch"
+            else -> "linux-$arch"
+        }
+        val sha256 = MessageDigest.getInstance("SHA-256")
+            .digest(artifact.readBytes()).joinToString("") { "%02x".format(it) }
+        val baseUrl = (baseUrlProp ?: "https://example.invalid/releases/v$versionName").trimEnd('/')
+
+        // Entries from other machines' runs survive, so one manifest can cover every platform.
+        val out = outDir.get().asFile.apply { mkdirs() }
+        val store = File(out, "platforms.json")
+        val entries = linkedMapOf<String, String>()
+        if (store.isFile) {
+            Regex(""""([a-z]+-[a-z0-9]+)":(\{[^}]*\})""").findAll(store.readText())
+                .forEach { entries[it.groupValues[1]] = it.groupValues[2] }
+        }
+        entries[platformKey] =
+            """{"url":"$baseUrl/${artifact.name}","sha256":"$sha256","size":"${artifact.length()}"}"""
+        val platformsJson = entries.entries.joinToString(",") { """"${it.key}":${it.value}""" }
+        store.writeText(platformsJson)
+
+        val notes = notesProp.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
+        val payload = """{"versionCode":$versionCode,"versionName":"$versionName",""" +
+            """"notes":"$notes","platforms":{$platformsJson}}"""
+        val key = KeyFactory.getInstance("Ed25519")
+            .generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(privateKey)))
+        val signature = Signature.getInstance("Ed25519").run {
+            initSign(key)
+            update(payload.toByteArray())
+            Base64.getEncoder().encodeToString(sign())
+        }
+        val escaped = payload.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        File(out, "update.json").writeText("""{"payload":"$escaped","signature":"$signature"}""")
+        logger.lifecycle("signed update.json: $platformKey, versionCode $versionCode, ${artifact.name}")
+    }
 }
 
 // Local stand-in for the release/config service (see MockUpdateServer.kt):
