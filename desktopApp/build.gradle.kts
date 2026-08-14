@@ -14,10 +14,20 @@ val desktopVersion = "1.0.0"
 // Conveyor reads the standard Gradle project version (compose packaging reads packageVersion).
 version = desktopVersion
 
-// Android's BuildConfig.DEBUG equivalent, compile-time: true unless the build ran with
-// -Pymusic.debugLogs=false — the ONE release knob, shared with :kmpCommon's BuildFlags (so a
-// release package strips debug logs and flips these gates in the same build).
-val debugBuild = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).getOrElse(true)
+/** The first candidate JDK that carries jpackage — the marker for "full JDK, not a JBR/JRE". */
+val fullJdkHome: String? = run {
+    val candidates = listOfNotNull(
+        providers.gradleProperty("ymusic.jdkHome").orNull,
+        System.getenv("JAVA_HOME"),
+        System.getProperty("java.home"),
+        // macOS keeps its installs out of JAVA_HOME's reach; ask the OS for a 17+ one.
+        runCatching {
+            providers.exec { commandLine("/usr/libexec/java_home", "-v", "17+") }
+                .standardOutput.asText.get().trim()
+        }.getOrNull(),
+    )
+    candidates.firstOrNull { it.isNotBlank() && File(it, "bin/jpackage").exists() }
+}
 
 // The DSN is machine-local (see SentryProps in buildSrc), so it reaches the app as generated
 // source rather than a checked-in constant. The release carries the git commit — that's how an
@@ -29,7 +39,6 @@ val generateBuildConfig by tasks.registering {
     inputs.property("dsn", dsn)
     inputs.property("release", release)
     inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
-    inputs.property("debugBuild", debugBuild)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("BuildConfig.kt")
@@ -43,10 +52,6 @@ val generateBuildConfig by tasks.registering {
 
             // The jar's engine_ymusic.js resource revision (Versions.engineJsBackendVersion).
             internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsBackendVersion}L
-
-            // Compile-time debug flag (Android's BuildConfig.DEBUG): false when the build ran
-            // with -Pymusic.debugLogs=false — gates Sentry environment, CEF debug port, etc.
-            internal const val DEBUG_BUILD: Boolean = $debugBuild
             """.trimIndent() + "\n",
         )
     }
@@ -213,9 +218,10 @@ tasks.register<JavaExec>("catalogue") {
 compose.desktop {
     application {
         mainClass = "io.ymusic.desktop.MainKt"
-        // jpackage/jlink live in a full JDK; the Gradle daemon often runs on a JBR without them.
-        // Point packaging at one via -Pymusic.jdkHome=<path> (defaults to the Gradle JVM).
-        providers.gradleProperty("ymusic.jdkHome").orNull?.let { javaHome = it }
+        // A FULL JDK is needed both by jpackage/jlink and by ProGuard (it links against the
+        // platform classes — without them it can't even resolve java.lang.Object). The Gradle
+        // daemon often runs on a JBR that has neither, so find one; -Pymusic.jdkHome overrides.
+        fullJdkHome?.let { javaHome = it }
         // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
@@ -249,37 +255,19 @@ compose.desktop {
 // but GROWS the DMG 72.2→76.1MiB: the DMG's zlib squeezes the raw jimage better than jlink's
 // per-resource zip, which is opaque to it. Download size is the goal → runtime stays uncompressed.
 
-// sqlite-jdbc (~12MB of it) and JNA bundle natives for EVERY OS/arch; a package needs only the
-// host OS's (packaging is per-OS anyway). Strip the rest from the ProGuard output jars — that's
-// what jpackage consumes for the release tasks. zip exit 12 = "nothing matched", fine.
-tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
-    val proguardOut = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
-    doLast {
-        val os = org.gradle.internal.os.OperatingSystem.current()
-        val sqliteKeep = if (os.isMacOsX) "Mac" else if (os.isLinux) "Linux" else "Windows"
-        val jnaKeep = if (os.isMacOsX) "darwin" else if (os.isLinux) "linux" else "win32"
-        // Dash-suffixed on purpose: com/sun/jna/win32/ (no dash) is a CLASS package, not natives.
-        val jnaOses = listOf("aix", "darwin", "dragonflybsd", "freebsd", "linux", "openbsd", "sunos", "win32")
-        fun strip(jar: java.io.File, patterns: List<String>) {
-            val p = ProcessBuilder(listOf("zip", "-q", "-d", jar.absolutePath) + patterns)
-                .redirectErrorStream(true).start()
-            val out = p.inputStream.readBytes().decodeToString()
-            check(p.waitFor() in setOf(0, 12)) { "zip -d ${jar.name} failed: $out" }
-        }
-        proguardOut.get().asFile.listFiles().orEmpty().forEach { jar ->
-            when {
-                jar.name.startsWith("sqlite-jdbc") -> strip(
-                    jar,
-                    listOf("FreeBSD", "Linux", "Mac", "Windows").filter { it != sqliteKeep }
-                        .map { "org/sqlite/native/$it/*" },
-                )
-                jar.name.matches(Regex("jna(-jpms)?-[0-9].*\\.jar")) -> strip(
-                    jar,
-                    jnaOses.filter { it != jnaKeep }.map { "com/sun/jna/$it-*" },
-                )
-            }
-        }
+// What Conveyor packages: the ProGuard-shrunk classpath (~45MB) instead of the raw one (~118MB)
+// that the Conveyor plugin exports from the dependency configurations. Two deliberate details:
+//  - skiko is dropped — each package gets its own platform build from the machine configurations
+//    above, and the shrunk output only ever contains the BUILD HOST's.
+//  - foreign-platform natives are NOT stripped out of the jars here. Conveyor's
+//    extract-native-libraries does that per target; stripping to the host's would leave every
+//    other platform's package without its sqlite/JNA natives.
+val conveyorJars by tasks.registering(Copy::class) {
+    dependsOn("proguardReleaseJars")
+    from(layout.buildDirectory.dir("compose/tmp/main-release/proguard")) {
+        exclude("skiko-awt-runtime-*.jar")
     }
+    into(layout.buildDirectory.dir("conveyorJars"))
 }
 
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("engineJsResources")).builtBy(stageEngineJs))

@@ -1,5 +1,6 @@
 package io.ymusic.desktop
 
+import io.ymusic.build.DEBUG_BUILD
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -24,7 +25,7 @@ class CefManager {
      *  creates its browser; probes must pass their own scratch profile. */
     suspend fun createClient(cacheDir: File? = null): CefClient = withContext(Dispatchers.IO) {
         installShutdownGuards()
-        val root = File(System.getProperty("user.home"), ".ymusic")
+        val root = ymusicDataDir()
         val cefApp = CefAppBuilder().apply {
             setInstallDir(File(root, "jcef-bundle"))
             setProgressHandler(ConsoleProgressHandler())

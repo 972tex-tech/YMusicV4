@@ -42,6 +42,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
+import io.ymusic.build.DEBUG_BUILD
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
@@ -257,7 +258,7 @@ fun main() {
 }
 
 private suspend fun buildGraph(cefManager: CefManager): AppGraph {
-    val dataDir = File(System.getProperty("user.home"), ".ymusic").apply { mkdirs() }
+    val dataDir = ymusicDataDir().apply { mkdirs() }
     // Init CEF first: the cookie store is JCEF's global one (needs CefApp initialized before the
     // first access), shared with the WebView player and persisted on disk. The engine's OWN HTTP
     // client carries NO jar — the engine JS cooks every Cookie header itself against this store
@@ -653,7 +654,18 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
 // The window-geometry memory lives in its OWN tiny file, read synchronously before the first
 // frame — the settings store only exists once the async graph build runs, too late to size the
 // window.
-private val windowPrefsFile = File(System.getProperty("user.home"), ".ymusic/window.properties")
+/**
+ * Everything the app persists lives here: engine + image caches, the media store, downloads,
+ * Chromium's profile, window geometry. `$YMUSIC_DATA_DIR` relocates the lot — a packaged build's
+ * launcher passes neither JVM args nor JAVA_TOOL_OPTIONS through, so an env var is the only way to
+ * run a second copy (testing a release build while the dev one is open: Chromium's profile is
+ * single-instance) or to keep state on an external disk.
+ */
+internal fun ymusicDataDir(): File =
+    System.getenv("YMUSIC_DATA_DIR")?.takeIf { it.isNotBlank() }?.let(::File)
+        ?: File(System.getProperty("user.home"), ".ymusic")
+
+private val windowPrefsFile = File(ymusicDataDir(), "window.properties")
 private val defaultWindowSize = DpSize(480.dp, 860.dp)
 
 private fun loadWindowPrefs(): Pair<DpSize, WindowPosition> {
