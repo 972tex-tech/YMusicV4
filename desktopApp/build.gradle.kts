@@ -8,6 +8,9 @@ plugins {
 }
 
 val desktopVersion = "1.0.0"
+// BUMP ON EVERY RELEASE. The update check compares this and nothing else — desktopVersion is a
+// display string. Desktop counts separately from androidApp's versionCode (separate cadence).
+val desktopVersionCode = 1
 version = desktopVersion
 
 /** The first candidate JDK that carries jpackage — the marker for "full JDK, not a JBR/JRE". */
@@ -35,6 +38,7 @@ val generateBuildConfig by tasks.registering {
     inputs.property("dsn", dsn)
     inputs.property("release", release)
     inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
+    inputs.property("versionCode", desktopVersionCode)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("BuildConfig.kt")
@@ -48,6 +52,10 @@ val generateBuildConfig by tasks.registering {
 
             // The jar's engine_ymusic.js resource revision (Versions.engineJsBackendVersion).
             internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsBackendVersion}L
+
+            // What the update check compares against a manifest's versionCode.
+            internal const val APP_VERSION_CODE: Int = $desktopVersionCode
+            internal const val APP_VERSION_NAME = "$desktopVersion"
             """.trimIndent() + "\n",
         )
     }

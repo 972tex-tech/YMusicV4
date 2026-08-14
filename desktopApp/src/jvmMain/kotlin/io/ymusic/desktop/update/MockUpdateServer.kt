@@ -36,7 +36,7 @@ object MockUpdateServer {
     @JvmStatic
     fun main(args: Array<String>) {
         val dir = File(args.getOrNull(1) ?: "build/mock-update").apply { mkdirs() }
-        val server = start(args.getOrNull(0)?.toIntOrNull() ?: 8899, dir, args.getOrNull(2) ?: "9.9.9")
+        val server = start(args.getOrNull(0)?.toIntOrNull() ?: 8899, dir, args.getOrNull(2)?.toIntOrNull() ?: 99)
         val base = "http://localhost:${server.address.port}"
         println("mock update server on $base")
         println("  manifest : $base/update.json")
@@ -49,7 +49,7 @@ object MockUpdateServer {
      * Bind and serve, returning the running server so a caller can stop it. Pass port 0 for an
      * ephemeral port (tests: a fixed port makes a second server silently reuse the first).
      */
-    fun start(port: Int, dir: File, version: String): HttpServer {
+    fun start(port: Int, dir: File, version: Int): HttpServer {
         dir.mkdirs()
         val keys = loadOrCreateKeyPair(File(dir, "dev-update-key"))
 
@@ -62,7 +62,8 @@ object MockUpdateServer {
             // useful before any real build has been copied in.
             val artifacts = platformArtifacts(dir, version)
             val payload = buildString {
-                append("""{"version":"$version","notes":"Mock release from MockUpdateServer",""")
+                append("""{"versionCode":$version,"versionName":"mock-$version",""")
+                append(""""notes":"Mock release from MockUpdateServer",""")
                 append(""""platforms":{""")
                 append(
                     artifacts.entries.joinToString(",") { (key, f) ->
@@ -107,7 +108,7 @@ object MockUpdateServer {
 
     /** One artifact per platform key; a missing file is created with placeholder bytes so the
      *  manifest is always complete and the download path is exercisable. */
-    private fun platformArtifacts(dir: File, version: String): Map<String, File> =
+    private fun platformArtifacts(dir: File, version: Int): Map<String, File> =
         listOf("mac-x64", "mac-arm64", "windows-x64", "linux-x64").associateWith { key ->
             File(dir, "ymusic-$version-$key.zip").apply {
                 if (!exists()) writeBytes("placeholder artifact for $key $version".toByteArray())

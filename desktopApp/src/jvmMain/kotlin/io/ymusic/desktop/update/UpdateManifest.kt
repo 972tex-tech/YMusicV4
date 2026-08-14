@@ -12,38 +12,20 @@ import java.util.Base64
 /**
  * One release, as published in the update manifest.
  *
- * [url] points at a platform archive; [sha256] is checked against the downloaded bytes before
- * anything is unpacked. [notes] is shown to the user.
+ * [versionCode] is the only thing ordering compares — a monotonic release counter, as with
+ * Android's versionCode and the engine-js backend revision. [versionName] is for display and
+ * carries no ordering meaning. [url] points at a platform archive; [sha256] is checked against the
+ * downloaded bytes before anything is unpacked.
  */
 data class Release(
-    val version: Version,
+    val versionCode: Int,
+    val versionName: String,
     val url: String,
     val sha256: String,
     val sizeBytes: Long,
     val notes: String,
-)
-
-/** A dotted release version — compared numerically, so 1.10.0 beats 1.9.0. */
-data class Version(private val parts: List<Int>) : Comparable<Version> {
-    override fun compareTo(other: Version): Int {
-        for (i in 0 until maxOf(parts.size, other.parts.size)) {
-            val c = parts.getOrElse(i) { 0 }.compareTo(other.parts.getOrElse(i) { 0 })
-            if (c != 0) return c
-        }
-        return 0
-    }
-
-    override fun toString(): String = parts.joinToString(".")
-
-    companion object {
-        /** Lenient on purpose: a build suffix ("1.2.3+abc", "1.2.3-rc1") compares as 1.2.3 — the
-         *  suffix identifies the build, it does not order releases. Null when unparseable. */
-        fun parse(text: String): Version? {
-            val core = text.trim().removePrefix("v").takeWhile { it.isDigit() || it == '.' }
-            val parts = core.split('.').filter { it.isNotEmpty() }.map { it.toIntOrNull() ?: return null }
-            return if (parts.isEmpty()) null else Version(parts)
-        }
-    }
+) {
+    fun isNewerThan(currentVersionCode: Int): Boolean = versionCode > currentVersionCode
 }
 
 class UpdateVerificationException(message: String) : Exception(message)
@@ -59,7 +41,7 @@ class UpdateVerificationException(message: String) : Exception(message)
  * Wire shape — the signature covers the `payload` STRING exactly as transmitted, so re-serializing
  * it (key order, whitespace) can never change what was signed:
  * ```
- * { "payload": "{\"version\":\"1.0.1\",...}", "signature": "<base64 Ed25519>" }
+ * { "payload": "{\"versionCode\":2,\"versionName\":\"1.0.1\",...}", "signature": "<base64>" }
  * ```
  */
 object UpdateManifest {
@@ -86,12 +68,13 @@ object UpdateManifest {
 
         val body = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
             ?: throw UpdateVerificationException("payload is not a JSON object")
-        val version = body["version"]?.jsonPrimitive?.contentOrNullSafe()?.let(Version::parse)
-            ?: throw UpdateVerificationException("payload has no usable version")
+        val versionCode = body["versionCode"]?.jsonPrimitive?.contentOrNullSafe()?.toIntOrNull()
+            ?: throw UpdateVerificationException("payload has no usable versionCode")
         val platform = (body["platforms"] as? JsonObject)?.get(platformKey)?.let { it as? JsonObject }
             ?: return null
         return Release(
-            version = version,
+            versionCode = versionCode,
+            versionName = body["versionName"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
             url = platform["url"]?.jsonPrimitive?.contentOrNullSafe()
                 ?: throw UpdateVerificationException("platform entry has no url"),
             sha256 = platform["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase()

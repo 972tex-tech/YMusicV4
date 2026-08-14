@@ -22,8 +22,8 @@ class UpdateManifestTest {
         Base64.getEncoder().encodeToString(sign())
     }
 
-    private fun payload(version: String = "1.0.1", url: String = "https://example.test/a.zip") = """
-        {"version":"$version","notes":"Fixes things",
+    private fun payload(versionCode: Int = 2, url: String = "https://example.test/a.zip") = """
+        {"versionCode":$versionCode,"versionName":"1.0.1","notes":"Fixes things",
          "platforms":{"mac-x64":{"url":"$url","sha256":"AABB","size":"123"}}}
     """.trimIndent()
 
@@ -35,7 +35,8 @@ class UpdateManifestTest {
     @Test
     fun a_signed_manifest_yields_the_release_for_this_platform() {
         val release = UpdateManifest.parseVerified(manifest(payload()), publicKey, "mac-x64")!!
-        assertEquals("1.0.1", release.version.toString())
+        assertEquals(2, release.versionCode)
+        assertEquals("1.0.1", release.versionName)
         assertEquals("https://example.test/a.zip", release.url)
         assertEquals("aabb", release.sha256, "hashes compare lowercase")
         assertEquals(123L, release.sizeBytes)
@@ -82,14 +83,19 @@ class UpdateManifestTest {
     }
 
     @Test
-    fun versions_compare_numerically_not_lexically() {
-        val v = { s: String -> Version.parse(s)!! }
-        assertTrue(v("1.10.0") > v("1.9.0"), "10 > 9 despite the string order")
-        assertEquals(0, v("1.2.0").compareTo(v("1.2")), "absent components read as 0")
-        assertTrue(v("2.0.0") > v("1.99.99"))
-        // A build suffix identifies the build; it must not order releases.
-        assertEquals(0, v("1.0.1+deadbeef").compareTo(v("1.0.1")))
-        assertNull(Version.parse("not-a-version"))
+    fun only_the_version_code_decides_whether_an_update_exists() {
+        val release = UpdateManifest.parseVerified(manifest(payload(versionCode = 5)), publicKey, "mac-x64")!!
+        assertTrue(release.isNewerThan(4))
+        assertTrue(!release.isNewerThan(5), "the same build is not an update")
+        assertTrue(!release.isNewerThan(6), "a downgrade is never offered")
+    }
+
+    @Test
+    fun a_payload_without_a_version_code_is_refused() {
+        val noCode = """{"versionName":"1.0.1","platforms":{"mac-x64":{"url":"u","sha256":"a"}}}"""
+        assertFailsWith<UpdateVerificationException> {
+            UpdateManifest.parseVerified(manifest(noCode), publicKey, "mac-x64")
+        }
     }
 
     @Test

@@ -22,7 +22,7 @@ class MockUpdateServerTest {
     /** Ephemeral port per test — a fixed one lets a second server silently serve the first's
      *  content (and the key mismatch then fakes a passing signature test). */
     private fun serve(): String {
-        val s = MockUpdateServer.start(0, dir, "9.9.9").also { server = it }
+        val s = MockUpdateServer.start(0, dir, 99).also { server = it }
         return fetch("http://localhost:${s.address.port}/update.json")
     }
 
@@ -40,7 +40,7 @@ class MockUpdateServerTest {
     fun the_served_manifest_verifies_and_its_artifact_downloads() {
         val release = UpdateManifest.parseVerified(serve(), devPublicKey(), "mac-x64")!!
 
-        assertEquals("9.9.9", release.version.toString())
+        assertEquals(99, release.versionCode)
         assertEquals(64, release.sha256.length, "sha256 is a full hex digest")
 
         // The advertised url really serves bytes, and the digest describes them.
