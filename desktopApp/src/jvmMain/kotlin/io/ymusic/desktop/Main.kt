@@ -42,7 +42,6 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
-import io.ymusic.build.DEBUG_BUILD
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
@@ -190,11 +189,13 @@ fun main() {
         ) {
             var error by remember { mutableStateOf<String?>(null) }
 
-            MenuBar {
-                Menu("Debug") {
-                    // Enabled once CEF is up (the graph builds right after createClient).
-                    Item("Cookie inspector (shared CEF profile)", enabled = graph != null) {
-                        openCookieInspector(cefManager)
+            if (DEBUG_BUILD) {
+                MenuBar {
+                    Menu("Debug") {
+                        // Enabled once CEF is up (the graph builds right after createClient).
+                        Item("Cookie inspector (shared CEF profile)", enabled = graph != null) {
+                            openCookieInspector(cefManager)
+                        }
                     }
                 }
             }

@@ -72,11 +72,9 @@ val stageEngineJs by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("engineJsResources"))
 }
 
-// The injected WebView player script, PROD build (terser-minified, DEBUG=false), staged into the
-// jar for the packaged app. webview-js is not a Gradle module — this drives its npm pipeline
-// directly, into our build dir so the dev dist/ stays whatever the dev loop last produced (the
-// runtime prefers the dist file when running from a checkout; the jar copy is the fallback).
-// Needs node + webview-js/node_modules (npm install) on the build host, like :engine-js needs npx.
+// The injected WebView player script, prod build, staged as a jar resource. webview-js is not a
+// Gradle module, so this drives its npm pipeline directly; it writes into our build dir so the
+// dev dist/ stays untouched. Needs node + webview-js/node_modules on the build host.
 val stageWebViewJs by tasks.registering(Exec::class) {
     val outFile = layout.buildDirectory.file("webviewJsResources/webview_ymusic.js")
     workingDir = rootProject.file("webview-js")
@@ -86,11 +84,9 @@ val stageWebViewJs by tasks.registering(Exec::class) {
     commandLine("node", "build.mjs", "--prod", "--out", outFile.get().asFile.absolutePath)
 }
 
-// JCEF's own OSR path (CefBrowserOsr) renders through a jogl GLCanvas; ours is ImageOsrBrowser
-// (pure AWT image painting, in :player) and the windowed login browser uses no GL either —
-// jogl+gluegen (~7MB) are dead weight. Excluded at configuration level because jcefmaven reaches
-// this app through TWO declarations (:player's and ours) and jcef-api re-declares jogl itself.
-// CefBrowserOsr stays on the classpath but is never instantiated.
+// Our OSR browser paints AWT images, so JCEF's GL canvas path is never instantiated and
+// jogl+gluegen are dead weight. Excluded at configuration level: jcefmaven arrives through two
+// declarations (:player's and ours) and jcef-api re-declares jogl itself.
 configurations.all {
     exclude(group = "me.friwi", module = "jogl-all")
     exclude(group = "me.friwi", module = "gluegen-rt")
@@ -109,10 +105,9 @@ kotlin {
             dependencies {
                 implementation(project(":commonUi"))
                 implementation(project(":media-scanner"))
-                // NOT currentOs: that bakes the BUILD HOST's skiko into the one shared classpath,
-                // which is wrong for Conveyor's cross-platform packages. The per-machine variants
-                // are declared in the machine configurations below; the Conveyor plugin adds the
-                // host-matching one to the run classpath, so :run keeps working.
+                // NOT currentOs: that would bake the build host's skiko into the shared
+                // classpath. Per-machine variants are declared below; the Conveyor plugin puts the
+                // host-matching one back on the run classpath.
                 implementation(compose.desktop.common)
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
@@ -255,14 +250,13 @@ compose.desktop {
 // but GROWS the DMG 72.2→76.1MiB: the DMG's zlib squeezes the raw jimage better than jlink's
 // per-resource zip, which is opaque to it. Download size is the goal → runtime stays uncompressed.
 
-// What Conveyor packages: the ProGuard-shrunk classpath (~45MB) instead of the raw one (~118MB)
-// that the Conveyor plugin exports from the dependency configurations. Two deliberate details:
-//  - skiko is dropped — each package gets its own platform build from the machine configurations
-//    above, and the shrunk output only ever contains the BUILD HOST's.
-//  - foreign-platform natives are NOT stripped out of the jars here. Conveyor's
-//    extract-native-libraries does that per target; stripping to the host's would leave every
-//    other platform's package without its sqlite/JNA natives.
-val conveyorJars by tasks.registering(Copy::class) {
+// What Conveyor packages, in place of the raw dependency classpath its plugin exports.
+// Sync, not Copy: the ProGuard dir accumulates hash-named jars across builds, and stale copies
+// would ship alongside (or instead of) the current ones.
+// skiko is excluded because each package takes its own from the machine configurations above.
+// Foreign-platform natives stay in the jars — Conveyor drops them per target; stripping to the
+// build host's would leave every other platform's package without any.
+val conveyorJars by tasks.registering(Sync::class) {
     dependsOn("proguardReleaseJars")
     from(layout.buildDirectory.dir("compose/tmp/main-release/proguard")) {
         exclude("skiko-awt-runtime-*.jar")
