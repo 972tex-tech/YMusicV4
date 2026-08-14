@@ -37,3 +37,18 @@ tasks.register("cleanBuildDir", Delete::class) {
 tasks.matching { it.name == "clean" }.configureEach {
     dependsOn("cleanBuildDir")
 }
+
+// ONE command refreshes everything derived from the engine-js bundle after a source edit or a
+// backendVersion bump: build the bundle, restage the Android asset + desktop jar resource, and
+// regenerate the embedded const + ENGINE_JS_EMBED_VERSION. (Consumers also pull all of this on
+// their own builds — this exists so `./gradlew syncEngineJs` refreshes every copy in one go.)
+tasks.register("syncEngineJs") {
+    dependsOn(
+        ":engine-js:closureJs", // build/dist/engine.js (typecheck + esbuild + Closure)
+        ":engine-js:writeEngineVersion", // build/dist/engine.version
+        ":androidApp:copyEngineJs", // → androidApp/src/main/assets/engine_ymusic.js
+        ":desktopApp:stageEngineJs", // → desktopApp jar resources
+        ":dynamic-engine:generateEngineJsBundleKt", // → embedded ENGINE_JS (tests + iOS lab)
+        ":dynamic-engine:generateEngineJsVersionKt", // → ENGINE_JS_EMBED_VERSION const
+    )
+}
