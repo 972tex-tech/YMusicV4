@@ -224,6 +224,11 @@ compose.desktop {
     }
 }
 
+// NOTE (byte-measured, 2026-08-14): jlink's --compress=2 (settable only reflectively — the
+// compose plugin's compressionLevel has no public DSL) shrinks the runtime dir 67→45MB on disk
+// but GROWS the DMG 72.2→76.1MiB: the DMG's zlib squeezes the raw jimage better than jlink's
+// per-resource zip, which is opaque to it. Download size is the goal → runtime stays uncompressed.
+
 // sqlite-jdbc (~12MB of it) and JNA bundle natives for EVERY OS/arch; a package needs only the
 // host OS's (packaging is per-OS anyway). Strip the rest from the ProGuard output jars — that's
 // what jpackage consumes for the release tasks. zip exit 12 = "nothing matched", fine.
