@@ -347,6 +347,9 @@ compose.desktop {
 // "nothing matched", which is fine.
 tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
     val proguardOut = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+    // The plugin never clears this dir, so a jar whose name changes (a dependency version bump)
+    // would leave its predecessor behind to be packaged alongside the new one.
+    doFirst { proguardOut.get().asFile.deleteRecursively() }
     doLast {
         val os = org.gradle.internal.os.OperatingSystem.current()
         val sqliteKeep = if (os.isMacOsX) "Mac" else if (os.isLinux) "Linux" else "Windows"
