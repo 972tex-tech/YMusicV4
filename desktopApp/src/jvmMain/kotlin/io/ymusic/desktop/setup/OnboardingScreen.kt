@@ -128,7 +128,9 @@ private fun SetupStep(
                 color = SetupTheme.inkSecondary,
                 fontSize = 11.sp,
                 letterSpacing = 1.1.sp,
-                fontWeight = FontWeight.Medium,
+                // Bold, like the step label: both are uppercase 11sp signposts rather than prose,
+                // and at that size the weight is what makes them read as structure.
+                fontWeight = FontWeight.Bold,
             )
 
             VlcRow(state.vlc, onRecheckVlc, onOpenUrl)
@@ -218,7 +220,7 @@ private fun StepHeader(step: Int, title: String) {
                 color = SetupTheme.accent,
                 fontSize = 11.sp,
                 letterSpacing = 1.3.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 // The label sets its own line height: its default leading pushed it off the
                 // logo's optical top, which is what the header is aligned to.
                 lineHeight = 11.sp,
