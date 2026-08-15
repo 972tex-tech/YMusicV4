@@ -143,6 +143,11 @@ fun main() {
             ensureAppLanguage(it)
         }
     }
+    applyWindowChrome(
+        // The setup window is pinned dark; afterwards the app's own theme decides.
+        dark = if (!settings.flow(AppSettings.setupCompleted).value) true
+        else settings.flow(AppSettings.theme).value != "light",
+    )
     // Crash reporting starts only once the user has been asked and said yes. An un-completed setup
     // is therefore silent by construction, not by a default that could drift.
     val reportCrashes = settings.flow(AppSettings.crashReports).value &&
@@ -872,6 +877,25 @@ private fun provisionedFfmpeg(): File? {
         .sortedByDescending { it.name }
         .map { File(it, name) }
         .firstOrNull { it.canExecute() }
+}
+
+/**
+ * Match the OS window decorations — title bar, traffic lights — to the theme the app will render in.
+ *
+ * macOS reads this once when AWT starts its toolkit, so it must be set before any window exists, and
+ * a theme change in Settings only reaches the title bar on the next launch. The value is an explicit
+ * appearance rather than "system": the app's theme is its own setting, and a dark app under a light
+ * OS should not get a white title bar.
+ *
+ * Windows would need DwmSetWindowAttribute per window and Linux is at the window manager's
+ * discretion; neither is wired up, so both keep the system default for now.
+ */
+private fun applyWindowChrome(dark: Boolean) {
+    if (!System.getProperty("os.name").lowercase().contains("mac")) return
+    System.setProperty(
+        "apple.awt.application.appearance",
+        if (dark) "NSAppearanceNameDarkAqua" else "NSAppearanceNameAqua",
+    )
 }
 
 /** Opens a link in the user's browser — the first run's VLC, GitHub and policy links. */
