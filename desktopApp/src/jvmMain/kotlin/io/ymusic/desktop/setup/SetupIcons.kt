@@ -24,7 +24,13 @@ import androidx.compose.ui.unit.dp
  * failure and as nothing much once VLC is found.
  */
 private object IconPaths {
-    /** 24×24. Cone tip (drawn faded, as in the design), cone body, and the base bar. */
+    /**
+     * 24×24 traffic cone: tip, body, base bar.
+     *
+     * Drawn solid rather than with the mockup's faded tip — at 15dp the translucent band merged into
+     * the body and the whole thing read as a lump instead of a cone. The silhouette is what carries
+     * the recognition at this size, so it gets one flat colour and a gap between cone and base.
+     */
     const val VLC_TIP = "M10.6 3h2.8l.9 3h-4.6l.9-3z"
     const val VLC_BODY = "M9.4 7.4h5.2l3.1 8.6H6.3l3.1-8.6z"
     const val VLC_BASE = "M6 16.4h12a1 1 0 0 1 1 1v0.8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-0.8a1 1 0 0 1 1-1z"
@@ -58,14 +64,21 @@ private fun DrawScope.drawIconPath(pathData: String, color: Color, alpha: Float 
     }
 }
 
+/**
+ * The VLC traffic cone, in VLC's own orange rather than the row's warning tint: it is a product
+ * mark, and the point of showing it is that someone recognises the thing they need to install.
+ */
 @Composable
-fun VlcIcon(color: Color, size: Dp = ICON_SIZE) {
+fun VlcIcon(color: Color = VlcOrange, size: Dp = VLC_SIZE) {
     Canvas(Modifier.size(size)) {
-        drawIconPath(IconPaths.VLC_TIP, color, alpha = CONE_TIP_ALPHA)
+        drawIconPath(IconPaths.VLC_TIP, color)
         drawIconPath(IconPaths.VLC_BODY, color)
         drawIconPath(IconPaths.VLC_BASE, color)
     }
 }
+
+/** VideoLAN's cone orange. */
+val VlcOrange = Color(0xFFE85E00)
 
 @Composable
 fun GitHubIcon(color: Color, size: Dp = ICON_SIZE) {
@@ -142,9 +155,8 @@ fun StarIcon(color: Color, size: Dp = BUTTON_ICON_SIZE) {
 
 private const val ICON_VIEWPORT = 24f
 
-/** The cone's tip is the lighter band of the real mark; keeping it faded stops the icon reading as
- *  a solid triangle at this size. */
-private const val CONE_TIP_ALPHA = 0.45f
+/** The cone is taller than it is wide, so it needs a little more room than a square mark. */
+private val VLC_SIZE = 16.dp
 
 /** Sized to sit in the rows' glyph column beside 13sp text glyphs. */
 private val ICON_SIZE = 15.dp

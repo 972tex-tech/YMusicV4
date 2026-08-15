@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -270,7 +271,7 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
     Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
         // The cone stands in for the mark while VLC is missing; once it is found the row falls back
         // to the same tick every other satisfied row uses.
-        StatusGlyph(state, absentContent = { VlcIcon(it) }, absentColor = SetupTheme.warn)
+        StatusGlyph(state, absentContent = { VlcIcon() })
         Column(Modifier.weight(1f)) {
             RowName("Local file playback")
             if (state is ComponentState.Ready) {
@@ -291,10 +292,11 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
                     Spacer(Modifier.height(DesignSpacing.Space4))
                     LinkText("or download from videolan.org") { onOpenUrl(hint.site) }
                 }
-                Spacer(Modifier.height(DesignSpacing.Space8))
-                LinkButton("Recheck", onClick = onRecheck)
             }
         }
+        // Trailing, in the same column the gated rows put their ring — the design's third grid
+        // track. It is the row's one action, so it sits where every row's action sits.
+        if (state !is ComponentState.Ready) LinkButton("Recheck", onClick = onRecheck)
     }
 }
 
@@ -506,17 +508,19 @@ private fun RowMeta(text: String) =
 @Composable
 private fun CommandChip(command: String, onCopy: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-        Text(
-            command,
-            color = DesignColors.InkMuted,
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier
-                .clip(RoundedCornerShape(5.dp))
-                .background(SetupTheme.raised)
-                .border(1.dp, DesignColors.Divider, RoundedCornerShape(5.dp))
-                .padding(horizontal = DesignSpacing.Space8, vertical = 3.dp),
-        )
+        SelectionContainer {
+            Text(
+                command,
+                color = DesignColors.InkMuted,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(SetupTheme.raised)
+                    .border(1.dp, DesignColors.Divider, RoundedCornerShape(5.dp))
+                    .padding(horizontal = DesignSpacing.Space8, vertical = 3.dp),
+            )
+        }
         LinkButton("Copy", tiny = true, onClick = onCopy)
     }
 }
