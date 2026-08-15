@@ -125,7 +125,7 @@ private fun SetupStep(
             Box(Modifier.fillMaxWidth().height(1.dp).background(DesignColors.Divider))
             Text(
                 "CAN BE DONE LATER",
-                color = DesignColors.InkSecondary,
+                color = SetupTheme.inkSecondary,
                 fontSize = 11.sp,
                 letterSpacing = 1.1.sp,
                 fontWeight = FontWeight.Medium,
@@ -303,7 +303,7 @@ private fun MusicFolderRow(state: SetupState, onChoose: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         modifier = Modifier.alpha(if (waiting) SetupTheme.WaitingAlpha else 1f),
     ) {
-        GlyphSlot { Text("○", color = DesignColors.InkSecondary, fontSize = 13.sp) }
+        GlyphSlot { Text("○", color = SetupTheme.inkSecondary, fontSize = 13.sp) }
         Column(Modifier.weight(1f)) {
             RowName("Your music folder")
             // Once a folder is set it replaces the explanation: the sentence has done its job.
@@ -368,7 +368,7 @@ private fun TermsLine(onOpenUrl: (String) -> Unit) {
         appendLink("Privacy Policy", PRIVACY_URL, onOpenUrl)
         append(".")
     }
-    Text(text, color = DesignColors.InkSecondary, fontSize = 12.sp, lineHeight = 18.sp)
+    Text(text, color = SetupTheme.inkSecondary, fontSize = 12.sp, lineHeight = 18.sp)
 }
 
 @Composable
@@ -390,7 +390,7 @@ private fun Footer(note: String, buttonLabel: String, enabled: Boolean, onClick:
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(note, color = DesignColors.InkSecondary, fontSize = 12.sp)
+        Text(note, color = SetupTheme.inkSecondary, fontSize = 12.sp)
         PrimaryButton(buttonLabel, enabled, onClick)
     }
 }
@@ -497,7 +497,7 @@ private fun RowName(text: String) =
 
 @Composable
 private fun RowMeta(text: String) =
-    Text(text, color = DesignColors.InkSecondary, fontSize = 12.sp)
+    Text(text, color = SetupTheme.inkSecondary, fontSize = 12.sp)
 
 @Composable
 private fun CommandChip(command: String, onCopy: () -> Unit) {
@@ -608,13 +608,25 @@ private object SetupTheme {
     val ground: Color @Composable get() =
         if (DesignColors.isDark) DesignColors.Surface else DesignColors.SurfaceElevated
 
+    /**
+     * Secondary text — the line under every row title, the section label, the footer note.
+     *
+     * A step darker than the palette's usual secondary ink: at 12sp on this screen's ground that
+     * tone lands near 3:1, under the 4.5:1 small-text floor, and softening the background made it
+     * worse. This is still the palette's own ink, one rung up.
+     */
+    val inkSecondary: Color @Composable get() = DesignColors.InkSoft
+
     /** A chip or pill lifted off [ground] — the command box. */
     val raised: Color @Composable get() =
         if (DesignColors.isDark) DesignColors.SurfaceElevated else DesignColors.Surface
 
     val accent: Color @Composable get() = if (DesignColors.isDark) Color(0xFF35A96A) else Color(0xFF1F6B44)
     val progress: Color @Composable get() = if (DesignColors.isDark) Color(0xFFF08A45) else Color(0xFFE8732A)
-    val ok: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4FD48C) else Color(0xFF3FC37C)
+    /** Success. The light value is a good deal deeper than the dark one: the same mint that reads as
+     *  a confident tick on near-black turns into a pale smear on a light ground, where a ring and a
+     *  2dp stroke have very little area to carry the colour. */
+    val ok: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4FD48C) else Color(0xFF2B9A5F)
     val bad: Color @Composable get() = if (DesignColors.isDark) Color(0xFFE0736A) else Color(0xFFB4453A)
     val warn: Color @Composable get() = if (DesignColors.isDark) Color(0xFFD9A441) else Color(0xFFB4791C)
 
