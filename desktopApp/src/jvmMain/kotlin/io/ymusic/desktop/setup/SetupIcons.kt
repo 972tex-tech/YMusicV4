@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.Dp
@@ -25,6 +28,9 @@ private object IconPaths {
     const val VLC_TIP = "M10.6 3h2.8l.9 3h-4.6l.9-3z"
     const val VLC_BODY = "M9.4 7.4h5.2l3.1 8.6H6.3l3.1-8.6z"
     const val VLC_BASE = "M6 16.4h12a1 1 0 0 1 1 1v0.8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-0.8a1 1 0 0 1 1-1z"
+
+    /** 24×24, drawn as a stroke: the two segments of a tick, centred in the viewport. */
+    const val CHECK = "M5.5 12.5L10 17L18.5 7.5"
 
     /** 24×24 five-point star — the action on the GitHub row, not the identity of it. */
     const val STAR = "M12 2.6l2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.16l-5.7 3l1.09-6.35-4.62-4.5 " +
@@ -62,6 +68,32 @@ fun GitHubIcon(color: Color, size: Dp = ICON_SIZE) {
     Canvas(Modifier.size(size)) { drawIconPath(IconPaths.GITHUB, color) }
 }
 
+/**
+ * The tick inside the consent box, drawn rather than typed.
+ *
+ * A "✓" character centres its LINE BOX, not its glyph — the font's ascent and descent are not
+ * symmetric about the mark, so the tick sat visibly low in a 16dp box. A stroked path has no
+ * metrics to fight and lands where it is put.
+ */
+@Composable
+fun CheckMark(color: Color, size: Dp = CHECK_SIZE) {
+    Canvas(Modifier.size(size)) {
+        val factor = this.size.minDimension / ICON_VIEWPORT
+        val path = PathParser().parsePathString(IconPaths.CHECK).toPath()
+        scale(factor, factor, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+            drawPath(
+                path,
+                color,
+                style = Stroke(
+                    width = CHECK_STROKE,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 fun StarIcon(color: Color, size: Dp = BUTTON_ICON_SIZE) {
     Canvas(Modifier.size(size)) { drawIconPath(IconPaths.STAR, color) }
@@ -78,3 +110,9 @@ private val ICON_SIZE = 15.dp
 
 /** Inside a button, next to its 12sp label. */
 private val BUTTON_ICON_SIZE = 12.dp
+
+/** Inside the consent tick box, which is 16dp. */
+private val CHECK_SIZE = 12.dp
+
+/** In 24-unit viewport terms, so it scales with the icon. */
+private const val CHECK_STROKE = 2.8f

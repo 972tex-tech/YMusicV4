@@ -345,7 +345,7 @@ private fun ConsentRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit, nam
                     .border(1.dp, if (checked) SetupTheme.accent else DesignColors.Outline, RoundedCornerShape(4.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (checked) Text("✓", color = Color.White, fontSize = 11.sp)
+                if (checked) CheckMark(Color.White)
             }
         }
         Column(Modifier.weight(1f)) {
