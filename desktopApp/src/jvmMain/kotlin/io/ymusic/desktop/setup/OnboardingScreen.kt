@@ -285,9 +285,11 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
                         RowMeta("Needs VLC — we can't install it for you")
                     }
                 }
+                // The cone stays whichever way the check went — it says which product this row is
+                // about, not how it turned out. That job belongs to the tick in the glyph column.
+                Spacer(Modifier.width(DesignSpacing.Space16))
+                VlcIcon(size = SetupTheme.BrandMarkSize)
                 if (state !is ComponentState.Ready) {
-                    Spacer(Modifier.width(DesignSpacing.Space16))
-                    VlcIcon(size = SetupTheme.BrandMarkSize)
                     Spacer(Modifier.weight(1f))
                     LinkButton("Recheck", onClick = onRecheck)
                 }
