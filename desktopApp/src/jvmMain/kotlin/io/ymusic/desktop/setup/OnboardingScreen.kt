@@ -477,8 +477,10 @@ private fun ProgressRing(state: ComponentState) {
             )
         }
         when (state) {
-            is ComponentState.Ready -> CheckMark(SetupTheme.ok, STATUS_GLYPH)
-            is ComponentState.Failed -> Text("!", color = SetupTheme.bad, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            // Bigger than a row's mark: this one has a 46dp ring around it to fill, where the same
+            // size that reads as a tick beside 14sp text looks lost.
+            is ComponentState.Ready -> CheckMark(SetupTheme.ok, RING_GLYPH)
+            is ComponentState.Failed -> CrossMark(SetupTheme.bad, RING_GLYPH)
             else -> Text(
                 "${(fraction * 100).toInt()}%",
                 color = DesignColors.InkMuted,
@@ -589,6 +591,9 @@ private val GLYPH_COLUMN = 20.dp
 
 /** A drawn state mark, sized to the 13sp text glyphs it replaced. */
 private val STATUS_GLYPH = 13.dp
+
+/** The same mark inside the progress ring, which is 46dp and needs filling. */
+private val RING_GLYPH = 20.dp
 
 /**
  * The height of a row's first text line — the box a leading glyph centres itself on. Declared in
