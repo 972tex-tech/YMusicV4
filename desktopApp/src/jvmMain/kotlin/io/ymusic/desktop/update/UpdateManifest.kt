@@ -24,19 +24,12 @@ data class Release(
     val sha256: String,
     val sizeBytes: Long,
     val notes: String,
-    /**
-     * Every file of the installed app, each addressed by content hash. Empty on a v1 manifest, and
-     * then the only route is downloading [url] whole — which is also the fallback whenever a
-     * file-level update cannot complete.
-     */
-    val files: List<FileEntry> = emptyList(),
+    /** Every file of the installed app, addressed by content hash. */
+    val files: List<FileEntry>,
     /** Where the content-addressed blobs live; a file's blob is `$blobBaseUrl/<sha256>`. */
-    val blobBaseUrl: String = "",
+    val blobBaseUrl: String,
 ) {
     fun isNewerThan(currentVersionCode: Int): Boolean = versionCode > currentVersionCode
-
-    /** File-level updating needs both the file list and somewhere to fetch blobs from. */
-    val supportsFileLevelUpdate: Boolean get() = files.isNotEmpty() && blobBaseUrl.isNotEmpty()
 
     fun blobUrl(entry: FileEntry): String = blobBaseUrl.trimEnd('/') + "/" + entry.sha256
 }
@@ -57,8 +50,10 @@ class UpdateVerificationException(message: String) : Exception(message)
  * Wire shape — the signature covers the `payload` STRING exactly as transmitted, so re-serializing
  * it (key order, whitespace) can never change what was signed:
  * ```
- * { "payload": "{\"versionCode\":2,\"versionName\":\"1.0.1\",...}", "signature": "<base64>" }
+ * { "payload": "{\"versionCode\":2,\"platforms\":{...}}", "signature": "<base64 Ed25519>" }
  * ```
+ * The payload names, per platform, an `installer` (first install, and the fallback when a
+ * file-level update cannot be applied) and the `files` making up the installed app.
  */
 object UpdateManifest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -88,7 +83,8 @@ object UpdateManifest {
             ?: throw UpdateVerificationException("payload has no usable versionCode")
         val platform = (body["platforms"] as? JsonObject)?.get(platformKey)?.let { it as? JsonObject }
             ?: return null
-        val installer = (platform["installer"] as? JsonObject) ?: platform
+        val installer = (platform["installer"] as? JsonObject)
+            ?: throw UpdateVerificationException("platform entry has no installer")
         val files = (platform["files"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { entry ->
             val o = entry as? JsonObject ?: return@mapNotNull null
             val path = o["path"]?.jsonPrimitive?.contentOrNullSafe() ?: return@mapNotNull null
@@ -100,7 +96,6 @@ object UpdateManifest {
             files = files,
             blobBaseUrl = platform["blobBaseUrl"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
             versionName = body["versionName"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
-            // v2 nests the full download under "installer"; v1 put it flat on the platform entry.
             url = installer["url"]?.jsonPrimitive?.contentOrNullSafe()
                 ?: throw UpdateVerificationException("platform entry has no installer url"),
             sha256 = installer["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase()

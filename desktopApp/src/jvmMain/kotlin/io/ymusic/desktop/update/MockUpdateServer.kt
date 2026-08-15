@@ -62,12 +62,23 @@ object MockUpdateServer {
             // useful before any real build has been copied in.
             val artifacts = platformArtifacts(dir, version)
             val payload = buildString {
-                append("""{"versionCode":$version,"versionName":"mock-$version",""")
+                append("""{"manifestVersion":2,"versionCode":$version,"versionName":"mock-$version",""")
                 append(""""notes":"Mock release from MockUpdateServer",""")
                 append(""""platforms":{""")
                 append(
                     artifacts.entries.joinToString(",") { (key, f) ->
-                        """"$key":{"url":"$base/download/${f.name}","sha256":"${sha256(f)}","size":"${f.length()}"}"""
+                        // The "app" a mock release installs is the artifact itself plus a marker,
+                        // enough for a client to exercise plan → download → verify → stage.
+                        val marker = File(dir, "version-$version.txt").apply {
+                            if (!exists()) writeText("ymusic $version\n")
+                        }
+                        val files = listOf("app/payload.bin" to f, "app/version.txt" to marker)
+                            .joinToString(",") { (path, file) ->
+                                """{"path":"$path","sha256":"${sha256(file)}","size":"${file.length()}"}"""
+                            }
+                        """"$key":{"installer":{"url":"$base/download/${f.name}",""" +
+                            """"sha256":"${sha256(f)}","size":"${f.length()}"},""" +
+                            """"blobBaseUrl":"$base/blobs","files":[$files]}"""
                     },
                 )
                 append("}}")
@@ -79,6 +90,14 @@ object MockUpdateServer {
             }
             val manifest = """{"payload":"${payload.jsonEscape()}","signature":"$signature"}"""
             ex.respond(200, manifest.toByteArray(), "application/json")
+        }
+
+        // Content-addressed blobs: any file in the artifact dir is served by its hash.
+        server.createContext("/blobs/") { ex ->
+            val want = ex.requestURI.path.substringAfterLast('/')
+            val match = dir.listFiles().orEmpty().firstOrNull { it.isFile && sha256(it) == want }
+            if (match == null) ex.respond(404, "no blob $want".toByteArray(), "text/plain")
+            else ex.respond(200, match.readBytes(), "application/octet-stream")
         }
 
         server.createContext("/download/") { ex ->

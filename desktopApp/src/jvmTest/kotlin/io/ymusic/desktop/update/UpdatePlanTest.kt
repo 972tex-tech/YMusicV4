@@ -68,12 +68,6 @@ class UpdatePlanTest {
     }
 
     @Test
-    fun a_v1_manifest_offers_no_file_level_route() {
-        val v1 = Release(1, "1.0.0", "https://example.test/a.dmg", "abc", 1, "")
-        assertTrue(!v1.supportsFileLevelUpdate, "without files the only route is the full installer")
-    }
-
-    @Test
     fun blob_urls_are_content_addressed() {
         val r = release("app/a.jar" to "9f2a")
         assertEquals("https://example.test/blobs/9f2a", r.blobUrl(r.files.first()))

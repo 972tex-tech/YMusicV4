@@ -24,7 +24,8 @@ class UpdateManifestTest {
 
     private fun payload(versionCode: Int = 2, url: String = "https://example.test/a.zip") = """
         {"versionCode":$versionCode,"versionName":"1.0.1","notes":"Fixes things",
-         "platforms":{"mac-x64":{"url":"$url","sha256":"AABB","size":"123"}}}
+         "platforms":{"mac-x64":{"installer":{"url":"$url","sha256":"AABB","size":"123"},
+         "blobBaseUrl":"https://example.test/blobs","files":[]}}}
     """.trimIndent()
 
     private fun manifest(payload: String, signature: String = sign(payload)): String {
@@ -108,17 +109,17 @@ class UpdateManifestTest {
         """.trimIndent()
         val release = UpdateManifest.parseVerified(manifest(v2), publicKey, "mac-x64")!!
         assertEquals("https://e.test/a.dmg", release.url, "the installer stays the fallback route")
-        assertTrue(release.supportsFileLevelUpdate)
         assertEquals(1, release.files.size)
         assertEquals("bb", release.files.first().sha256, "hashes compare lowercase")
         assertEquals("https://e.test/blobs/bb", release.blobUrl(release.files.first()))
     }
 
     @Test
-    fun a_v1_manifest_still_parses_as_installer_only() {
-        val release = UpdateManifest.parseVerified(manifest(payload()), publicKey, "mac-x64")!!
-        assertEquals("https://example.test/a.zip", release.url)
-        assertTrue(!release.supportsFileLevelUpdate, "no files means installer-only")
+    fun a_platform_entry_without_an_installer_is_refused() {
+        val noInstaller = """{"versionCode":2,"platforms":{"mac-x64":{"files":[]}}}"""
+        assertFailsWith<UpdateVerificationException> {
+            UpdateManifest.parseVerified(manifest(noInstaller), publicKey, "mac-x64")
+        }
     }
 
     @Test
