@@ -46,6 +46,46 @@ class InstallSwapTest {
     }
 
     @Test
+    fun a_versioned_install_lands_beside_the_running_copy_untouched() {
+        // What Windows does: the running app-1 must not be written to at all.
+        val root = tree("YMusic", "app-1/lib/a.jar" to "v1", "YMusic.exe" to "launcher")
+        val running = File(root, "app-1/lib/a.jar")
+        val staged = tree("staged-2", "lib/a.jar" to "v2")
+
+        val launcher = installVersioned(root, staged, versionCode = 2)
+
+        assertEquals("v1", running.readText(), "the running version is never touched")
+        assertEquals("v2", File(root, "app-2/lib/a.jar").readText())
+        assertTrue(!staged.exists(), "the staged tree moved rather than copied")
+        assertTrue(launcher.name.startsWith("YMusic"), "returns the stable launcher, got $launcher")
+    }
+
+    @Test
+    fun pruning_keeps_the_running_version_and_removes_the_rest() {
+        val root = tree(
+            "YMusic",
+            "app-1/x" to "old", "app-2/x" to "current", "app-3/x" to "newer", "YMusic.exe" to "l",
+        )
+        val removed = pruneOldVersions(root, keepVersionCode = 2)
+
+        assertEquals(2, removed)
+        assertTrue(File(root, "app-2/x").exists(), "the running version survives")
+        assertTrue(!File(root, "app-1").exists() && !File(root, "app-3").exists())
+        assertTrue(File(root, "YMusic.exe").exists(), "the launcher is not a version dir")
+    }
+
+    @Test
+    fun a_half_written_release_is_never_named_as_a_version() {
+        // installVersioned renames a COMPLETE tree in, so a launcher picking the highest number
+        // cannot select something still being written.
+        val root = tree("YMusic", "app-1/x" to "v1")
+        assertFailsWith<IllegalArgumentException> {
+            installVersioned(root, File(tmp, "never-staged"), versionCode = 2)
+        }
+        assertTrue(!File(root, "app-2").exists(), "no directory is created for a failed staging")
+    }
+
+    @Test
     fun hashing_walks_the_whole_tree_relative_to_its_root() {
         val root = tree("app", "a.txt" to "hello", "sub/b.txt" to "hello")
         val hashes = hashInstalledFiles(root)

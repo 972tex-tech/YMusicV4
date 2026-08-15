@@ -62,8 +62,10 @@ class UpdateService(
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state
 
-    /** Null when an in-place update is possible; otherwise why it is not. */
-    val selfUpdateBlockedReason: String? = InstallLayout.selfUpdateBlockedReason()
+    private val strategy = InstallLayout.strategy
+
+    /** Null when self-update is possible here; otherwise why it is not. */
+    val selfUpdateBlockedReason: String? = InstallLayout.selfUpdateBlockedReason(installRoot)
 
     private val log get() = logger?.fork("update")
 
@@ -245,10 +247,30 @@ class UpdateService(
         val ready = _state.value as? UpdateState.Ready ?: return false
         val root = installRoot ?: return false
         return runCatching {
-            // The staged tree contains the app image contents; swap the whole root.
-            swapInstall(root, ready.staged)
-            relaunch(root)
+            when (strategy) {
+                SwapStrategy.REPLACE_IN_PLACE -> {
+                    swapInstall(root, ready.staged)
+                    relaunch(root)
+                }
+                SwapStrategy.VERSIONED_DIRECTORIES -> {
+                    // The running copy is never touched: the new release lands in its own
+                    // directory and the launcher picks it up on the next start.
+                    val launcher = installVersioned(root, ready.staged, ready.release.versionCode)
+                    ProcessBuilder(launcher.absolutePath).start()
+                }
+            }
             true
         }.onFailure { log?.captureError(it, "applying update failed") }.getOrDefault(false)
+    }
+
+    /**
+     * Delete release directories the running copy has superseded. Startup-only: on Windows the
+     * files of a version still running are locked, so this is the one moment they are free.
+     */
+    fun pruneSupersededVersions() {
+        if (strategy != SwapStrategy.VERSIONED_DIRECTORIES) return
+        val root = installRoot ?: return
+        val removed = runCatching { pruneOldVersions(root, currentVersionCode) }.getOrDefault(0)
+        if (removed > 0) log?.log(Logger.Level.INFO, "removed $removed superseded version(s)")
     }
 }

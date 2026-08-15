@@ -503,6 +503,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         settings.flow(AppSettings.autoDownloadUpdates).collect { autoDownloadUpdates = it }
     }
     val desktopUpdates = if (updateService.isEnabled) {
+        updateService.pruneSupersededVersions()
         updateService.adoptStagedUpdate()
         updateService.startPeriodicChecks()
         DesktopAppUpdates(updateService, updateScope)

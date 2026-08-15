@@ -4,14 +4,31 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Where the running app lives and whether we may replace it in place.
+ * How a platform's install is replaced.
  *
- * Self-update is only offered when the whole install is ours to rewrite. It is refused — and the
- * UI falls back to "download it yourself" — when the app runs from a build tree, when the install
- * directory is not writable (an admin-installed copy under a non-admin user), or on Windows, where
- * a running executable and its loaded DLLs cannot be replaced at all. Windows needs versioned
- * install directories behind a stable launcher; until that exists, pretending otherwise would
- * leave a broken install.
+ * The difference is not cosmetic: Unix lets a running process's files be renamed out from under
+ * it, Windows holds a mandatory lock on the running .exe and every loaded DLL. So each gets the
+ * only scheme that is safe there.
+ */
+enum class SwapStrategy {
+    /** macOS/Linux: rename the whole app root aside and the new tree into its place. */
+    REPLACE_IN_PLACE,
+
+    /**
+     * Windows: never touch the running copy. Each release lives in its own `app-<versionCode>`
+     * directory under the install root, and a stable launcher runs the newest complete one — so
+     * "applying" an update is writing a new directory and restarting, and the superseded directory
+     * is deleted at the next start, when nothing holds it open.
+     */
+    VERSIONED_DIRECTORIES,
+}
+
+/**
+ * Where the running app lives and how it may be replaced.
+ *
+ * Self-update is refused — and the UI falls back to "download it yourself" — only when the install
+ * is not ours to rewrite: a build-tree run, or a directory we cannot write (an admin-installed
+ * copy under a non-admin user).
  */
 object InstallLayout {
 
@@ -32,19 +49,53 @@ object InstallLayout {
 
     val isWindows: Boolean get() = System.getProperty("os.name").lowercase().contains("win")
 
+    val strategy: SwapStrategy
+        get() = if (isWindows) SwapStrategy.VERSIONED_DIRECTORIES else SwapStrategy.REPLACE_IN_PLACE
+
     /**
-     * Why an in-place update is impossible, or null when it is. A reason string rather than a
+     * Why self-update is impossible, or null when it is possible. A reason string rather than a
      * boolean: it is shown to the user next to the manual download link.
      */
-    fun selfUpdateBlockedReason(): String? {
-        if (isWindows) return "Windows cannot replace a running application in place"
-        val root = installRoot() ?: return "the app is not running from an installed copy"
-        if (!root.canWrite() || !(root.parentFile?.canWrite() ?: false)) {
-            return "the install directory is not writable"
-        }
+    fun selfUpdateBlockedReason(root: File? = installRoot()): String? {
+        root ?: return "the app is not running from an installed copy"
+        // In-place needs to rename the root itself, so the PARENT must be writable too; versioned
+        // directories only ever add a sibling inside the root.
+        val needed = if (strategy == SwapStrategy.REPLACE_IN_PLACE) root.parentFile else root
+        if (needed?.canWrite() != true) return "the install directory is not writable"
         return null
     }
 }
+
+/** `<root>/app-<versionCode>` — one directory per release under a Windows install. */
+fun versionDir(root: File, versionCode: Int): File = File(root, "app-$versionCode")
+
+/**
+ * Install [staged] as [versionCode] beside the running copy and return the launcher to start.
+ *
+ * Nothing in use is written to, so this is safe while the app runs — the point of the layout. The
+ * directory is moved into place only after it is complete, so a launcher that picks the newest can
+ * never select a half-written release.
+ */
+fun installVersioned(root: File, staged: File, versionCode: Int): File {
+    require(staged.isDirectory) { "staged tree missing: $staged" }
+    val target = versionDir(root, versionCode)
+    target.deleteRecursively()
+    check(staged.renameTo(target)) { "could not move the new version into $target" }
+    return File(root, if (InstallLayout.isWindows) "YMusic.exe" else "YMusic")
+}
+
+/**
+ * Delete superseded release directories, keeping [keepVersionCode] (the running one).
+ *
+ * Called at STARTUP: on Windows the previous version's files are locked while it runs, so cleanup
+ * has to wait until the process that held them is gone.
+ */
+fun pruneOldVersions(root: File, keepVersionCode: Int): Int =
+    root.listFiles().orEmpty()
+        .filter { it.isDirectory && it.name.startsWith("app-") }
+        .mapNotNull { d -> d.name.removePrefix("app-").toIntOrNull()?.let { d to it } }
+        .filter { (_, code) -> code != keepVersionCode }
+        .count { (dir, _) -> dir.deleteRecursively() }
 
 /** SHA-256 of a file, streamed — release files include a 44MB JVM image. */
 fun sha256Of(file: File): String {
