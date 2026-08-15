@@ -33,6 +33,9 @@ internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("jcefmaven", "Apache-2.0", scope = "Desktop"),
     OssComponent("Java Native Access (JNA)", "Apache-2.0", scope = "Desktop"),
     OssComponent("vlcj", "GPL-3.0", scope = "Desktop"),
+    // One icon (cone-striped), vendored as an ImageVector on the first-run screen. MIT requires the
+    // notice to travel with binaries, not just with source, which is what this line is for.
+    OssComponent("Bootstrap Icons", "MIT", scope = "Desktop"),
     OssComponent("libVLC (system install)", "LGPL-2.1+", scope = "Desktop"),
     OssComponent("libcurl", "curl license", scope = "iOS"),
     OssComponent("sentry-cocoa", "MIT", scope = "iOS"),

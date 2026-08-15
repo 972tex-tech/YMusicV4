@@ -2,6 +2,7 @@ package io.ymusic.desktop.setup
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -11,11 +12,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.ymusic.ui.DesignColors
 
 /**
  * The two third-party marks the first run names: VLC and GitHub.
@@ -26,18 +25,6 @@ import io.ymusic.ui.DesignColors
  * failure and as nothing much once VLC is found.
  */
 private object IconPaths {
-    /**
-     * 24×24 traffic cone, banded like VideoLAN's: orange tip, pale stripe, orange body, dark base.
-     *
-     * A likeness drawn to the real mark's proportions, not VideoLAN's own artwork — their logo is
-     * their trademark and is not ours to ship. It exists so someone scanning the row recognises
-     * what they are being asked to install; the row says "VLC" in words either way.
-     */
-    const val VLC_TIP = "M10.9 2.5L13.1 2.5L13.82 4.7L10.18 4.7Z"
-    const val VLC_BAND = "M10.18 4.7L13.82 4.7L14.64 7.2L9.36 7.2Z"
-    const val VLC_BODY = "M9.36 7.2L14.64 7.2L17.7 16.5L6.3 16.5Z"
-    const val VLC_BASE = "M5.8 16.5h12.4a1.2 1.2 0 0 1 1.2 1.2v0.9a1.2 1.2 0 0 1-1.2 1.2H5.8a1.2 1.2 0 0 1-1.2-1.2v-0.9a1.2 1.2 0 0 1 1.2-1.2z"
-
     /** 24×24, drawn as a stroke: the two segments of a tick, centred in the viewport. */
     const val CHECK = "M5.5 12.5L10 17L18.5 7.5"
 
@@ -68,43 +55,22 @@ private fun DrawScope.drawIconPath(pathData: String, color: Color, alpha: Float 
 }
 
 /**
- * The VLC cone. Multi-coloured, unlike every other mark here, because the colours ARE the
- * recognition — a single-tint silhouette of a cone could be any traffic cone.
+ * The cone that stands in for VLC, in VideoLAN's orange.
  *
- * Its bounding box maps to the canvas: the shape fills about two-thirds of the viewport, so drawing
- * it like a square mark would make [size] mean the box rather than the cone.
+ * Bootstrap Icons' `cone-striped` rather than a shape of my own: my drawn version read as a
+ * generic lump at this size, and this is a real icon set's cone. It is NOT VideoLAN's mark — their
+ * logo is their trademark and not ours to ship — but a striped orange cone is recognisable enough
+ * beside a row that says "VLC" in words.
  */
 @Composable
 fun VlcIcon(size: Dp = VLC_SIZE) {
-    // The base is near-black in the real mark, which would disappear into a dark window — it takes
-    // the theme's strongest ink instead, so the cone keeps its footing on either ground.
-    val base = DesignColors.InkStrong
-    Canvas(Modifier.size(size)) {
-        val factor = this.size.height / CONE_HEIGHT
-        val centring = (this.size.width / factor - CONE_WIDTH) / 2 - CONE_LEFT
-        scale(factor, factor, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-            translate(centring, -CONE_TOP) {
-                listOf(
-                    IconPaths.VLC_TIP to VlcOrange,
-                    IconPaths.VLC_BAND to VlcCream,
-                    IconPaths.VLC_BODY to VlcOrange,
-                    IconPaths.VLC_BASE to base,
-                ).forEach { (data, colour) ->
-                    drawPath(PathParser().parsePathString(data).toPath(), colour, style = Fill)
-                }
-            }
-        }
-    }
+    Icon(
+        imageVector = BootstrapConeStriped,
+        contentDescription = null,
+        tint = VlcOrange,
+        modifier = Modifier.size(size),
+    )
 }
-
-/** The cone's bounding box inside the 24-unit viewport. */
-private const val CONE_LEFT = 4.6f
-private const val CONE_TOP = 2.5f
-private const val CONE_WIDTH = 14.8f
-private const val CONE_HEIGHT = 17.3f
-
-/** The pale stripe around the cone's shoulder. */
-private val VlcCream = Color(0xFFF2EDE3)
 
 /** VideoLAN's cone orange. */
 val VlcOrange = Color(0xFFE85E00)
