@@ -82,6 +82,24 @@ object InstallLayout {
     }
 }
 
+/**
+ * Move [source] onto [target], falling back to copy+delete when a rename cannot cross the boundary.
+ *
+ * `File.renameTo` returns FALSE between filesystems (verified), and staging does not necessarily
+ * share a volume with the install — an app on an external disk, or a home directory on another
+ * volume. Without the fallback the update would simply never apply.
+ */
+internal fun moveDirectory(source: File, target: File): Boolean {
+    if (source.renameTo(target)) return true
+    // Copy first, delete only once the copy is complete: a failure leaves the source intact.
+    if (!source.copyRecursively(target, overwrite = true, onError = { _, _ -> kotlin.io.OnErrorAction.TERMINATE })) {
+        target.deleteRecursively()
+        return false
+    }
+    source.deleteRecursively()
+    return true
+}
+
 /** `<root>/app-<versionCode>` — one directory per release under a Windows install. */
 fun versionDir(root: File, versionCode: Int): File = File(root, "app-$versionCode")
 
@@ -96,7 +114,7 @@ fun installVersioned(root: File, staged: File, versionCode: Int): File {
     require(staged.isDirectory) { "staged tree missing: $staged" }
     val target = versionDir(root, versionCode)
     target.deleteRecursively()
-    check(staged.renameTo(target)) { "could not move the new version into $target" }
+    check(moveDirectory(staged, target)) { "could not move the new version into $target" }
     return File(root, if (InstallLayout.isWindows) "YMusic.exe" else "YMusic")
 }
 
@@ -142,9 +160,14 @@ fun hashInstalledFiles(root: File): Map<String, String> =
  */
 fun swapInstall(installRoot: File, staged: File): File {
     require(staged.isDirectory) { "staged tree missing: $staged" }
+    // Stage onto the install's own volume FIRST, so the swap itself is two renames within one
+    // directory. Copying here (slow) rather than between the renames keeps the window where no app
+    // exists at the path as short as a rename.
+    val sameVolume = File(installRoot.parentFile, ".${installRoot.name}.new-" + System.nanoTime())
+    check(moveDirectory(staged, sameVolume)) { "could not stage the new version beside the install" }
     val backup = File(installRoot.parentFile, installRoot.name + ".old-" + System.nanoTime())
     check(installRoot.renameTo(backup)) { "could not move the current install aside" }
-    if (!staged.renameTo(installRoot)) {
+    if (!sameVolume.renameTo(installRoot)) {
         backup.renameTo(installRoot) // put it back exactly as it was
         error("could not move the new version into place")
     }

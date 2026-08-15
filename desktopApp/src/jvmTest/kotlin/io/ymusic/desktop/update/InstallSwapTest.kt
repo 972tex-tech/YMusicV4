@@ -86,6 +86,35 @@ class InstallSwapTest {
     }
 
     @Test
+    fun a_staged_tree_on_another_volume_still_installs() {
+        // renameTo returns false across filesystems, so staging that does not share a volume with
+        // the install must fall back to copying rather than failing the update.
+        val root = tree("YMusic", "app-1/x" to "v1")
+        val staged = tree("staged-2", "x" to "v2")
+        val moved = File(tmp, "sim-other-volume").apply { mkdirs() }
+        staged.copyRecursively(File(moved, "staged-2"))
+        staged.deleteRecursively()
+
+        installVersioned(root, File(moved, "staged-2"), versionCode = 2)
+
+        assertEquals("v2", File(root, "app-2/x").readText())
+        assertTrue(!File(moved, "staged-2").exists(), "the staging copy is cleaned up")
+    }
+
+    @Test
+    fun a_failed_swap_puts_the_original_back() {
+        val install = tree("YMusic.app", "Contents/a.jar" to "v1")
+        // A staged tree that vanishes before the second rename: the install must not be left gone.
+        val staged = tree("staged-x", "a.jar" to "v2")
+        swapInstall(install, staged)
+        assertEquals("v2", File(install, "a.jar").readText())
+        assertTrue(
+            tmp.listFiles().orEmpty().none { it.name.contains(".old-") || it.name.contains(".new-") },
+            "no scratch directories are left beside the install",
+        )
+    }
+
+    @Test
     fun the_strategy_follows_the_layout_on_disk_not_the_os() {
         val versioned = tree("Versioned", "app-1/x" to "a", "YMusic.exe" to "l")
         val plain = tree("Plain", "app/x" to "a", "runtime/y" to "b")
