@@ -286,10 +286,19 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
                     }
                 }
                 // The cone stays whichever way the check went — it says which product this row is
-                // about, not how it turned out. That job belongs to the tick in the glyph column.
-                Spacer(Modifier.width(DesignSpacing.Space16))
-                VlcIcon(size = SetupTheme.BrandMarkSize)
-                if (state !is ComponentState.Ready) {
+                // about, not how it turned out; the tick in the glyph column reports that. Where it
+                // sits does change: with nothing else in the band it takes the trailing edge, the
+                // same place Recheck holds while VLC is still missing.
+                if (state is ComponentState.Ready) {
+                    Spacer(Modifier.weight(1f))
+                    // Centred on the ring's column, so the trailing edge reads as one line down the
+                    // screen rather than each row placing its own thing wherever it happens to end.
+                    Box(Modifier.width(SetupTheme.RingSize), contentAlignment = Alignment.Center) {
+                        VlcIcon(size = SetupTheme.BrandMarkSize)
+                    }
+                } else {
+                    Spacer(Modifier.width(DesignSpacing.Space16))
+                    VlcIcon(size = SetupTheme.BrandMarkSize)
                     Spacer(Modifier.weight(1f))
                     LinkButton("Recheck", onClick = onRecheck)
                 }
