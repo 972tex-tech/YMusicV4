@@ -62,7 +62,7 @@ class UpdateService(
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state
 
-    private val strategy = InstallLayout.strategy
+    private val strategy = InstallLayout.strategyFor(installRoot)
 
     /** Null when self-update is possible here; otherwise why it is not. */
     val selfUpdateBlockedReason: String? = InstallLayout.selfUpdateBlockedReason(installRoot)

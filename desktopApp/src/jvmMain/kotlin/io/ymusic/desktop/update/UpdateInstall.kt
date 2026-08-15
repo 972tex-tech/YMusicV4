@@ -49,8 +49,18 @@ object InstallLayout {
 
     val isWindows: Boolean get() = System.getProperty("os.name").lowercase().contains("win")
 
-    val strategy: SwapStrategy
-        get() = if (isWindows) SwapStrategy.VERSIONED_DIRECTORIES else SwapStrategy.REPLACE_IN_PLACE
+    /**
+     * Decided by what is on disk, not by the OS: an install laid out as `app-<n>` directories is
+     * updated by adding another one, anything else by replacing the root. Windows REQUIRES the
+     * versioned layout (its running .exe and loaded DLLs cannot be replaced), so a Windows install
+     * that lacks it is refused rather than corrupted — see [selfUpdateBlockedReason].
+     */
+    fun strategyFor(root: File?): SwapStrategy =
+        if (root != null && hasVersionDirs(root)) SwapStrategy.VERSIONED_DIRECTORIES
+        else SwapStrategy.REPLACE_IN_PLACE
+
+    private fun hasVersionDirs(root: File): Boolean =
+        root.listFiles().orEmpty().any { it.isDirectory && it.name.matches(Regex("app-\\d+")) }
 
     /**
      * Why self-update is impossible, or null when it is possible. A reason string rather than a
@@ -58,8 +68,14 @@ object InstallLayout {
      */
     fun selfUpdateBlockedReason(root: File? = installRoot()): String? {
         root ?: return "the app is not running from an installed copy"
-        // In-place needs to rename the root itself, so the PARENT must be writable too; versioned
-        // directories only ever add a sibling inside the root.
+        val strategy = strategyFor(root)
+        if (isWindows && strategy != SwapStrategy.VERSIONED_DIRECTORIES) {
+            // The installer has not laid the app out in per-version directories, and replacing a
+            // running Windows install in place is not possible: its .exe and DLLs are locked.
+            return "this installer does not support in-place updates on Windows"
+        }
+        // In-place renames the root, so its PARENT must be writable; versioned only adds a sibling
+        // inside the root.
         val needed = if (strategy == SwapStrategy.REPLACE_IN_PLACE) root.parentFile else root
         if (needed?.canWrite() != true) return "the install directory is not writable"
         return null

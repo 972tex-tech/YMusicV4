@@ -86,6 +86,16 @@ class InstallSwapTest {
     }
 
     @Test
+    fun the_strategy_follows_the_layout_on_disk_not_the_os() {
+        val versioned = tree("Versioned", "app-1/x" to "a", "YMusic.exe" to "l")
+        val plain = tree("Plain", "app/x" to "a", "runtime/y" to "b")
+
+        assertEquals(SwapStrategy.VERSIONED_DIRECTORIES, InstallLayout.strategyFor(versioned))
+        assertEquals(SwapStrategy.REPLACE_IN_PLACE, InstallLayout.strategyFor(plain))
+        assertEquals(SwapStrategy.REPLACE_IN_PLACE, InstallLayout.strategyFor(null))
+    }
+
+    @Test
     fun hashing_walks_the_whole_tree_relative_to_its_root() {
         val root = tree("app", "a.txt" to "hello", "sub/b.txt" to "hello")
         val hashes = hashInstalledFiles(root)
