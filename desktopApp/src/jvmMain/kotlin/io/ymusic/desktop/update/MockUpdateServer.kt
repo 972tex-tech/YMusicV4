@@ -23,6 +23,7 @@ import java.util.Base64
  *
  * Serves:
  *  - `GET /update.json`      the signed update manifest (see [UpdateManifest])
+ *  - `GET /tools.json`       the signed tools manifest the first run fetches ffmpeg through
  *  - `GET /download/<name>`  a file from the artifact dir, or synthesised bytes when absent
  *  - `GET /js-config.json`   what a real [io.ymusic.dynamicengine.JsConfigProvider] would answer
  *
@@ -33,6 +34,9 @@ import java.util.Base64
  */
 object MockUpdateServer {
 
+    /** The version the mock publishes ffmpeg under; bumping it makes a client re-download. */
+    private const val TOOLS_VERSION = "mock-1"
+
     @JvmStatic
     fun main(args: Array<String>) {
         val dir = File(args.getOrNull(1) ?: "build/mock-update").apply { mkdirs() }
@@ -40,6 +44,7 @@ object MockUpdateServer {
         val base = "http://localhost:${server.address.port}"
         println("mock update server on $base")
         println("  manifest : $base/update.json")
+        println("  tools    : $base/tools.json")
         println("  js config: $base/js-config.json")
         println("  artifacts: ${dir.absolutePath}")
         println("  public key (pin this in the app for dev): ${File(dir, "dev-update-key").readLines()[0]}")
@@ -83,13 +88,25 @@ object MockUpdateServer {
                 )
                 append("}}")
             }
-            val signature = Signature.getInstance("Ed25519").run {
-                initSign(keys.private)
-                update(payload.toByteArray())
-                Base64.getEncoder().encodeToString(sign())
+            ex.respond(200, sign(payload, keys).toByteArray(), "application/json")
+        }
+
+        // The first-run tools manifest. It publishes whatever `ffmpeg-<platformKey>` binaries have
+        // been dropped into the artifact dir, signed with the same key as releases — which is the
+        // whole point of exercising it here: the client must refuse anything else.
+        server.createContext("/tools.json") { ex ->
+            val builds = toolBuilds(dir)
+            val payload = buildString {
+                append("""{"tools":{"ffmpeg":{"version":"$TOOLS_VERSION","platforms":{""")
+                append(
+                    builds.entries.joinToString(",") { (key, f) ->
+                        """"$key":{"url":"$base/download/${f.name}",""" +
+                            """"sha256":"${sha256(f)}","size":"${f.length()}","format":"raw"}"""
+                    },
+                )
+                append("}}}}")
             }
-            val manifest = """{"payload":"${payload.jsonEscape()}","signature":"$signature"}"""
-            ex.respond(200, manifest.toByteArray(), "application/json")
+            ex.respond(200, sign(payload, keys).toByteArray(), "application/json")
         }
 
         // Content-addressed blobs: any file in the artifact dir is served by its hash.
@@ -133,6 +150,23 @@ object MockUpdateServer {
                 if (!exists()) writeBytes("placeholder artifact for $key $version".toByteArray())
             }
         }
+
+    /** Wraps [payload] in the signed envelope both manifests share ([SignedPayload]). */
+    private fun sign(payload: String, keys: KeyPair): String {
+        val signature = Signature.getInstance("Ed25519").run {
+            initSign(keys.private)
+            update(payload.toByteArray())
+            Base64.getEncoder().encodeToString(sign())
+        }
+        return """{"payload":"${payload.jsonEscape()}","signature":"$signature"}"""
+    }
+
+    /** `ffmpeg-<platformKey>` files present in the artifact dir — a real binary copied in here is
+     *  what makes the first-run flow testable end to end. */
+    private fun toolBuilds(dir: File): Map<String, File> =
+        listOf("mac-x64", "mac-arm64", "windows-x64", "linux-x64")
+            .mapNotNull { key -> File(dir, "ffmpeg-$key").takeIf { it.isFile }?.let { key to it } }
+            .toMap()
 
     private fun loadOrCreateKeyPair(file: File): KeyPair {
         if (file.isFile) {

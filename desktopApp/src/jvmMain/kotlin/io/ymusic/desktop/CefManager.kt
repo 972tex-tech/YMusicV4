@@ -26,7 +26,7 @@ class CefManager {
         installShutdownGuards()
         val root = ymusicDataDir()
         val cefApp = CefAppBuilder().apply {
-            setInstallDir(File(root, "jcef-bundle"))
+            setInstallDir(installDir(root))
             setProgressHandler(ConsoleProgressHandler())
             // Chromium's desktop autoplay policy silently rejects unmuted play() without a user
             // gesture *inside the browser* — the app's own controls never count as one. Android's
@@ -89,6 +89,10 @@ class CefManager {
     }
 
     internal companion object {
+        /** Where the Chromium bundle is unpacked. The first run downloads it here
+         *  ([io.ymusic.desktop.setup.CefProvisioner]) and boot finds it already installed. */
+        fun installDir(root: File) = File(root, "jcef-bundle")
+
         const val COOKIE_MANAGER_ATTEMPTS = 200
         const val COOKIE_MANAGER_POLL_MS = 25L
         const val CEF_SHUTDOWN_GRACE_MS = 5_000L

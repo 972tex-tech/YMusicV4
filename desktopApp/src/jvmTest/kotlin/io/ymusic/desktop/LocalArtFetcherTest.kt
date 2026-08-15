@@ -21,17 +21,21 @@ import kotlin.test.assertNull
 class LocalArtFetcherTest {
     @Test
     fun extractsAndDecodesTheEmbeddedCoverById() {
-        val ffmpeg = findFfmpeg() ?: return // no binary on this machine — nothing to test against
+        // The binary under test is whatever the app would use; the FIXTURES need a fuller build,
+        // because the shipped prebuilt is configured for metadata and muxing only and carries no
+        // lavfi source to synthesise a cover with.
+        val ffmpeg = resolveFfmpeg() ?: return // no binary on this machine — nothing to test against
+        val fixtureFfmpeg = fixtureCapableFfmpeg() ?: return
         val dir = File(System.getProperty("java.io.tmpdir"), "local-art-test-${System.nanoTime()}")
         dir.mkdirs()
         try {
             val cover = File(dir, "cover.png")
             val tone = File(dir, "tone.mp3")
             val song = File(dir, "song.mp3")
-            run(ffmpeg, "-y", "-f", "lavfi", "-i", "color=red:s=64x48", "-frames:v", "1", cover.path)
-            run(ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", tone.path)
+            run(fixtureFfmpeg, "-y", "-f", "lavfi", "-i", "color=red:s=64x48", "-frames:v", "1", cover.path)
+            run(fixtureFfmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", tone.path)
             run(
-                ffmpeg, "-y", "-i", tone.path, "-i", cover.path,
+                fixtureFfmpeg, "-y", "-i", tone.path, "-i", cover.path,
                 "-map", "0:a", "-map", "1:v", "-c", "copy",
                 "-id3v2_version", "3", "-disposition:v:0", "attached_pic", song.path,
             )
@@ -70,4 +74,17 @@ class LocalArtFetcherTest {
         val out = p.inputStream.readBytes().decodeToString()
         check(p.waitFor() == 0) { "command failed: ${cmd.joinToString(" ")}\n$out" }
     }
+
+    /** An ffmpeg that can synthesise test media (needs the lavfi input), or null. */
+    private fun fixtureCapableFfmpeg(): String? =
+        (listOfNotNull(resolveFfmpeg()) + listOf("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"))
+            .firstOrNull { candidate ->
+                runCatching {
+                    val p = ProcessBuilder(candidate, "-hide_banner", "-formats")
+                        .redirectErrorStream(true).start()
+                    val out = p.inputStream.bufferedReader().use { it.readText() }
+                    p.waitFor()
+                    out.contains("lavfi")
+                }.getOrDefault(false)
+            }
 }

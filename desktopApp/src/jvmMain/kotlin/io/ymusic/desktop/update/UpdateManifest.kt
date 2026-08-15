@@ -1,13 +1,6 @@
 package io.ymusic.desktop.update
 
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import java.security.KeyFactory
-import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
-import java.util.Base64
 
 /**
  * One release, as published in the update manifest.
@@ -42,21 +35,15 @@ class UpdateVerificationException(message: String) : Exception(message)
 /**
  * Parses and AUTHENTICATES an update manifest.
  *
- * An updater downloads and runs code, so the transport is not the trust boundary: the manifest is
- * signed with an Ed25519 key whose public half is compiled into the app ([UPDATE_PUBLIC_KEY]), and
- * a manifest that does not verify against it is refused. Ed25519 comes from the JDK itself (17+),
- * so this costs no dependency.
- *
- * Wire shape — the signature covers the `payload` STRING exactly as transmitted, so re-serializing
- * it (key order, whitespace) can never change what was signed:
+ * An updater downloads and runs code, so the transport is not the trust boundary — see
+ * [SignedPayload] for the envelope and why the signature covers the payload string verbatim. The
+ * payload names, per platform, an `installer` (first install, and the fallback when a file-level
+ * update cannot be applied) and the `files` making up the installed app:
  * ```
  * { "payload": "{\"versionCode\":2,\"platforms\":{...}}", "signature": "<base64 Ed25519>" }
  * ```
- * The payload names, per platform, an `installer` (first install, and the fallback when a
- * file-level update cannot be applied) and the `files` making up the installed app.
  */
 object UpdateManifest {
-    private val json = Json { ignoreUnknownKeys = true }
 
     /**
      * Verify [manifestJson] against [publicKeyBase64] and return the release for [platformKey]
@@ -67,19 +54,8 @@ object UpdateManifest {
      * a silent skip: an unverified manifest is treated as hostile, not as "no update".
      */
     fun parseVerified(manifestJson: String, publicKeyBase64: String, platformKey: String): Release? {
-        val root = runCatching { json.parseToJsonElement(manifestJson).jsonObject }.getOrNull()
-            ?: throw UpdateVerificationException("manifest is not a JSON object")
-        val payload = root["payload"]?.jsonPrimitive?.contentOrNullSafe()
-            ?: throw UpdateVerificationException("manifest has no payload")
-        val signature = root["signature"]?.jsonPrimitive?.contentOrNullSafe()
-            ?: throw UpdateVerificationException("manifest is not signed")
-        if (!verify(payload, signature, publicKeyBase64)) {
-            throw UpdateVerificationException("manifest signature does not match the pinned key")
-        }
-
-        val body = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
-            ?: throw UpdateVerificationException("payload is not a JSON object")
-        val versionCode = body["versionCode"]?.jsonPrimitive?.contentOrNullSafe()?.toIntOrNull()
+        val body = SignedPayload.open(manifestJson, publicKeyBase64)
+        val versionCode = body["versionCode"]?.asStringOrNull()?.toIntOrNull()
             ?: throw UpdateVerificationException("payload has no usable versionCode")
         val platform = (body["platforms"] as? JsonObject)?.get(platformKey)?.let { it as? JsonObject }
             ?: return null
@@ -87,39 +63,24 @@ object UpdateManifest {
             ?: throw UpdateVerificationException("platform entry has no installer")
         val files = (platform["files"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { entry ->
             val o = entry as? JsonObject ?: return@mapNotNull null
-            val path = o["path"]?.jsonPrimitive?.contentOrNullSafe() ?: return@mapNotNull null
-            val hash = o["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase() ?: return@mapNotNull null
-            FileEntry(path, hash, o["size"]?.jsonPrimitive?.contentOrNullSafe()?.toLongOrNull() ?: -1L)
+            val path = o["path"]?.asStringOrNull() ?: return@mapNotNull null
+            val hash = o["sha256"]?.asStringOrNull()?.lowercase() ?: return@mapNotNull null
+            FileEntry(path, hash, o["size"]?.asStringOrNull()?.toLongOrNull() ?: -1L)
         }
         return Release(
             versionCode = versionCode,
             files = files,
-            blobBaseUrl = platform["blobBaseUrl"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
-            versionName = body["versionName"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
-            url = installer["url"]?.jsonPrimitive?.contentOrNullSafe()
+            blobBaseUrl = platform["blobBaseUrl"]?.asStringOrNull().orEmpty(),
+            versionName = body["versionName"]?.asStringOrNull().orEmpty(),
+            url = installer["url"]?.asStringOrNull()
                 ?: throw UpdateVerificationException("platform entry has no installer url"),
-            sha256 = installer["sha256"]?.jsonPrimitive?.contentOrNullSafe()?.lowercase()
+            sha256 = installer["sha256"]?.asStringOrNull()?.lowercase()
                 ?: throw UpdateVerificationException("platform entry has no installer sha256"),
-            sizeBytes = installer["size"]?.jsonPrimitive?.contentOrNullSafe()?.toLongOrNull() ?: -1L,
-            notes = body["notes"]?.jsonPrimitive?.contentOrNullSafe().orEmpty(),
+            sizeBytes = installer["size"]?.asStringOrNull()?.toLongOrNull() ?: -1L,
+            notes = body["notes"]?.asStringOrNull().orEmpty(),
         )
     }
-
-    private fun verify(payload: String, signatureBase64: String, publicKeyBase64: String): Boolean =
-        runCatching {
-            val keyBytes = Base64.getDecoder().decode(publicKeyBase64)
-            val key = KeyFactory.getInstance("Ed25519").generatePublic(X509EncodedKeySpec(keyBytes))
-            Signature.getInstance("Ed25519").run {
-                initVerify(key)
-                update(payload.toByteArray(Charsets.UTF_8))
-                verify(Base64.getDecoder().decode(signatureBase64))
-            }
-        }.getOrDefault(false)
 }
-
-/** kotlinx-serialization throws on a non-string primitive; this keeps parse errors uniform. */
-private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? =
-    runCatching { content }.getOrNull()?.takeIf { it.isNotEmpty() }
 
 /** The host triple the manifest keys releases by. */
 fun currentPlatformKey(): String {

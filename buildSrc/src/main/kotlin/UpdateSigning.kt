@@ -52,3 +52,8 @@ fun Project.macTeamId(): String =
  *  — with nothing to check against, not checking beats trusting the network. */
 fun Project.updateManifestUrl(): String =
     System.getenv("YMUSIC_UPDATE_MANIFEST_URL") ?: localProp("update.manifest.url") ?: ""
+
+/** Where the first run fetches its helper binaries — ffmpeg (`tools.manifest.url`). Signed with the
+ *  same key as releases; empty means the first run asks the user to install ffmpeg instead. */
+fun Project.toolsManifestUrl(): String =
+    System.getenv("YMUSIC_TOOLS_MANIFEST_URL") ?: localProp("tools.manifest.url") ?: ""

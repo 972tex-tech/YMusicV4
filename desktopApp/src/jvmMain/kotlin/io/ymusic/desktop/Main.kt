@@ -44,6 +44,7 @@ import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
+import io.ymusic.desktop.setup.FirstRunWindow
 import io.ymusic.desktop.update.DesktopAppUpdates
 import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
@@ -132,7 +133,21 @@ private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
 @Volatile private var autoDownloadUpdates: Boolean = false
 
 fun main() {
-    if (SENTRY_DSN.isNotEmpty()) {
+    // Opened before anything else: the first run has not happened yet at this point, and both the
+    // crash-reporting consent and whether to show the setup window are answers held in here.
+    val settings = kotlinx.coroutines.runBlocking {
+        val dir = ymusicDataDir().apply { mkdirs() }
+        FileSettingsStore.open(File(dir, "settings.properties").absolutePath.toPath()).also {
+            // First launch decides the app language (device if supported, else English) and
+            // persists it — the setup window needs it as much as the app does.
+            ensureAppLanguage(it)
+        }
+    }
+    // Crash reporting starts only once the user has been asked and said yes. An un-completed setup
+    // is therefore silent by construction, not by a default that could drift.
+    val reportCrashes = settings.flow(AppSettings.crashReports).value &&
+        settings.flow(AppSettings.setupCompleted).value
+    if (SENTRY_DSN.isNotEmpty() && reportCrashes) {
         Sentry.init {
             it.applyYMusicTelemetry()
             it.dsn = SENTRY_DSN
@@ -148,6 +163,24 @@ fun main() {
     // Stop-signal and shutdown resilience against CEF live in CefManager.installShutdownGuards
     // (installed with the first createClient — shared with the probes).
     application {
+        var setupDone by remember { mutableStateOf(settings.flow(AppSettings.setupCompleted).value) }
+        if (!setupDone) {
+            // Nothing plays until the engines are on disk, so the app's own window does not open
+            // until the checklist passes — building the graph first would just fail slowly.
+            FirstRunWindow(
+                settings = settings,
+                dataDir = ymusicDataDir(),
+                logger = rootLogger,
+                toolsManifestUrl = TOOLS_MANIFEST_URL,
+                publicKey = UPDATE_PUBLIC_KEY,
+                cefInstallDir = CefManager.installDir(ymusicDataDir()),
+                existingFfmpeg = { resolveFfmpeg()?.let(::File) },
+                pickFolder = { pickFolder()?.absolutePath },
+                onOpenUrl = ::openInBrowser,
+                onFinished = { setupDone = true },
+            )
+            return@application
+        }
         val cefManager = remember { CefManager() }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
         var windowVisible by remember { mutableStateOf(true) }
@@ -207,7 +240,7 @@ fun main() {
 
             LaunchedEffect(Unit) {
                 try {
-                    graph = buildGraph(cefManager)
+                    graph = buildGraph(cefManager, settings)
                 } catch (c: kotlinx.coroutines.CancellationException) {
                     throw c // the effect was disposed — not a boot failure
                 } catch (t: Throwable) {
@@ -263,7 +296,7 @@ fun main() {
     }
 }
 
-private suspend fun buildGraph(cefManager: CefManager): AppGraph {
+private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsStore): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
     // Init CEF first: the cookie store is JCEF's global one (needs CefApp initialized before the
     // first access), shared with the WebView player and persisted on disk. The engine's OWN HTTP
@@ -274,10 +307,6 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // One client stack, one disk cache: the engine (no cookie jar — the scraping JS owns cookie
     // policy) and the player's embed fetch (platform cookies) share it.
     val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath(), logger = rootLogger)
-    val settings = FileSettingsStore.open(File(dataDir, "settings.properties").absolutePath.toPath())
-    // First launch decides the app language (device if supported, else English) and persists it —
-    // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
-    ensureAppLanguage(settings)
     // Stable anonymous crash-reporting id: the persisted copy wins; a fresh (or wiped) install
     // re-derives the same machine-seeded hash, so the id survives an app-data clear.
     val deviceId = settings.flow(AppSettings.deviceId).value.ifEmpty {
@@ -348,7 +377,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         fetchers = listOfNotNull(
             imageNetworkFetcher,
             fileFetcher(),
-            findFfmpeg()?.let { mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, imageNetworkFetcher) },
+            resolveFfmpeg()?.let { mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, imageNetworkFetcher) },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = rootLogger,
@@ -427,7 +456,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
     // the playback WebView to prime each video's player response + PO token (so a download of a video the
     // user isn't already playing briefly loads it into the player — a known first-cut limitation).
     val downloadService = withContext(Dispatchers.IO) {
-        val ffmpegPath = locateDesktopFfmpeg()
+        val ffmpegPath = resolveFfmpeg()
         val ffmpeg = ffmpegPath?.let { io.ymusic.download.Ffmpeg(it) }
         // Probes a finished download's metadata into its Library bucket (same path as the folder scan);
         // null without ffmpeg → registerCompletedDownload falls back to a hand-built draft.
@@ -508,6 +537,17 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         DesktopAppUpdates(updateService, updateScope)
     } else {
         null
+    }
+
+    // A folder picked during the first run is scanned here rather than in the setup window: the
+    // scan is long, and the Library screen is where its progress and result belong.
+    settings.flow(AppSettings.pendingLibraryFolder).value.takeIf { it.isNotBlank() }?.let { path ->
+        CoroutineScope(Dispatchers.Default).launch {
+            val uri = UriBuilder().scheme("file").authority("").path(path).build()
+            runCatching { scanUris(mediaStore, listOf(uri)) {} }
+                .onFailure { rootLogger.fork("library-scan").log(Logger.Level.WARN, "first-run scan of $path failed", it) }
+            settings.put(AppSettings.pendingLibraryFolder, "")
+        }
     }
 
     return AppGraph(
@@ -657,7 +697,7 @@ private suspend fun rescanKnownRoots(store: BetterMediaStore, onProgress: (Int) 
 /** Scans each root [uris] into [store], reporting the running file count through [onProgress] and
  *  returning one combined summary line. */
 private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String? {
-    val ffmpeg = findFfmpeg()
+    val ffmpeg = resolveFfmpeg()
         ?: return "ffmpeg not found — install it (e.g. brew install ffmpeg) to scan metadata"
     val scanner = MediaScanner.create(
         store,
@@ -792,11 +832,46 @@ private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
     }
 }
 
-internal fun findFfmpeg(): String? {
+/**
+ * The ffmpeg this run should use, or null when the host has none.
+ *
+ * One ladder for every caller (tag reading, artwork, download muxing) so they can never disagree
+ * about which binary is in play: an explicit override, then the copy the first run downloaded
+ * ([io.ymusic.desktop.setup.FfmpegProvisioner]), then a dev checkout's prebuilt, then the PATH.
+ */
+internal fun resolveFfmpeg(): String? {
+    System.getProperty("io.ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.canExecute() }?.absolutePath }
     System.getenv("YMUSIC_FFMPEG")?.let { if (File(it).canExecute()) return it }
+    provisionedFfmpeg()?.let { return it.absolutePath }
+    val os = System.getProperty("os.name").lowercase()
+    val prebuilt = when {
+        os.contains("mac") -> "ffmpeg-prebuilt-ymusic/macos/ffmpeg"
+        os.contains("linux") -> "ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg"
+        else -> null
+    }
+    prebuilt?.let { rel ->
+        listOf(rel, "../$rel").map(::File).firstOrNull { it.canExecute() }?.let { return it.absolutePath }
+    }
+    val name = if (os.contains("win")) "ffmpeg.exe" else "ffmpeg"
     val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator) +
         listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
-    return dirs.asSequence().map { File(it, "ffmpeg") }.firstOrNull { it.canExecute() }?.absolutePath
+    return dirs.asSequence().map { File(it, name) }.firstOrNull { it.canExecute() }?.absolutePath
+}
+
+/** Newest provisioned version first — an upgrade wins without the old copy having to be deleted. */
+private fun provisionedFfmpeg(): File? {
+    val name = if (System.getProperty("os.name").lowercase().contains("win")) "ffmpeg.exe" else "ffmpeg"
+    return File(ymusicDataDir(), "tools/ffmpeg").listFiles().orEmpty()
+        .filter { it.isDirectory }
+        .sortedByDescending { it.name }
+        .map { File(it, name) }
+        .firstOrNull { it.canExecute() }
+}
+
+/** Opens a link in the user's browser — the first run's VLC, GitHub and policy links. */
+internal fun openInBrowser(url: String) {
+    runCatching { java.awt.Desktop.getDesktop().browse(java.net.URI(url)) }
+        .onFailure { rootLogger.fork("browser").log(Logger.Level.WARN, "could not open $url", it) }
 }
 
 /** A file packed into the app jar (the staged engine bundle + version — see stageEngineJs). */
@@ -820,17 +895,4 @@ private fun Booting(content: @Composable () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) { content() }
-}
-
-/** The prebuilt ffmpeg binary for this host, or null (mp3/video downloads then unavailable). Dev-time:
- *  the repo's ffmpeg-prebuilt-ymusic; override with -Dymusic.ffmpeg=/path. */
-private fun locateDesktopFfmpeg(): String? {
-    System.getProperty("io.ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.exists() }?.absolutePath }
-    val os = System.getProperty("os.name").lowercase()
-    val rel = when {
-        os.contains("mac") -> "ffmpeg-prebuilt-ymusic/macos/ffmpeg"
-        os.contains("linux") -> "ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg"
-        else -> return null
-    }
-    return listOf(rel, "../$rel").map(::File).firstOrNull { it.exists() }?.absolutePath
 }

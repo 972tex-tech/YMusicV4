@@ -48,6 +48,12 @@ val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orN
     ?: updateManifestUrl()
 val updatePublicKeyValue: String = updatePublicKey()
 
+// The helper binaries the first run downloads (ffmpeg), signed with the SAME key as releases —
+// they get executed, so an unauthenticated fetch is not an option. Empty leaves the first run
+// asking the user to install ffmpeg instead of fetching it.
+val toolsUrl: String = providers.gradleProperty("ymusic.toolsManifestUrl").orNull
+    ?: toolsManifestUrl()
+
 val generateBuildConfig by tasks.registering {
     val dsn = sentryDsn()
     val release = "ymusic-desktop@$desktopVersion+${gitCommit()}"
@@ -58,6 +64,7 @@ val generateBuildConfig by tasks.registering {
     inputs.property("versionCode", desktopVersionCode)
     inputs.property("updateUrl", updateUrl)
     inputs.property("updatePublicKey", updatePublicKeyValue)
+    inputs.property("toolsUrl", toolsUrl)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("BuildConfig.kt")
@@ -81,6 +88,9 @@ val generateBuildConfig by tasks.registering {
             // than not checking.
             internal const val UPDATE_MANIFEST_URL = "$updateUrl"
             internal const val UPDATE_PUBLIC_KEY = "$updatePublicKeyValue"
+
+            // Where the first run fetches ffmpeg from; verified against UPDATE_PUBLIC_KEY.
+            internal const val TOOLS_MANIFEST_URL = "$toolsUrl"
             """.trimIndent() + "\n",
         )
     }
