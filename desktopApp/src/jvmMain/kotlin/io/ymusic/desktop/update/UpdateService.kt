@@ -67,6 +67,10 @@ class UpdateService(
 
     private val log get() = logger?.fork("update")
 
+    /** The release the last check found, so a UI "Download" button has something to fetch. */
+    @Volatile var pendingRelease: Release? = null
+        private set
+
     /** Configured at all? Without a pinned key there is nothing to verify against, so checks are
      *  disabled rather than trusting whatever the network returns. */
     val isEnabled: Boolean get() = publicKey.isNotBlank() && manifestUrl.isNotBlank()
@@ -130,6 +134,7 @@ class UpdateService(
             _state.value = UpdateState.Idle
             return
         }
+        pendingRelease = release
         val info = ReleaseInfo(release.versionCode, release.versionName, release.notes, release.url)
         val plan = planFor(release)
         _state.value = UpdateState.Available(info, plan.downloadBytes)

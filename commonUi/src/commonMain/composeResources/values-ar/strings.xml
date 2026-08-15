@@ -163,4 +163,19 @@
     <string name="delete_from_disk_message">سيتم حذف "%1$s" نهائيًا من هذا الجهاز. لا يمكن التراجع عن ذلك.</string>
     <string name="delete_from_disk_confirm">حذف</string>
     <string name="dialog_cancel">إلغاء</string>
+
+    <!-- Updates -->
+    <string name="settings_auto_update">تنزيل التحديثات تلقائيًا</string>
+    <string name="settings_auto_update_hint">تنزيل الإصدارات الجديدة في الخلفية وتثبيتها عند التشغيل التالي.</string>
+    <string name="update_available_title">يتوفّر تحديث</string>
+    <string name="update_version">الإصدار %1$s</string>
+    <string name="update_download">تنزيل</string>
+    <string name="update_install_restart">التثبيت وإعادة التشغيل</string>
+    <string name="update_later">لاحقًا</string>
+    <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
+    <string name="update_ready">جاهز للتثبيت</string>
+    <string name="update_auto_checkbox">تنزيل التحديثات المستقبلية تلقائيًا</string>
+    <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
+    <string name="update_open_download">فتح صفحة التنزيل</string>
+    <string name="update_failed">فشل التحديث: %1$s</string>
 </resources>

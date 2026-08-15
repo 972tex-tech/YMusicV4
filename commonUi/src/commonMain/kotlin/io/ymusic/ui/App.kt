@@ -761,6 +761,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             if (nowPlayingOpen) {
                 NowPlayingScreen(graph, coordinator, onClose = { nowPlayingOpen = false })
             }
+            UpdateDialog(graph)
         }
     }
 }

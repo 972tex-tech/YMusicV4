@@ -44,6 +44,8 @@ import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.settings_auto_update
+import io.ymusic.ui.resources.settings_auto_update_hint
 import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_language
@@ -116,7 +118,37 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
+        if (graph.updates != null) AutoUpdateRow(graph)
         LicensesRow()
+    }
+}
+
+/** Settings → download updates in the background. Off by default: fetching tens of MB unasked is
+ *  the user's call. Turning it on also makes future releases apply on the next start. */
+@Composable
+private fun AutoUpdateRow(graph: AppGraph) {
+    val scope = rememberCoroutineScope()
+    val enabled by remember(graph) { graph.settings.flow(AppSettings.autoDownloadUpdates) }.collectAsState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { scope.launch { graph.settings.put(AppSettings.autoDownloadUpdates, !enabled) } }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(Res.string.settings_auto_update),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            Text(
+                stringResource(Res.string.settings_auto_update_hint),
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(top = DesignSpacing.Space2),
+            )
+        }
+        CompactSwitch(enabled)
     }
 }
 

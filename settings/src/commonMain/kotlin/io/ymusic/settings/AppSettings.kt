@@ -69,6 +69,13 @@ object AppSettings {
     /** UI language override (BCP-47); empty = follow the system locale. */
     val uiLanguage = StringSetting("app.uiLanguage", "")
 
+    /**
+     * Fetch updates in the background as soon as they are found, and apply them on the next start.
+     * Off by default: downloading tens of MB unasked is the user's call, not ours. Desktop only —
+     * the mobile stores own updating there.
+     */
+    val autoDownloadUpdates = BoolSetting("update.autoDownload", false)
+
     /** Anonymous stable device id for crash reporting — seeded once (Android: ANDROID_ID, desktop:
      *  a random UUID) and persisted; carries no PII and never leaves telemetry. Empty = unseeded. */
     val deviceId = StringSetting("telemetry.deviceId", "")

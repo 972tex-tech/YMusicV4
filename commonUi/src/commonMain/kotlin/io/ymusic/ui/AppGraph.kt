@@ -100,6 +100,11 @@ class AppGraph(
      * rest of the feedback form still works.
      */
     val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
+    /**
+     * The shell's self-updater; null where the platform store owns updates (mobile) or the shell
+     * has none — the update prompt and its setting then never appear.
+     */
+    val updates: AppUpdates? = null,
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {

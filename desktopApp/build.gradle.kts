@@ -41,6 +41,13 @@ val fullJdkHome: String? = run {
 // The DSN is machine-local (see SentryProps in buildSrc), so it reaches the app as generated
 // source rather than a checked-in constant. The release carries the git commit — that's how an
 // event traces back to git history without a source-context upload.
+// Where installed copies look for releases, and the key that authenticates them. Both come from
+// the environment/local.properties so a fork builds without ours, and an unsigned-manifest build
+// is impossible: no key means no update checks at all.
+val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orNull
+    ?: System.getenv("YMUSIC_UPDATE_MANIFEST_URL") ?: ""
+val updatePublicKeyValue: String = updatePublicKey()
+
 val generateBuildConfig by tasks.registering {
     val dsn = sentryDsn()
     val release = "ymusic-desktop@$desktopVersion+${gitCommit()}"
@@ -49,6 +56,8 @@ val generateBuildConfig by tasks.registering {
     inputs.property("release", release)
     inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
     inputs.property("versionCode", desktopVersionCode)
+    inputs.property("updateUrl", updateUrl)
+    inputs.property("updatePublicKey", updatePublicKeyValue)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("BuildConfig.kt")
@@ -66,6 +75,12 @@ val generateBuildConfig by tasks.registering {
             // What the update check compares against a manifest's versionCode.
             internal const val APP_VERSION_CODE: Int = $desktopVersionCode
             internal const val APP_VERSION_NAME = "$desktopVersion"
+
+            // The update manifest and the key that authenticates it. Empty disables update
+            // checks entirely — with nothing to verify against, trusting the network is worse
+            // than not checking.
+            internal const val UPDATE_MANIFEST_URL = "$updateUrl"
+            internal const val UPDATE_PUBLIC_KEY = "$updatePublicKeyValue"
             """.trimIndent() + "\n",
         )
     }

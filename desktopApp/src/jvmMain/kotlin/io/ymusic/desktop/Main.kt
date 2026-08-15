@@ -44,6 +44,8 @@ import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
+import io.ymusic.desktop.update.DesktopAppUpdates
+import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.desktopEngineCacheStore
@@ -125,6 +127,9 @@ import java.io.File
  */
 // Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
 private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
+
+/** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */
+@Volatile private var autoDownloadUpdates: Boolean = false
 
 fun main() {
     if (SENTRY_DSN.isNotEmpty()) {
@@ -479,6 +484,32 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         )
     }
 
+    // Self-update: adopt anything a previous run staged, then poll. Disabled outright when no
+    // manifest/key is configured — an unverifiable update is worse than none.
+    val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val updateService = UpdateService(
+        client = http.engine,
+        manifestUrl = UPDATE_MANIFEST_URL,
+        publicKey = UPDATE_PUBLIC_KEY,
+        currentVersionCode = APP_VERSION_CODE,
+        stagingDir = File(dataDir, "updates"),
+        scope = updateScope,
+        logger = rootLogger,
+        autoDownload = { autoDownloadUpdates },
+    )
+    // Mirrored into a field: the service asks synchronously, mid-check, and a suspending read
+    // there would either block the check or race it.
+    updateScope.launch {
+        settings.flow(AppSettings.autoDownloadUpdates).collect { autoDownloadUpdates = it }
+    }
+    val desktopUpdates = if (updateService.isEnabled) {
+        updateService.adoptStagedUpdate()
+        updateService.startPeriodicChecks()
+        DesktopAppUpdates(updateService, updateScope)
+    } else {
+        null
+    }
+
     return AppGraph(
         engines,
         player,
@@ -510,6 +541,7 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
             DesktopLoginBrowser(url, state, onPageChanged, modifier)
         },
         downloads = downloadService,
+        updates = desktopUpdates,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
     ) { modifier ->

@@ -158,4 +158,19 @@
     <string name="delete_from_disk_message">“%1$s” sẽ bị xóa vĩnh viễn khỏi thiết bị này. Không thể hoàn tác.</string>
     <string name="delete_from_disk_confirm">Xóa</string>
     <string name="dialog_cancel">Hủy</string>
+
+    <!-- Updates -->
+    <string name="settings_auto_update">Tự động tải bản cập nhật</string>
+    <string name="settings_auto_update_hint">Tải bản mới ở chế độ nền và cài đặt trong lần khởi động kế tiếp.</string>
+    <string name="update_available_title">Đã có bản cập nhật</string>
+    <string name="update_version">Phiên bản %1$s</string>
+    <string name="update_download">Tải xuống</string>
+    <string name="update_install_restart">Cài đặt và khởi động lại</string>
+    <string name="update_later">Để sau</string>
+    <string name="update_downloading">Đang tải… %1$s / %2$s</string>
+    <string name="update_ready">Sẵn sàng cài đặt</string>
+    <string name="update_auto_checkbox">Tự động tải các bản cập nhật sau</string>
+    <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
+    <string name="update_open_download">Mở trang tải xuống</string>
+    <string name="update_failed">Cập nhật thất bại: %1$s</string>
 </resources>
