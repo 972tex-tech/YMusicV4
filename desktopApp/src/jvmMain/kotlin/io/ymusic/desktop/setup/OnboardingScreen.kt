@@ -21,6 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -40,6 +42,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
@@ -271,13 +275,15 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
     Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
         // The cone stands in for the mark while VLC is missing; once it is found the row falls back
         // to the same tick every other satisfied row uses.
-        StatusGlyph(state, absentContent = { VlcIcon() })
+        StatusGlyph(state)
         Column(Modifier.weight(1f)) {
             RowName("Local file playback")
             if (state is ComponentState.Ready) {
                 RowMeta("VLC is installed")
             } else {
-                RowMeta("Needs VLC — we can't install it for you")
+                // The cone rides inside the sentence, at a size where its shape survives — as a
+                // 16dp leading mark its base bar was under two pixels and it just read as broken.
+                MetaWithVlcMark("Needs ", "VLC — we can't install it for you")
                 Spacer(Modifier.height(SetupTheme.RowInnerGap))
                 if (hint.preferSite) {
                     // Windows: almost nobody has used winget, so the download page leads and the
@@ -307,7 +313,10 @@ private fun MusicFolderRow(state: SetupState, onChoose: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         modifier = Modifier.alpha(if (waiting) SetupTheme.WaitingAlpha else 1f),
     ) {
-        GlyphSlot { PendingCircle(SetupTheme.inkSecondary) }
+        GlyphSlot {
+            if (state.musicFolder != null) CheckMark(SetupTheme.ok, STATUS_GLYPH)
+            else PendingCircle(SetupTheme.inkSecondary)
+        }
         Column(Modifier.weight(1f)) {
             RowName("Your music folder")
             // Once a folder is set it replaces the explanation: the sentence has done its job.
@@ -503,6 +512,26 @@ private fun RowName(text: String) =
         lineHeight = ROW_FIRST_LINE_SP,
     )
 
+/** [before] VLC-cone [after] — the mark set in the text, so it can be large enough to read. */
+@Composable
+private fun MetaWithVlcMark(before: String, after: String) {
+    val text = buildAnnotatedString {
+        append(before)
+        appendInlineContent(VLC_MARK, "[VLC]")
+        append(after)
+    }
+    val inline = mapOf(
+        VLC_MARK to InlineTextContent(
+            Placeholder(
+                width = VLC_INLINE,
+                height = VLC_INLINE,
+                placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+            ),
+        ) { VlcIcon(size = VLC_INLINE_SIZE) },
+    )
+    Text(text, color = SetupTheme.inkSecondary, fontSize = 12.sp, inlineContent = inline)
+}
+
 @Composable
 private fun RowMeta(text: String) =
     Text(text, color = SetupTheme.inkSecondary, fontSize = 12.sp)
@@ -594,6 +623,12 @@ private val STATUS_GLYPH = 13.dp
 
 /** The same mark inside the progress ring, which is 46dp and needs filling. */
 private val RING_GLYPH = 20.dp
+
+/** The inline VLC cone: taller than the 12sp line it sits in, which is the point — below this the
+ *  cone's base bar falls under two pixels and the mark stops being legible as a cone. */
+private const val VLC_MARK = "vlc-cone"
+private val VLC_INLINE = 17.sp
+private val VLC_INLINE_SIZE = 17.dp
 
 /**
  * The height of a row's first text line — the box a leading glyph centres itself on. Declared in
