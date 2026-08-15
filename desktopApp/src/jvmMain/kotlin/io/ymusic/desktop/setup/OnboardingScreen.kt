@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,6 +35,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -178,12 +180,14 @@ private fun ConsentStep(
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(DesignColors.Divider))
             Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-                Text("★", fontSize = 15.sp, color = SetupTheme.warn, modifier = Modifier.width(GLYPH_COLUMN))
+                Box(Modifier.width(GLYPH_COLUMN), contentAlignment = Alignment.Center) {
+                    GitHubIcon(DesignColors.Ink)
+                }
                 Column(Modifier.weight(1f)) {
                     RowName("Star us on GitHub")
                     RowMeta("YMusic is free and open source. A star helps other people find it.")
                     Spacer(Modifier.height(DesignSpacing.Space8))
-                    LinkButton("Star on GitHub") { onOpenUrl(GITHUB_URL) }
+                    LinkButton("Star on GitHub", icon = { StarIcon(it) }) { onOpenUrl(GITHUB_URL) }
                 }
             }
             Spacer(Modifier.height(DesignSpacing.Space8))
@@ -260,14 +264,19 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
     val hint = remember { VlcProbe.installHint() }
     val clipboard = LocalClipboardManager.current
     Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-        StatusGlyph(state, absentGlyph = "▲", absentColor = SetupTheme.warn)
+        // The cone stands in for the whole glyph while VLC is missing; once it is found the row
+        // falls back to the same tick every other satisfied row uses.
+        if (state is ComponentState.Ready) {
+            StatusGlyph(state)
+        } else {
+            Box(Modifier.width(GLYPH_COLUMN), contentAlignment = Alignment.Center) {
+                VlcIcon(SetupTheme.warn)
+            }
+        }
         Column(Modifier.weight(1f)) {
             RowName("Local file playback")
             if (state is ComponentState.Ready) {
-                // Mirrors the missing state's shape ("Needs VLC — …") so the row reads as the same
-                // sentence answered, and closes the item rather than restating what the row name
-                // already says.
-                RowMeta("VLC is installed — nothing to do here")
+                RowMeta("VLC is installed")
             } else {
                 RowMeta("Needs VLC — we can't install it for you")
                 Spacer(Modifier.height(SetupTheme.RowInnerGap))
@@ -319,20 +328,32 @@ private fun MusicFolderRow(state: SetupState, onChoose: () -> Unit) {
 
 @Composable
 private fun ConsentRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit, name: String, detail: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-        Box(
-            Modifier
-                .padding(top = 2.dp)
-                .size(SetupTheme.CheckboxSize)
-                .clip(RoundedCornerShape(4.dp))
-                .background(if (checked) SetupTheme.accent else Color.Transparent)
-                .border(1.dp, if (checked) SetupTheme.accent else DesignColors.Outline, RoundedCornerShape(4.dp))
-                .clickableRow { onCheckedChange(!checked) },
-            contentAlignment = Alignment.Center,
-        ) {
-            if (checked) Text("✓", color = Color.White, fontSize = 11.sp)
+    // ONE toggleable region for the whole row, not a clickable box beside a clickable column: two
+    // adjacent hit areas gave the row two separate hover highlights and put a ripple the size of the
+    // tick box under the pointer. Role.Checkbox means the state is announced, not just drawn.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
+            .padding(vertical = DesignSpacing.Space4),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+    ) {
+        // Centred in the same glyph column the other rows use, so the two rows' text share an edge,
+        // and centred against the first line's height rather than nudged with a magic offset.
+        Box(Modifier.width(GLYPH_COLUMN).height(ROW_FIRST_LINE), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .size(SetupTheme.CheckboxSize)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (checked) SetupTheme.accent else Color.Transparent)
+                    .border(1.dp, if (checked) SetupTheme.accent else DesignColors.Outline, RoundedCornerShape(4.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (checked) Text("✓", color = Color.White, fontSize = 11.sp)
+            }
         }
-        Column(Modifier.weight(1f).clickableRow { onCheckedChange(!checked) }) {
+        Column(Modifier.weight(1f)) {
             RowName(name)
             RowMeta(detail)
         }
@@ -495,14 +516,14 @@ private fun LinkButton(
     strong: Boolean = false,
     tiny: Boolean = false,
     enabled: Boolean = true,
+    /** Drawn before the label, in the button's own content colour. */
+    icon: (@Composable (Color) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val content = if (enabled) SetupTheme.accent else DesignColors.InkSecondary
-    Text(
-        label,
-        color = content,
-        fontSize = if (tiny) 11.sp else 12.sp,
-        fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Medium,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SetupTheme.ButtonIconGap),
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .border(1.dp, if (enabled) DesignColors.Outline else DesignColors.Divider, RoundedCornerShape(6.dp))
@@ -511,7 +532,15 @@ private fun LinkButton(
                 horizontal = if (tiny) DesignSpacing.Space8 else 10.dp,
                 vertical = if (tiny) 2.dp else DesignSpacing.Space4,
             ),
-    )
+    ) {
+        icon?.invoke(content)
+        Text(
+            label,
+            color = content,
+            fontSize = if (tiny) 11.sp else 12.sp,
+            fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Medium,
+        )
+    }
 }
 
 @Composable
@@ -532,6 +561,9 @@ private fun PrimaryButton(label: String, enabled: Boolean, onClick: () -> Unit) 
 private fun Modifier.clickableRow(onClick: () -> Unit): Modifier = clickable(onClick = onClick)
 
 private val GLYPH_COLUMN = 20.dp
+
+/** The height of a row's first text line ([RowName] at 14sp) — what a leading glyph centres on. */
+private val ROW_FIRST_LINE = 20.dp
 
 private const val GITHUB_URL = "https://github.com/Khang-NT/YMusicV4"
 private const val TERMS_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/docs/terms.md"
@@ -559,6 +591,9 @@ private object SetupTheme {
     val RingSize = 46.dp
     val RingStroke = 3.dp
     val CheckboxSize = 16.dp
+
+    /** Between a button's leading icon and its label. */
+    val ButtonIconGap = 6.dp
 
     /** Between the step label and the title — the label's cap height, so they read as one block. */
     val StepLabelGap = 7.dp

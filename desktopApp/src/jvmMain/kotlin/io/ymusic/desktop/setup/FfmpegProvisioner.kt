@@ -42,6 +42,13 @@ class FfmpegProvisioner(
     fun installed(): File? =
         versionDirs().mapNotNull { dir -> File(dir, binaryName).takeIf { it.canExecute() } }.firstOrNull()
 
+    /** Removes every `<version>.part` left by an interrupted run. Version directories themselves are
+     *  never touched: one only exists after its binary verified and ran. */
+    private fun discardStagedAttempts() {
+        toolsDir.listFiles().orEmpty().filter { it.isDirectory && it.name.endsWith(".part") }
+            .forEach { it.deleteRecursively() }
+    }
+
     /** Newest first, so an upgrade wins over the copy it replaced without deleting it mid-run. */
     private fun versionDirs(): List<File> =
         toolsDir.listFiles().orEmpty().filter { it.isDirectory }.sortedByDescending { it.name }
@@ -63,9 +70,11 @@ class FfmpegProvisioner(
         val binary = File(target, binaryName)
         if (binary.canExecute()) return@withContext binary
 
-        // A previous attempt at this exact version starts over rather than being resumed: a partial
-        // archive can't be verified, and re-fetching is cheaper than being wrong about it.
-        val staging = File(toolsDir, "${tool.version}.part").apply { deleteRecursively(); mkdirs() }
+        // Any half-finished attempt is swept, not just this version's: closing the window mid-download
+        // kills the process, so the catch below never runs and the staging directory outlives it. A
+        // partial archive can't be verified anyway, and re-fetching beats being wrong about it.
+        discardStagedAttempts()
+        val staging = File(toolsDir, "${tool.version}.part").apply { mkdirs() }
         try {
             val archive = File(staging, "download")
             val actual = downloadHashing(tool.url, archive, tool.sizeBytes, onProgress)

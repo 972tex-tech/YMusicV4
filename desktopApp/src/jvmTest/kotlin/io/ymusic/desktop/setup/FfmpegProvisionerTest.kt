@@ -14,6 +14,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -150,5 +151,24 @@ class FfmpegProvisionerTest {
     fun an_unconfigured_build_reports_disabled_rather_than_fetching_anything() {
         val off = FfmpegProvisioner(KmpHttpClient.create {}, "", "", File(dir, "x"), platformKey)
         assertTrue(!off.isEnabled)
+    }
+
+    @Test
+    fun a_run_killed_mid_download_leaves_nothing_a_later_run_can_trip_over() {
+        hostFfmpeg ?: return
+        val base = serve()
+        val toolsDir = File(dir, "installed").apply { mkdirs() }
+        // What closing the window mid-download leaves behind: the process dies, so no cleanup ran.
+        val orphan = File(toolsDir, "mock-1.part").apply { mkdirs() }
+        File(orphan, "download").writeBytes(ByteArray(4096))
+        val strayVersion = File(toolsDir, "some-older.part").apply { mkdirs() }
+
+        assertNull(provisioner(base, devPublicKey(), toolsDir).installed(), "a .part is not an install")
+
+        val installed = runBlocking { provisioner(base, devPublicKey(), toolsDir).provision { _, _ -> } }
+
+        assertTrue(installed.canExecute(), "the next run installs cleanly over the wreckage")
+        assertFalse(orphan.exists(), "this version's staging was swept")
+        assertFalse(strayVersion.exists(), "so was an unrelated one")
     }
 }
