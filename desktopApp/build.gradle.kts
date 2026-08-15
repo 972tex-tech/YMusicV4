@@ -433,6 +433,14 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
                     listOf("FreeBSD", "Linux", "Mac", "Windows").filter { it != sqliteKeep }
                         .map { "org/sqlite/native/$it/*" },
                 )
+                // JetBrains ship BOTH macOS dylibs in each per-arch skiko runtime jar, so an
+                // Intel package carries 21MB of arm64 native it can never load.
+                jar.name.startsWith("skiko-awt-runtime") -> strip(
+                    jar,
+                    listOf("macos-arm64", "macos-x64", "linux-x64", "linux-arm64", "windows-x64")
+                        .filter { !jar.name.contains(it) }
+                        .flatMap { listOf("libskiko-$it.dylib", "libskiko-$it.dylib.sha256") },
+                )
                 jar.name.matches(Regex("jna(-jpms)?-[0-9].*\\.jar")) -> strip(
                     jar,
                     jnaOses.filter { it != jnaKeep }.map { "com/sun/jna/$it-*" },
