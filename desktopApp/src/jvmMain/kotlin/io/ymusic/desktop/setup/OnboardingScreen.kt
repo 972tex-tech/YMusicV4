@@ -628,7 +628,14 @@ private object SetupTheme {
     val raised: Color @Composable get() =
         if (DesignColors.isDark) DesignColors.SurfaceElevated else DesignColors.Surface
 
-    val accent: Color @Composable get() = if (DesignColors.isDark) Color(0xFF35A96A) else Color(0xFF1F6B44)
+    /**
+     * The brand green: the step label, links, and the primary button's fill.
+     *
+     * Fully saturated rather than the darker, greyer green it started as — that one held white text
+     * comfortably but read as bottle-green next to the logo. This is as green as the hue gets while
+     * still carrying white label text at 4.7:1, which a lighter one would not.
+     */
+    val accent: Color @Composable get() = if (DesignColors.isDark) Color(0xFF35A96A) else Color(0xFF00854B)
     val progress: Color @Composable get() = if (DesignColors.isDark) Color(0xFFF08A45) else Color(0xFFE8732A)
     /** Success. The light value is a good deal deeper than the dark one: the same mint that reads as
      *  a confident tick on near-black turns into a pale smear on a light ground, where a ring and a
