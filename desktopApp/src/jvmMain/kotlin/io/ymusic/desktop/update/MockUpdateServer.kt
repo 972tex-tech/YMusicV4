@@ -117,11 +117,26 @@ object MockUpdateServer {
             else ex.respond(200, match.readBytes(), "application/octet-stream")
         }
 
+        // Range-aware, because the real host (GitHub releases) is: it is what lets a client resume a
+        // download an interrupted run left half-finished, and a mock that always answers 200 would
+        // let that path rot untested.
         server.createContext("/download/") { ex ->
             val name = ex.requestURI.path.substringAfterLast('/')
             val file = File(dir, name)
-            if (!file.isFile) ex.respond(404, "no such artifact: $name".toByteArray(), "text/plain")
-            else ex.respond(200, file.readBytes(), "application/octet-stream")
+            if (!file.isFile) {
+                ex.respond(404, "no such artifact: $name".toByteArray(), "text/plain")
+                return@createContext
+            }
+            val bytes = file.readBytes()
+            val from = ex.requestHeaders.getFirst("Range")
+                ?.substringAfter("bytes=", "")?.substringBefore('-')?.toLongOrNull()
+            if (from == null || from <= 0 || from >= bytes.size) {
+                ex.respond(200, bytes, "application/octet-stream")
+            } else {
+                val slice = bytes.copyOfRange(from.toInt(), bytes.size)
+                ex.responseHeaders.add("Content-Range", "bytes $from-${bytes.size - 1}/${bytes.size}")
+                ex.respond(206, slice, "application/octet-stream")
+            }
         }
 
         // The engine-js/webview-js remote config: same shape JsConfigProvider.fetchConfig expects

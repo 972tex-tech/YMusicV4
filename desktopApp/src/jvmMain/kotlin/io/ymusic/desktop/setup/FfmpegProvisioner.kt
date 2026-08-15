@@ -42,12 +42,29 @@ class FfmpegProvisioner(
     fun installed(): File? =
         versionDirs().mapNotNull { dir -> File(dir, binaryName).takeIf { it.canExecute() } }.firstOrNull()
 
-    /** Removes every `<version>.part` left by an interrupted run. Version directories themselves are
-     *  never touched: one only exists after its binary verified and ran. */
-    private fun discardStagedAttempts() {
-        toolsDir.listFiles().orEmpty().filter { it.isDirectory && it.name.endsWith(".part") }
+    /** Removes every `<version>.part` left by an interrupted run except [keep]. Version directories
+     *  themselves are never touched: one only exists after its binary verified and ran. */
+    private fun discardStagedAttempts(keep: File?) {
+        toolsDir.listFiles().orEmpty()
+            .filter { it.isDirectory && it.name.endsWith(".part") && it != keep }
             .forEach { it.deleteRecursively() }
     }
+
+    /**
+     * Whether a partial download in [staging] belongs to [tool] and can be continued.
+     *
+     * The marker records what was being fetched, because resuming only makes sense if the bytes
+     * already on disk are the head of the SAME file: a republished build at the same url would
+     * otherwise be spliced onto the old one's prefix. That would still be caught by the hash — this
+     * just avoids wasting a download to discover it.
+     */
+    private fun resumableFor(staging: File, tool: ToolDownload): Boolean {
+        val marker = File(staging, MARKER)
+        if (!marker.isFile || !File(staging, "download").isFile) return false
+        return marker.readText() == markerFor(tool)
+    }
+
+    private fun markerFor(tool: ToolDownload) = "${tool.url}\n${tool.sha256}"
 
     /** Newest first, so an upgrade wins over the copy it replaced without deleting it mid-run. */
     private fun versionDirs(): List<File> =
@@ -70,14 +87,15 @@ class FfmpegProvisioner(
         val binary = File(target, binaryName)
         if (binary.canExecute()) return@withContext binary
 
-        // Any half-finished attempt is swept, not just this version's: closing the window mid-download
-        // kills the process, so the catch below never runs and the staging directory outlives it. A
-        // partial archive can't be verified anyway, and re-fetching beats being wrong about it.
-        discardStagedAttempts()
-        val staging = File(toolsDir, "${tool.version}.part").apply { mkdirs() }
+        // Closing the window mid-download kills the process, so the catch below never runs and the
+        // staging directory outlives it. Anything staged for a DIFFERENT build is swept; a partial
+        // archive of the build we still want is kept and resumed.
+        val staging = File(toolsDir, "${tool.version}.part")
+        discardStagedAttempts(keep = staging.takeIf { resumableFor(it, tool) })
+        staging.mkdirs()
         try {
             val archive = File(staging, "download")
-            val actual = downloadHashing(tool.url, archive, tool.sizeBytes, onProgress)
+            val actual = downloadHashing(tool, archive, onProgress)
             check(actual == tool.sha256) {
                 "$binaryName download hashed $actual, the signed manifest says ${tool.sha256}"
             }
@@ -104,22 +122,47 @@ class FfmpegProvisioner(
         }
     }
 
-    /** Streams [url] into [target], returning the hex SHA-256 of exactly the bytes written. */
+    /**
+     * Streams the build into [target], returning the hex SHA-256 of the whole file.
+     *
+     * A partial file left by an interrupted run is continued with a range request rather than
+     * refetched: the bytes already there are fed through the digest first, so the hash still covers
+     * the complete archive and the signed manifest remains the only thing being trusted. A server
+     * that ignores the range (answering 200 rather than 206) simply starts the file over.
+     */
     private suspend fun downloadHashing(
-        url: String,
+        tool: ToolDownload,
         target: File,
-        expectedSize: Long,
         onProgress: (Long, Long) -> Unit,
     ): String {
-        val response = client.execute(RequestBuilder().url(url).get().build())
+        File(target.parentFile, MARKER).writeText(markerFor(tool))
+        val resumeFrom = target.takeIf { it.isFile }?.length() ?: 0L
+        val request = RequestBuilder().url(tool.url)
+            .apply { if (resumeFrom > 0) header("Range", "bytes=$resumeFrom-") }
+            .get().build()
+        val response = client.execute(request)
         try {
-            check(response.isSuccessful) { "HTTP ${response.code} fetching $url" }
-            val total = response.body.contentLength().takeIf { it > 0 } ?: expectedSize
+            check(response.isSuccessful) { "HTTP ${response.code} fetching ${tool.url}" }
+            val resumed = resumeFrom > 0 && response.code == HTTP_PARTIAL_CONTENT
             val digest = MessageDigest.getInstance("SHA-256")
             var done = 0L
+            if (resumed) {
+                target.inputStream().buffered().use { existing ->
+                    val chunk = ByteArray(CHUNK.toInt())
+                    while (true) {
+                        val read = existing.read(chunk)
+                        if (read <= 0) break
+                        digest.update(chunk, 0, read)
+                        done += read
+                    }
+                }
+            }
+            val total = response.body.contentLength().takeIf { it > 0 }?.plus(done)
+                ?: tool.sizeBytes
+            onProgress(done, total)
             val source: AsyncSource = response.body.asyncSource()
             val buffer = Buffer()
-            target.outputStream().buffered().use { out ->
+            java.io.FileOutputStream(target, /* append = */ resumed).buffered().use { out ->
                 while (source.read(buffer, CHUNK) != -1L) {
                     // Drained through readByteArray, which returns exactly what was asked for —
                     // Buffer.read(ByteArray) would stop at the head segment and quietly short-read.
@@ -209,6 +252,10 @@ class FfmpegProvisioner(
     private companion object {
         const val CHUNK = 64L * 1024
         const val VERSION_TIMEOUT_SECONDS = 20L
+        const val HTTP_PARTIAL_CONTENT = 206
+
+        /** Records which build a staging directory holds, so a resume can prove it is the same one. */
+        const val MARKER = "source"
     }
 }
 

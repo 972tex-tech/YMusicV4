@@ -171,4 +171,33 @@ class FfmpegProvisionerTest {
         assertFalse(orphan.exists(), "this version's staging was swept")
         assertFalse(strayVersion.exists(), "so was an unrelated one")
     }
+
+    @Test
+    fun an_interrupted_download_resumes_instead_of_starting_over() {
+        val ffmpeg = hostFfmpeg ?: return
+        val base = serve()
+        val toolsDir = File(dir, "installed").apply { mkdirs() }
+        // Exactly what closing the window mid-download leaves: a partial archive plus the marker
+        // saying which build it belongs to.
+        val staging = File(toolsDir, "mock-1.part").apply { mkdirs() }
+        val half = ffmpeg.readBytes().copyOfRange(0, ffmpeg.length().toInt() / 2)
+        File(staging, "download").writeBytes(half)
+        File(staging, "source").writeText(
+            "$base/download/ffmpeg-$platformKey\n" + sha256Of(ffmpeg),
+        )
+
+        var firstReport = -1L
+        val installed = runBlocking {
+            provisioner(base, devPublicKey(), toolsDir).provision { done, _ ->
+                if (firstReport < 0) firstReport = done
+            }
+        }
+
+        assertTrue(installed.canExecute(), "the resumed download still produced a runnable binary")
+        assertEquals(half.size.toLong(), firstReport, "progress picked up from the bytes already on disk")
+    }
+
+    private fun sha256Of(file: File): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+            .joinToString("") { "%02x".format(it) }
 }

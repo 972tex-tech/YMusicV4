@@ -179,10 +179,11 @@ private fun ConsentStep(
                 detail = "Stack traces only — no listening history, no account data, no file names.",
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(DesignColors.Divider))
-            Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-                Box(Modifier.width(GLYPH_COLUMN), contentAlignment = Alignment.Center) {
-                    GitHubIcon(DesignColors.Ink)
-                }
+            Row(
+                modifier = Modifier.padding(vertical = DesignSpacing.Space4),
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+            ) {
+                GlyphSlot { GitHubIcon(DesignColors.Ink) }
                 Column(Modifier.weight(1f)) {
                     RowName("Star us on GitHub")
                     RowMeta("YMusic is free and open source. A star helps other people find it.")
@@ -266,13 +267,7 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
     Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
         // The cone stands in for the whole glyph while VLC is missing; once it is found the row
         // falls back to the same tick every other satisfied row uses.
-        if (state is ComponentState.Ready) {
-            StatusGlyph(state)
-        } else {
-            Box(Modifier.width(GLYPH_COLUMN), contentAlignment = Alignment.Center) {
-                VlcIcon(SetupTheme.warn)
-            }
-        }
+        if (state is ComponentState.Ready) StatusGlyph(state) else GlyphSlot { VlcIcon(SetupTheme.warn) }
         Column(Modifier.weight(1f)) {
             RowName("Local file playback")
             if (state is ComponentState.Ready) {
@@ -307,7 +302,7 @@ private fun MusicFolderRow(state: SetupState, onChoose: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         modifier = Modifier.alpha(if (waiting) SetupTheme.WaitingAlpha else 1f),
     ) {
-        Text("○", color = DesignColors.InkSecondary, fontSize = 13.sp, modifier = Modifier.width(GLYPH_COLUMN))
+        GlyphSlot { Text("○", color = DesignColors.InkSecondary, fontSize = 13.sp) }
         Column(Modifier.weight(1f)) {
             RowName("Your music folder")
             // Once a folder is set it replaces the explanation: the sentence has done its job.
@@ -341,7 +336,7 @@ private fun ConsentRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit, nam
     ) {
         // Centred in the same glyph column the other rows use, so the two rows' text share an edge,
         // and centred against the first line's height rather than nudged with a magic offset.
-        Box(Modifier.width(GLYPH_COLUMN).height(ROW_FIRST_LINE), contentAlignment = Alignment.Center) {
+        GlyphSlot {
             Box(
                 Modifier
                     .size(SetupTheme.CheckboxSize)
@@ -399,6 +394,19 @@ private fun Footer(note: String, buttonLabel: String, enabled: Boolean, onClick:
     }
 }
 
+/**
+ * The leading column every row shares: fixed width, and as tall as a row's first text line with its
+ * content centred in it. Without the height a drawn icon pins to the top of the row while a text
+ * glyph centres on its own line box, which is what left the GitHub mark riding high above its title.
+ */
+@Composable
+private fun GlyphSlot(content: @Composable () -> Unit) {
+    Box(
+        Modifier.width(GLYPH_COLUMN).height(ROW_FIRST_LINE),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
 @Composable
 private fun StatusGlyph(
     state: ComponentState,
@@ -412,7 +420,7 @@ private fun StatusGlyph(
         is ComponentState.Absent -> absentGlyph to absentColor
         ComponentState.Pending -> "○" to DesignColors.InkSecondary
     }
-    Text(glyph, color = color, fontSize = 13.sp, modifier = Modifier.width(GLYPH_COLUMN))
+    GlyphSlot { Text(glyph, color = color, fontSize = 13.sp) }
 }
 
 /**
