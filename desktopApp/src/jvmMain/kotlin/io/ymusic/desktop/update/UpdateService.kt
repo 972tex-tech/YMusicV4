@@ -62,8 +62,6 @@ class UpdateService(
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state
 
-    private val strategy = InstallLayout.strategyFor(installRoot)
-
     /** Null when self-update is possible here; otherwise why it is not. */
     val selfUpdateBlockedReason: String? = InstallLayout.selfUpdateBlockedReason(installRoot)
 
@@ -243,22 +241,25 @@ class UpdateService(
      * Swap the staged tree in and relaunch. The caller must exit immediately after — the returned
      * process is the new app.
      */
+    /**
+     * Apply the staged release: move its jars into their own directory and repoint the launcher.
+     *
+     * Nothing in use is written — the launcher, the runtime and the running version's jars are all
+     * left alone — so the app is startable at every instant. The config switch is the commit
+     * point, and it is a single atomic rename.
+     */
     fun install(): Boolean {
         val ready = _state.value as? UpdateState.Ready ?: return false
         val root = installRoot ?: return false
         return runCatching {
-            when (strategy) {
-                SwapStrategy.REPLACE_IN_PLACE -> {
-                    swapInstall(root, ready.staged)
-                    relaunch(root)
-                }
-                SwapStrategy.VERSIONED_DIRECTORIES -> {
-                    // The running copy is never touched: the new release lands in its own
-                    // directory and the launcher picks it up on the next start.
-                    val launcher = installVersioned(root, ready.staged, ready.release.versionCode)
-                    ProcessBuilder(launcher.absolutePath).start()
-                }
-            }
+            val stagedApp = CfgPointer.appDir(ready.staged)
+            check(stagedApp.isDirectory) { "staged release has no app directory" }
+            val versionDir = CfgPointer.versionDirFor(root, ready.release.versionCode)
+            versionDir.deleteRecursively()
+            check(moveDirectory(stagedApp, versionDir)) { "could not place ${versionDir.name}" }
+            CfgPointer.repoint(root, versionDir)
+            ready.staged.deleteRecursively() // the rest of the staged image was only for verifying
+            relaunchInstalled(root)
             true
         }.onFailure { log?.captureError(it, "applying update failed") }.getOrDefault(false)
     }
@@ -268,9 +269,8 @@ class UpdateService(
      * files of a version still running are locked, so this is the one moment they are free.
      */
     fun pruneSupersededVersions() {
-        if (strategy != SwapStrategy.VERSIONED_DIRECTORIES) return
         val root = installRoot ?: return
-        val removed = runCatching { pruneOldVersions(root, currentVersionCode) }.getOrDefault(0)
+        val removed = runCatching { CfgPointer.pruneUnusedVersions(root) }.getOrDefault(0)
         if (removed > 0) log?.log(Logger.Level.INFO, "removed $removed superseded version(s)")
     }
 }

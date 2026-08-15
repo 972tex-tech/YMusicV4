@@ -45,6 +45,7 @@ import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
 import io.ymusic.desktop.update.DesktopAppUpdates
+import io.ymusic.desktop.update.InstallLayout
 import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
@@ -492,7 +493,10 @@ private suspend fun buildGraph(cefManager: CefManager): AppGraph {
         manifestUrl = UPDATE_MANIFEST_URL,
         publicKey = UPDATE_PUBLIC_KEY,
         currentVersionCode = APP_VERSION_CODE,
-        stagingDir = File(dataDir, "updates"),
+        // Staged beside the install, never in the data dir: a rename between volumes fails, and
+        // an update that has to copy 124MB at the swap is one that can be interrupted mid-way.
+        stagingDir = InstallLayout.installRoot()?.let { File(it.parentFile, ".ymusic-updates") }
+            ?: File(dataDir, "updates"),
         scope = updateScope,
         logger = rootLogger,
         autoDownload = { autoDownloadUpdates },
