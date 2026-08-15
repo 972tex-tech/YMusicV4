@@ -52,3 +52,9 @@ androidApp/src/main/assets/
 
 # release signing scratch (never commit a signed manifest or key material)
 desktopApp/build/update/
+
+# Signing identities — a private key must never reach a public repo
+*.p12
+*.p8
+*.cer
+*.mobileprovision
