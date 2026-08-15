@@ -258,7 +258,8 @@ fun main() {
                 error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
                 graph == null -> Booting {
                     CircularProgressIndicator()
-                    Text("Starting… (first run downloads the Chromium bundle)")
+                    // The Chromium bundle is the setup window's job now, not this boot's.
+                    Text("Starting…")
                 }
                 else -> App(graph!!)
             }

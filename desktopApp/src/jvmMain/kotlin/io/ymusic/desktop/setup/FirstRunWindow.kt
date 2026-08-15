@@ -72,6 +72,9 @@ fun ApplicationScope.FirstRunWindow(
     LaunchedEffect(coordinator) { coordinator.start() }
 
     val state by coordinator.state.collectAsState()
+    // Dark unless the user has explicitly chosen light. The setup window deliberately does NOT
+    // consult the system appearance: it owns one decision, made before the app exists, and reaching
+    // for platform theme detection is app-shell business it has no reason to be entangled with.
     val theme by settings.flow(AppSettings.theme).collectAsState()
     // Answered before it is stored: nothing is sent until Continue commits the whole step.
     val crashReports = remember { androidx.compose.runtime.mutableStateOf(true) }
@@ -87,7 +90,7 @@ fun ApplicationScope.FirstRunWindow(
         state = windowState,
         resizable = false,
     ) {
-        YMusicTheme(dark = theme == "dark" || (theme.isEmpty() && androidx.compose.foundation.isSystemInDarkTheme())) {
+        YMusicTheme(dark = theme != "light") {
             OnboardingScreen(
                 state = state,
                 crashReports = crashReports.value,

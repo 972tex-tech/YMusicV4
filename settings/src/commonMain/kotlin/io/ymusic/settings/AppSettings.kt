@@ -80,8 +80,14 @@ object AppSettings {
      *  a random UUID) and persisted; carries no PII and never leaves telemetry. Empty = unseeded. */
     val deviceId = StringSetting("telemetry.deviceId", "")
 
-    /** Theme override: "light" | "dark"; empty = follow the system appearance. */
-    val theme = StringSetting("app.theme", "")
+    /**
+     * Theme: "light" | "dark", or empty to follow the system appearance.
+     *
+     * Defaults to DARK rather than to the system: this is a music app that is mostly looked at
+     * while something else has the foreground, and a white sheet is the wrong default for that.
+     * Following the system is still one choice among three, just not the unset one.
+     */
+    val theme = StringSetting("app.theme", "dark")
 
     /**
      * Whether the first-run setup has been completed. Desktop only: it gates on downloads (the
