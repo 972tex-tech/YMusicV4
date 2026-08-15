@@ -268,9 +268,9 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
     val hint = remember { VlcProbe.installHint() }
     val clipboard = LocalClipboardManager.current
     Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-        // The cone stands in for the whole glyph while VLC is missing; once it is found the row
-        // falls back to the same tick every other satisfied row uses.
-        if (state is ComponentState.Ready) StatusGlyph(state) else GlyphSlot { VlcIcon(SetupTheme.warn) }
+        // The cone stands in for the mark while VLC is missing; once it is found the row falls back
+        // to the same tick every other satisfied row uses.
+        StatusGlyph(state, absentContent = { VlcIcon(it) }, absentColor = SetupTheme.warn)
         Column(Modifier.weight(1f)) {
             RowName("Local file playback")
             if (state is ComponentState.Ready) {
@@ -305,7 +305,7 @@ private fun MusicFolderRow(state: SetupState, onChoose: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         modifier = Modifier.alpha(if (waiting) SetupTheme.WaitingAlpha else 1f),
     ) {
-        GlyphSlot { Text("○", color = SetupTheme.inkSecondary, fontSize = 13.sp) }
+        GlyphSlot { PendingCircle(SetupTheme.inkSecondary) }
         Column(Modifier.weight(1f)) {
             RowName("Your music folder")
             // Once a folder is set it replaces the explanation: the sentence has done its job.
@@ -413,17 +413,19 @@ private fun GlyphSlot(content: @Composable () -> Unit) {
 @Composable
 private fun StatusGlyph(
     state: ComponentState,
-    absentGlyph: String = "○",
-    absentColor: Color = DesignColors.InkSecondary,
+    absentContent: (@Composable (Color) -> Unit)? = null,
+    absentColor: Color = SetupTheme.inkSecondary,
 ) {
-    val (glyph, color) = when (state) {
-        is ComponentState.Ready -> "✓" to SetupTheme.ok
-        is ComponentState.Failed -> "✕" to SetupTheme.bad
-        is ComponentState.Working -> "◐" to SetupTheme.progress
-        is ComponentState.Absent -> absentGlyph to absentColor
-        ComponentState.Pending -> "○" to DesignColors.InkSecondary
+    GlyphSlot {
+        when (state) {
+            is ComponentState.Ready -> CheckMark(SetupTheme.ok, STATUS_GLYPH)
+            is ComponentState.Failed -> CrossMark(SetupTheme.bad)
+            is ComponentState.Working -> BusyCircle(SetupTheme.progress)
+            is ComponentState.Absent ->
+                absentContent?.invoke(absentColor) ?: PendingCircle(absentColor)
+            ComponentState.Pending -> PendingCircle(SetupTheme.inkSecondary)
+        }
     }
-    GlyphSlot { Text(glyph, color = color, fontSize = 13.sp) }
 }
 
 /**
@@ -473,7 +475,7 @@ private fun ProgressRing(state: ComponentState) {
             )
         }
         when (state) {
-            is ComponentState.Ready -> Text("✓", color = SetupTheme.ok, fontSize = 13.sp)
+            is ComponentState.Ready -> CheckMark(SetupTheme.ok, STATUS_GLYPH)
             is ComponentState.Failed -> Text("!", color = SetupTheme.bad, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             else -> Text(
                 "${(fraction * 100).toInt()}%",
@@ -580,6 +582,9 @@ private fun PrimaryButton(label: String, enabled: Boolean, onClick: () -> Unit) 
 private fun Modifier.clickableRow(onClick: () -> Unit): Modifier = clickable(onClick = onClick)
 
 private val GLYPH_COLUMN = 20.dp
+
+/** A drawn state mark, sized to the 13sp text glyphs it replaced. */
+private val STATUS_GLYPH = 13.dp
 
 /**
  * The height of a row's first text line — the box a leading glyph centres itself on. Declared in

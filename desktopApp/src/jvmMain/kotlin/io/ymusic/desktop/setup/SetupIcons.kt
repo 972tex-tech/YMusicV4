@@ -32,6 +32,10 @@ private object IconPaths {
     /** 24×24, drawn as a stroke: the two segments of a tick, centred in the viewport. */
     const val CHECK = "M5.5 12.5L10 17L18.5 7.5"
 
+    /** 24×24, two strokes crossing — the failure mark. */
+    const val CROSS_A = "M6.5 6.5L17.5 17.5"
+    const val CROSS_B = "M17.5 6.5L6.5 17.5"
+
     /** 24×24 five-point star — the action on the GitHub row, not the identity of it. */
     const val STAR = "M12 2.6l2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.16l-5.7 3l1.09-6.35-4.62-4.5 " +
         "6.38-.93z"
@@ -94,6 +98,43 @@ fun CheckMark(color: Color, size: Dp = CHECK_SIZE) {
     }
 }
 
+/** The state marks on the checklist rows. Drawn, not typed, for the same reason as [CheckMark]:
+ *  a character centres its line box and a shape centres itself, and the two do not agree. */
+@Composable
+fun PendingCircle(color: Color, size: Dp = STATUS_SIZE) {
+    Canvas(Modifier.size(size)) {
+        drawCircle(color, radius = (this.size.minDimension - STATUS_STROKE_PX) / 2, style = Stroke(STATUS_STROKE_PX))
+    }
+}
+
+/** A half-filled disc — the typographic ◐, which is what the design uses for work in progress. */
+@Composable
+fun BusyCircle(color: Color, size: Dp = STATUS_SIZE) {
+    Canvas(Modifier.size(size)) {
+        val diameter = this.size.minDimension - STATUS_STROKE_PX
+        val offset = androidx.compose.ui.geometry.Offset(STATUS_STROKE_PX / 2, STATUS_STROKE_PX / 2)
+        val box = androidx.compose.ui.geometry.Size(diameter, diameter)
+        drawCircle(color, radius = diameter / 2, style = Stroke(STATUS_STROKE_PX))
+        drawArc(color, startAngle = 90f, sweepAngle = 180f, useCenter = true, topLeft = offset, size = box)
+    }
+}
+
+@Composable
+fun CrossMark(color: Color, size: Dp = STATUS_SIZE) {
+    Canvas(Modifier.size(size)) {
+        val factor = this.size.minDimension / ICON_VIEWPORT
+        scale(factor, factor, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+            listOf(IconPaths.CROSS_A, IconPaths.CROSS_B).forEach {
+                drawPath(
+                    PathParser().parsePathString(it).toPath(),
+                    color,
+                    style = Stroke(width = CHECK_STROKE, cap = StrokeCap.Round),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun StarIcon(color: Color, size: Dp = BUTTON_ICON_SIZE) {
     Canvas(Modifier.size(size)) { drawIconPath(IconPaths.STAR, color) }
@@ -113,6 +154,12 @@ private val BUTTON_ICON_SIZE = 12.dp
 
 /** Inside the consent tick box, which is 16dp. */
 private val CHECK_SIZE = 12.dp
+
+/** A row's leading state mark, matched to the 13sp glyphs it replaces. */
+private val STATUS_SIZE = 13.dp
+
+/** In pixels at draw time — these shapes are built from primitives, not the 24-unit viewport. */
+private const val STATUS_STROKE_PX = 1.6f
 
 /** In 24-unit viewport terms, so it scales with the icon. */
 private const val CHECK_STROKE = 2.8f
