@@ -21,8 +21,12 @@ class UpdateServiceTest {
 
     private val tmp = File("build/test-update-svc-${System.nanoTime()}").apply { mkdirs() }
     private val serverDir = File(tmp, "server").apply { mkdirs() }
-    private val install = File(tmp, "YMusic.app").apply { mkdirs() }
-    private val staging = File(tmp, "staging").apply { mkdirs() }
+    /** A jpackage install in the Windows/Linux shape (app/ at the root), which is also what the
+     *  mock service's manifest paths use. */
+    private val install = File(tmp, "YMusic").apply {
+        File(this, "app").mkdirs()
+        File(this, "app/YMusic.cfg").writeText("[Application]\napp.classpath=\u0024APPDIR/old.jar\n")
+    }
     private var server: HttpServer? = null
     private val client: KmpHttpClient = KmpHttpClient.create { }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -41,7 +45,6 @@ class UpdateServiceTest {
             manifestUrl = "$base/update.json",
             publicKey = key,
             currentVersionCode = versionCode,
-            stagingDir = staging,
             scope = scope,
             autoDownload = { autoDownload },
             installRoot = install,
@@ -64,12 +67,15 @@ class UpdateServiceTest {
 
         val ready = service.state.value
         assertTrue(ready is UpdateState.Ready, "expected Ready, got $ready")
-        // Staged content must match the signed manifest exactly — that is what makes the swap safe.
-        for (entry in release.files) {
-            val f = File(ready.staged, entry.path)
-            assertTrue(f.isFile, "staged tree missing ${entry.path}")
-            assertEquals(entry.sha256, sha256Of(f), "staged ${entry.path} does not match the manifest")
+        // The release's own directory holds the classpath files, prefix-stripped, each matching
+        // the signed manifest — that is what makes the pointer switch safe.
+        assertEquals("app-99", ready.staged.name)
+        for (entry in release.files.filter { it.path.startsWith("app/") }) {
+            val f = File(ready.staged, entry.path.removePrefix("app/"))
+            assertTrue(f.isFile, "${ready.staged.name} is missing ${entry.path}")
+            assertEquals(entry.sha256, sha256Of(f), "${entry.path} does not match the manifest")
         }
+        assertTrue(File(ready.staged, ".ymusic-ready").isFile, "the marker is written after verifying")
     }
 
     @Test
@@ -90,7 +96,6 @@ class UpdateServiceTest {
             manifestUrl = "http://localhost:${s.address.port}/update.json",
             publicKey = foreign,
             currentVersionCode = 1,
-            stagingDir = staging,
             scope = scope,
             installRoot = install,
             platformKey = "mac-x64",
@@ -101,26 +106,44 @@ class UpdateServiceTest {
     }
 
     @Test
-    fun a_staged_update_is_adopted_after_a_restart() {
+    fun a_verified_version_directory_is_adopted_after_a_restart() {
         val (service, _) = service(versionCode = 1)
-        File(staging, "staged-42").apply { mkdirs(); File(this, "x").writeText("hi") }
+        File(install, "app-42").apply {
+            mkdirs()
+            File(this, "x.jar").writeText("hi")
+            File(this, ".ymusic-ready").writeText("42\n1.0.42\nWhat changed")
+        }
 
         service.adoptStagedUpdate()
 
         val state = service.state.value
         assertTrue(state is UpdateState.Ready, "expected Ready, got $state")
         assertEquals(42, state.release.versionCode)
+        assertEquals("1.0.42", state.release.versionName)
     }
 
     @Test
-    fun a_staged_update_we_already_run_is_discarded() {
-        val (service, _) = service(versionCode = 50)
-        val stale = File(staging, "staged-42").apply { mkdirs() }
+    fun a_half_downloaded_version_directory_is_not_adopted() {
+        // The marker is written only after every file verified, so its absence means incomplete.
+        val (service, _) = service(versionCode = 1)
+        File(install, "app-42").apply { mkdirs(); File(this, "x.jar").writeText("partial") }
 
         service.adoptStagedUpdate()
 
         assertEquals(UpdateState.Idle, service.state.value)
-        assertTrue(!stale.exists(), "a staged tree at or below the running version is deleted")
+    }
+
+    @Test
+    fun a_version_directory_we_already_run_is_not_offered() {
+        val (service, _) = service(versionCode = 50)
+        File(install, "app-42").apply {
+            mkdirs()
+            File(this, ".ymusic-ready").writeText("42\n1.0.42\n")
+        }
+
+        service.adoptStagedUpdate()
+
+        assertEquals(UpdateState.Idle, service.state.value)
     }
 
     private fun devPublicKey(): String = File(serverDir, "dev-update-key").readLines()[0]

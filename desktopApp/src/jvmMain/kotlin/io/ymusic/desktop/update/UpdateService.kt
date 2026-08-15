@@ -46,12 +46,13 @@ data class ReleaseInfo(val versionCode: Int, val versionName: String, val notes:
  * reports availability, and the UI offers the installer download instead: see
  * [InstallLayout.selfUpdateBlockedReason].
  */
+private const val READY_MARKER = ".ymusic-ready"
+
 class UpdateService(
     private val client: KmpHttpClient,
     private val manifestUrl: String,
     private val publicKey: String,
     private val currentVersionCode: Int,
-    private val stagingDir: File,
     private val scope: CoroutineScope,
     private val logger: Logger? = null,
     /** Download as soon as an update is found, without asking. Mirrors the user's setting. */
@@ -81,22 +82,22 @@ class UpdateService(
      * fetched twice.
      */
     fun adoptStagedUpdate() {
-        val staged = stagedRoots().maxByOrNull { it.second } ?: return
-        val (dir, versionCode) = staged
-        if (versionCode <= currentVersionCode) {
-            dir.deleteRecursively() // already installed, or a downgrade — never keep it around
-            return
-        }
+        val root = installRoot ?: return
+        val ready = readyVersionDirs(root).maxByOrNull { it.second } ?: return
+        val (dir, versionCode) = ready
+        if (versionCode <= currentVersionCode) return // already running it; prune deals with the dir
+        val lines = File(dir, READY_MARKER).readLines()
         _state.value = UpdateState.Ready(
-            ReleaseInfo(versionCode, "", "", ""),
+            ReleaseInfo(versionCode, lines.getOrElse(1) { "" }, lines.drop(2).joinToString("\n"), ""),
             dir,
         )
     }
 
-    private fun stagedRoots(): List<Pair<File, Int>> =
-        stagingDir.listFiles().orEmpty()
-            .filter { it.isDirectory && it.name.startsWith("staged-") }
-            .mapNotNull { d -> d.name.removePrefix("staged-").toIntOrNull()?.let { d to it } }
+    /** Version directories that finished verifying — the marker is written last. */
+    private fun readyVersionDirs(root: File): List<Pair<File, Int>> =
+        CfgPointer.appDir(root).parentFile.listFiles().orEmpty()
+            .filter { it.isDirectory && File(it, READY_MARKER).isFile }
+            .mapNotNull { d -> d.name.removePrefix("app-").toIntOrNull()?.let { d to it } }
 
     /** Poll for updates forever; [intervalMs] apart. Cheap — one signed JSON per interval. */
     fun startPeriodicChecks(intervalMs: Long = 6 * 60 * 60 * 1000L) {
@@ -148,8 +149,12 @@ class UpdateService(
     }
 
     /**
-     * Download the missing blobs and stage a complete tree. Reusable files are hardlinked from the
-     * current install, so a typical update writes only what changed.
+     * Download release [release] straight into its own `app-<versionCode>` directory.
+     *
+     * There is no staging area: a release's directory is named by its version, so two updates
+     * never write to the same place, and nothing points at a directory until it is complete and
+     * verified. Only the launcher's classpath files are fetched — the runtime is shared, and a
+     * release that changes it cannot be applied by repointing at all.
      */
     suspend fun download(release: Release) {
         val root = installRoot ?: run {
@@ -159,52 +164,54 @@ class UpdateService(
         val info = ReleaseInfo(release.versionCode, release.versionName, release.notes, release.url)
         try {
             withContext(Dispatchers.IO) {
-                val plan = planUpdate(hashInstalledFiles(root), release)
-                val staged = File(stagingDir, "staged-${release.versionCode}").apply {
-                    deleteRecursively()
-                    mkdirs()
+                val installed = hashInstalledFiles(root)
+                if (!CfgPointer.runtimeMatches(root, release.files.associate { it.path to it.sha256 }, installed)) {
+                    // A JDK bump: the launcher loads the JVM from runtime/ beside itself, which no
+                    // pointer switch can change.
+                    _state.value = UpdateState.Failed("this version needs the full installer", release.url)
+                    return@withContext
                 }
-                val byHash = release.files.groupBy { it.sha256 }
-                var done = 0L
-                val total = plan.downloadBytes
+                val appPrefix = CfgPointer.appDir(root).relativeTo(root).path + File.separator
+                val wanted = release.files.filter { it.path.startsWith(appPrefix) }
+                check(wanted.isNotEmpty()) { "release lists no classpath files under $appPrefix" }
 
-                // Reusable content first: no network, and it is the bulk of the tree.
-                for (entry in plan.reusable) {
-                    val source = root.walkTopDown().firstOrNull { it.isFile && sha256Of(it) == entry.sha256 }
-                        ?: continue
-                    linkOrCopy(source, File(staged, entry.path))
-                }
-                for (entry in plan.toDownload) {
-                    val target = File(staged, entry.path).apply { parentFile?.mkdirs() }
-                    fetchTo(release.blobUrl(entry), target) { chunk ->
-                        done += chunk
-                        _state.value = UpdateState.Downloading(info, done, total)
+                val target = CfgPointer.versionDirFor(root, release.versionCode)
+                target.deleteRecursively() // an interrupted attempt at this version starts over
+                target.mkdirs()
+
+                // Content already on disk — the current version's jars, or another release's —
+                // costs nothing to reuse; only genuinely new content is fetched.
+                val onDisk = installed.entries.groupBy({ it.value }, { File(root, it.key) })
+                val toFetch = wanted.filter { it.sha256 !in onDisk }
+                val total = toFetch.sumOf { it.size }
+                var done = 0L
+                _state.value = UpdateState.Downloading(info, 0, total)
+
+                for (entry in wanted) {
+                    val placed = File(target, entry.path.removePrefix(appPrefix))
+                    val reusable = onDisk[entry.sha256]?.firstOrNull { it.isFile }
+                    if (reusable != null) {
+                        linkOrCopy(reusable, placed)
+                    } else {
+                        placed.parentFile?.mkdirs()
+                        fetchTo(release.blobUrl(entry), placed) {
+                            done += it
+                            _state.value = UpdateState.Downloading(info, done, total)
+                        }
                     }
                     // The signed manifest says what this content must be; the server is not trusted.
-                    val actual = sha256Of(target)
-                    if (actual != entry.sha256) error("downloaded ${entry.path} hashed $actual, expected ${entry.sha256}")
-                    // The same content may appear at several paths.
-                    byHash[entry.sha256].orEmpty().filter { it.path != entry.path }.forEach {
-                        linkOrCopy(target, File(staged, it.path))
-                    }
+                    val actual = sha256Of(placed)
+                    check(actual == entry.sha256) { "${entry.path} hashed $actual, expected ${entry.sha256}" }
                 }
-                verifyStaged(staged, release)
-                _state.value = UpdateState.Ready(info, staged)
+                // Written only once every file verified: its presence is what makes the directory
+                // adoptable after a restart.
+                File(target, READY_MARKER).writeText("${release.versionCode}\n${release.versionName}\n${release.notes}")
+                _state.value = UpdateState.Ready(info, target)
             }
-            log?.log(Logger.Level.INFO, "update ${release.versionCode} staged and verified")
+            log?.log(Logger.Level.INFO, "update ${release.versionCode} downloaded and verified")
         } catch (e: Exception) {
-            log?.captureError(e, "staging update ${release.versionCode} failed")
+            log?.captureError(e, "downloading update ${release.versionCode} failed")
             _state.value = UpdateState.Failed(e.message ?: "download failed", release.url)
-        }
-    }
-
-    /** Every file present with the hash the signed manifest promised — checked before we ever
-     *  consider swapping it in. */
-    private fun verifyStaged(staged: File, release: Release) {
-        for (entry in release.files) {
-            val f = File(staged, entry.path)
-            check(f.isFile) { "staged tree is missing ${entry.path}" }
-            check(sha256Of(f) == entry.sha256) { "staged ${entry.path} does not match the manifest" }
         }
     }
 
@@ -242,23 +249,16 @@ class UpdateService(
      * process is the new app.
      */
     /**
-     * Apply the staged release: move its jars into their own directory and repoint the launcher.
+     * Apply the downloaded release: point the launcher at its directory and restart.
      *
-     * Nothing in use is written — the launcher, the runtime and the running version's jars are all
-     * left alone — so the app is startable at every instant. The config switch is the commit
-     * point, and it is a single atomic rename.
+     * Nothing is moved or replaced — the directory is already in place and complete — so this is a
+     * single atomic rename of one small config file.
      */
     fun install(): Boolean {
         val ready = _state.value as? UpdateState.Ready ?: return false
         val root = installRoot ?: return false
         return runCatching {
-            val stagedApp = CfgPointer.appDir(ready.staged)
-            check(stagedApp.isDirectory) { "staged release has no app directory" }
-            val versionDir = CfgPointer.versionDirFor(root, ready.release.versionCode)
-            versionDir.deleteRecursively()
-            check(moveDirectory(stagedApp, versionDir)) { "could not place ${versionDir.name}" }
-            CfgPointer.repoint(root, versionDir)
-            ready.staged.deleteRecursively() // the rest of the staged image was only for verifying
+            CfgPointer.repoint(root, ready.staged)
             relaunchInstalled(root)
             true
         }.onFailure { log?.captureError(it, "applying update failed") }.getOrDefault(false)
