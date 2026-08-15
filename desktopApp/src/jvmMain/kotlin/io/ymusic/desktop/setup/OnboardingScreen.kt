@@ -633,7 +633,9 @@ private const val TERMS_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/do
 private const val PRIVACY_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/docs/privacy.md"
 
 /**
- * The first run's own palette and geometry.
+ * The first run's own palette and geometry — dark only, since [FirstRunWindow] pins the screen to
+ * one appearance. The light values these tokens used to carry are in git history if this ever has
+ * to follow the app's theme again.
  *
  * Progress gets its own colour scale here, separate from the brand: a ring tinted with the app's
  * accent could not also say "done" without the two meanings colliding, so state (orange working,
@@ -647,8 +649,7 @@ private object SetupTheme {
      * and inverts the relationship: the ground is the softer tone and anything sitting on it is
      * white. Dark keeps the usual order, where the ground is already easy on the eye.
      */
-    val ground: Color @Composable get() =
-        if (DesignColors.isDark) DesignColors.Surface else DesignColors.SurfaceElevated
+    val ground: Color @Composable get() = DesignColors.Surface
 
     /**
      * Secondary text — the line under every row title, the section label, the footer note.
@@ -660,8 +661,7 @@ private object SetupTheme {
     val inkSecondary: Color @Composable get() = DesignColors.InkSoft
 
     /** A chip or pill lifted off [ground] — the command box. */
-    val raised: Color @Composable get() =
-        if (DesignColors.isDark) DesignColors.SurfaceElevated else DesignColors.Surface
+    val raised: Color @Composable get() = DesignColors.SurfaceElevated
 
     /**
      * The brand green: the step label, links, and the primary button's fill.
@@ -670,14 +670,14 @@ private object SetupTheme {
      * comfortably but read as bottle-green next to the logo. This is as green as the hue gets while
      * still carrying white label text at 4.7:1, which a lighter one would not.
      */
-    val accent: Color @Composable get() = if (DesignColors.isDark) Color(0xFF35A96A) else Color(0xFF00854B)
-    val progress: Color @Composable get() = if (DesignColors.isDark) Color(0xFFF08A45) else Color(0xFFE8732A)
+    val accent: Color @Composable get() = Color(0xFF35A96A)
+    val progress: Color @Composable get() = Color(0xFFF08A45)
     /** Success. The light value is a good deal deeper than the dark one: the same mint that reads as
      *  a confident tick on near-black turns into a pale smear on a light ground, where a ring and a
      *  2dp stroke have very little area to carry the colour. */
-    val ok: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4FD48C) else Color(0xFF2B9A5F)
-    val bad: Color @Composable get() = if (DesignColors.isDark) Color(0xFFE0736A) else Color(0xFFB4453A)
-    val warn: Color @Composable get() = if (DesignColors.isDark) Color(0xFFD9A441) else Color(0xFFB4791C)
+    val ok: Color @Composable get() = Color(0xFF4FD48C)
+    val bad: Color @Composable get() = Color(0xFFE0736A)
+    val warn: Color @Composable get() = Color(0xFFD9A441)
 
     /** Off the spacing scale: the card's own inset, tuned to the 520dp first-run window. */
     val ScreenHorizontal = 28.dp

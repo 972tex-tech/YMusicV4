@@ -48,7 +48,9 @@ class OnboardingSnapshotTest {
             mediaTools = ComponentState.Ready,
             vlc = ComponentState.Absent,
         )
-        listOf(false, true).forEach { dark ->
+        // Dark only, because that is the only way the screen ever renders — light PNGs beside these
+        // would just invite someone to review an appearance the app cannot produce.
+        listOf(true).forEach { dark ->
             render("downloading", dark, downloading)
             render("complete", dark, done)
             render(

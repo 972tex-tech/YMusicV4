@@ -15,7 +15,6 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.SettingsStore
-import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.YMusicTheme
 import io.ymusic.ui.resources.Res
@@ -72,10 +71,6 @@ fun ApplicationScope.FirstRunWindow(
     LaunchedEffect(coordinator) { coordinator.start() }
 
     val state by coordinator.state.collectAsState()
-    // Dark unless the user has explicitly chosen light. The setup window deliberately does NOT
-    // consult the system appearance: it owns one decision, made before the app exists, and reaching
-    // for platform theme detection is app-shell business it has no reason to be entangled with.
-    val theme by settings.flow(AppSettings.theme).collectAsState()
     // Answered before it is stored: nothing is sent until Continue commits the whole step.
     val crashReports = remember { androidx.compose.runtime.mutableStateOf(true) }
 
@@ -90,7 +85,9 @@ fun ApplicationScope.FirstRunWindow(
         state = windowState,
         resizable = false,
     ) {
-        YMusicTheme(dark = theme != "light") {
+        // Always dark, deliberately: the first run happens before anyone has expressed a preference,
+        // and it is one screen with one look rather than a surface that follows the app's theme.
+        YMusicTheme(dark = true) {
             OnboardingScreen(
                 state = state,
                 crashReports = crashReports.value,
