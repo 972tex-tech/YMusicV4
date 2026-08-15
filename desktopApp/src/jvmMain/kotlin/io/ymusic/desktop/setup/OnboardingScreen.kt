@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -402,7 +403,7 @@ private fun Footer(note: String, buttonLabel: String, enabled: Boolean, onClick:
 @Composable
 private fun GlyphSlot(content: @Composable () -> Unit) {
     Box(
-        Modifier.width(GLYPH_COLUMN).height(ROW_FIRST_LINE),
+        Modifier.width(GLYPH_COLUMN).height(ROW_FIRST_LINE).offset(y = SetupTheme.GlyphOpticalDrop),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -611,6 +612,14 @@ private object SetupTheme {
     val RingSize = 46.dp
     val RingStroke = 3.dp
     val CheckboxSize = 16.dp
+
+    /**
+     * How far a leading glyph sits below the geometric centre of its title line.
+     *
+     * A line box carries leading above the cap height, so a glyph centred in it reads high against
+     * the letters themselves — the eye aligns to the text's cap-height centre, not the box's.
+     */
+    val GlyphOpticalDrop = 1.dp
 
     /** Between a button's leading icon and its label. */
     val ButtonIconGap = 6.dp
