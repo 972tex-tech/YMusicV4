@@ -45,7 +45,7 @@ val fullJdkHome: String? = run {
 // the environment/local.properties so a fork builds without ours, and an unsigned-manifest build
 // is impossible: no key means no update checks at all.
 val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orNull
-    ?: System.getenv("YMUSIC_UPDATE_MANIFEST_URL") ?: ""
+    ?: updateManifestUrl()
 val updatePublicKeyValue: String = updatePublicKey()
 
 val generateBuildConfig by tasks.registering {
@@ -385,6 +385,29 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "YMusic"
             packageVersion = desktopVersion
+            macOS {
+                // Stable across releases: the updater and Gatekeeper both identify the app by it.
+                bundleID = "io.ymusic.desktop"
+                // Signing is opt-in so a checkout without the identity still builds. An unsigned
+                // build is fine to run locally and impossible to ship: Gatekeeper rejects it.
+                val signingIdentity = macSigningIdentity()
+                signing {
+                    sign.set(signingIdentity.isNotBlank())
+                    if (signingIdentity.isNotBlank()) identity.set(signingIdentity)
+                }
+                // The JVM and Chromium need executable memory a hardened runtime withholds; see
+                // entitlements.plist for why each is there.
+                entitlementsFile.set(project.file("entitlements.plist"))
+                runtimeEntitlementsFile.set(project.file("entitlements.plist"))
+                val appleId = macNotarizationAppleId()
+                if (appleId.isNotBlank()) {
+                    notarization {
+                        appleID.set(appleId)
+                        password.set(macNotarizationPassword())
+                        teamID.set(macTeamId())
+                    }
+                }
+            }
             // jlink modules the default set misses but the runtime graph uses: java.sql
             // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/vlcj/JOGL/coroutines/okio),
             // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec

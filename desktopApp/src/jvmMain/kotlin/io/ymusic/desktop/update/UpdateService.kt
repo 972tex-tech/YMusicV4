@@ -47,6 +47,7 @@ data class ReleaseInfo(val versionCode: Int, val versionName: String, val notes:
  * [InstallLayout.selfUpdateBlockedReason].
  */
 private const val READY_MARKER = ".ymusic-ready"
+private const val READY_SUFFIX = ".ymusic-ready"
 
 class UpdateService(
     private val client: KmpHttpClient,
@@ -86,18 +87,24 @@ class UpdateService(
         val ready = readyVersionDirs(root).maxByOrNull { it.second } ?: return
         val (dir, versionCode) = ready
         if (versionCode <= currentVersionCode) return // already running it; prune deals with the dir
-        val lines = File(dir, READY_MARKER).readLines()
+        val lines = readyMarkerFor(dir).readLines()
         _state.value = UpdateState.Ready(
             ReleaseInfo(versionCode, lines.getOrElse(1) { "" }, lines.drop(2).joinToString("\n"), ""),
             dir,
         )
     }
 
-    /** Version directories that finished verifying — the marker is written last. */
-    private fun readyVersionDirs(root: File): List<Pair<File, Int>> =
-        CfgPointer.appDir(root).parentFile.listFiles().orEmpty()
+    /** Everything that finished verifying — the marker is written last, so its presence is the
+     *  only proof a directory is complete. */
+    private fun readyVersionDirs(root: File): List<Pair<File, Int>> {
+        val versionDirs = CfgPointer.appDir(root).parentFile.listFiles().orEmpty()
             .filter { it.isDirectory && File(it, READY_MARKER).isFile }
             .mapNotNull { d -> d.name.removePrefix("app-").toIntOrNull()?.let { d to it } }
+        val bundles = root.parentFile?.listFiles().orEmpty()
+            .filter { it.isDirectory && File(it.parentFile, it.name + READY_SUFFIX).isFile }
+            .mapNotNull { d -> d.name.substringAfterLast(".new-").toIntOrNull()?.let { d to it } }
+        return versionDirs + bundles
+    }
 
     /** Poll for updates forever; [intervalMs] apart. Cheap — one signed JSON per interval. */
     fun startPeriodicChecks(intervalMs: Long = 6 * 60 * 60 * 1000L) {
@@ -149,12 +156,14 @@ class UpdateService(
     }
 
     /**
-     * Download release [release] straight into its own `app-<versionCode>` directory.
+     * Fetch release [release] and leave it ready to apply.
      *
-     * There is no staging area: a release's directory is named by its version, so two updates
-     * never write to the same place, and nothing points at a directory until it is complete and
-     * verified. Only the launcher's classpath files are fetched — the runtime is shared, and a
-     * release that changes it cannot be applied by repointing at all.
+     * macOS assembles a COMPLETE bundle beside the install, because a signed .app seals every file
+     * it contains — writing inside one breaks its signature. Elsewhere only the launcher's
+     * classpath files are fetched into `app-<versionCode>`, and the config pointer switches them.
+     *
+     * Either way unchanged content is hardlinked from the running copy rather than downloaded, and
+     * a directory is named by its version, so two updates never write to the same place.
      */
     suspend fun download(release: Release) {
         val root = installRoot ?: run {
@@ -165,22 +174,25 @@ class UpdateService(
         try {
             withContext(Dispatchers.IO) {
                 val installed = hashInstalledFiles(root)
-                if (!CfgPointer.runtimeMatches(root, release.files.associate { it.path to it.sha256 }, installed)) {
-                    // A JDK bump: the launcher loads the JVM from runtime/ beside itself, which no
-                    // pointer switch can change.
+                val wholeBundle = MacBundleSwap.isSupported && root.name.endsWith(".app")
+                if (!wholeBundle &&
+                    !CfgPointer.runtimeMatches(root, release.files.associate { it.path to it.sha256 }, installed)
+                ) {
+                    // Only the classpath can be repointed; the launcher loads the JVM from
+                    // runtime/ beside itself, so a JDK bump has to go through the installer.
                     _state.value = UpdateState.Failed("this version needs the full installer", release.url)
                     return@withContext
                 }
-                val appPrefix = CfgPointer.appDir(root).relativeTo(root).path + File.separator
-                val wanted = release.files.filter { it.path.startsWith(appPrefix) }
-                check(wanted.isNotEmpty()) { "release lists no classpath files under $appPrefix" }
 
-                val target = CfgPointer.versionDirFor(root, release.versionCode)
+                val appPrefix = CfgPointer.appDir(root).relativeTo(root).path + File.separator
+                val wanted = if (wholeBundle) release.files else release.files.filter { it.path.startsWith(appPrefix) }
+                check(wanted.isNotEmpty()) { "release lists no files to install" }
+
+                val target = if (wholeBundle) newBundleDir(root, release.versionCode)
+                else CfgPointer.versionDirFor(root, release.versionCode)
                 target.deleteRecursively() // an interrupted attempt at this version starts over
                 target.mkdirs()
 
-                // Content already on disk — the current version's jars, or another release's —
-                // costs nothing to reuse; only genuinely new content is fetched.
                 val onDisk = installed.entries.groupBy({ it.value }, { File(root, it.key) })
                 val toFetch = wanted.filter { it.sha256 !in onDisk }
                 val total = toFetch.sumOf { it.size }
@@ -188,9 +200,12 @@ class UpdateService(
                 _state.value = UpdateState.Downloading(info, 0, total)
 
                 for (entry in wanted) {
-                    val placed = File(target, entry.path.removePrefix(appPrefix))
+                    val relative = if (wholeBundle) entry.path else entry.path.removePrefix(appPrefix)
+                    val placed = File(target, relative)
                     val reusable = onDisk[entry.sha256]?.firstOrNull { it.isFile }
                     if (reusable != null) {
+                        // A hardlink shares content, so an assembled bundle is byte-identical to
+                        // the signed one we published.
                         linkOrCopy(reusable, placed)
                     } else {
                         placed.parentFile?.mkdirs()
@@ -199,13 +214,14 @@ class UpdateService(
                             _state.value = UpdateState.Downloading(info, done, total)
                         }
                     }
-                    // The signed manifest says what this content must be; the server is not trusted.
                     val actual = sha256Of(placed)
                     check(actual == entry.sha256) { "${entry.path} hashed $actual, expected ${entry.sha256}" }
                 }
-                // Written only once every file verified: its presence is what makes the directory
-                // adoptable after a restart.
-                File(target, READY_MARKER).writeText("${release.versionCode}\n${release.versionName}\n${release.notes}")
+                // Written only once every file verified. It lives BESIDE an assembled bundle, never
+                // inside it: an extra file would not be covered by the bundle's signature.
+                readyMarkerFor(target).writeText(
+                    "${release.versionCode}\n${release.versionName}\n${release.notes}",
+                )
                 _state.value = UpdateState.Ready(info, target)
             }
             log?.log(Logger.Level.INFO, "update ${release.versionCode} downloaded and verified")
@@ -214,6 +230,15 @@ class UpdateService(
             _state.value = UpdateState.Failed(e.message ?: "download failed", release.url)
         }
     }
+
+    /** `.YMusic.app.new-<code>` beside the install — same volume, so the exchange can be atomic. */
+    private fun newBundleDir(root: File, versionCode: Int) =
+        File(root.parentFile, ".${root.name}.new-$versionCode")
+
+    /** Beside an assembled bundle, inside a version directory. */
+    private fun readyMarkerFor(target: File): File =
+        if (target.name.startsWith(".")) File(target.parentFile, target.name + READY_SUFFIX)
+        else File(target, READY_MARKER)
 
     private fun linkOrCopy(source: File, target: File) {
         target.parentFile?.mkdirs()
@@ -249,16 +274,23 @@ class UpdateService(
      * process is the new app.
      */
     /**
-     * Apply the downloaded release: point the launcher at its directory and restart.
+     * Apply the downloaded release and restart.
      *
-     * Nothing is moved or replaced — the directory is already in place and complete — so this is a
-     * single atomic rename of one small config file.
+     * A bundle is exchanged with the install in one atomic operation — no instant where the app is
+     * missing, and its signature stays intact because the assembled bundle is what we published.
+     * Elsewhere the launcher's config is repointed, which is a single atomic rename of one file.
      */
     fun install(): Boolean {
         val ready = _state.value as? UpdateState.Ready ?: return false
         val root = installRoot ?: return false
         return runCatching {
-            CfgPointer.repoint(root, ready.staged)
+            if (ready.staged.name.startsWith(".")) {
+                MacBundleSwap.exchange(root, ready.staged)
+                ready.staged.deleteRecursively() // now holds the superseded version
+                readyMarkerFor(ready.staged).delete()
+            } else {
+                CfgPointer.repoint(root, ready.staged)
+            }
             relaunchInstalled(root)
             true
         }.onFailure { log?.captureError(it, "applying update failed") }.getOrDefault(false)

@@ -26,3 +26,29 @@ fun Project.updatePrivateKey(): String =
  */
 fun Project.updatePublicKey(): String =
     System.getenv("YMUSIC_UPDATE_PUBLIC_KEY") ?: localProp("update.public.key") ?: ""
+
+/**
+ * The macOS code-signing identity, e.g. `Developer ID Application: NAME (TEAMID)`, from
+ * YMUSIC_MAC_IDENTITY or `mac.signing.identity` in local.properties. Empty leaves builds unsigned
+ * — which is fine for local runs and impossible to ship, so it is never defaulted to a guess.
+ */
+fun Project.macSigningIdentity(): String =
+    System.getenv("YMUSIC_MAC_IDENTITY") ?: localProp("mac.signing.identity") ?: ""
+
+/** Apple ID for notarization (`mac.notarization.appleId`). */
+fun Project.macNotarizationAppleId(): String =
+    System.getenv("YMUSIC_MAC_APPLE_ID") ?: localProp("mac.notarization.appleId") ?: ""
+
+/** App-specific password for that Apple ID (`mac.notarization.password`) — NOT the account
+ *  password; generate one at appleid.apple.com. */
+fun Project.macNotarizationPassword(): String =
+    System.getenv("YMUSIC_MAC_APPLE_PASSWORD") ?: localProp("mac.notarization.password") ?: ""
+
+/** Team ID the identity belongs to (`mac.notarization.teamId`). */
+fun Project.macTeamId(): String =
+    System.getenv("YMUSIC_MAC_TEAM_ID") ?: localProp("mac.notarization.teamId") ?: ""
+
+/** Where installed copies look for releases (`update.manifest.url`). Empty disables update checks
+ *  — with nothing to check against, not checking beats trusting the network. */
+fun Project.updateManifestUrl(): String =
+    System.getenv("YMUSIC_UPDATE_MANIFEST_URL") ?: localProp("update.manifest.url") ?: ""
