@@ -484,7 +484,15 @@ private fun ProgressRing(state: ComponentState) {
 
 @Composable
 private fun RowName(text: String) =
-    Text(text, color = DesignColors.Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    Text(
+        text,
+        color = DesignColors.Ink,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        // Stated, not inherited: Text keeps the ambient style's 24sp line height when only the font
+        // size is overridden, and [GlyphSlot] has to be exactly as tall as this line to centre on it.
+        lineHeight = ROW_FIRST_LINE_SP,
+    )
 
 @Composable
 private fun RowMeta(text: String) =
@@ -570,7 +578,11 @@ private fun Modifier.clickableRow(onClick: () -> Unit): Modifier = clickable(onC
 
 private val GLYPH_COLUMN = 20.dp
 
-/** The height of a row's first text line ([RowName] at 14sp) — what a leading glyph centres on. */
+/**
+ * The height of a row's first text line — the box a leading glyph centres itself on. Declared in
+ * both units because [RowName] sets the line and [GlyphSlot] matches it; they must not drift.
+ */
+private val ROW_FIRST_LINE_SP = 20.sp
 private val ROW_FIRST_LINE = 20.dp
 
 private const val GITHUB_URL = "https://github.com/Khang-NT/YMusicV4"
