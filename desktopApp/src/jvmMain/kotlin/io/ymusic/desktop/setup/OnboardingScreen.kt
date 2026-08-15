@@ -530,9 +530,9 @@ private fun Modifier.clickableRow(onClick: () -> Unit): Modifier = clickable(onC
 
 private val GLYPH_COLUMN = 20.dp
 
-private const val GITHUB_URL = "https://github.com/khang-nt/ymusic"
-private const val TERMS_URL = "https://github.com/khang-nt/ymusic/blob/main/docs/terms.md"
-private const val PRIVACY_URL = "https://github.com/khang-nt/ymusic/blob/main/docs/privacy.md"
+private const val GITHUB_URL = "https://github.com/Khang-NT/YMusicV4"
+private const val TERMS_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/docs/terms.md"
+private const val PRIVACY_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/docs/privacy.md"
 
 /**
  * The first run's own palette and geometry.
