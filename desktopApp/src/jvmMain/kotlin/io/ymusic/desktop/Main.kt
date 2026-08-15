@@ -174,7 +174,12 @@ fun main() {
                 toolsManifestUrl = TOOLS_MANIFEST_URL,
                 publicKey = UPDATE_PUBLIC_KEY,
                 cefInstallDir = CefManager.installDir(ymusicDataDir()),
-                existingFfmpeg = { resolveFfmpeg()?.let(::File) },
+                existingFfmpeg = {
+                    // -Dio.ymusic.setup.forceDownload hides a locally-present ffmpeg so the
+                    // provisioning path can be exercised (see -Pymusic.setup.forceDownload).
+                    if (System.getProperty("io.ymusic.setup.forceDownload").toBoolean()) null
+                    else resolveFfmpeg()?.let(::File)
+                },
                 pickFolder = { pickFolder()?.absolutePath },
                 onOpenUrl = ::openInBrowser,
                 onFinished = { setupDone = true },

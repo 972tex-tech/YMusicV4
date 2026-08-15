@@ -46,7 +46,8 @@ val fullJdkHome: String? = run {
 // is impossible: no key means no update checks at all.
 val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orNull
     ?: updateManifestUrl()
-val updatePublicKeyValue: String = updatePublicKey()
+val updatePublicKeyValue: String = providers.gradleProperty("ymusic.updatePublicKey").orNull
+    ?: updatePublicKey()
 
 // The helper binaries the first run downloads (ffmpeg), signed with the SAME key as releases —
 // they get executed, so an unauthenticated fetch is not an option. Empty leaves the first run
@@ -377,6 +378,11 @@ compose.desktop {
         // daemon often runs on a JBR that has neither, so find one; -Pymusic.jdkHome overrides.
         fullJdkHome?.let { javaHome = it }
         // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
+        // Dev only: -Pymusic.setup.forceDownload makes the first run ignore an ffmpeg already on
+        // this machine, so the download path can be exercised on a box that has one anyway.
+        if (providers.gradleProperty("ymusic.setup.forceDownload").isPresent) {
+            jvmArgs("-Dio.ymusic.setup.forceDownload=true")
+        }
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",

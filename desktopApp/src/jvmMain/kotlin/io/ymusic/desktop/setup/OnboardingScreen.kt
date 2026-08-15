@@ -264,7 +264,10 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
         Column(Modifier.weight(1f)) {
             RowName("Local file playback")
             if (state is ComponentState.Ready) {
-                RowMeta("VLC found — your own files will play")
+                // Mirrors the missing state's shape ("Needs VLC — …") so the row reads as the same
+                // sentence answered, and closes the item rather than restating what the row name
+                // already says.
+                RowMeta("VLC is installed — nothing to do here")
             } else {
                 RowMeta("Needs VLC — we can't install it for you")
                 Spacer(Modifier.height(SetupTheme.RowInnerGap))
