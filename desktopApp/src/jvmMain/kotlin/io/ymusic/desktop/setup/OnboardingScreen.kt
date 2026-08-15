@@ -78,7 +78,7 @@ fun OnboardingScreen(
 ) {
     var step by remember { mutableStateOf(initialStep) }
     Box(
-        Modifier.fillMaxSize().background(DesignColors.Surface).padding(
+        Modifier.fillMaxSize().background(SetupTheme.ground).padding(
             horizontal = SetupTheme.ScreenHorizontal,
             vertical = SetupTheme.ScreenVertical,
         ),
@@ -509,7 +509,7 @@ private fun CommandChip(command: String, onCopy: () -> Unit) {
             fontFamily = FontFamily.Monospace,
             modifier = Modifier
                 .clip(RoundedCornerShape(5.dp))
-                .background(DesignColors.SurfaceElevated)
+                .background(SetupTheme.raised)
                 .border(1.dp, DesignColors.Divider, RoundedCornerShape(5.dp))
                 .padding(horizontal = DesignSpacing.Space8, vertical = 3.dp),
         )
@@ -599,6 +599,19 @@ private const val PRIVACY_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/
  * greens are the logo's, darkened for contrast on a white surface.
  */
 private object SetupTheme {
+    /**
+     * The screen's ground. A full window of pure white is a lot of glare for a screen someone reads
+     * once, at launch, often at night — so the light theme steps down to the palette's raised grey
+     * and inverts the relationship: the ground is the softer tone and anything sitting on it is
+     * white. Dark keeps the usual order, where the ground is already easy on the eye.
+     */
+    val ground: Color @Composable get() =
+        if (DesignColors.isDark) DesignColors.Surface else DesignColors.SurfaceElevated
+
+    /** A chip or pill lifted off [ground] — the command box. */
+    val raised: Color @Composable get() =
+        if (DesignColors.isDark) DesignColors.SurfaceElevated else DesignColors.Surface
+
     val accent: Color @Composable get() = if (DesignColors.isDark) Color(0xFF35A96A) else Color(0xFF1F6B44)
     val progress: Color @Composable get() = if (DesignColors.isDark) Color(0xFFF08A45) else Color(0xFFE8732A)
     val ok: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4FD48C) else Color(0xFF3FC37C)
