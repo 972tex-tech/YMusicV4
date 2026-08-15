@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -67,15 +68,31 @@ private fun DrawScope.drawIconPath(pathData: String, color: Color, alpha: Float 
 /**
  * The VLC traffic cone, in VLC's own orange rather than the row's warning tint: it is a product
  * mark, and the point of showing it is that someone recognises the thing they need to install.
+ *
+ * Unlike the other marks this one maps its OWN bounds to the canvas. The cone occupies about
+ * two-thirds of the 24-unit viewport, so drawing it like the square marks made a 20dp request come
+ * out as a 13dp cone — [size] here is the size of the mark, not of the box around it.
  */
 @Composable
 fun VlcIcon(color: Color = VlcOrange, size: Dp = VLC_SIZE) {
     Canvas(Modifier.size(size)) {
-        drawIconPath(IconPaths.VLC_TIP, color)
-        drawIconPath(IconPaths.VLC_BODY, color)
-        drawIconPath(IconPaths.VLC_BASE, color)
+        val factor = this.size.height / CONE_HEIGHT
+        val centring = (this.size.width / factor - CONE_WIDTH) / 2 - CONE_LEFT
+        scale(factor, factor, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+            translate(centring, -CONE_TOP) {
+                listOf(IconPaths.VLC_TIP, IconPaths.VLC_BODY, IconPaths.VLC_BASE).forEach {
+                    drawPath(PathParser().parsePathString(it).toPath(), color, style = Fill)
+                }
+            }
+        }
     }
 }
+
+/** The cone's bounding box inside the 24-unit viewport. */
+private const val CONE_LEFT = 5f
+private const val CONE_TOP = 3f
+private const val CONE_WIDTH = 14f
+private const val CONE_HEIGHT = 16.2f
 
 /** VideoLAN's cone orange. */
 val VlcOrange = Color(0xFFE85E00)
@@ -155,8 +172,8 @@ fun StarIcon(color: Color, size: Dp = BUTTON_ICON_SIZE) {
 
 private const val ICON_VIEWPORT = 24f
 
-/** The cone is taller than it is wide, so it needs a little more room than a square mark. */
-private val VLC_SIZE = 16.dp
+/** The drawn height of the cone itself. */
+private val VLC_SIZE = 20.dp
 
 /** Sized to sit in the rows' glyph column beside 13sp text glyphs. */
 private val ICON_SIZE = 15.dp
