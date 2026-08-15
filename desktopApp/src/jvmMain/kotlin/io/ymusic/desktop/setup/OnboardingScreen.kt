@@ -273,11 +273,11 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
         // to the same tick every other satisfied row uses.
         StatusGlyph(state)
         Column(Modifier.weight(1f)) {
-            // The title and its reason share a band with the cone, which centres across the pair.
-            // The cone needs the room: at leading-glyph size its base bar fell under two pixels and
-            // the shape read as broken, so it sits here where it can be 20dp.
+            // The title and its reason share a band with the cone and the row's action, all centred
+            // across the pair of lines. Only the gap before the button flexes: giving the text a
+            // weight as well made the two split the row evenly and wrapped the sentence in half.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                Column {
                     RowName("Local file playback")
                     if (state is ComponentState.Ready) {
                         RowMeta("VLC is installed")
@@ -286,10 +286,9 @@ private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (Str
                     }
                 }
                 if (state !is ComponentState.Ready) {
-                    VlcIcon(size = SetupTheme.BrandMarkSize)
                     Spacer(Modifier.width(DesignSpacing.Space16))
-                    // In the band too, so the mark and the row's action share the text's centre
-                    // line rather than one hanging off the top.
+                    VlcIcon(size = SetupTheme.BrandMarkSize)
+                    Spacer(Modifier.weight(1f))
                     LinkButton("Recheck", onClick = onRecheck)
                 }
             }
@@ -687,7 +686,7 @@ private object SetupTheme {
 
     /** A third-party product mark shown beside a row's text. Deliberately larger than any glyph on
      *  the screen: it is the only thing here doing brand recognition rather than status. */
-    val BrandMarkSize = 32.dp
+    val BrandMarkSize = 24.dp
 
     /** Between a button's leading icon and its label. */
     val ButtonIconGap = 6.dp
