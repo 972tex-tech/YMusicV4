@@ -26,6 +26,7 @@ class OnboardingSnapshotTest {
                     onChooseFolder = {},
                     onOpenUrl = {},
                     onFinish = {},
+                    dark = dark,
                     initialStep = if (step2) 2 else 1,
                 )
             }
@@ -48,9 +49,8 @@ class OnboardingSnapshotTest {
             mediaTools = ComponentState.Ready,
             vlc = ComponentState.Absent,
         )
-        // Dark only, because that is the only way the screen ever renders — light PNGs beside these
-        // would just invite someone to review an appearance the app cannot produce.
-        listOf(true).forEach { dark ->
+        // Both, again: the screen carries its own light/dark switch.
+        listOf(true, false).forEach { dark ->
             render("downloading", dark, downloading)
             render("complete", dark, done)
             render(

@@ -15,6 +15,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.SettingsStore
+import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.YMusicTheme
 import io.ymusic.ui.resources.Res
@@ -73,6 +74,10 @@ fun ApplicationScope.FirstRunWindow(
     val state by coordinator.state.collectAsState()
     // Answered before it is stored: nothing is sent until Continue commits the whole step.
     val crashReports = remember { androidx.compose.runtime.mutableStateOf(true) }
+    // Same for the appearance — the switch drives this window immediately, and Continue is what
+    // turns it into the app's theme setting. Starts from whatever the setting already says, which
+    // on a fresh install is its dark default.
+    val dark = remember { androidx.compose.runtime.mutableStateOf(settings.flow(AppSettings.theme).value != "light") }
 
     val windowState = rememberWindowState(
         size = DpSize(FIRST_RUN_WIDTH, FIRST_RUN_HEIGHT),
@@ -85,9 +90,7 @@ fun ApplicationScope.FirstRunWindow(
         state = windowState,
         resizable = false,
     ) {
-        // Always dark, deliberately: the first run happens before anyone has expressed a preference,
-        // and it is one screen with one look rather than a surface that follows the app's theme.
-        YMusicTheme(dark = true) {
+        YMusicTheme(dark = dark.value) {
             OnboardingScreen(
                 state = state,
                 crashReports = crashReports.value,
@@ -97,12 +100,15 @@ fun ApplicationScope.FirstRunWindow(
                 onRecheckVlc = coordinator::recheckVlc,
                 onChooseFolder = coordinator::chooseMusicFolder,
                 onOpenUrl = onOpenUrl,
+                dark = dark.value,
+                onDarkChange = { dark.value = it },
                 onFinish = {
                     scope.launch {
                         // The folder is handed to the app as pending work — scanning belongs to the
                         // Library screen, which can show it, not to a window that is closing.
                         state.musicFolder?.let { settings.put(AppSettings.pendingLibraryFolder, it) }
                         settings.put(AppSettings.crashReports, crashReports.value)
+                        settings.put(AppSettings.theme, if (dark.value) "dark" else "light")
                         settings.put(AppSettings.setupCompleted, true)
                         onFinished()
                     }

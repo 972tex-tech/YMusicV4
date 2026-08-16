@@ -1,6 +1,8 @@
 package io.ymusic.desktop.setup
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
@@ -74,6 +77,8 @@ fun OnboardingScreen(
     onChooseFolder: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onFinish: () -> Unit,
+    dark: Boolean = true,
+    onDarkChange: (Boolean) -> Unit = {},
     /** Which step to open on — only ever moved off 1 by the snapshot harness. */
     initialStep: Int = 1,
 ) {
@@ -85,9 +90,12 @@ fun OnboardingScreen(
         ),
     ) {
         if (step == 1) {
-            SetupStep(state, onRetryEngine, onRetryMediaTools, onRecheckVlc, onChooseFolder, onOpenUrl) { step = 2 }
+            SetupStep(
+                state, dark, onDarkChange, onRetryEngine, onRetryMediaTools,
+                onRecheckVlc, onChooseFolder, onOpenUrl,
+            ) { step = 2 }
         } else {
-            ConsentStep(crashReports, onCrashReportsChange, onOpenUrl, onFinish)
+            ConsentStep(crashReports, onCrashReportsChange, dark, onDarkChange, onOpenUrl, onFinish)
         }
     }
 }
@@ -95,6 +103,8 @@ fun OnboardingScreen(
 @Composable
 private fun SetupStep(
     state: SetupState,
+    dark: Boolean,
+    onDarkChange: (Boolean) -> Unit,
     onRetryEngine: () -> Unit,
     onRetryMediaTools: () -> Unit,
     onRecheckVlc: () -> Unit,
@@ -103,7 +113,7 @@ private fun SetupStep(
     onNext: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        StepHeader(step = 1, title = "Get YMusic ready")
+        StepHeader(step = 1, title = "Get YMusic ready", dark = dark, onDarkChange = onDarkChange)
         Spacer(Modifier.height(DesignSpacing.Space24))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
@@ -166,11 +176,13 @@ private fun gateNote(state: SetupState): String {
 private fun ConsentStep(
     crashReports: Boolean,
     onCrashReportsChange: (Boolean) -> Unit,
+    dark: Boolean,
+    onDarkChange: (Boolean) -> Unit,
     onOpenUrl: (String) -> Unit,
     onFinish: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        StepHeader(step = 2, title = "Before you start")
+        StepHeader(step = 2, title = "Before you start", dark = dark, onDarkChange = onDarkChange)
         Spacer(Modifier.height(DesignSpacing.Space24))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
@@ -208,7 +220,7 @@ private fun ConsentStep(
 }
 
 @Composable
-private fun StepHeader(step: Int, title: String) {
+private fun StepHeader(step: Int, title: String, dark: Boolean, onDarkChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
         Image(
             painter = painterResource(Res.drawable.ymusic_logo),
@@ -229,8 +241,41 @@ private fun StepHeader(step: Int, title: String) {
             Spacer(Modifier.height(SetupTheme.StepLabelGap))
             Text(title, color = DesignColors.InkStrong, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
         }
+        Spacer(Modifier.weight(1f))
+        AppearanceToggle(dark, onDarkChange)
     }
 }
+
+/**
+ * Light/dark switch for the first run, which is also how the app's theme gets set: whatever is
+ * showing when setup finishes is written to the theme setting, so the app opens the way the person
+ * just chose rather than making them find Settings afterwards.
+ *
+ * The sun and moon swap with a half-turn — the rotation carries the eye through the change, so the
+ * switch reads as one control changing state rather than two icons blinking in and out.
+ */
+@Composable
+private fun AppearanceToggle(dark: Boolean, onDarkChange: (Boolean) -> Unit) {
+    val turn by animateFloatAsState(
+        targetValue = if (dark) 0f else HALF_TURN,
+        animationSpec = tween(SetupTheme.ToggleMillis),
+        label = "appearance-turn",
+    )
+    Box(
+        Modifier
+            .size(SetupTheme.ToggleSize)
+            .clip(CircleShape)
+            .clickableRow { onDarkChange(!dark) }
+            .graphicsLayer { rotationZ = turn },
+        contentAlignment = Alignment.Center,
+    ) {
+        Crossfade(dark, animationSpec = tween(SetupTheme.ToggleMillis), label = "appearance-icon") { night ->
+            if (night) MoonIcon(SetupTheme.inkSecondary) else SunIcon(SetupTheme.warn)
+        }
+    }
+}
+
+private const val HALF_TURN = 180f
 
 /** One of the two components the app installs itself: glyph, name, byte counter, progress ring. */
 @Composable
@@ -633,9 +678,8 @@ private const val TERMS_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/do
 private const val PRIVACY_URL = "https://github.com/Khang-NT/YMusicV4/blob/main/docs/privacy.md"
 
 /**
- * The first run's own palette and geometry — dark only, since [FirstRunWindow] pins the screen to
- * one appearance. The light values these tokens used to carry are in git history if this ever has
- * to follow the app's theme again.
+ * The first run's own palette and geometry. Both appearances are live again now that the screen
+ * carries its own light/dark switch.
  *
  * Progress gets its own colour scale here, separate from the brand: a ring tinted with the app's
  * accent could not also say "done" without the two meanings colliding, so state (orange working,
@@ -649,7 +693,8 @@ private object SetupTheme {
      * and inverts the relationship: the ground is the softer tone and anything sitting on it is
      * white. Dark keeps the usual order, where the ground is already easy on the eye.
      */
-    val ground: Color @Composable get() = DesignColors.Surface
+    val ground: Color @Composable get() =
+        if (DesignColors.isDark) DesignColors.Surface else DesignColors.SurfaceElevated
 
     /**
      * Secondary text — the line under every row title, the section label, the footer note.
@@ -661,7 +706,8 @@ private object SetupTheme {
     val inkSecondary: Color @Composable get() = DesignColors.InkSoft
 
     /** A chip or pill lifted off [ground] — the command box. */
-    val raised: Color @Composable get() = DesignColors.SurfaceElevated
+    val raised: Color @Composable get() =
+        if (DesignColors.isDark) DesignColors.SurfaceElevated else DesignColors.Surface
 
     /**
      * The brand green: the step label, links, and the primary button's fill.
@@ -670,14 +716,17 @@ private object SetupTheme {
      * comfortably but read as bottle-green next to the logo. This is as green as the hue gets while
      * still carrying white label text at 4.7:1, which a lighter one would not.
      */
-    val accent: Color @Composable get() = Color(0xFF35A96A)
-    val progress: Color @Composable get() = Color(0xFFF08A45)
+    val accent: Color @Composable get() = if (DesignColors.isDark) Color(0xFF35A96A) else Color(0xFF00854B)
+    val progress: Color @Composable get() = if (DesignColors.isDark) Color(0xFFF08A45) else Color(0xFFE8732A)
     /** Success. The light value is a good deal deeper than the dark one: the same mint that reads as
      *  a confident tick on near-black turns into a pale smear on a light ground, where a ring and a
      *  2dp stroke have very little area to carry the colour. */
-    val ok: Color @Composable get() = Color(0xFF4FD48C)
-    val bad: Color @Composable get() = Color(0xFFE0736A)
-    val warn: Color @Composable get() = Color(0xFFD9A441)
+    /** Success. The light value is a good deal deeper than the dark one: the same mint that reads as
+     *  a confident tick on near-black turns into a pale smear on a light ground, where a ring and a
+     *  2dp stroke have very little area to carry the colour. */
+    val ok: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4FD48C) else Color(0xFF2B9A5F)
+    val bad: Color @Composable get() = if (DesignColors.isDark) Color(0xFFE0736A) else Color(0xFFB4453A)
+    val warn: Color @Composable get() = if (DesignColors.isDark) Color(0xFFD9A441) else Color(0xFFB4791C)
 
     /** Off the spacing scale: the card's own inset, tuned to the 520dp first-run window. */
     val ScreenHorizontal = 28.dp
@@ -698,6 +747,10 @@ private object SetupTheme {
     /** A third-party product mark shown beside a row's text. Deliberately larger than any glyph on
      *  the screen: it is the only thing here doing brand recognition rather than status. */
     val BrandMarkSize = 24.dp
+
+    /** The appearance switch's hit target, and how long its half-turn takes. */
+    val ToggleSize = 32.dp
+    const val ToggleMillis = 360
 
     /** Between a button's leading icon and its label. */
     val ButtonIconGap = 6.dp

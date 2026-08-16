@@ -4,8 +4,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -16,6 +20,9 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * The two third-party marks the first run names: VLC and GitHub.
@@ -160,6 +167,47 @@ fun CrossMark(color: Color, size: Dp = STATUS_SIZE) {
     }
 }
 
+/**
+ * Sun and moon for the appearance switch, built from primitives rather than path data.
+ *
+ * Both are simple enough that a circle and eight strokes — or one circle bitten out of another —
+ * are exact, and drawing them avoids transcribing an icon set's path from memory, which is how you
+ * end up shipping a subtly wrong shape.
+ */
+@Composable
+fun SunIcon(color: Color, size: Dp = TOGGLE_ICON) {
+    Canvas(Modifier.size(size)) {
+        val span = this.size.minDimension
+        val core = span * SUN_CORE
+        drawCircle(color, radius = core, center = center)
+        repeat(SUN_RAYS) { index ->
+            val angle = (index * 2.0 * PI / SUN_RAYS).toFloat()
+            val from = core + span * SUN_RAY_GAP
+            val to = from + span * SUN_RAY_LENGTH
+            drawLine(
+                color = color,
+                start = center + Offset(cos(angle) * from, sin(angle) * from),
+                end = center + Offset(cos(angle) * to, sin(angle) * to),
+                strokeWidth = span * SUN_RAY_WIDTH,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+fun MoonIcon(color: Color, size: Dp = TOGGLE_ICON) {
+    Canvas(Modifier.size(size)) {
+        val radius = this.size.minDimension * MOON_RADIUS
+        // The crescent is one disc with another taken out of it, offset up and to the right.
+        val disc = Path().apply { addOval(Rect(center, radius)) }
+        val bite = Path().apply {
+            addOval(Rect(center + Offset(radius * MOON_BITE_X, -radius * MOON_BITE_Y), radius))
+        }
+        drawPath(Path().apply { op(disc, bite, PathOperation.Difference) }, color, style = Fill)
+    }
+}
+
 @Composable
 fun StarIcon(color: Color, size: Dp = BUTTON_ICON_SIZE) {
     Canvas(Modifier.size(size)) { drawIconPath(IconPaths.STAR, color) }
@@ -175,6 +223,20 @@ private val ICON_SIZE = 15.dp
 
 /** Inside a button, next to its 12sp label. */
 private val BUTTON_ICON_SIZE = 12.dp
+
+/** The appearance switch's sun/moon. */
+private val TOGGLE_ICON = 18.dp
+private const val SUN_CORE = 0.2f
+private const val SUN_RAYS = 8
+private const val SUN_RAY_GAP = 0.08f
+private const val SUN_RAY_LENGTH = 0.13f
+private const val SUN_RAY_WIDTH = 0.075f
+private const val MOON_RADIUS = 0.4f
+
+/** How far the bitten-out disc sits from the moon's centre, as a fraction of its radius — enough
+ *  for a clear crescent without thinning it into a sliver. */
+private const val MOON_BITE_X = 0.62f
+private const val MOON_BITE_Y = 0.42f
 
 /** Inside the consent tick box, which is 16dp. */
 private val CHECK_SIZE = 12.dp
