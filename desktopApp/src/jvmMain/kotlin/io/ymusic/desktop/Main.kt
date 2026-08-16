@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -261,11 +260,11 @@ fun main() {
 
             when {
                 error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
-                graph == null -> Booting {
-                    CircularProgressIndicator()
-                    // The Chromium bundle is the setup window's job now, not this boot's.
-                    Text("Starting…")
-                }
+                // No spinner while the graph builds: the engines are already on disk by the time
+                // this runs (the setup window is what waits for them), so the build is short and a
+                // progress screen after a checklist that just said "Ready" reads as a second wait.
+                // The window paints the app's own ground until the first frame has something in it.
+                graph == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 else -> App(graph!!)
             }
         }
