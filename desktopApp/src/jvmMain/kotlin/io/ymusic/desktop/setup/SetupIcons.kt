@@ -225,7 +225,7 @@ private val ICON_SIZE = 15.dp
 private val BUTTON_ICON_SIZE = 12.dp
 
 /** The appearance switch's sun/moon. */
-private val TOGGLE_ICON = 18.dp
+private val TOGGLE_ICON = 21.dp
 private const val SUN_CORE = 0.2f
 private const val SUN_RAYS = 8
 private const val SUN_RAY_GAP = 0.08f

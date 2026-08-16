@@ -114,7 +114,7 @@ private fun SetupStep(
 ) {
     Column(Modifier.fillMaxSize()) {
         StepHeader(step = 1, title = "Get YMusic ready", dark = dark, onDarkChange = onDarkChange)
-        Spacer(Modifier.height(DesignSpacing.Space24))
+        Spacer(Modifier.height(SetupTheme.HeaderGap))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
@@ -183,7 +183,7 @@ private fun ConsentStep(
 ) {
     Column(Modifier.fillMaxSize()) {
         StepHeader(step = 2, title = "Before you start", dark = dark, onDarkChange = onDarkChange)
-        Spacer(Modifier.height(DesignSpacing.Space24))
+        Spacer(Modifier.height(SetupTheme.HeaderGap))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
@@ -242,7 +242,11 @@ private fun StepHeader(step: Int, title: String, dark: Boolean, onDarkChange: (B
             Text(title, color = DesignColors.InkStrong, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.weight(1f))
-        AppearanceToggle(dark, onDarkChange)
+        // Centred on the ring's column, so the switch sits on the same axis as everything else down
+        // the right-hand edge rather than hard against the window's padding.
+        Box(Modifier.width(SetupTheme.RingSize), contentAlignment = Alignment.Center) {
+            AppearanceToggle(dark, onDarkChange)
+        }
     }
 }
 
@@ -747,6 +751,10 @@ private object SetupTheme {
     /** A third-party product mark shown beside a row's text. Deliberately larger than any glyph on
      *  the screen: it is the only thing here doing brand recognition rather than status. */
     val BrandMarkSize = 24.dp
+
+    /** Between the header block and the first row. Wider than the gap between rows, so the header
+     *  reads as a heading over a list rather than as the list's first entry. */
+    val HeaderGap = DesignSpacing.Space32
 
     /** The appearance switch's hit target, and how long its half-turn takes. */
     val ToggleSize = 32.dp
