@@ -13,6 +13,8 @@ import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
+import io.ymusic.desktop.groundColorFor
+import io.ymusic.desktop.paintWindowGround
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
@@ -90,6 +92,9 @@ fun ApplicationScope.FirstRunWindow(
         state = windowState,
         resizable = false,
     ) {
+        // Before Compose draws: otherwise the frame shows the toolkit's white for one beat, which on
+        // a dark first run is the first thing anyone sees.
+        paintWindowGround(groundColorFor(dark.value))
         YMusicTheme(dark = dark.value) {
             OnboardingScreen(
                 state = state,

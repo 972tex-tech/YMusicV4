@@ -20,6 +20,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -142,11 +143,10 @@ fun main() {
             ensureAppLanguage(it)
         }
     }
-    applyWindowChrome(
-        // The setup window is pinned dark; afterwards the app's own theme decides.
-        dark = if (!settings.flow(AppSettings.setupCompleted).value) true
-        else settings.flow(AppSettings.theme).value != "light",
-    )
+    // Whether this launch is dark, decided before any window exists: it drives both the OS window
+    // decorations and the colour the frame wears before Compose has drawn a thing.
+    val darkChrome = settings.flow(AppSettings.theme).value != "light"
+    applyWindowChrome(darkChrome)
     // Crash reporting starts only once the user has been asked and said yes. An un-completed setup
     // is therefore silent by construction, not by a default that could drift.
     val reportCrashes = settings.flow(AppSettings.crashReports).value &&
@@ -192,6 +192,8 @@ fun main() {
         }
         val cefManager = remember { CefManager() }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
+        // Hoisted out of the window: whether the window may show at all depends on it.
+        var bootError by remember { mutableStateOf<String?>(null) }
         var windowVisible by remember { mutableStateOf(true) }
         val (initialSize, initialPosition) = remember { loadWindowPrefs() }
         val windowState = rememberWindowState(size = initialSize, position = initialPosition)
@@ -217,7 +219,10 @@ fun main() {
                 }
         }
         Window(
-            visible = windowVisible,
+            // Held back until the graph is ready: an empty window that then repaints is a flash of
+            // whatever the toolkit felt like showing. Composed all along, so paintWindowGround has
+            // already coloured it by the time it appears.
+            visible = windowVisible && (graph != null || bootError != null),
             onCloseRequest = {
                 // A non-empty queue → the close button minimizes to the system tray and playback
                 // carries on (the OSR browser renders to its own fixed viewport, not the window);
@@ -234,7 +239,7 @@ fun main() {
                 refresh
             },
         ) {
-            var error by remember { mutableStateOf<String?>(null) }
+            paintWindowGround(groundColorFor(darkChrome))
 
             if (DEBUG_BUILD) {
                 MenuBar {
@@ -254,12 +259,14 @@ fun main() {
                     throw c // the effect was disposed — not a boot failure
                 } catch (t: Throwable) {
                     rootLogger.fork("boot").captureError(t)
-                    error = t.message ?: t.toString()
+                    bootError = t.message ?: t.toString()
                 }
             }
 
             when {
-                error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
+                bootError != null -> Booting {
+                    Text("Startup failed: $bootError", color = MaterialTheme.colorScheme.error)
+                }
                 // No spinner while the graph builds: the engines are already on disk by the time
                 // this runs (the setup window is what waits for them), so the build is short and a
                 // progress screen after a checklist that just said "Ready" reads as a second wait.
@@ -890,6 +897,19 @@ private fun provisionedFfmpeg(): File? {
  * discretion; neither is wired up, so both keep the system default for now.
  */
 private fun applyWindowChrome(dark: Boolean) {
+    // A JFrame takes its background from UIManager's "control" colour AT CONSTRUCTION — before any
+    // composable, effect or window property of ours can run. That is the whole launch flash: the
+    // frame is built white and Compose only covers it when it first draws. Setting the colour here,
+    // before the toolkit builds anything, is the only place early enough.
+    // https://github.com/JetBrains/compose-multiplatform/issues/1794
+    val ground = java.awt.Color(groundColorFor(dark).toArgb(), true)
+    // "control" alone is not enough: it colours the frame and its root pane, but the content pane
+    // inside them is an opaque JPanel that takes Aqua's own system colour (a SystemColorProxy at
+    // #EEEEEE) and stays white. That panel is what actually flashes, so every key the Swing window
+    // is assembled from has to be set, not just the one the issue names.
+    listOf("control", "Panel.background", "RootPane.background", "Viewport.background")
+        .forEach { javax.swing.UIManager.put(it, ground) }
+
     if (!System.getProperty("os.name").lowercase().contains("mac")) return
     System.setProperty(
         "apple.awt.application.appearance",
