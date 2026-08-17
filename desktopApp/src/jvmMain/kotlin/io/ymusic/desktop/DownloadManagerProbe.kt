@@ -144,16 +144,9 @@ fun main(args: Array<String>) {
     exitProcess(exit)
 }
 
-private fun locateFfmpeg(): File? {
-    System.getProperty("io.ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.exists() } }
-    val os = System.getProperty("os.name").lowercase()
-    val rel = when {
-        os.contains("mac") -> "ffmpeg-prebuilt-ymusic/macos/ffmpeg"
-        os.contains("linux") -> "ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg"
-        else -> return null
-    }
-    return listOf(rel, "../$rel").map(::File).firstOrNull { it.exists() }
-}
+/** The shell's own ladder — the probe had a second copy of it, which is how it kept the pre-split
+ *  `macos/` path after the prebuilt repo grew a binary per architecture. */
+private fun locateFfmpeg(): File? = resolveFfmpeg()?.let(::File)
 
 private fun readWebViewJsForDownload(): String {
     val candidates = listOf("webview-js/dist/webview_ymusic.js", "../webview-js/dist/webview_ymusic.js")

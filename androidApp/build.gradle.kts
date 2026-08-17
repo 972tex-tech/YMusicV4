@@ -84,9 +84,10 @@ android {
 }
 
 val stageFfmpeg by tasks.registering(Copy::class) {
+    dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
     into(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
-    listOf("arm64-v8a", "x86", "x86_64").forEach { abi ->
-        from(rootProject.file("ffmpeg-prebuilt-ymusic/android/$abi/libffmpeg.so")) { into(abi) }
+    FfmpegRelease.ANDROID_ABIS.forEach { abi ->
+        from(FfmpegRelease.androidBinary(project, abi)) { into(abi); rename { "libffmpeg.so" } }
     }
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {

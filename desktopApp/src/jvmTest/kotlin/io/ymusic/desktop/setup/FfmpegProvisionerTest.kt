@@ -30,13 +30,16 @@ class FfmpegProvisionerTest {
     private val dir = File("build/test-tools-${System.nanoTime()}")
     private var server: HttpServer? = null
 
-    /** Any ffmpeg on this machine, used as the artifact the mock service publishes. */
+    /**
+     * Any ffmpeg on this machine, used as the artifact the mock service publishes. Gradle points
+     * io.ymusic.ffmpeg at the prebuilt from the latest release (see :desktopApp's build script); the
+     * rest are for running this test outside Gradle.
+     */
     private val hostFfmpeg: File? = sequenceOf(
-        File("ffmpeg-prebuilt-ymusic/macos/ffmpeg"),
-        File("../ffmpeg-prebuilt-ymusic/macos/ffmpeg"),
-        File("/opt/homebrew/bin/ffmpeg"),
-        File("/usr/local/bin/ffmpeg"),
-    ).firstOrNull { it.canExecute() }
+        System.getProperty("io.ymusic.ffmpeg"),
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+    ).filterNotNull().map(::File).firstOrNull { it.canExecute() }
 
     private val platformKey = io.ymusic.desktop.update.currentPlatformKey()
 

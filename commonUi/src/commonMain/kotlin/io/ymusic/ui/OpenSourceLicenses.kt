@@ -8,7 +8,10 @@ internal data class OssComponent(val name: String, val license: String, val scop
  * The shipped third-party components, hand-maintained (there is no license-plugin sweep in this
  * build): update alongside buildSrc/Dependencies.kt. Dev/test/benchmark-only deps (JUnit, Moshi,
  * espresso, kotlinx-benchmark) are deliberately absent — they are not distributed with the app.
- * FFmpeg ships as a SEPARATE executable (never linked) built LGPL with LGPL lame/shine.
+ * FFmpeg ships as a SEPARATE executable the app runs as a child process — never linked in — so its
+ * LGPL and this app's GPL never meet: the boundary is a process, not a library call. The build
+ * scripts, the sources it is built from and the relinking notice the LGPL asks for live in
+ * github.com/ymusic-io/ffmpeg-build (NOTICE.md); the binaries are that repo's release assets.
  */
 internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("Kotlin Standard Library", "Apache-2.0"),
@@ -23,7 +26,12 @@ internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("QuickJS (Fabrice Bellard, Charlie Gordon)", "MIT"),
     OssComponent("Sentry SDK", "MIT"),
     OssComponent("normalize (Doist)", "MIT"),
-    OssComponent("FFmpeg (separate executable, with LAME and Shine)", "LGPL-2.1+", scope = "Android / Desktop"),
+    // One line per licence, because they differ: FFmpeg is LGPL-2.1+, the two encoders statically
+    // linked into it are LGPL-2.0+. Verified against `ffmpeg -L` and each library's own COPYING —
+    // the build enables neither --enable-gpl nor --enable-nonfree, so nothing pulls it to GPL.
+    OssComponent("FFmpeg (separate executable)", "LGPL-2.1+", scope = "Android / Desktop"),
+    OssComponent("LAME (linked into FFmpeg)", "LGPL-2.0+", scope = "Android / Desktop"),
+    OssComponent("Shine (linked into FFmpeg)", "LGPL-2.0+", scope = "Android / Desktop"),
     OssComponent("SQLite", "Public Domain"),
     OssComponent("AndroidX (core, lifecycle, activity)", "Apache-2.0", scope = "Android"),
     OssComponent("Media3 / ExoPlayer", "Apache-2.0", scope = "Android"),

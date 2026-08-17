@@ -1,6 +1,5 @@
 @file:Suppress("UnstableApiUsage")
 
-import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Base64
 
@@ -12,22 +11,19 @@ plugins {
 }
 
 // Writes the absolute path of a runnable ffmpeg binary into the test source set so the smoke tests
-// can exec a real ffmpeg. We ship a host-runnable binary for macOS (ffmpeg-prebuilt-ymusic/macos/
-// ffmpeg) and Linux x86_64 (ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg, used by the docker linux-test
-// run); on every other host the path is emitted as null and the tests skip themselves. Mirrors
-// :kmpHttp:core's generateHttpbunCerts pattern (generated Kotlin on the test source set).
-val ffmpegBinary = when {
-    OperatingSystem.current().isMacOsX -> rootProject.file("ffmpeg-prebuilt-ymusic/macos/ffmpeg")
-    // The docker linux-test image is pinned to linux/amd64, so x86_64 is the only Linux binary we need.
-    OperatingSystem.current().isLinux && System.getProperty("os.arch") in listOf("amd64", "x86_64") ->
-        rootProject.file("ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg")
-    else -> null
-}
+// can exec a real ffmpeg. The binary comes from the latest ffmpeg-build release (see
+// buildSrc/FfmpegRelease.kt); on a host that release has no build for, the path is emitted as null
+// and the tests skip themselves. Mirrors :kmpHttp:core's generateHttpbunCerts pattern (generated
+// Kotlin on the test source set).
+val ffmpegBinary = FfmpegRelease.hostBinary(project)
 val ffmpegTestData = project.file("testdata")
 val generateFfmpegTestConfig = tasks.register("generateFfmpegTestConfig") {
+    dependsOn(rootProject.tasks.named("syncFfmpegHost"))
     val outDir = layout.buildDirectory.dir("generated/ffmpegTestConfig")
     outputs.dir(outDir)
-    val binPath = ffmpegBinary?.takeIf { it.exists() }?.absolutePath
+    // No exists() guard: the sync above is what puts the binary there, and it has not run yet at
+    // configuration time. A host the release has no build for is the null case.
+    val binPath = ffmpegBinary?.absolutePath
     val dataDir = ffmpegTestData.absolutePath
     inputs.property("binPath", binPath ?: "")
     inputs.property("dataDir", dataDir)
@@ -68,12 +64,12 @@ val generateFfmpegTestConfig = tasks.register("generateFfmpegTestConfig") {
 // jniLibs, gitignored); and since the plugin doesn't pick up an assets dir either, we embed the
 // fixture as base64 in a generated test source. ABIs cover the emulators we run on: arm64-v8a on
 // Apple Silicon hosts, x86_64 on x86_64 CI, and x86 for the aosp API 24 image (32-bit-only).
-val ffmpegAndroidAbis = listOf("arm64-v8a", "x86", "x86_64")
 val stageFfmpegDeviceTestJni = tasks.register<Copy>("stageFfmpegDeviceTestJni") {
+    dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
     description = "Stage prebuilt android ffmpeg into the androidDeviceTest jniLibs convention dir."
     into(layout.projectDirectory.dir("src/androidDeviceTest/jniLibs"))
-    ffmpegAndroidAbis.forEach { abi ->
-        from(rootProject.file("ffmpeg-prebuilt-ymusic/android/$abi/libffmpeg.so")) { into(abi) }
+    FfmpegRelease.ANDROID_ABIS.forEach { abi ->
+        from(FfmpegRelease.androidBinary(project, abi)) { into(abi); rename { "libffmpeg.so" } }
     }
 }
 

@@ -854,21 +854,17 @@ private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
  *
  * One ladder for every caller (tag reading, artwork, download muxing) so they can never disagree
  * about which binary is in play: an explicit override, then the copy the first run downloaded
- * ([io.ymusic.desktop.setup.FfmpegProvisioner]), then a dev checkout's prebuilt, then the PATH.
+ * ([io.ymusic.desktop.setup.FfmpegProvisioner]), then the PATH.
+ *
+ * A dev run takes the first rung: `:desktopApp:run` and the tests are given -Dio.ymusic.ffmpeg
+ * pointing at the prebuilt from the latest ffmpeg-build release, so they never wait on the
+ * first-run download. A shipped build has no such property and provisions one.
  */
 internal fun resolveFfmpeg(): String? {
     System.getProperty("io.ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.canExecute() }?.absolutePath }
     System.getenv("YMUSIC_FFMPEG")?.let { if (File(it).canExecute()) return it }
     provisionedFfmpeg()?.let { return it.absolutePath }
     val os = System.getProperty("os.name").lowercase()
-    val prebuilt = when {
-        os.contains("mac") -> "ffmpeg-prebuilt-ymusic/macos/ffmpeg"
-        os.contains("linux") -> "ffmpeg-prebuilt-ymusic/linux-x86_64/ffmpeg"
-        else -> null
-    }
-    prebuilt?.let { rel ->
-        listOf(rel, "../$rel").map(::File).firstOrNull { it.canExecute() }?.let { return it.absolutePath }
-    }
     val name = if (os.contains("win")) "ffmpeg.exe" else "ffmpeg"
     val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator) +
         listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")

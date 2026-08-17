@@ -55,6 +55,30 @@ val updatePublicKeyValue: String = providers.gradleProperty("ymusic.updatePublic
 val toolsUrl: String = providers.gradleProperty("ymusic.toolsManifestUrl").orNull
     ?: toolsManifestUrl()
 
+// Dev and test runs exec the prebuilt ffmpeg from the latest ffmpeg-build release instead of
+// provisioning one, through the same -Dio.ymusic.ffmpeg override a developer would pass by hand.
+// A SHIPPED build never sees this: it downloads ffmpeg on first run against the signed manifest
+// above, which is the path that has to keep working and so is what packaging exercises.
+// Set on the run and test TASKS, never on compose.desktop.application.jvmArgs — those are baked
+// into the packaged launcher, and a build-machine path in a shipped app would point at nothing.
+val ffmpegForDev: File? = FfmpegRelease.hostBinary(project)
+if (ffmpegForDev != null) {
+    val syncFfmpegHost = rootProject.tasks.named("syncFfmpegHost")
+    val ffmpegPath = ffmpegForDev.absolutePath
+    tasks.withType<Test>().configureEach {
+        dependsOn(syncFfmpegHost)
+        systemProperty("io.ymusic.ffmpeg", ffmpegPath)
+    }
+    // `run` and the probes, but NOT runDistributable/runRelease*: those exist to try the packaged
+    // experience, whose first run is supposed to provision ffmpeg itself. Handing them one would
+    // mask the very path they are there to exercise.
+    tasks.withType<JavaExec>().matching { !it.name.contains("Distributable") && !it.name.contains("Release") }
+        .configureEach {
+            dependsOn(syncFfmpegHost)
+            systemProperty("io.ymusic.ffmpeg", ffmpegPath)
+        }
+}
+
 val generateBuildConfig by tasks.registering {
     val dsn = sentryDsn()
     val release = "ymusic-desktop@$desktopVersion+${gitCommit()}"

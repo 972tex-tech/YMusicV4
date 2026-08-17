@@ -33,6 +33,46 @@ spotless {
     }
 }
 
+// ---- prebuilt ffmpeg (see buildSrc/FfmpegRelease.kt) --------------------------------------------
+// Registered here rather than per module so the two staging directories have exactly one producer
+// each. Consumers depend on the one they need: :androidApp and :kmpFfmpeg's device tests on the
+// android ABIs, :desktopApp's run and tests on the host binary.
+fun Project.registerFfmpegSync(name: String, wanted: Set<String>, dir: File, what: String) =
+    tasks.register<SyncFfmpeg>(name) {
+        group = "build setup"
+        description = "Fetch $what from the latest ${FfmpegRelease.REPO} release."
+        repo.set(FfmpegRelease.REPO)
+        assets.set(wanted)
+        FfmpegRelease.localDir(project)?.let { localDir.set(it) }
+        offline.set(gradle.startParameter.isOffline)
+        // --rerun-tasks counts too: it already re-runs this task, and a build asking for everything
+        // to be redone from scratch should not be the one build that keeps a stale ffmpeg.
+        force.set(
+            providers.gradleProperty("ymusic.ffmpegUpdate").isPresent || gradle.startParameter.isRerunTasks,
+        )
+        outputDir.set(dir)
+    }
+
+registerFfmpegSync(
+    "syncFfmpegHost",
+    setOfNotNull(FfmpegRelease.hostAsset()),
+    FfmpegRelease.hostDir(project),
+    "the host-runnable ffmpeg for the desktop dev run and the tests",
+)
+
+registerFfmpegSync(
+    "syncFfmpegAndroid",
+    FfmpegRelease.ANDROID_ABIS.map(FfmpegRelease::androidAsset).toSet(),
+    FfmpegRelease.androidDir(project),
+    "the per-ABI ffmpeg the apk packs as lib/<abi>/libffmpeg.so",
+)
+
+tasks.register("syncFfmpeg") {
+    group = "build setup"
+    description = "Fetch every prebuilt ffmpeg this host can use."
+    dependsOn("syncFfmpegHost", "syncFfmpegAndroid")
+}
+
 tasks.register("cleanBuildDir", Delete::class) {
     delete(rootProject.layout.buildDirectory)
 }
