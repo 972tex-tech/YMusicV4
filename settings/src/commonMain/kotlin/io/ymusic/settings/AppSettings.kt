@@ -76,8 +76,8 @@ object AppSettings {
      */
     val autoDownloadUpdates = BoolSetting("update.autoDownload", false)
 
-    /** Anonymous stable device id for crash reporting — seeded once (Android: ANDROID_ID, desktop:
-     *  a random UUID) and persisted; carries no PII and never leaves telemetry. Empty = unseeded. */
+    /** Anonymous stable device id — a random UUID minted on first launch by [anonymousDeviceId],
+     *  never derived from hardware identity. Empty = unseeded. */
     val deviceId = StringSetting("telemetry.deviceId", "")
 
     /**
@@ -100,6 +100,12 @@ object AppSettings {
      * user's own answer during setup — reporting must never start before it has been asked for.
      */
     val crashReports = BoolSetting("telemetry.crashReports", false)
+
+    /**
+     * Whether anonymous usage stats (app opens and the like) may be sent. Default OFF, same
+     * contract as [crashReports]: nothing is ever sent before the user said yes.
+     */
+    val stats = BoolSetting("telemetry.stats", false)
 
     /** A music folder picked during setup, scanned once the app itself is up; empty when none. */
     val pendingLibraryFolder = StringSetting("library.pendingScan", "")
