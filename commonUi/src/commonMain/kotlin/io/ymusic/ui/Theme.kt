@@ -97,20 +97,25 @@ val DarkDesignColors = DesignPalette(
     InkFaint = Color(0xFF7E7E7E),
     IconDots = Color(0xFF8E8E8E),
     OnInk = Color(0xFF141414),
-    Placeholder = Color(0xFF2E2E2E),
-    PlaceholderDim = Color(0xFF2A2A2A),
-    PlaceholderIcon = Color(0xFF5C5C5C),
-    StackNear = Color(0xFF2E2E2E),
-    StackFar = Color(0xFF262626),
-    StackTab = Color(0xFF2C2C2C),
-    Outline = Color(0xFF4A4A4A),
-    OutlineSoft = Color(0xFF404040),
-    Divider = Color(0xFF2C2C2C),
-    DividerMini = Color(0xFF303030),
-    Surface = Color(0xFF121212),
-    SurfaceDim = Color(0xFF171717),
-    SurfaceElevated = Color(0xFF1F1F1F),
-    FieldPill = Color(0xFF2A2A2A),
+    // The legacy YMusic grounds (#303030 / #343434 / #383838, from the v3 app) and their
+    // companions, each keeping roughly the lift it had over the old near-black trio
+    // (0xFF121212 / 0xFF171717 / 0xFF1F1F1F): placeholders/stacks/pills sit clearly above the
+    // surface, outlines lift further, and dividers stay the legacy way — slightly DARKER lines
+    // cut into the grey rather than light hairlines on black.
+    Placeholder = Color(0xFF454545),
+    PlaceholderDim = Color(0xFF414141),
+    PlaceholderIcon = Color(0xFF767676),
+    StackNear = Color(0xFF454545),
+    StackFar = Color(0xFF3D3D3D),
+    StackTab = Color(0xFF424242),
+    Outline = Color(0xFF5C5C5C),
+    OutlineSoft = Color(0xFF525252),
+    Divider = Color(0xFF2A2A2A),
+    DividerMini = Color(0xFF2D2D2D),
+    Surface = Color(0xFF272727),
+    SurfaceDim = Color(0xFF313131),
+    SurfaceElevated = Color(0xFF292929),
+    FieldPill = Color(0xFF3F3F3F),
     BrandGreen = Color(0xFF1DB954),
 )
 
@@ -203,7 +208,7 @@ private fun schemeFor(c: DesignPalette) = with(c) {
         onSurfaceVariant = InkSecondary,
         primaryContainer = if (isDark) Color(0xFF43220E) else Color(0xFFFBE9DD),
         onPrimaryContainer = if (isDark) Color(0xFFF0A36B) else Color(0xFF8A3D0F),
-        secondaryContainer = if (isDark) Color(0xFF262626) else Color(0xFFF0F1F0),
+        secondaryContainer = if (isDark) Color(0xFF3F3F3F) else Color(0xFFF0F1F0),
         onSecondaryContainer = Ink,
         surfaceContainer = SurfaceDim,
         surfaceContainerLow = SurfaceDim,

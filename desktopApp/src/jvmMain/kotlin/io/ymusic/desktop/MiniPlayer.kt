@@ -221,6 +221,9 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
  * popup menu that macOS then opens on click instead of firing the action. Bare TrayIcon + mouse
  * listener = a plain click reaches [onClick] (with the click's screen x, to anchor the mini
  * player under the icon).
+ *
+ * The icon renders at 1x AND 2x into a multi-resolution image: a TrayIcon handed a single 1x
+ * raster is upscaled by the OS on Retina and turns soft, no matter how good the source is.
  */
 @Composable
 fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
@@ -230,8 +233,13 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
         val tray = if (SystemTray.isSupported()) SystemTray.getSystemTray() else null
         val trayIcon = tray?.let {
             val size = it.trayIconSize
+            fun render(scale: Int) = icon.toAwtImage(
+                density,
+                LayoutDirection.Ltr,
+                Size(size.width.toFloat() * scale, size.height.toFloat() * scale),
+            )
             TrayIcon(
-                icon.toAwtImage(density, LayoutDirection.Ltr, Size(size.width.toFloat(), size.height.toFloat())),
+                java.awt.image.BaseMultiResolutionImage(render(1), render(2)),
                 "YMusic",
             ).apply {
                 addMouseListener(

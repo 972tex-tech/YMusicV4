@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -32,8 +33,10 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
@@ -44,6 +47,7 @@ import androidx.compose.ui.window.rememberWindowState
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
+import io.ymusic.desktop.resources.ymusic_logo_dock
 import io.ymusic.desktop.setup.FirstRunWindow
 import io.ymusic.desktop.update.DesktopAppUpdates
 import io.ymusic.desktop.update.UpdateService
@@ -184,6 +188,26 @@ fun main() {
     // Stop-signal and shutdown resilience against CEF live in CefManager.installShutdownGuards
     // (installed with the first createClient — shared with the probes).
     application {
+        // The macOS Dock ignores Window(icon=) and, outside a bundle (a dev run), shows the JVM's
+        // coffee cup. One 1024px rasterization of the tile vector goes to the Taskbar API — and
+        // the DENSITY is the load-bearing part: VectorPainter caches at its intrinsic size
+        // (declared 192dp × density), so Density(1f) had every render upscaling a 192px cache.
+        // 1024/192 makes the cache itself 1024. desktopApp/ymusic.icns is the packaged twin.
+        val dockTile = painterResource(io.ymusic.desktop.resources.Res.drawable.ymusic_logo_dock)
+        LaunchedEffect(dockTile) {
+            runCatching {
+                if (java.awt.Taskbar.isTaskbarSupported()) {
+                    val taskbar = java.awt.Taskbar.getTaskbar()
+                    if (taskbar.isSupported(java.awt.Taskbar.Feature.ICON_IMAGE)) {
+                        taskbar.iconImage = dockTile.toAwtImage(
+                            Density(1024f / 192f),
+                            LayoutDirection.Ltr,
+                            androidx.compose.ui.geometry.Size(1024f, 1024f),
+                        )
+                    }
+                }
+            }
+        }
         var setupDone by remember { mutableStateOf(settings.flow(AppSettings.setupCompleted).value) }
         if (!setupDone) {
             // Nothing plays until the engines are on disk, so the app's own window does not open

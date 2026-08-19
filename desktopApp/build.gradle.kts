@@ -17,6 +17,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+compose.resources {
+    // Desktop-only assets (the dock tile); shared brand assets stay in :commonUi.
+    packageOfResClass = "io.ymusic.desktop.resources"
+}
+
 val desktopVersion = "1.0.0"
 // BUMP ON EVERY RELEASE. The update check compares this and nothing else — desktopVersion is a
 // display string. Desktop counts separately from androidApp's versionCode (separate cadence).
@@ -170,6 +175,12 @@ kotlin {
     }
 
     sourceSets {
+        // The resources accessor (Res) only generates when this dependency sits in commonMain —
+        // that is where the module's own composeResources (the dock tile) get their accessors.
+        commonMain.dependencies {
+            implementation(compose.components.resources)
+        }
+
         /** The desktop (JVM) product shell: builds the AppGraph (JCEF, engines, player) and boots
          *  the shared :commonUi App. `./gradlew :desktopApp:run`. */
         val jvmMain by getting {
@@ -437,6 +448,9 @@ compose.desktop {
             macOS {
                 // Stable across releases: the updater and Gatekeeper both identify the app by it.
                 bundleID = "io.ymusic.desktop"
+                // The rounded-square dock tile; the runtime Taskbar icon (dev runs) is the same
+                // artwork from src/jvmMain/resources/ymusic_dock.png.
+                iconFile.set(project.file("ymusic.icns"))
                 // Signing is opt-in so a checkout without the identity still builds. An unsigned
                 // build is fine to run locally and impossible to ship: Gatekeeper rejects it.
                 val signingIdentity = macSigningIdentity()

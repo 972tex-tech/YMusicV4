@@ -5,6 +5,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -68,9 +69,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -166,9 +169,34 @@ internal fun TrackScroll(scrolled: () -> Boolean) {
 @Composable
 internal fun ElevatedBarColumn(bottomShadow: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     val elevated = LocalScrollHost.current?.scrolled == true
-    val shadow by animateDpAsState(if (elevated && bottomShadow) 6.dp else 0.dp)
+    // The shadow is PAINTED (a gradient scrim below the bar), not Modifier.shadow — that blur is
+    // swallowed in the Scaffold topBar slot. The stops approximate the 6dp elevation blur the
+    // ElevatedBarDialog bars cast (soft peak, gaussian-ish falloff), so every lifted bar in the
+    // app reads identically.
+    val shadowAlpha by animateFloatAsState(if (elevated && bottomShadow) 1f else 0f)
     val tone by animateColorAsState(if (elevated) DesignColors.SurfaceElevated else DesignColors.Surface)
-    Column(Modifier.shadow(shadow).background(tone).zIndex(1f), content = content)
+    Column(
+        Modifier
+            .zIndex(1f)
+            .drawBehind {
+                if (shadowAlpha > 0f) {
+                    val reach = 12.dp.toPx()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.20f * shadowAlpha),
+                            0.4f to Color.Black.copy(alpha = 0.07f * shadowAlpha),
+                            1f to Color.Transparent,
+                            startY = size.height,
+                            endY = size.height + reach,
+                        ),
+                        topLeft = Offset(0f, size.height),
+                        size = Size(size.width, reach),
+                    )
+                }
+            }
+            .background(tone),
+        content = content,
+    )
 }
 
 /**

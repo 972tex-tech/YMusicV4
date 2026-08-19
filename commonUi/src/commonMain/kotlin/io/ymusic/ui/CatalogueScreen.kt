@@ -121,7 +121,7 @@ private fun CatalogueList() {
             }
         }
 
-        item { CatLabel("App bars — ELEVATED (screen scrolled): 4dp shadow + SurfaceElevated tone") }
+        item { CatLabel("App bars — ELEVATED (screen scrolled): 16dp shadow + SurfaceElevated tone") }
         item {
             CompositionLocalProvider(LocalScrollHost provides remember { ScrollHost(scrolled = true) }) {
                 Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
