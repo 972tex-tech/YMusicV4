@@ -84,6 +84,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(Libs.Kotlinx.coroutinesTest)
+                implementation(project(":kmpHttp:testing")) // InMemoryCookieJar for cookie-protocol tests
             }
         }
 

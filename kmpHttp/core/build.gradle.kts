@@ -109,6 +109,11 @@ kotlin {
         val commonMain by getting
         val commonTest by getting {
             kotlin.srcDir(startTestServer)
+            dependencies {
+                // Test-scoped cycle on purpose (testing depends on core's main): the jar under
+                // test lives there so it is not core's public surface.
+                implementation(project(":kmpHttp:testing"))
+            }
         }
 
         // Shared non-JVM code (native targets)
