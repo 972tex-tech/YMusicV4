@@ -176,6 +176,8 @@ class BufferedAsyncSource(private val delegate: AsyncSource) : AsyncSource {
     }
 }
 
+fun AsyncSource.buffer(): BufferedAsyncSource = BufferedAsyncSource(this)
+
 suspend fun BufferedSink.writeAll(source: AsyncSource): Long {
     var totalRead = 0L
     while (true) {

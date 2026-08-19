@@ -1,24 +1,35 @@
 package kmphttp.json
 
-import kmpcommon.io.AsyncSink
 import okio.Buffer
+import okio.ByteString.Companion.encodeUtf8
 
 /**
- * Streaming JSON encoder — the write-side mirror of [JsonReader]. Emits compact JSON into an
- * [AsyncSink] through an internal [Buffer] that drains once it grows past [flushThreshold], so a
- * large document never materializes whole. Not thread-safe; drive it from one coroutine.
+ * JSON encoder — the write-side mirror of [JsonReader]. Writes compact JSON into [buffer] and stops
+ * there: draining is the caller's business, through the [Sync.flush] / [Async.flush] it supplied.
  *
- * The caller MUST [flush] when done — buffered bytes reach the sink only on a flush (or when the
- * buffer crosses the threshold mid-write).
+ * Nothing here suspends, so an encoder is usable from any context and a document that fits in memory
+ * needs no coroutine at all. The two variants exist only because DRAINING might: [Sync] for a caller
+ * whose sink is in-memory or blocking, [Async] for one writing to an [kmpcommon.io.AsyncSink].
  *
  * Shape is checked as it is written: [name] only inside an object, each object [name] followed by
- * exactly one value, one root value per document, matched begin/end.
+ * exactly one value, one root value per document, matched begin/end. Not thread-safe; drive it from
+ * one place.
  */
-class JsonWriter(
-    private val sink: AsyncSink,
-    private val flushThreshold: Long = 8192,
-) {
-    private val buffer = Buffer()
+sealed class JsonWriter {
+
+    /** Everything written so far. Drain it whenever — the writer never touches it behind your back. */
+    val buffer = Buffer()
+
+    /** Drains with a plain call: an in-memory sink, or a blocking one the caller may block on. */
+    class Sync(private val onFlush: (JsonWriter) -> Unit = {}) : JsonWriter() {
+        fun flush() = onFlush(this)
+    }
+
+    /** Drains into something that suspends, e.g. an [kmpcommon.io.AsyncSink]. */
+    class Async(private val onFlush: suspend (JsonWriter) -> Unit = {}) : JsonWriter() {
+        suspend fun flush() = onFlush(this)
+    }
+
     private val stack = ArrayDeque<Scope>()
     private var rootWritten = false
 
@@ -27,75 +38,71 @@ class JsonWriter(
         var pendingName = false // object: a name is written, its value is due next
     }
 
-    suspend fun beginObject(): JsonWriter = open('{', isObject = true)
+    fun beginObject(): JsonWriter = open(BRACE_OPEN, isObject = true)
 
-    suspend fun endObject(): JsonWriter {
+    fun endObject(): JsonWriter {
         val scope = stack.removeLastOrNull() ?: error("endObject() without beginObject()")
         check(scope.isObject) { "endObject() closing an array" }
         check(!scope.pendingName) { "endObject() after name() with no value" }
-        buffer.writeByte('}'.code)
-        return flushIfLarge()
+        buffer.writeByte(BRACE_CLOSE)
+        return this
     }
 
-    suspend fun beginArray(): JsonWriter = open('[', isObject = false)
+    fun beginArray(): JsonWriter = open(BRACKET_OPEN, isObject = false)
 
-    suspend fun endArray(): JsonWriter {
+    fun endArray(): JsonWriter {
         val scope = stack.removeLastOrNull() ?: error("endArray() without beginArray()")
         check(!scope.isObject) { "endArray() closing an object" }
-        buffer.writeByte(']'.code)
-        return flushIfLarge()
+        buffer.writeByte(BRACKET_CLOSE)
+        return this
     }
 
     /** Write an object key and its ':'; the next call must write the value. */
-    suspend fun name(name: String): JsonWriter {
+    fun name(name: String): JsonWriter {
         val scope = stack.lastOrNull()
         check(scope != null && scope.isObject) { "name() only inside an object" }
         check(!scope.pendingName) { "name() twice without a value" }
-        if (scope.count > 0) buffer.writeByte(','.code)
+        if (scope.count > 0) buffer.writeByte(COMMA)
         scope.count++
         scope.pendingName = true
         writeString(name)
-        buffer.writeByte(':'.code)
-        return flushIfLarge()
+        buffer.writeByte(COLON)
+        return this
     }
 
-    suspend fun value(value: String?): JsonWriter {
+    fun value(value: String?): JsonWriter {
         beforeValue()
-        if (value == null) buffer.writeUtf8("null") else writeString(value)
-        return flushIfLarge()
+        if (value == null) buffer.write(NULL) else writeString(value)
+        return this
     }
 
-    suspend fun value(value: Long): JsonWriter {
+    fun value(value: Long): JsonWriter {
         beforeValue()
-        buffer.writeUtf8(value.toString())
-        return flushIfLarge()
+        // writeDecimalLong formats digits straight into the buffer's segments — no String, and no
+        // second pass to UTF-8 encode one.
+        buffer.writeDecimalLong(value)
+        return this
     }
 
-    suspend fun value(value: Int): JsonWriter = value(value.toLong())
+    fun value(value: Int): JsonWriter = value(value.toLong())
 
-    suspend fun value(value: Boolean): JsonWriter {
+    fun value(value: Boolean): JsonWriter {
         beforeValue()
-        buffer.writeUtf8(if (value) "true" else "false")
-        return flushIfLarge()
+        buffer.write(if (value) TRUE else FALSE)
+        return this
     }
 
-    suspend fun nullValue(): JsonWriter {
+    fun nullValue(): JsonWriter {
         beforeValue()
-        buffer.writeUtf8("null")
-        return flushIfLarge()
+        buffer.write(NULL)
+        return this
     }
 
-    /** Drain everything buffered to the sink and flush it. */
-    suspend fun flush() {
-        if (buffer.size > 0) sink.write(buffer, buffer.size)
-        sink.flush()
-    }
-
-    private suspend fun open(brace: Char, isObject: Boolean): JsonWriter {
+    private fun open(brace: Int, isObject: Boolean): JsonWriter {
         beforeValue()
-        buffer.writeByte(brace.code)
+        buffer.writeByte(brace)
         stack.addLast(Scope(isObject))
-        return flushIfLarge()
+        return this
     }
 
     // Emit the separator a value needs in the current context, and advance the book-keeping. Top
@@ -111,52 +118,75 @@ class JsonWriter(
             check(scope.pendingName) { "a value in an object must follow name()" }
             scope.pendingName = false
         } else {
-            if (scope.count > 0) buffer.writeByte(','.code)
+            if (scope.count > 0) buffer.writeByte(COMMA)
             scope.count++
         }
-    }
-
-    private suspend fun flushIfLarge(): JsonWriter {
-        if (buffer.size >= flushThreshold) sink.write(buffer, buffer.size)
-        return this
     }
 
     // Escape only what JSON requires: the quote, the backslash, and control chars < 0x20 (short forms
     // for \b \t \n \f \r, \u00XX otherwise). Everything else — non-ASCII and astral included — is raw
     // UTF-8 (okio's writeUtf8 encodes surrogate pairs, and a run never splits a pair since every
     // escaped char is BMP).
+    //
+    // Unescaped characters go out in runs and the escapes as bare bytes, so the common case — a
+    // string with nothing to escape — is one writeUtf8 over the whole thing and allocates nothing.
     private fun writeString(s: String) {
-        buffer.writeByte('"'.code)
+        buffer.writeByte(QUOTE)
         var runStart = 0
         var i = 0
         val n = s.length
         while (i < n) {
-            val escape: String? = when (val c = s[i]) {
-                '"' -> "\\\""
-                '\\' -> "\\\\"
-                '\n' -> "\\n"
-                '\r' -> "\\r"
-                '\t' -> "\\t"
-                '\b' -> "\\b"
-                '\u000C' -> "\\f"
-                else -> if (c.code < 0x20) unicodeEscape(c.code) else null
-            }
-            if (escape != null) {
+            val c = s[i]
+            if (c == '"' || c == '\\' || c.code < 0x20) {
                 if (i > runStart) buffer.writeUtf8(s, runStart, i)
-                buffer.writeUtf8(escape)
+                buffer.writeByte(BACKSLASH)
+                when (c) {
+                    '"' -> buffer.writeByte(QUOTE)
+                    '\\' -> buffer.writeByte(BACKSLASH)
+                    '\n' -> buffer.writeByte(LOWER_N)
+                    '\r' -> buffer.writeByte(LOWER_R)
+                    '\t' -> buffer.writeByte(LOWER_T)
+                    '\b' -> buffer.writeByte(LOWER_B)
+                    '' -> buffer.writeByte(LOWER_F)
+                    else -> {
+                        // Always < 0x20 here, so both high nibbles are 0.
+                        buffer.writeByte(LOWER_U)
+                        buffer.writeByte(ZERO)
+                        buffer.writeByte(ZERO)
+                        buffer.writeByte(HEX[(c.code shr 4) and 0xF].code)
+                        buffer.writeByte(HEX[c.code and 0xF].code)
+                    }
+                }
                 runStart = i + 1
             }
             i++
         }
         if (n > runStart) buffer.writeUtf8(s, runStart, n)
-        buffer.writeByte('"'.code)
+        buffer.writeByte(QUOTE)
     }
 
     private companion object {
         private const val HEX = "0123456789abcdef"
 
-        // code is < 0x20 here, so the two high nibbles are always 0.
-        private fun unicodeEscape(code: Int): String =
-            "\\u00" + HEX[(code shr 4) and 0xF] + HEX[code and 0xF]
+        private const val QUOTE = '"'.code
+        private const val BACKSLASH = '\\'.code
+        private const val COMMA = ','.code
+        private const val COLON = ':'.code
+        private const val BRACE_OPEN = '{'.code
+        private const val BRACE_CLOSE = '}'.code
+        private const val BRACKET_OPEN = '['.code
+        private const val BRACKET_CLOSE = ']'.code
+        private const val ZERO = '0'.code
+        private const val LOWER_N = 'n'.code
+        private const val LOWER_R = 'r'.code
+        private const val LOWER_T = 't'.code
+        private const val LOWER_B = 'b'.code
+        private const val LOWER_F = 'f'.code
+        private const val LOWER_U = 'u'.code
+
+        // Written as bytes: a literal costs a segment copy rather than a UTF-8 encoding pass.
+        private val NULL = "null".encodeUtf8()
+        private val TRUE = "true".encodeUtf8()
+        private val FALSE = "false".encodeUtf8()
     }
 }

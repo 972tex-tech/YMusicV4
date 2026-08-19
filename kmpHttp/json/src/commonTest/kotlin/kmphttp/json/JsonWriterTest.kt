@@ -4,18 +4,17 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Buffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class JsonWriterTest {
 
-    private suspend fun write(block: suspend JsonWriter.() -> Unit): String {
-        val sink = BufferAsyncSink()
-        val writer = JsonWriter(sink)
+    private fun write(block: JsonWriter.() -> Unit): String {
+        val writer = JsonWriter.Sync()
         writer.block()
-        writer.flush()
-        return sink.collected.readUtf8()
+        return writer.buffer.readUtf8()
     }
 
     @Test
@@ -83,15 +82,30 @@ class JsonWriterTest {
     }
 
     @Test
-    fun drains_mid_document_when_the_buffer_exceeds_the_threshold() = runTest {
-        val sink = BufferAsyncSink()
-        val writer = JsonWriter(sink, flushThreshold = 8) // tiny → forces flushes mid-write
+    fun the_caller_drains_through_its_own_flush() = runTest {
+        val collected = Buffer()
+        val writer = JsonWriter.Async { w -> collected.writeAll(w.buffer) }
         writer.beginArray()
-        repeat(50) { writer.value("item-$it") }
+        repeat(50) {
+            writer.value("item-$it")
+            // Draining mid-document is the caller's call now, and safe at any point: the writer
+            // keeps its shape state separately from the bytes.
+            if (it % 10 == 0) writer.flush()
+        }
         writer.endArray()
         writer.flush()
-        val arr = sink.collected.readUtf8().toJsonReader().readArray()
-        assertEquals(50, arr.size)
+
+        assertEquals(50, collected.readUtf8().toJsonReader().readArray().size)
+    }
+
+    @Test
+    fun a_sync_writer_drains_without_a_coroutine() {
+        val collected = Buffer()
+        val writer = JsonWriter.Sync { w -> collected.writeAll(w.buffer) }
+        writer.beginObject().name("n").value(42L).endObject()
+        writer.flush()
+
+        assertEquals("""{"n":42}""", collected.readUtf8())
     }
 
     @Test

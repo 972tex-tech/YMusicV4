@@ -42,6 +42,9 @@ interface Logger {
     enum class Level { DEBUG, INFO, WARN, ERROR }
 }
 
+@Suppress("NOTHING_TO_INLINE")
+inline fun Logger.info(message: String, error: Throwable? = null) = log(Logger.Level.INFO, message, error)
+
 /** The trail bookkeeping every [Logger] shares: implementations supply [fork] (rebuild with a new
  *  crumb list) and the output side; [path] renders the trail for display/grouping. */
 abstract class CrumbLogger protected constructor(
