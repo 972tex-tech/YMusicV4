@@ -11,9 +11,18 @@ import io.sentry.kotlin.multiplatform.SentryOptions
  */
 fun SentryOptions.applyYMusicTelemetry() {
     maxBreadcrumbs = 200
-    beforeSend = ::fingerprintPolicy
-    // Sentry Logs are OFF by default — without this every Sentry.logger call is dropped.
+    // Consent is enforced HERE, not by deinitializing (see bindCrashReporting): everything that
+    // would leave the process passes one of these hooks and is dropped while consent says no.
+    beforeSend = { event -> if (crashReportingAllowed) fingerprintPolicy(event) else null }
+    // Sentry Logs are OFF by default — without this every Sentry.logger call is dropped. A log is
+    // NOT an event: it has its own pipeline and its own beforeSend, so the consent lock repeats.
     logs.enabled = true
+    logs.beforeSend = { log -> if (crashReportingAllowed) log else null }
+    // Sessions are the one outbound thing WITHOUT a consent hook, so the option itself is the
+    // gate: bindCrashReporting sets the flag from the stored answer BEFORE first init, so this
+    // reads the real consent. Decided per launch — a mid-session change applies from the next
+    // start, which suits a launch-scoped concept.
+    enableAutoSessionTracking = crashReportingAllowed
 }
 
 /**
