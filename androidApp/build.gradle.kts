@@ -45,6 +45,8 @@ android {
         versionName = "4.0.0"
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")
+        // Base url of the remote config service. Empty = no request, compiled-in defaults.
+        buildConfigField("String", "REMOTE_CONFIG_URL", "\"${remoteConfigUrl()}\"")
         // The shipped engine_ymusic.js asset's revision (Versions.engineJsBackendVersion).
         buildConfigField("long", "ENGINE_JS_VERSION", "${Versions.engineJsBackendVersion}L")
     }
@@ -103,6 +105,7 @@ dependencies {
     implementation(Libs.AndroidX.activityCompose)
     implementation(Libs.Kotlinx.coroutinesAndroid)
     implementation(project(":kmpHttp:core"))
+    implementation(project(":remote-config"))
     implementation(project(":yt-media")) // the player-cache router (LocalMediaProxy) for the WebView
     implementation(Libs.Media3.session)
     implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger

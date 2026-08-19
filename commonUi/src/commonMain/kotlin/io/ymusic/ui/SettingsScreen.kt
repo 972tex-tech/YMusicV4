@@ -40,6 +40,7 @@ import io.ymusic.dynamicengine.yt.YtLocales
 import io.ymusic.dynamicengine.yt.applyYtLocale
 import io.ymusic.dynamicengine.yt.ytLocaleOptions
 import io.ymusic.settings.AppSettings
+import io.ymusic.settings.BoolSetting
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
@@ -48,9 +49,13 @@ import io.ymusic.ui.resources.settings_auto_update
 import io.ymusic.ui.resources.settings_auto_update_hint
 import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
+import io.ymusic.ui.resources.settings_crash_reports
+import io.ymusic.ui.resources.settings_crash_reports_hint
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
+import io.ymusic.ui.resources.settings_stats
+import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
@@ -118,32 +123,39 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
-        if (graph.updates != null) AutoUpdateRow(graph)
+        // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
+        // on also makes future releases apply on the next start.
+        if (graph.updates != null) {
+            ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
+        }
+        // Both telemetry consents are LIVE: the shells mirror them into the send-gates, so nothing
+        // leaves the app while a switch is off, and no restart is needed either way.
+        ToggleRow(graph, AppSettings.crashReports, Res.string.settings_crash_reports, Res.string.settings_crash_reports_hint)
+        ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
         LicensesRow()
     }
 }
 
-/** Settings → download updates in the background. Off by default: fetching tens of MB unasked is
- *  the user's call. Turning it on also makes future releases apply on the next start. */
+/** A boolean setting as a switch row: tap anywhere to flip, persisted immediately. */
 @Composable
-private fun AutoUpdateRow(graph: AppGraph) {
+private fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResource, hint: StringResource) {
     val scope = rememberCoroutineScope()
-    val enabled by remember(graph) { graph.settings.flow(AppSettings.autoDownloadUpdates) }.collectAsState()
+    val enabled by remember(graph, setting) { graph.settings.flow(setting) }.collectAsState()
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable { scope.launch { graph.settings.put(AppSettings.autoDownloadUpdates, !enabled) } }
+            .clickable { scope.launch { graph.settings.put(setting, !enabled) } }
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(Res.string.settings_auto_update),
+                stringResource(title),
                 style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             )
             Text(
-                stringResource(Res.string.settings_auto_update_hint),
+                stringResource(hint),
                 style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
                 modifier = Modifier.padding(top = DesignSpacing.Space2),
             )

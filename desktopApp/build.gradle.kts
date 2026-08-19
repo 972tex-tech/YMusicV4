@@ -55,6 +55,10 @@ val updatePublicKeyValue: String = providers.gradleProperty("ymusic.updatePublic
 val toolsUrl: String = providers.gradleProperty("ymusic.toolsManifestUrl").orNull
     ?: toolsManifestUrl()
 
+// Base url of the remote config service. Empty leaves the app on its compiled-in defaults.
+val remoteConfigBaseUrl: String = providers.gradleProperty("ymusic.remoteConfigUrl").orNull
+    ?: remoteConfigUrl()
+
 // Dev and test runs exec the prebuilt ffmpeg from the latest ffmpeg-build release instead of
 // provisioning one, through the same -Dio.ymusic.ffmpeg override a developer would pass by hand.
 // A SHIPPED build never sees this: it downloads ffmpeg on first run against the signed manifest
@@ -90,6 +94,7 @@ val generateBuildConfig by tasks.registering {
     inputs.property("updateUrl", updateUrl)
     inputs.property("updatePublicKey", updatePublicKeyValue)
     inputs.property("toolsUrl", toolsUrl)
+    inputs.property("remoteConfigBaseUrl", remoteConfigBaseUrl)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("BuildConfig.kt")
@@ -116,6 +121,9 @@ val generateBuildConfig by tasks.registering {
 
             // Where the first run fetches ffmpeg from; verified against UPDATE_PUBLIC_KEY.
             internal const val TOOLS_MANIFEST_URL = "$toolsUrl"
+
+            // Base url of the remote config service. Empty = no request, compiled-in defaults.
+            internal const val REMOTE_CONFIG_URL = "$remoteConfigBaseUrl"
             """.trimIndent() + "\n",
         )
     }
@@ -177,6 +185,7 @@ kotlin {
                 implementation(Libs.Jna.core)
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
+                implementation(project(":remote-config"))
                 implementation(project(":yt-media"))
                 implementation(Libs.Kotlinx.coroutinesCore)
             }

@@ -239,6 +239,10 @@
     <!-- Updates -->
     <string name="settings_auto_update">Download updates automatically</string>
     <string name="settings_auto_update_hint">Fetch new versions in the background and install them on the next start.</string>
+    <string name="settings_crash_reports">Send anonymous crash reports</string>
+    <string name="settings_crash_reports_hint">Help fix bugs by reporting crashes and errors. Reports carry a random app id — no account data, no listening history.</string>
+    <string name="settings_stats">Send anonymous stats</string>
+    <string name="settings_stats_hint">Share anonymous usage signals to help improve the app.</string>
     <string name="update_available_title">Update available</string>
     <string name="update_version">Version %1$s</string>
     <string name="update_download">Download</string>

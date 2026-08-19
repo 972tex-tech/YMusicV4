@@ -200,7 +200,7 @@ internal fun Logger?.cmd(tag: String, vararg props: Pair<String, Any?>): Logger?
 internal fun String?.crumbToken(): String? = this?.take(100)
 
 /** Write `"key":value` only when [value] is present — absent optional fields are omitted, not null. */
-internal suspend fun JsonWriter.optionalField(key: String, value: String?) {
+internal fun JsonWriter.optionalField(key: String, value: String?) {
     if (value != null) name(key).value(value)
 }
 
@@ -246,7 +246,10 @@ private suspend fun <R> DynamicEngine.jsonCommandPipe(
 ): R {
     val pipe = openPipe(command)
     try {
-        val writer = JsonWriter(pipe.sink.asAsyncSink())
+        // Async: the pipe's sink suspends. The args head is small, so it is built whole and drained
+        // once — the writer only fills its buffer, draining is ours to do.
+        val sink = pipe.sink.asAsyncSink()
+        val writer = JsonWriter.Async { w -> sink.write(w.buffer, w.buffer.size).also { sink.flush() } }
         writer.beginObject()
         if (key != 0) writer.name("logKey").value(key)
         writeFields(writer)

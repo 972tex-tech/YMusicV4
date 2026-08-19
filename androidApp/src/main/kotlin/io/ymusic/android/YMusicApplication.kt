@@ -33,11 +33,16 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.isPlaying
+import io.ymusic.remoteconfig.HttpApiService
+import io.ymusic.remoteconfig.PersistentCookieJar
+import io.ymusic.remoteconfig.RemoteConfig
+import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
+import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
-import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
+import io.ymusic.telemetry.bindCrashReporting
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.sendSentryFeedback
@@ -98,22 +103,10 @@ class SharedServices(
      *  WebView engine is absent and a YouTube item surfaces E60050. */
     val webViewJs: String?,
     val imageLoader: ImageLoader,
+    val stats: StatUsage,
 )
 
 class YMusicApplication : Application() {
-
-    override fun onCreate() {
-        super.onCreate()
-        if (BuildConfig.SENTRY_DSN.isNotEmpty()) {
-            Sentry.init {
-                it.applyYMusicTelemetry()
-                it.dsn = BuildConfig.SENTRY_DSN
-                // The commit in the release traces an event to git history (no source upload).
-                it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
-                it.environment = if (BuildConfig.DEBUG) "debug" else "production"
-            }
-        }
-    }
 
     /** The app's root logger: Sentry logs/captures (no-op until Sentry.init) teed with logcat. */
     val rootLogger: Logger = TeeLogger(SentryLogger(), LogcatLogger())
@@ -159,16 +152,71 @@ class YMusicApplication : Application() {
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
         val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath(), logger = rootLogger)
         val settings = PrefsSettingsStore.open(this)
-        installSentryDeviceId(anonymousDeviceId(settings))
+        val deviceId = settings.anonymousDeviceId()
+        // Crash reporting is consent-gated and LIVE: init runs once (crash handlers install and
+        // stay), but nothing leaves the process unless the settings toggle says yes — default
+        // off, so nothing is ever sent before the user opted in.
+        if (BuildConfig.SENTRY_DSN.isNotEmpty()) {
+            bindCrashReporting(appScope, settings.flow(AppSettings.crashReports)) {
+                Sentry.init {
+                    it.applyYMusicTelemetry()
+                    it.dsn = BuildConfig.SENTRY_DSN
+                    // The commit in the release traces an event to git history (no source upload).
+                    it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
+                    it.environment = if (BuildConfig.DEBUG) "debug" else "production"
+                }
+                installSentryDeviceId(deviceId)
+            }
+        }
+
+        // The one client of the YMusic service; null when this build has no service url. Its own
+        // client instance carries the API cookie jar (the activity watermark survives restarts) —
+        // the engine client stays jar-less on purpose, the engine JS owns YouTube cookies.
+        val api = BuildConfig.REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
+            HttpApiService(
+                client = http.engine.newBuilder().apply {
+                    cookieJar = PersistentCookieJar(File(filesDir, "api-cookies.json").toOkioPath(), FileSystem.SYSTEM)
+                }.build(),
+                os = "android",
+                osVersion = android.os.Build.VERSION.RELEASE ?: "",
+                appVersionCode = BuildConfig.VERSION_CODE,
+                deviceId = deviceId,
+                baseUrl = baseUrl,
+                now = { System.currentTimeMillis() },
+            )
+        }
+        // Flags, the newest JS bundle revisions, and update availability. Started here so the first
+        // fetch overlaps the rest of startup; nothing below waits on it, and both JS seams read
+        // whatever it holds when they are asked (the cached body on a cold start offline).
+        val remoteConfig = RemoteConfig(
+            api = api,
+            cacheFile = File(filesDir, "remote-config.json").toOkioPath(),
+            fileSystem = FileSystem.SYSTEM,
+            scope = appScope,
+            now = { System.currentTimeMillis() },
+            log = rootLogger.fork("remote-config"),
+        ).also { it.checkUpdate() } // app open is itself a hotpoint
+        // Anonymous usage stats — held by SharedServices so the graph (and any screen) can
+        // record events. The "Send anonymous stats" answer is read per event, so the Settings
+        // switch applies live, and a disabled gate costs nothing.
+        val stats = StatUsage(
+            api = api,
+            enabled = { settings.flow(AppSettings.stats).value },
+            queueFile = File(filesDir, "stat-queue.json").toOkioPath(),
+            fileSystem = FileSystem.SYSTEM,
+            scope = scope,
+            now = { System.currentTimeMillis() },
+            log = rootLogger.fork("stats"),
+        ).also { it.onAppStart() }
         // First launch decides the app language (device if supported, else English) and persists
         // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
         ensureAppLanguage(settings)
-        // The engine bundle: asset embed (no compiled-in constant) + file cache + remote config
-        // (a config service comes later — fetchConfig answers null until then). The manager boots
-        // cached-or-embed and runs the periodic update check itself.
+        // The engine bundle: asset embed (no compiled-in constant) + file cache + the revision the
+        // config service publishes. The manager boots cached-or-embed and runs the periodic update
+        // check itself.
         val engineSource = DefaultJsSourceProvider(
             client = http.engine,
-            config = { null },
+            config = { remoteConfig.getConfig().engineJs?.let { it.url to it.version } },
             embedVersion = BuildConfig.ENGINE_JS_VERSION,
             embedSource = { assets.open("engine_ymusic.js").readBytes().decodeToString() },
             fileSystem = FileSystem.SYSTEM,
@@ -200,7 +248,7 @@ class YMusicApplication : Application() {
         // service will define the numbering when it exists.
         val webViewSource = DefaultJsSourceProvider(
             client = http.engine,
-            config = { null },
+            config = { remoteConfig.getConfig().wvJs?.let { it.url to it.version } },
             embedVersion = 0L,
             embedSource = { assets.open("webview_ymusic.js").readBytes().decodeToString() },
             fileSystem = FileSystem.SYSTEM,
@@ -258,7 +306,7 @@ class YMusicApplication : Application() {
             memoryCacheBytes = defaultMemoryCacheBudget(this),
         ).also { builtImageLoader = it }
 
-        return SharedServices(http, cookies, settings, engines, mediaStore, webViewJs, imageLoader)
+        return SharedServices(http, cookies, settings, engines, mediaStore, webViewJs, imageLoader, stats)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -435,6 +483,7 @@ class YMusicApplication : Application() {
             shared.engines,
             player,
             logger = rootLogger,
+            stats = shared.stats,
             mediaStore = shared.mediaStore,
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
@@ -557,18 +606,6 @@ class YMusicApplication : Application() {
             level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> loader.trimMemoryCache(0.5f)
         }
     }
-}
-
-/** The stable anonymous crash-reporting id: persisted on first launch (seeded from ANDROID_ID —
- *  per app-signing-key + device, no PII — falling back to a random UUID) and reused forever. */
-private suspend fun YMusicApplication.anonymousDeviceId(settings: io.ymusic.settings.SettingsStore): String {
-    val saved = settings.flow(AppSettings.deviceId).value
-    if (saved.isNotEmpty()) return saved
-    val seeded = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-        ?.takeIf { it.isNotEmpty() }
-        ?: java.util.UUID.randomUUID().toString()
-    settings.put(AppSettings.deviceId, seeded)
-    return seeded
 }
 
 /** Cadence of the webview-js remote-update check (a saved copy applies at the next boot). */

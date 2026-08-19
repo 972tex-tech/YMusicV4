@@ -45,6 +45,8 @@ kotlin {
                 api(project(":media-scanner"))
                 api(project(":image-loader"))
                 api(project(":settings"))
+                api(project(":remote-config")) // StatUsage rides AppGraph
+
                 api(project(":kmpFfmpeg"))
                 api(project(":download"))
                 implementation(compose.runtime)
@@ -74,6 +76,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(Libs.Kotlinx.coroutinesTest)
+                implementation(project(":kmpHttp:testing")) // InMemoryCookieJar for the faked client
                 @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
                 implementation(compose.uiTest)
                 implementation(compose.desktop.currentOs)

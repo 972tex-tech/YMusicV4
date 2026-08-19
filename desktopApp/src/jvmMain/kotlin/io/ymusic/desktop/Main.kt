@@ -69,12 +69,18 @@ import io.ymusic.player.WebViewPlayerContext
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
+import io.ymusic.remoteconfig.HttpApiService
+import io.ymusic.remoteconfig.PersistentCookieJar
+import io.ymusic.remoteconfig.RemoteConfig
+import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.FileSettingsStore
+import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
+import io.ymusic.telemetry.bindCrashReporting
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.sendSentryFeedback
@@ -109,6 +115,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -147,17 +154,27 @@ fun main() {
     // decorations and the colour the frame wears before Compose has drawn a thing.
     val darkChrome = settings.flow(AppSettings.theme).value != "light"
     applyWindowChrome(darkChrome)
-    // Crash reporting starts only once the user has been asked and said yes. An un-completed setup
-    // is therefore silent by construction, not by a default that could drift.
-    val reportCrashes = settings.flow(AppSettings.crashReports).value &&
-        settings.flow(AppSettings.setupCompleted).value
-    if (SENTRY_DSN.isNotEmpty() && reportCrashes) {
-        Sentry.init {
-            it.applyYMusicTelemetry()
-            it.dsn = SENTRY_DSN
-            // The commit in the release traces an event to git history (no source upload).
-            it.release = SENTRY_RELEASE
-            it.environment = if (DEBUG_BUILD) "debug" else "production"
+    // Crash reporting is consent-gated and LIVE: init runs once (crash handlers install and
+    // stay), but nothing leaves the process unless the user's answer — asked during setup,
+    // changeable in Settings — says yes. An un-completed setup is silent by construction, and
+    // saying yes during setup takes effect in the same session, no restart.
+    if (SENTRY_DSN.isNotEmpty()) {
+        val telemetryDeviceId = kotlinx.coroutines.runBlocking { settings.anonymousDeviceId() }
+        bindCrashReporting(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            consent = combine(
+                settings.flow(AppSettings.crashReports),
+                settings.flow(AppSettings.setupCompleted),
+            ) { consent, setupDone -> consent && setupDone },
+        ) {
+            Sentry.init {
+                it.applyYMusicTelemetry()
+                it.dsn = SENTRY_DSN
+                // The commit in the release traces an event to git history (no source upload).
+                it.release = SENTRY_RELEASE
+                it.environment = if (DEBUG_BUILD) "debug" else "production"
+            }
+            installSentryDeviceId(telemetryDeviceId)
         }
     }
     // Both video engines (JCEF WebView + VLCJ local) now render off-screen and paint through a plain
@@ -324,19 +341,54 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
     // One client stack, one disk cache: the engine (no cookie jar — the scraping JS owns cookie
     // policy) and the player's embed fetch (platform cookies) share it.
     val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath(), logger = rootLogger)
-    // Stable anonymous crash-reporting id: the persisted copy wins; a fresh (or wiped) install
-    // re-derives the same machine-seeded hash, so the id survives an app-data clear.
-    val deviceId = settings.flow(AppSettings.deviceId).value.ifEmpty {
-        (machineSeededDeviceId(rootLogger.fork("telemetry")) ?: java.util.UUID.randomUUID().toString())
-            .also { settings.put(AppSettings.deviceId, it) }
+    val deviceId = settings.anonymousDeviceId()
+
+    // The one client of the YMusic service; null when this build has no service url. Its own
+    // client instance carries the API cookie jar (the activity watermark survives restarts) —
+    // the engine client stays jar-less on purpose, the engine JS owns YouTube cookies.
+    val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
+        HttpApiService(
+            client = http.engine.newBuilder().apply {
+                cookieJar = PersistentCookieJar(File(dataDir, "api-cookies.json").absolutePath.toPath(), FileSystem.SYSTEM)
+            }.build(),
+            os = desktopOsKey(),
+            osVersion = System.getProperty("os.version") ?: "",
+            appVersionCode = APP_VERSION_CODE,
+            deviceId = deviceId,
+            baseUrl = baseUrl,
+            now = { System.currentTimeMillis() },
+        )
     }
-    installSentryDeviceId(deviceId)
+    // Flags, the newest JS bundle revisions, and update availability. Started here so the first
+    // fetch overlaps the rest of startup; nothing below waits on it, and both JS seams read
+    // whatever it holds at the moment they are asked (cached body on a cold start offline).
+    remoteConfig = RemoteConfig(
+        api = api,
+        cacheFile = File(dataDir, "remote-config.json").absolutePath.toPath(),
+        fileSystem = FileSystem.SYSTEM,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        now = { System.currentTimeMillis() },
+        log = rootLogger.fork("remote-config"),
+    ).also { it.checkUpdate() } // app open is itself a hotpoint
+    // Anonymous usage stats — held by the graph so any screen can record events. The "Send
+    // anonymous stats" answer is read per event, so the Settings switch applies live, and a
+    // disabled gate costs nothing.
+    val stats = StatUsage(
+        api = api,
+        enabled = { settings.flow(AppSettings.stats).value },
+        queueFile = File(dataDir, "stat-queue.json").absolutePath.toPath(),
+        fileSystem = FileSystem.SYSTEM,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        now = { System.currentTimeMillis() },
+        log = rootLogger.fork("stats"),
+    ).also { it.onAppStart() }
+
     // The engine bundle: jar-resource embed (no compiled-in constant) + file cache + remote
     // config (fetchConfig answers null until a config service exists). The manager boots
     // cached-or-embed and runs the periodic update check itself.
     val engineSource = DefaultJsSourceProvider(
         client = http.engine,
-        config = { null },
+        config = { remoteConfig?.getConfig()?.engineJs?.let { it.url to it.version } },
         embedVersion = ENGINE_JS_VERSION,
         embedSource = { readAppResource("engine_ymusic.js") },
         fileSystem = FileSystem.SYSTEM,
@@ -362,12 +414,12 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
     engines.start()
 
     // The injected player script through the same seam. Never swapped in a RUNNING player: the
-    // cached remote copy (when a config service exists) wins at player build; else the dev dist
-    // re-read keeps "Reload player" picking up a fresh npm build. Version 0 until the config
-    // service defines webview-js numbering.
+    // cached remote copy wins at player build; else the dev dist re-read keeps "Reload player"
+    // picking up a fresh npm build. The embed is version 0, so any revision the service publishes
+    // supersedes it.
     val webViewSource = DefaultJsSourceProvider(
         client = http.engine,
-        config = { null },
+        config = { remoteConfig?.getConfig()?.wvJs?.let { it.url to it.version } },
         embedVersion = 0L,
         embedSource = { readWebViewJs() },
         fileSystem = FileSystem.SYSTEM,
@@ -599,6 +651,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         },
         downloads = downloadService,
         updates = desktopUpdates,
+        stats = stats,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
     ) { modifier ->
@@ -846,6 +899,26 @@ private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
         dialog.file?.let { File(dialog.directory, it) }
     } finally {
         if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
+    }
+}
+
+/**
+ * The live remote config, once [buildGraph] has built it.
+ *
+ * Held at file scope because the two JS source providers are constructed with a lambda that must
+ * read whatever the CURRENT config says at the moment it is asked, not a snapshot taken while the
+ * graph was still being assembled.
+ */
+internal var remoteConfig: RemoteConfig? = null
+    private set
+
+/** The coarse platform name the config service keys releases by. */
+private fun desktopOsKey(): String {
+    val os = System.getProperty("os.name").lowercase()
+    return when {
+        os.contains("mac") || os.contains("darwin") -> "macos"
+        os.contains("win") -> "windows"
+        else -> "linux"
     }
 }
 

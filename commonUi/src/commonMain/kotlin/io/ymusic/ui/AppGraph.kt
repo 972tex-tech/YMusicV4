@@ -6,6 +6,7 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.player.Player
+import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.InMemorySettingsStore
 import io.ymusic.settings.SettingsStore
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -105,6 +106,12 @@ class AppGraph(
      * has none — the update prompt and its setting then never appear.
      */
     val updates: AppUpdates? = null,
+    /**
+     * Anonymous usage stats — `stats?.record("play")` from any screen. The consent gate and the
+     * no-service case are its own business ([StatUsage.record] returns before doing any work);
+     * null only in shells and tests that wire no recorder at all.
+     */
+    val stats: StatUsage? = null,
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {

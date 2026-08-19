@@ -57,3 +57,8 @@ fun Project.updateManifestUrl(): String =
  *  same key as releases; empty means the first run asks the user to install ffmpeg instead. */
 fun Project.toolsManifestUrl(): String =
     System.getenv("YMUSIC_TOOLS_MANIFEST_URL") ?: localProp("tools.manifest.url") ?: ""
+
+/** Base url of the remote config service (`remote.config.url`), e.g. https://cfg.ymusic.io. Empty
+ *  leaves the app on its compiled-in defaults and makes no request. */
+fun Project.remoteConfigUrl(): String =
+    System.getenv("YMUSIC_REMOTE_CONFIG_URL") ?: localProp("remote.config.url") ?: ""
