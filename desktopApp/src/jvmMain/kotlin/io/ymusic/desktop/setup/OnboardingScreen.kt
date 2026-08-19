@@ -55,8 +55,13 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.ui.DesignColors
 import io.ymusic.ui.DesignSpacing
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.settings_crash_reports
+import io.ymusic.ui.resources.settings_crash_reports_hint
+import io.ymusic.ui.resources.settings_stats
+import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.ymusic_logo
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The first-run screen: two steps, no way past the first until the app can actually do anything.
@@ -71,6 +76,8 @@ fun OnboardingScreen(
     state: SetupState,
     crashReports: Boolean,
     onCrashReportsChange: (Boolean) -> Unit,
+    stats: Boolean,
+    onStatsChange: (Boolean) -> Unit,
     onRetryEngine: () -> Unit,
     onRetryMediaTools: () -> Unit,
     onRecheckVlc: () -> Unit,
@@ -95,7 +102,7 @@ fun OnboardingScreen(
                 onRecheckVlc, onChooseFolder, onOpenUrl,
             ) { step = 2 }
         } else {
-            ConsentStep(crashReports, onCrashReportsChange, dark, onDarkChange, onOpenUrl, onFinish)
+            ConsentStep(crashReports, onCrashReportsChange, stats, onStatsChange, dark, onDarkChange, onOpenUrl, onFinish)
         }
     }
 }
@@ -176,6 +183,8 @@ private fun gateNote(state: SetupState): String {
 private fun ConsentStep(
     crashReports: Boolean,
     onCrashReportsChange: (Boolean) -> Unit,
+    stats: Boolean,
+    onStatsChange: (Boolean) -> Unit,
     dark: Boolean,
     onDarkChange: (Boolean) -> Unit,
     onOpenUrl: (String) -> Unit,
@@ -191,8 +200,14 @@ private fun ConsentStep(
             ConsentRow(
                 checked = crashReports,
                 onCheckedChange = onCrashReportsChange,
-                name = "Send anonymous crash reports",
-                detail = "Stack traces only — no listening history, no account data, no file names.",
+                name = stringResource(Res.string.settings_crash_reports),
+                detail = stringResource(Res.string.settings_crash_reports_hint),
+            )
+            ConsentRow(
+                checked = stats,
+                onCheckedChange = onStatsChange,
+                name = stringResource(Res.string.settings_stats),
+                detail = stringResource(Res.string.settings_stats_hint),
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(DesignColors.Divider))
             Row(

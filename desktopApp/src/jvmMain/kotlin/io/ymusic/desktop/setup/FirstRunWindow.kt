@@ -76,6 +76,7 @@ fun ApplicationScope.FirstRunWindow(
     val state by coordinator.state.collectAsState()
     // Answered before it is stored: nothing is sent until Continue commits the whole step.
     val crashReports = remember { androidx.compose.runtime.mutableStateOf(true) }
+    val stats = remember { androidx.compose.runtime.mutableStateOf(true) }
     // Same for the appearance — the switch drives this window immediately, and Continue is what
     // turns it into the app's theme setting. Starts from whatever the setting already says, which
     // on a fresh install is its dark default.
@@ -100,6 +101,8 @@ fun ApplicationScope.FirstRunWindow(
                 state = state,
                 crashReports = crashReports.value,
                 onCrashReportsChange = { crashReports.value = it },
+                stats = stats.value,
+                onStatsChange = { stats.value = it },
                 onRetryEngine = coordinator::retryEngine,
                 onRetryMediaTools = coordinator::retryMediaTools,
                 onRecheckVlc = coordinator::recheckVlc,
@@ -113,6 +116,7 @@ fun ApplicationScope.FirstRunWindow(
                         // Library screen, which can show it, not to a window that is closing.
                         state.musicFolder?.let { settings.put(AppSettings.pendingLibraryFolder, it) }
                         settings.put(AppSettings.crashReports, crashReports.value)
+                        settings.put(AppSettings.stats, stats.value)
                         settings.put(AppSettings.theme, if (dark.value) "dark" else "light")
                         settings.put(AppSettings.setupCompleted, true)
                         onFinished()

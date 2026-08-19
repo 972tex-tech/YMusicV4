@@ -20,6 +20,8 @@ class OnboardingSnapshotTest {
                     state = state,
                     crashReports = true,
                     onCrashReportsChange = {},
+                    stats = true,
+                    onStatsChange = {},
                     onRetryEngine = {},
                     onRetryMediaTools = {},
                     onRecheckVlc = {},
