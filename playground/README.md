@@ -1,51 +1,20 @@
 # `:playground`
 
-Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) — read this before working inside the module.
+Compose Multiplatform **MSE YouTube** lab: engine-js `DynamicEnginePlayer` + C leftover/ffmpeg.
+One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a native hole
+(SwingPanel / UIKitView / TextureView); Compose chrome does not recompose each frame.
 
-- **What it is** — a Compose Multiplatform demo app to hand-check `:player`.
-  - Shared `PlayerScreen` (open file → play/pause/seek/±10s/volume/speed, an **Audio-only ↔ Video toggle**, and a
-    `PlayerSurface` video area that shows the picture in video mode) in `commonMain`, reused across targets.
-  - `PlayerSurface` is `expect`/`actual`; the Desktop `actual` paints `LocalPlayer.localVideoSurface()`'s off-screen
-    frames as a Compose `Image` (no `SwingPanel` — VLCJ renders off-screen, like the JCEF WebView).
+## Run
 
-- **Run (Desktop-only today)** — currently wired for **Desktop (JVM)** only.
-  - The runnable check on this host: `./gradlew :playground:run` opens a window and plays video+audio via the VLCJ
-    backend (needs VLC/libVLC installed; found at `/Applications/VLC.app` here).
-  - Note: Compose MP has **no native-macOS UI target** — its "desktop" is always the JVM, so this exercises VLCJ, not
-    AVFoundation; the native Apple backend is checked by the SwiftUI spike below.
+- **Desktop JVM** — `./gradlew :playground:run`
+- **iOS** — `MainViewController()` in `iosMain` (framework `MsePlayground`); host app is local, not in git
+- **Android** — `./gradlew :playground-android:installDebug` (needs an emulator/device and
+  `ffmpeg-build/out/android-<abi>`)
 
-- **Compose MP version wiring** — Compose MP `1.11.1` (compiler = Kotlin-bundled `plugin.compose`).
-  - The `org.jetbrains.compose` plugin version comes from the **root** `build.gradle.kts` plugins block
-    (`Versions.composeMultiplatform`) — do NOT also add it to the buildSrc classpath (double-declaration →
-    plugin-resolution conflict).
+## Layout
 
-- **Follow-ups** — Android/iOS player-screen apps are a straightforward follow-up (each needs its own app module /
-  Xcode entry).
-
-- **macOS spike: `spikes/macos-player-lab/`** — a native **macOS** check exists as a spike: a **SwiftUI** app over
-  `:player`'s exported `Player.framework` (macos `binaries.framework`, Swift interop in `appleMain/AppleInterop.kt`:
-  `avPlayer()` → `AVPlayerLayer`, `MediaEngine.currentStatus()`/`currentProgress()`, `createYtWebViewPlayer()`).
-  - A `TabView` drives BOTH Apple engines host-native — **no Compose, no iOS simulator**:
-    - **Local** = the AVFoundation `LocalPlayer` (`AVPlayerLayer` video + transport + audio-only)
-    - **YouTube** = the WKWebView `WebViewPlayer` (video-id → load → transport, the WKWebView shown via
-      `NSViewRepresentable` over the `NSView` container the player injects into).
-  - This is the way to hand-check the WKWebView engine on the Mac without an iOS simulator (the macOS target's main
-    job now that the desktop product is the JVM playground).
-  - `spikes/macos-player-lab/build.sh` links via `swiftc`, builds the `webview-js` bundle if missing and copies it
-    into the `.app` Resources (read via `Bundle.main`), bundles a `.app` (embeds the framework,
-    `@executable_path/../Frameworks` rpath, ad-hoc signed), and `open`s it.
-
-- **iOS spike: `spikes/ios-player-lab/`** — a sibling **iOS** spike exists — the same two-tab SwiftUI app (UIKit
-  `UIViewRepresentable` instead of `NSViewRepresentable`) over the **iOS** `Player.framework`, run in the
-  **iOS Simulator**.
-  - It's the runnable iOS demonstration on an Intel Mac: the only iOS target an x86_64 host builds is `iosX64`
-    (Compose MP 1.11.1 dropped all x86_64-Apple targets, so the shared `:commonUi` Compose UI needs Apple Silicon,
-    but `:player` has no Compose dep and still ships `iosX64`).
-  - `build.sh` links `linkDebugFrameworkIosX64`, `swiftc`-compiles for `x86_64-apple-ios*-simulator`, assembles a flat
-    `.app` (`@executable_path/Frameworks`), and `simctl` boot/install/launches it — the `[ios-lab]` stdout lines
-    (streamed by `simctl launch --console-pty`) show playback advancing.
-  - Verified: the AVFoundation `LocalPlayer` plays a bundled clip (`state=Ready`, `video=320x180`, position
-    0→20000→`Ended`).
-  - Swift gotcha: the exported facade protocol `Player` (swift_name `Player`) collides with the framework module name
-    `Player`, so `Player.Progress` mis-binds — read `Progress` fields off the inferred `currentProgress()` value
-    instead of naming the type.
+- `commonMain` — `YtMsePlayerScreen`, `MseNativeVideo` expect, session expect
+- `jvmMain` — SwingPanel blit (`contains() = false` so clicks stay in Compose)
+- `iosMain` — UIKitView + UIImageView (`isInteractive = false`)
+- `androidMain` — TextureView + ANativeWindow (`setVideoSurface`)
+- `:playground-android` — thin AGP application shell (AGP 9 cannot combine `application` with KMP)

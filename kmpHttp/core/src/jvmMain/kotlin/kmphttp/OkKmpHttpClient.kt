@@ -146,6 +146,12 @@ class OkKmpHttpClient : KmpHttpClient {
             this.okHttpBuilder = copy.okHttp.newBuilder()
         }
 
+        /** Bypass the JVM/macOS system proxy (Proxyman, mitmproxy, …). */
+        fun direct(): Builder {
+            okHttpBuilder.proxy(java.net.Proxy.NO_PROXY)
+            return this
+        }
+
         override fun build(): OkKmpHttpClient {
             return OkKmpHttpClient(this)
         }
