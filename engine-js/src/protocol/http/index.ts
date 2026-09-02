@@ -5,9 +5,10 @@
 // stage. Full surface: the ambient contract in src/types.d.ts (HttpRequest, HttpRequestBuilder,
 // HttpCall, HttpResponse) — the implementations here are checked against it. Wire shape: ./wire.ts
 // (server side: HttpProtocol.kt). Layout: headers.ts (validation + the header view), builder.ts,
-// call.ts (the exchange), response.ts (+ body streaming/parse); host-classified errors are decoded
-// by hostError in ../command. Bundled+minified into the :engine-js single bundle (src/index.ts); never shipped as
-// source.
+// call.ts (the exchange), response.ts (+ body streaming/parse). WHATWG `fetch` / `XMLHttpRequest`
+// live in logic/yt (they cook the YouTube cookie policy onto the builder). Host-classified errors
+// are decoded by hostError in ../command.
+// Bundled+minified into the :engine-js single bundle (src/index.ts); never shipped as source.
 
 import { HttpRequestBuilderImpl } from "./builder";
 

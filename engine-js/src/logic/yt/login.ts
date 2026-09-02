@@ -14,7 +14,7 @@ import { onAccept } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { Cookies } from "../../protocol/cookie";
 import { Cache } from "../../protocol/cache";
-import { getSession } from "./session";
+import { getSession, invalidateSession } from "./session";
 import { innertubeJson } from "./innertube";
 import { setLoginInfoWipedHandler } from "./cookies";
 import { asString, get, isObj, textOf, thumbsOf, walk } from "./scan";
@@ -147,6 +147,7 @@ setLoginInfoWipedHandler(async () => {
   await clearAuthCookies(YT);
   await clearAuthCookies(YT_MOBILE);
   await clearCachedAccount();
+  await invalidateSession();
 });
 
 async function clearAuthCookies(origin: string): Promise<void> {
@@ -204,6 +205,7 @@ onAccept(
     const args = await src.readJsonObject();
     if (!(await isSignedIn())) {
       await clearCachedAccount();
+      await invalidateSession();
       await writeJson(out, { "signedIn": false });
       return;
     }
@@ -238,19 +240,21 @@ onAccept(
     await clearAuthCookies(YT);
     await clearAuthCookies(YT_MOBILE);
     await clearCachedAccount();
+    await invalidateSession();
     await writeJson(out, { "signedIn": false });
   }),
 );
 
-// Re-scrape the session under the CURRENT cookie identity -> {"ok": true}. Called after a sign-in or
-// sign-out so the authenticated headers pick up (or drop) the account's SESSION_INDEX / delegated id
-// — the cached anonymous session wouldn't carry them otherwise. A homepage GET, safe once the gate
-// has passed (never an authenticated call mid sign-in).
+// Drop the cached session and re-scrape under the CURRENT cookie identity -> {"ok": true}. Called
+// after sign-in, sign-out, or account switch so SESSION_INDEX / delegated id match the jar — a
+// failed scrape must not fall back to the previous account. A homepage GET, safe once the gate has
+// passed (never an authenticated call mid sign-in).
 onAccept(
   "yt/session/refresh",
   commandHandler(async (src, out) => {
     await src.readJsonObject();
-    await getSession(true);
+    await invalidateSession();
+    await getSession(0);
     await writeJson(out, { "ok": true });
   }),
 );

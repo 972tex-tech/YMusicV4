@@ -28,9 +28,10 @@ function fmt(args: unknown[]): string {
   return s;
 }
 
+const nConsoleLog = __consoleLog;
 function emit(level: number): (...args: unknown[]) => void {
   return function (...args: unknown[]): void {
-    __consoleLog(level, fmt(args));
+    nConsoleLog(level, fmt(args));
   };
 }
 

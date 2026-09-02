@@ -14,5 +14,6 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.raw.js"]
 }

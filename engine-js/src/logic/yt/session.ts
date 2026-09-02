@@ -1,18 +1,18 @@
 // InnerTube session bootstrap. The WEB client's clientVersion / visitorData / signatureTimestamp go
 // stale, so we DON'T hardcode them (docs/innertube/auth.md): we scrape them from the youtube.com
-// homepage's ytcfg the way the legacy app did, and cache them (in-memory + the host Cache) with a
-// 6h freshness window — never deleted for age; a held session answers immediately at any age,
-// revalidating in the background. The homepage fetch rides the cooked Cookie header (cookies.ts)
-// and its Set-Cookie
-// replies (VISITOR_INFO1_LIVE / YSC / consent) land back in the app's cookie store — required for a
-// normal feed even logged-out. On a 403 the caller refreshes the session once and retries (params
-// rotate server-side).
+// homepage's ytcfg the way the legacy app did, and cache them (in-memory + the host Cache).
+// getSession(maxAge) re-scrapes only when the held record is older than maxAge (0 = always).
+// A failed scrape falls back to the last known session unless the cache was cleared. The homepage
+// fetch rides the cooked Cookie header (cookies.ts) and its Set-Cookie replies (VISITOR_INFO1_LIVE
+// / YSC / consent) land back in the app's cookie store — required for a normal feed even
+// logged-out. On a 403 the caller passes maxAge 0 and retries (params rotate server-side).
 
 import { jsLogger } from "../../protocol/logger";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { Cache } from "../../protocol/cache";
 import { executeWithCookies, pulledAppLanguage } from "./cookies";
+import { parsePlayerConfig } from "./playerConfig";
 import { anchoredExec, asString, get } from "./scan";
 
 const ORIGIN = "https://www.youtube.com";
@@ -31,10 +31,9 @@ const CACHE_KEY = "web";
 // consumeScrapedHomeData). An EMPTY entry marks a page that carried no payload: present-but-empty
 // reads differently from consumed, so no re-scrape gets spent on it.
 const HOMEPAGE_KEY = "homepage";
-// The FRESHNESS window, not a lifetime: past it the next ask kicks a BACKGROUND re-scrape while
-// the held session keeps answering (stale-while-revalidate) — the record itself is never deleted
-// for age and keeps serving whenever a re-scrape fails.
-const FRESH_MS = 6 * 60 * 60 * 1000;
+const PLAYER_CONFIG_KEY = "player-config";
+/** Default maxAge for feed/API calls: re-scrape when the held session is older than 6h. */
+export const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 /** The scraped WEB-client session (structure — dotted in-bundle; quoted only when it crosses to cache/wire). */
 export interface YtSession {
@@ -61,42 +60,26 @@ export interface YtSession {
 }
 
 let inMemory: YtSession | undefined;
+let inMemoryPlayer: Record<string, unknown> | undefined;
 // The ONE running scrape — getSession is called from every surface, and the homepage scrape is
 // heavy enough that a burst of concurrent scrapes reads as bot traffic (BotGuard/captcha bait):
 // concurrent callers JOIN the in-flight scrape instead of starting their own.
 let inFlight: Promise<YtSession> | undefined;
 
-function fresh(s: YtSession | undefined): s is YtSession {
-  return s != null && Date.now() - s.fetchedAt < FRESH_MS;
-}
-
 /**
- * The current session. `refresh` forces a re-scrape and waits for it (the 403 path, a locale
- * change), stale-tolerant: a failed scrape falls back to the last known session — expired params
- * usually still serve — and only throws when there has never been one. Without `refresh`, ANY held
- * session answers IMMEDIATELY (in-memory → host Cache), no matter its age — consumers should never
- * wait on freshness — and one past the window kicks the re-scrape in the BACKGROUND
- * (stale-while-revalidate); only a caller with no session at all waits for the scrape. The scrape
- * is SINGLE-FLIGHT either way: concurrent callers and the background revalidation all share one.
- * The Cache is best-effort — absent (no store wired) or failing, we degrade to a live scrape,
- * never an error.
+ * The current session. Re-scrapes only when there is no held record or `now - fetchedAt` exceeds
+ * `maxAge` (0 = always scrape). A failed scrape falls back to the last known session — expired
+ * params usually still serve — and only throws when there has never been one. The scrape is
+ * SINGLE-FLIGHT: concurrent callers share one. The Cache is best-effort — absent (no store wired)
+ * or failing, we degrade to a live scrape, never an error.
  */
-export async function getSession(refresh: boolean): Promise<YtSession> {
-  if (!refresh) {
-    if (inMemory == null) {
-      const cached = await readCache();
-      if (cached != null) inMemory = cached;
-    }
-    const held = inMemory;
-    if (held != null) {
-      if (!fresh(held)) {
-        scrapeInFlight().catch((e) => {
-          console.log("yt session revalidation failed, keeping the stale session: " + errText(e));
-        });
-      }
-      return held;
-    }
+export async function getSession(maxAge: number): Promise<YtSession> {
+  if (inMemory == null) {
+    const cached = await readCache();
+    if (cached != null) inMemory = cached;
   }
+  const held = inMemory;
+  if (held != null && Date.now() - held.fetchedAt <= maxAge) return held;
 
   try {
     return await scrapeInFlight();
@@ -111,8 +94,7 @@ export async function getSession(refresh: boolean): Promise<YtSession> {
   }
 }
 
-/** The one running scrape, started if none is — every waiter and the background revalidation
- *  share it. */
+/** The one running scrape, started if none is — concurrent waiters share it. */
 function scrapeInFlight(): Promise<YtSession> {
   if (inFlight == null) {
     inFlight = (async () => {
@@ -140,7 +122,7 @@ export async function effectiveLocale(): Promise<{ hl: string; gl: string }> {
   let gl: string | undefined;
   let s: YtSession | undefined;
   try {
-    s = await getSession(false);
+    s = await getSession(Infinity);
   } catch (e) {
     s = undefined;
   }
@@ -150,7 +132,7 @@ export async function effectiveLocale(): Promise<{ hl: string; gl: string }> {
 }
 
 /**
- * Temporarily stamp a fresh pick onto the cached session while [getSession]`(true)` re-scrapes —
+ * Temporarily stamp a fresh pick onto the cached session while [getSession]`(0)` re-scrapes —
  * concurrent requests speak the new locale before the server's echo confirms it. Blank halves
  * ("automatic") keep the old value until the refresh answers with the real automatic one.
  */
@@ -169,10 +151,12 @@ export async function overrideSessionLocale(hl: string, gl: string): Promise<voi
  */
 export async function invalidateSession(): Promise<void> {
   inMemory = undefined;
+  inMemoryPlayer = undefined;
   try {
     await Cache.delete(CACHE_SCOPE, CACHE_KEY);
     // The kept homepage answered the old identity too.
     await Cache.delete(CACHE_SCOPE, HOMEPAGE_KEY);
+    await Cache.delete(CACHE_SCOPE, PLAYER_CONFIG_KEY);
   } catch (e) {
     console.log("yt session cache clear skipped: " + errText(e));
   }
@@ -298,6 +282,8 @@ async function scrapeSession(): Promise<YtSession> {
     console.log("yt homepage cache write skipped: " + errText(e));
   }
 
+  await storePlayerConfig(html);
+
   return {
     clientName: firstMatch(html, "INNERTUBE_CONTEXT_CLIENT_NAME", RE_CLIENT_NAME) ?? "1",
     clientVersion: clientVersion,
@@ -405,4 +391,36 @@ async function writeCache(s: YtSession): Promise<void> {
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+async function storePlayerConfig(html: string): Promise<void> {
+  const cfg = parsePlayerConfig(html);
+  if (cfg == null) {
+    console.log("yt session: homepage has no player config");
+    return;
+  }
+  inMemoryPlayer = cfg;
+  try {
+    await Cache.setJson(CACHE_SCOPE, PLAYER_CONFIG_KEY, cfg);
+  } catch (e) {
+    console.log("yt player config cache write skipped: " + errText(e));
+  }
+}
+
+/** Memory then host Cache. Null when this session never saw a homepage with BotGuard/jsUrl. */
+export async function peekPlayerConfig(): Promise<Record<string, unknown> | undefined> {
+  if (inMemoryPlayer != null) return inMemoryPlayer;
+  try {
+    const raw = await Cache.getJson(CACHE_SCOPE, PLAYER_CONFIG_KEY);
+    if (raw != null && typeof raw === "object") {
+      const rec = raw as Record<string, unknown>;
+      if (typeof rec["jsUrl"] === "string" && rec["bgChallenge"] != null) {
+        inMemoryPlayer = rec;
+        return rec;
+      }
+    }
+  } catch (e) {
+    console.log("yt player config cache read skipped: " + errText(e));
+  }
+  return undefined;
 }

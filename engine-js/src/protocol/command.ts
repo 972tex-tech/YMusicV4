@@ -164,3 +164,12 @@ export async function callHost<T>(command: string, body: (pipe: Pipe) => Promise
     pipe.source.close();
   }
 }
+
+/** Player session → current main engine-js. `open("host/main/"+command)`; args/result on the pipe. */
+export function openMain(command: string): Pipe {
+  return open("host/main/" + command);
+}
+
+export async function callMain<T>(command: string, body: (pipe: Pipe) => Promise<T>): Promise<T> {
+  return callHost("host/main/" + command, body);
+}

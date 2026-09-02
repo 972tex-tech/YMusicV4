@@ -653,3 +653,11 @@ runProbe("test/rt/probe-svc", async () => {
     return "ERR:" + String((e as Error).message);
   }
 });
+
+runProbe("test/rt/prefix-main", async () => {
+  const io = open("host/main/echo-suffix");
+  const w = io.sink.writeUtf8("arg");
+  if (w) await w;
+  await io.sink.close();
+  return await io.source.readUtf8();
+});

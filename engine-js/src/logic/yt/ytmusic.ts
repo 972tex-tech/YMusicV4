@@ -6,7 +6,7 @@
 
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
-import { DESKTOP_UA, effectiveLocale, getSession } from "./session";
+import { DESKTOP_UA, SESSION_MAX_AGE_MS, effectiveLocale, getSession } from "./session";
 import type { YtSession } from "./session";
 import { executeWithCookies } from "./cookies";
 import { jsLogger } from "../../protocol/logger";
@@ -30,11 +30,11 @@ export async function musicJson(
   fields: Record<string, unknown>,
   log?: JsLogger,
 ): Promise<Record<string, unknown>> {
-  let session = await getSession(false);
+  let session = await getSession(SESSION_MAX_AGE_MS);
   let res = await post(endpoint, fields, session, log);
   if (res.status === 403) {
     res.ignoreResult();
-    session = await getSession(true); // rotate: re-scrape, retry once
+    session = await getSession(0); // rotate: re-scrape, retry once
     res = await post(endpoint, fields, session, log);
   }
   if (!res.ok) {

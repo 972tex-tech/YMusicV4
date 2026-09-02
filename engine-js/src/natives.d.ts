@@ -71,6 +71,34 @@ declare function __utf8Length(str: string, from: number, to: number): number;
 /** Log [msg] to the host (0 debug, 1 info, 2 warn, 3 error) — console.ts is the only caller. */
 declare function __consoleLog(level: number, msg: string): void;
 
+/** Wrap [impl] as a C function named [name] so Function.prototype.toString is V8 native. */
+declare function __nativeFn(name: string, impl?: Function, length?: number): Function;
+
+/** Native MSE session attached to this engine (sync C, not pipes). */
+declare function __mseReady(): boolean;
+declare function __mseCurrentTime(): number;
+declare function __mseSetCurrentTime(seconds: number): void;
+declare function __mseDuration(): number;
+declare function __mseSetDuration(seconds: number): void;
+declare function __msePaused(): boolean;
+declare function __mseReadyState(): number;
+declare function __msePlay(): void;
+declare function __msePause(): void;
+declare function __mseAppend(
+  audio: number,
+  bytes: Uint8Array,
+  tsOff: number,
+  winStart: number,
+  winEnd: number,
+): void;
+declare function __mseRemove(audio: number, start: number, end: number): void;
+declare function __mseAbort(audio: number): void;
+declare function __mseBuffered(audio: number): number[];
+declare function __mseReset(): void;
+
+declare function atob(data: string): string;
+declare function btoa(data: string): string;
+
 // ---- native streaming JSON encoder (quickjs_json.c) ----
 
 /** Start encoding [value] (JSON.stringify semantics — a cycle throws). */

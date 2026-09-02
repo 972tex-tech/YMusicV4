@@ -2,6 +2,9 @@
 // its onAccept(command, commandHandler(...)) handlers from here.
 import "./diagnostics";
 import "./yt/commands";
+import "./yt/fetch";
+import "./yt/xhr";
 import "./yt/musicCommands";
 import "./yt/login";
 import "./yt/embed";
+import "./player";

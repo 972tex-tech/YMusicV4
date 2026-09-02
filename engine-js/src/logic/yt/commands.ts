@@ -15,6 +15,7 @@ import {
   getSession,
   invalidateSession,
   overrideSessionLocale,
+  peekPlayerConfig,
 } from "./session";
 import { localeOptions } from "./locales";
 import { harvestCommand, recommendedPage } from "./recommended";
@@ -78,6 +79,24 @@ async function browsePage(fields: Record<string, unknown>, log?: JsLogger): Prom
 // later load — fresh or continuation — browses normally.
 let homeBootstrapUsed = false;
 
+const PLAYER_CONFIG_MAX_AGE_MS = 60 * 60 * 1000;
+
+onAccept(
+  "get_player_config",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const maxAge =
+      typeof args["maxAge"] === "number" && args["maxAge"] >= 0
+        ? (args["maxAge"] as number)
+        : PLAYER_CONFIG_MAX_AGE_MS;
+    await getSession(maxAge);
+    const cfg = await peekPlayerConfig();
+    if (cfg == null) throw JsEngineErrorImpl.parse("yt session: no player config in homepage");
+    const p = out.writeObjectAsJson(cfg);
+    if (p) await p;
+  }),
+);
+
 onAccept(
   "yt/home",
   commandHandler(async (src, out) => {
@@ -111,7 +130,7 @@ onAccept(
 async function bootstrapHomePage(): Promise<WireFeedPage | undefined> {
   let home = await consumeScrapedHomeData();
   if (!home.found) {
-    await getSession(true);
+    await getSession(0);
     home = await consumeScrapedHomeData();
   }
   return home.data == null ? undefined : collectPage(home.data);
@@ -494,7 +513,7 @@ onAccept(
     if (changed) {
       await overrideSessionLocale((await pulledAppLanguage()) ?? "", gl);
       try {
-        await getSession(true);
+        await getSession(0);
       } catch (e) {
         await invalidateSession();
       }

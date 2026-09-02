@@ -6,6 +6,7 @@
 # NOTHING is deployed yet, so every row below is `-` (free).
 # Ranges: E1xxxx :quickjs | E2xxxx :dynamic-engine + engine-js | E3xxxx :kmpHttp
 #         E4xxxx :kmpFfmpeg | E5xxxx :media-store / :media-scanner | E6xxxx :player | E7xxxx :download
+#         E8xxxx :mse
 
 E10001 - (example) kmpCommon CodedErrorTest fixture
 E12345 - (example) doc placeholder in AGENTS.md minting rule
@@ -25,6 +26,20 @@ E20050 - cache request has a missing/blank scope/key or a malformed head (dynami
 E20051 - cache store get/put/delete/list threw (dynamic-engine CacheProtocol)
 E20060 - settings request has a missing/invalid field or malformed head (dynamic-engine SettingsProtocol)
 E20061 - settings store get/put threw (dynamic-engine SettingsProtocol)
+E20070 - mse-player request has a missing/invalid field or malformed head (dynamic-engine MsePlayerProtocol)
+E20071 - MsePlayer threw while serving mse-player (dynamic-engine MsePlayerProtocol)
+E20072 - player/load missing videoId (engine-js logic/player.ts)
+E20073 - player/seek bad positionMs (engine-js logic/player.ts)
+E20074 - player/mintPo BotGuard VM or integrity-token mint failed (engine-js logic/player/pot.ts)
+E20075 - player/init could not fetch base.js (engine-js logic/player/boot.ts)
+E20076 - player/init yt.player.Application.create missing or threw (engine-js logic/player/boot.ts)
+E20077 - player/load loadVideoByPlayerVars threw (engine-js logic/player/boot.ts)
+E20078 - player main-proxy has no current main engine (dynamic-engine MainProxy)
+E20079 - player main-proxy empty command after host/main/ (dynamic-engine MainProxy)
+E20080 - player main-proxy: main JS refused the inner command (dynamic-engine MainProxy)
+E20081 - player/seek before Application.create (engine-js logic/player/boot.ts)
+E20082 - player/play before Application.create (engine-js logic/player/boot.ts)
+E20083 - player/pause before Application.create (engine-js logic/player/boot.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
@@ -48,5 +63,13 @@ E70021 - ffmpeg exited non-zero (download Ffmpeg.run)
 E70030 - could not publish the finished file into a file:// destination folder (download DefaultDownloadStorage.publish)
 E70031 - destination scheme unsupported by this storage (download DefaultDownloadStorage.publishToUri default)
 E70032 - a storage subclass' publishToUri failed, e.g. Android SAF (download DefaultDownloadStorage.publish)
+
+E80070 - MSE not available on this platform (mse apple)
+E80071 - MSE mime type not supported (mse)
+E80072 - SourceBuffer append/remove while updating (mse)
+E80073 - MediaSource not open / player released (mse)
+E80074 - MSE decoder playback error (mse android MediaCodec)
+E80075 - ffmpeg JNI backend missing or failed to create (mse jvm)
+E80076 - MSE append parse / byte-stream violation (mse)
 
 E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture

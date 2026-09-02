@@ -244,6 +244,10 @@ export async function storeSetCookies(url: string, res: HttpResponse): Promise<v
   for (const entry of res.headers.entries) {
     if (String(entry[0]).toLowerCase() === "set-cookie") values.push(entry[1]);
   }
+  await applySetCookieValues(url, values);
+}
+
+async function applySetCookieValues(url: string, values: string[]): Promise<void> {
   if (values.length === 0) return;
   try {
     await Cookies.set(url, values);
@@ -266,3 +270,5 @@ export async function storeSetCookies(url: string, res: HttpResponse): Promise<v
     }
   }
 }
+
+

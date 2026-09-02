@@ -79,6 +79,27 @@ declare var versions: {
  *  (The host app's version needs no twin: read the `versions.app` global.) */
 declare const BACKEND_VERSION: number;
 
+/** SABR /videoplayback request+response logging. esbuild `--define`, false in prod. */
+declare const SABR_DEBUG: boolean;
+
+/** MSE append/src/create logs. esbuild `--define`, false in prod (`-PmseDebug=true`). */
+declare const MSE_DEBUG: boolean;
+
+declare function atob(data: string): string;
+declare function btoa(data: string): string;
+
+interface NativeTextEncoder {
+  readonly encoding: string;
+  encode(input?: string): Uint8Array;
+  encodeInto(input: string, dest: Uint8Array): { read: number; written: number };
+}
+interface NativeTextDecoder {
+  readonly encoding: string;
+  decode(input?: ArrayBuffer | ArrayBufferView): string;
+}
+declare var TextEncoder: { new (): NativeTextEncoder };
+declare var TextDecoder: { new (label?: string): NativeTextDecoder };
+
 // ---- host-scheduled timers (transport.ts over the "setTimeout"/"setInterval" pipe commands) ----
 // The handle is the timer's PIPE, not a number; clear*() closes it.
 
@@ -189,3 +210,159 @@ declare var HttpRequest: {
   head(url: string): HttpRequestBuilder;
   method(m: string, url: string): HttpRequestBuilder;
 };
+
+// WHATWG fetch (logic/yt/fetch.ts) — quoted names at runtime for eval'd base.js.
+// In-bundle callers must use bracket access so Closure does not rename them apart.
+interface FetchHeaders {
+  get(name: string): string | null;
+  has(name: string): boolean;
+  set(name: string, value: string): void;
+  append(name: string, value: string): void;
+  delete(name: string): void;
+  forEach(cb: (value: string, name: string) => void): void;
+}
+
+interface FetchAbortSignal {
+  aborted: boolean;
+  onabort: (() => void) | null;
+  addEventListener(type: string, fn: () => void): void;
+  removeEventListener(type: string, fn: () => void): void;
+}
+
+interface FetchAbortController {
+  signal: FetchAbortSignal;
+  abort(): void;
+}
+
+interface FetchReader {
+  read(): Promise<{ value?: Uint8Array; done: boolean }>;
+  cancel(): Promise<unknown>;
+  releaseLock(): void;
+}
+
+interface FetchReadableStream {
+  readonly locked: boolean;
+  getReader(): FetchReader;
+  cancel(): Promise<unknown>;
+}
+
+interface FetchResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly statusText: string;
+  readonly url: string;
+  readonly headers: FetchHeaders;
+  readonly body: FetchReadableStream;
+  readonly bodyUsed: boolean;
+  readonly redirected: boolean;
+  readonly type: string;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  clone(): FetchResponse;
+}
+
+interface FetchRequest {
+  readonly url: string;
+  readonly method: string;
+  readonly headers: FetchHeaders;
+  readonly body: string | Uint8Array | undefined;
+  readonly signal: FetchAbortSignal | null;
+}
+
+interface FetchInit {
+  method?: string;
+  headers?: unknown;
+  body?: unknown;
+  signal?: FetchAbortSignal | null;
+  redirect?: string;
+}
+
+declare var Headers: { new (init?: unknown): FetchHeaders };
+declare var Request: { new (input: unknown, init?: FetchInit): FetchRequest };
+declare var Response: { new (body?: unknown, init?: FetchInit): FetchResponse };
+declare var ReadableStream: { new (underlying?: unknown): FetchReadableStream };
+declare var ReadableStreamDefaultReader: { new (): FetchReader };
+declare var AbortSignal: { new (): FetchAbortSignal };
+declare var AbortController: { new (): FetchAbortController };
+declare function fetch(input: unknown, init?: FetchInit): Promise<FetchResponse>;
+
+interface XMLHttpRequest {
+  readyState: number;
+  status: number;
+  statusText: string;
+  response: unknown;
+  responseText: string;
+  responseType: string;
+  timeout: number;
+  withCredentials: boolean;
+  onreadystatechange: (() => void) | null;
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+  ontimeout: (() => void) | null;
+  onabort: (() => void) | null;
+  open(method: string, url: string): void;
+  send(body?: unknown): void;
+  setRequestHeader(name: string, value: string): void;
+  getResponseHeader(name: string): string | null;
+  getAllResponseHeaders(): string;
+  abort(): void;
+  addEventListener(type: string, fn: () => void): void;
+  removeEventListener(type: string, fn: () => void): void;
+}
+
+interface XMLHttpRequestConstructor {
+  new (): XMLHttpRequest;
+  prototype: XMLHttpRequest;
+  UNSENT: number;
+  OPENED: number;
+  HEADERS_RECEIVED: number;
+  LOADING: number;
+  DONE: number;
+}
+
+declare var XMLHttpRequest: XMLHttpRequestConstructor;
+
+// Fake page DOM (env.raw.js). In-bundle callers use dotted names; the matching Closure
+// externs keep getElementById / createElement / appendChild from being mangled.
+interface Element {
+  id: string;
+  className: string;
+  tagName: string;
+  clientWidth: number;
+  clientHeight: number;
+  offsetWidth: number;
+  offsetHeight: number;
+  parentNode: Element | null;
+  appendChild(child: Element): Element;
+}
+
+interface Location {
+  href: string;
+  protocol: string;
+  host: string;
+  hostname: string;
+  port: string;
+  pathname: string;
+  search: string;
+  hash: string;
+  origin: string;
+  toString(): string;
+  valueOf(): string;
+}
+
+interface Document {
+  URL: string;
+  documentURI: string;
+  domain: string;
+  location: Location;
+  body: Element;
+  head: Element;
+  documentElement: Element;
+  getElementById(id: string): Element | null;
+  createElement(tagName: string): Element;
+}
+
+declare var document: Document;
+declare var location: Location;
+declare var origin: string;

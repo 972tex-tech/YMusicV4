@@ -1,0 +1,77 @@
+// Helpers around the original env.raw.js / idl_stubs.raw.js (eval'd as source, not Closure).
+// Page shape lives in env.raw.js. This file only loads it and overlays live homepage ytcfg.
+
+import origEnvJs from "./orig/env.raw.js";
+import origIdlStubsJs from "./orig/idl_stubs.raw.js";
+
+function native(nameOrFn: string | Function, impl?: Function): Function {
+  const name = typeof nameOrFn === "string" ? nameOrFn : nameOrFn.name || "";
+  const fn = typeof nameOrFn === "string" ? (impl as Function) : nameOrFn;
+  if (typeof __nativeFn === "function") return __nativeFn(name, fn);
+  return fn;
+}
+
+let origEnvInstalled = false;
+
+/** Player orig env+idl (DOM that Application.create needs). */
+export function installOrigEnv(): void {
+  if (origEnvInstalled) return;
+  origEnvInstalled = true;
+  (0, eval)(origEnvJs);
+  (0, eval)(origIdlStubsJs);
+}
+
+let eventIdGets = 0;
+let ytGets = 0;
+let countYtAccess = true;
+
+export function ytEventIdGets(): number {
+  return eventIdGets;
+}
+
+export function ytWindowGets(): number {
+  return ytGets;
+}
+
+/** Stop counting after the PO snapshot — base.js also reads yt.config_.EVENT_ID. */
+export function freezeYtAccessCounts(): void {
+  countYtAccess = false;
+}
+
+export function installYtcfg(data: Record<string, unknown>): void {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const data_: Record<string, unknown> = {};
+  const cfg: Record<string, unknown> = {
+    "data_": data_,
+    "set": native("set", function (d: unknown) {
+      if (typeof d !== "object" || d === null) return;
+      const rec = d as Record<string, unknown>;
+      for (const k of Object.keys(rec)) data_[k] = rec[k];
+    }),
+    "get": native("get", function (k: string, fb?: unknown) {
+      return Object.prototype.hasOwnProperty.call(data_, k) ? data_[k] : fb;
+    }),
+  };
+  g["ytcfg"] = cfg;
+  const ytObj: Record<string, unknown> = { "config_": data_ };
+  ytGets = 0;
+  countYtAccess = true;
+  g["yt"] = ytObj;
+  (cfg["set"] as (d: unknown) => void)(data);
+  eventIdGets = 0;
+  let held = data_["EVENT_ID"];
+  Object.defineProperty(data_, "EVENT_ID", {
+    configurable: true,
+    enumerable: true,
+    get: function () {
+      if (countYtAccess) {
+        eventIdGets++;
+        ytGets++;
+      }
+      return held;
+    },
+    set: function (v: unknown) {
+      held = v;
+    },
+  });
+}

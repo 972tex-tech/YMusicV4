@@ -27,6 +27,22 @@ export function checkUrl(url: string): string {
   return url;
 }
 
+/** Resolve a fetch/XHR URL against the page location (relative and protocol-relative). */
+export function resolveUrl(url: string): string {
+  url = String(url || "");
+  if (url.indexOf("://") >= 0) return url;
+  if (url.indexOf("//") === 0) return "https:" + url;
+  const loc = (globalThis as unknown as Record<string, unknown>)["location"] as
+    | Record<string, unknown>
+    | undefined;
+  const origin =
+    loc && loc["origin"] != null ? String(loc["origin"]) : "https://www.youtube.com";
+  if (url.charAt(0) === "/") return origin + url;
+  const href = loc && loc["href"] != null ? String(loc["href"]) : origin + "/";
+  const slash = href.lastIndexOf("/");
+  return (slash >= 0 ? href.slice(0, slash + 1) : origin + "/") + url;
+}
+
 // Coerce untrusted (e.g. scraped) data into a legal header instead of throwing: the name keeps
 // only token characters, the value folds CR/LF runs (with surrounding blanks) into one space,
 // drops NUL and trims edge whitespace.

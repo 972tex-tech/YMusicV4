@@ -1,7 +1,7 @@
 // Fixtures for CommandHandlerTest: the error contract driven purely via pipes — Kotlin opens the
 // command, sends a JSON head, and asserts on the result bytes / the classified RESET.
 import { onAccept } from "../../transport";
-import { callHost, commandHandler, JsEngineErrorImpl } from "../../protocol/command";
+import { callHost, callMain, commandHandler, JsEngineErrorImpl } from "../../protocol/command";
 
 onAccept(
   "test/echo",
@@ -45,6 +45,58 @@ onAccept(
     try {
       await callHost("hostcmd/boom", async (p) => {
         await p.source.readUtf8(); // reads until the host RESETs — that throw is decoded by callHost
+      });
+      const o = out.writeUtf8("no-throw");
+      if (o) await o;
+    } catch (e) {
+      const err = e as JsEngineError;
+      const o = out.writeUtf8("ERR:" + err.code + ":" + err.message);
+      if (o) await o;
+    }
+  }),
+);
+
+onAccept(
+  "test/main/echo",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const r = await callMain("test/echo", async (p) => {
+      const w = p.sink.writeObjectAsJson({ "x": a["x"] });
+      if (w) await w;
+      await p.sink.close();
+      return await p.source.readUtf8();
+    });
+    const o = out.writeUtf8(r);
+    if (o) await o;
+  }),
+);
+
+onAccept(
+  "test/main/missing",
+  commandHandler(async (src, out) => {
+    await src.readJsonObject();
+    try {
+      await callMain("test/does-not-exist", async (p) => await p.source.readUtf8());
+      const o = out.writeUtf8("no-throw");
+      if (o) await o;
+    } catch (e) {
+      const err = e as JsEngineError;
+      const o = out.writeUtf8("ERR:" + err.code + ":" + err.message);
+      if (o) await o;
+    }
+  }),
+);
+
+onAccept(
+  "test/main/boom",
+  commandHandler(async (src, out) => {
+    await src.readJsonObject();
+    try {
+      await callMain("test/parse-boom", async (p) => {
+        const w = p.sink.writeObjectAsJson({});
+        if (w) await w;
+        await p.sink.close();
+        return await p.source.readUtf8();
       });
       const o = out.writeUtf8("no-throw");
       if (o) await o;

@@ -45,13 +45,33 @@ interface Writer {
   reject: (e: Error) => void;
 }
 
+/* Capture C pipe natives once; snapshot code may delete them from globalThis. */
+const nHostOpen = __hostOpen;
+const nHostData = __hostData;
+const nHostClose = __hostClose;
+const nHostCloseRead = __hostCloseRead;
+const nPbNew = __pbNew;
+const nPbCloseRead = __pbCloseRead;
+const nPbRecv = __pbRecv;
+const nPbInt = __pbInt;
+const nPbLong = __pbLong;
+const nPbLine = __pbLine;
+const nPbJson = __pbJson;
+const nPbUtf8 = __pbUtf8;
+const nUtf8Encode = __utf8Encode;
+const nUtf8Into = __utf8Into;
+const nUtf8Decode = __utf8Decode;
+const nJsonEncNew = __jsonEncNew;
+const nJsonEncFill = __jsonEncFill;
+const nJsonEncDone = __jsonEncDone;
+
 // Encode one or more strings to UTF-8, concatenated. A single string delegates to the native
 // one-shot; the multi-arg form (utf8Encode(str, "\n")) stream-encodes here to avoid a JS string
 // concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
 function utf8Encode(...parts: string[]): Uint8Array {
   if (parts.length === 1) {
     const s = parts[0]!;
-    return __utf8Encode(s, 0, s.length);
+    return nUtf8Encode(s, 0, s.length);
   }
   const out: number[] = [];
   for (const str of parts) {
@@ -82,7 +102,7 @@ function brokenPipe(): Error {
 }
 
 function makePipe(id: number, command: string): TransportPipe {
-  const pb = __pbNew(id); // the C-owned inbound buffer; reads delegate to it
+  const pb = nPbNew(id); // the C-owned inbound buffer; reads delegate to it
   let writeEnded = false,
     readClosed = false; // routing bookkeeping only — buffer state is C's
   // outbound: writer = the parked partial send {buffer, pos, end, resolve, reject}.
@@ -139,7 +159,7 @@ function makePipe(id: number, command: string): TransportPipe {
     if (weEnded) return Promise.reject(new Error("send() after close()")); // our own half-close is a misuse
     if (peerReadClosed) return Promise.reject(brokenPipe());
     if (writer) throw new Error("concurrent send() on the same pipe"); // sequential: await one send first
-    const written = __hostData(id, buffer, o, l);
+    const written = nHostData(id, buffer, o, l);
     if (written < 0) {
       peerReadClosed = true;
       return Promise.reject(brokenPipe());
@@ -154,8 +174,8 @@ function makePipe(id: number, command: string): TransportPipe {
   function closeRead(): void {
     if (readClosed) return;
     readClosed = true;
-    __pbCloseRead(pb);
-    __hostCloseRead(id);
+    nPbCloseRead(pb);
+    nHostCloseRead(id);
     maybeReap();
   }
 
@@ -163,7 +183,7 @@ function makePipe(id: number, command: string): TransportPipe {
   function closeWrite(reason?: string): void {
     if (weEnded) return;
     weEnded = true;
-    __hostClose(id, reason === undefined ? null : reason);
+    nHostClose(id, reason === undefined ? null : reason);
     maybeReap();
   }
 
@@ -237,8 +257,8 @@ function makePipe(id: number, command: string): TransportPipe {
           return writeUtf8Native(str, from, to);
         });
     }
-    if (max > wbuf!.length) return send(__utf8Encode(str, from, to)); // too big even for an empty segment
-    wlen += __utf8Into(str, from, to, wbuf!, wlen);
+    if (max > wbuf!.length) return send(nUtf8Encode(str, from, to)); // too big even for an empty segment
+    wlen += nUtf8Into(str, from, to, wbuf!, wlen);
   }
 
   // stream-encode the parts back-to-back (no `a + b + c` concat first)
@@ -267,27 +287,27 @@ function makePipe(id: number, command: string): TransportPipe {
     source: {
       receive: function (buffer, offset, len) {
         const o = offset || 0;
-        return __pbRecv(pb, buffer, o, len === undefined ? buffer.length - o : len);
+        return nPbRecv(pb, buffer, o, len === undefined ? buffer.length - o : len);
       },
       readInt: function () {
-        return __pbInt(pb);
+        return nPbInt(pb);
       },
       readLong: function () {
-        return __pbLong(pb);
+        return nPbLong(pb);
       }, // number: loses precision above 2^53
       // strict requires a '\n' (throws at EOF); else the final unterminated line, then null at EOF
       readUtf8Line: function (strict) {
-        return __pbLine(pb, !!strict);
+        return nPbLine(pb, !!strict);
       },
       // stops at the value's end, leaving trailing bytes queued; root type checked on the first byte
       readJsonObject: function () {
-        return __pbJson(pb, 1) as MaybePromise<Record<string, unknown>>;
+        return nPbJson(pb, 1) as MaybePromise<Record<string, unknown>>;
       },
       readJsonArray: function () {
-        return __pbJson(pb, 2) as MaybePromise<unknown[]>;
+        return nPbJson(pb, 2) as MaybePromise<unknown[]>;
       },
       readUtf8: function () {
-        return __pbUtf8(pb);
+        return nPbUtf8(pb);
       },
       close: closeRead,
     },
@@ -369,11 +389,11 @@ function makePipe(id: number, command: string): TransportPipe {
       writeObjectAsJson: function (value) {
         checkWriteBusy();
         ensureWbuf();
-        const enc = __jsonEncNew(value);
+        const enc = nJsonEncNew(value);
         const pump = function (): MaybePromise {
           for (;;) {
-            wlen += __jsonEncFill(enc, wbuf!, wlen);
-            if (__jsonEncDone(enc)) return;
+            wlen += nJsonEncFill(enc, wbuf!, wlen);
+            if (nJsonEncDone(enc)) return;
             const p = flushSink();
             if (p) return p.then(pump);
           }
@@ -437,7 +457,7 @@ function makePipe(id: number, command: string): TransportPipe {
 
     _abandon: function () {
       readClosed = true;
-      __pbCloseRead(pb);
+      nPbCloseRead(pb);
     },
 
     _peerCloseRead: function () {
@@ -452,7 +472,7 @@ function makePipe(id: number, command: string): TransportPipe {
     _drain: function () {
       const w = writer;
       if (!w) return;
-      const written = __hostData(id, w.buffer, w.pos, w.end - w.pos);
+      const written = nHostData(id, w.buffer, w.pos, w.end - w.pos);
       if (written < 0) {
         writer = null;
         peerReadClosed = true;
@@ -511,7 +531,7 @@ export function open(command: string): Pipe {
   nextId += 2;
   const pipe = makePipe(id, command);
   pipes[id] = pipe; // registered first so anything crossing during the call finds the pipe
-  const rc = __hostOpen(id, command);
+  const rc = nHostOpen(id, command);
   if (rc < 0) {
     delete pipes[id];
     pipe._abandon();
@@ -542,7 +562,7 @@ export function onAccept(
 // a subarray view: utf8Decode(bytes, from, to).
 export function utf8Decode(bytes: Uint8Array, from?: number, to?: number): string {
   const f = from === undefined ? 0 : from;
-  return __utf8Decode(bytes, f, (to === undefined ? bytes.length : to) - f);
+  return nUtf8Decode(bytes, f, (to === undefined ? bytes.length : to) - f);
 }
 
 export { utf8Encode };
@@ -635,7 +655,11 @@ export function clearTimeout(handle: Pipe | undefined): void {
 }
 export const clearInterval = clearTimeout;
 
-globalThis.setTimeout = setTimeout;
-globalThis.setInterval = setInterval;
-globalThis.clearTimeout = clearTimeout;
-globalThis.clearInterval = clearInterval;
+function asNative<T extends Function>(name: string, impl: T): T {
+  if (typeof __nativeFn === "function") return __nativeFn(name, impl) as unknown as T;
+  return impl;
+}
+globalThis.setTimeout = asNative("setTimeout", setTimeout);
+globalThis.setInterval = asNative("setInterval", setInterval);
+globalThis.clearTimeout = asNative("clearTimeout", clearTimeout);
+globalThis.clearInterval = asNative("clearInterval", clearInterval);

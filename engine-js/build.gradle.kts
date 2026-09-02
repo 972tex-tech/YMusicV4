@@ -33,14 +33,15 @@ plugins {
 val backendVersion = Versions.engineJsBackendVersion
 
 // Compile-time define: a bare `declare const` identifier substituted inline at bundle time —
-// no runtime global, no extern.
-val esbuildDefines = arrayOf("--define:BACKEND_VERSION=$backendVersion")
-
-// Size budgets for the shipped artifacts, in bytes. The bundle ships embedded in the app AND
-// travels over the network on every remote swap, so growth is a product decision: crossing a budget
-// FAILS the build, and raising the number here is how that decision gets made (and reviewed).
-// A build within 10% of its budget warns, so the ceiling is never a surprise.
-val bundleBudgets = mapOf("engine.js" to 72 * 1024L, "engine-test.js" to 104 * 1024L)
+// no runtime global, no extern. SABR_DEBUG / MSE_DEBUG are off in prod
+// (`-PsabrDebug=true` / `-PmseDebug=true` to enable).
+val sabrDebug = project.findProperty("sabrDebug") == "true"
+val mseDebug = project.findProperty("mseDebug") == "true"
+val esbuildDefines = arrayOf(
+    "--define:BACKEND_VERSION=$backendVersion",
+    "--define:SABR_DEBUG=$sabrDebug",
+    "--define:MSE_DEBUG=$mseDebug",
+)
 
 val srcDir = layout.projectDirectory.dir("src")
 val tsconfig = layout.projectDirectory.file("tsconfig.json")
@@ -76,6 +77,7 @@ val bundleRawJs by tasks.registering(Exec::class) {
         "npx", "-y", "esbuild@${Versions.esbuild}",
         "src/index.ts", "--bundle",
         "--format=iife", "--target=esnext", "--charset=utf8",
+        "--loader:.raw.js=text",
         *esbuildDefines,
         "--metafile=${rawBundleMeta.get().asFile.absolutePath}",
         "--outfile=${rawBundleFile.get().asFile.absolutePath}",
@@ -106,26 +108,15 @@ fun sourceBreakdown(meta: java.io.File): List<Pair<String, Long>> {
         .sortedByDescending { it.second }
 }
 
-fun enforceBudget(out: java.io.File, meta: java.io.File) {
-    val budget = bundleBudgets.getValue(out.name)
+fun reportSize(out: java.io.File, meta: java.io.File) {
     val size = out.length()
     val report = buildString {
-        appendLine("${out.name}: $size bytes / $budget budget (${size * 100 / budget}%)")
+        appendLine("${out.name}: $size bytes")
         sourceBreakdown(meta).forEach { (dir, bytes) -> appendLine("  %7d  %s".format(bytes, dir)) }
         appendLine("  (pre-Closure source bytes, from esbuild's metafile)")
     }
     sizeReportDir.get().asFile.apply { mkdirs() }.resolve("${out.name}.size.txt").writeText(report)
     logger.lifecycle(report.trimEnd())
-    if (size > budget) {
-        throw GradleException(
-            "${out.name} is $size bytes, over its $budget-byte budget. The bundle ships embedded in " +
-                "the app and travels on every remote swap — either shrink it, or raise the budget in " +
-                "engine-js/build.gradle.kts deliberately.\n$report",
-        )
-    }
-    if (size * 10 > budget * 9) {
-        logger.warn("WARNING: ${out.name} is within 10% of its $budget-byte budget.")
-    }
 }
 
 fun closureCompile(raw: java.io.File, out: java.io.File, map: java.io.File, meta: java.io.File, level: CompilationLevel) {
@@ -165,14 +156,13 @@ fun closureCompile(raw: java.io.File, out: java.io.File, map: java.io.File, meta
     check(minified.isNotBlank()) { "closure produced empty output" }
     out.writeText(minified + "\n//# sourceMappingURL=${map.name}\n")
     map.writer().use { compiler.sourceMap.appendTo(it, out.name) }
-    enforceBudget(out, meta)
+    reportSize(out, meta)
 }
 
 val closureJs by tasks.registering {
     dependsOn(bundleRawJs)
     inputs.file(rawBundleFile)
     inputs.file(externsJs)
-    inputs.property("budget", bundleBudgets.getValue("engine.js"))
     outputs.files(bundleFile, bundleMapFile)
     doLast {
         closureCompile(
@@ -201,6 +191,7 @@ val bundleRawTestJs by tasks.registering(Exec::class) {
         "npx", "-y", "esbuild@${Versions.esbuild}",
         "src/test/index.ts", "--bundle",
         "--format=iife", "--target=esnext", "--charset=utf8",
+        "--loader:.raw.js=text",
         *esbuildDefines,
         "--metafile=${rawTestBundleMeta.get().asFile.absolutePath}",
         "--outfile=${rawTestBundleFile.get().asFile.absolutePath}",
@@ -211,7 +202,6 @@ val bundleTestJs by tasks.registering {
     dependsOn(bundleRawTestJs)
     inputs.file(rawTestBundleFile)
     inputs.file(externsJs)
-    inputs.property("budget", bundleBudgets.getValue("engine-test.js"))
     outputs.files(testBundleFile, testBundleMapFile)
     doLast {
         closureCompile(

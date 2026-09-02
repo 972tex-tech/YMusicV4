@@ -283,6 +283,149 @@ const scenarios: Record<string, Scenario> = {
     const res = await HttpRequest.get("https://example.com/missing").build().execute();
     return res.status + " " + res.ok + " " + (await res.text());
   },
+
+  "fetch-get-text": async () => {
+    const res = await fetch("https://example.com");
+    return res["ok"] && res["status"] === 200 ? await res["text"]() : "FAIL";
+  },
+
+  "fetch-json": async () => {
+    const res = await fetch("https://example.com/api");
+    const body = (await res["json"]()) as Record<string, unknown>;
+    return String((body["items"] as unknown[]).length);
+  },
+
+  "fetch-arraybuffer": async () => {
+    const res = await fetch("https://example.com");
+    const ab = await res["arrayBuffer"]();
+    return utf8Decode(new Uint8Array(ab));
+  },
+
+  "fetch-reader": async () => {
+    const res = await fetch("https://example.com/stream");
+    const reader = res["body"]["getReader"]();
+    const parts: Uint8Array[] = [];
+    let firstDone: boolean | undefined;
+    for (;;) {
+      const r = await reader["read"]();
+      if (firstDone === undefined) firstDone = r["done"] as boolean;
+      if (r["done"]) break;
+      parts.push(r["value"] as Uint8Array);
+    }
+    let total = 0;
+    for (let i = 0; i < parts.length; i++) total += parts[i]!.length;
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!;
+      out.set(p, off);
+      off += p.length;
+    }
+    return utf8Decode(out) + "|" + String(firstDone) + "|true";
+  },
+
+  "fetch-clone": async () => {
+    const res = await fetch("https://example.com");
+    const copy = res["clone"]();
+    const a = await copy["text"]();
+    const b = await res["text"]();
+    return a + "|" + b;
+  },
+
+  "fetch-post": async () => {
+    await fetch("https://example.com/post", {
+      "method": "POST",
+      "headers": { "X-Test": "1", "Accept": "text/html" },
+      "body": "payload",
+    });
+    return "sent";
+  },
+
+  "fetch-headers": async () => {
+    const res = await fetch("https://example.com");
+    return String(res["headers"]["get"]("content-type"));
+  },
+
+  "fetch-native": async () => {
+    const src = Function.prototype.toString.call(fetch);
+    const ac = new AbortController();
+    return (
+      String(typeof fetch) +
+      "|" +
+      String(src.indexOf("[native code]") !== -1) +
+      "|" +
+      String(typeof ReadableStream) +
+      "|" +
+      String(typeof AbortController) +
+      "|" +
+      String(ac["signal"]["aborted"] === false)
+    );
+  },
+
+  "fetch-abort": async () => {
+    const ac = new AbortController();
+    ac["abort"]();
+    try {
+      await fetch("https://example.com", { "signal": ac["signal"] });
+      return "resolved";
+    } catch (err) {
+      return (err as Error).name;
+    }
+  },
+
+  "fetch-failed": async () => {
+    try {
+      await fetch("https://example.com");
+      return "resolved";
+    } catch (err) {
+      return (err as Error).name + " " + (err as Error).message;
+    }
+  },
+
+  "xhr-get-text": async () => {
+    const x = new XMLHttpRequest();
+    return await new Promise<string>(function (resolve, reject) {
+      x.onreadystatechange = function () {
+        if (x.readyState === 4) resolve(x.responseText);
+      };
+      x.onerror = function () {
+        reject(new Error("xhr error"));
+      };
+      x.open("GET", "https://example.com");
+      x.send();
+    });
+  },
+
+  "xhr-post": async () => {
+    const x = new XMLHttpRequest();
+    await new Promise<void>(function (resolve, reject) {
+      x.onload = function () {
+        resolve();
+      };
+      x.onerror = function () {
+        reject(new Error("xhr error"));
+      };
+      x.open("POST", "https://example.com/post");
+      x.setRequestHeader("X-Test", "1");
+      x.setRequestHeader("Accept", "text/html");
+      x.send("payload");
+    });
+    return "sent";
+  },
+
+  "xhr-native": async () => {
+    const src = Function.prototype.toString.call(XMLHttpRequest);
+    const x = new XMLHttpRequest();
+    return (
+      String(typeof XMLHttpRequest) +
+      "|" +
+      String(src.indexOf("[native code]") !== -1) +
+      "|" +
+      String(x.readyState) +
+      "|" +
+      String(XMLHttpRequest.UNSENT)
+    );
+  },
 };
 
 for (const name of Object.keys(scenarios)) {
