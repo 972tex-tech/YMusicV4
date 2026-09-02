@@ -20,6 +20,7 @@ class JsFeatureMatrixTest {
         "class-fields-public", "class-fields-private", "class-private-methods", "class-private-in",
         "class-static-block", "error-cause", "aggregate-error", "globalthis", "bigint",
         "bigint64array", "weakref", "finalization-registry", "atomics", "shared-array-buffer",
+        "atob", "btoa", "text-encoder", "text-decoder",
         "regexp-named-groups", "regexp-lookbehind", "regexp-dotall", "regexp-sticky",
         "regexp-hasindices", "regexp-unicode-sets",
         "promise-allsettled", "promise-any", "promise-withresolvers",
@@ -31,7 +32,7 @@ class JsFeatureMatrixTest {
     // Every name here must probe falsy: missing globals a bundle author might reach for by habit.
     private val unsupported = listOf(
         "intl", "temporal", "array-fromasync", "structured-clone", "queue-microtask",
-        "settimeout", "text-encoder", "url", "url-search-params", "fetch", "atob",
+        "settimeout", "url", "url-search-params", "fetch",
         "explicit-resource-management",
     )
 
@@ -122,11 +123,13 @@ p("array-fromasync", function () { return typeof Array.fromAsync === "function";
 p("structured-clone", function () { return typeof structuredClone === "function"; });
 p("queue-microtask", function () { return typeof queueMicrotask === "function"; });
 p("settimeout", function () { return typeof setTimeout === "function"; });
-p("text-encoder", function () { return typeof TextEncoder === "function"; });
+p("text-encoder", function () { return typeof TextEncoder === "function" && new TextEncoder().encode("é")[0] === 0xc3; });
+p("text-decoder", function () { return typeof TextDecoder === "function" && new TextDecoder().decode(new Uint8Array([0xc3, 0xa9])) === "é"; });
 p("url", function () { return typeof URL === "function"; });
 p("url-search-params", function () { return typeof URLSearchParams === "function"; });
 p("fetch", function () { return typeof fetch === "function"; });
-p("atob", function () { return typeof atob === "function"; });
+p("atob", function () { return typeof atob === "function" && atob("YQ==") === "a"; });
+p("btoa", function () { return typeof btoa === "function" && btoa("a") === "YQ=="; });
 s("explicit-resource-management", "function f2() { using x2 = { [Symbol.dispose]() {} }; }");
 
 __consoleLog(1, "PROBE " + r.join(","));

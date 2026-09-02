@@ -352,6 +352,18 @@ store failure RESETs with `E20061` (or preserves the store's own `CodedError`).
 
 ---
 
+## 3.6 MSE player — native C host, not a pipe protocol
+
+The bundle's JS `MediaSource` / `SourceBuffer` / `HTMLMediaElement` stubs (engine-js `protocol/mse.ts`)
+call QuickJS `__mse*` trampolines, which hit `:mse` C (`mse_host.c`) through a vtable the host
+passes in (`attachMseHost(host, vtable)`). JNI from the app is **only** `setVideoSurface`. Seek is
+JS (`player/seek` → `HTMLMediaElement.currentTime` → `__mseSetCurrentTime`).
+
+App control (`player/load|play|pause|seek|stop`) is a bundle command that talks to the stub media
+element (and thus those trampolines).
+
+---
+
 ## 4. Filesystem — sandboxed, session-based
 
 ### Sandbox: one app-exposed root, relative plain paths

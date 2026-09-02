@@ -18,8 +18,10 @@ import io.ymusic.quickjs.cinterop.qjs_eval_engine_bc
 import io.ymusic.quickjs.cinterop.qjs_eval_sync
 import io.ymusic.quickjs.cinterop.qjs_free
 import io.ymusic.quickjs.cinterop.qjs_open
+import io.ymusic.quickjs.cinterop.qjs_set_mse_host
 import io.ymusic.quickjs.cinterop.qjs_write
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
@@ -36,6 +38,7 @@ import kotlinx.cinterop.plus
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
@@ -104,6 +107,10 @@ internal actual class NativeEngine private constructor(
     actual fun closeRead(id: Int) = qjs_close_read(engine, id.toUInt())
 
     actual fun drain(id: Int) = qjs_drain(engine, id.toUInt())
+
+    actual fun setMseHost(mseHandle: Long, vtable: Long) {
+        qjs_set_mse_host(engine, mseHandle.toCPointer<COpaque>(), vtable.toCPointer<COpaque>())
+    }
 
     actual fun destroy() {
         qjs_close(engine)

@@ -33,6 +33,9 @@
 #include "quickjs.h"
 #include "quickjs_json.h"
 #include "quickjs_pipe.h"
+#include "quickjs_hostfn.h"
+#include "quickjs_web.h"
+#include "quickjs_mse.h"
 
 #define PENDING_DRAIN_MAX 16
 
@@ -52,7 +55,14 @@ typedef struct Engine {
     int in_critical;      /* a host ByteArray is held critically: JNI re-entry is forbidden */
     uint32_t pending_drains[PENDING_DRAIN_MAX];
     int pending_count;
+    void *mse;
 } Engine;
+
+void *qjs_ctx_mse(JSContext *ctx)
+{
+    Engine *e = (Engine *)JS_GetContextOpaque(ctx);
+    return e ? e->mse : NULL;
+}
 
 /* ---- UTF-8 (standard) <-> UTF-16 (astral-correct) ---- */
 
@@ -137,6 +147,7 @@ static void throw_qjs(JNIEnv *env, jstring msg) {
 
 static void pump_jobs(Engine *e) {
     JSContext *c;
+    JS_UpdateStackTop(e->rt);
     while (JS_ExecutePendingJob(e->rt, &c) > 0) { /* run microtasks */ }
 }
 
@@ -297,7 +308,20 @@ static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSVa
     if (!e || e->in_critical) return; /* never re-enter JNI under a critical region */
     JNIEnv *env = engine_env(e);
     size_t len = 0;
-    const char *msg = JS_ToCStringLen(ctx, &len, reason);
+    const char *msg = NULL;
+    JSValue json = JS_UNDEFINED;
+    if (JS_IsObject(reason)) {
+        json = JS_JSONStringify(ctx, reason, JS_UNDEFINED, JS_UNDEFINED);
+        if (JS_IsException(json)) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            json = JS_UNDEFINED;
+        } else {
+            msg = JS_ToCStringLen(ctx, &len, json);
+            JS_FreeValue(ctx, json);
+            json = JS_UNDEFINED;
+        }
+    }
+    if (!msg) msg = JS_ToCStringLen(ctx, &len, reason);
     if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
         JS_FreeValue(ctx, JS_GetException(ctx));
         msg = "(unprintable reason)";
@@ -365,7 +389,10 @@ static Engine *engine_new(JNIEnv *env, jint appVersion) {
     JS_SetPropertyStr(e->ctx, global, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
     JS_SetPropertyStr(e->ctx, global, "__consoleLog", JS_NewCFunction(e->ctx, js_console_log, "__consoleLog", 2));
     JS_FreeValue(e->ctx, global);
+    qjs_register_hostfn(e->ctx);
+    qjs_register_web(e->ctx);
     qjs_register_json(e->ctx);
+    qjs_mse_install(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
     qjs_install_versions(e->ctx, appVersion);
     JS_SetHostPromiseRejectionTracker(e->rt, promise_rejection_tracker, e);
@@ -406,6 +433,7 @@ Java_io_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong
         throw_qjs(env, utf8_to_jstring(env, "out of memory (script)", 22));
         return;
     }
+    JS_UpdateStackTop(e->rt);
     JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
     free(script);
     if (JS_IsException(bret)) {
@@ -491,6 +519,7 @@ Java_io_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong h
         throw_qjs(env, utf8_to_jstring(env, "out of memory", 13));
         return NULL;
     }
+    JS_UpdateStackTop(e->rt);
     JSValue val = JS_Eval(e->ctx, script, slen, filename, JS_EVAL_TYPE_GLOBAL);
     free(script);
     free(filename);
@@ -519,8 +548,10 @@ Java_io_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong h
 /* Host -> JS: call one of the JS mux entry points; return its int result (or exc_rc on a JS
  * exception). Frees argv, then runs the microtask pump. */
 static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
-    JSValue g = JS_GetGlobalObject(e->ctx);
-    JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
+    JSValue g, r;
+    JS_UpdateStackTop(e->rt);
+    g = JS_GetGlobalObject(e->ctx);
+    r = JS_Call(e->ctx, fn, g, argc, argv);
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
     else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
@@ -595,6 +626,18 @@ Java_io_ymusic_quickjs_QuickJsNative_drain(JNIEnv *env, jobject thiz, jlong hand
 }
 
 JNIEXPORT void JNICALL
+Java_io_ymusic_quickjs_QuickJsNative_setMseHost(JNIEnv *env, jobject thiz, jlong handle, jlong mseHost, jlong vtable)
+{
+    Engine *e = (Engine *)(intptr_t)handle;
+    (void)env;
+    (void)thiz;
+    if (!e)
+        return;
+    qjs_mse_set_vt(vtable ? (const QjsMseVt *)(intptr_t)vtable : NULL);
+    e->mse = mseHost ? (void *)(intptr_t)mseHost : NULL;
+}
+
+JNIEXPORT void JNICALL
 Java_io_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong handle) {
     Engine *e = (Engine *)(intptr_t)handle;
     if (!e) return;
@@ -602,6 +645,7 @@ Java_io_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong hand
     JS_FreeValue(e->ctx, e->jsClose);
     JS_FreeValue(e->ctx, e->jsCloseRead);
     JS_FreeValue(e->ctx, e->jsDrain);
+    e->mse = NULL;
     (*env)->DeleteGlobalRef(env, e->bridgeClass);
     qjs_pipe_ctx_release(e->pipe, e->ctx);
     JS_FreeContext(e->ctx);

@@ -43,15 +43,13 @@ fun registerNativeLib(targetName: String): TaskProvider<Exec> {
         inputs.dir(nativeSrc)
         outputs.file(File(out, "libqjscore.a"))
         workingDir(out)
-        val srcs = listOf(
+        val srcs = mutableListOf(
             "quickjs/quickjs.c", "quickjs/cutils.c", "quickjs/libregexp.c",
             "quickjs/libunicode.c", "quickjs/dtoa.c", "quickjs_native.c", "quickjs_json.c",
-            "quickjs_pipe.c",
+            "quickjs_pipe.c", "quickjs_hostfn.c", "quickjs_web.c",
+            "quickjs_mse.c",
         ).joinToString(" ") { "'${nativeSrc.resolve(it)}'" }
-        // `cc` = clang on macOS (accepts the -arch flags), gcc on Linux (no -arch; native x86_64).
         val arch = clangArch(targetName).joinToString(" ")
-        // -funsigned-char: vendored QuickJS assumes unsigned char (byte handling breaks with signed
-        // char >= 0x80); matches the CMake JVM/Android + ASan builds (native/CMakeLists.txt).
         val cmd = "set -e; cc $arch -O2 -w -funsigned-char -DCONFIG_VERSION='\"2026-06-04\"' -D_GNU_SOURCE " +
             "-I'${nativeSrc.resolve("quickjs")}' -I'$nativeSrc' -c $srcs && ar rcs libqjscore.a *.o"
         commandLine("bash", "-c", cmd)
@@ -113,8 +111,6 @@ kotlin {
         compilations.getByName("main").cinterops.create("qjs") {
             defFile(project.file("native/cinterop/qjs.def"))
             includeDirs(project.file("native"))
-            // qjs.def names libqjscore.a in `staticLibraries`; give konan the per-target dir to find
-            // it in, so it gets embedded in the klib's `included/` (portable, not a path reference).
             extraOpts("-libraryPath", libDir.absolutePath)
         }
         // cinterop reads libqjscore.a to embed it: build it first, and re-embed when it changes.

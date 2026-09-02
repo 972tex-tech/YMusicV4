@@ -2,6 +2,9 @@
 #include "quickjs.h"
 #include "quickjs_json.h"
 #include "quickjs_pipe.h"
+#include "quickjs_hostfn.h"
+#include "quickjs_web.h"
+#include "quickjs_mse.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,8 +14,23 @@ struct QjsEngine {
     QjsInboundCb cb;
     void *user;
     QjsPipeCtx *pipe;
+    void *mse;
     JSValue jsOpen, jsClose, jsCloseRead, jsDrain; /* JS mux entry points (C -> JS) */
 };
+
+void *qjs_ctx_mse(JSContext *ctx)
+{
+    QjsEngine *e = (QjsEngine *)JS_GetContextOpaque(ctx);
+    return e ? e->mse : NULL;
+}
+
+void qjs_set_mse_host(QjsEngine *e, void *host, const void *vt)
+{
+    if (!e)
+        return;
+    e->mse = host;
+    qjs_mse_set_vt((const QjsMseVt *)vt);
+}
 
 /* Inbound flow control: the C pipe buffer drained below low-water; resume the host's parked
  * writer. Fired from JS-initiated read paths only (see quickjs_pipe.h). */
@@ -161,6 +179,7 @@ static QjsEngine *engine_new(int app_version, QjsInboundCb cb, void *user) {
     e->cb = cb;
     e->user = user;
     e->jsOpen = e->jsClose = e->jsCloseRead = e->jsDrain = JS_UNDEFINED;
+    e->mse = NULL;
     JS_SetContextOpaque(e->ctx, e);
 
     JSValue g = JS_GetGlobalObject(e->ctx);
@@ -170,8 +189,11 @@ static QjsEngine *engine_new(int app_version, QjsInboundCb cb, void *user) {
     JS_SetPropertyStr(e->ctx, g, "__hostCloseRead", JS_NewCFunction(e->ctx, js_host_close_read, "__hostCloseRead", 1));
     JS_SetPropertyStr(e->ctx, g, "__consoleLog", JS_NewCFunction(e->ctx, js_console_log, "__consoleLog", 2));
     JS_FreeValue(e->ctx, g);
+    qjs_register_hostfn(e->ctx);
+    qjs_register_web(e->ctx);
     qjs_register_json(e->ctx);
     e->pipe = qjs_register_pipe(e->ctx, drain_hook, e);
+    qjs_mse_install(e->ctx);
     qjs_install_versions(e->ctx, app_version);
     JS_SetHostPromiseRejectionTracker(e->rt, promise_rejection_tracker, e);
     return e;
@@ -326,6 +348,7 @@ void qjs_close(QjsEngine *e) {
     JS_FreeValue(e->ctx, e->jsClose);
     JS_FreeValue(e->ctx, e->jsCloseRead);
     JS_FreeValue(e->ctx, e->jsDrain);
+    e->mse = NULL;
     qjs_pipe_ctx_release(e->pipe, e->ctx);
     JS_FreeContext(e->ctx);
     JS_FreeRuntime(e->rt); /* PipeBuf finalizers return segments to the pool -> free the ctx after */

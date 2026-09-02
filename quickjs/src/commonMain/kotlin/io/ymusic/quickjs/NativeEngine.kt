@@ -79,6 +79,9 @@ internal expect class NativeEngine {
     /** Flow control: we drained our buffer to the low-water mark — wake JS's parked writer. */
     fun drain(id: Int)
 
+    /** Bind a native MSE host pointer + vtable so JS `__mse*` getters are synchronous C. */
+    fun setMseHost(mseHandle: Long, vtable: Long)
+
     /** Tear down the engine and release native resources. */
     fun destroy()
 
@@ -94,5 +97,4 @@ internal expect class NativeEngine {
     }
 }
 
-/** A single-thread dispatcher confining all engine calls (QuickJS is not thread-safe). */
 internal expect fun newEngineDispatcher(): CloseableCoroutineDispatcher

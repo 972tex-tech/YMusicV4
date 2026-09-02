@@ -6,7 +6,7 @@ core files only — **no `quickjs-libc`** (none of the `qjs` REPL's `std`/`os` g
 **no JIT**: everything is interpreted bytecode.
 
 **Ground truth:** `src/commonTest/.../JsFeatureMatrixTest.kt` probes all of this against the real
-runtime (60 live probes). On a vendor bump, run it and update this file together with the test —
+runtime (62 live probes). On a vendor bump, run it and update this file together with the test —
 the test fails first when support drifts.
 
 ## Supported — use freely
@@ -24,7 +24,12 @@ The language level is effectively **ES2024**. Everything below probes green:
   `Map.groupBy`; `String.prototype.replaceAll`/`matchAll`/`isWellFormed`; `Error` `cause` +
   `AggregateError`; `globalThis`; `WeakRef`/`FinalizationRegistry`; `Proxy`/`Reflect`; `BigInt` +
   `BigInt64Array`; `Atomics`/`SharedArrayBuffer` (present but moot — there are no workers here,
-  one engine = one thread).
+  one engine = one thread). Native `Function.prototype.toString` is V8-shaped
+  (`function name() { [native code] }`); `Error.stack` is V8-shaped and does not emit
+  `eval`/`Function`/`anonymous` (those frames use `location.href`, or `about:blank`);
+  `eval` of a non-string object whose `toString` is source
+  (Chrome TrustedScript) runs that source. Native WHATWG `atob`/`btoa` (Latin-1 binary strings;
+  url-safe `-`/`_` accepted) and `TextEncoder`/`TextDecoder` (UTF-8).
 
 ## NOT supported — the habit traps
 
@@ -34,12 +39,10 @@ These throw or come back `undefined`. Closure/tsc won't save you: they assume a 
 |---|---|
 | **`Intl.*`** (the big one) | Nothing locale-aware exists. `toLocaleString` & friends exist but fall back to non-locale output. Localized labels must come from YouTube itself (`hl`/`gl` in the ctx) or the app. |
 | `Temporal` | `Date` (present) + hand math. |
-| `setTimeout` / `clearTimeout` / `queueMicrotask` | Not engine globals. Timers are host-served: the bundle's `transport.ts` provides them over the C natives. Microtask ordering: `Promise.resolve().then(fn)`. |
-| `TextEncoder` / `TextDecoder` | UTF-8 crossings happen in C (`__utf8Into`, pipe natives); use the transport/pipe helpers, never hand-encode. |
-| `URL` / `URLSearchParams` | Hand-rolled parsing (see `urlQuery` in `logic/yt/commands.ts`). (webview-js is a DIFFERENT runtime — Chrome 37 floor — and ships `url-search-params-polyfill`.) |
-| `fetch` / XHR / any DOM or web API | The bundle's `HttpRequest` over the `"http"` pipe command. |
+| `setTimeout` / `clearTimeout` / `queueMicrotask` | Not engine globals. Timers are host-served: the bundle's `transport.ts` provides them over the pipe. Microtask ordering: `Promise.resolve().then(fn)` (the player env also plants `queueMicrotask` when missing). |
+| `URL` / `URLSearchParams` | Bundle `installNativeUrl()` (player) or hand-rolled parsing (`urlQuery` in `logic/yt/commands.ts`). |
+| `fetch` / XHR / any DOM or web API | The bundle installs WHATWG `fetch` (plus `Headers`/`Request`/`Response`/`ReadableStream`/`AbortController`) as a wrapper of `HttpRequest` over the `"http"` pipe. XHR is the bundle stub. Other DOM APIs are whatever the bundle stubs (MSE, the PO snapshot env). |
 | `structuredClone` | `JSON.parse(JSON.stringify(x))` or hand copy. |
-| `atob` / `btoa` | Hand-rolled base64 if ever needed. |
 | `using` (explicit resource management) | Parse error — mind your TS `target`; emit must not contain it. |
 | `Array.fromAsync` | Manual `for await` accumulation. |
 | ES modules / dynamic `import()` | The bundle is ONE eval'd IIFE script (esbuild-bundled); there is no module loader. |

@@ -76,4 +76,8 @@ void qjs_drain(QjsEngine *e, uint32_t id);
 void qjs_close(QjsEngine *e);
 void qjs_free(void *p);
 
+/* Bind a host pointer + `:mse` vtable so JS `__mse*` trampolines hit mse_host_*.
+ * Either may be NULL (detach). */
+void qjs_set_mse_host(QjsEngine *e, void *host, const void *vt);
+
 #endif

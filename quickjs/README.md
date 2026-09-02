@@ -2,9 +2,14 @@
 
 Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) — read this before working inside the module.
 
-- **Binding** — our own QuickJS binding (vendored Bellard QuickJS, VERSION 2026-06-04, plus a tiny marked "YMusic
-  patch" at the end of `quickjs.c` — flat-string storage access for the JSON encoder; re-apply on upgrade)
-  replacing the abandoned quickjs-kt.
+- **Binding** — our own QuickJS binding (vendored Bellard QuickJS, VERSION 2026-06-04, plus marked "YMusic
+  patch" sites in `quickjs.c`: V8-shaped `Function.prototype.toString` / `Error.stack` / `eval(TrustedScript)`,
+  Chrome `Array#join` cycle guard, `JS_NewStringLatin1` for `atob`, and flat-string storage access
+  for the JSON encoder at the end of the file; re-apply on upgrade) replacing the abandoned quickjs-kt.
+  Host extras sit outside the vendor tree: `__nativeFn` (`quickjs_hostfn.c`), WHATWG
+  `atob`/`btoa`/`TextEncoder`/`TextDecoder`/`performance` (`quickjs_web.c`), MSE trampolines
+  (`quickjs_mse.c`). CSS camelCase empty-string lives in the player env (`cssStyle` Proxy), not in
+  this VM. Catalog/trace JSONL stays in js-black-box-discover.
 
 - **FFI boundary** — a small **duplex pipe transport** (open / write→accepted / closeWrite(reason) / closeRead /
   DRAIN — no framing header; command/reason cross as native strings): JNI on jvm/android (`native/quickjs_jni.c`),

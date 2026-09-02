@@ -65,5 +65,6 @@ internal object QuickJsNative {
     external fun closeWrite(handle: Long, id: Int, reason: String?)
     external fun closeRead(handle: Long, id: Int)
     external fun drain(handle: Long, id: Int)
+    external fun setMseHost(handle: Long, mseHandle: Long, vtable: Long)
     external fun close(handle: Long)
 }

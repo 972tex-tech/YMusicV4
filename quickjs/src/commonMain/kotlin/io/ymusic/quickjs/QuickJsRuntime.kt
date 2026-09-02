@@ -67,6 +67,7 @@ class QuickJsRuntime private constructor(
     // onOpen reads on the engine thread — the one piece of state not engine-confined. Guard both
     // ends with a lock.
     private val accepts = HashMap<String, suspend (Pipe) -> Unit>()
+    private val prefixAccepts = HashMap<String, suspend (Pipe) -> Unit>()
     private val acceptsLock = SynchronizedObject()
     private var nextId = 1 // Kotlin opens odd ids; JS opens even.
 
@@ -113,6 +114,11 @@ class QuickJsRuntime private constructor(
         for (w in waiters) w.resume(Unit)
     }
 
+    /** Bind native MSE to this engine. Must run on the engine thread, before bundle eval. */
+    fun attachMseHost(mseHandle: Long, vtable: Long) {
+        engine.setMseHost(mseHandle, vtable)
+    }
+
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
      *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]
@@ -126,6 +132,18 @@ class QuickJsRuntime private constructor(
         return AcceptRegistration {
             synchronized(acceptsLock) {
                 if (accepts[command] === handler) accepts.remove(command)
+            }
+        }
+    }
+
+    /** Handle pipes JS opens whose command **starts with** [prefix]. Exact [onAccept] names win.
+     *  Longest prefix wins when several match. [Pipe.command] is the full name JS opened. */
+    fun onAcceptPrefix(prefix: String, handler: suspend (Pipe) -> Unit): AcceptRegistration {
+        require(prefix.isNotEmpty()) { "prefix must not be empty" }
+        synchronized(acceptsLock) { prefixAccepts[prefix] = handler }
+        return AcceptRegistration {
+            synchronized(acceptsLock) {
+                if (prefixAccepts[prefix] === handler) prefixAccepts.remove(prefix)
             }
         }
     }
@@ -213,8 +231,21 @@ class QuickJsRuntime private constructor(
 
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
      *  Returns 0 (accepted) or -1 (refused: no handler), which fails JS's open() call itself. */
+    private fun handlerFor(command: String): (suspend (Pipe) -> Unit)? = synchronized(acceptsLock) {
+        accepts[command]?.let { return@synchronized it }
+        var bestLen = -1
+        var best: (suspend (Pipe) -> Unit)? = null
+        for ((prefix, handler) in prefixAccepts) {
+            if (command.startsWith(prefix) && prefix.length > bestLen) {
+                bestLen = prefix.length
+                best = handler
+            }
+        }
+        best
+    }
+
     internal fun onOpen(id: Int, command: String): Int {
-        val handler = synchronized(acceptsLock) { accepts[command] } ?: return -1
+        val handler = handlerFor(command) ?: return -1
         // Refuse a colliding id rather than overwrite a live pipe: a buggy/hostile bundle reusing an
         // id (or opening an odd Kotlin-range id) would otherwise orphan the old PipeImpl, whose
         // parked continuation close()'s failPending — walking only the pipes map — could never fail.

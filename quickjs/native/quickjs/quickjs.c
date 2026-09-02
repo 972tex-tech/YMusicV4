@@ -7533,6 +7533,68 @@ static const char *get_prop_string(JSContext *ctx, JSValueConst obj, JSAtom prop
 
 #define JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL (1 << 0)
 
+/* YMusic patch (re-apply when upgrading QuickJS): V8-shaped Error.stack.
+ * Chrome traces do not emit eval|Function|anonymous; those frames use
+ * location.href (about:blank if unset). */
+static int stack_is_anon(const char *name)
+{
+    return !name || !name[0] ||
+        !strcmp(name, "<anonymous>") ||
+        !strcmp(name, "<eval>") ||
+        !strcmp(name, "eval") ||
+        !strcmp(name, "anonymous") ||
+        !strcmp(name, "Function");
+}
+
+static __thread int stack_page_url_busy;
+
+static const char *stack_page_url(JSContext *ctx)
+{
+    JSValue g, loc, href;
+    const char *s = NULL;
+    if (stack_page_url_busy)
+        return NULL;
+    stack_page_url_busy = 1;
+    g = JS_GetGlobalObject(ctx);
+    loc = JS_GetPropertyStr(ctx, g, "location");
+    JS_FreeValue(ctx, g);
+    if (JS_IsException(loc)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        stack_page_url_busy = 0;
+        return NULL;
+    }
+    if (!JS_IsObject(loc)) {
+        JS_FreeValue(ctx, loc);
+        stack_page_url_busy = 0;
+        return NULL;
+    }
+    href = JS_GetPropertyStr(ctx, loc, "href");
+    JS_FreeValue(ctx, loc);
+    if (JS_IsException(href)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        stack_page_url_busy = 0;
+        return NULL;
+    }
+    if (JS_IsString(href))
+        s = JS_ToCString(ctx, href);
+    JS_FreeValue(ctx, href);
+    if (s && !s[0]) {
+        JS_FreeCString(ctx, s);
+        s = NULL;
+    }
+    stack_page_url_busy = 0;
+    return s;
+}
+
+static const char *stack_safe_file(const char *file, const char *page)
+{
+    if (!file || !file[0] || file[0] == '<' ||
+        strstr(file, "eval") || strstr(file, "anonymous") ||
+        strstr(file, "Function"))
+        return page;
+    return file;
+}
+
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
 static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
@@ -7543,21 +7605,46 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
     JSValue str;
     DynBuf dbuf;
     const char *func_name_str;
-    const char *str1;
     JSObject *p;
+    int nl;
+    size_t k;
+    const char *page, *page_or;
 
     if (!JS_IsObject(error_obj))
         return; /* protection in the out of memory case */
-    
+
+    page = stack_page_url(ctx);
+    page_or = (page && page[0]) ? page : "about:blank";
     js_dbuf_init(ctx, &dbuf);
+    {
+        JSValue name_v, msg_v;
+        const char *ename = NULL, *emsg = NULL;
+        name_v = JS_GetProperty(ctx, error_obj, JS_ATOM_name);
+        msg_v = JS_GetProperty(ctx, error_obj, JS_ATOM_message);
+        /* Avoid ToString/toString on untrusted error objects. */
+        if (JS_IsString(name_v))
+            ename = JS_ToCString(ctx, name_v);
+        if (JS_IsString(msg_v))
+            emsg = JS_ToCString(ctx, msg_v);
+        if (emsg && emsg[0])
+            dbuf_printf(&dbuf, "%s: %s\n", ename && ename[0] ? ename : "Error", emsg);
+        else
+            dbuf_printf(&dbuf, "%s\n", ename && ename[0] ? ename : "Error");
+        JS_FreeCString(ctx, ename);
+        JS_FreeCString(ctx, emsg);
+        JS_FreeValue(ctx, name_v);
+        JS_FreeValue(ctx, msg_v);
+    }
     if (filename) {
-        dbuf_printf(&dbuf, "    at %s", filename);
+        dbuf_printf(&dbuf, "    at %s", stack_safe_file(filename, page_or));
         if (line_num != -1)
             dbuf_printf(&dbuf, ":%d:%d", line_num, col_num);
         dbuf_putc(&dbuf, '\n');
         str = JS_NewString(ctx, filename);
-        if (JS_IsException(str))
+        if (JS_IsException(str)) {
+            JS_FreeCString(ctx, page);
             return;
+        }
         /* Note: SpiderMonkey does that, could update once there is a standard */
         if (JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_fileName, str,
                                    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE) < 0 ||
@@ -7565,6 +7652,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
                                    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE) < 0 ||
             JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_columnNumber, JS_NewInt32(ctx, col_num),
                                    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE) < 0) {
+            JS_FreeCString(ctx, page);
             return;
         }
     }
@@ -7576,37 +7664,48 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
             continue;
         }
         func_name_str = get_prop_string(ctx, sf->cur_func, JS_ATOM_name);
-        if (!func_name_str || func_name_str[0] == '\0')
-            str1 = "<anonymous>";
-        else
-            str1 = func_name_str;
-        dbuf_printf(&dbuf, "    at %s", str1);
-        JS_FreeCString(ctx, func_name_str);
-
-        p = JS_VALUE_GET_OBJ(sf->cur_func);
-        if (js_class_has_bytecode(p->class_id)) {
-            JSFunctionBytecode *b;
-            const char *atom_str;
-            int line_num1, col_num1;
-
-            b = p->u.func.function_bytecode;
-            if (b->has_debug) {
-                line_num1 = find_line_num(ctx, b,
-                                          sf->cur_pc - b->byte_code_buf - 1, &col_num1);
-                atom_str = JS_AtomToCString(ctx, b->debug.filename);
-                dbuf_printf(&dbuf, " (%s",
-                            atom_str ? atom_str : "<null>");
-                JS_FreeCString(ctx, atom_str);
+        {
+            const char *atom_str = NULL;
+            const char *file;
+            int line_num1 = 0, col_num1 = 0;
+            int anon = stack_is_anon(func_name_str);
+            p = JS_VALUE_GET_OBJ(sf->cur_func);
+            if (js_class_has_bytecode(p->class_id)) {
+                JSFunctionBytecode *b = p->u.func.function_bytecode;
+                if (b->has_debug) {
+                    line_num1 = find_line_num(ctx, b,
+                                              sf->cur_pc - b->byte_code_buf - 1,
+                                              &col_num1);
+                    atom_str = JS_AtomToCString(ctx, b->debug.filename);
+                }
+            }
+            file = stack_safe_file(atom_str, page_or);
+            if (anon) {
+                dbuf_printf(&dbuf, "    at %s", file);
+                if (line_num1 != 0)
+                    dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
+            } else {
+                dbuf_printf(&dbuf, "    at %s (%s", func_name_str, file);
                 if (line_num1 != 0)
                     dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
                 dbuf_putc(&dbuf, ')');
             }
-        } else {
-            dbuf_printf(&dbuf, " (native)");
+            JS_FreeCString(ctx, atom_str);
         }
+        JS_FreeCString(ctx, func_name_str);
         dbuf_putc(&dbuf, '\n');
     }
+    nl = 0;
+    for (k = 0; k < dbuf.size; k++) {
+        if (dbuf.buf[k] == '\n')
+            nl++;
+    }
+    while (nl < 3) {
+        dbuf_printf(&dbuf, "    at %s:1:1\n", page_or);
+        nl++;
+    }
     dbuf_putc(&dbuf, '\0');
+    JS_FreeCString(ctx, page);
     if (dbuf_error(&dbuf))
         str = JS_NULL;
     else
@@ -37330,8 +37429,31 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValueConst this_obj,
     const char *str;
     size_t len;
 
-    if (!JS_IsString(val))
+    if (!JS_IsString(val)) {
+        /* YMusic patch (re-apply when upgrading QuickJS): Chrome eval(TrustedScript)
+         * runs the script source. Do not replace global eval — direct eval must see
+         * locals. Objects whose toString is `[object …]` are left as values. */
+        if (JS_IsObject(val)) {
+            JSValue s_v = JS_ToString(ctx, val);
+            if (JS_IsException(s_v))
+                return s_v;
+            str = JS_ToCStringLen(ctx, &len, s_v);
+            if (!str) {
+                JS_FreeValue(ctx, s_v);
+                return JS_EXCEPTION;
+            }
+            if (len >= 8 && !memcmp(str, "[object ", 8)) {
+                JS_FreeCString(ctx, str);
+                JS_FreeValue(ctx, s_v);
+                return JS_DupValue(ctx, val);
+            }
+            ret = JS_EvalInternal(ctx, this_obj, str, len, "<input>", flags, scope_idx);
+            JS_FreeCString(ctx, str);
+            JS_FreeValue(ctx, s_v);
+            return ret;
+        }
         return JS_DupValue(ctx, val);
+    }
     str = JS_ToCStringLen(ctx, &len, val);
     if (!str)
         return JS_EXCEPTION;
@@ -41368,7 +41490,9 @@ static JSValue js_function_toString(JSContext *ctx, JSValueConst this_val,
             pref = "async function *";
             break;
         }
-        suff = "() {\n    [native code]\n}";
+        /* YMusic patch (re-apply when upgrading QuickJS): V8/Chrome
+         * `function name() { [native code] }`. */
+        suff = "() { [native code] }";
         name = JS_GetProperty(ctx, this_val, JS_ATOM_name);
         if (JS_IsUndefined(name))
             name = JS_AtomToString(ctx, JS_ATOM_empty_string);
@@ -41393,9 +41517,9 @@ static const JSCFunctionListEntry js_function_proto_funcs[] = {
     JS_CFUNC_DEF("bind", 1, js_function_bind ),
     JS_CFUNC_DEF("toString", 0, js_function_toString ),
     JS_CFUNC_DEF("[Symbol.hasInstance]", 1, js_function_hasInstance ),
-    JS_CGETSET_DEF("fileName", js_function_proto_fileName, NULL ),
-    JS_CGETSET_MAGIC_DEF("lineNumber", js_function_proto_lineNumber, NULL, 0 ),
-    JS_CGETSET_MAGIC_DEF("columnNumber", js_function_proto_lineNumber, NULL, 1 ),
+    /* YMusic patch (re-apply when upgrading QuickJS): Chrome Function.prototype
+     * has no fileName/lineNumber/columnNumber. Leaving them makes
+     * `'fileName' in atob` true. */
 };
 
 /* Error class */
@@ -42648,6 +42772,11 @@ static JSValue js_array_toString(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
+/* YMusic patch (re-apply when upgrading QuickJS): Chrome Array#join skips a
+ * circular array (empty chunk) instead of recursing until the native stack dies. */
+static __thread void *js_array_join_seen[96];
+static __thread int js_array_join_seen_n;
+
 static JSValue js_array_join(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv, int toLocaleString)
 {
@@ -42655,9 +42784,25 @@ static JSValue js_array_join(JSContext *ctx, JSValueConst this_val,
     StringBuffer b_s, *b = &b_s;
     JSString *p = NULL;
     int64_t i, n;
-    int c;
+    int c, seen_i;
 
     obj = JS_ToObject(ctx, this_val);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
+        void *self = JS_VALUE_GET_PTR(obj);
+        for (seen_i = 0; seen_i < js_array_join_seen_n; seen_i++) {
+            if (js_array_join_seen[seen_i] == self) {
+                JS_FreeValue(ctx, obj);
+                return JS_NewString(ctx, "");
+            }
+        }
+        if (js_array_join_seen_n >= (int)(sizeof(js_array_join_seen) / sizeof(js_array_join_seen[0]))) {
+            JS_FreeValue(ctx, obj);
+            return JS_ThrowRangeError(ctx, "Maximum call stack size exceeded");
+        }
+        js_array_join_seen[js_array_join_seen_n++] = self;
+    }
     if (js_get_length64(ctx, &n, obj))
         goto exception;
 
@@ -42695,12 +42840,16 @@ static JSValue js_array_join(JSContext *ctx, JSValueConst this_val,
     }
     JS_FreeValue(ctx, sep);
     JS_FreeValue(ctx, obj);
+    if (js_array_join_seen_n > 0)
+        js_array_join_seen_n--;
     return string_buffer_end(b);
 
 fail:
     string_buffer_free(b);
     JS_FreeValue(ctx, sep);
 exception:
+    if (js_array_join_seen_n > 0)
+        js_array_join_seen_n--;
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
@@ -61449,4 +61598,13 @@ int JS_GetFlatStringStorage(JSValueConst v, const void **pdata, uint32_t *plen)
     *pdata = p->u.str8;
     *plen = p->len;
     return p->is_wide_char;
+}
+
+/* Latin-1 JSString from raw bytes (atob output). JS_NewStringLen is UTF-8 and would
+ * widen 0x80–0xFF; this keeps charCodeAt(i) === byte[i]. */
+JSValue JS_NewStringLatin1(JSContext *ctx, const char *buf, size_t len)
+{
+    if (len > (size_t)INT_MAX)
+        return JS_ThrowRangeError(ctx, "string too long");
+    return js_new_string8_len(ctx, buf, (int)len);
 }

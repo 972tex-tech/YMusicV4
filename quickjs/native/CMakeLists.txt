@@ -13,6 +13,9 @@ add_library(quickjsjni SHARED
   quickjs_jni.c
   quickjs_json.c
   quickjs_pipe.c
+  quickjs_hostfn.c
+  quickjs_web.c
+  quickjs_mse.c
   ${QJS_DIR}/quickjs.c
   ${QJS_DIR}/cutils.c
   ${QJS_DIR}/libregexp.c
@@ -47,6 +50,8 @@ add_executable(pipe_stress EXCLUDE_FROM_ALL
   pipe_stress.c
   quickjs_json.c
   quickjs_pipe.c
+  quickjs_hostfn.c
+  quickjs_web.c
   ${QJS_DIR}/quickjs.c
   ${QJS_DIR}/cutils.c
   ${QJS_DIR}/libregexp.c

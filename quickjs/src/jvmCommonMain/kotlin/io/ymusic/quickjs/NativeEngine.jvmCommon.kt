@@ -35,6 +35,9 @@ internal actual class NativeEngine private constructor(private val handle: Long)
 
     actual fun drain(id: Int) = QuickJsNative.drain(handle, id)
 
+    actual fun setMseHost(mseHandle: Long, vtable: Long) =
+        QuickJsNative.setMseHost(handle, mseHandle, vtable)
+
     actual fun destroy() {
         QuickJsNative.unregister(handle)
         QuickJsNative.close(handle)

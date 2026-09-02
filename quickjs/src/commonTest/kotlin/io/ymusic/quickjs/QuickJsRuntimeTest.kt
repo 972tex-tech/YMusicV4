@@ -1105,6 +1105,22 @@ class QuickJsRuntimeTest {
         }
     }
 
+    @Test
+    fun prefix_accept_routes_suffix_and_the_pipe_carries_args() = runTest {
+        val rt = QuickJsRuntime.create()
+        rt.onAcceptPrefix("host/main/") { pipe ->
+            assertEquals("host/main/echo-suffix", pipe.command)
+            val arg = pipe.readText()
+            pipe.sendText("got:" + pipe.command.removePrefix("host/main/") + ":" + arg)
+            pipe.sink.close()
+        }
+        try {
+            assertEquals("got:echo-suffix:arg", rt.probe("prefix-main"))
+        } finally {
+            rt.close()
+        }
+    }
+
     /** The Kotlin mirror: onAccept's registration removes (JS open then refuses at the open), and
      *  a stale handle is a no-op. */
     @Test
