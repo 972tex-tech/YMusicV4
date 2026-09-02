@@ -628,4 +628,175 @@ class DynamicEngineTest {
             e.close()
         }
     }
+
+    @Test
+    fun fetch_reads_text_body() = runTest {
+        val client = FakeHttpClient(
+            CannedResponse.ofText("Hello, world!", headers = listOf("Content-Type" to "text/plain")),
+        )
+        val e = createTestEngine(client)
+        try {
+            assertEquals("Hello, world!", e.scenario("fetch-get-text"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_parses_json() = runTest {
+        val client = FakeHttpClient(
+            CannedResponse.ofText(
+                """{"items":[{"id":"a"},{"id":"b"},{"id":"c"}]}""",
+                headers = listOf("Content-Type" to "application/json"),
+                chunkSize = 5,
+            ),
+        )
+        val e = createTestEngine(client)
+        try {
+            assertEquals("3", e.scenario("fetch-json"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_arraybuffer_and_reader() = runTest {
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("Hello, world!", chunkSize = 4)))
+        try {
+            assertEquals("Hello, world!", e.scenario("fetch-arraybuffer"))
+        } finally {
+            e.close()
+        }
+        val streamed = createTestEngine(FakeHttpClient(CannedResponse.ofText("chunk-data", chunkSize = 3)))
+        try {
+            assertEquals("chunk-data|false|true", streamed.scenario("fetch-reader"))
+        } finally {
+            streamed.close()
+        }
+    }
+
+    @Test
+    fun fetch_clone_reads_independently() = runTest {
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("body")))
+        try {
+            assertEquals("body|body", e.scenario("fetch-clone"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_post_forwards_method_headers_body() = runTest {
+        val canned = CannedResponse.ofText("ok")
+        var body: ByteArray? = null
+        val client = FakeHttpClient { req ->
+            body = req.body?.readAll()
+            canned.build(req)
+        }
+        val e = createTestEngine(client)
+        try {
+            e.scenario("fetch-post")
+            val req = client.lastRequest!!
+            assertEquals("https://example.com/post", req.url.toString())
+            assertEquals("POST", req.method)
+            assertEquals("payload", body?.decodeToString())
+            assertEquals("1", req.header("X-Test"))
+            assertEquals("text/html", req.header("Accept"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_headers_are_case_insensitive() = runTest {
+        val client = FakeHttpClient(
+            CannedResponse.ofText("x", headers = listOf("Content-Type" to "application/json; charset=utf-8")),
+        )
+        val e = createTestEngine(client)
+        try {
+            assertEquals("application/json; charset=utf-8", e.scenario("fetch-headers"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_is_native_and_stream_globals_exist() = runTest {
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
+        try {
+            assertEquals("function|true|function|function|true", e.scenario("fetch-native"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_abort_rejects_with_aborterror() = runTest {
+        val client = FakeHttpClient(CannedResponse.ofText("ok"))
+        val e = createTestEngine(client)
+        try {
+            assertEquals("AbortError", e.scenario("fetch-abort"))
+            assertTrue(client.lastRequest == null, "nothing may reach the client")
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun fetch_network_error_is_failed_to_fetch() = runTest {
+        val client = FakeHttpClient { throw IOException("dns lookup failed") }
+        val e = createTestEngine(client)
+        try {
+            val r = e.scenario("fetch-failed")
+            assertTrue(r.startsWith("TypeError Failed to fetch:"), r)
+            assertTrue(r.contains("dns lookup failed"), r)
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun xhr_reads_text_body() = runTest {
+        val client = FakeHttpClient(
+            CannedResponse.ofText("Hello, world!", headers = listOf("Content-Type" to "text/plain")),
+        )
+        val e = createTestEngine(client)
+        try {
+            assertEquals("Hello, world!", e.scenario("xhr-get-text"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun xhr_post_forwards_method_headers_body() = runTest {
+        val canned = CannedResponse.ofText("ok")
+        var body: ByteArray? = null
+        val client = FakeHttpClient { req ->
+            body = req.body?.readAll()
+            canned.build(req)
+        }
+        val e = createTestEngine(client)
+        try {
+            e.scenario("xhr-post")
+            val req = client.lastRequest!!
+            assertEquals("https://example.com/post", req.url.toString())
+            assertEquals("POST", req.method)
+            assertEquals("payload", body?.decodeToString())
+            assertEquals("1", req.header("X-Test"))
+            assertEquals("text/html", req.header("Accept"))
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun xhr_is_native() = runTest {
+        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
+        try {
+            assertEquals("function|true|0|0", e.scenario("xhr-native"))
+        } finally {
+            e.close()
+        }
+    }
 }

@@ -5,6 +5,8 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.FakeHttpClient
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -73,6 +75,29 @@ class YtSessionTest {
             assertEquals(2, homepageHits, "403 forces a re-scrape of the session")
             assertEquals(2, apiHits, "the API call is retried once after the refresh")
             assertTrue(page.sections.any { it.items.isNotEmpty() }, "the retry's result is parsed")
+        } finally {
+            m.close()
+        }
+    }
+
+    @Test
+    fun get_player_config_is_parsed_from_the_homepage() = runTest {
+        val client = FakeHttpClient { request ->
+            if (isHomepage(request)) homepage(request)
+            else searchOk(request)
+        }
+        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
+        m.start()
+        try {
+            val rec = m.use { engine ->
+                engine.jsonCommand("get_player_config", { }) { it.readObject() }
+            }
+            assertEquals("test-event-id", rec["eventId"]?.jsonPrimitive?.content)
+            assertTrue(rec["jsUrl"]?.jsonPrimitive?.content.orEmpty().contains("player_es6"), rec.toString())
+            val bg = rec["bgChallenge"]?.jsonObject
+            assertEquals("TESTPROG", bg?.get("program")?.jsonPrimitive?.content)
+            assertEquals("trayride", bg?.get("globalName")?.jsonPrimitive?.content)
+            assertTrue(rec["ytcfg"]?.jsonObject?.isNotEmpty() == true, rec.toString())
         } finally {
             m.close()
         }

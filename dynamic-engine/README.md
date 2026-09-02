@@ -19,6 +19,8 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 
 - **HTTP** (implemented) — a global `HttpRequest` builder over the `"http"` pipe command, served directly on a
   `kmphttp.KmpHttpClient` (streaming both ways; Android resolves `:kmpHttp:core`'s jvm variant, i.e. real OkHttp).
+  WHATWG `fetch` (and `Headers`/`Request`/`Response`/`ReadableStream`/`AbortController`) is a JS wrapper of that
+  builder so eval'd `base.js` can call it.
 
 - **Error contract** (implemented) — JS `commandHandler(handler)` (handler gets `(src, out)`)/`JsEngineError` ↔ a
   per-command Kotlin method that `decodeEngineError`s the RESET into a typed `EngineError` (implements
@@ -56,7 +58,18 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   stripped, preloads defanged) carrying the `INJECT_JS_HERE` slot the player splices its boot script into — the
   splice point is remotely updatable, the `webview_ymusic.js` bundle stays an app asset.
 
-- **Planned** — file / fs / sqlite.
+- **Player** — `DynamicEnginePlayer` is a sibling of `DynamicEngine`: same HTTP/cookies/cache/settings
+  plus native `:mse` (or pipe MSE in tests). App commands are
+  `player/init|load|play|pause|seek|stop|status|mintPo`. Pass the scraping [DynamicEngineManager] as
+  `main` so player JS `open("host/main/"+command)` is a one-way host proxy (homepage
+  `get_player_config` for minter EVENT_ID + `ytAtN` program). Content PO is homepage minter
+  (GenerateIT + OWL `wpc.m`) **before** `base.js`; KEVLAR_WATCH `Application.create` then
+  `loadVideoById`. Minter internals stay on `HttpRequest`; eval'd `base.js` SABR uses `fetch`.
+  `orig/env.raw.js` is the Chrome 151 snapshot surface (filled PDF `navigator.plugins`, not empty
+  `{length:5}`). Do **not** carry discover `CONFIG_BBD` traps. Playground **MSE** tab:
+  `./gradlew :playground:run`.
+
+- **Planned** — file / fs / sqlite; `base.js` bootstrap inside `DynamicEnginePlayer`.
 
 - **Targets** — pure commonMain; targets = `:quickjs`'s (jvm/android/ios/macos/linux).
 

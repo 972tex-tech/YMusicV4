@@ -46,8 +46,8 @@ import kotlinx.serialization.json.Json
  * serves any host command the JS calls back on (via [commandHandler], using [logger]). Not
  * thread-safe — the underlying runtime confines JS to a single thread. Build one, use it, [close] it.
  */
-class DynamicEngine private constructor(
-    private val runtime: QuickJsRuntime,
+class DynamicEngine internal constructor(
+    internal val runtime: QuickJsRuntime,
     internal val logger: Logger?,
     internal val loggers: ParkedLoggers,
 ) {
@@ -137,14 +137,9 @@ class DynamicEngine private constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
-        ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
-            QuickJsRuntime.create(engineJs, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
-                it.installHttp(client, parked)
-                it.installCookies(cookieJar, parked)
-                if (cacheStore != null) it.installCache(cacheStore, parked)
-                if (settings != null) it.installSettings(settings, parked)
-            }
-        }
+        ): DynamicEngine = createEngine(
+            client, appVersion, dispatcher, logger, engineJs, cacheStore, cookieJar, settings,
+        )
 
         /** Create from [compile]d bytecode of a bundle — `versions.app` is only known here, so it
          *  can never be baked into the precompiled blob; C installs it before the bytecode runs.
@@ -158,19 +153,63 @@ class DynamicEngine private constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
+        ): DynamicEngine = createEngineFromBytecode(
+            client, appVersion, engineBytecode, dispatcher, logger, cacheStore, cookieJar, settings,
+        )
+
+        internal fun createEngineFromBytecode(
+            client: KmpHttpClient,
+            appVersion: Int,
+            engineBytecode: ByteArray,
+            dispatcher: CoroutineDispatcher,
+            logger: Logger? = null,
+            cacheStore: CacheStore? = null,
+            cookieJar: CookieJar = client.cookieJar,
+            settings: SettingsStore? = null,
+            extraInstall: QuickJsRuntime.(ParkedLoggers) -> Unit = {},
         ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
             QuickJsRuntime.create(engineBytecode, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
-                it.installHttp(client, parked)
-                it.installCookies(cookieJar, parked)
-                if (cacheStore != null) it.installCache(cacheStore, parked)
-                if (settings != null) it.installSettings(settings, parked)
+                installHost(it, client, parked, cacheStore, cookieJar, settings)
+                it.extraInstall(parked)
             }
+        }
+
+        internal fun createEngine(
+            client: KmpHttpClient,
+            appVersion: Int,
+            dispatcher: CoroutineDispatcher,
+            logger: Logger? = null,
+            engineJs: String = ENGINE_JS,
+            cacheStore: CacheStore? = null,
+            cookieJar: CookieJar = client.cookieJar,
+            settings: SettingsStore? = null,
+            extraInstall: QuickJsRuntime.(ParkedLoggers) -> Unit = {},
+        ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
+            QuickJsRuntime.create(engineJs, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
+                installHost(it, client, parked, cacheStore, cookieJar, settings)
+                it.extraInstall(parked)
+            }
+        }
+
+        private fun installHost(
+            runtime: QuickJsRuntime,
+            client: KmpHttpClient,
+            parked: ParkedLoggers,
+            cacheStore: CacheStore?,
+            cookieJar: CookieJar,
+            settings: SettingsStore?,
+        ) {
+            runtime.installHttp(client, parked)
+            runtime.installCookies(cookieJar, parked)
+            if (cacheStore != null) runtime.installCache(cacheStore, parked)
+            if (settings != null) runtime.installSettings(settings, parked)
         }
 
         /** Compile a bundle to QuickJS bytecode for [create] — per-function source text is
          *  stripped, so the blob carries no copy of the script. Compile once (e.g. after fetching
          *  a remote bundle), persist, and create from the bytes on later launches. */
-        suspend fun compile(engineJs: String): ByteArray = QuickJsRuntime.compile(engineJs)
+        suspend fun compile(engineJs: String, filename: String = "<slice>"): ByteArray =
+            QuickJsRuntime.compile(engineJs, filename)
 
         private fun boot(
             logger: Logger?,

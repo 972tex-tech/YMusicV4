@@ -15,7 +15,11 @@ internal val NEXT_FIXTURE = """{"contents":{"twoColumnWatchNextResults":{"result
 // clientName / visitorData / apiKey / signatureTimestamp). The engine fetches this before its first
 // InnerTube call to bootstrap the WEB session; the test harness serves it for the homepage GET.
 internal val HOMEPAGE_FIXTURE = """<!DOCTYPE html><html><head><script>
-ytcfg.set({"INNERTUBE_API_KEY":"AIzaSyTESTKEY","INNERTUBE_CONTEXT_CLIENT_NAME":1,"INNERTUBE_CONTEXT_CLIENT_VERSION":"2.20260708.00.00","VISITOR_DATA":"CgtzZXNzaW9uVGVzdA%3D%3D","GL":"VN","HL":"en","PAGE_CL":700000000,"PAGE_BUILD_LABEL":"youtube.desktop_20260708","INNERTUBE_CONTEXT":{"client":{"signatureTimestamp":20260708}}});
+ytcfg.set({"INNERTUBE_API_KEY":"AIzaSyTESTKEY","INNERTUBE_CONTEXT_CLIENT_NAME":1,"INNERTUBE_CONTEXT_CLIENT_VERSION":"2.20260708.00.00","VISITOR_DATA":"CgtzZXNzaW9uVGVzdA%3D%3D","EVENT_ID":"test-event-id","GL":"VN","HL":"en","PAGE_CL":700000000,"PAGE_BUILD_LABEL":"youtube.desktop_20260708","INNERTUBE_CONTEXT":{"client":{"signatureTimestamp":20260708}},"WEB_PLAYER_CONTEXT_CONFIGS":{"WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH":{"jsUrl":"/s/player/test123/player_es6.vflset/en_US/base.js","contextId":"WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH","eventLabel":"detailpage"}}});
+</script><script>
+window.ytAtP = new Promise(res => window.ytAtN = res);
+</script><script>
+(function() {if (window.ytAtN) {window.ytAtN({"R": "{\"bgChallenge\":{\"program\":\"TESTPROG\",\"globalName\":\"trayride\",\"interpreterUrl\":\"https://www.google.com/js/th/test.js\"}}"});}})();
 </script></head><body></body></html>"""
 
 // HAND-AUTHORED (not a live capture): a minimal richGrid home with one loose grid item followed by a

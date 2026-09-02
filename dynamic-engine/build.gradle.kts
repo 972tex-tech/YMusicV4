@@ -32,8 +32,7 @@ kotlin {
 
     // Match :quickjs's target set (jvm/android/ios/macos/linux). withIosTargets() covers ios
     // (device + simulator); the rest comes from withMacosTargets() + withLinuxTargets(). Host-gated.
-    // :quickjs is self-contained — its jar bundles the JNI lib and its klib embeds the static lib —
-    // so consuming it needs no native-lib wiring here.
+    // libav / VideoToolbox ride on :mse's cinterop klib — no linkerOpts here.
     withIosTargets()
     withMacosTargets()
     withLinuxTargets()
@@ -56,6 +55,7 @@ kotlin {
                 // api: EngineError implements kmpcommon.error.CodedError; call() takes a JsonObject
                 api(project(":kmpCommon"))
                 api(project(":settings"))
+                api(project(":mse"))
                 api(Libs.Kotlinx.serializationJson)
                 // api: SqliteCacheStore's public constructor takes okio FileSystem/Path (blob dir)
                 // and a SqlDelight SqlDriver (the metadata index).
@@ -95,6 +95,8 @@ kotlin {
         val nativeTest by getting {
             dependencies {
                 implementation(Libs.SqlDelight.nativeDriver)
+                implementation(kotlin("test"))
+                implementation(project(":kmpHttp:testing"))
             }
         }
     }

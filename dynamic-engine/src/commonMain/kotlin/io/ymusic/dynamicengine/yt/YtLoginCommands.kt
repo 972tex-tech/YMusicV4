@@ -59,9 +59,10 @@ suspend fun DynamicEngineManager.ytLogout(): Unit = use { engine ->
 }
 
 /**
- * Re-scrape the session under the current cookie identity — call right after [ytLoginStatus] flips
- * (sign-in) or after [ytLogout] so the engine's authenticated headers pick up (or drop) the
- * account's SESSION_INDEX / delegated session. A homepage GET, safe once the cookie gate has passed.
+ * Drop the cached session and re-scrape under the current cookie identity — call right after
+ * [ytLoginStatus] flips (sign-in), after [ytLogout], or after the account switcher closes so the
+ * engine's authenticated headers pick up (or drop) SESSION_INDEX / delegated session. A homepage
+ * GET, safe once the cookie gate has passed.
  */
 suspend fun DynamicEngineManager.ytRefreshSession(): Unit = use { engine ->
     engine.jsonCommand("yt/session/refresh", { w ->
