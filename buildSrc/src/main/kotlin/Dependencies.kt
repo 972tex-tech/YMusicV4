@@ -9,7 +9,7 @@ object Versions {
     /** The engine-js bundle's self-declared revision — BUMP MANUALLY on every remote push. One
      *  value feeds the bundle's inlined BACKEND_VERSION, the embedded-const version, and each
      *  shell's embed-version constant (configuration-time, no artifact plumbing). */
-    const val engineJsBackendVersion = 20L
+    const val engineJsBackendVersion = 43L
     const val targetSdk = 35
 
     // KMP
@@ -122,6 +122,8 @@ object Libs {
     // platform lib.
     object Media3 {
         const val exoplayer = "androidx.media3:media3-exoplayer:${Versions.media3}"
+        const val extractor = "androidx.media3:media3-extractor:${Versions.media3}"
+        const val datasource = "androidx.media3:media3-datasource:${Versions.media3}"
         const val common = "androidx.media3:media3-common:${Versions.media3}"
         const val ui = "androidx.media3:media3-ui:${Versions.media3}"
         const val session = "androidx.media3:media3-session:${Versions.media3}"
