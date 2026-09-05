@@ -141,19 +141,6 @@ export function dumpBgOnSps(sps: number): void {
   if (held["sabrUrl"]) dumpSabrCapture();
   if (typeof __bgEntropyDump === "function") {
     const ent = __bgEntropyDump();
-    if (ent) {
-      console.log(
-        "bg dump entropy meta " +
-          JSON.stringify({
-            "nDate": ent["nDate"],
-            "nPerf": ent["nPerf"],
-            "nRand": ent["nRand"],
-            "timeOrigin": ent["timeOrigin"],
-          }),
-      );
-      if (ent["date"]) logBig("bg dump dateNow", String(ent["date"]));
-      if (ent["perf"]) logBig("bg dump perfNow", String(ent["perf"]));
-      if (ent["rand"]) logBig("bg dump mathRandom", String(ent["rand"]));
-    }
+    if (ent) logBig("bg dump entropy", ent);
   }
 }

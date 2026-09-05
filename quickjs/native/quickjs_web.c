@@ -587,12 +587,9 @@ typedef struct {
     int rec;
     JSValue date_orig;
     JSValue rand_orig;
-    double *date;
-    double *perf;
-    double *randv;
-    int n_date;
-    int n_perf;
-    int n_rand;
+    char **line;
+    int n;
+    int cap;
 } Ent;
 static Ent g_ent[ENT_CTX];
 
@@ -615,16 +612,29 @@ static Ent *ent_of(JSContext *ctx)
     return NULL;
 }
 
-static void ent_push(double **buf, int *n, double v)
+static void ent_line(Ent *e, char tag, const char *fmt, double v)
 {
-    if (*n >= ENT_CAP)
+    char buf[48];
+    int n;
+    char *s;
+    if (!e || !e->rec || e->n >= ENT_CAP)
         return;
-    if (!*buf) {
-        *buf = (double *)malloc(sizeof(double) * ENT_CAP);
-        if (!*buf)
+    n = snprintf(buf, sizeof(buf), fmt, tag, v);
+    if (n < 0)
+        return;
+    if (e->n >= e->cap) {
+        int cap = e->cap ? e->cap * 2 : 1024;
+        char **nl = (char **)realloc(e->line, sizeof(char *) * (size_t)cap);
+        if (!nl)
             return;
+        e->line = nl;
+        e->cap = cap;
     }
-    (*buf)[(*n)++] = v;
+    s = (char *)malloc((size_t)n + 1);
+    if (!s)
+        return;
+    memcpy(s, buf, (size_t)n + 1);
+    e->line[e->n++] = s;
 }
 
 static double clock_now_ms(void)
@@ -655,7 +665,7 @@ static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     g_perf_last = n;
     e = ent_of(ctx);
     if (e && e->rec)
-        ent_push(&e->perf, &e->n_perf, n);
+        ent_line(e, 'p', "%c %.17g", n);
     return JS_NewFloat64(ctx, n);
 }
 
@@ -668,7 +678,7 @@ static JSValue js_date_now_rec(JSContext *ctx, JSValueConst this_val, int argc, 
     (void)argc;
     (void)argv;
     if (e && e->rec)
-        ent_push(&e->date, &e->n_date, (double)ms);
+        ent_line(e, 'd', "%c %.0f", (double)ms);
     return JS_NewInt64(ctx, ms);
 }
 
@@ -684,7 +694,7 @@ static JSValue js_math_random_rec(JSContext *ctx, JSValueConst this_val, int arg
     if (e->rec && !JS_IsException(v)) {
         double d;
         if (!JS_ToFloat64(ctx, &d, v))
-            ent_push(&e->randv, &e->n_rand, d);
+            ent_line(e, 'r', "%c %.17g", d);
     }
     return v;
 }
@@ -698,7 +708,12 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
     (void)argv;
     if (!e)
         return JS_UNDEFINED;
-    e->n_date = e->n_perf = e->n_rand = 0;
+    {
+        int i;
+        for (i = 0; i < e->n; i++)
+            free(e->line[i]);
+        e->n = 0;
+    }
     g = JS_GetGlobalObject(ctx);
     date = JS_GetPropertyStr(ctx, g, "Date");
     math = JS_GetPropertyStr(ctx, g, "Math");
@@ -746,60 +761,34 @@ static JSValue js_bg_entropy_stop(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
-static JSValue ent_b64(JSContext *ctx, const double *v, int n)
-{
-    size_t nb = (size_t)n * sizeof(double);
-    size_t out_len = ((nb + 2) / 3) * 4;
-    char *out;
-    const unsigned char *p = (const unsigned char *)v;
-    size_t i, j = 0;
-    if (n <= 0 || !v)
-        return JS_NewString(ctx, "");
-    out = (char *)malloc(out_len + 1);
-    if (!out)
-        return JS_EXCEPTION;
-    for (i = 0; i + 2 < nb; i += 3) {
-        unsigned t = (p[i] << 16) | (p[i + 1] << 8) | p[i + 2];
-        out[j++] = B64[(t >> 18) & 63];
-        out[j++] = B64[(t >> 12) & 63];
-        out[j++] = B64[(t >> 6) & 63];
-        out[j++] = B64[t & 63];
-    }
-    if (i < nb) {
-        unsigned t = p[i] << 16;
-        if (i + 1 < nb)
-            t |= p[i + 1] << 8;
-        out[j++] = B64[(t >> 18) & 63];
-        out[j++] = B64[(t >> 12) & 63];
-        out[j++] = (i + 1 < nb) ? B64[(t >> 6) & 63] : '=';
-        out[j++] = '=';
-    }
-    out[j] = 0;
-    {
-        JSValue s = JS_NewStringLen(ctx, out, j);
-        free(out);
-        return s;
-    }
-}
-
 static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
-    JSValue o;
+    size_t total = 0;
+    char *out;
+    int i;
+    size_t off = 0;
+    JSValue s;
     (void)this_val;
     (void)argc;
     (void)argv;
-    if (!e || (e->n_date == 0 && e->n_perf == 0 && e->n_rand == 0))
+    if (!e || e->n <= 0)
         return JS_NULL;
-    o = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, o, "nDate", JS_NewInt32(ctx, e->n_date));
-    JS_SetPropertyStr(ctx, o, "nPerf", JS_NewInt32(ctx, e->n_perf));
-    JS_SetPropertyStr(ctx, o, "nRand", JS_NewInt32(ctx, e->n_rand));
-    JS_SetPropertyStr(ctx, o, "timeOrigin", JS_NewFloat64(ctx, g_perf_origin));
-    JS_SetPropertyStr(ctx, o, "date", ent_b64(ctx, e->date, e->n_date));
-    JS_SetPropertyStr(ctx, o, "perf", ent_b64(ctx, e->perf, e->n_perf));
-    JS_SetPropertyStr(ctx, o, "rand", ent_b64(ctx, e->randv, e->n_rand));
-    return o;
+    for (i = 0; i < e->n; i++)
+        total += strlen(e->line[i]) + 1;
+    out = (char *)malloc(total + 1);
+    if (!out)
+        return JS_EXCEPTION;
+    for (i = 0; i < e->n; i++) {
+        size_t ln = strlen(e->line[i]);
+        memcpy(out + off, e->line[i], ln);
+        off += ln;
+        out[off++] = '\n';
+    }
+    out[off] = 0;
+    s = JS_NewStringLen(ctx, out, off);
+    free(out);
+    return s;
 }
 
 static void install_performance(JSContext *ctx, JSValueConst global)
