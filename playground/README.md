@@ -6,7 +6,17 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 
 ## Run
 
-- **Desktop JVM** — `./gradlew :playground:run`
+- **Desktop JVM** — `./gradlew :playground:run -PsabrDebug=true`
+
+BotGuard capture (no cookies) lands in `build/bg-dump/` as files a later miller/SPS run can load. Watch for:
+
+```
+bg capture miller dir=… program=N snap=N it=N
+bg capture sabr dir=… body=N
+bg capture sps N
+```
+
+Then in js-black-box-discover: `python3 harness/po_replay.py mill DIR` and `python3 harness/po_replay.py sps DIR`.
 - **iOS** — `MainViewController()` in `iosMain` (framework `MsePlayground`); host app is local, not in git
 - **Android** — `./gradlew :playground-android:installDebug` (needs an emulator/device and
   `ffmpeg-build/out/android-<abi>`)

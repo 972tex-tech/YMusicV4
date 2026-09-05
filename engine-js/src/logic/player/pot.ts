@@ -6,6 +6,7 @@ import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
+import { dumpBgParams, recordBgChallenge, recordBgMint } from "./bg_dump";
 
 const REQUEST_KEY = "O43z0dpjhgX20SCx4KAo";
 const API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw";
@@ -175,7 +176,17 @@ export async function minterFromConfig(
   });
 
   out["step"] = "snapshot";
+  const perf = (globalThis as unknown as { performance?: { now?: () => number; timeOrigin?: number } })
+    .performance;
+  const now = function (): number {
+    return perf && typeof perf.now === "function" ? perf.now() : Date.now();
+  };
+  const rand0 = now();
+  for (let i = 0; i < 1000; i++) Math.random();
+  const rand1 = now();
   const webPo: unknown[] = [];
+  const snap0 = now();
+  const wall0 = Date.now();
   const botguardResponse = await new Promise(function (resolve, reject) {
     try {
       (asyncSnap as (cb: (r: unknown) => void, args: unknown[]) => void)(
@@ -188,7 +199,26 @@ export async function minterFromConfig(
       reject(e);
     }
   });
+  const snap1 = now();
+  const wall1 = Date.now();
   out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
+  out["snapshotPrefix"] =
+    typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
+  out["rand1kMs"] = rand1 - rand0;
+  out["snapPerfMs"] = snap1 - snap0;
+  out["snapWallMs"] = wall1 - wall0;
+  console.log(
+    "mill snap " +
+      out["snapshotLen"] +
+      " " +
+      out["snapshotPrefix"] +
+      " rand1kMs=" +
+      out["rand1kMs"] +
+      " snapPerfMs=" +
+      out["snapPerfMs"] +
+      " snapWallMs=" +
+      out["snapWallMs"],
+  );
   out["webPo0"] = typeof webPo[0];
   out["webPoLen"] = webPo.length;
   out["ytGets"] = ytWindowGets();
@@ -227,6 +257,26 @@ export async function minterFromConfig(
     throw new JsEngineErrorImpl("Could not get integrity token", "E20074");
   }
 
+  recordBgChallenge({
+    "eventId": out["eventId"],
+    "visitorData": out["visitorData"],
+    "clientVersion": out["clientVersion"],
+    "globalName": globalName,
+    "interpUrl": unwrapTru(bg["interpreterUrl"]) || unwrapTru(bg["interpreterSafeUrl"]),
+    "program": program,
+    "snapshot": typeof botguardResponse === "string" ? botguardResponse : "",
+    "integrityToken": integrityToken,
+    "programLen": out["programLen"],
+    "jsLen": out["jsLen"],
+    "snapLen": out["snapshotLen"],
+    "itLen": out["integrityTokenLen"],
+  });
+  if (!unwrapTru(bg["interpreterUrl"]) && !unwrapTru(bg["interpreterSafeUrl"])) {
+    const js = unwrapTru(bg["interpreterJavascript"]);
+    if (js) recordBgChallenge({ "interpJs": js });
+  }
+  dumpBgParams("mint");
+
   out["step"] = "mint";
   let mintCallback = (webPo[0] as (t: Uint8Array) => unknown)(b64ToU8(integrityToken));
   /* Await a Promise, not a function that happens to have .then (thenable assimilation). */
@@ -241,6 +291,22 @@ export async function minterFromConfig(
   const mint = mintCallback as (id: Uint8Array) => unknown;
   /* Wrap: async return of a .then-bearing function is Promise-assimilated to undefined. */
   return function millContentPo(id: Uint8Array) {
-    return mint(id);
+    const token = mint(id);
+    if (token instanceof Uint8Array || typeof token === "string") {
+      recordBgMint(id, token);
+      return token;
+    }
+    if (
+      token &&
+      typeof token !== "function" &&
+      typeof (token as Promise<unknown>).then === "function"
+    ) {
+      return (token as Promise<unknown>).then(function (t: unknown) {
+        recordBgMint(id, t);
+        return t;
+      });
+    }
+    recordBgMint(id, token);
+    return token;
   };
 }

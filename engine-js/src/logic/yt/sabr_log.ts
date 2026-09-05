@@ -5,6 +5,7 @@
 // selected_format_ids=2, selected_audio_format_ids=16, selected_video_format_ids=17.
 
 import { isAudioOnly } from "../player/audio_only";
+import { dumpBgOnSps, dumpFirstSps, recordSabrForDump } from "../player/bg_dump";
 import { dumpDrain } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
@@ -283,6 +284,8 @@ export function logSabrResponse(url: string, status: number, body: Uint8Array): 
     }
     console.log(line);
   }
+  dumpFirstSps(sps);
+  if (sps === 2 || sps === 3) dumpBgOnSps(sps);
   if (audioOnly) {
     dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
     if (media > 0) {
@@ -305,6 +308,7 @@ function itagsOf(msgs: Uint8Array[]): string {
 export function logSabrRequest(url: string, body?: unknown, status?: number): void {
   if (url.indexOf("/videoplayback") < 0) return;
   const u = asU8(body);
+  recordSabrForDump(url, u);
   if (!SABR_DEBUG) return;
   const q = (url.match(/[?&]pot=([^&]*)/) || [])[1] || "";
   let potB = 0;
