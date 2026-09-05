@@ -703,16 +703,10 @@ class Player {
     const one = host["setPlaybackQuality"];
     if (typeof range === "function") range.call(host, q, q);
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
-    /* VOD: Range("auto") is a no-op after load-as-zero, and seek-to-playhead
-       is also a no-op. Nudge so SABR runs now. Live: do not seek — YouTube
-       already ticks SABR, and a back-seek starts the new video GOP on a
-       P-frame (Alder Lake VP9/AV1 SIGILL). */
-    if (wasAudioOnly && typeof player["seekTo"] === "function" && !isLiveDuration()) {
-      const t = activeHtmlMedia() ? __mseCurrentTime() : 0;
-      const nudge = t >= 0.25 ? t - 0.15 : t + 0.15;
-      console.log("mse setQuality " + q + " leave-audio seek=" + nudge);
-      player["seekTo"].call(player, nudge, true);
-    }
+    /* Do not seek. A back-nudge glitches the audio clock; live DVR also
+       treated the first 60s as VOD (isLiveDuration needs ct>60) and sought.
+       Video SourceBuffer already reports a sliver, so SABR fetches video
+       on the next tick (~2s) without touching audio leftover. */
   }
 
   async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
