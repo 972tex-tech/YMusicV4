@@ -149,10 +149,22 @@ val stageEngineJs by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("engineJsResources"))
 }
 
-// The injected WebView player script, prod build, staged as a jar resource. webview-js is not a
-// Gradle module, so this drives its npm pipeline directly; it writes into our build dir so the
-// dev dist/ stays untouched. Needs node + webview-js/node_modules on the build host.
+// webview-js is not a Gradle module; `npm ci` once from the lockfile so :run does not require a
+// prior manual install (esbuild is a local import, not npx).
+val npmCiWebViewJs by tasks.registering(Exec::class) {
+    workingDir = rootProject.file("webview-js")
+    inputs.files(
+        rootProject.file("webview-js/package.json"),
+        rootProject.file("webview-js/package-lock.json"),
+    )
+    outputs.dir(rootProject.file("webview-js/node_modules"))
+    commandLine("npm", "ci")
+}
+
+// The injected WebView player script, prod build, staged as a jar resource. Writes into our build
+// dir so the dev dist/ stays untouched.
 val stageWebViewJs by tasks.registering(Exec::class) {
+    dependsOn(npmCiWebViewJs)
     val outFile = layout.buildDirectory.file("webviewJsResources/webview_ymusic.js")
     workingDir = rootProject.file("webview-js")
     inputs.dir(rootProject.file("webview-js/src"))
