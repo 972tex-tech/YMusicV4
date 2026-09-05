@@ -6,10 +6,13 @@ import io.ymusic.ytmedia.cache.SabrServe
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.serveSabr
+import io.ymusic.ytmedia.proto.ProtoReader
+import io.ymusic.ytmedia.proxy.LocalMediaProxy
 import io.ymusic.ytmedia.sabr.AdaptiveFormat
 import io.ymusic.ytmedia.sabr.ClientAbrState
 import io.ymusic.ytmedia.sabr.ClientInfo
 import io.ymusic.ytmedia.sabr.DownloadFile
+import io.ymusic.ytmedia.sabr.FormatId
 import io.ymusic.ytmedia.sabr.MediaHeader
 import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrTrack
@@ -17,9 +20,12 @@ import io.ymusic.ytmedia.sabr.StreamerContext
 import io.ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import io.ymusic.ytmedia.sabr.formatCacheKey
 import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.readUmpPartHeader
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
+import kmphttp.KmpHttpClient
+import kmphttp.create
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.BufferedSink
@@ -105,12 +111,19 @@ class SabrServeTest {
         return cache
     }
 
-    private fun request(playerTimeMs: Long) = VideoPlaybackAbrRequest(
-        clientAbrState = ClientAbrState(playerTimeMs = playerTimeMs, enabledTrackTypesBitfield = 1),
+    private fun request(
+        playerTimeMs: Long,
+        audioOnly: Boolean = true,
+        videoItag: Int? = null,
+    ) = VideoPlaybackAbrRequest(
+        clientAbrState = ClientAbrState(
+            playerTimeMs = playerTimeMs,
+            enabledTrackTypesBitfield = if (audioOnly) 1 else 0,
+        ),
         selectedFormats = emptyList(),
         bufferedRanges = emptyList(),
         selectedAudioFormats = listOf(fmt.toFormatId()),
-        selectedVideoFormats = emptyList(),
+        selectedVideoFormats = listOfNotNull(videoItag?.let { FormatId(it, 1, "") }),
         streamerContext = StreamerContext(clientInfo = ClientInfo(clientName = 1), poToken = byteArrayOf(1), playbackCookie = ByteArray(0)),
         ustreamerConfig = ByteArray(0),
     )
@@ -160,5 +173,46 @@ class SabrServeTest {
 
         assertContentEquals(fileA.data.copy().readByteArray(), fileB.data.copy().readByteArray())
         assertEquals(40, fileB.data.size)
+    }
+
+    private suspend fun drain(body: AsyncSource): ByteArray {
+        val out = Buffer()
+        val buf = Buffer()
+        while (true) {
+            val n = body.read(buf, 16 * 1024)
+            if (n == -1L) break
+            out.write(buf, buf.size)
+        }
+        body.close()
+        return out.readByteArray()
+    }
+
+    private fun containsItag(ump: ByteArray, itag: Int): Boolean {
+        val buf = Buffer().write(ump)
+        while (!buf.exhausted()) {
+            val h = buf.readUmpPartHeader()
+            if (h.partId == UmpPart.MEDIA_HEADER) {
+                val mh = MediaHeader.from(ProtoReader(buf.readByteArray(h.size)).readAllFields())
+                if (mh.itag == itag) return true
+            } else {
+                buf.skip(h.size)
+            }
+        }
+        return false
+    }
+
+    @Test
+    fun serve_hit_audio_only_does_not_append_video() = runTest {
+        val cache = filledCache()
+        val proxy = LocalMediaProxy(cache, KmpHttpClient.create {}, userAgent = "ymusic-test")
+        val resp = proxy.serveRequest(
+            "https://r1.googlevideo.com/videoplayback?sabr=1",
+            "POST",
+            request(0, videoItag = 243).encode().toByteArray(),
+        )
+        assertEquals(200, resp.status)
+        val bytes = drain(resp.body)
+        assertTrue(containsItag(bytes, itag), "audio itag missing")
+        assertTrue(!containsItag(bytes, 243), "audio-only HIT must not invent a video tail")
     }
 }

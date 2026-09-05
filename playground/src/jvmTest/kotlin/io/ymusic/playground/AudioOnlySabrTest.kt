@@ -1,0 +1,103 @@
+package io.ymusic.playground
+
+import io.ymusic.mse.MseVideoSurface
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+class AudioOnlySabrTest {
+    @Test
+    fun load_zero_sabr_is_audio_only_no_video_frames() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val frames = AtomicInteger(0)
+        val watch = launch {
+            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
+        }
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(VIDEO_ID, session.log, "zero")
+            session.player.play(session.log)
+            val deadline = System.currentTimeMillis() + 90_000
+            var pos = 0L
+            var lastMoveAt = System.currentTimeMillis()
+            while (System.currentTimeMillis() < deadline) {
+                val st = session.player.status(session.log)
+                val next = (st["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (next > pos + 200) lastMoveAt = System.currentTimeMillis()
+                pos = next
+                val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+                if (pos >= 8_000 && proof.contains("audioOnly=1") && proof.contains("mse append a=1")) break
+                if (pos in 500 until 8_000 && System.currentTimeMillis() - lastMoveAt > 5_000) {
+                    throw AssertionError("clock frozen at ${pos}ms")
+                }
+                delay(400)
+            }
+            delay(1_500)
+            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            val abr = proof.lineSequence().filter { it.contains("sabr sabr=") }.toList()
+            val dummy = proof.lineSequence().filter { it.contains("mse dummy SB") }.toList()
+            println("audio-only pos $pos -> $later frames=${frames.get()}")
+            for (l in abr.takeLast(8)) println("  $l")
+            for (l in dummy) println("  $l")
+            assertTrue(later >= 8_000 || pos >= 8_000, "audio playhead stuck $pos -> $later")
+            assertTrue(abr.isNotEmpty(), "no sabr request logs. proof=\n$proof")
+            assertTrue(
+                abr.any { it.contains("audioOnly=1") && it.contains("40=1") },
+                "SABR missing audio-only flag 40=1. abr=$abr",
+            )
+            assertTrue(
+                proof.contains("mse dummy SB"),
+                "no dummy video SourceBuffer. proof=\n$proof",
+            )
+            assertTrue(
+                proof.contains("mse append a=1"),
+                "audio never appended (player still waiting on video). proof=\n$proof",
+            )
+            println(
+                "aud/vid: " +
+                    Regex("""aud=([^ ]+) vid=([^ ]+)""").findAll(abr.joinToString("\n"))
+                        .map { it.value }.toList(),
+            )
+            assertTrue(frames.get() == 0, "video was rendered/decoded frames=${frames.get()}")
+
+            session.player.seekTo(150_000, session.log)
+            session.player.play(session.log)
+            val seekDeadline = System.currentTimeMillis() + 30_000
+            var seekPos = 0L
+            while (System.currentTimeMillis() < seekDeadline) {
+                seekPos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (seekPos in 145_000..180_000) break
+                delay(400)
+            }
+            println("audio-only hole-seek land -> $seekPos")
+            assertTrue(seekPos in 145_000..180_000, "audio-only seek did not land near 150s $seekPos")
+            val playDeadline = System.currentTimeMillis() + 15_000
+            var seekLater = seekPos
+            while (System.currentTimeMillis() < playDeadline) {
+                seekLater = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (seekLater > seekPos + 800) break
+                delay(400)
+            }
+            println("audio-only hole-seek play $seekPos -> $seekLater frames=${frames.get()}")
+            assertTrue(seekLater > seekPos + 800, "audio-only seek did not play $seekPos -> $seekLater")
+            assertTrue(frames.get() == 0, "video was rendered after audio-only seek frames=${frames.get()}")
+        } finally {
+            watch.cancel()
+            session.close()
+        }
+    }
+
+    companion object {
+        private const val VIDEO_ID = "x72VDoEpTIU"
+    }
+}

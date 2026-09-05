@@ -132,12 +132,29 @@ static double clock_locked(MseHost *h)
                 t = dac;
         }
 #endif
-        /* Linear play: do not run through a hole or past leftover. */
+        /* Linear play: stay inside leftover. Sit 1s behind leftover end
+           (live head of what we have) so SABR can fetch+parse the next
+           second before we empty. Rebase origin on clamp or wall time
+           accrues through the wait and the next chunk is recv-late. */
         if (have) {
+            double cap = last;
+            int near_eos = h->yt_dur > 0 && last + 0.5 >= h->yt_dur;
+            /* 1s behind leftover end is for video readahead. Audio-only
+               (no C video) must play to audio last or the clock freezes
+               1s early and SABR audio never appends (log2: clock=570.884). */
+            if (!near_eos && last - first >= 1.0 && mse_av_has_video(h->av))
+                cap = last - 1.0;
             if (t < first)
                 t = first;
-            else if (t > last)
-                t = last;
+            else if (t > cap) {
+                t = cap;
+                h->hold = cap;
+                h->origin_ns = now_ns();
+#ifdef MSE_DAC
+                h->seek_base = cap;
+                h->samples_played = 0;
+#endif
+            }
         }
     }
     if (h->yt_dur > 0 && t > h->yt_dur)
@@ -630,10 +647,14 @@ static void *dec_loop(void *arg)
             int wait_ns = 4 * 1000 * 1000;
             pthread_mutex_lock(&h->mu);
 #ifdef MSE_DAC
-            if (ring_ms(h) < 80)
+            if (ring_ms(h) < 80 && mse_av_audio_pending(h->av))
                 wait_ns = 0;
 #endif
-            if (h->vpts < 0 || (h->vpts >= 0 && clock - h->vpts > 0.12))
+            /* Late with coded video still queued: spin to catch up.
+               Empty leftover must sleep — spinning blocked JS from
+               appending SABR that was already on the wire. */
+            if (h->vw > 0 && (h->vpts < 0 || clock - h->vpts > 0.12) &&
+                mse_av_video_pending(h->av))
                 wait_ns = 0;
             pthread_mutex_unlock(&h->mu);
             if (wait_ns > 0) {
@@ -1099,8 +1120,53 @@ int mse_host_append(MseHost *h, int audio, const uint8_t *p, int n, double ts_of
 
 void mse_host_remove(MseHost *h, int audio, double start, double end)
 {
-    if (h)
-        mse_av_remove(h->av, audio, start, end);
+    double pairs[2];
+    if (!h)
+        return;
+    mse_av_remove(h->av, audio, start, end);
+    /* Audio-only (or a full video wipe) — stop showing the last decoded frame. */
+    if (!audio && mse_av_buffered(h->av, 0, pairs, 1) <= 0) {
+        uint8_t *black = NULL;
+        int w = 0, ht = 0;
+        pthread_mutex_lock(&h->frame_mu);
+        if (h->last_bgra && h->last_w > 0 && h->last_h > 0 &&
+            (uint64_t)h->last_w * (uint64_t)h->last_h <= (uint64_t)(INT_MAX / 4)) {
+            memset(h->last_bgra, 0, (size_t)h->last_w * (size_t)h->last_h * 4);
+            black = h->last_bgra;
+            w = h->last_w;
+            ht = h->last_h;
+            h->frame_gen++;
+        }
+        pthread_mutex_unlock(&h->frame_mu);
+        if (black) {
+#ifdef __ANDROID__
+            {
+                ANativeWindow *win;
+                pthread_mutex_lock(&h->mu);
+                win = (ANativeWindow *)h->window;
+                if (win)
+                    ANativeWindow_acquire(win);
+                pthread_mutex_unlock(&h->mu);
+                if (win) {
+                    blit_window(win, w, ht, black);
+                    ANativeWindow_release(win);
+                }
+            }
+#endif
+            if (h->on_frame)
+                h->on_frame(h->user, w, ht, black);
+        }
+        pthread_mutex_lock(&h->frame_mu);
+        free(h->last_bgra);
+        h->last_bgra = NULL;
+        h->last_w = 0;
+        h->last_h = 0;
+        pthread_mutex_unlock(&h->frame_mu);
+        pthread_mutex_lock(&h->mu);
+        h->vw = 0;
+        h->vh = 0;
+        pthread_mutex_unlock(&h->mu);
+    }
 }
 
 void mse_host_abort(MseHost *h, int audio)

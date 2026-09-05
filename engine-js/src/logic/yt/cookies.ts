@@ -39,15 +39,32 @@ export interface AuthContext {
  * signed in; logged out (no SAPISID) it's a no-op. The cookie map is read ONCE and shared, so auth
  * adds no extra round-trip.
  */
+/** InnerTube paths base.js hits via XHR/fetch — they need SAPISIDHASH when signed in. */
+export function isYoutubeiUrl(url: string): boolean {
+  return url.indexOf("/youtubei/") >= 0;
+}
+
+/**
+ * Cook Cookie (and, when [auth] is passed, SAPISIDHASH) onto [builder]. Shared by
+ * [executeWithCookies] and the player XHR/fetch shims.
+ */
+export async function attachRequestIdentity(
+  url: string,
+  builder: HttpRequestBuilder,
+  auth?: AuthContext,
+): Promise<void> {
+  const map = await requestCookieMap(url);
+  const cookie = cookieHeader(map);
+  if (cookie.length > 0) builder.setHeader("Cookie", cookie);
+  if (auth !== undefined) applyAuthHeaders(builder, map, originOf(url), auth);
+}
+
 export async function executeWithCookies(
   url: string,
   builder: HttpRequestBuilder,
   auth?: AuthContext,
 ): Promise<HttpResponse> {
-  const map = await requestCookieMap(url);
-  const cookie = cookieHeader(map);
-  if (cookie.length > 0) builder.setHeader("Cookie", cookie);
-  if (auth !== undefined) applyAuthHeaders(builder, map, originOf(url), auth);
+  await attachRequestIdentity(url, builder, auth);
   const res = await builder.build().execute();
   await storeSetCookies(res.url.length > 0 ? res.url : url, res);
   return res;

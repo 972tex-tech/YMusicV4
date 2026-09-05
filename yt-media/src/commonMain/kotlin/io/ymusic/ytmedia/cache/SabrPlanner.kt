@@ -17,7 +17,14 @@ sealed class SabrServe {
     /** A synthesized UMP body of cached segments — serve it to the requester with no network.
      *  [servedRanges] is a per-format summary of the playback served (`itag@startMs-endMs[segA-segB]`,
      *  the same shape as the request's buffered ranges). */
-    class Hit(val ump: Source, val cachedBytes: Long, val segmentCount: Int, val servedRanges: String) : SabrServe()
+    class Hit(
+        val ump: Source,
+        val cachedBytes: Long,
+        val segmentCount: Int,
+        val servedRanges: String,
+        val audioMaxEndMs: Long? = null,
+        val audioMaxCx: Int? = null,
+    ) : SabrServe()
 
     /** The requester is already buffered far enough ahead; a policy-only body tells it to back off. */
     class Backoff(val ump: Source) : SabrServe()
@@ -71,6 +78,8 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
     val audio = findCachedSegments(playerTimeMs, audioFormats, audioBuffered, MIN_AUDIO_READAHEAD_MS)
 
     var video: CheckResult = CheckResult.Miss
+    // Audio-only (bitfield=1): googlevideo sends no video. Do not serve cached
+    // video either. Lockstep is MSE dummy `buffered` + request 40=1, not Cx.
     if (!isAudioOnly) {
         val videoFormats = request.selectedVideoFormats.sortedByDescending { f ->
             var s = byCacheKey[f.cacheKey]?.let { minOf(it.width ?: 0, it.height ?: 0) } ?: 0
@@ -125,7 +134,10 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
             "$itag@${segs.minOf { it.startMs!! }}-${segs.maxOf { it.startMs!! + (it.durationMs ?: 0) }}ms" +
                 "[seg${segs.minOf { it.segmentIndex }}-${segs.maxOf { it.segmentIndex }}]"
         }
-    return SabrServe.Hit(ump, bytes, segments.size, servedRanges)
+    val audioMedia = segments.filter { it.itag in audioItags && !it.isInitSegment }
+    val audioMaxEndMs = audioMedia.maxOfOrNull { (it.startMs ?: 0) + (it.durationMs ?: 0) }
+    val audioMaxCx = audioMedia.maxOfOrNull { it.segmentIndex }
+    return SabrServe.Hit(ump, bytes, segments.size, servedRanges, audioMaxEndMs, audioMaxCx)
 }
 
 /** Legacy multi-audio narrowing: honor a requested track id, DRC preference, then the default track. */

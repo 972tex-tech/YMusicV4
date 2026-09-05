@@ -1,7 +1,11 @@
 // SABR /videoplayback debug log (SABR_DEBUG compile define; stripped in prod).
 // PO (query pot= + StreamerContext 19.2).
-// clientAbrState: 28 playerTimeMs, 29 timeSinceLastSeekMs.
+// clientAbrState: 28 playerTimeMs, 29 timeSinceLastSeekMs, 40 enabledTrackTypesBitfield.
 // bufferedRanges: 1 formatId.itag, 2 startMs, 3 durationMs.
+// selected_format_ids=2, selected_audio_format_ids=16, selected_video_format_ids=17.
+
+import { isAudioOnly } from "../player/audio_only";
+import { dumpDrain } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
   if (body instanceof Uint8Array) return body;
@@ -141,13 +145,6 @@ function durMs(): string {
   }
 }
 
-function hex(u: Uint8Array, n: number): string {
-  let s = "";
-  const m = Math.min(n, u.length);
-  for (let i = 0; i < m; i++) s += (u[i]! < 16 ? "0" : "") + u[i]!.toString(16);
-  return s;
-}
-
 function b64url(u: Uint8Array): string {
   let s = "";
   for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]!);
@@ -185,6 +182,7 @@ const UMP_NAME: Record<number, string> = {
   20: "MEDIA_HEADER",
   21: "MEDIA_DATA",
   22: "MEDIA_END",
+  31: "LIVE_METADATA",
   35: "NEXT_REQUEST_POLICY",
   42: "FORMAT_INIT",
   43: "SABR_REDIRECT",
@@ -199,9 +197,34 @@ function spsLabel(v: number): string {
   return "?";
 }
 
+/** MEDIA_HEADER sequence_number = field 9. Skip init (field 8) and seq 0. */
+function maxMhSeq(body: Uint8Array): number | null {
+  let i = 0;
+  let m: number | null = null;
+  while (i < body.length) {
+    const id = readUmpVarint(body, i);
+    if (!id) break;
+    const sz = readUmpVarint(body, id.i);
+    if (!sz) break;
+    const start = sz.i;
+    const end = start + sz.v;
+    if (end > body.length) break;
+    if (id.v === 20) {
+      const p = body.subarray(start, end);
+      if (protoVarint(p, 8) !== 1) {
+        const seq = protoVarint(p, 9);
+        if (seq != null && seq > 0 && (m == null || seq > m)) m = seq;
+      }
+    }
+    i = end;
+  }
+  return m;
+}
+
 export function logSabrResponse(url: string, status: number, body: Uint8Array): void {
-  if (!SABR_DEBUG) return;
   if (url.indexOf("/videoplayback") < 0) return;
+  const audioOnly = isAudioOnly();
+  if (!SABR_DEBUG && !audioOnly) return;
   const parts: string[] = [];
   let i = 0;
   let sps = -1;
@@ -235,34 +258,65 @@ export function logSabrResponse(url: string, status: number, body: Uint8Array): 
     }
     i = end;
   }
-  let line =
-    "sabr HTTP " +
-    status +
-    " body=" +
-    body.length +
-    " ump=[" +
-    parts.join(",") +
-    "]" +
-    " media=" +
-    media +
-    " sps=" +
-    sps;
-  if (sps === 2 || sps === 3) line += " PO_REJECTED";
-  if (err) line += " SABR_ERROR";
-  if (body.length > 0 && body.length <= 256) line += " hex=" + hex(body, body.length);
-  console.log(line);
+  const seq = maxMhSeq(body);
+  if (SABR_DEBUG) {
+    let line =
+      "sabr HTTP " +
+      status +
+      " body=" +
+      body.length +
+      " ump=[" +
+      parts.join(",") +
+      "]" +
+      " media=" +
+      media +
+      " sps=" +
+      sps;
+    if (seq != null) line += " mhSeq=" + seq;
+    if (sps === 2 || sps === 3) line += " PO_REJECTED";
+    if (err) line += " SABR_ERROR";
+    if (body.length > 0 && body.length <= 256) {
+      let hx = "";
+      for (let hi = 0; hi < body.length; hi++)
+        hx += (body[hi]! < 16 ? "0" : "") + body[hi]!.toString(16);
+      line += " hex=" + hx;
+    }
+    console.log(line);
+  }
+  if (audioOnly) {
+    dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
+    if (media > 0) {
+      setTimeout(function () {
+        dumpDrain("sabr-media+0");
+      }, 0);
+    }
+  }
+}
+
+function itagsOf(msgs: Uint8Array[]): string {
+  const out: number[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const t = protoVarint(msgs[i]!, 1);
+    if (t != null) out.push(t);
+  }
+  return out.length ? out.join(",") : "-";
 }
 
 export function logSabrRequest(url: string, body?: unknown, status?: number): void {
-  if (!SABR_DEBUG) return;
   if (url.indexOf("/videoplayback") < 0) return;
-  const q = (url.match(/[?&]pot=([^&]*)/) || [])[1] || "";
   const u = asU8(body);
+  if (!SABR_DEBUG) return;
+  const q = (url.match(/[?&]pot=([^&]*)/) || [])[1] || "";
   let potB = 0;
   let potB64 = "";
   let playerTimeMs = -1;
   let sinceSeekMs = -1;
+  let bit40 = -1;
+  let bit46 = -1;
   let br = "";
+  let sel = "-";
+  let aud = "-";
+  let vid = "-";
   if (u && u.length > 0) {
     const sc = protoBytes(u, 19);
     if (sc) {
@@ -278,6 +332,10 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       if (t != null) playerTimeMs = t;
       const s = protoVarint(cas, 29);
       if (s != null) sinceSeekMs = s;
+      const f40 = protoVarint(cas, 40);
+      if (f40 != null) bit40 = f40;
+      const f46 = protoVarint(cas, 46);
+      if (f46 != null) bit46 = f46;
     }
     const ranges = protoRepeated(u, 3);
     const parts: string[] = [];
@@ -287,13 +345,13 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       const st = protoVarint(ranges[i]!, 2);
       const d = protoVarint(ranges[i]!, 3);
       parts.push(
-        (itag != null ? itag + ":" : "") +
-          (st != null ? st : "?") +
-          "+" +
-          (d != null ? d : "?"),
+        (itag != null ? itag + ":" : "") + (st != null ? st : "?") + "+" + (d != null ? d : "?"),
       );
     }
     br = parts.join(",");
+    sel = itagsOf(protoRepeated(u, 2));
+    aud = itagsOf(protoRepeated(u, 16));
+    vid = itagsOf(protoRepeated(u, 17));
   }
   const sabr = url.indexOf("sabr=") >= 0 ? "1" : "0";
   const st = status != null ? " HTTP " + status : "";
@@ -302,6 +360,12 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       st +
       " sabr=" +
       sabr +
+      " audioOnly=" +
+      (isAudioOnly() ? "1" : "0") +
+      " 40=" +
+      bit40 +
+      " 46=" +
+      bit46 +
       " playerTimeMs=" +
       playerTimeMs +
       " sinceSeekMs=" +
@@ -310,6 +374,12 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       clockMs() +
       " dur=" +
       durMs() +
+      " sel=" +
+      sel +
+      " aud=" +
+      aud +
+      " vid=" +
+      vid +
       " br=[" +
       br +
       "]" +
@@ -325,4 +395,5 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       " pot=" +
       potB64,
   );
+  if (isAudioOnly()) dumpDrain("sabr-req");
 }

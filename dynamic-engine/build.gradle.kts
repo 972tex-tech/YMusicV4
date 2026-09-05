@@ -91,6 +91,7 @@ kotlin {
         // In-memory SQLite drivers for the cache-store tests (JVM = JDBC, native = sqliter).
         jvmTest.dependencies {
             implementation(Libs.SqlDelight.sqliteDriver)
+            implementation(project(":yt-media"))
         }
         val nativeTest by getting {
             dependencies {

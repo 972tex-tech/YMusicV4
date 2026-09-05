@@ -25,7 +25,7 @@ class LiveMseTraceTest {
         val session = HeadlessSession.boot(surface)
         try {
             session.player.init(session.log)
-            session.player.load(LIVE_ID, session.log)
+            session.player.load(LIVE_ID, session.log, "auto")
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 60_000
             while (System.currentTimeMillis() < deadline) {
@@ -64,7 +64,149 @@ class LiveMseTraceTest {
         }
     }
 
+    @Test
+    fun live_audio_only_plays() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val frames = AtomicInteger(0)
+        val watch = launch {
+            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
+        }
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(AUDIO_LIVE_ID, session.log, "zero")
+            session.player.play(session.log)
+            val deadline = System.currentTimeMillis() + 90_000
+            var pos = 0L
+            while (System.currentTimeMillis() < deadline) {
+                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                /* Live join lands at DVR head (thousands of seconds), not t=0. */
+                if (pos > 10_000) break
+                delay(400)
+            }
+            delay(30_000)
+            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            val itags = Regex("""qe=[^ ]+ itag=([0-9]+)""").findAll(proof).map { it.value }.toList()
+            println("live audio-only clock $pos -> $later frames=${frames.get()}")
+            for (t in itags.takeLast(8)) println("  $t")
+            assertTrue(!proof.contains("fmt.noneavailable"), "live rejected the video ladder")
+            assertTrue(!proof.contains("mse ignore seek-0"), "dummy still forced a seek-0")
+            assertTrue(pos > 10_000, "live audio-only never joined DVR head pos=$pos")
+            assertTrue(later > pos + 25_000, "live audio-only clock stuck $pos -> $later (need 30s)")
+            assertTrue(frames.get() == 0, "live audio-only rendered video frames=${frames.get()}")
+        } finally {
+            watch.cancel()
+            session.close()
+        }
+    }
+
+    @Test
+    fun live_switch_to_zero_keeps_clock() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val frames = AtomicInteger(0)
+        val watch = launch {
+            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
+        }
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(AUDIO_LIVE_ID, session.log, "auto")
+            session.player.play(session.log)
+            val deadline = System.currentTimeMillis() + 60_000
+            var pos = 0L
+            while (System.currentTimeMillis() < deadline) {
+                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (pos > 10_000) break
+                delay(400)
+            }
+            assertTrue(pos > 10_000, "live auto never joined DVR head pos=$pos")
+            delay(800)
+            val framesAtSwitch = frames.get()
+            session.player.setQuality("zero", session.log)
+            delay(500)
+            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            /* Leftover audio at switch is a few seconds. 30s of clock after
+               zero is past that (log12 je=3s then freeze). */
+            delay(30_000)
+            val after = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            println("live switch-zero $later -> $after frames $framesAtSwitch -> ${frames.get()}")
+            assertTrue(!proof.contains("mse ignore seek-0"), "switch to zero seek-0")
+            assertTrue(after > later + 25_000, "clock stuck after zero leftover $later -> $after (need 30s)")
+            assertTrue(
+                frames.get() <= framesAtSwitch + 2,
+                "video still rendering after zero ${frames.get()} vs $framesAtSwitch",
+            )
+        } finally {
+            watch.cancel()
+            session.close()
+        }
+    }
+
+    @Test
+    fun live_second_video_audio_only_plays() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val frames = AtomicInteger(0)
+        val watch = launch {
+            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
+        }
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(AUDIO_LIVE_ID, session.log, "zero")
+            session.player.play(session.log)
+            val d1 = System.currentTimeMillis() + 60_000
+            var pos = 0L
+            while (System.currentTimeMillis() < d1) {
+                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (pos > 10_000) break
+                delay(400)
+            }
+            assertTrue(pos > 10_000, "first live never joined DVR head pos=$pos")
+            session.player.load(SECOND_LIVE_ID, session.log, "zero")
+            session.player.play(session.log)
+            val d2 = System.currentTimeMillis() + 90_000
+            pos = 0L
+            var hasAudio = false
+            while (System.currentTimeMillis() < d2) {
+                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                val proofNow = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+                /* First live leftover starts ~5.9e6 ms. Second (BEtsctac5KQ) ~1.6e7.
+                   Dummy cover moves the clock with buf=[] — require C leftover. */
+                hasAudio = proofNow.lineSequence().any { line ->
+                    if (!line.contains("mse append a=1") && !line.contains("mse=[")) return@any false
+                    val m = Regex("""(?:mse=\[a:|buf=)([0-9]+)""").find(line) ?: return@any false
+                    m.groupValues[1].toLong() > 10_000_000L
+                }
+                if (hasAudio && pos > 10_000) break
+                delay(400)
+            }
+            assertTrue(hasAudio, "second live C audio empty (log14) pos=$pos")
+            assertTrue(pos > 10_000, "second live never joined DVR head pos=$pos")
+            delay(30_000)
+            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            println("live second-video $pos -> $later audio=$hasAudio frames=${frames.get()}")
+            assertTrue(later > pos + 25_000, "no sound after second live $pos -> $later")
+            assertTrue(frames.get() == 0, "second live rendered video frames=${frames.get()}")
+        } finally {
+            watch.cancel()
+            session.close()
+        }
+    }
+
     companion object {
         private const val LIVE_ID = "hEeAXerJ5n0"
+        private const val AUDIO_LIVE_ID = "js6WuvtC-kc"
+        private const val SECOND_LIVE_ID = "BEtsctac5KQ"
     }
 }

@@ -11,6 +11,7 @@ import {
   pausePlayer,
   playPlayer,
   seekPlayer,
+  setPlayerQuality,
   statusPlayer,
   stopPlayer,
 } from "./player/boot";
@@ -33,7 +34,8 @@ onAccept(
     const a = await src.readJsonObject();
     const id = String(a["videoId"] ?? "");
     if (!id) throw new JsEngineErrorImpl("player/load missing videoId", "E20072");
-    const result = await loadPlayer(id);
+    const quality = a["quality"] != null ? String(a["quality"]) : undefined;
+    const result = await loadPlayer(id, quality);
     const p = out.writeObjectAsJson(result);
     if (p) await p;
   }),
@@ -90,6 +92,17 @@ onAccept(
     await src.readJsonObject();
     stopPlayer();
     const p = out.writeObjectAsJson({ "ok": true });
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setQuality",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const quality = String(a["quality"] ?? "");
+    setPlayerQuality(quality);
+    const p = out.writeObjectAsJson({ "ok": true, "quality": quality });
     if (p) await p;
   }),
 );

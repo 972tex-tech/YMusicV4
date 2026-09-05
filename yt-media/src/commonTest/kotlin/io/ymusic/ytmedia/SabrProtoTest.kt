@@ -109,6 +109,29 @@ class SabrProtoTest {
     }
 
     @Test
+    fun gold_live_media_header_omits_lmt_range_dur_clen() {
+        val live = ProtoWriter()
+            .varint(1, 0)
+            .string(2, "BEtsctac5KQ")
+            .varint(3, 243)
+            .varint(9, 9084)
+            .varint(11, 9_084_167)
+            .message(13, ProtoWriter().varint(1, 243))
+            .message(15, ProtoWriter().varint(1, 9_084_167L * 1_000_000L).varint(3, 1_000_000_000L))
+            .varint(16, 1)
+        val h = MediaHeader.from(parse(live))
+        assertEquals("BEtsctac5KQ", h.videoId)
+        assertEquals(243, h.itag)
+        assertEquals(0L, h.lmt)
+        assertEquals(0L, h.startRange)
+        assertEquals(false, h.isInitSegment)
+        assertEquals(9084, h.segmentIndex)
+        assertEquals(9_084_167L, h.startMs)
+        assertEquals(null, h.durationMs)
+        assertEquals(0L, h.contentLength)
+    }
+
+    @Test
     fun next_request_policy_roundtrip() {
         val policy = NextRequestPolicy(
             targetAudioReadaheadMs = 60_000,

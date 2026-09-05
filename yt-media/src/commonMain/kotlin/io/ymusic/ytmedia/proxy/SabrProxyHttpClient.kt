@@ -1,0 +1,77 @@
+package io.ymusic.ytmedia.proxy
+
+import kmpcommon.io.AsyncSource
+import kmphttp.AsyncInterceptor
+import kmphttp.Cache
+import kmphttp.CookieJar
+import kmphttp.HeadersBuilder
+import kmphttp.KmpHttpClient
+import kmphttp.Protocol
+import kmphttp.RedirectOptions
+import kmphttp.Request
+import kmphttp.RequestBody
+import kmphttp.Response
+import kmphttp.ResponseBody
+import kmphttp.ResponseBuilder
+import kmphttp.SslConfig
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlin.time.Duration
+
+/**
+ * Routes googlevideo SABR POSTs through [LocalMediaProxy] (cache HIT/BACKOFF/tee + dummy video
+ * tail on the selected video itag). Everything else goes to [inner]. [LocalMediaProxy.client]
+ * must be [inner], not this wrapper, or a miss recurses.
+ */
+class SabrProxyHttpClient(
+    private val inner: KmpHttpClient,
+    private val proxy: LocalMediaProxy,
+) : KmpHttpClient {
+    override val interceptors: List<AsyncInterceptor> get() = inner.interceptors
+    override val networkInterceptors: List<AsyncInterceptor> get() = inner.networkInterceptors
+    override val cache: Cache? get() = inner.cache
+    override val cookieJar: CookieJar get() = inner.cookieJar
+    override val sslConfig: SslConfig get() = inner.sslConfig
+    override val defaultRedirectOptions: RedirectOptions get() = inner.defaultRedirectOptions
+    override val defaultExecuteTimeout: Duration? get() = inner.defaultExecuteTimeout
+    override val defaultDispatcher: CoroutineDispatcher get() = inner.defaultDispatcher
+    override val logger: kmpcommon.log.Logger? get() = inner.logger
+
+    override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
+        val url = request.url.toString()
+        if (!isSabrPost(url, request.method)) return inner.execute(request, options, timeout)
+        val body = request.body?.let { readRequestBody(it) }
+        val headers = request.headers.toList()
+        val pr = proxy.serveRequest(url, request.method, body, headers)
+        val finalUrl = pr.url.ifEmpty { url }
+        val built = if (finalUrl == url) request else request.newBuilder().url(finalUrl).build()
+        return ResponseBuilder()
+            .request(built)
+            .protocol(Protocol.HTTP_1_1)
+            .code(pr.status)
+            .message(pr.reason)
+            .headers(
+                HeadersBuilder().apply {
+                    for ((name, value) in pr.headers) add(name, value)
+                }.build(),
+            )
+            .body(proxyResponseBody(pr.body, pr.headers, pr.contentLength))
+            .build()
+    }
+
+    override fun newBuilder(): KmpHttpClient.BaseBuilder<out KmpHttpClient> = inner.newBuilder()
+
+    companion object {
+        fun isSabrPost(url: String, method: String): Boolean =
+            method.equals("POST", ignoreCase = true) &&
+                url.contains("/videoplayback") &&
+                url.contains("sabr=1")
+    }
+}
+
+internal expect suspend fun readRequestBody(body: RequestBody): ByteArray
+
+internal expect fun proxyResponseBody(
+    source: AsyncSource,
+    headers: List<Pair<String, String>>,
+    contentLength: Long?,
+): ResponseBody

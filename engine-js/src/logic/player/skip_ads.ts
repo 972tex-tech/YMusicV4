@@ -82,53 +82,10 @@ function rewriteResponse(url: string, text: string): string {
   return JSON.stringify(rec);
 }
 
-function wrapFetch(): void {
-  const g = globalThis as unknown as Record<string, unknown>;
-  const orig = g["fetch"];
-  if (typeof orig !== "function") return;
-  async function wrapped(input: unknown, init?: unknown): Promise<unknown> {
-    let url = "";
-    const inRec = asRec(input);
-    if (typeof input === "string") url = input;
-    else if (inRec && inRec["url"] != null) url = String(inRec["url"]);
-    if (!isPlayerUrl(url))
-      return (orig as (a: unknown, b?: unknown) => Promise<unknown>)(input, init);
-    const extra: Record<string, unknown> =
-      init != null && typeof init === "object"
-        ? Object.assign({}, init as Record<string, unknown>)
-        : {};
-    let body: unknown = extra["body"];
-    if (body == null && inRec && inRec["body"] != null) body = inRec["body"];
-    extra["body"] = rewriteRequest(url, body);
-    if (inRec) {
-      if (extra["method"] == null && inRec["method"] != null) extra["method"] = inRec["method"];
-      if (extra["headers"] == null && inRec["headers"] != null) extra["headers"] = inRec["headers"];
-      if (extra["signal"] == null && inRec["signal"] != null) extra["signal"] = inRec["signal"];
-    }
-    const res = (await (orig as (a: unknown, b?: unknown) => Promise<unknown>)(
-      typeof input === "string" ? input : url,
-      extra,
-    )) as Record<string, unknown>;
-    if (typeof res["text"] !== "function") return res;
-    const text = await (res["text"] as () => Promise<string>)();
-    const outText = rewriteResponse(url, text);
-    const Resp = g["Response"] as (new (b?: unknown, i?: unknown) => unknown) | undefined;
-    if (typeof Resp !== "function") return res;
-    return new Resp(outText, {
-      "status": res["status"],
-      "statusText": res["statusText"],
-      "headers": res["headers"],
-    });
-  }
-  if (typeof __nativeFn === "function") g["fetch"] = __nativeFn("fetch", wrapped);
-  else g["fetch"] = wrapped;
-}
-
 let installed = false;
 
 export function installPlayerAdStrip(): void {
   if (installed) return;
   installed = true;
-  wrapFetch();
   setXhrJsonRewrite(rewriteRequest, rewriteResponse);
 }

@@ -19,6 +19,7 @@ import kmphttp.RequestBodyX.toRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import okio.Buffer
+import okio.Source
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.TimeSource
@@ -117,26 +118,39 @@ class LocalMediaProxy(
      * forwarded through [client] and teed back into the cache. The native-interception adapters reach
      * this via [serve] (parsing the `/ymusicForward` query); the iOS message-channel adapter, which
      * receives the url/method/body as fields, calls it directly.
+     *
+     * [extraHeaders] are forwarded on a network miss (Cookie / Origin / Referer from engine-js).
+     * Hop-by-hop headers are dropped.
      */
-    suspend fun serveRequest(url: String, method: String, body: ByteArray?): ProxyResponse {
+    suspend fun serveRequest(
+        url: String,
+        method: String,
+        body: ByteArray?,
+        extraHeaders: List<Pair<String, String>> = emptyList(),
+    ): ProxyResponse {
+        val sabrReq = parseSabrRequest(url, method, body)
         // A cache-serve fault must never fail the request — fall through to the network — but it's a real
         // bug (bad parse, cache read), so log it as a breadcrumb rather than swallowing it silently.
-        val hit = runCatching { serveFromCache(url, method, body) }
+        val hit = runCatching { serveFromCache(url, method, body, sabrReq) }
             .onFailure { log?.log(Logger.Level.WARN, "cache serve failed, forwarding: $url", it) }
             .getOrNull()
-        return hit ?: forward(url, method, body)
+        return hit ?: forward(url, method, body, extraHeaders)
     }
 
     /** A cache hit → a synthesized response; null → miss (forward to the network). Logs the decision and
      *  how long it took: HIT / BACKOFF / MISS with the reason and, for a progressive miss, how much of the
      *  range *was* cached (so a partial-coverage miss is visible). */
-    private fun serveFromCache(url: String, method: String, body: ByteArray?): ProxyResponse? {
+    private fun serveFromCache(
+        url: String,
+        method: String,
+        body: ByteArray?,
+        sabrReq: VideoPlaybackAbrRequest?,
+    ): ProxyResponse? {
         val started = TimeSource.Monotonic.markNow()
-        if (isSabr(url) && method == "POST" && body != null) {
-            val request = VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields())
-            logVerbose { sabrRequestSummary(request) }
+        if (isSabrCache(url) && method == "POST" && sabrReq != null) {
+            logVerbose { sabrRequestSummary(sabrReq) }
             if (!serveSabrHits) return null // fill-only: forward SABR to the network (still teed into cache)
-            when (val serve = cache.serveSabr(request)) {
+            when (val serve = cache.serveSabr(sabrReq)) {
                 is SabrServe.Hit -> {
                     logVerbose { "HIT sabr: served=[${serve.servedRanges}] (${serve.segmentCount} segments, ${serve.cachedBytes} bytes, built in ${started.elapsedNow()})" }
                     return umpResponse(serve.ump, url)
@@ -182,8 +196,20 @@ class LocalMediaProxy(
     }
 
     /** Miss → fetch from the network, teeing the body back into the cache as it streams to the WebView. */
-    private suspend fun forward(url: String, method: String, body: ByteArray?): ProxyResponse {
-        val builder = RequestBuilder().url(url).header("user-agent", userAgent)
+    private suspend fun forward(
+        url: String,
+        method: String,
+        body: ByteArray?,
+        extraHeaders: List<Pair<String, String>> = emptyList(),
+    ): ProxyResponse {
+        val builder = RequestBuilder().url(url)
+        for ((name, value) in extraHeaders) {
+            if (name.lowercase() in SKIP_FORWARD_HEADERS) continue
+            builder.addHeader(name, value)
+        }
+        if (extraHeaders.none { it.first.equals("user-agent", ignoreCase = true) }) {
+            builder.header("user-agent", userAgent)
+        }
         if (body != null) builder.method(method, body.toRequestBody(null)) else builder.get()
         val response = client.execute(builder.build(), RedirectOptions(followRedirects = true, followSslRedirects = true))
         val length = response.body.contentLength().takeIf { it >= 0 }
@@ -194,16 +220,18 @@ class LocalMediaProxy(
         // Fill on the way through: SABR responses are a UMP part stream (tee each complete segment into
         // the cache while passing the raw bytes to the WebView untouched); progressive responses are a
         // plain byte range (tee at the range's known offset). Both leave the response bytes unchanged.
-        val networkBody = response.body.asyncSource()
+        var networkBody = response.body.asyncSource()
         val effectiveUrl = response.request.url.toString()
         logVerbose { "cache-miss → network ${response.code}: $effectiveUrl" }
         if (!response.isSuccessful) {
             return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
-        if (isSabr(url)) {
-            return ProxyResponse(response.code, "OK", headers, SabrCacheTee(networkBody, cache, log, verbose), length, url = effectiveUrl)
+        if (isSabrCache(url)) {
+            networkBody = SabrCacheTee(networkBody, cache, log, verbose)
+        } else {
+            networkBody = fillProgressive(effectiveUrl, networkBody) ?: networkBody
         }
-        return ProxyResponse(response.code, "OK", headers, fillProgressive(effectiveUrl, networkBody) ?: networkBody, length, url = effectiveUrl)
+        return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
     }
 
     /**
@@ -239,8 +267,14 @@ class LocalMediaProxy(
         return Progressive(itag, lmt, start, end)
     }
 
-    private fun isSabr(url: String) =
+    /** VOD SABR that may be cache-served / teed. Live (`live=1`) and `noclen=1` stay uncached. */
+    private fun isSabrCache(url: String) =
         url.contains("sabr=1") && !url.contains("live=1") && !url.contains("noclen=1")
+
+    private fun parseSabrRequest(url: String, method: String, body: ByteArray?): VideoPlaybackAbrRequest? {
+        if (!url.contains("sabr=1") || method != "POST" || body == null) return null
+        return runCatching { VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields()) }.getOrNull()
+    }
 
     private fun text(status: Int, reason: String, body: String): ProxyResponse {
         val bytes = body.encodeToByteArray()
@@ -265,6 +299,7 @@ class LocalMediaProxy(
     companion object {
         const val FORWARD_PATH = "/ymusicForward"
         const val HEALTH_PATH = "/health"
+        private val SKIP_FORWARD_HEADERS = setOf("host", "content-length", "transfer-encoding", "connection")
     }
 }
 

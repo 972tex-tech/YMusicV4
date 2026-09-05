@@ -37,6 +37,11 @@ double mse_av_duration(MseAv *a);
 /* First..last PTS across leftover. 1 if any packets. */
 int mse_av_span(MseAv *a, double *first, double *last);
 
+/* Unsent packets remain (rd < n). */
+int mse_av_video_pending(MseAv *a);
+int mse_av_audio_pending(MseAv *a);
+int mse_av_has_video(MseAv *a);
+
 /* Writes up to [max_pairs] [start,end] pairs. Returns pair count. */
 int mse_av_buffered(MseAv *a, int audio, double *pairs, int max_pairs);
 

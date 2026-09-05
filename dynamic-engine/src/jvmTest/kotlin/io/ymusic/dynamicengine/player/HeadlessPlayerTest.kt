@@ -10,6 +10,18 @@ import io.ymusic.dynamicengine.testCacheDriver
 import io.ymusic.dynamicengine.testEngineDispatcher
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.settings.InMemorySettingsStore
+import io.ymusic.ytmedia.cache.DiskMediaBlobCache
+import io.ymusic.ytmedia.cache.MediaCache
+import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
+import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
+import io.ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
+import io.ymusic.ytmedia.proto.ProtoReader
+import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import io.ymusic.ytmedia.proxy.SabrProxyHttpClient
+import io.ymusic.ytmedia.sabr.MediaHeader
+import io.ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
+import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.readUmpPartHeader
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
@@ -23,7 +35,14 @@ import kmphttp.Response
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import okhttp3.ResponseBody
+import okio.Buffer
 import okio.FileSystem
+import okio.ForwardingSource
+import okio.buffer
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -105,6 +124,230 @@ class HeadlessPlayerTest {
         }
     }
 
+    @Test
+    fun player_audio_only_advances() = runBlocking {
+        val jar = InMemoryCookieJar()
+        val inner = OkKmpHttpClient.Builder().apply {
+            defaultExecuteTimeout = 60.seconds
+        }.build()
+        val mediaDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-player-media-cache"
+        FileSystem.SYSTEM.deleteRecursively(mediaDir)
+        val driver = jvmSegmentDatabaseDriver()
+        val mediaCache = MediaCache(
+            DiskMediaBlobCache(mediaDir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+            SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
+        )
+        val proxy = LocalMediaProxy(
+            mediaCache,
+            inner,
+            userAgent = DESKTOP_UA,
+        )
+        val http = RecordingHttpClient(SabrProxyHttpClient(inner, proxy))
+        val log = PrintLog()
+        val blobDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-player-ao-test"
+        FileSystem.SYSTEM.deleteRecursively(blobDir)
+        val cache = DiskCacheStore(testCacheDriver(), blobDir, FileSystem.SYSTEM, now = { System.currentTimeMillis() })
+        val main = DynamicEngineManager(
+            http,
+            appVersion = 1,
+            logger = log,
+            jsSource = StaticJsSource(ENGINE_TEST_JS),
+            cacheStore = cache,
+            cookieJar = jar,
+            settings = InMemorySettingsStore(),
+        )
+        main.start()
+        val player = withContext(testEngineDispatcher) {
+            DynamicEnginePlayer.create(
+                http,
+                appVersion = 1,
+                dispatcher = testEngineDispatcher,
+                logger = log,
+                engineJs = ENGINE_TEST_JS,
+                cookieJar = jar,
+                cacheStore = cache,
+                settings = InMemorySettingsStore(),
+                videoSurface = MseVideoSurface(),
+                main = main,
+            )
+        }
+        try {
+            withContext(testEngineDispatcher) {
+                player.init(log)
+            }
+            withContext(testEngineDispatcher) {
+                player.load(AUDIO_ONLY_VIDEO_ID, log, quality = "zero")
+                player.play(log)
+            }
+            var lastBuffered = 0L
+            var lastPos = 0L
+            var lastMoveAt = System.currentTimeMillis()
+            val samples = mutableListOf<Pair<Long, Long>>()
+            val deadline = System.currentTimeMillis() + 90_000
+            while (System.currentTimeMillis() < deadline) {
+                val st = withContext(testEngineDispatcher) { player.status(log) }
+                val pos = st.longField("positionMs")
+                lastBuffered = st.longField("bufferedMs")
+                if (pos > lastPos + 200) lastMoveAt = System.currentTimeMillis()
+                lastPos = pos
+                samples += pos to lastBuffered
+                if (pos >= NEED_POS_MS && lastBuffered > pos) break
+                if (pos in 500 until NEED_POS_MS && System.currentTimeMillis() - lastMoveAt > 5_000) {
+                    throw AssertionError(
+                        "clock frozen at ${pos}ms buffered=$lastBuffered rec=${http.summary()}",
+                    )
+                }
+                delay(500)
+            }
+            val selV = http.lastSabr()?.selectedVideoFormats?.map { it.itag }.orEmpty()
+            println(
+                "ao pos=$lastPos buffered=$lastBuffered selV=$selV " +
+                    "samples=$samples rec=${http.summary()}",
+            )
+            assertTrue(http.urls.any { it.contains("/videoplayback") && it.contains("sabr=1") }, "no SABR rec=${http.summary()}")
+            assertTrue(lastPos >= NEED_POS_MS, "clock did not reach ${NEED_POS_MS}ms pos=$lastPos buffered=$lastBuffered")
+            assertTrue(lastBuffered > lastPos, "leftover not ahead of clock pos=$lastPos buffered=$lastBuffered")
+        } catch (e: EngineError) {
+            println("headless ao EngineError code=${e.code} msg=${e.message}")
+            println("jsName=${e.jsName} jsStack=${e.jsStack}")
+            e.cause?.let { println("cause=${it::class.simpleName} ${it.message}") }
+            if (e is EngineError.Network) return@runBlocking
+            throw e
+        } finally {
+            player.close()
+            main.close()
+        }
+    }
+
+    @Test
+    fun player_live_audio_only_advances_past_leftover_drain() = runBlocking {
+        val jar = InMemoryCookieJar()
+        val inner = OkKmpHttpClient.Builder().apply {
+            defaultExecuteTimeout = 60.seconds
+        }.build()
+        val mediaDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-player-live-ao-cache"
+        FileSystem.SYSTEM.deleteRecursively(mediaDir)
+        val driver = jvmSegmentDatabaseDriver()
+        val mediaCache = MediaCache(
+            DiskMediaBlobCache(mediaDir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+            SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
+        )
+        val log = PrintLog()
+        val proxy = LocalMediaProxy(
+            mediaCache,
+            inner,
+            userAgent = DESKTOP_UA,
+            logger = log,
+            verbose = true,
+        )
+        val http = RecordingHttpClient(SabrProxyHttpClient(inner, proxy))
+        val blobDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-player-live-ao-engine"
+        FileSystem.SYSTEM.deleteRecursively(blobDir)
+        val cache = DiskCacheStore(testCacheDriver(), blobDir, FileSystem.SYSTEM, now = { System.currentTimeMillis() })
+        val main = DynamicEngineManager(
+            http,
+            appVersion = 1,
+            logger = log,
+            jsSource = StaticJsSource(ENGINE_TEST_JS),
+            cacheStore = cache,
+            cookieJar = jar,
+            settings = InMemorySettingsStore(),
+        )
+        main.start()
+        val player = withContext(testEngineDispatcher) {
+            DynamicEnginePlayer.create(
+                http,
+                appVersion = 1,
+                dispatcher = testEngineDispatcher,
+                logger = log,
+                engineJs = ENGINE_TEST_JS,
+                cookieJar = jar,
+                cacheStore = cache,
+                settings = InMemorySettingsStore(),
+                videoSurface = MseVideoSurface(),
+                main = main,
+            )
+        }
+        try {
+            withContext(testEngineDispatcher) {
+                player.init(log)
+            }
+            withContext(testEngineDispatcher) {
+                player.load(LIVE_VIDEO_ID, log, quality = "auto")
+                player.play(log)
+            }
+            var lastPos = 0L
+            var lastBuffered = 0L
+            var lastMoveAt = System.currentTimeMillis()
+            var posAtZero = 0L
+            var leadAtZero = 8_000L
+            var switched = false
+            val startWait = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startWait < 25_000) {
+                val st = withContext(testEngineDispatcher) { player.status(log) }
+                lastPos = st.longField("positionMs")
+                lastBuffered = st.longField("bufferedMs")
+                println("live-ao wait pos=$lastPos buffered=$lastBuffered live=${st.flag("live")} dur=${st.longField("durationMs")}")
+                if (lastPos > 1_000) break
+                delay(500)
+            }
+            run {
+                val st = withContext(testEngineDispatcher) { player.status(log) }
+                lastPos = st.longField("positionMs")
+                lastBuffered = st.longField("bufferedMs")
+                leadAtZero = (lastBuffered - lastPos).coerceIn(3_000L, 45_000L)
+                posAtZero = lastPos
+                withContext(testEngineDispatcher) { player.setQuality("zero", log) }
+                switched = true
+                lastMoveAt = System.currentTimeMillis()
+                println("live-ao switch pos=$posAtZero lead=$leadAtZero buffered=$lastBuffered live=${st.flag("live")}")
+            }
+            val deadline = System.currentTimeMillis() + 120_000
+            while (System.currentTimeMillis() < deadline) {
+                val st = withContext(testEngineDispatcher) { player.status(log) }
+                val pos = st.longField("positionMs")
+                lastBuffered = st.longField("bufferedMs")
+                val audioOnly = st.flag("audioOnly")
+                if (pos > lastPos + 200) lastMoveAt = System.currentTimeMillis()
+                lastPos = pos
+                val need = posAtZero + leadAtZero + NEED_POS_MS
+                if (audioOnly && pos >= need) break
+                val leftoverGone = pos >= posAtZero + leadAtZero - 2_000
+                if (leftoverGone && System.currentTimeMillis() - lastMoveAt > 8_000) {
+                    val selV = http.lastSabr()?.selectedVideoFormats?.map { it.itag }.orEmpty()
+                    throw AssertionError(
+                        "live clock frozen after leftover drain pos=$pos buffered=$lastBuffered " +
+                            "posAtZero=$posAtZero lead=$leadAtZero selV=$selV " +
+                            "audioOnly=$audioOnly rec=${http.summary()}",
+                    )
+                }
+                delay(500)
+            }
+            val selV = http.lastSabr()?.selectedVideoFormats?.map { it.itag }.orEmpty()
+            val st = withContext(testEngineDispatcher) { player.status(log) }
+            println(
+                "live-ao pos=$lastPos buffered=$lastBuffered selV=$selV " +
+                    "posAtZero=$posAtZero lead=$leadAtZero audioOnly=${st.flag("audioOnly")} " +
+                    "quality=${st["quality"]} rec=${http.summary()}",
+            )
+            assertTrue(switched, "never reached auto leftover to switch zero pos=$lastPos buffered=$lastBuffered live=${st.flag("live")}")
+            assertTrue(st.flag("audioOnly"), "not audio-only after zero")
+            assertTrue(
+                lastPos >= posAtZero + leadAtZero + NEED_POS_MS,
+                "clock did not pass leftover drain pos=$lastPos need=${posAtZero + leadAtZero + NEED_POS_MS} selV=$selV",
+            )
+        } catch (e: EngineError) {
+            println("headless live-ao EngineError code=${e.code} msg=${e.message}")
+            println("jsName=${e.jsName} jsStack=${e.jsStack}")
+            e.cause?.let { println("cause=${it::class.simpleName} ${it.message}") }
+            if (e is EngineError.Network) return@runBlocking
+            throw e
+        } finally {
+            player.close()
+            main.close()
+        }
+    }
+
     private class PrintLog private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs) {
         constructor() : this(emptyList())
 
@@ -117,7 +360,16 @@ class HeadlessPlayerTest {
 
     companion object {
         private const val VIDEO_ID = "jNQXAC9IVRw"
+        /** Longer public VOD — jNQXAC9IVRw is ~19s and hid a 3s stall. */
+        private const val AUDIO_ONLY_VIDEO_ID = "x72VDoEpTIU"
+        /** 24/7 live (N0vxXktZqXQ is no longer live). Override with MSE_VIDEO_ID. */
+        private val LIVE_VIDEO_ID =
+            System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "GotlA1KKWoo"
         private const val MIN_PO = 80
+        private const val NEED_POS_MS = 8_000L
+        private const val DESKTOP_UA =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
     }
 }
 
@@ -133,6 +385,7 @@ private class RecordingHttpClient(
 ) : KmpHttpClient by inner {
     val log = mutableListOf<LoggedHttp>()
     val urls: List<String> get() = synchronized(log) { log.map { it.url } }
+    private val sabrUmp = mutableListOf<Buffer>()
 
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: kotlin.time.Duration?): Response {
         val ctype = request.body?.contentType()
@@ -143,7 +396,47 @@ private class RecordingHttpClient(
         val sent =
             if (raw != null) request.newBuilder().method(request.method, raw.toRequestBody(ctype)).build()
             else request
-        return inner.execute(sent, options, timeout)
+        val resp = inner.execute(sent, options, timeout)
+        val url = sent.url.toString()
+        if (sent.method.equals("POST", ignoreCase = true) && url.contains("sabr=1")) {
+            return teeSabr(resp)
+        }
+        return resp
+    }
+
+    private fun teeSabr(resp: Response): Response {
+        val copy = Buffer()
+        synchronized(sabrUmp) { sabrUmp += copy }
+        val origin = resp.body
+        val teed = object : ResponseBody() {
+            override fun contentType() = origin.contentType()
+            override fun contentLength() = origin.contentLength()
+            override fun source() = object : ForwardingSource(origin.source()) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    val n = super.read(sink, byteCount)
+                    if (n > 0) {
+                        val dup = sink.copy()
+                        val skip = dup.size - n
+                        if (skip > 0) dup.skip(skip)
+                        copy.write(dup, dup.size)
+                    }
+                    return n
+                }
+            }.buffer()
+            override fun close() = origin.close()
+        }
+        return resp.newBuilder().body(teed).build()
+    }
+
+    fun sabrUmpHasItag(itag: Int): Boolean = synchronized(sabrUmp) {
+        sabrUmp.any { containsMediaItag(it.copy().readByteArray(), itag) }
+    }
+
+    fun lastSabr(): VideoPlaybackAbrRequest? = synchronized(log) {
+        log.asReversed().firstNotNullOfOrNull { e ->
+            if (!e.url.contains("sabr=1") || e.body == null) null
+            else runCatching { VideoPlaybackAbrRequest.from(ProtoReader(e.body).readAllFields()) }.getOrNull()
+        }
     }
 
     fun summary(): String = synchronized(log) {
@@ -236,4 +529,26 @@ private fun readVarint(buf: ByteArray, start: Int): Pair<Long, Int>? {
         shift += 7
     }
     return null
+}
+
+private fun containsMediaItag(ump: ByteArray, itag: Int): Boolean {
+    val buf = Buffer().write(ump)
+    while (!buf.exhausted()) {
+        val h = runCatching { buf.readUmpPartHeader() }.getOrNull() ?: return false
+        if (h.partId == UmpPart.MEDIA_HEADER) {
+            val mh = runCatching {
+                MediaHeader.from(ProtoReader(buf.readByteArray(h.size)).readAllFields())
+            }.getOrNull()
+            if (mh?.itag == itag) return true
+        } else {
+            if (h.size > buf.size) return false
+            buf.skip(h.size)
+        }
+    }
+    return false
+}
+
+private fun JsonObject.flag(key: String): Boolean {
+    val p = this[key] as? JsonPrimitive ?: return false
+    return p.booleanOrNull == true || p.content == "true"
 }

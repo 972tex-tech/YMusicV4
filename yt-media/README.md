@@ -15,6 +15,7 @@ Layers (bottom-up):
 - `proto/` — minimal protobuf wire reader/writer (varint, fixed32/64, length-delimited)
 - `ump/` — UMP framing: part ids + the UMP varint codec (NOT protobuf varints)
 - `sabr/` — SABR request/response protobuf models + `SabrStreamSpec` input params
+- `proxy/` — player media proxy: cache HIT/tee + audio-only dummy video tail
 
-Planned next: the session loop (`SabrSession`), segment index + byte-range cache, and the two
-sinks (sequential download file, player cache).
+SABR request/response loop, UMP parts, VOD vs live, and audio-only dummy rules:
+[`SABR.md`](SABR.md).

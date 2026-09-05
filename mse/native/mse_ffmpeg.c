@@ -6,6 +6,7 @@
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/cpu.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/mem.h>
@@ -530,13 +531,48 @@ static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelF
 }
 #endif
 
+static const AVCodec *find_video_codec(enum AVCodecID id)
+{
+    const AVCodec *c;
+    /* avcodec_find_decoder(VP9) is FFmpeg native `vp9`, not libvpx. Native
+       VP9 + VT (log15) and native VP9 software (log16) both SIGILL on
+       leave-audio: ffmpeg worker threads, AVX-512 on Alder Lake E-cores,
+       and no error return on a bad P-frame. libvpx returns INVALIDDATA. */
+    if (id == AV_CODEC_ID_VP9) {
+        c = avcodec_find_decoder_by_name("libvpx-vp9");
+        if (c)
+            return c;
+    } else if (id == AV_CODEC_ID_VP8) {
+        c = avcodec_find_decoder_by_name("libvpx");
+        if (c)
+            return c;
+    }
+    return avcodec_find_decoder(id);
+}
+
 static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 {
     const AVCodec *codec;
     AVCodecContext **ctxp = video ? &a->vdec : &a->adec;
-    if (*ctxp)
-        return 0;
-    codec = avcodec_find_decoder(par->codec_id);
+    int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
+    if (*ctxp) {
+        int same = (*ctxp)->codec_id == par->codec_id;
+        if (same && par->width > 0 && (*ctxp)->width > 0 &&
+            (par->width != (*ctxp)->width || par->height != (*ctxp)->height))
+            same = 0;
+        if (same)
+            return 0;
+        avcodec_free_context(ctxp);
+        if (video) {
+            av_bsf_free(&a->vbsf);
+            if (a->sws) {
+                sws_freeContext(a->sws);
+                a->sws = NULL;
+            }
+            a->need_rap[0] = 1;
+        }
+    }
+    codec = video ? find_video_codec(par->codec_id) : avcodec_find_decoder(par->codec_id);
     if (!codec)
         return -1;
     *ctxp = avcodec_alloc_context3(codec);
@@ -546,8 +582,13 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         return -1;
     }
+    if (vp9) {
+        (*ctxp)->thread_count = 1;
+        (*ctxp)->thread_type = 0;
+    }
 #ifdef __APPLE__
-    if (video) {
+    /* H.264/AV1 VideoToolbox is fine. VP8/VP9 stay software (libvpx). */
+    if (video && !vp9) {
         AVBufferRef *hw = NULL;
         if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) >= 0) {
             (*ctxp)->hw_device_ctx = av_buffer_ref(hw);
@@ -572,6 +613,9 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 opened:
     (*ctxp)->pkt_timebase = (AVRational){ 1, 1000 };
     (*ctxp)->time_base = (AVRational){ 1, 1000 };
+    if (video)
+        vlog("open %s %dx%d threads=%d", codec->name, (*ctxp)->width, (*ctxp)->height,
+             (*ctxp)->thread_count);
     if (video && par->codec_id == AV_CODEC_ID_VP9 && !a->vbsf) {
         const AVBitStreamFilter *f = av_bsf_get_by_name("vp9_superframe");
         if (f && av_bsf_alloc(f, &a->vbsf) == 0) {
@@ -622,27 +666,34 @@ static int send_coded(Cfb *b, AVCodecContext *dec, AVBSFContext *bsf)
         pkt = av_packet_alloc();
         if (!pkt)
             return -1;
-        r = av_bsf_receive_packet(bsf, pkt);
-        if (r == AVERROR(EAGAIN) || r == AVERROR_EOF) {
-            av_packet_free(&pkt);
-            return 0;
+        for (;;) {
+            r = av_bsf_receive_packet(bsf, pkt);
+            if (r == AVERROR(EAGAIN) || r == AVERROR_EOF)
+                break;
+            if (r < 0) {
+                av_packet_free(&pkt);
+                return r;
+            }
+            r = avcodec_send_packet(dec, pkt);
+            av_packet_unref(pkt);
+            if (r == AVERROR(EAGAIN))
+                continue;
+            if (r < 0 && r != AVERROR_EOF) {
+                av_packet_free(&pkt);
+                return r;
+            }
         }
-        if (r < 0) {
-            av_packet_free(&pkt);
-            return r;
-        }
-        r = avcodec_send_packet(dec, pkt);
         av_packet_free(&pkt);
-        return r == AVERROR(EAGAIN) ? 0 : r;
+        return 0;
     }
     r = avcodec_send_packet(dec, pkt);
     av_packet_free(&pkt);
     if (r == AVERROR(EAGAIN))
         return 0;
-    if (r < 0 && r != AVERROR_EOF)
-        return r;
     cf->sent = 1;
     b->rd++;
+    if (r < 0 && r != AVERROR_EOF)
+        return r;
     return 0;
 }
 
@@ -657,6 +708,17 @@ MseAv *mse_av_create(void)
     a->need_rap[0] = 1;
     a->need_rap[1] = 1;
     av_log_set_level(AV_LOG_ERROR);
+    {
+        /* Alder Lake E-cores have no AVX-512. ffmpeg probes on a P-core then
+           a decode worker SIGILLs (log16 leave-audio, crash thread already
+           gone; dec_loop was in nanosleep). */
+        int flags = av_get_cpu_flags();
+        if (flags & (AV_CPU_FLAG_AVX512 | AV_CPU_FLAG_AVX512ICL)) {
+            flags &= ~(AV_CPU_FLAG_AVX512 | AV_CPU_FLAG_AVX512ICL);
+            av_force_cpu_flags(flags);
+            vlog("cpu mask avx512 off");
+        }
+    }
     return a;
 }
 
@@ -866,12 +928,24 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
             }
             free(sp);
         }
-        /* rd = first packet not yet given to the decoder. Do not use
-           a_sent/v_sent (last *shown* PTS): a held frame has been sent
-           but not shown, and rewinding re-feeds it as INVALIDDATA. */
-        dst->rd = dst->n;
-        for (i = 0; i < (int)dst->n; i++) {
-            if (!dst->f[i].sent) {
+        /* rd = first unsent at/after the playhead, not an older island
+           (seek 526s + leftover 0–30s) and not a later append's start
+           (Auto at 5.3s + 10–14s segment jumped rd to 23s → starve-ahead).
+           v_sent/a_sent < 0 means nothing shown yet (audio-only → video):
+           keep sequential rd or leftover starts ahead of the clock forever. */
+        {
+            double want = idx ? a->a_sent : a->v_sent;
+            double floor_pts = first;
+            if (want < 0)
+                floor_pts = -1e9;
+            else if (want < first)
+                floor_pts = want;
+            dst->rd = dst->n;
+            for (i = 0; i < (int)dst->n; i++) {
+                if (dst->f[i].sent)
+                    continue;
+                if (dst->f[i].pts + dst->f[i].dur < floor_pts - 0.5)
+                    continue;
                 dst->rd = (size_t)i;
                 break;
             }
@@ -912,6 +986,11 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         int nadd;
         wrap = 0;
         if (looks_ebml(a->pend[idx], a->pend_n[idx])) {
+            if (*initn && looks_fmp4(*initp, *initn)) {
+                free(*initp);
+                *initp = NULL;
+                *initn = 0;
+            }
             if (!find_cluster(a->pend[idx], a->pend_n[idx], &coff)) {
                 if (!audio && a->pend_n[idx] > 0 && (a->pend_n[idx] < 64 || a->pend_n[idx] % 4096 == 0))
                     vlog("webm wait-ebml n=%zu b0=%02x", a->pend_n[idx], a->pend[idx][0]);
@@ -934,6 +1013,11 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             }
         } else if (looks_fmp4(a->pend[idx], a->pend_n[idx])) {
             size_t ilen = 0, flen = 0;
+            if (*initn && looks_ebml(*initp, *initn)) {
+                free(*initp);
+                *initp = NULL;
+                *initn = 0;
+            }
             if (!*initn && fmp4_init_len(a->pend[idx], a->pend_n[idx], &ilen) && ilen > 0) {
                 uint8_t *np = realloc(*initp, ilen);
                 if (np) {
@@ -952,6 +1036,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             if (*initn && fmp4_frag_len(a->pend[idx], a->pend_n[idx], &flen) && flen > 0) {
                 total = flen;
             } else {
+                if (!audio && !*initn)
+                    vlog("fmp4 wait-init n=%zu b0=%02x", a->pend_n[idx], a->pend[idx][0]);
                 break;
             }
         } else if (!cluster_total(a->pend[idx], a->pend_n[idx], &total) || total == 0 ||
@@ -1017,6 +1103,25 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
     return r;
 }
 
+/* Caller holds a->mu. */
+static void close_video_decoder(MseAv *a)
+{
+    if (a->vdec)
+        vlog("close-video");
+    av_frame_free(&a->vhold);
+    avcodec_free_context(&a->vdec);
+    av_bsf_free(&a->vbsf);
+    if (a->sws) {
+        sws_freeContext(a->sws);
+        a->sws = NULL;
+    }
+    a->pend_n[0] = 0;
+    a->need_rap[0] = 1;
+    /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
+       (log17: 1.1MB of n=0 after close-video wiped init → black). Container
+       switch already drops the other header in mse_av_append. */
+}
+
 void mse_av_abort(MseAv *a, int audio)
 {
     int idx;
@@ -1041,6 +1146,9 @@ void mse_av_remove(MseAv *a, int audio, double start, double end)
         return;
     pthread_mutex_lock(&a->mu);
     cfb_drop(audio ? &a->af : &a->vf, start, end);
+    /* Audio-only (or a full video wipe): nothing left to decode. */
+    if (!audio && a->vf.n == 0)
+        close_video_decoder(a);
     pthread_mutex_unlock(&a->mu);
 }
 
@@ -1101,6 +1209,46 @@ int mse_av_span(MseAv *a, double *first, double *last)
     return 1;
 }
 
+int mse_av_video_pending(MseAv *a)
+{
+    int n;
+    if (!a)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+    n = a->vf.rd < a->vf.n;
+    pthread_mutex_unlock(&a->mu);
+    return n;
+}
+
+int mse_av_audio_pending(MseAv *a)
+{
+    int n;
+    if (!a)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+    n = a->af.rd < a->af.n;
+    pthread_mutex_unlock(&a->mu);
+    return n;
+}
+
+int mse_av_has_video(MseAv *a)
+{
+    int n;
+    if (!a)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+    n = a->vf.n > 0;
+    pthread_mutex_unlock(&a->mu);
+    return n;
+}
+
+static void cfb_clear_sent(Cfb *b)
+{
+    size_t i;
+    for (i = 0; i < b->n; i++)
+        b->f[i].sent = 0;
+}
+
 static void cfb_seek_rd(Cfb *b, double t)
 {
     size_t i;
@@ -1128,11 +1276,12 @@ static void cfb_seek_rd_key(Cfb *b, double t)
         if (cover == b->n && b->f[i].pts + b->f[i].dur >= t - 0.05)
             cover = i;
     }
-    if (!covered) {
+    if (!covered || last_key >= b->n) {
+        /* No key at/before t: do not start on a P-frame (VP9 SIGILL after -10s). */
         b->rd = b->n;
         return;
     }
-    b->rd = last_key < b->n ? last_key : cover;
+    b->rd = last_key;
 }
 
 void mse_av_seek(MseAv *a, double seconds)
@@ -1140,6 +1289,8 @@ void mse_av_seek(MseAv *a, double seconds)
     if (!a)
         return;
     pthread_mutex_lock(&a->mu);
+    cfb_clear_sent(&a->af);
+    cfb_clear_sent(&a->vf);
     cfb_seek_rd(&a->af, seconds);
     cfb_seek_rd_key(&a->vf, seconds);
     vlog("seek t=%.3f af=%zu vf=%zu ard=%zu vrd=%zu vkey=%.3f", seconds, a->af.n, a->vf.n,
@@ -1150,7 +1301,11 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
-    if (a->vdec)
+    /* No RAP at the new playhead: drop the decoder instead of feeding leftover
+       P-frames (live DVR -10s SIGILL). Next append reopens. */
+    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key)
+        close_video_decoder(a);
+    else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
@@ -1218,7 +1373,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     *bgra = NULL;
     pthread_mutex_lock(&a->mu);
-    if (!a->vdec) {
+    if (!a->vdec || a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
@@ -1251,6 +1406,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return -1;
     }
+    {
+    int late_skips = 0;
     for (i = 0; i < 96; i++) {
         got = avcodec_receive_frame(a->vdec, frame);
         if (got == 0) {
@@ -1267,6 +1424,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
+                if (late_skips++ < 512)
+                    i--;
                 continue;
             }
             if (scale_bgra(a, frame, bgra, w, h) < 0)
@@ -1311,10 +1470,12 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                    merges them. Do not RAP-skip the rest of the GOP. */
                 continue;
             }
-            a->need_rap[0] = 0;
+            if (key)
+                a->need_rap[0] = 0;
             if (vdbg_ok())
                 vlog("send pts=%.3f key=%d clock=%.3f", sp, key, clock);
         }
+    }
     }
     av_frame_free(&frame);
     pthread_mutex_unlock(&a->mu);

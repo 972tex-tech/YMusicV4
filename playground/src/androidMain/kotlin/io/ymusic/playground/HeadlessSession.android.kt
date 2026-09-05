@@ -61,7 +61,7 @@ internal actual suspend fun bootMseSession(surface: MseVideoSurface): MseSession
 }
 
 internal actual fun defaultMseVideoId(): String =
-    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "x72VDoEpTIU"
+    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "N0vxXktZqXQ"
 
 internal actual fun logMseLab(line: String) {
     Log.i("mse", "[android-mse] $line")

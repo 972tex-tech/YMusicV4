@@ -25,7 +25,7 @@ class HeadlessPlaybackTest {
         }
         val session = HeadlessSession.boot(surface)
         try {
-            session.player.load(VIDEO_ID, session.log)
+            session.player.load(VIDEO_ID, session.log, "auto")
             session.player.play(session.log)
 
             val deadline = System.currentTimeMillis() + 60_000
@@ -57,10 +57,35 @@ class HeadlessPlaybackTest {
             println("pause $pausedAt -> $still")
             assertTrue(abs(still - pausedAt) < 1_500, "clock kept moving while paused $pausedAt -> $still")
 
+            /* SPS=1 is googlevideo accepting the PO, not playback. Pause-then-seek
+               lands currentTime while frozen; play and require the clock to run. */
+            val framesBeforeSeek = frames.get()
+            session.player.play(session.log)
+            delay(200)
             session.player.seekTo(150_000, session.log)
-            delay(4_000)
-            val afterSeek = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
-            println("hole-seek -> $afterSeek")
+            session.player.play(session.log)
+            val seekDeadline = System.currentTimeMillis() + 20_000
+            var landed = 0L
+            while (System.currentTimeMillis() < seekDeadline) {
+                landed = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (landed in 145_000..165_000) break
+                delay(250)
+            }
+            println("hole-seek land -> $landed frames=${frames.get()}")
+            assertTrue(landed in 145_000..165_000, "seek did not land near 150s landed=$landed")
+            val playDeadline = System.currentTimeMillis() + 15_000
+            var afterSeek = landed
+            while (System.currentTimeMillis() < playDeadline) {
+                afterSeek = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (afterSeek > landed + 800) break
+                delay(250)
+            }
+            println("hole-seek play $landed -> $afterSeek frames=${frames.get()}")
+            assertTrue(afterSeek > landed + 800, "seek did not play $landed -> $afterSeek")
+            assertTrue(
+                frames.get() > framesBeforeSeek,
+                "no new frames after seek frames=${frames.get()} before=$framesBeforeSeek",
+            )
             val proof = session.proofFile.takeIf { it.isFile }?.readText() ?: ""
             val minter = proof.lineSequence().firstOrNull {
                 it.contains("minter GenerateIT") || it.contains("owl m")

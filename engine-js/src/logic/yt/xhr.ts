@@ -2,10 +2,14 @@
 // builder via cookieHeaderFor. Player ads strip (skip_ads.ts) rewrites /player JSON via
 // setXhrJsonRewrite. Quoted names so Closure ADVANCED leaves the browser-shaped API intact.
 
+import { utf8Decode, utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import { resolveUrl } from "../../protocol/http/headers";
-import { cookieHeaderFor, storeSetCookies } from "./cookies";
+import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
+import type { AuthContext } from "./cookies";
+import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
+import { prepareSabrBody } from "./sabr_abr";
 import { allowEngineJsUrl } from "./jsAllow";
 
 type Listener = (ev?: Record<string, unknown>) => void;
@@ -50,6 +54,22 @@ export function setXhrJsonRewrite(
 ): void {
   requestRewrite = req;
   responseRewrite = res;
+}
+
+export function applyRequestRewrite(url: string, body: unknown): unknown {
+  return requestRewrite ? requestRewrite(url, body) : body;
+}
+
+export function applyResponseRewrite(url: string, text: string): string {
+  return responseRewrite ? responseRewrite(url, text) : text;
+}
+
+/** Full-body JSON rewrite is only for /player, never streaming SABR. */
+export function wantsJsonRewrite(url: string): boolean {
+  if (!requestRewrite && !responseRewrite) return false;
+  const q = url.indexOf("?");
+  const path = q >= 0 ? url.slice(0, q) : url;
+  return path.indexOf("/youtubei/v1/player") >= 0 && path.indexOf("heartbeat") < 0;
 }
 
 function fire(x: XhrJs, type: string): void {
@@ -103,8 +123,7 @@ async function drainBytes(res: HttpResponse): Promise<Uint8Array> {
 }
 
 function XhrImpl(this: XhrJs): XhrJs {
-  const self =
-    this && this !== (globalThis as unknown) ? this : Object.create(XhrImpl.prototype);
+  const self = this && this !== (globalThis as unknown) ? this : Object.create(XhrImpl.prototype);
   self["readyState"] = 0;
   self["status"] = 0;
   self["statusText"] = "";
@@ -243,6 +262,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   if (!hasOrigin && loc && loc["origin"] != null)
     builder.addHeader("Origin", String(loc["origin"]));
   if (requestRewrite) body = requestRewrite(url, body);
+  body = prepareSabrBody(url, body);
   logSabrRequest(url, body);
   if (body != null && body !== "") {
     if (typeof body === "string") builder.body(body);
@@ -255,9 +275,23 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   if (typeof ms === "number" && ms > 0) builder.timeout(ms);
   (async function () {
     try {
-      const cookie = await cookieHeaderFor(url);
+      let auth: AuthContext | undefined = undefined;
+      if (isYoutubeiUrl(url)) {
+        let hasAuth = false;
+        for (let i = 0; i < self._headers.length; i++) {
+          if (self._headers[i]![0].toLowerCase() === "authorization") hasAuth = true;
+        }
+        if (!hasAuth) {
+          const session = await getSession(SESSION_MAX_AGE_MS);
+          auth = {
+            sessionIndex: session.sessionIndex,
+            delegatedSessionId: session.delegatedSessionId,
+            userSessionId: session.userSessionId,
+          };
+        }
+      }
+      await attachRequestIdentity(url, builder, auth);
       if (self._aborted) return;
-      if (cookie.length > 0) builder.setHeader("Cookie", cookie);
       const call = builder.build();
       self._call = call;
       const res = await call.execute();
@@ -270,7 +304,11 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       self._respHeaders = res.headers.entries.slice();
       setReady(self, 2);
       if (self["responseType"] === "arraybuffer") {
-        const u8 = await drainBytes(res);
+        let u8 = await drainBytes(res);
+        if (responseRewrite) {
+          const text = responseRewrite(url, utf8Decode(u8));
+          u8 = utf8Encode(text);
+        }
         logSabrResponse(url, res.status, u8);
         const copy = new Uint8Array(u8.byteLength);
         copy.set(u8);

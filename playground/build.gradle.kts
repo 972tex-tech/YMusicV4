@@ -59,6 +59,8 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(project(":kmpHttp:testing"))
+                implementation(project(":yt-media"))
+                implementation(Libs.SqlDelight.sqliteDriver)
             }
         }
 
@@ -101,7 +103,7 @@ tasks.withType<JavaExec>().configureEach {
 tasks.withType<Test>().configureEach {
     dependsOn(":mse:mseCmakeBuild")
     systemProperty("mse.native.dir", mseJniDir.get().asFile.absolutePath)
-    timeout.set(Duration.ofMinutes(5))
+    timeout.set(Duration.ofMinutes(8))
 }
 
 compose.desktop {

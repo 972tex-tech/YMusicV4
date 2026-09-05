@@ -64,15 +64,16 @@ data class AdaptiveFormat(
     companion object {
         fun from(fields: List<ProtoField>) = AdaptiveFormat(
             itag = checkNotNull(fields.varint(1)).toInt(),
-            lmt = checkNotNull(fields.varint(2)),
+            lmt = fields.varint(2) ?: 0L,
             xtag = fields.string(3),
-            mimeType = checkNotNull(fields.string(4)),
-            clen = checkNotNull(fields.varint(5)),
-            indexRangeStart = checkNotNull(fields.varint(6)),
-            indexRangeEnd = checkNotNull(fields.varint(7)),
+            mimeType = fields.string(4) ?: "",
+            /* Live adaptiveFormats omit clen / indexRange / approxDurationMs. */
+            clen = fields.varint(5) ?: 0L,
+            indexRangeStart = fields.varint(6) ?: 0L,
+            indexRangeEnd = fields.varint(7) ?: 0L,
             width = fields.varint(8)?.toInt()?.takeIf { it > 0 },
             height = fields.varint(9)?.toInt()?.takeIf { it > 0 },
-            approxDurationMs = checkNotNull(fields.varint(10)).toInt(),
+            approxDurationMs = fields.varint(10)?.toInt() ?: 0,
             audioTrackIsDefault = fields.varint(11)?.let { it == 1L },
             audioTrackId = fields.string(12),
             isDrc = fields.varint(13) == 1L,
@@ -250,11 +251,11 @@ class StreamerContext(
 }
 
 // optional ClientAbrState client_abr_state = 1;
-// repeated FormatId selected_format_ids = 2;
-// repeated BufferedRange buffered_ranges = 3;
+// repeated FormatId selected_format_ids = 2;          // initialized formats (WEB often empty)
+// repeated BufferedRange buffered_ranges = 3;         // what the client has per itag
 // optional bytes video_playback_ustreamer_config = 5;
-// repeated FormatId selected_audio_format_ids = 16;
-// repeated FormatId selected_video_format_ids = 17;
+// repeated FormatId selected_audio_format_ids = 16;   // playable audio formats
+// repeated FormatId selected_video_format_ids = 17;   // playable video formats
 // optional StreamerContext streamer_context = 19;
 class VideoPlaybackAbrRequest(
     val clientAbrState: ClientAbrState,
@@ -322,16 +323,17 @@ data class MediaHeader(
     companion object {
         fun from(fields: List<ProtoField>) = MediaHeader(
             headerId = checkNotNull(fields.varint(1)).toInt(),
-            videoId = checkNotNull(fields.string(2)),
+            videoId = fields.string(2) ?: "",
             itag = checkNotNull(fields.varint(3)).toInt(),
-            lmt = checkNotNull(fields.varint(4)),
+            /* Gold live omits lmt / start_range / init / dur / clen. */
+            lmt = fields.varint(4) ?: 0L,
             xtag = fields.string(5),
-            startRange = checkNotNull(fields.varint(6)),
+            startRange = fields.varint(6) ?: 0L,
             isInitSegment = fields.varint(8) == 1L,
             segmentIndex = fields.varint(9)?.toInt() ?: 0,
             startMs = fields.varint(11),
             durationMs = fields.varint(12),
-            contentLength = checkNotNull(fields.varint(14)),
+            contentLength = fields.varint(14) ?: 0L,
         )
     }
 
@@ -343,7 +345,7 @@ data class MediaHeader(
         .varint(3, itag)
         .varint(4, lmt)
         .string(5, xtag)
-        .varint(6, startRange)
+        .varint(6, startRange.takeIf { it >= 0 })
         .varint(8, if (isInitSegment) 1 else 0)
         .varint(9, segmentIndex.takeIf { it != 0 })
         .varint(11, startMs.takeIf { segmentIndex != 0 })

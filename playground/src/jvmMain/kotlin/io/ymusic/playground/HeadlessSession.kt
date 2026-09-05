@@ -9,6 +9,13 @@ import io.ymusic.mse.MseVideoSurface
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.InMemorySettingsStore
 import io.ymusic.settings.SettingsStore
+import io.ymusic.ytmedia.cache.DiskMediaBlobCache
+import io.ymusic.ytmedia.cache.MediaCache
+import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
+import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
+import io.ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
+import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import io.ymusic.ytmedia.proxy.SabrProxyHttpClient
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
@@ -18,6 +25,8 @@ import kmphttp.KmpHttpClient
 import kmphttp.OkKmpHttpClient
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.withContext
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
 
@@ -40,8 +49,10 @@ internal class StdoutLog private constructor(
             message.indexOf("mse sourceopen") >= 0 ||
             message.indexOf("mse createObjectURL") >= 0 ||
             message.indexOf("mse append") >= 0 ||
+            message.indexOf("mse dummy SB") >= 0 ||
             message.indexOf("player RSP") >= 0 ||
-            message.indexOf("mse=[") >= 0
+            message.indexOf("mse=[") >= 0 ||
+            message.indexOf("sabr sabr=") >= 0
         ) {
             proofFile.appendText(line + "\n")
         }
@@ -85,7 +96,7 @@ internal class HeadlessSession(
     companion object {
         suspend fun boot(surface: MseVideoSurface): HeadlessSession {
             val jar = InMemoryCookieJar()
-            val client = OkKmpHttpClient.Builder().apply {
+            val inner = OkKmpHttpClient.Builder().apply {
                 defaultExecuteTimeout = 60.seconds
                 /* Proxyman (127.0.0.1:9090) is the macOS system HTTPS proxy; do not use it. */
                 direct()
@@ -95,6 +106,27 @@ internal class HeadlessSession(
             val cacheDir = File(System.getProperty("java.io.tmpdir"), "ymusic-playground-engine-cache")
             cacheDir.deleteRecursively()
             val cache = desktopEngineCacheStore(cacheDir, log)
+            val mediaDir = File(System.getProperty("java.io.tmpdir"), "ymusic-playground-media-cache")
+            mediaDir.deleteRecursively()
+            mediaDir.mkdirs()
+            val driver = jvmSegmentDatabaseDriver(
+                "jdbc:sqlite:${File(mediaDir, "cache-index.db").absolutePath}",
+            )
+            val mediaCache = MediaCache(
+                DiskMediaBlobCache(
+                    mediaDir.absolutePath.toPath(),
+                    FileSystem.SYSTEM,
+                    SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() }),
+                ),
+                SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
+            )
+            val proxy = LocalMediaProxy(
+                mediaCache,
+                inner,
+                userAgent = DESKTOP_UA,
+                logger = log,
+            )
+            val client = SabrProxyHttpClient(inner, proxy)
             val settings = InMemorySettingsStore()
             val main = DynamicEngineManager(
                 client = client,
@@ -131,6 +163,10 @@ internal actual suspend fun bootMseSession(surface: MseVideoSurface): MseSession
     HeadlessSession.boot(surface)
 
 internal actual fun defaultMseVideoId(): String =
-    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "x72VDoEpTIU"
+    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "Vm4MIgcpSWI"
+
+private const val DESKTOP_UA =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 
 internal actual fun logMseLab(line: String) = Unit

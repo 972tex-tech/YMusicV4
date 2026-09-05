@@ -4,19 +4,129 @@ import { HttpRequest } from "../../protocol/http";
 import { JsEngineErrorImpl, callMain } from "../../protocol/command";
 import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
-import { activeHtmlMedia, installMseGlobals, mseCreateObjectURL, mseRevokeObjectURL, resetMse } from "../../protocol/mse";
+import {
+  activeHtmlMedia,
+  dropVideoTrack,
+  installMseGlobals,
+  isLiveDuration,
+  mseCreateObjectURL,
+  mseRevokeObjectURL,
+  dumpDrain,
+  resetDrainCounts,
+  resetMse,
+} from "../../protocol/mse";
 import { installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
 import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
+import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import { playerStorageReady } from "./storage";
 
 const ORIGIN = "https://www.youtube.com";
+let lastQualityExtra = -1;
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
   return v as Record<string, unknown>;
+}
+
+function sizePlayerEl(
+  el: {
+    clientWidth?: number;
+    clientHeight?: number;
+    offsetWidth?: number;
+    offsetHeight?: number;
+  } | null,
+): void {
+  if (!el) return;
+  el.clientWidth = el.offsetWidth = 640;
+  el.clientHeight = el.offsetHeight = 360;
+}
+
+function sizePlayerTree(): void {
+  sizePlayerEl(
+    document.getElementById("player") as {
+      clientWidth?: number;
+      clientHeight?: number;
+      offsetWidth?: number;
+      offsetHeight?: number;
+    } | null,
+  );
+  sizePlayerEl(
+    document.getElementById("movie_player") as {
+      clientWidth?: number;
+      clientHeight?: number;
+      offsetWidth?: number;
+      offsetHeight?: number;
+    } | null,
+  );
+  sizePlayerEl(
+    document.getElementById("video-player") as {
+      clientWidth?: number;
+      clientHeight?: number;
+      offsetWidth?: number;
+      offsetHeight?: number;
+    } | null,
+  );
+  sizePlayerEl(
+    document.getElementById("player-html5-video") as {
+      clientWidth?: number;
+      clientHeight?: number;
+      offsetWidth?: number;
+      offsetHeight?: number;
+    } | null,
+  );
+}
+
+function moviePlayer(): Record<string, unknown> | null {
+  const el = document.getElementById("movie_player");
+  return el as unknown as Record<string, unknown> | null;
+}
+
+/**
+ * YouTube copies api.state.D onto template.element in MY(). That element is not
+ * always #movie_player in this DOM, so the IFrame names never land there.
+ * Copy the bag onto #movie_player the same way MY() does.
+ */
+function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
+  if (!host || typeof host["getPlaybackQuality"] !== "function") return;
+  const orig = host["getPlaybackQuality"] as (...a: unknown[]) => unknown;
+  if ((orig as { __ym?: boolean }).__ym) return;
+  const wrapped = function (this: unknown) {
+    if (isAudioOnly()) return "zero";
+    try {
+      const q = orig.call(this);
+      if (q != null && String(q) !== "") return q;
+    } catch (_e) {}
+    return "auto";
+  };
+  (wrapped as { __ym?: boolean }).__ym = true;
+  host["getPlaybackQuality"] = wrapped;
+}
+
+function bindMoviePlayerApi(app: YtApp | null): void {
+  const el = moviePlayer();
+  if (!el || !app) return;
+  wrapGetPlaybackQuality(el);
+  wrapGetPlaybackQuality(app as unknown as Record<string, unknown>);
+  if (typeof el["getAvailableQualityData"] === "function") return;
+  const rec = app as unknown as Record<string, unknown>;
+  for (const k in rec) {
+    try {
+      const v = rec[k];
+      if (!v || typeof v !== "object") continue;
+      const st = (v as Record<string, unknown>)["state"] as Record<string, unknown> | undefined;
+      const d = st ? (st["D"] as Record<string, unknown> | undefined) : undefined;
+      if (!d || typeof d["getAvailableQualityData"] !== "function") continue;
+      for (const name in d) {
+        if (Object.prototype.hasOwnProperty.call(d, name)) el[name] = d[name];
+      }
+      wrapGetPlaybackQuality(el);
+      wrapGetPlaybackQuality(d);
+      return;
+    } catch (_e) {}
+  }
 }
 
 function absUrl(src: string): string {
@@ -229,6 +339,8 @@ function installPlayerTree(): void {
   player.clientHeight = player.offsetHeight = 360;
   movie.clientWidth = movie.offsetWidth = 640;
   movie.clientHeight = movie.offsetHeight = 360;
+  video.clientWidth = video.offsetWidth = 640;
+  video.clientHeight = video.offsetHeight = 360;
   wrap.appendChild(video);
   movie.appendChild(wrap);
   player.appendChild(movie);
@@ -258,6 +370,9 @@ function enableSharedOwlFlag(): void {
   const flags = asRec(get("EXPERIMENT_FLAGS")) || {};
   flags["html5_use_shared_owl_instance"] = true;
   flags["html5_webpo_idle_priority_job"] = false;
+  // Player fetch gzips /youtubei/v1/player when this is on; skip_ads JSON.parse then
+  // sees gzip magic (0x1f) — "JSON parse failed: unexpected token".
+  flags["wug_networking_gzip_request"] = false;
   set({ "EXPERIMENT_FLAGS": flags });
 }
 
@@ -314,6 +429,13 @@ type YtApp = {
   "playVideo": () => void;
   "pauseVideo": () => void;
   "seekTo": (t: number, allowSeekAhead?: boolean) => void;
+  "setPlaybackQualityRange"?: (q: string, q2?: string) => void;
+  "setPlaybackQuality"?: (q: string) => void;
+  "getPlaybackQuality"?: () => string;
+  "getUserPlaybackQualityPreference"?: () => string;
+  "getAvailableQualityData"?: () => unknown;
+  "getAvailableQualityLevels"?: () => unknown;
+  "getPlayerResponse"?: () => unknown;
 };
 
 function parseQueryMap(s: string): Record<string, string> {
@@ -480,14 +602,13 @@ class Player {
     const ctx = ctxs ? asRec(ctxs["WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH"]) : null;
     if (!ctx)
       throw new JsEngineErrorImpl("missing WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH", "E20075");
+    enableSharedOwlFlag();
     if (typeof ctx["serializedExperimentFlags"] === "string") {
-      ctx["serializedExperimentFlags"] = patchFlags(
-        ctx["serializedExperimentFlags"] as string,
-        {
-          "html5_use_shared_owl_instance": "true",
-          "html5_webpo_idle_priority_job": "false",
-        },
-      );
+      ctx["serializedExperimentFlags"] = patchFlags(ctx["serializedExperimentFlags"] as string, {
+        "html5_use_shared_owl_instance": "true",
+        "html5_webpo_idle_priority_job": "false",
+        "wug_networking_gzip_request": "false",
+      });
     }
     this.createFn = create as (r: unknown, a: unknown, b: unknown) => unknown;
     this.createCtx = ctx;
@@ -508,14 +629,17 @@ class Player {
     };
     const param2 = {
       "args": playerVars,
-      "attrs": { "id": "video-player", "width": "640", "height": "360" },
+      "attrs": { "id": "movie_player", "width": "640", "height": "360" },
       "loaded": true,
     };
-    const root = document.getElementById("player");
-    if (!root) throw new JsEngineErrorImpl("missing #player", "E20076");
+    const root = document.getElementById("movie_player");
+    if (!root) throw new JsEngineErrorImpl("missing #movie_player", "E20076");
     out["step"] = "create";
     try {
       this.player = create(root, param2, this.createCtx) as YtApp;
+      (globalThis as unknown as Record<string, unknown>)["__ymPlayer"] = this.player;
+      sizePlayerTree();
+      bindMoviePlayerApi(this.player);
     } catch (e) {
       throw new JsEngineErrorImpl(
         "Application.create: " + (e instanceof Error ? e.message : String(e)),
@@ -536,10 +660,54 @@ class Player {
     return typeof minted === "string" ? minted : u8ToB64url(asU8(minted));
   }
 
-  async load(videoId: string): Promise<Record<string, unknown>> {
+  setQuality(quality: string): void {
+    const q = String(quality || "");
+    if (!q) throw new JsEngineErrorImpl("player/setQuality missing quality", "E20085");
+    const player = this.player;
+    if (!player)
+      throw new JsEngineErrorImpl("player/setQuality before Application.create", "E20085");
+    if (q === "zero") {
+      /* Product token stays "zero". VOD: pin YouTube "tiny" so ABR binds
+         144p. Live: do not pin — that drops leftover IY from vid=. */
+      setAudioOnly(true);
+      dropVideoTrack();
+      resetDrainCounts();
+      if (!isLiveDuration()) {
+        const host = moviePlayer() || (player as unknown as Record<string, unknown>);
+        const range = host["setPlaybackQualityRange"];
+        const one = host["setPlaybackQuality"];
+        if (typeof range === "function") range.call(host, "tiny", "tiny");
+        else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
+      }
+      console.log("mse setQuality zero clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0));
+      dumpDrain("setQuality-zero");
+      return;
+    }
+    const wasAudioOnly = isAudioOnly();
+    setAudioOnly(false);
+    setYmQuality(q);
+    if (wasAudioOnly) dropVideoTrack();
+    const host = moviePlayer() || (player as unknown as Record<string, unknown>);
+    const range = host["setPlaybackQualityRange"];
+    const one = host["setPlaybackQuality"];
+    if (typeof range === "function") range.call(host, q, q);
+    else if (typeof one === "function") (one as (q: string) => void).call(host, q);
+    /* Load-as-zero never called setPlaybackQualityRange, so YouTube still
+       thinks quality is auto. Range("auto") is a no-op and SABR waits until
+       audio leftover runs low (~15s). Seek forces a request at the playhead. */
+    if (wasAudioOnly && typeof player["seekTo"] === "function") {
+      const t = activeHtmlMedia() ? __mseCurrentTime() : 0;
+      console.log("mse setQuality " + q + " leave-audio seek=" + t);
+      player["seekTo"].call(player, t, true);
+    }
+  }
+
+  async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
     const initOut = await this.init();
+    const q = quality && quality.length ? quality : "zero";
     const out: Record<string, unknown> = {
       "videoId": videoId,
+      "quality": q,
       "jsUrl": initOut["jsUrl"],
       "baseJsLen": initOut["baseJsLen"],
       "ytGets": initOut["ytGets"],
@@ -553,12 +721,13 @@ class Player {
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. Create
      * stays without video_id so this is the only /player POST. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
+    this.setQuality(q);
     out["step"] = "loadVideoByPlayerVars";
     try {
+      /* No start:0 — live would pin the 7h DVR at t=0 (log: dummy 0..120, media=0). */
       player["loadVideoByPlayerVars"]({
         "video_id": videoId,
         "autoplay": "1",
-        "start": 0,
       });
     } catch (e) {
       throw new JsEngineErrorImpl(
@@ -606,6 +775,19 @@ class Player {
     player["seekTo"](t, true);
   }
 
+  /** YouTube IFrame getProgressState — DVR allowSeeking / seekableStart / seekableEnd. */
+  private progressState(): Record<string, unknown> | null {
+    const host = moviePlayer();
+    const fn = host && host["getProgressState"];
+    if (typeof fn !== "function") return null;
+    try {
+      const s = (fn as () => unknown).call(host);
+      return s && typeof s === "object" ? (s as Record<string, unknown>) : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
   stop(): void {
     this.pause();
     this.seek(0);
@@ -614,14 +796,149 @@ class Player {
   status(): Record<string, unknown> {
     const v = activeHtmlMedia();
     const dur = v ? Number(v["duration"]) : NaN;
+    const player = this.player;
+    const host = moviePlayer();
+    const pref = isAudioOnly()
+      ? "zero"
+      : host && typeof host["getUserPlaybackQualityPreference"] === "function"
+        ? String((host["getUserPlaybackQualityPreference"] as () => string)())
+        : ymQuality();
+    const actual = isAudioOnly()
+      ? "zero"
+      : host && typeof host["getPlaybackQuality"] === "function"
+        ? String((host["getPlaybackQuality"] as () => string)())
+        : ymQuality();
+    let bufferedMs = 0;
+    if (v) {
+      const b = v["buffered"] as { length?: number; end?: (i: number) => number } | null;
+      const n = b && typeof b["length"] === "number" ? Number(b["length"]) : 0;
+      if (n > 0 && typeof b!["end"] === "function") {
+        const end = Number(b!["end"]!(n - 1));
+        if (isFinite(end) && end > 0) bufferedMs = Math.round(end * 1000);
+      }
+    }
+    const pos = v ? Math.round(Number(v["currentTime"]) * 1000) : 0;
+    const live = !isFinite(dur);
+    const sk = v
+      ? (v["seekable"] as {
+          length?: number;
+          start?: (i: number) => number;
+          end?: (i: number) => number;
+        } | null)
+      : null;
+    const skN = sk && typeof sk["length"] === "number" ? Number(sk["length"]) : 0;
+    let skStart = 0;
+    let skEnd = 0;
+    if (skN > 0 && typeof sk!["start"] === "function" && typeof sk!["end"] === "function") {
+      skStart = Number(sk!["start"]!(0));
+      skEnd = Number(sk!["end"]!(skN - 1));
+    }
+    const ps = this.progressState();
+    if (ps) {
+      const a = Number(ps["seekableStart"]);
+      const b = Number(ps["seekableEnd"]);
+      if (isFinite(a)) skStart = a;
+      if (isFinite(b) && b > skStart) skEnd = b;
+    }
+    /* Leftover is not the DVR window. allowSeeking is YouTube's DVR vs head-only. */
+    const seekable = ps ? !!ps["allowSeeking"] : !live;
+    if (seekable && !(skEnd > skStart + 1)) {
+      const ct = v ? Number(v["currentTime"]) : 0;
+      if (isFinite(ct) && ct > 0) {
+        skStart = 0;
+        skEnd = ct;
+      }
+    }
+    const durationMs =
+      isFinite(dur) && dur > 0
+        ? Math.round(dur * 1000)
+        : isFinite(skEnd) && skEnd > 0
+          ? Math.round(skEnd * 1000)
+          : 0;
+    const ended =
+      (v && !!v["ended"]) ||
+      (!live && durationMs > 0 && pos >= durationMs - 250 && v && !!v["paused"]);
     return {
-      "positionMs": v ? Math.round(Number(v["currentTime"]) * 1000) : 0,
-      "durationMs": isFinite(dur) && dur > 0 ? Math.round(dur * 1000) : 0,
+      "positionMs": pos,
+      "durationMs": durationMs,
+      "bufferedMs": bufferedMs,
+      "live": live,
+      "seekable": seekable,
+      "seekableStartMs": Math.round((isFinite(skStart) ? skStart : 0) * 1000),
+      "seekableEndMs": Math.round((isFinite(skEnd) ? skEnd : 0) * 1000),
       "paused": v ? !!v["paused"] : true,
+      "ended": !!ended,
       "readyState": v ? Number(v["readyState"]) : 0,
       "videoWidth": v ? Number(v["videoWidth"]) : 0,
       "videoHeight": v ? Number(v["videoHeight"]) : 0,
+      "audioOnly": isAudioOnly(),
+      "quality": actual,
+      "preferQuality": pref,
+      "qualities": this.qualityOptions(),
     };
+  }
+
+  private qualityOptions(): Record<string, unknown>[] {
+    const labels: Record<string, string> = {
+      "tiny": "144p",
+      "small": "240p",
+      "medium": "360p",
+      "large": "480p",
+      "hd720": "720p",
+      "hd1080": "1080p",
+      "hd1440": "1440p",
+      "hd2160": "4K",
+      "highres": "8K",
+    };
+    const rows: Record<string, unknown>[] = [
+      { "quality": "zero", "label": "Audio" },
+      { "quality": "auto", "label": "Auto" },
+    ];
+    const seen: Record<string, boolean> = { "zero": true, "auto": true };
+    function add(q: string, label?: string): void {
+      if (!q || q === "auto" || q === "default" || seen[q]) return;
+      seen[q] = true;
+      rows.push({ "quality": q, "label": label || labels[q] || q });
+    }
+    bindMoviePlayerApi(this.player);
+    const host = moviePlayer();
+    let dataN = 0;
+    let levelsN = 0;
+    try {
+      if (host && typeof host["getAvailableQualityData"] === "function") {
+        const data = (host["getAvailableQualityData"] as () => unknown)();
+        const list = Array.isArray(data) ? data : [];
+        dataN = list.length;
+        for (let i = 0; i < list.length; i++) {
+          const o = asRec(list[i]);
+          if (!o) continue;
+          const q = o["quality"] != null ? String(o["quality"]) : "";
+          const lab = o["qualityLabel"] != null ? String(o["qualityLabel"]) : "";
+          add(q, lab);
+        }
+      }
+      if (host && typeof host["getAvailableQualityLevels"] === "function") {
+        const levels = (host["getAvailableQualityLevels"] as () => unknown)();
+        const list = Array.isArray(levels) ? levels : [];
+        levelsN = list.length;
+        for (let i = 0; i < list.length; i++) add(String(list[i]));
+      }
+    } catch (_e) {}
+    const extra = rows.length - 2;
+    if (extra !== lastQualityExtra) {
+      lastQualityExtra = extra;
+      console.log(
+        "mse qualityApi movie=" +
+          (host && typeof host["getAvailableQualityData"] === "function" ? "1" : "0") +
+          " data=" +
+          dataN +
+          " levels=" +
+          levelsN +
+          " extra=" +
+          extra,
+      );
+    }
+    return rows;
   }
 }
 
@@ -631,8 +948,12 @@ export function initPlayer(): Promise<Record<string, unknown>> {
   return ytPlayer.init();
 }
 
-export function loadPlayer(videoId: string): Promise<Record<string, unknown>> {
-  return ytPlayer.load(videoId);
+export function loadPlayer(videoId: string, quality?: string): Promise<Record<string, unknown>> {
+  return ytPlayer.load(videoId, quality);
+}
+
+export function setPlayerQuality(quality: string): void {
+  ytPlayer.setQuality(quality);
 }
 
 export function mintPlayerPo(videoId: string): Promise<Record<string, unknown>> {

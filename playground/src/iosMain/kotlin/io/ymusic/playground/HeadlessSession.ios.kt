@@ -63,7 +63,7 @@ internal actual suspend fun bootMseSession(surface: MseVideoSurface): MseSession
 
 internal actual fun defaultMseVideoId(): String {
     val env = NSProcessInfo.processInfo.environment["MSE_VIDEO_ID"] as? String
-    return env?.takeIf { it.isNotBlank() } ?: "x72VDoEpTIU"
+    return env?.takeIf { it.isNotBlank() } ?: "N0vxXktZqXQ"
 }
 
 internal actual fun logMseLab(line: String) {

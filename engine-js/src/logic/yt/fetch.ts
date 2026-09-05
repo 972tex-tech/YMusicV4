@@ -5,10 +5,21 @@
 
 import { utf8Decode, utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
-import { checkHeaderName, checkHeaderValue, checkMethod, checkUrl, resolveUrl } from "../../protocol/http/headers";
-import { cookieHeaderFor, storeSetCookies } from "./cookies";
+import {
+  checkHeaderName,
+  checkHeaderValue,
+  checkMethod,
+  checkUrl,
+  resolveUrl,
+} from "../../protocol/http/headers";
+import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
+import type { AuthContext } from "./cookies";
+import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
+import { prepareSabrBody } from "./sabr_abr";
 import { allowEngineJsUrl } from "./jsAllow";
+import { applyRequestRewrite, applyResponseRewrite, wantsJsonRewrite } from "./xhr";
+import { isAudioOnly } from "../player/audio_only";
 
 /* Keep both bindings live when SABR_DEBUG is compile-time false (Closure). */
 void logSabrResponse;
@@ -571,8 +582,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     builder.addHeader(name, value);
   });
   const loc = (globalThis as unknown as Record<string, unknown>)["location"] as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   if (!p.headers["has"]("referer") && loc && loc["href"] != null) {
     builder.addHeader("Referer", String(loc["href"]));
   }
@@ -580,14 +590,27 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     builder.addHeader("Origin", String(loc["origin"]));
   }
   if (p.body !== undefined) {
-    builder.body(p.body);
+    const rewritten = applyRequestRewrite(p.url, p.body);
+    const body = prepareSabrBody(p.url, rewritten);
+    builder.body(body as string | Uint8Array);
+    logSabrRequest(p.url, body);
   } else if (p.method === "POST" || p.method === "PUT" || p.method === "PATCH") {
     builder.body("");
+    logSabrRequest(p.url, p.body);
+  } else {
+    logSabrRequest(p.url, p.body);
   }
-  logSabrRequest(p.url, p.body);
   if (p.redirect === "manual" || p.redirect === "error") builder.followRedirects(false);
-  const cookie = await cookieHeaderFor(p.url);
-  if (cookie.length > 0) builder.setHeader("Cookie", cookie);
+  let auth: AuthContext | undefined = undefined;
+  if (isYoutubeiUrl(p.url) && !p.headers["has"]("authorization")) {
+    const session = await getSession(SESSION_MAX_AGE_MS);
+    auth = {
+      sessionIndex: session.sessionIndex,
+      delegatedSessionId: session.delegatedSessionId,
+      userSessionId: session.userSessionId,
+    };
+  }
+  await attachRequestIdentity(p.url, builder, auth);
   const call = builder.build();
   const onAbort = function () {
     call.cancel();
@@ -617,9 +640,27 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     throw abortError();
   }
   await storeSetCookies(httpRes.url.length > 0 ? httpRes.url : p.url, httpRes);
+  if (wantsJsonRewrite(p.url)) {
+    let text = await httpRes.text();
+    detach();
+    text = applyResponseRewrite(p.url, text);
+    const bytes = utf8Encode(text);
+    const rewritten = Object.create(ResponseImpl.prototype) as FetchResponseJs;
+    fillResponse(
+      rewritten,
+      httpRes.status,
+      httpRes.statusText,
+      httpRes.url,
+      makeHeaders(httpRes.headers.entries),
+      makeStream(memoryPull(bytes)),
+      httpRes.url !== p.url,
+    );
+    rewritten._bytes = bytes;
+    return rewritten;
+  }
   const inner = httpPull(httpRes, detach);
   let pull = inner;
-  if (SABR_DEBUG && p.url.indexOf("/videoplayback") >= 0) {
+  if ((SABR_DEBUG || isAudioOnly()) && p.url.indexOf("/videoplayback") >= 0) {
     const sabrChunks: Uint8Array[] = [];
     let sabrN = 0;
     pull = async function () {
