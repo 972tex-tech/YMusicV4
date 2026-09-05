@@ -52,6 +52,8 @@ internal class BgCapture(val dumpDir: File) {
                 maybeMillerReady()
             }
             rest.startsWith("sabr meta ") -> Unit
+            rest.startsWith("entropy meta ") ->
+                File(dumpDir, "entropy.meta.json").writeText(rest.substring("entropy meta ".length).trim() + "\n")
             rest.startsWith("eventId ") ->
                 File(dumpDir, "event_id.txt").writeText(rest.substring("eventId ".length).trim())
             rest.startsWith("interpUrl ") ->
@@ -100,6 +102,9 @@ internal class BgCapture(val dumpDir: File) {
             "sabrUrl" -> "sabr_url.txt"
             "sabrBody" -> "sabr_body.b64url"
             "interpJs" -> "interpreter.js"
+            "dateNow" -> "dateNow.b64"
+            "perfNow" -> "perfNow.b64"
+            "mathRandom" -> "mathRandom.b64"
             else -> return
         }
         File(dumpDir, name).writeText(value)

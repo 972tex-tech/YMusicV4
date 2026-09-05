@@ -580,6 +580,53 @@ static const JSCFunctionListEntry textdecoder_proto[] = {
 static double g_perf_origin;
 static double g_perf_last;
 
+#define ENT_CAP 65536
+#define ENT_CTX 8
+typedef struct {
+    JSContext *ctx;
+    int rec;
+    JSValue date_orig;
+    JSValue rand_orig;
+    double *date;
+    double *perf;
+    double *randv;
+    int n_date;
+    int n_perf;
+    int n_rand;
+} Ent;
+static Ent g_ent[ENT_CTX];
+
+static Ent *ent_of(JSContext *ctx)
+{
+    int i;
+    if (!ctx)
+        return NULL;
+    for (i = 0; i < ENT_CTX; i++)
+        if (g_ent[i].ctx == ctx)
+            return &g_ent[i];
+    for (i = 0; i < ENT_CTX; i++) {
+        if (!g_ent[i].ctx) {
+            g_ent[i].ctx = ctx;
+            g_ent[i].date_orig = JS_UNDEFINED;
+            g_ent[i].rand_orig = JS_UNDEFINED;
+            return &g_ent[i];
+        }
+    }
+    return NULL;
+}
+
+static void ent_push(double **buf, int *n, double v)
+{
+    if (*n >= ENT_CAP)
+        return;
+    if (!*buf) {
+        *buf = (double *)malloc(sizeof(double) * ENT_CAP);
+        if (!*buf)
+            return;
+    }
+    (*buf)[(*n)++] = v;
+}
+
 static double clock_now_ms(void)
 {
     struct timeval tv;
@@ -587,10 +634,18 @@ static double clock_now_ms(void)
     return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
 }
 
+static int64_t date_now_ms(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
+}
+
 /* Chrome non-isolated performance.now is 100us. Date.now stays wall milliseconds. */
 static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     double n;
+    Ent *e;
     (void)this_val;
     (void)argc;
     (void)argv;
@@ -598,7 +653,153 @@ static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     if (n < g_perf_last)
         n = g_perf_last;
     g_perf_last = n;
+    e = ent_of(ctx);
+    if (e && e->rec)
+        ent_push(&e->perf, &e->n_perf, n);
     return JS_NewFloat64(ctx, n);
+}
+
+/* Same gettimeofday integer ms as QuickJS js_Date_now. Record after the read. */
+static JSValue js_date_now_rec(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t ms = date_now_ms();
+    Ent *e = ent_of(ctx);
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (e && e->rec)
+        ent_push(&e->date, &e->n_date, (double)ms);
+    return JS_NewInt64(ctx, ms);
+}
+
+static JSValue js_math_random_rec(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    Ent *e = ent_of(ctx);
+    JSValue v;
+    (void)argc;
+    (void)argv;
+    if (!e || JS_IsUndefined(e->rand_orig))
+        return JS_EXCEPTION;
+    v = JS_Call(ctx, e->rand_orig, this_val, 0, NULL);
+    if (e->rec && !JS_IsException(v)) {
+        double d;
+        if (!JS_ToFloat64(ctx, &d, v))
+            ent_push(&e->randv, &e->n_rand, d);
+    }
+    return v;
+}
+
+static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    Ent *e = ent_of(ctx);
+    JSValue g, date, math;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!e)
+        return JS_UNDEFINED;
+    e->n_date = e->n_perf = e->n_rand = 0;
+    g = JS_GetGlobalObject(ctx);
+    date = JS_GetPropertyStr(ctx, g, "Date");
+    math = JS_GetPropertyStr(ctx, g, "Math");
+    if (JS_IsUndefined(e->date_orig)) {
+        e->date_orig = JS_GetPropertyStr(ctx, date, "now");
+        JS_SetPropertyStr(ctx, date, "now", JS_NewCFunction(ctx, js_date_now_rec, "now", 0));
+    }
+    if (JS_IsUndefined(e->rand_orig)) {
+        e->rand_orig = JS_GetPropertyStr(ctx, math, "random");
+        JS_SetPropertyStr(ctx, math, "random", JS_NewCFunction(ctx, js_math_random_rec, "random", 0));
+    }
+    JS_FreeValue(ctx, date);
+    JS_FreeValue(ctx, math);
+    JS_FreeValue(ctx, g);
+    e->rec = 1;
+    return JS_UNDEFINED;
+}
+
+static JSValue js_bg_entropy_stop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    Ent *e = ent_of(ctx);
+    JSValue g, date, math;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!e)
+        return JS_UNDEFINED;
+    e->rec = 0;
+    g = JS_GetGlobalObject(ctx);
+    if (!JS_IsUndefined(e->date_orig)) {
+        date = JS_GetPropertyStr(ctx, g, "Date");
+        JS_SetPropertyStr(ctx, date, "now", JS_DupValue(ctx, e->date_orig));
+        JS_FreeValue(ctx, date);
+        JS_FreeValue(ctx, e->date_orig);
+        e->date_orig = JS_UNDEFINED;
+    }
+    if (!JS_IsUndefined(e->rand_orig)) {
+        math = JS_GetPropertyStr(ctx, g, "Math");
+        JS_SetPropertyStr(ctx, math, "random", JS_DupValue(ctx, e->rand_orig));
+        JS_FreeValue(ctx, math);
+        JS_FreeValue(ctx, e->rand_orig);
+        e->rand_orig = JS_UNDEFINED;
+    }
+    JS_FreeValue(ctx, g);
+    return JS_UNDEFINED;
+}
+
+static JSValue ent_b64(JSContext *ctx, const double *v, int n)
+{
+    size_t nb = (size_t)n * sizeof(double);
+    size_t out_len = ((nb + 2) / 3) * 4;
+    char *out;
+    const unsigned char *p = (const unsigned char *)v;
+    size_t i, j = 0;
+    if (n <= 0 || !v)
+        return JS_NewString(ctx, "");
+    out = (char *)malloc(out_len + 1);
+    if (!out)
+        return JS_EXCEPTION;
+    for (i = 0; i + 2 < nb; i += 3) {
+        unsigned t = (p[i] << 16) | (p[i + 1] << 8) | p[i + 2];
+        out[j++] = B64[(t >> 18) & 63];
+        out[j++] = B64[(t >> 12) & 63];
+        out[j++] = B64[(t >> 6) & 63];
+        out[j++] = B64[t & 63];
+    }
+    if (i < nb) {
+        unsigned t = p[i] << 16;
+        if (i + 1 < nb)
+            t |= p[i + 1] << 8;
+        out[j++] = B64[(t >> 18) & 63];
+        out[j++] = B64[(t >> 12) & 63];
+        out[j++] = (i + 1 < nb) ? B64[(t >> 6) & 63] : '=';
+        out[j++] = '=';
+    }
+    out[j] = 0;
+    {
+        JSValue s = JS_NewStringLen(ctx, out, j);
+        free(out);
+        return s;
+    }
+}
+
+static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    Ent *e = ent_of(ctx);
+    JSValue o;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!e || (e->n_date == 0 && e->n_perf == 0 && e->n_rand == 0))
+        return JS_NULL;
+    o = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, o, "nDate", JS_NewInt32(ctx, e->n_date));
+    JS_SetPropertyStr(ctx, o, "nPerf", JS_NewInt32(ctx, e->n_perf));
+    JS_SetPropertyStr(ctx, o, "nRand", JS_NewInt32(ctx, e->n_rand));
+    JS_SetPropertyStr(ctx, o, "timeOrigin", JS_NewFloat64(ctx, g_perf_origin));
+    JS_SetPropertyStr(ctx, o, "date", ent_b64(ctx, e->date, e->n_date));
+    JS_SetPropertyStr(ctx, o, "perf", ent_b64(ctx, e->perf, e->n_perf));
+    JS_SetPropertyStr(ctx, o, "rand", ent_b64(ctx, e->randv, e->n_rand));
+    return o;
 }
 
 static void install_performance(JSContext *ctx, JSValueConst global)
@@ -625,5 +826,11 @@ void qjs_register_web(JSContext *ctx)
     install_ctor(ctx, g, "TextDecoder", js_textdecoder_ctor, 0,
                  textdecoder_proto, countof(textdecoder_proto));
     install_performance(ctx, g);
+    JS_SetPropertyStr(ctx, g, "__bgEntropyStart",
+                      JS_NewCFunction(ctx, js_bg_entropy_start, "__bgEntropyStart", 0));
+    JS_SetPropertyStr(ctx, g, "__bgEntropyStop",
+                      JS_NewCFunction(ctx, js_bg_entropy_stop, "__bgEntropyStop", 0));
+    JS_SetPropertyStr(ctx, g, "__bgEntropyDump",
+                      JS_NewCFunction(ctx, js_bg_entropy_dump, "__bgEntropyDump", 0));
     JS_FreeValue(ctx, g);
 }

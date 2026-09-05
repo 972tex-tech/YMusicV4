@@ -99,6 +99,19 @@ declare function __mseReset(): void;
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 
+/** Record Date.now / performance.now / Math.random in C. Dump only on SPS=2/3. */
+declare function __bgEntropyStart(): void;
+declare function __bgEntropyStop(): void;
+declare function __bgEntropyDump(): {
+  date: string;
+  perf: string;
+  rand: string;
+  nDate: number;
+  nPerf: number;
+  nRand: number;
+  timeOrigin: number;
+} | null;
+
 // ---- native streaming JSON encoder (quickjs_json.c) ----
 
 /** Start encoding [value] (JSON.stringify semantics — a cycle throws). */

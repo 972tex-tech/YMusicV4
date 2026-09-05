@@ -70,6 +70,7 @@ export async function minterFromConfig(
   cfg: Record<string, unknown>,
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {
+  if (typeof __bgEntropyStart === "function") __bgEntropyStart();
   const ytcfgData = asRec(cfg["ytcfg"]) || {};
   const eventId = typeof cfg["eventId"] === "string" ? (cfg["eventId"] as string) : "";
   if (eventId && ytcfgData["EVENT_ID"] === undefined) ytcfgData["EVENT_ID"] = eventId;
@@ -292,21 +293,19 @@ export async function minterFromConfig(
   /* Wrap: async return of a .then-bearing function is Promise-assimilated to undefined. */
   return function millContentPo(id: Uint8Array) {
     const token = mint(id);
-    if (token instanceof Uint8Array || typeof token === "string") {
-      recordBgMint(id, token);
-      return token;
+    function done(t: unknown): unknown {
+      recordBgMint(id, t);
+      if (typeof __bgEntropyStop === "function") __bgEntropyStop();
+      return t;
     }
+    if (token instanceof Uint8Array || typeof token === "string") return done(token);
     if (
       token &&
       typeof token !== "function" &&
       typeof (token as Promise<unknown>).then === "function"
     ) {
-      return (token as Promise<unknown>).then(function (t: unknown) {
-        recordBgMint(id, t);
-        return t;
-      });
+      return (token as Promise<unknown>).then(done);
     }
-    recordBgMint(id, token);
-    return token;
+    return done(token);
   };
 }
