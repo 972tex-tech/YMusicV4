@@ -21,7 +21,7 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
-import { clearPlayerLive, isKnownVod } from "./live";
+import { isKnownVod } from "./live";
 import {
   captionIngestTick,
   installCaptionMinter,
@@ -728,7 +728,6 @@ class Player {
       this.pause();
       await resetMse();
     }
-    clearPlayerLive();
     const player = this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. Create
      * stays without video_id so this is the only /player POST. */

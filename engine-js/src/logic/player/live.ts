@@ -1,38 +1,53 @@
-// Live bit from /player. Do not infer live from duration or currentTime —
-// a 7h DVR window and a 2h VOD look the same, and ct>60 made the first
-// minute of live behave as VOD.
+// Same source as webview-js: movie_player.getPlayerResponse().videoDetails
+// (skip_ads.ts isLive, webview_api.ts getCurrentPlayerRes).
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
   return v as Record<string, unknown>;
 }
 
-let live = false;
-let havePlayer = false;
-
-export function ingestPlayerLive(rec: Record<string, unknown>): void {
-  havePlayer = true;
-  live = false;
-  const vd = asRec(rec["videoDetails"]);
-  if (vd && vd["isLive"] === true) {
-    live = true;
-    return;
+function playerResponse(): Record<string, unknown> | null {
+  const el = document.getElementById("movie_player") as unknown as Record<string, unknown> | null;
+  const fn = el ? el["getPlayerResponse"] : undefined;
+  if (typeof fn !== "function") return null;
+  try {
+    return asRec(fn.call(el));
+  } catch (_e) {
+    return null;
   }
-  const ps = asRec(rec["playabilityStatus"]);
-  const ls = ps ? ps["liveStreamability"] : undefined;
-  if (ls != null && typeof ls === "object") live = true;
 }
 
-export function clearPlayerLive(): void {
-  havePlayer = false;
-  live = false;
+function videoDetails(): Record<string, unknown> | null {
+  const rec = playerResponse();
+  return rec ? asRec(rec["videoDetails"]) : null;
+}
+
+function watchVideoId(): string {
+  const s = String(location.search || "");
+  const q = s.charAt(0) === "?" ? s.slice(1) : s;
+  const parts = q.split("&");
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]!;
+    if (p.indexOf("v=") === 0) return p.slice(2);
+  }
+  return "";
+}
+
+function detailsAreLive(vd: Record<string, unknown>): boolean {
+  return vd["isLive"] === true || vd["isLiveContent"] === true;
 }
 
 export function isYmLive(): boolean {
-  return live;
+  const vd = videoDetails();
+  return !!vd && detailsAreLive(vd);
 }
 
-/** /player said this is not a live broadcast. Unknown until ingest is not VOD. */
+/** getPlayerResponse is for the watch URL and is not a live broadcast. */
 export function isKnownVod(): boolean {
-  return havePlayer && !live;
+  const vd = videoDetails();
+  if (!vd) return false;
+  const id = vd["videoId"] != null ? String(vd["videoId"]) : "";
+  const watch = watchVideoId();
+  if (watch && id && id !== watch) return false;
+  return !detailsAreLive(vd);
 }
