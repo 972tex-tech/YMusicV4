@@ -21,6 +21,7 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
+import { clearPlayerLive, isKnownVod } from "./live";
 import {
   captionIngestTick,
   installCaptionMinter,
@@ -683,13 +684,7 @@ class Player {
       setAudioOnly(true);
       dropVideoTrack();
       resetDrainCounts();
-      if (!isLiveDuration()) {
-        const host = moviePlayer() || (player as unknown as Record<string, unknown>);
-        const range = host["setPlaybackQualityRange"];
-        const one = host["setPlaybackQuality"];
-        if (typeof range === "function") range.call(host, "tiny", "tiny");
-        else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
-      }
+      this.pinTinyIfVod();
       console.log("mse setQuality zero clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0));
       dumpDrain("setQuality-zero");
       return;
@@ -703,10 +698,19 @@ class Player {
     const one = host["setPlaybackQuality"];
     if (typeof range === "function") range.call(host, q, q);
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
-    /* Do not seek. A back-nudge glitches the audio clock; live DVR also
-       treated the first 60s as VOD (isLiveDuration needs ct>60) and sought.
-       Video SourceBuffer already reports a sliver, so SABR fetches video
-       on the next tick (~2s) without touching audio leftover. */
+    /* Do not seek. Video SourceBuffer already reports a sliver, so SABR
+       fetches video on the next tick without jumping leftover audio. */
+  }
+
+  private pinTinyIfVod(): void {
+    if (!isKnownVod()) return;
+    const player = this.player;
+    if (!player) return;
+    const host = moviePlayer() || (player as unknown as Record<string, unknown>);
+    const range = host["setPlaybackQualityRange"];
+    const one = host["setPlaybackQuality"];
+    if (typeof range === "function") range.call(host, "tiny", "tiny");
+    else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
   }
 
   async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
@@ -724,6 +728,7 @@ class Player {
       this.pause();
       await resetMse();
     }
+    clearPlayerLive();
     const player = this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. Create
      * stays without video_id so this is the only /player POST. */
@@ -745,6 +750,7 @@ class Player {
       );
     }
     await waitCaptionIngest(ingestAt, 8000);
+    if (q === "zero") this.pinTinyIfVod();
     out["step"] = "ok";
     out["ok"] = true;
     return out;
@@ -828,7 +834,7 @@ class Player {
       }
     }
     const pos = v ? Math.round(Number(v["currentTime"]) * 1000) : 0;
-    const live = !isFinite(dur);
+    const live = isLiveDuration();
     const sk = v
       ? (v["seekable"] as {
           length?: number;

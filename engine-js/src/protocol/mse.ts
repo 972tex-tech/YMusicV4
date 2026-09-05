@@ -3,6 +3,7 @@
 // DOM-shaped API intact for YouTube's player.
 
 import { isAudioOnly } from "../logic/player/audio_only";
+import { isYmLive } from "../logic/player/live";
 
 type Listener = (ev?: Record<string, unknown>) => void;
 
@@ -65,16 +66,12 @@ function dummyDurationCap(ct: number): number {
 }
 
 export function isLiveDuration(): boolean {
+  if (isYmLive()) return true;
   const el = activeMedia;
   if (!el) return false;
   if (Number(el["duration"]) === Infinity) return true;
   const ms = el._ms;
-  if (ms && Number(ms["duration"]) === Infinity) return true;
-  /* Live DVR reports a finite window (e.g. 7h) — not VOD. Dummy must not
-     invent 120s past the live edge, and seek-to-0 is DVR start, not EOS. */
-  const d = Number(el["duration"]);
-  const ct = __mseCurrentTime();
-  return isFinite(d) && d > 3600 && ct > 60 && d - ct > 30;
+  return !!(ms && Number(ms["duration"]) === Infinity);
 }
 
 function bindDummySb(): void {

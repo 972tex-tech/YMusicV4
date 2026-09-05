@@ -4,6 +4,7 @@
 import { utf8Decode, utf8Encode } from "../../transport";
 import { setXhrJsonRewrite } from "../yt/xhr";
 import { ingestPlayerCaptions } from "./captions";
+import { ingestPlayerLive } from "./live";
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
@@ -53,6 +54,7 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   const dai = pc ? asRec(pc["daiConfig"]) : null;
   if (dai) dai["sendSsdaiMissingAdBreakReasons"] = false;
   ingestPlayerCaptions(rec);
+  ingestPlayerLive(rec);
   return rec;
 }
 
