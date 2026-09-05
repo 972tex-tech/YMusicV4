@@ -704,12 +704,14 @@ class Player {
     if (typeof range === "function") range.call(host, q, q);
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
     /* Load-as-zero never called setPlaybackQualityRange, so YouTube still
-       thinks quality is auto. Range("auto") is a no-op and SABR waits until
-       audio leftover runs low (~15s). Seek forces a request at the playhead. */
+       thinks quality is auto. Range("auto") is a no-op. Seek to the same
+       playhead is also a no-op — nudge back so SABR runs now, not after
+       audio leftover hits minReadahead. */
     if (wasAudioOnly && typeof player["seekTo"] === "function") {
       const t = activeHtmlMedia() ? __mseCurrentTime() : 0;
-      console.log("mse setQuality " + q + " leave-audio seek=" + t);
-      player["seekTo"].call(player, t, true);
+      const nudge = t >= 0.25 ? t - 0.15 : t + 0.15;
+      console.log("mse setQuality " + q + " leave-audio seek=" + nudge);
+      player["seekTo"].call(player, nudge, true);
     }
   }
 

@@ -287,15 +287,19 @@ class SourceBuffer {
   }
 
   _bufferedPairs(): Array<[number, number]> {
-    /* Audio-only: always the dummy window, even while C leftover is being
-       wiped. YouTube BZY will not append SABR audio if video.buffered is empty
-       (HS/je go to 0 → xpp skips the drain). */
+    /* Audio-only: long dummy so BZY still drains SABR audio (empty video
+       HS/je → xpp skips the drain). Leave-audio: a sliver ahead of the
+       playhead so SABR's video readahead check fails now — the long dummy
+       made googlevideo skip video until audio leftover hit minReadahead. */
     if (
       audioFlag(this["mimeType"]) === 0 &&
       dummyCoverEnd > dummyCoverStart &&
       (isAudioOnly() || !videoHasLeftover())
     ) {
-      return [[dummyCoverStart, dummyCoverEnd]];
+      if (isAudioOnly()) return [[dummyCoverStart, dummyCoverEnd]];
+      const ct = __mseCurrentTime();
+      const start = Math.max(0, ct - 0.05);
+      return [[start, start + 0.35]];
     }
     const r = __mseBuffered(audioFlag(this["mimeType"]));
     const ranges: Array<[number, number]> = [];
@@ -770,9 +774,10 @@ class HTMLMediaElement {
   get ["buffered"](): { length: number; start(i: number): number; end(i: number): number } {
     /* Spec is intersection of SourceBuffers. Audio leftover ends at the
        playhead, so je()=DI(buffered, currentTime) is ~0, YouTube sets
-       buffering (Ys) and BZY skips SABR audio already in the append queue.
-       Dummy cover keeps je() large; the clock still follows C leftover. */
-    if (isAudioOnly() && dummyCoverEnd > dummyCoverStart) {
+       buffering (Ys) and BZY skips SABR already in the append queue.
+       Long dummy keeps je() large until C has real video leftover — including
+       after leave-audio, when the video SB getter reports only a sliver. */
+    if (dummyCoverEnd > dummyCoverStart && (isAudioOnly() || !videoHasLeftover())) {
       return makeTimeRanges([[dummyCoverStart, dummyCoverEnd]]);
     }
     const ms = this._ms;
