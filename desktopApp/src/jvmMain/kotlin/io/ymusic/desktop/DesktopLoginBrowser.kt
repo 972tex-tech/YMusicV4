@@ -18,9 +18,9 @@ import javax.swing.SwingUtilities
  * The desktop sign-in WebView (the shell's [io.ymusic.ui.AppGraph.loginBrowser]) — a WINDOWED JCEF
  * browser (not the player's OSR surface, which has no keyboard input) hosted in a [SwingPanel]. It's
  * a full-area view under the Compose chrome, so the usual heavyweight/lightweight overlap doesn't
- * arise. Cookies go to JCEF's global store — the same one [JcefCookieJar] gives the engine — so the
- * sign-in cookies reach the login gate. Its own [org.cef.CefClient] keeps its handlers off the
- * player's shared client.
+ * arise. Sign-in cookies are copied into the app [PersistentCookieJar] on each navigation (see
+ * [harvestCefCookiesInto]). Its own [org.cef.CefClient] keeps its handlers off the player's shared
+ * client.
  */
 @Composable
 fun DesktopLoginBrowser(

@@ -34,8 +34,8 @@ import okio.Buffer
 
 /**
  * Serves the `"cookie/get"` / `"cookie/set"` pipe commands (the host side of the bundle's Cookies
- * client) on the app-provided [cookieJar] — the platform cookie store (Android `CookieManager`,
- * desktop `CefCookieManager`) the WebView player shares. The engine JS owns cookie **policy**: its
+ * client) on the app-provided [cookieJar] — a file-backed persistent jar, not a WebView store.
+ * The engine JS owns cookie **policy**: its
  * HTTP client carries no jar, the bundle reads this store, cooks each request's `Cookie` header
  * itself (consent/SOCS synthesis included), and writes `Set-Cookie`s back here — so the scraping
  * requests and the player present one identity, decided entirely by the remotely-updatable JS.

@@ -109,9 +109,8 @@ class LoginWebViewState {
 /**
  * A platform browser WebView, injected by the platform shell (like [AppGraph.playerSurface]) so the
  * pure shared UI never depends on a WebView stack. It loads [url], reports title / URL / progress
- * into [state], and calls [onPageChanged] after each navigation. It MUST use the platform's default
- * cookie store — the same jar the engine reads (`WebViewCookieJar` / `JcefCookieJar` /
- * `IosWebViewCookieJar`) — so the sign-in cookies land where the scraper's login gate sees them.
+ * into [state], and calls [onPageChanged] after each navigation. The shell copies sign-in cookies
+ * into the persistent jar the engine reads so the login gate sees them.
  */
 typealias LoginBrowser = @Composable (
     url: String,
