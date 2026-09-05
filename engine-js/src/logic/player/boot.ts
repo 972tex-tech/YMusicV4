@@ -21,6 +21,13 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
+import {
+  captionIngestTick,
+  installCaptionMinter,
+  onCaptionSeek,
+  selectedCaptionVss,
+  waitCaptionIngest,
+} from "./captions";
 import { playerStorageReady } from "./storage";
 
 const ORIGIN = "https://www.youtube.com";
@@ -542,6 +549,10 @@ class Player {
 
     out["step"] = "minter";
     this.mintFn = await minterFromConfig(cfg, out);
+    const self = this;
+    installCaptionMinter(function (id: string) {
+      return self.mintToken(id);
+    });
     installMseGlobals();
     installSabrObserver();
     installXhr();
@@ -723,6 +734,7 @@ class Player {
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     this.setQuality(q);
     out["step"] = "loadVideoByPlayerVars";
+    const ingestAt = captionIngestTick();
     try {
       /* No start:0 — live would pin the 7h DVR at t=0 (log: dummy 0..120, media=0). */
       player["loadVideoByPlayerVars"]({
@@ -736,6 +748,7 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
+    await waitCaptionIngest(ingestAt, 8000);
     out["step"] = "ok";
     out["ok"] = true;
     return out;
@@ -773,6 +786,7 @@ class Player {
     const player = this.player;
     if (!player) throw new JsEngineErrorImpl("player not created", "E20081");
     player["seekTo"](t, true);
+    onCaptionSeek();
   }
 
   /** YouTube IFrame getProgressState — DVR allowSeeking / seekableStart / seekableEnd. */
@@ -875,6 +889,7 @@ class Player {
       "quality": actual,
       "preferQuality": pref,
       "qualities": this.qualityOptions(),
+      "caption": selectedCaptionVss(),
     };
   }
 

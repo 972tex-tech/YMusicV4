@@ -15,6 +15,12 @@ import {
   statusPlayer,
   stopPlayer,
 } from "./player/boot";
+import {
+  listCaptionTracks,
+  runCaptionSession,
+  setCaptionVss,
+} from "./player/captions";
+import { lastPlayerResponseJson } from "./player/skip_ads";
 
 createHtmlMedia();
 
@@ -115,3 +121,54 @@ onAccept(
     if (p) await p;
   }),
 );
+
+onAccept(
+  "player/captions",
+  commandHandler(async (src, out) => {
+    await src.readJsonObject();
+    const p = out.writeObjectAsJson(listCaptionTracks());
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setCaption",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const vss = a["vssId"] == null || a["vssId"] === "" ? null : String(a["vssId"]);
+    setCaptionVss(vss);
+    const p = out.writeObjectAsJson({ "ok": true, "vssId": vss });
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/playerResponse",
+  commandHandler(async (src, out) => {
+    await src.readJsonObject();
+    const raw = lastPlayerResponseJson();
+    if (!raw) throw new JsEngineErrorImpl("player response not cached", "E20087");
+    const rec = JSON.parse(raw) as Record<string, unknown>;
+    const p = out.writeObjectAsJson(rec);
+    if (p) await p;
+  }),
+);
+
+onAccept("player/caption", async (pipe) => {
+  try {
+    await runCaptionSession(pipe);
+    const pr = pipe.sink.close();
+    if (pr) await pr;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/^EPIPE\b/.test(msg)) {
+      try {
+        const code = e instanceof JsEngineErrorImpl ? e.code : "E20001";
+        const pr2 = pipe.sink.close(JSON.stringify({ "code": code, "message": msg }));
+        if (pr2) await pr2;
+      } catch (_e) {}
+    }
+  } finally {
+    pipe.source.close();
+  }
+});

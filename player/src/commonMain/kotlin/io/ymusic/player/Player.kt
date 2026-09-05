@@ -9,7 +9,7 @@ import kotlin.random.Random
 /**
  * The playback facade the app talks to — one player, many items. Owns the queue
  * (shuffle/loop/reorder), routes each item to the engine that plays it ([LocalPlayer] for
- * [PlayableItem.LocalMedia], [WebViewPlayer] for [PlayableItem.YtMedia]), auto-advances at end of
+ * [PlayableItem.LocalMedia], [YtEngine] for [PlayableItem.YtMedia]), auto-advances at end of
  * track, and re-exposes the **active** engine's flows so observers never care which engine is
  * playing (a switch-latest merge — when the engine changes, the facade flows follow the new one).
  *
@@ -29,6 +29,7 @@ interface Player {
     /** Capability states of the active engine ([VideoQualitySelectable] etc.); DEFAULT when absent. */
     val videoQuality: StateFlow<VideoQualityState>
     val captions: StateFlow<CaptionState>
+    val captionLines: StateFlow<List<CaptionLine>>
     val audioTracks: StateFlow<AudioTrackState>
 
     /** The current playback settings, pushed to the active engine on every change. Audio-only is
@@ -39,10 +40,9 @@ interface Player {
     val sleepTimerMs: StateFlow<Long?>
 
     /**
-     * Watch-next payloads reported by the WebView engine's page while it plays a music video — the
-     * app forwards each to the scraping engine, which builds the Recommended feed out of them. Not
-     * playback state: a side channel that happens to ride the playing page. Empty on engines that
-     * report none.
+     * Watch-next payloads reported while a YouTube item plays — the app forwards each to the scraping
+     * engine, which builds the Recommended feed out of them. Not playback state: a side channel.
+     * Empty on engines that report none.
      */
     val watchNextSeen: SharedFlow<WatchNextSeen>
 
@@ -127,26 +127,23 @@ interface Player {
     fun setSleepTimer(durationMs: Long?)
 
     /**
-     * Mark the YouTube (WebView) engine's page stale so the NEXT track re-fetches `/embed` under the
-     * current cookie identity — called after a YouTube sign-in or sign-out. The current track keeps
-     * playing on the old page until it ends. No-op when the WebView engine isn't built yet (a fresh
-     * one already loads under the new identity).
+     * Mark the YouTube engine stale so the NEXT track re-inits under the current cookie identity —
+     * called after a YouTube sign-in or sign-out. The current track keeps playing until it ends.
+     * No-op when the YouTube engine isn't built yet (a fresh one already loads under the new identity).
      */
     fun refreshOnNext()
 
     /**
      * Tear down the engine playing the current item and reload it from scratch at the current position —
-     * a full recreate, not just a re-navigate. For the WebView engine this rebuilds the page (and, if the
-     * host factory re-reads it, a freshly built `webview-js` bundle); it also recovers a wedged player.
-     * No-op when nothing is loaded. Keeps the current play/pause intent.
+     * a full recreate, not just a re-navigate. Recovers a wedged player. No-op when nothing is loaded.
+     * Keeps the current play/pause intent.
      */
     fun reload()
 
     /**
-     * Eagerly create + warm the YouTube (WebView) engine — build the WebView and its `/embed` page
-     * session — so the first video play (or download) skips that construction cost. Safe to call once,
-     * a few seconds after startup. No-op if the engine already exists or no WebView engine is
-     * configured. Main thread (the engine hosts a platform WebView).
+     * Eagerly create + warm the YouTube engine so the first video play skips construction cost.
+     * Safe to call once, a few seconds after startup. No-op if the engine already exists or none
+     * is configured.
      */
     fun prepareYoutubeEngine()
 
@@ -155,14 +152,13 @@ interface Player {
 }
 
 /**
- * Lazy engine factories — an engine is only constructed when the queue first needs its item type
- * (the WebView engine in particular is expensive: a whole WebView + injected bundle). [webView] may
- * be null on hosts without a WebView stack; a [PlayableItem.YtMedia] then fails with `E60050`
- * through [Player.status] instead of crashing.
+ * Lazy engine factories — an engine is only constructed when the queue first needs its item type.
+ * [webView] may be null on hosts without a YouTube engine; a [PlayableItem.YtMedia] then fails with
+ * `E60050` through [Player.status] instead of crashing.
  */
 class PlayerEngines(
     val local: () -> LocalPlayer,
-    val webView: (() -> WebViewPlayer)? = null,
+    val webView: (() -> YtEngine)? = null,
 )
 
 fun createPlayer(

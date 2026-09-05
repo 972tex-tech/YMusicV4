@@ -310,7 +310,12 @@ object WebViewProtocol {
     private fun JsonObject.captionTracks(key: String): List<CaptionTrack> =
         objects(key).mapNotNull { o ->
             val lang = o.string("languageCode") ?: o.string("actualLanguageCode") ?: return@mapNotNull null
-            CaptionTrack(lang, o.string("displayName") ?: lang)
+            CaptionTrack(
+                languageCode = lang,
+                displayName = o.string("displayName") ?: lang,
+                vssId = o.string("vssId"),
+                kind = o.string("kind") ?: "",
+            )
         }
 
     private fun JsonObject.audioTrackList(key: String): List<AudioTrack> =

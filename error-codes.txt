@@ -41,6 +41,8 @@ E20081 - player/seek before Application.create (engine-js logic/player/boot.ts)
 E20082 - player/play before Application.create (engine-js logic/player/boot.ts)
 E20083 - player/pause before Application.create (engine-js logic/player/boot.ts)
 E20085 - player/setQuality missing quality, before create, or no setPlaybackQualityRange (engine-js logic/player/boot.ts)
+E20086 - player/caption busy (engine-js logic/player/captions.ts)
+E20087 - player response not cached (engine-js logic/player.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

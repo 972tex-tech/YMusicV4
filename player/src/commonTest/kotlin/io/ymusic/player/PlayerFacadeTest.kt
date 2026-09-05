@@ -28,7 +28,7 @@ class PlayerFacadeTest {
     private class Load(val item: PlayableItem, val startMs: Long, val playWhenReady: Boolean, val config: PlaybackConfig)
 
     private open class FakeEngine<S : PlayableItem> :
-        MediaEngine<S>, VideoQualitySelectable, CaptionSelectable, AudioTrackSelectable {
+        MediaEngine<S>, VideoQualitySelectable, CaptionSelectable, CaptionRenderable, AudioTrackSelectable {
         val loads = mutableListOf<Load>()
         var stopped = 0
         var releasedCount = 0
@@ -42,6 +42,7 @@ class PlayerFacadeTest {
 
         override val videoQuality = MutableStateFlow(VideoQualityState.DEFAULT)
         override val captions = MutableStateFlow(CaptionState.DEFAULT)
+        override val captionLines = MutableStateFlow<List<CaptionLine>>(emptyList())
         override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
 
         override fun load(source: S, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {

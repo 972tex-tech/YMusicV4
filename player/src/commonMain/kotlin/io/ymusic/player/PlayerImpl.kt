@@ -24,7 +24,7 @@ internal class PlayerImpl(
     private val controller = QueueController(random)
 
     private var localEngine: LocalPlayer? = null
-    private var webViewEngine: WebViewPlayer? = null
+    private var webViewEngine: YtEngine? = null
 
     private var playWhenReadyIntent = false
     private var released = false
@@ -54,6 +54,9 @@ internal class PlayerImpl(
 
     private val _captions = MutableStateFlow(CaptionState.DEFAULT)
     override val captions: StateFlow<CaptionState> = _captions.asStateFlow()
+
+    private val _captionLines = MutableStateFlow<List<CaptionLine>>(emptyList())
+    override val captionLines: StateFlow<List<CaptionLine>> = _captionLines.asStateFlow()
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
@@ -360,11 +363,12 @@ internal class PlayerImpl(
         engineJobs += scope.launch { engine.progress.collect { _progress.value = it } }
         bindCapability(engine as? VideoQualitySelectable, _videoQuality, VideoQualityState.DEFAULT) { it.videoQuality }
         bindCapability(engine as? CaptionSelectable, _captions, CaptionState.DEFAULT) { it.captions }
+        bindCapability(engine as? CaptionRenderable, _captionLines, emptyList()) { it.captionLines }
         bindCapability(engine as? AudioTrackSelectable, _audioTracks, AudioTrackState.DEFAULT) { it.audioTracks }
         // Not a capability state but an event stream, and only the WebView engine has one.
-        (engine as? WebViewPlayer)?.let { webView ->
+        (engine as? YtEngine)?.let { yt ->
             engineJobs += scope.launch {
-                webView.watchNextSeen.collect { _watchNextSeen.tryEmit(WatchNextSeen(it.videoId, it.contentsJson)) }
+                yt.watchNextSeen.collect { _watchNextSeen.tryEmit(WatchNextSeen(it.videoId, it.contentsJson)) }
             }
         }
     }

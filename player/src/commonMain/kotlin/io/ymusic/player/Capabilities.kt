@@ -65,7 +65,17 @@ interface VideoQualitySelectable {
 
 // --- Captions ---
 
-data class CaptionTrack(val languageCode: String, val displayName: String)
+data class CaptionTrack(
+    val languageCode: String,
+    val displayName: String,
+    val vssId: String? = null,
+    val kind: String = "",
+) {
+    /** Selection key: YouTube `vssId` when known, else [languageCode]. */
+    val id: String get() = vssId ?: languageCode
+}
+
+data class CaptionLine(val id: Int, val text: String)
 
 /** [selectedLanguage] is null when captions are off. */
 data class CaptionState(
@@ -83,6 +93,11 @@ data class CaptionState(
  */
 interface CaptionSelectable {
     val captions: StateFlow<CaptionState>
+}
+
+/** Live paint-on lines for a Compose overlay. Empty when captions are off or the engine has none. */
+interface CaptionRenderable {
+    val captionLines: StateFlow<List<CaptionLine>>
 }
 
 // --- Audio tracks (multi-language YouTube audio) ---

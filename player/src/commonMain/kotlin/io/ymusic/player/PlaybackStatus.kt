@@ -102,6 +102,13 @@ data class Progress(
     /** [DURATION_UNKNOWN] until the media reports it (or for unbounded streams). */
     val durationMs: Long = DURATION_UNKNOWN,
     val bufferedPositionMs: Long = 0L,
+    /**
+     * False for a live head with no DVR — the host must not seek.
+     * True for VOD and seekable live (DVR); the window is [seekableStartMs, seekableEndMs].
+     */
+    val seekable: Boolean = true,
+    val seekableStartMs: Long = 0L,
+    val seekableEndMs: Long = 0L,
 ) {
     companion object {
         const val DURATION_UNKNOWN: Long = -1L
@@ -119,6 +126,8 @@ data class PlaybackStatus(
     val speed: Float = 1f,
     /** Dimensions of the current video track, or null for audio-only / an audio-only file. */
     val videoSize: VideoSize? = null,
+    /** Unbounded stream (HTML duration Infinity). DVR vs head-only is [Progress.seekable]. */
+    val live: Boolean = false,
 ) {
     val playWhenReady: Boolean get() = state.isPlaying()
     val error: PlayerError? get() = (state as? PlaybackState.Error)?.error

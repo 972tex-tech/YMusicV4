@@ -45,7 +45,8 @@ sealed interface PlayableItem {
     /**
      * A YouTube video, played by the WebView engine (`MediaEngine<YtMedia>`). [videoId] is all the
      * engine needs; [title]/[artist] (channel) / [thumbnailUrl] / [duration] travel with it for the
-     * UI. [live] marks a live stream — no fixed duration, not seekable.
+     * UI. [live] marks a live stream (unbounded duration). Seekability is
+     * [Progress.seekable] — DVR live is seekable, head-only live is not.
      */
     data class YtMedia(
         val videoId: String,

@@ -1,6 +1,7 @@
 package io.ymusic.player.webview
 
 import io.ymusic.player.AudioTrackState
+import io.ymusic.player.CaptionLine
 import io.ymusic.player.CaptionState
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
@@ -63,6 +64,9 @@ internal class WebViewPlayerImpl(
 
     private val _captions = MutableStateFlow(CaptionState.DEFAULT)
     override val captions: StateFlow<CaptionState> = _captions.asStateFlow()
+
+    private val _captionLines = MutableStateFlow<List<CaptionLine>>(emptyList())
+    override val captionLines: StateFlow<List<CaptionLine>> = _captionLines.asStateFlow()
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
@@ -316,6 +320,9 @@ internal class WebViewPlayerImpl(
                     positionMs = e.positionMs,
                     durationMs = if (e.durationMs > 0L) e.durationMs else Progress.DURATION_UNKNOWN,
                     bufferedPositionMs = e.bufferedMs,
+                    seekable = e.seekable,
+                    seekableStartMs = 0L,
+                    seekableEndMs = if (e.durationMs > 0L) e.durationMs else 0L,
                 )
             }
             is WebViewEvent.QualityChanged -> _videoQuality.value = e.state

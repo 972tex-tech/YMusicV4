@@ -251,6 +251,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
+        PlayerCaptionOverlay(graph.player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 24.dp))
         AutoHidingOverlay(playing = status.playWhenReady) {
             VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
         }
@@ -285,6 +286,7 @@ private fun PortraitNowPlaying(
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF222222))) {
             graph.playerSurface(Modifier.fillMaxSize())
+            PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
             // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
             // the top-level overload and cannot be called from Box scope.
             androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
@@ -386,6 +388,7 @@ private fun LandscapeNowPlaying(
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF222222))) {
             graph.playerSurface(Modifier.fillMaxSize())
+            PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
             AutoHidingOverlay(playing = status.playWhenReady) {
                 VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
             }
@@ -517,6 +520,13 @@ private fun BoxScope.VideoOverlayControls(
     }
 }
 
+@Composable
+private fun PlayerCaptionOverlay(player: io.ymusic.player.Player, modifier: Modifier) {
+    val lines by player.captionLines.collectAsState()
+    if (lines.isEmpty()) return
+    CaptionOverlay(lines, modifier)
+}
+
 /**
  * The video CC control: hidden when the source has no caption tracks. Tapping opens a menu of
  * Off + every available language (checkmark on the active one); the glyph is accent-filled while
@@ -542,11 +552,11 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
                 onClick = { player.setCaptionVisible(false); open = false },
             )
             captions.tracks.forEach { t ->
-                val on = config.captionVisible && t.languageCode == captions.selectedLanguage
+                val on = config.captionVisible && (t.id == captions.selectedLanguage || t.languageCode == captions.selectedLanguage)
                 DropdownMenuItem(
                     text = { Text(if (on) "✓ ${t.displayName}" else t.displayName) },
                     onClick = {
-                        player.selectCaption(t.languageCode)
+                        player.selectCaption(t.id)
                         player.setCaptionVisible(true)
                         open = false
                     },
