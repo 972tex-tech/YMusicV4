@@ -58,10 +58,10 @@ class CefManager {
                 // component — see :player WebViewBridge.jvm.kt.
                 windowless_rendering_enabled = true
                 // Google refuses sign-in in an "unsafe" browser and JCEF's default UA gives it away.
-                // Present a real desktop Chrome UA (both navigator.userAgent and request headers) so
-                // the accounts.google.com flow proceeds. Kept in step with the engine's DESKTOP_UA
-                // (engine-js session.ts) so the player's embed browser and InnerTube also present one
-                // identity to YouTube — bump both together.
+                // Present the bundled Chromium's real major (navigator + request headers) so
+                // accounts.google.com proceeds and Sec-CH-UA does not contradict User-Agent.
+                // Headless miller / InnerTube DESKTOP_UA is Chrome/151 (orig/env.raw.js) — different
+                // runtime, do not copy JCEF's major there.
                 user_agent = CHROME_USER_AGENT
             }
         }.build()
@@ -144,9 +144,8 @@ class CefManager {
             }.start()
         }
 
-        // A real desktop Chrome UA — must mirror engine-js session.ts DESKTOP_UA (one YouTube
-        // identity) AND carry the bundled Chromium's real major version: Sec-CH-UA client hints
-        // can't be suppressed and would expose a version mismatch. Bump alongside Versions.jcef.
+        // Bundled JCEF Chromium major. Sec-CH-UA can't be suppressed — this must stay on the
+        // real JCEF version (bump with Versions.jcef). Not engine-js DESKTOP_UA (Chrome/151 miller).
         const val CHROME_USER_AGENT =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"

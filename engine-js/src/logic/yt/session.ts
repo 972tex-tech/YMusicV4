@@ -16,11 +16,13 @@ import { parsePlayerConfig } from "./playerConfig";
 import { anchoredExec, asString, get } from "./scan";
 
 const ORIGIN = "https://www.youtube.com";
-// A desktop-Chrome UA so youtube.com serves the full-fat homepage whose ytcfg carries the params
-// (a bare/unknown UA gets a stripped page). Kept plausible next to the scraped clientVersion.
+// Must match navigator.userAgent in orig/env.raw.js. Homepage / InnerTube / WAA send this
+// as User-Agent; a different Chrome major than the page env attests is a fork. A bare UA
+// gets a stripped homepage. JCEF's bundled Chromium major is CefManager.CHROME_USER_AGENT
+// — do not copy that here.
 export const DESKTOP_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
+  "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
 
 const CACHE_SCOPE = "yt-session";
 const CACHE_KEY = "web";
