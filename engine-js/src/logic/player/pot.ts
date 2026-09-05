@@ -177,49 +177,29 @@ export async function minterFromConfig(
   });
 
   out["step"] = "snapshot";
-  const perf = (globalThis as unknown as { performance?: { now?: () => number; timeOrigin?: number } })
-    .performance;
-  const now = function (): number {
-    return perf && typeof perf.now === "function" ? perf.now() : Date.now();
-  };
-  const rand0 = now();
-  for (let i = 0; i < 1000; i++) Math.random();
-  const rand1 = now();
   const webPo: unknown[] = [];
-  const snap0 = now();
-  const wall0 = Date.now();
-  const botguardResponse = await new Promise(function (resolve, reject) {
-    try {
-      (asyncSnap as (cb: (r: unknown) => void, args: unknown[]) => void)(
-        function (resp: unknown) {
-          resolve(resp);
-        },
-        [undefined, undefined, webPo, undefined],
-      );
-    } catch (e) {
-      reject(e);
-    }
-  });
-  const snap1 = now();
-  const wall1 = Date.now();
+  if (typeof __bgEntropyBegin === "function") __bgEntropyBegin();
+  let botguardResponse: unknown;
+  try {
+    botguardResponse = await new Promise(function (resolve, reject) {
+      try {
+        (asyncSnap as (cb: (r: unknown) => void, args: unknown[]) => void)(
+          function (resp: unknown) {
+            resolve(resp);
+          },
+          [undefined, undefined, webPo, undefined],
+        );
+      } catch (e) {
+        reject(e);
+      }
+    });
+  } finally {
+    if (typeof __bgEntropyEnd === "function") __bgEntropyEnd();
+  }
   out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
   out["snapshotPrefix"] =
     typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
-  out["rand1kMs"] = rand1 - rand0;
-  out["snapPerfMs"] = snap1 - snap0;
-  out["snapWallMs"] = wall1 - wall0;
-  console.log(
-    "mill snap " +
-      out["snapshotLen"] +
-      " " +
-      out["snapshotPrefix"] +
-      " rand1kMs=" +
-      out["rand1kMs"] +
-      " snapPerfMs=" +
-      out["snapPerfMs"] +
-      " snapWallMs=" +
-      out["snapWallMs"],
-  );
+  console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
   out["webPo0"] = typeof webPo[0];
   out["webPoLen"] = webPo.length;
   out["ytGets"] = ytWindowGets();
@@ -295,7 +275,6 @@ export async function minterFromConfig(
     const token = mint(id);
     function done(t: unknown): unknown {
       recordBgMint(id, t);
-      if (typeof __bgEntropyStop === "function") __bgEntropyStop();
       return t;
     }
     if (token instanceof Uint8Array || typeof token === "string") return done(token);

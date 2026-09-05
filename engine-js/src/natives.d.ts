@@ -99,8 +99,11 @@ declare function __mseReset(): void;
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 
-/** Record mill Date.now / performance.now / Math.random as `d`/`p`/`r` lines. Dump on SPS=2/3. */
+/** Install C Date.now / Math.random wrappers (rec off). BotGuard must bind these. */
 declare function __bgEntropyStart(): void;
+/** Snapshot window: record Date.now / performance.now / Math.random as `d`/`p`/`r`. */
+declare function __bgEntropyBegin(): void;
+declare function __bgEntropyEnd(): void;
 declare function __bgEntropyStop(): void;
 declare function __bgEntropyDump(): string | null;
 

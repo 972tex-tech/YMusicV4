@@ -6,8 +6,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
-#include <math.h>
 #include <sys/time.h>
+#include <time.h>
 
 /* Flat-string access (YMusic patch at the end of vendored quickjs.c). */
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
@@ -578,6 +578,7 @@ static const JSCFunctionListEntry textdecoder_proto[] = {
 };
 
 static double g_perf_origin;
+static double g_mono_origin;
 static double g_perf_last;
 
 #define ENT_CAP 65536
@@ -637,21 +638,40 @@ static void ent_line(Ent *e, char tag, const char *fmt, double v)
     e->line[e->n++] = s;
 }
 
-static double clock_now_ms(void)
+static double timespec_ms(const struct timespec *ts)
 {
+    return (double)ts->tv_sec * 1000.0 + (double)ts->tv_nsec / 1000000.0;
+}
+
+static double realtime_ms(void)
+{
+    struct timespec ts;
     struct timeval tv;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
+        return timespec_ms(&ts);
     gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+    return (double)tv.tv_sec * 1000.0 + (double)tv.tv_usec / 1000.0;
+}
+
+static double mono_ms(void)
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        return timespec_ms(&ts);
+    return realtime_ms();
 }
 
 static int64_t date_now_ms(void)
 {
+    struct timespec ts;
     struct timeval tv;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
+        return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
     gettimeofday(&tv, NULL);
     return (int64_t)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
 }
 
-/* Chrome non-isolated performance.now is 100us. Date.now stays wall milliseconds. */
+/* Monotonic ns as ms. Do not quantize — BotGuard times 1000 Math.random against this. */
 static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     double n;
@@ -659,7 +679,7 @@ static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     (void)this_val;
     (void)argc;
     (void)argv;
-    n = floor((clock_now_ms() - g_perf_origin) * 10.0 + 1e-9) / 10.0;
+    n = mono_ms() - g_mono_origin;
     if (n < g_perf_last)
         n = g_perf_last;
     g_perf_last = n;
@@ -669,7 +689,7 @@ static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     return JS_NewFloat64(ctx, n);
 }
 
-/* Same gettimeofday integer ms as QuickJS js_Date_now. Record after the read. */
+/* Integer UNIX ms. Record after the read, only while rec. */
 static JSValue js_date_now_rec(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ms = date_now_ms();
@@ -699,6 +719,18 @@ static JSValue js_math_random_rec(JSContext *ctx, JSValueConst this_val, int arg
     return v;
 }
 
+static void ent_clear(Ent *e)
+{
+    int i;
+    if (!e)
+        return;
+    for (i = 0; i < e->n; i++)
+        free(e->line[i]);
+    e->n = 0;
+}
+
+/* Install C Date.now / Math.random so BotGuard binds these, not later wrappers.
+ * rec stays 0 until begin. Do not restore: snapshot may close over the wrappers. */
 static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
@@ -708,12 +740,8 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
     (void)argv;
     if (!e)
         return JS_UNDEFINED;
-    {
-        int i;
-        for (i = 0; i < e->n; i++)
-            free(e->line[i]);
-        e->n = 0;
-    }
+    e->rec = 0;
+    ent_clear(e);
     g = JS_GetGlobalObject(ctx);
     date = JS_GetPropertyStr(ctx, g, "Date");
     math = JS_GetPropertyStr(ctx, g, "Math");
@@ -728,37 +756,36 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
     JS_FreeValue(ctx, date);
     JS_FreeValue(ctx, math);
     JS_FreeValue(ctx, g);
-    e->rec = 1;
     return JS_UNDEFINED;
 }
 
-static JSValue js_bg_entropy_stop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+static JSValue js_bg_entropy_begin(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
-    JSValue g, date, math;
     (void)this_val;
     (void)argc;
     (void)argv;
     if (!e)
         return JS_UNDEFINED;
-    e->rec = 0;
-    g = JS_GetGlobalObject(ctx);
-    if (!JS_IsUndefined(e->date_orig)) {
-        date = JS_GetPropertyStr(ctx, g, "Date");
-        JS_SetPropertyStr(ctx, date, "now", JS_DupValue(ctx, e->date_orig));
-        JS_FreeValue(ctx, date);
-        JS_FreeValue(ctx, e->date_orig);
-        e->date_orig = JS_UNDEFINED;
-    }
-    if (!JS_IsUndefined(e->rand_orig)) {
-        math = JS_GetPropertyStr(ctx, g, "Math");
-        JS_SetPropertyStr(ctx, math, "random", JS_DupValue(ctx, e->rand_orig));
-        JS_FreeValue(ctx, math);
-        JS_FreeValue(ctx, e->rand_orig);
-        e->rand_orig = JS_UNDEFINED;
-    }
-    JS_FreeValue(ctx, g);
+    ent_clear(e);
+    e->rec = 1;
     return JS_UNDEFINED;
+}
+
+static JSValue js_bg_entropy_end(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    Ent *e = ent_of(ctx);
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (e)
+        e->rec = 0;
+    return JS_UNDEFINED;
+}
+
+static JSValue js_bg_entropy_stop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    return js_bg_entropy_end(ctx, this_val, argc, argv);
 }
 
 static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -794,7 +821,8 @@ static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int arg
 static void install_performance(JSContext *ctx, JSValueConst global)
 {
     JSValue perf;
-    g_perf_origin = clock_now_ms() - 1847.3;
+    g_mono_origin = mono_ms() - 1847.3;
+    g_perf_origin = realtime_ms() - 1847.3;
     g_perf_last = 0;
     perf = JS_NewObject(ctx);
     JS_DefinePropertyValueStr(ctx, perf, "timeOrigin",
@@ -817,6 +845,10 @@ void qjs_register_web(JSContext *ctx)
     install_performance(ctx, g);
     JS_SetPropertyStr(ctx, g, "__bgEntropyStart",
                       JS_NewCFunction(ctx, js_bg_entropy_start, "__bgEntropyStart", 0));
+    JS_SetPropertyStr(ctx, g, "__bgEntropyBegin",
+                      JS_NewCFunction(ctx, js_bg_entropy_begin, "__bgEntropyBegin", 0));
+    JS_SetPropertyStr(ctx, g, "__bgEntropyEnd",
+                      JS_NewCFunction(ctx, js_bg_entropy_end, "__bgEntropyEnd", 0));
     JS_SetPropertyStr(ctx, g, "__bgEntropyStop",
                       JS_NewCFunction(ctx, js_bg_entropy_stop, "__bgEntropyStop", 0));
     JS_SetPropertyStr(ctx, g, "__bgEntropyDump",
