@@ -826,7 +826,10 @@ class HTMLMediaElement {
     const d = this["duration"];
     if (isFinite(d) && t > d) t = d;
     const prev = __mseCurrentTime();
-    if (isAudioOnly() && t < 1 && prev > 10) {
+    /* Live format-switch seeks 0 (DVR start). Ignore while dummy still
+       owns video — including leave-audio, after __ymAudioOnly is already
+       false. Feeding that seek into C starts VP9/AV1 on a P-frame (SIGILL). */
+    if (t < 1 && prev > 10 && (isAudioOnly() || !videoHasLeftover())) {
       console.log("mse ignore seek-0 audio-only from " + prev);
       return;
     }

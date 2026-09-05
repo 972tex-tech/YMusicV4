@@ -582,7 +582,9 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         return -1;
     }
-    if (vp9) {
+    /* One thread: ffmpeg/dav1d workers probe AVX-512 on a P-core then SIGILL
+       on an Alder Lake E-core (leave-audio live). VP8/VP9 already required this. */
+    if (video) {
         (*ctxp)->thread_count = 1;
         (*ctxp)->thread_type = 0;
     }

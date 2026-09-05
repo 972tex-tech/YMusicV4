@@ -703,11 +703,11 @@ class Player {
     const one = host["setPlaybackQuality"];
     if (typeof range === "function") range.call(host, q, q);
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
-    /* Load-as-zero never called setPlaybackQualityRange, so YouTube still
-       thinks quality is auto. Range("auto") is a no-op. Seek to the same
-       playhead is also a no-op — nudge back so SABR runs now, not after
-       audio leftover hits minReadahead. */
-    if (wasAudioOnly && typeof player["seekTo"] === "function") {
+    /* VOD: Range("auto") is a no-op after load-as-zero, and seek-to-playhead
+       is also a no-op. Nudge so SABR runs now. Live: do not seek — YouTube
+       already ticks SABR, and a back-seek starts the new video GOP on a
+       P-frame (Alder Lake VP9/AV1 SIGILL). */
+    if (wasAudioOnly && typeof player["seekTo"] === "function" && !isLiveDuration()) {
       const t = activeHtmlMedia() ? __mseCurrentTime() : 0;
       const nudge = t >= 0.25 ? t - 0.15 : t + 0.15;
       console.log("mse setQuality " + q + " leave-audio seek=" + nudge);
