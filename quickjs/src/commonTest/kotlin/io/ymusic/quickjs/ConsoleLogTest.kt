@@ -3,6 +3,7 @@ package io.ymusic.quickjs
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** The __consoleLog bridge and the unhandled-rejection tracker, through the onLog hook. */
@@ -14,14 +15,10 @@ class ConsoleLogTest {
         val rt = QuickJsRuntime.create(TEST_ENGINE_JS, appVersion = 1, onLog = { l, m -> lines.add(l to m) })
         try {
             rt.load("""console.log("a", 1); console.warn("w"); console.error("e")""")
-            assertEquals(
-                listOf(
-                    QuickJsRuntime.LOG_DEBUG to "a 1",
-                    QuickJsRuntime.LOG_WARN to "w",
-                    QuickJsRuntime.LOG_ERROR to "e",
-                ),
-                lines,
-            )
+            // Boot of TEST_ENGINE_JS may emit its own console/rejection lines (cache/list, …).
+            assertTrue(lines.contains(QuickJsRuntime.LOG_DEBUG to "a 1"), "got: $lines")
+            assertTrue(lines.contains(QuickJsRuntime.LOG_WARN to "w"), "got: $lines")
+            assertTrue(lines.contains(QuickJsRuntime.LOG_ERROR to "e"), "got: $lines")
         } finally {
             rt.close()
         }
@@ -33,8 +30,23 @@ class ConsoleLogTest {
         val rt = QuickJsRuntime.create(TEST_ENGINE_JS, appVersion = 1, onLog = { l, m -> lines.add(l to m) })
         try {
             rt.load("Promise.reject(new Error('boom')); 1")
-            val rejection = lines.firstOrNull { it.first == QuickJsRuntime.LOG_REJECTION }
-            assertTrue(rejection != null && rejection.second.contains("boom"), "got: $lines")
+            val rejection = lines.firstOrNull { it.first == QuickJsRuntime.LOG_REJECTION && "boom" in it.second }
+            assertNotNull(rejection, "got: $lines")
+            assertTrue("    at " in rejection.second, "expected stack, got: ${rejection.second}")
+        } finally {
+            rt.close()
+        }
+    }
+
+    @Test
+    fun an_unhandled_rejection_of_a_plain_object_includes_the_reject_site() = runTest {
+        val lines = mutableListOf<Pair<Int, String>>()
+        val rt = QuickJsRuntime.create(TEST_ENGINE_JS, appVersion = 1, onLog = { l, m -> lines.add(l to m) })
+        try {
+            rt.load("function rejectEmpty() { Promise.reject({}); } rejectEmpty(); 1")
+            val rejection = lines.firstOrNull { it.first == QuickJsRuntime.LOG_REJECTION && "rejectEmpty" in it.second }
+            assertNotNull(rejection, "got: $lines")
+            assertTrue("    at " in rejection.second, "expected reject-site stack, got: ${rejection.second}")
         } finally {
             rt.close()
         }

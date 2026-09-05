@@ -5,6 +5,7 @@
 #include "quickjs_hostfn.h"
 #include "quickjs_web.h"
 #include "quickjs_mse.h"
+#include "quickjs_dump.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -146,21 +147,21 @@ static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, J
 }
 
 /* Rejections nobody handles are the classic silent async failure — surface them on the log
- * channel. is_handled=true retractions are ignored: a breadcrumb, not a crash record. */
+ * channel. is_handled=true retractions are ignored: a breadcrumb, not a crash record.
+ * Do not stringify via ToString/JSON: Error.message/stack are missing from both. */
 static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
                                       int is_handled, void *opaque) {
     if (is_handled) return;
     QjsEngine *e = (QjsEngine *)opaque;
     if (!e || !e->cb) return;
     size_t len = 0;
-    const char *msg = JS_ToCStringLen(ctx, &len, reason);
-    if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
-        JS_FreeValue(ctx, JS_GetException(ctx));
+    char *msg = qjs_format_rejection(ctx, reason, &len);
+    if (!msg) {
         e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)"(unprintable reason)", 20);
         return;
     }
     e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)msg, len);
-    JS_FreeCString(ctx, msg);
+    free(msg);
 }
 
 /* Extract the pending JS exception into *err (malloc'd; falls back to [fallback]). */

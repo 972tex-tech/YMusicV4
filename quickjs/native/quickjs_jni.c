@@ -36,6 +36,7 @@
 #include "quickjs_hostfn.h"
 #include "quickjs_web.h"
 #include "quickjs_mse.h"
+#include "quickjs_dump.h"
 
 #define PENDING_DRAIN_MAX 16
 
@@ -300,7 +301,8 @@ static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, J
 }
 
 /* Rejections nobody handles are the classic silent async failure — surface them on the log
- * channel (level 4). is_handled=true retractions are ignored: a breadcrumb, not a crash record. */
+ * channel (level 4). is_handled=true retractions are ignored: a breadcrumb, not a crash record.
+ * Do not JSON.stringify the reason: Error.message/stack are non-enumerable, so that was "{}". */
 static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
                                       int is_handled, void *opaque) {
     if (is_handled) return;
@@ -308,33 +310,13 @@ static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSVa
     if (!e || e->in_critical) return; /* never re-enter JNI under a critical region */
     JNIEnv *env = engine_env(e);
     size_t len = 0;
-    const char *msg = NULL;
-    JSValue json = JS_UNDEFINED;
-    if (JS_IsObject(reason)) {
-        json = JS_JSONStringify(ctx, reason, JS_UNDEFINED, JS_UNDEFINED);
-        if (JS_IsException(json)) {
-            JS_FreeValue(ctx, JS_GetException(ctx));
-            json = JS_UNDEFINED;
-        } else {
-            msg = JS_ToCStringLen(ctx, &len, json);
-            JS_FreeValue(ctx, json);
-            json = JS_UNDEFINED;
-        }
-    }
-    if (!msg) msg = JS_ToCStringLen(ctx, &len, reason);
-    if (!msg) { /* reason's toString threw — report the fact, don't leave the exception pending */
-        JS_FreeValue(ctx, JS_GetException(ctx));
-        msg = "(unprintable reason)";
-        len = 20;
-        jstring jm = utf8_to_jstring(env, msg, len);
-        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
-        (*env)->DeleteLocalRef(env, jm);
-    } else {
-        jstring jm = utf8_to_jstring(env, msg, len);
-        JS_FreeCString(ctx, msg);
-        (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
-        (*env)->DeleteLocalRef(env, jm);
-    }
+    char *msg = qjs_format_rejection(ctx, reason, &len);
+    const char *out = msg ? msg : "(unprintable reason)";
+    if (!msg) len = 20;
+    jstring jm = utf8_to_jstring(env, out, len);
+    if (msg) free(msg);
+    (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
+    (*env)->DeleteLocalRef(env, jm);
     if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionDescribe(env);
         (*env)->ExceptionClear(env);

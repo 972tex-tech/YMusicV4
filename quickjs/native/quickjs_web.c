@@ -587,7 +587,7 @@ static double clock_now_ms(void)
     return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
 }
 
-/* Chrome non-isolated performance.now is 100us. Millisecond Date.now looks like a bot. */
+/* Chrome non-isolated performance.now is 100us. Date.now stays wall milliseconds. */
 static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     double n;
