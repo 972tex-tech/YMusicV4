@@ -72,6 +72,10 @@ kotlin {
                 // channel on Apple). `api`: LocalMediaProxy is a public param of WebViewPlayerContext,
                 // so consumers (the app shells) must see the type to build one.
                 api(project(":yt-media"))
+                api(project(":dynamic-engine"))
+                api(project(":mse"))
+                // MsePlayer.create owns a QuickJS dispatcher; not re-exported (shells never touch it).
+                implementation(project(":quickjs"))
             }
         }
 

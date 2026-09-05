@@ -3,13 +3,23 @@ package io.ymusic.android
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Intent
+import android.graphics.SurfaceTexture
+import android.view.Surface
+import android.view.TextureView
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.download.DownloadChange
+import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.androidEngineCacheStore
@@ -26,6 +36,7 @@ import io.ymusic.mediascanner.SafDocumentsProvider
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreAndroidDriver
 import io.ymusic.mediastore.model.BucketDraft
+import io.ymusic.mse.MseVideoSurface
 import io.ymusic.player.LocalPlayerContext
 import io.ymusic.player.PlayerEngines
 import io.ymusic.player.WebViewPlayerContext
@@ -33,6 +44,7 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.isPlaying
+import io.ymusic.player.mse.MsePlayer
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.PersistentCookieJar
 import io.ymusic.remoteconfig.RemoteConfig
@@ -95,9 +107,10 @@ import java.io.File
  */
 class SharedServices(
     val http: AppHttpClients,
-    val cookies: WebViewCookieJar,
+    val cookies: kmphttp.CookieJar,
     val settings: PrefsSettingsStore,
     val engines: DynamicEngineManager,
+    val cacheStore: CacheStore,
     val mediaStore: BetterMediaStore,
     /** The injected YouTube player script (webview-js/dist, bundled as an asset); null = the
      *  WebView engine is absent and a YouTube item surfaces E60050. */
@@ -144,11 +157,9 @@ class YMusicApplication : Application() {
         builtGraph ?: appScope.async { buildGraph() }.also { builtGraph = it }
 
     private suspend fun buildServices(): SharedServices {
-        // The cookie store is the WebView CookieManager — shared with the WebView YouTube player,
-        // persistent across launches (as legacy YMusic did). The engine's OWN HTTP client carries
-        // NO jar: the engine JS cooks every Cookie header itself against this store (cookie/get|set
-        // protocol), so cookie policy lives in the remotely-updatable bundle.
-        val cookies = WebViewCookieJar()
+        // One file-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
+        // Not WebView CookieManager — that store is only a harvest source during sign-in.
+        val cookies = PersistentCookieJar(File(filesDir, "api-cookies.json").toOkioPath(), FileSystem.SYSTEM)
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
         val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath(), logger = rootLogger)
         val settings = PrefsSettingsStore.open(this)
@@ -175,7 +186,7 @@ class YMusicApplication : Application() {
         val api = BuildConfig.REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
             HttpApiService(
                 client = http.engine.newBuilder().apply {
-                    cookieJar = PersistentCookieJar(File(filesDir, "api-cookies.json").toOkioPath(), FileSystem.SYSTEM)
+                    cookieJar = cookies
                 }.build(),
                 os = "android",
                 osVersion = android.os.Build.VERSION.RELEASE ?: "",
@@ -225,11 +236,12 @@ class YMusicApplication : Application() {
             logger = rootLogger,
             ioDispatcher = Dispatchers.IO,
         )
+        val cacheStore = androidEngineCacheStore(this, logger = rootLogger)
         val engines = DynamicEngineManager(
             http.engine,
             appVersion = 1,
             logger = rootLogger,
-            cacheStore = androidEngineCacheStore(this, logger = rootLogger),
+            cacheStore = cacheStore,
             cookieJar = cookies,
             settings = settings,
             // Debug builds crash on an engine-thread stall (StrictMode-style); release only logs.
@@ -306,16 +318,26 @@ class YMusicApplication : Application() {
             memoryCacheBytes = defaultMemoryCacheBudget(this),
         ).also { builtImageLoader = it }
 
-        return SharedServices(http, cookies, settings, engines, mediaStore, webViewJs, imageLoader, stats)
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, imageLoader, stats)
     }
 
     private suspend fun buildGraph(): AppGraph {
-        // One shared video host (a FrameLayout) both engines render into: the WebView engine adds its
-        // WebView, the local engine adds its SurfaceView, each owning its own view's visibility.
-        // Views must be born on the main thread; everything else builds off it (see [services]).
+        // One shared video host (a FrameLayout): the local engine adds its SurfaceView, MSE paints
+        // into a TextureView, and a hidden WebView cooks download specs. Views must be born on the
+        // main thread; everything else builds off it (see [services]).
         val videoContainer = FrameLayout(this)
+        val downloadContainer = FrameLayout(this).apply { visibility = View.GONE }
+        videoContainer.addView(downloadContainer, FrameLayout.LayoutParams(1, 1))
+        val mseTexture = TextureView(this).apply { isOpaque = true }
+        videoContainer.addView(
+            mseTexture,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        mseTexture.visibility = View.GONE
+        val mseBridge = MseSurfaceBridge()
+        mseTexture.surfaceTextureListener = mseBridge.listener
         val graph = withContext(Dispatchers.Default) {
-            buildGraphOffMain(videoContainer)
+            buildGraphOffMain(videoContainer, downloadContainer, mseTexture, mseBridge)
         }
         // The session/notification host must be up whenever playback is — every playing transition
         // (re)starts it. Playback only ever starts from a user action with the app foregrounded, so
@@ -361,13 +383,17 @@ class YMusicApplication : Application() {
         return graph
     }
 
-    private suspend fun buildGraphOffMain(videoContainer: FrameLayout): AppGraph {
+    private suspend fun buildGraphOffMain(
+        videoContainer: FrameLayout,
+        downloadContainer: FrameLayout,
+        mseTexture: TextureView,
+        mseBridge: MseSurfaceBridge,
+    ): AppGraph {
         val shared = services.await()
 
         // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
         // /videoplayback) and serves it from this router — hit → synthesized bytes, miss → forwarded and
-        // teed to disk. Its client carries the WebView CookieManager cookies (shared.cookies) + the
-        // WebView's own default UA; a mismatched identity gets rejected by googlevideo/BotGuard.
+        // teed to disk. Its client carries the persistent jar (shared.cookies) + the WebView UA.
         // The player cache; shared read-only with the download stack so a download reuses segments already
         // cached from playback (never writing into it).
         val playerCache = run {
@@ -394,28 +420,38 @@ class YMusicApplication : Application() {
             )
         }
 
-        // Captured from the WebView-engine factory so the download service can prime SABR inputs off the
-        // same page (attestation lives in the running page).
+        // Playback is MSE. Downloads still cook player-response + PO token on a hidden WebView.
         var downloadWebViewPlayer: io.ymusic.player.WebViewPlayer? = null
+        fun ensureDownloadWebView(): io.ymusic.player.WebViewPlayer {
+            val js = shared.webViewJs ?: error("YouTube engine unavailable")
+            return downloadWebViewPlayer ?: createWebViewPlayer(
+                WebViewPlayerContext(this, downloadContainer, mediaProxy),
+                engineJs = js,
+                appVersion = 5000,
+                embedHtml = { ua -> shared.engines.embedPage(ua) },
+                logger = rootLogger,
+            ).also { downloadWebViewPlayer = it }
+        }
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
-                webView = shared.webViewJs?.let { js ->
-                    {
-                        createWebViewPlayer(
-                            WebViewPlayerContext(this, videoContainer, mediaProxy),
-                            engineJs = js,
-                            appVersion = 5000,
-                            embedHtml = { ua -> shared.engines.embedPage(ua) },
-                            logger = rootLogger,
-                        ).also { downloadWebViewPlayer = it }
-                    }
+                webView = {
+                    MsePlayer.create(
+                        client = shared.http.engine,
+                        appVersion = 5000,
+                        logger = rootLogger,
+                        cacheStore = shared.cacheStore,
+                        cookieJar = shared.cookies,
+                        settings = shared.settings,
+                        videoSurface = MseVideoSurface(),
+                        main = shared.engines,
+                        mediaProxy = mediaProxy,
+                    ).also { mseBridge.attach(it) }
                 },
             ),
         )
 
-        // Warm the YouTube engine ~5s after startup so the first play/download skips the WebView +
-        // /embed build (mirrors legacy warmUpYtPlayer). On the main thread — it hosts a platform WebView.
+        // Warm the YouTube MSE engine ~5s after startup so the first play skips JS/C construction.
         appScope.launch {
             kotlinx.coroutines.delay(5_000)
             player.prepareYoutubeEngine()
@@ -445,11 +481,9 @@ class YMusicApplication : Application() {
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
                 now = { System.currentTimeMillis() },
                 resolver = io.ymusic.download.SabrSpecResolver { videoId ->
-                    // Force-init the WebView engine if it isn't up yet (the factory sets downloadWebViewPlayer).
-                    val page = downloadWebViewPlayer ?: run {
-                        withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-                        downloadWebViewPlayer
-                    } ?: error("YouTube engine unavailable")
+                    val page = withContext(Dispatchers.Main) {
+                        ensureDownloadWebView().also { it.warmUp() }
+                    }
                     WebViewSabrSpecResolver(page).resolve(videoId)
                 },
                 client = sabrClient,
@@ -505,7 +539,10 @@ class YMusicApplication : Application() {
             imageLoader = shared.imageLoader,
             settings = shared.settings,
             loginBrowser = { url, state, onPageChanged, modifier ->
-                AndroidLoginBrowser(url, state, onPageChanged, modifier)
+                AndroidLoginBrowser(url, state, {
+                    harvestWebViewCookiesInto(shared.cookies)
+                    onPageChanged()
+                }, modifier)
             },
             downloads = downloadService,
             sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
@@ -517,14 +554,20 @@ class YMusicApplication : Application() {
             // (unlike Swing/UIKit), so adding the container directly throws "child already has a
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
-            AndroidView(
-                factory = { context -> FrameLayout(context) },
-                modifier = modifier,
-                update = { host ->
-                    (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
-                    host.addView(videoContainer)
-                },
-            )
+            val status by player.status.collectAsState()
+            Box(modifier) {
+                AndroidView(
+                    factory = { context -> FrameLayout(context) },
+                    modifier = Modifier.fillMaxSize(),
+                    update = { host ->
+                        (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
+                        host.addView(videoContainer)
+                        val showMse = status.videoSize != null
+                        mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
+                        if (showMse) mseTexture.bringToFront()
+                    },
+                )
+            }
         }
     }
 
@@ -610,3 +653,34 @@ class YMusicApplication : Application() {
 
 /** Cadence of the webview-js remote-update check (a saved copy applies at the next boot). */
 private const val WEBVIEW_UPDATE_CHECK_MS = 6 * 60 * 60 * 1000L
+
+/** Hands the TextureView window to [MsePlayer] when it appears; null on destroy. */
+private class MseSurfaceBridge {
+    private var player: MsePlayer? = null
+    private var pending: Surface? = null
+
+    fun attach(p: MsePlayer) {
+        player = p
+        pending?.let { p.setVideoSurface(MseVideoSurface(it)) }
+    }
+
+    val listener = object : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+            pending?.release()
+            val surface = Surface(st)
+            pending = surface
+            player?.setVideoSurface(MseVideoSurface(surface))
+        }
+
+        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = Unit
+
+        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+            pending?.release()
+            pending = null
+            player?.setVideoSurface(null)
+            return true
+        }
+
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
+    }
+}

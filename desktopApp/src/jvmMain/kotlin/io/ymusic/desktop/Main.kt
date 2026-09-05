@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
@@ -130,12 +131,20 @@ import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.io.File
+import javax.swing.JPanel
+import javax.swing.SwingUtilities
+import kotlin.math.min
+import java.awt.Color as AwtColor
 
 /**
  * The desktop shell: boots JCEF + the scraping engine, assembles the [AppGraph] (player facade over
- * VLCJ local + JCEF WebView engines, the shared WebView container as the video surface), and runs
- * the shared [App].
+ * VLCJ local + MSE YouTube playback, a hidden JCEF WebView for download cooking), and runs the
+ * shared [App].
  */
 // Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
 private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
@@ -181,9 +190,8 @@ fun main() {
             installSentryDeviceId(telemetryDeviceId)
         }
     }
-    // Both video engines (JCEF WebView + VLCJ local) now render off-screen and paint through a plain
-    // Compose Image, so the app hosts no Swing interop on the hot path. Blending is kept as a harmless
-    // safety net for any incidental lightweight interop; it must be set before the first ComposeWindow.
+    // MSE video is a SwingPanel (same blit as the playground). Blending must be set before the first
+    // ComposeWindow so Compose chrome over the hole still composites. Local VLCJ stays a Compose Image.
     System.setProperty("compose.interop.blending", "true")
     // Stop-signal and shutdown resilience against CEF live in CefManager.installShutdownGuards
     // (installed with the first createClient — shared with the probes).
@@ -356,24 +364,20 @@ fun main() {
 
 private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsStore): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
-    // Init CEF first: the cookie store is JCEF's global one (needs CefApp initialized before the
-    // first access), shared with the WebView player and persisted on disk. The engine's OWN HTTP
-    // client carries NO jar — the engine JS cooks every Cookie header itself against this store
-    // (cookie/get|set protocol) so cookie policy lives in the remotely-updatable bundle.
+    // One file-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
+    // Not CEF: the Chromium cookie manager can fail to init (locked profile) and must not block boot.
+    val cookies = PersistentCookieJar(File(dataDir, "api-cookies.json").absolutePath.toPath(), FileSystem.SYSTEM)
     val cefClient = cefManager.createClient()
-    val platformCookies = JcefCookieJar(cefManager.awaitCookieManager())
-    // One client stack, one disk cache: the engine (no cookie jar — the scraping JS owns cookie
-    // policy) and the player's embed fetch (platform cookies) share it.
+    // One client stack, one disk cache. The engine HTTP client stays jar-less — JS cooks Cookie
+    // headers against [cookies] — while the API client / media proxy use the jar directly.
     val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath(), logger = rootLogger)
     val deviceId = settings.anonymousDeviceId()
 
-    // The one client of the YMusic service; null when this build has no service url. Its own
-    // client instance carries the API cookie jar (the activity watermark survives restarts) —
-    // the engine client stays jar-less on purpose, the engine JS owns YouTube cookies.
+    // The one client of the YMusic service; null when this build has no service url.
     val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
         HttpApiService(
             client = http.engine.newBuilder().apply {
-                cookieJar = PersistentCookieJar(File(dataDir, "api-cookies.json").absolutePath.toPath(), FileSystem.SYSTEM)
+                cookieJar = cookies
             }.build(),
             os = desktopOsKey(),
             osVersion = System.getProperty("os.version") ?: "",
@@ -421,13 +425,14 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         logger = rootLogger,
         ioDispatcher = Dispatchers.IO,
     )
+    val engineCache = desktopEngineCacheStore(File(dataDir, "engine-cache"), rootLogger)
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             http.engine,
             appVersion = 1,
             logger = rootLogger,
-            cacheStore = desktopEngineCacheStore(File(dataDir, "engine-cache"), rootLogger),
-            cookieJar = platformCookies,
+            cacheStore = engineCache,
+            cookieJar = cookies,
             settings = settings,
             strictStints = DEBUG_BUILD,
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
@@ -479,11 +484,13 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
 
     val localSurface = LocalVideoSurface()
     val webViewSurface = JcefOsrSurface()
+    val downloadWebViewSurface = JcefOsrSurface()
+    val mseSurface = io.ymusic.mse.MseVideoSurface()
 
     // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
     // /videoplayback) and serves it from this router — cache hit → synthesized bytes, miss → forwarded
-    // and teed to disk so re-plays/downloads reuse it. Its client carries the CEF cookies + the Chrome
-    // UA CefManager forces on the WebView; a mismatched identity gets rejected by googlevideo/BotGuard.
+    // and teed to disk so re-plays/downloads reuse it. Its client carries the same persistent jar + the
+    // Chrome UA CefManager forces on the WebView.
     // The player cache; shared read-only with the download stack so a download reuses segments already
     // cached from playback (never writing into it).
     val playerCache = withContext(Dispatchers.IO) {
@@ -498,7 +505,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
     val mediaProxy = withContext(Dispatchers.IO) {
         val client = KmpHttpClient.create {
             logger = rootLogger.fork("kmphttp")
-            cookieJar = platformCookies
+            cookieJar = cookies
             defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
         }
         LocalMediaProxy(
@@ -512,23 +519,34 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         )
     }
 
-    // Captured from the WebView-engine factory so the download service can prime SABR inputs off the
-    // same page (attestation lives in the running page). Recreated on "Reload player"; latest wins.
+    // Playback is MSE. Downloads still cook player-response + PO token on a hidden WebView page
+    // (no headless cooker yet). Recreated lazily; latest wins.
     var downloadWebViewPlayer: io.ymusic.player.WebViewPlayer? = null
+    fun ensureDownloadWebView(): io.ymusic.player.WebViewPlayer {
+        return downloadWebViewPlayer ?: createWebViewPlayer(
+            WebViewPlayerContext(cefClient, downloadWebViewSurface, mediaProxy),
+            engineJs = cachedWebViewJs ?: readWebViewJs(),
+            appVersion = 5000,
+            embedHtml = { ua -> engines.embedPage(ua) },
+            logger = rootLogger,
+        ).also { downloadWebViewPlayer = it }
+    }
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(localSurface)) },
-                // Re-read the bundle on every WebView-engine build so "Reload player" picks up a freshly
-                // built webview-js (npm run build) without an app restart.
                 webView = {
-                    createWebViewPlayer(
-                        WebViewPlayerContext(cefClient, webViewSurface, mediaProxy),
-                        engineJs = cachedWebViewJs ?: readWebViewJs(),
+                    io.ymusic.player.mse.MsePlayer.create(
+                        client = http.engine,
                         appVersion = 5000,
-                        embedHtml = { ua -> engines.embedPage(ua) },
                         logger = rootLogger,
-                    ).also { downloadWebViewPlayer = it }
+                        cacheStore = engineCache,
+                        cookieJar = cookies,
+                        settings = settings,
+                        videoSurface = mseSurface,
+                        main = engines,
+                        mediaProxy = mediaProxy,
+                    )
                 },
             ),
         )
@@ -538,8 +556,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
     // backend yet). Commands come back on the Main dispatcher, where the player is driven.
     connectMediaSession(player, CoroutineScope(Dispatchers.Main), rootLogger.fork("now-playing"))
 
-    // Warm the YouTube engine ~5s after startup so the first play/download skips the WebView + /embed
-    // build (mirrors legacy warmUpYtPlayer). Off the boot path; on the EDT since it hosts JCEF.
+    // Warm the YouTube MSE engine ~5s after startup so the first play skips JS/C construction.
     CoroutineScope(Dispatchers.Default).launch {
         delay(5_000)
         withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
@@ -566,15 +583,13 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         )
         val sabrClient = KmpHttpClient.create {
             logger = rootLogger.fork("kmphttp")
-            cookieJar = platformCookies
+            cookieJar = cookies
             defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
         }
         val resolver = io.ymusic.download.SabrSpecResolver { videoId ->
-            // Force-init the WebView engine if it isn't up yet (the factory sets downloadWebViewPlayer).
-            val page = downloadWebViewPlayer ?: run {
-                withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-                downloadWebViewPlayer
-            } ?: error("YouTube engine unavailable")
+            val page = withContext(Dispatchers.Main) {
+                ensureDownloadWebView().also { it.warmUp() }
+            }
             WebViewSabrSpecResolver(page).resolve(videoId)
         }
         // Own segment index (byte range per segment) → SABR resume across pause/re-attest. Separate from
@@ -671,7 +686,10 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
         surfaceScalesDown = true,
         loginBrowser = { url, state, onPageChanged, modifier ->
-            DesktopLoginBrowser(url, state, onPageChanged, modifier)
+            DesktopLoginBrowser(url, state, {
+                harvestCefCookiesInto(cookies)
+                onPageChanged()
+            }, modifier)
         },
         downloads = downloadService,
         updates = desktopUpdates,
@@ -679,27 +697,31 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
     ) { modifier ->
-        DesktopPlayerSurface(localSurface, webViewSurface, modifier)
+        DesktopPlayerSurface(localSurface, webViewSurface, mseSurface, modifier)
     }
 }
 
 @Composable
-private fun DesktopPlayerSurface(localSurface: LocalVideoSurface, webViewSurface: JcefOsrSurface, modifier: Modifier) {
+private fun DesktopPlayerSurface(
+    localSurface: LocalVideoSurface,
+    webViewSurface: JcefOsrSurface,
+    mseSurface: io.ymusic.mse.MseVideoSurface,
+    modifier: Modifier,
+) {
     val webVisible by webViewSurface.visible.collectAsState()
     val localVisible by localSurface.visible.collectAsState()
     val webFrame by webViewSurface.frame.collectAsState()
     val localFrame by localSurface.frame.collectAsState()
     var size by remember { mutableStateOf(IntSize.Zero) }
     val webBitmap = remember(webFrame) { webFrame?.toComposeImageBitmap() }
-    // Both engines render off-screen: the local (VLCJ) picture is a plain Compose Image with no pointer
-    // capture, so menus/popups drawn over it receive mouse input — the SwingPanel that used to host it
-    // was an AWT interop hole that swallowed those clicks.
     val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
+    val msePanel = remember { MseVideoPanel() }
+    LaunchedEffect(mseSurface, msePanel) {
+        mseSurface.frame.collect { msePanel.setImage(it) }
+    }
 
     Box(modifier.onSizeChanged { size = it }) {
-        if (!webVisible && localVisible) {
-            // Active local engine with no frame yet (pre-first-frame or audio-only) shows black, as the
-            // old SwingPanel did; once a frame arrives the letterboxed picture paints over it.
+        if (localVisible) {
             Box(Modifier.fillMaxSize().background(Color.Black))
             if (localBitmap != null) {
                 Image(
@@ -709,6 +731,14 @@ private fun DesktopPlayerSurface(localSurface: LocalVideoSurface, webViewSurface
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+        } else {
+            // Same blit as playground MseNativeVideo: Swing paints BGRA, Compose does not recompose
+            // each frame. contains()=false leaves caption/menu clicks in Compose.
+            SwingPanel(
+                background = Color.Black,
+                factory = { msePanel },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         if (webVisible && webBitmap != null) {
             Image(
@@ -752,6 +782,48 @@ private fun DesktopPlayerSurface(localSurface: LocalVideoSurface, webViewSurface
                 },
             )
         }
+    }
+}
+
+/**
+ * Playground-identical MSE hole: Swing draws the latest BGRA frame. [contains] always misses so
+ * Compose's interop filter does not swallow clicks over the video.
+ */
+private class MseVideoPanel : JPanel() {
+    @Volatile private var img: BufferedImage? = null
+
+    init {
+        isOpaque = true
+        background = AwtColor.BLACK
+        isFocusable = false
+        isEnabled = false
+        isRequestFocusEnabled = false
+    }
+
+    override fun contains(x: Int, y: Int): Boolean = false
+
+    fun setImage(image: BufferedImage?) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater { setImage(image) }
+            return
+        }
+        img = image
+        repaint()
+    }
+
+    override fun paintComponent(g: Graphics) {
+        super.paintComponent(g)
+        val g2 = g as Graphics2D
+        g2.color = AwtColor.BLACK
+        g2.fillRect(0, 0, width, height)
+        val image = img ?: return
+        val scale = min(width / image.width.toDouble(), height / image.height.toDouble())
+        val dw = (image.width * scale).toInt().coerceAtLeast(1)
+        val dh = (image.height * scale).toInt().coerceAtLeast(1)
+        val x = (width - dw) / 2
+        val y = (height - dh) / 2
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+        g2.drawImage(image, x, y, dw, dh, null)
     }
 }
 

@@ -31,6 +31,7 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.webview.APPLE_WEBVIEW_USER_AGENT
+import io.ymusic.remoteconfig.PersistentCookieJar
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -50,6 +51,7 @@ import okio.Path.Companion.toPath
 import platform.Foundation.NSBundle
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSDate
+import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
@@ -101,8 +103,9 @@ private fun Center(content: @Composable () -> Unit) {
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 private suspend fun buildIosGraph(container: UIView): AppGraph {
     val rootLogger = IosLogger()
-    // One live store shared by InnerTube HTTP and WKWebView's own YouTube requests.
-    val cookies = IosWebViewCookieJar()
+    val docs = (NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, true).first() as String)
+        .toPath()
+    val cookies = PersistentCookieJar(docs.resolve("api-cookies.json"), FileSystem.SYSTEM)
     val http = AppHttpClients(
         (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
             .toPath()
@@ -137,8 +140,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
 
     // Player cache: WKWebView can't intercept https, so the injected bundle serves /videoplayback over
     // the message channel (see AppleProxyChannel). The proxy's client carries the shared
-    // WKWebsiteDataStore cookies (the same store the WebView uses) + the WKWebView UA, so a forwarded
-    // request's identity matches the WebView's own — BotGuard/attestation rejects a mismatch.
+    // persistent jar + the WKWebView UA, so a forwarded request's identity matches playback.
     val playerCacheRoot = (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
         .toPath()
         .resolve("ymusic-player-cache")
@@ -177,7 +179,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         settings = settings,
         surfaceScalesDown = true,
         loginBrowser = { url, state, onPageChanged, modifier ->
-            IosLoginBrowser(url, state, onPageChanged, modifier)
+            IosLoginBrowser(url, state, cookies, onPageChanged, modifier)
         },
     ) { modifier -> UIKitView(factory = { container }, modifier = modifier, interactive = true) }
 }
