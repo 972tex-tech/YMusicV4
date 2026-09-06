@@ -9,41 +9,13 @@
 
 void *mse_vt_attach_component(JNIEnv *env, jobject component)
 {
-    JAWT awt;
-    JAWT_DrawingSurface *ds;
-    JAWT_DrawingSurfaceInfo *dsi;
-    jint lock;
-    AVSampleBufferDisplayLayer *layer;
-    id<JAWT_SurfaceLayers> layers;
-
-    if (!env || !component)
-        return NULL;
-    awt.version = JAWT_VERSION_1_7;
-    if (JAWT_GetAWT(env, &awt) == JNI_FALSE)
-        return NULL;
-    ds = awt.GetDrawingSurface(env, component);
-    if (!ds)
-        return NULL;
-    lock = ds->Lock(ds);
-    if ((lock & JAWT_LOCK_ERROR) != 0) {
-        awt.FreeDrawingSurface(ds);
-        return NULL;
-    }
-    dsi = ds->GetDrawingSurfaceInfo(ds);
-    if (!dsi || !dsi->platformInfo) {
-        ds->Unlock(ds);
-        awt.FreeDrawingSurface(ds);
-        return NULL;
-    }
-    layers = (__bridge id<JAWT_SurfaceLayers>)dsi->platformInfo;
-    layer = [AVSampleBufferDisplayLayer layer];
-    layer.videoGravity = AVLayerVideoGravityResizeAspect;
-    layer.opaque = NO;
-    layers.layer = layer;
-    ds->FreeDrawingSurfaceInfo(dsi);
-    ds->Unlock(ds);
-    awt.FreeDrawingSurface(ds);
-    return (void *)CFBridgingRetain(layer);
+    /* Compose SwingPanel hosts a JPanel. JAWT GetDrawingSurfaceInfo on that
+       peer SIGSEGVs in awt_DrawingSurface_GetDrawingSurfaceInfo (playground
+       hs_err_pid13687, AWT-EventQueue-0). Keep CPU blit until we have a
+       real Canvas/NSView, not this interop hole. */
+    (void)env;
+    (void)component;
+    return NULL;
 }
 
 void mse_vt_detach(void *p)

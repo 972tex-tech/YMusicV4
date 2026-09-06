@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -720,9 +719,6 @@ private fun DesktopPlayerSurface(
     LaunchedEffect(mseSurface, msePanel) {
         mseSurface.frame.collect { msePanel.setImage(it) }
     }
-    DisposableEffect(mseSurface, msePanel) {
-        onDispose { mseSurface.attach(null) }
-    }
 
     Box(modifier.onSizeChanged { size = it }) {
         if (localVisible) {
@@ -741,13 +737,6 @@ private fun DesktopPlayerSurface(
             SwingPanel(
                 background = Color.Black,
                 factory = { msePanel },
-                update = {
-                    it.nativePresent = mseSurface.nativePresent
-                    if (it.isDisplayable && !it.attachTried && mseSurface.host != 0L) {
-                        it.attachTried = true
-                        it.nativePresent = mseSurface.attach(it)
-                    }
-                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -802,9 +791,6 @@ private fun DesktopPlayerSurface(
  */
 private class MseVideoPanel : JPanel() {
     @Volatile private var img: BufferedImage? = null
-
-    @Volatile var nativePresent: Boolean = false
-    var attachTried: Boolean = false
 
     init {
         isOpaque = true
