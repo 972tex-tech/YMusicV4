@@ -225,6 +225,24 @@ static JSValue js_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
+static JSValue js_video_size(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *host = host_of(ctx);
+    int w = 0, ht = 0;
+    JSValue arr;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!g_vt || !host)
+        return throw_no_mse(ctx);
+    if (g_vt->video_size)
+        g_vt->video_size(host, &w, &ht);
+    arr = JS_NewArray(ctx);
+    JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, w));
+    JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, ht));
+    return arr;
+}
+
 void qjs_mse_install(JSContext *ctx)
 {
     JSValue g = JS_GetGlobalObject(ctx);
@@ -242,5 +260,6 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseAbort", JS_NewCFunction(ctx, js_abort, "__mseAbort", 1));
     JS_SetPropertyStr(ctx, g, "__mseBuffered", JS_NewCFunction(ctx, js_buffered, "__mseBuffered", 1));
     JS_SetPropertyStr(ctx, g, "__mseReset", JS_NewCFunction(ctx, js_reset, "__mseReset", 0));
+    JS_SetPropertyStr(ctx, g, "__mseVideoSize", JS_NewCFunction(ctx, js_video_size, "__mseVideoSize", 0));
     JS_FreeValue(ctx, g);
 }
