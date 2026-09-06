@@ -702,7 +702,7 @@ static JSValue js_utf8_decode(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NewStringLen(ctx, (const char *)(src + off), (size_t)len);
 }
 
-/* From the YMusic patch at the end of the vendored quickjs.c: direct flat-string storage access
+/* From the BEGIN/END patch at the end of the vendored quickjs.c: direct flat-string storage access
  * (narrow = Latin-1, wide = UTF-16; ropes linearize once and cache). */
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
 int JS_GetFlatStringStorage(JSValueConst v, const void **pdata, uint32_t *plen);

@@ -9,7 +9,7 @@
 #include <sys/time.h>
 #include <time.h>
 
-/* Flat-string access (YMusic patch at the end of vendored quickjs.c). */
+/* Flat-string access (BEGIN/END patch at the end of vendored quickjs.c). */
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
 int JS_GetFlatStringStorage(JSValueConst v, const void **pdata, uint32_t *plen);
 JSValue JS_NewStringLatin1(JSContext *ctx, const char *buf, size_t len);

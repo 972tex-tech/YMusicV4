@@ -7533,7 +7533,7 @@ static const char *get_prop_string(JSContext *ctx, JSValueConst obj, JSAtom prop
 
 #define JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL (1 << 0)
 
-/* YMusic patch (re-apply when upgrading QuickJS): V8-shaped Error.stack.
+/* BEGIN patch: V8-shaped Error.stack
  * Chrome traces do not emit eval|Function|anonymous; those frames use
  * location.href (about:blank if unset). */
 static int stack_is_anon(const char *name)
@@ -7714,6 +7714,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
     JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_stack, str,
                            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
 }
+/* END patch */
 
 /* Note: it is important that no exception is returned by this function */
 static BOOL is_backtrace_needed(JSContext *ctx, JSValueConst obj)
@@ -37430,7 +37431,7 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValueConst this_obj,
     size_t len;
 
     if (!JS_IsString(val)) {
-        /* YMusic patch (re-apply when upgrading QuickJS): Chrome eval(TrustedScript)
+        /* BEGIN patch: Chrome eval(TrustedScript)
          * runs the script source. Do not replace global eval — direct eval must see
          * locals. Objects whose toString is `[object …]` are left as values. */
         if (JS_IsObject(val)) {
@@ -37452,6 +37453,7 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValueConst this_obj,
             JS_FreeValue(ctx, s_v);
             return ret;
         }
+        /* END patch */
         return JS_DupValue(ctx, val);
     }
     str = JS_ToCStringLen(ctx, &len, val);
@@ -41490,9 +41492,9 @@ static JSValue js_function_toString(JSContext *ctx, JSValueConst this_val,
             pref = "async function *";
             break;
         }
-        /* YMusic patch (re-apply when upgrading QuickJS): V8/Chrome
-         * `function name() { [native code] }`. */
+        /* BEGIN patch: V8/Chrome `function name() { [native code] }`. */
         suff = "() { [native code] }";
+        /* END patch */
         name = JS_GetProperty(ctx, this_val, JS_ATOM_name);
         if (JS_IsUndefined(name))
             name = JS_AtomToString(ctx, JS_ATOM_empty_string);
@@ -41517,9 +41519,9 @@ static const JSCFunctionListEntry js_function_proto_funcs[] = {
     JS_CFUNC_DEF("bind", 1, js_function_bind ),
     JS_CFUNC_DEF("toString", 0, js_function_toString ),
     JS_CFUNC_DEF("[Symbol.hasInstance]", 1, js_function_hasInstance ),
-    /* YMusic patch (re-apply when upgrading QuickJS): Chrome Function.prototype
-     * has no fileName/lineNumber/columnNumber. Leaving them makes
-     * `'fileName' in atob` true. */
+    /* BEGIN patch: Chrome Function.prototype has no fileName/lineNumber/columnNumber.
+     * Leaving them makes `'fileName' in atob` true. */
+    /* END patch */
 };
 
 /* Error class */
@@ -42772,8 +42774,8 @@ static JSValue js_array_toString(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
-/* YMusic patch (re-apply when upgrading QuickJS): Chrome Array#join skips a
- * circular array (empty chunk) instead of recursing until the native stack dies. */
+/* BEGIN patch: Chrome Array#join skips a circular array (empty chunk)
+ * instead of recursing until the native stack dies. */
 static __thread void *js_array_join_seen[96];
 static __thread int js_array_join_seen_n;
 
@@ -42853,6 +42855,7 @@ exception:
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
+/* END patch */
 
 static JSValue js_array_pop(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv, int shift)
@@ -61572,10 +61575,10 @@ int JS_AddIntrinsicWeakRef(JSContext *ctx)
     return 0;
 }
 
-/* ---------------- YMusic patch (re-apply when upgrading QuickJS) ----------------
- * Direct flat-string storage access for the streaming JSON encoder (../quickjs_json.c __jsonEnc*):
- * lets string tokens escape+encode straight out of JSString memory instead of materializing a
- * UTF-8 cstring per token (JS_ToCStringLen). Narrow JSStrings are Latin-1; wide are UTF-16. */
+/* BEGIN patch: Direct flat-string storage access for the streaming JSON encoder
+ * (../quickjs_json.c __jsonEnc*): lets string tokens escape+encode straight out of
+ * JSString memory instead of materializing a UTF-8 cstring per token (JS_ToCStringLen).
+ * Narrow JSStrings are Latin-1; wide are UTF-16. */
 
 /* An owned flat string for any string value (linearizes ropes). */
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v)
@@ -61608,3 +61611,4 @@ JSValue JS_NewStringLatin1(JSContext *ctx, const char *buf, size_t len)
         return JS_ThrowRangeError(ctx, "string too long");
     return js_new_string8_len(ctx, buf, (int)len);
 }
+/* END patch */

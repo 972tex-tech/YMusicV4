@@ -628,7 +628,7 @@ typedef struct {
     int busy;             /* inside js_json_enc_fill: reject reentrant fills (a held EncFrame* would dangle) */
 } JEnc;
 
-/* From the YMusic patch at the end of the vendored quickjs.c: direct flat-string storage access,
+/* From the BEGIN/END patch at the end of the vendored quickjs.c: direct flat-string storage access,
  * so string tokens escape+encode straight out of JSString memory (Latin-1 / UTF-16) with no
  * per-token UTF-8 cstring materialization (that one malloc + extra pass was most of the remaining
  * gap to the internal JSON.stringify). */

@@ -229,7 +229,7 @@ getters run *during* serialization — a value mutated under backpressure serial
 
 String tokens escape + UTF-8-encode in one pass **straight out of JSString storage** (Latin-1 or
 UTF-16, ropes linearized first) via `JS_ToFlatString`/`JS_GetFlatStringStorage` — a ~25-line patch
-appended to the vendored `quickjs.c` (marked "YMusic patch"; **re-apply when upgrading QuickJS**).
+appended to the vendored `quickjs.c` (`BEGIN patch` / `END patch`; re-apply when upgrading QuickJS).
 No per-token cstring materialization; hot atoms (`toJSON`, `length`) are interned once per encoder;
 int32 numbers format directly. Net: faster than the native one-shot with one-segment memory.
 
