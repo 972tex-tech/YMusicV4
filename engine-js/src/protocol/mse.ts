@@ -117,7 +117,7 @@ function coverDummyVideo(): void {
   const jump = Math.abs(start - dummyCoverStart) >= 1 || Math.abs(target - dummyCoverEnd) >= 1;
   dummyCoverStart = start;
   dummyCoverEnd = target;
-  if (jump) console.log("mse dummy SB cover " + dummyCoverStart + ".." + dummyCoverEnd);
+  if (jump) mseLog("mse dummy SB cover " + dummyCoverStart + ".." + dummyCoverEnd);
   /* Do not pulse SourceBuffer.updating. base.js caches buffered by object
      reference (HS(!0)) and treats updating as "don't append / don't refresh".
      The getter is live, so sliding the numbers is enough. */
@@ -152,7 +152,9 @@ function shortStack(): string {
   return dummyStackOnce;
 }
 
-function fmtBr(br: { length: number; start(i: number): number; end(i: number): number } | null): string {
+function fmtBr(
+  br: { length: number; start(i: number): number; end(i: number): number } | null,
+): string {
   if (!br) return "";
   const n = br["length"];
   const parts: string[] = [];
@@ -184,12 +186,15 @@ function lisN(sb: { _listeners: Record<string, Listener[]> }, type: string): num
   return list ? list.length : 0;
 }
 
-function fire(target: { _listeners: Record<string, Listener[]>; mimeType?: string }, type: string): void {
+function fire(
+  target: { _listeners: Record<string, Listener[]>; mimeType?: string },
+  type: string,
+): void {
   const list = target._listeners[type];
   if (!list) return;
   if (isAudioOnly() && type === "updateend") {
     const mime = String((target as { ["mimeType"]?: string })["mimeType"] || "");
-    console.log("mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length);
+    mseLog("mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length);
   }
   const ev: Record<string, unknown> = {
     "type": type,
@@ -206,7 +211,7 @@ function fire(target: { _listeners: Record<string, Listener[]>; mimeType?: strin
       drainCalls.lisErr++;
       const err = e instanceof Error ? e : new Error(String(e));
       const st = err.stack ? " " + err.stack.replace(/\s+/g, " ").slice(0, 240) : "";
-      console.log("mse listener " + type + " err=" + err.name + " " + err.message + st);
+      mseLog("mse listener " + type + " err=" + err.name + " " + err.message + st);
     }
   }
 }
@@ -332,8 +337,13 @@ class SourceBuffer {
     } catch (_e) {}
     if (this["updating"]) {
       drainCalls.throw++;
-      console.log(
-        "mse append throw updating dummy=" + (dummy ? "1" : "0") + " a=" + audio + " bytes=" + nbytes,
+      mseLog(
+        "mse append throw updating dummy=" +
+          (dummy ? "1" : "0") +
+          " a=" +
+          audio +
+          " bytes=" +
+          nbytes,
       );
       throw invalidState("SourceBuffer.appendBuffer: updating");
     }
@@ -345,7 +355,7 @@ class SourceBuffer {
         drainCalls.dummy++;
         dummySb = self;
         coverDummyVideo();
-        console.log(
+        mseLog(
           "mse append dummy v bytes=" +
             nbytes +
             " mime=" +
@@ -367,29 +377,17 @@ class SourceBuffer {
         if (__mseCurrentTime() < 1) {
           const br = __mseBuffered(audio);
           if (br && br.length >= 2 && br[0]! > 60) {
-            console.log("mse live-join clock " + br[0]);
+            mseLog("mse live-join clock " + br[0]);
             __mseSetCurrentTime(br[0]!);
           }
         }
         if (audio) {
           drainCalls.audio++;
           coverDummyVideo();
-          if (!MSE_DEBUG && isAudioOnly()) {
-            const br = __mseBuffered(1);
-            let leftover = "";
-            if (br && br.length >= 2 && br[1]! > br[0]!) {
-              leftover =
-                " buf=" +
-                Math.round(br[0]! * 1000) +
-                "+" +
-                Math.round((br[1]! - br[0]!) * 1000);
-            }
-            console.log("mse append a=1 bytes=" + u8.length + leftover);
-          }
         } else {
           drainCalls.video++;
         }
-        if (MSE_DEBUG) {
+        {
           const br = __mseBuffered(audio);
           mseLog(
             "mse append a=" +
@@ -411,7 +409,7 @@ class SourceBuffer {
       drainCalls.throw++;
       self["updating"] = false;
       const err = e instanceof Error ? e : new Error(String(e));
-      console.log(
+      mseLog(
         "mse append throw " +
           err.name +
           " dummy=" +
@@ -438,10 +436,7 @@ class SourceBuffer {
         __mseRemove(audio, start, end);
       }
       drainCalls.remove++;
-      if (isAudioOnly() || dummy) {
-        console.log("mse remove dummy=" + (dummy ? "1" : "0") + " a=" + audio + " " + start + ".." + end);
-      }
-      mseLog("mse remove a=" + audio + " " + start + ".." + end);
+      mseLog("mse remove dummy=" + (dummy ? "1" : "0") + " a=" + audio + " " + start + ".." + end);
     } catch (e) {
       self["updating"] = false;
       throw e;
@@ -458,9 +453,14 @@ class SourceBuffer {
     const dummy = isDummyVideoMime(this["mimeType"]);
     const audio = audioFlag(this["mimeType"]);
     drainCalls.abort++;
-    if (isAudioOnly() || dummy) {
-      console.log("mse abort dummy=" + (dummy ? "1" : "0") + " a=" + audio + " upd=" + (this["updating"] ? "1" : "0"));
-    }
+    mseLog(
+      "mse abort dummy=" +
+        (dummy ? "1" : "0") +
+        " a=" +
+        audio +
+        " upd=" +
+        (this["updating"] ? "1" : "0"),
+    );
     if (dummy) {
       this["updating"] = false;
       fire(this, "abort");
@@ -570,7 +570,7 @@ class MediaSource {
       throw err;
     }
     mseLog("mse addSourceBuffer " + mime);
-    if (isDummyVideoMime(mime)) console.log("mse dummy SB " + mime);
+    if (isDummyVideoMime(mime)) mseLog("mse dummy SB " + mime);
     const sb = new SourceBuffer(mime);
     this["sourceBuffers"].push(sb);
     if (isDummyVideoMime(mime)) {
@@ -827,7 +827,7 @@ class HTMLMediaElement {
        owns video — including leave-audio, after __ymAudioOnly is already
        false. Feeding that seek into C starts VP9/AV1 on a P-frame (SIGILL). */
     if (t < 1 && prev > 10 && (isAudioOnly() || !videoHasLeftover())) {
-      console.log("mse ignore seek-0 audio-only from " + prev);
+      mseLog("mse ignore seek-0 audio-only from " + prev);
       return;
     }
     const aEnd = audioBufferedEnd();
@@ -835,7 +835,7 @@ class HTMLMediaElement {
        fetches that playhead (log3: clamp 166→110 left the clock behind
        YouTube's playerTimeMs). */
     if (isAudioOnly() && isLiveDuration() && aEnd > 1 && t > aEnd + 0.75) {
-      console.log("mse clamp seek " + t + " to audioEnd " + aEnd);
+      mseLog("mse clamp seek " + t + " to audioEnd " + aEnd);
       t = aEnd;
     }
     this["seeking"] = true;
@@ -861,7 +861,7 @@ class HTMLMediaElement {
         /* log14: load 2nd live while audio-only. YouTube seeks DVR head
            before C has audio. Holding seeking blocks that append. */
         if (t > 60 && aEnd < 1) {
-          console.log("mse seeked live-empty t=" + t);
+          mseLog("mse seeked live-empty t=" + t);
           finishSeek();
           return;
         }
@@ -968,12 +968,13 @@ export function activeHtmlMedia(): HTMLMediaElement | null {
 
 /** MSE-only drain line. Do not walk base.js internals. */
 export function dumpDrain(why: string): void {
+  if (!MSE_DEBUG) return;
   if (!isAudioOnly() && why.indexOf("setQuality") < 0) return;
   try {
-    console.log("mse drain " + why + " " + dumpMseDrain());
+    mseLog("mse drain " + why + " " + dumpMseDrain());
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
-    console.log("mse drain " + why + " err=" + err.message);
+    mseLog("mse drain " + why + " err=" + err.message);
   }
 }
 
@@ -982,7 +983,9 @@ export function dumpMseDrain(): string {
   const el = activeMedia;
   const ct = el ? __mseCurrentTime() : 0;
   const dummy =
-    dummyCoverEnd > dummyCoverStart ? dummyCoverStart.toFixed(2) + ".." + dummyCoverEnd.toFixed(2) : "-";
+    dummyCoverEnd > dummyCoverStart
+      ? dummyCoverStart.toFixed(2) + ".." + dummyCoverEnd.toFixed(2)
+      : "-";
   let mediaBuf = "";
   let mediaJe = "-";
   let paused = "-";

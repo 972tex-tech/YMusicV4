@@ -685,7 +685,8 @@ class Player {
       dropVideoTrack();
       resetDrainCounts();
       this.pinTinyIfVod();
-      console.log("mse setQuality zero clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0));
+      if (MSE_DEBUG)
+        console.log("mse setQuality zero clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0));
       dumpDrain("setQuality-zero");
       return;
     }
@@ -943,16 +944,17 @@ class Player {
     const extra = rows.length - 2;
     if (extra !== lastQualityExtra) {
       lastQualityExtra = extra;
-      console.log(
-        "mse qualityApi movie=" +
-          (host && typeof host["getAvailableQualityData"] === "function" ? "1" : "0") +
-          " data=" +
-          dataN +
-          " levels=" +
-          levelsN +
-          " extra=" +
-          extra,
-      );
+      if (MSE_DEBUG)
+        console.log(
+          "mse qualityApi movie=" +
+            (host && typeof host["getAvailableQualityData"] === "function" ? "1" : "0") +
+            " data=" +
+            dataN +
+            " levels=" +
+            levelsN +
+            " extra=" +
+            extra,
+        );
     }
     return rows;
   }
