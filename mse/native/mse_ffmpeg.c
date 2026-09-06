@@ -523,10 +523,22 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
             AVStream *st = fmt->streams[st_idx];
             double pts = 0, dur = 0;
             int64_t ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+            double tb = av_q2d(st->time_base);
             if (ts != AV_NOPTS_VALUE)
-                pts = ts * av_q2d(st->time_base);
+                pts = ts * tb;
             if (pkt->duration > 0)
-                dur = pkt->duration * av_q2d(st->time_base);
+                dur = pkt->duration * tb;
+            /* SABR WebM Cluster Timecode is milliseconds. A non-1ms
+               TimestampScale turns 18s into 90s and a seek to 453s into
+               2252s (log21 starve-ahead extra=1799). */
+            if (want_video && tb > 0 && (tb > 0.002 || tb < 0.0005)) {
+                if (nadd == 0)
+                    vlog("webm tb=%d/%d -> 1ms", st->time_base.num, st->time_base.den);
+                if (ts != AV_NOPTS_VALUE)
+                    pts = ts * 0.001;
+                if (pkt->duration > 0)
+                    dur = pkt->duration * 0.001;
+            }
             pts += ts_off;
             if (cfb_push(dst, pts, dur, !!(pkt->flags & AV_PKT_FLAG_KEY),
                          pkt->data, (size_t)pkt->size) == 0)
@@ -1805,10 +1817,12 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
-    /* No RAP at the new playhead: drop the decoder instead of feeding leftover
-       P-frames (live DVR -10s SIGILL). Next append reopens. */
-    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key)
+    /* No RAP at the new playhead: drop stale leftover (0–18s after a seek
+       to 453s) and the decoder. Next append reopens. */
+    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key) {
+        cfb_free(&a->vf);
         close_video_decoder(a);
+    }
     else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
     if (a->vbsf)
