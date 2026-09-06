@@ -359,8 +359,10 @@ call QuickJS `__mse*` trampolines, which hit `:mse` C (`mse_host.c`) through a v
 passes in (`attachMseHost(host, vtable)`). JNI from the app is **only** `setVideoSurface`. Seek is
 JS (`player/seek` → `HTMLMediaElement.currentTime` → `__mseSetCurrentTime`).
 
-App control (`player/load|play|pause|seek|stop|setQuality`) is a bundle command that talks to the
-stub media element (and thus those trampolines). `player/load` defaults quality `"zero"`: base.js
+App control (`player/load|play|pause|seek|stop|setQuality|setViewport`) is a bundle command that talks to the
+stub media element (and thus those trampolines). Display viewport defaults to 640×360; the host
+sends `player/setViewport` `{width,height}` (also accepted on `player/init` / `player/load`) so SABR
+ABR matches the real hole. `player/load` defaults quality `"zero"`: base.js
 still builds a normal video SourceBuffer; MSE does not append video to C; dummy `buffered` leads
 the playhead so the player is not waiting on video bytes the server will not send (`ClientAbrState`
 field 40 = 1). Field 17 stays. `player/setQuality("zero")` drops decoded video and does not call

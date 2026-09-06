@@ -4,6 +4,7 @@
 
 import { isAudioOnly } from "../logic/player/audio_only";
 import { isYmLive } from "../logic/player/live";
+import { viewportHeight, viewportWidth } from "../logic/player/viewport";
 
 type Listener = (ev?: Record<string, unknown>) => void;
 
@@ -683,10 +684,10 @@ class HTMLMediaElement {
   }
 
   get ["videoWidth"](): number {
-    return 640;
+    return viewportWidth();
   }
   get ["videoHeight"](): number {
-    return 360;
+    return viewportHeight();
   }
 
   ["canPlayType"](t: string): string {

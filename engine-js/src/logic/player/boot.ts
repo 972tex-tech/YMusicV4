@@ -30,6 +30,7 @@ import {
   waitCaptionIngest,
 } from "./captions";
 import { playerStorageReady } from "./storage";
+import { applyViewport, viewportHeight, viewportWidth } from "./viewport";
 
 const ORIGIN = "https://www.youtube.com";
 let lastQualityExtra = -1;
@@ -41,8 +42,8 @@ function asRec(v: unknown): Record<string, unknown> | null {
 
 function sizePlayerEl(el: Element | null): void {
   if (!el) return;
-  el.clientWidth = el.offsetWidth = 640;
-  el.clientHeight = el.offsetHeight = 360;
+  el.clientWidth = el.offsetWidth = viewportWidth();
+  el.clientHeight = el.offsetHeight = viewportHeight();
 }
 
 function sizeNodeList(list: { length: number; [i: number]: Element | undefined } | null): void {
@@ -253,11 +254,13 @@ function installSabrObserver(): void {
         rec && typeof rec["getBoundingClientRect"] === "function"
           ? (rec["getBoundingClientRect"] as () => Record<string, number>)
           : null;
+      const vw = viewportWidth();
+      const vh = viewportHeight();
       const rect = getRect
         ? getRect.call(rec)
-        : { x: 0, y: 0, width: 640, height: 360, top: 0, left: 0, bottom: 360, right: 640 };
-      const w = Number(rect["width"]) || 640;
-      const h = Number(rect["height"]) || 360;
+        : { x: 0, y: 0, width: vw, height: vh, top: 0, left: 0, bottom: vh, right: vw };
+      const w = Number(rect["width"]) || vw;
+      const h = Number(rect["height"]) || vh;
       Promise.resolve().then(function () {
         const cb = self["_cb"];
         if (typeof cb !== "function") return;
@@ -309,12 +312,21 @@ function installPlayerTree(): void {
   const player = document.createElement("div");
   player.id = "player";
   sizePlayerEl(player);
-  const origAppend = player.appendChild;
-  player.appendChild = function (this: Element, child: Element) {
-    sizePlayerEl(child);
-    return origAppend.call(this, child);
-  };
   document.body.appendChild(player);
+}
+
+function fireWindowResize(): void {
+  try {
+    const g = globalThis as unknown as { dispatchEvent?: (ev: unknown) => unknown };
+    if (typeof g.dispatchEvent === "function") g.dispatchEvent({ type: "resize" });
+  } catch (_e) {}
+}
+
+export function setPlayerViewport(width: unknown, height: unknown): Record<string, unknown> {
+  applyViewport(width, height);
+  sizePlayerTree();
+  fireWindowResize();
+  return { "ok": true, "width": viewportWidth(), "height": viewportHeight() };
 }
 
 function owlSlot(): string {
@@ -603,18 +615,24 @@ class Player {
     };
     const param2 = {
       "args": playerVars,
-      "attrs": { "id": "video-player", "width": "640", "height": "360" },
+      "attrs": {
+        "id": "video-player",
+        "width": String(viewportWidth()),
+        "height": String(viewportHeight()),
+      },
       "loaded": true,
     };
     /* Arg 1 is the parent. Application.create appends a new div whose id is
        ctx.rootElementId ("movie_player") and copies the IFrame API onto it. */
     const root = document.getElementById("player");
     if (!root) throw new JsEngineErrorImpl("missing #player", "E20076");
+    sizePlayerEl(root);
     out["step"] = "create";
     try {
       this.player = create(root, param2, this.createCtx) as YtApp;
       (globalThis as unknown as Record<string, unknown>)["__ymPlayer"] = this.player;
       sizePlayerTree();
+      fireWindowResize();
       bindMoviePlayerApi(this.player);
       if (MSE_DEBUG) {
         const el = moviePlayer();

@@ -95,6 +95,8 @@ class MsePlayer internal constructor(
     private var captionJob: Job? = null
     private var pendingVideoSurface: MseVideoSurface? = null
     private var hasPendingVideoSurface = false
+    private var viewportW: Int = 640
+    private var viewportH: Int = 360
 
     override fun refreshOnNext() {
         if (!released) pendingRefresh = true
@@ -137,7 +139,7 @@ class MsePlayer internal constructor(
                 }
                 val p = ensureInit()
                 val quality = config.preferVideoQuality.first
-                p.load(source.videoId, log, quality)
+                p.load(source.videoId, log, quality, viewportW, viewportH)
                 if (startPositionMs > 0L) p.seekTo(startPositionMs, log)
                 applyCaptionConfig(config)
                 if (playWhenReady) p.play(log) else p.pause(log)
@@ -211,6 +213,17 @@ class MsePlayer internal constructor(
         player?.setVideoSurface(surface)
     }
 
+    /** Display hole in CSS pixels. YouTube ABR picks formats for this size. Default 640×360. */
+    fun setViewport(width: Int, height: Int) {
+        if (released) return
+        val w = width.coerceAtLeast(1)
+        val h = height.coerceAtLeast(1)
+        viewportW = w
+        viewportH = h
+        val p = player ?: return
+        scope.launch { runCatching { p.setViewport(w, h, log) } }
+    }
+
     override suspend fun requestPlayerResponse(videoId: String): String =
         engine().cachedPlayerResponse(log).toString()
 
@@ -241,7 +254,7 @@ class MsePlayer internal constructor(
     private suspend fun ensureInit(): DynamicEnginePlayer {
         val p = engine()
         if (!inited) {
-            p.init(log)
+            p.init(log, viewportW, viewportH)
             inited = true
         }
         _status.update {

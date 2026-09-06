@@ -37,9 +37,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.player.CaptionLine
 import io.ymusic.dynamicengine.player.CaptionTrackInfo
@@ -86,6 +88,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     var captionTracks by remember { mutableStateOf<List<CaptionTrackInfo>>(emptyList()) }
     var captionVss by remember { mutableStateOf<String?>(null) }
     var captionLines by remember { mutableStateOf<List<CaptionLine>>(emptyList()) }
+    var holeSize by remember { mutableStateOf(IntSize.Zero) }
+    var didLoad by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
@@ -94,8 +98,26 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
             }
             withContext(Dispatchers.Default) { s.player.init(s.log) }
             session = s
+        } catch (t: Throwable) {
+            error = t.message ?: t.toString()
+            println("mse boot failed: $t")
+            t.printStackTrace()
+            booting = false
+        }
+    }
+    LaunchedEffect(session, holeSize) {
+        val s = session ?: return@LaunchedEffect
+        val w = holeSize.width
+        val h = holeSize.height
+        if (w > 0 && h > 0) {
+            withContext(Dispatchers.Default) { s.player.setViewport(w, h, s.log) }
+        }
+        if (didLoad) return@LaunchedEffect
+        if (w <= 0 || h <= 0) return@LaunchedEffect
+        didLoad = true
+        try {
             withContext(Dispatchers.Default) {
-                s.player.load(videoId, s.log, quality)
+                s.player.load(videoId, s.log, quality, w, h)
                 s.player.play(s.log)
             }
             captionTracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
@@ -244,7 +266,9 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) {
-                                s.player.load(id, s.log, quality)
+                                val w = holeSize.width.takeIf { it > 0 }
+                                val h = holeSize.height.takeIf { it > 0 }
+                                s.player.load(id, s.log, quality, w, h)
                                 s.player.play(s.log)
                             }
                             val tracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
@@ -352,7 +376,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+        Box(Modifier.fillMaxWidth().weight(1f).onSizeChanged { holeSize = it }) {
             MseNativeVideo(
                 surface = surface,
                 player = session?.player,

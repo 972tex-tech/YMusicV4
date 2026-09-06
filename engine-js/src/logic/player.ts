@@ -12,9 +12,11 @@ import {
   playPlayer,
   seekPlayer,
   setPlayerQuality,
+  setPlayerViewport,
   statusPlayer,
   stopPlayer,
 } from "./player/boot";
+import { applyViewport } from "./player/viewport";
 import { runCatalogSession, runProgressSession } from "./player/push";
 import { listCaptionTracks, runCaptionSession, setCaptionVss } from "./player/captions";
 import { lastPlayerResponseJson } from "./player/skip_ads";
@@ -24,7 +26,8 @@ createHtmlMedia();
 onAccept(
   "player/init",
   commandHandler(async (src, out) => {
-    await src.readJsonObject();
+    const a = await src.readJsonObject();
+    applyViewport(a["width"], a["height"]);
     const result = await initPlayer();
     const p = out.writeObjectAsJson(result);
     if (p) await p;
@@ -37,8 +40,19 @@ onAccept(
     const a = await src.readJsonObject();
     const id = String(a["videoId"] ?? "");
     if (!id) throw new JsEngineErrorImpl("player/load missing videoId", "E20072");
+    applyViewport(a["width"], a["height"]);
     const quality = a["quality"] != null ? String(a["quality"]) : undefined;
     const result = await loadPlayer(id, quality);
+    const p = out.writeObjectAsJson(result);
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setViewport",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const result = setPlayerViewport(a["width"], a["height"]);
     const p = out.writeObjectAsJson(result);
     if (p) await p;
   }),

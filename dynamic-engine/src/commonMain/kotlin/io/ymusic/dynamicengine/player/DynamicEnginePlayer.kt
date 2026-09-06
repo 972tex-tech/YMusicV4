@@ -36,19 +36,50 @@ class DynamicEnginePlayer private constructor(
     val engine: DynamicEngine,
     private val nativeMse: NativeMseHost?,
 ) {
-    suspend fun init(logger: Logger? = null): JsonObject {
-        return engine.jsonCommand("player/init", { }, logger) { it.readObject() }
+    suspend fun init(
+        logger: Logger? = null,
+        width: Int? = null,
+        height: Int? = null,
+    ): JsonObject {
+        return engine.jsonCommand(
+            "player/init",
+            { w ->
+                if (width != null) w.name("width").value(width)
+                if (height != null) w.name("height").value(height)
+            },
+            logger,
+        ) { it.readObject() }
     }
 
-    suspend fun load(videoId: String, logger: Logger? = null, quality: String = "zero"): JsonObject {
+    suspend fun load(
+        videoId: String,
+        logger: Logger? = null,
+        quality: String = "zero",
+        width: Int? = null,
+        height: Int? = null,
+    ): JsonObject {
         return engine.jsonCommand(
             "player/load",
             { w ->
                 w.name("videoId").value(videoId)
                 w.name("quality").value(quality)
+                if (width != null) w.name("width").value(width)
+                if (height != null) w.name("height").value(height)
             },
             logger,
         ) { it.readObject() }
+    }
+
+    /** Display hole size in CSS pixels. YouTube ABR uses this as the viewport. Default 640×360. */
+    suspend fun setViewport(width: Int, height: Int, logger: Logger? = null) {
+        engine.jsonCommand(
+            "player/setViewport",
+            { w ->
+                w.name("width").value(width)
+                w.name("height").value(height)
+            },
+            logger,
+        ) { it.skipValue() }
     }
 
     /** `"zero"` is audio-only (no video download/decode/render). Other values are YouTube quality tokens. */
