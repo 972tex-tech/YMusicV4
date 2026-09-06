@@ -33,14 +33,16 @@ plugins {
 val backendVersion = Versions.engineJsBackendVersion
 
 // Compile-time define: a bare `declare const` identifier substituted inline at bundle time —
-// no runtime global, no extern. SABR_DEBUG / MSE_DEBUG are off in prod
-// (`-PsabrDebug=true` / `-PmseDebug=true` to enable).
+// no runtime global, no extern. SABR_DEBUG / MSE_DEBUG / BG_DUMP are off in prod
+// (`-PsabrDebug=true` / `-PmseDebug=true` / `-PbgDump=true` to enable).
 val sabrDebug = project.findProperty("sabrDebug") == "true"
 val mseDebug = project.findProperty("mseDebug") == "true"
+val bgDump = project.findProperty("bgDump") == "true"
 val esbuildDefines = arrayOf(
     "--define:BACKEND_VERSION=$backendVersion",
     "--define:SABR_DEBUG=$sabrDebug",
     "--define:MSE_DEBUG=$mseDebug",
+    "--define:BG_DUMP=$bgDump",
 )
 
 val srcDir = layout.projectDirectory.dir("src")

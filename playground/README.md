@@ -6,9 +6,10 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 
 ## Run
 
-- **Desktop JVM** — `./gradlew :playground:run -PsabrDebug=true`
+- **Desktop JVM** — `./gradlew :playground:run -PsabrDebug=true -PbgDump=true`
 
-BotGuard capture (no cookies) lands in `build/bg-dump/` as files a later miller/SPS run can load. Watch for:
+BotGuard capture (no cookies) lands in `build/bg-dump/` as files a later miller/SPS run can load
+(`BG_DUMP` is a compile-time define; off in prod). Watch for:
 
 ```
 bg capture miller dir=… program=N snap=N it=N

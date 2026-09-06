@@ -1,7 +1,7 @@
 // Hold the last homepage miller so a later harness run can: (1) reload the
 // program, (2) mint a content PO, (3) POST the captured SABR body and read SPS.
 // Console lines are 3k chunks (console.log caps at 8192). Playground reassembles
-// them into build/bg-dump/.
+// them into build/bg-dump/. BG_DUMP compile define; stripped in prod.
 
 import { DESKTOP_UA } from "../yt/session";
 
@@ -18,6 +18,7 @@ function u8ToB64url(u: Uint8Array): string {
 }
 
 export function recordBgChallenge(p: Record<string, unknown>): void {
+  if (!BG_DUMP) return;
   const keys = [
     "eventId",
     "visitorData",
@@ -45,6 +46,7 @@ export function recordBgChallenge(p: Record<string, unknown>): void {
 }
 
 export function recordBgMint(id: Uint8Array, token: unknown): void {
+  if (!BG_DUMP) return;
   held["mintId"] = new TextDecoder().decode(id);
   if (token instanceof Uint8Array) held["pot"] = u8ToB64url(token);
   else if (typeof token === "string") held["pot"] = token;
@@ -59,6 +61,7 @@ export function recordBgMint(id: Uint8Array, token: unknown): void {
 
 /** Last /videoplayback POST — replay this body with a new PO to read SPS. */
 export function recordSabrForDump(url: string, body: Uint8Array | null): void {
+  if (!BG_DUMP) return;
   held["sabrUrl"] = url;
   held["sabrBody"] = body && body.length ? u8ToB64url(body) : "";
   if (dumpedSabr) return;
@@ -76,7 +79,9 @@ function logBig(tag: string, s: string): void {
   }
   const parts = Math.ceil(s.length / DUMP_CHUNK);
   for (let i = 0; i < parts; i++) {
-    console.log(tag + " " + i + "/" + parts + " " + s.slice(i * DUMP_CHUNK, i * DUMP_CHUNK + DUMP_CHUNK));
+    console.log(
+      tag + " " + i + "/" + parts + " " + s.slice(i * DUMP_CHUNK, i * DUMP_CHUNK + DUMP_CHUNK),
+    );
   }
 }
 
@@ -97,6 +102,7 @@ function dumpSabrCapture(): void {
 }
 
 export function dumpBgParams(why: string): void {
+  if (!BG_DUMP) return;
   const rec: Record<string, unknown> = {
     "why": why,
     "eventId": held["eventId"] || "",
@@ -125,6 +131,7 @@ export function dumpBgParams(why: string): void {
 }
 
 export function dumpFirstSps(sps: number): void {
+  if (!BG_DUMP) return;
   if (sps <= 0) return;
   if (dumpedFirstSps !== 0) return;
   dumpedFirstSps = sps;
@@ -133,6 +140,7 @@ export function dumpFirstSps(sps: number): void {
 
 /** First sps=2/3 for this mint — full challenge again (mint dump may have lacked pot/SABR). */
 export function dumpBgOnSps(sps: number): void {
+  if (!BG_DUMP) return;
   dumpFirstSps(sps);
   if (sps !== 2 && sps !== 3) return;
   if (dumpedSps === sps) return;

@@ -85,6 +85,9 @@ declare const SABR_DEBUG: boolean;
 /** MSE append/src/create logs. esbuild `--define`, false in prod (`-PmseDebug=true`). */
 declare const MSE_DEBUG: boolean;
 
+/** BotGuard miller/SABR/entropy dump. esbuild `--define`, false in prod (`-PbgDump=true`). */
+declare const BG_DUMP: boolean;
+
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 

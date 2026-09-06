@@ -70,7 +70,7 @@ export async function minterFromConfig(
   cfg: Record<string, unknown>,
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {
-  if (typeof __bgEntropyStart === "function") __bgEntropyStart();
+  if (BG_DUMP) __bgEntropyStart();
   const ytcfgData = asRec(cfg["ytcfg"]) || {};
   const eventId = typeof cfg["eventId"] === "string" ? (cfg["eventId"] as string) : "";
   if (eventId && ytcfgData["EVENT_ID"] === undefined) ytcfgData["EVENT_ID"] = eventId;
@@ -178,7 +178,7 @@ export async function minterFromConfig(
 
   out["step"] = "snapshot";
   const webPo: unknown[] = [];
-  if (typeof __bgEntropyBegin === "function") __bgEntropyBegin();
+  if (BG_DUMP) __bgEntropyBegin();
   let botguardResponse: unknown;
   try {
     botguardResponse = await new Promise(function (resolve, reject) {
@@ -194,7 +194,7 @@ export async function minterFromConfig(
       }
     });
   } finally {
-    if (typeof __bgEntropyEnd === "function") __bgEntropyEnd();
+    if (BG_DUMP) __bgEntropyEnd();
   }
   out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
   out["snapshotPrefix"] =

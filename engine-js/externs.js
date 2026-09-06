@@ -198,6 +198,12 @@ function __mseRemove(audio, start, end) {}
 function __mseAbort(audio) {}
 function __mseBuffered(audio) {}
 function __mseReset() {}
+function __bgEntropyStart() {}
+function __bgEntropyBegin() {}
+function __bgEntropyEnd() {}
+function __bgEntropyStop() {}
+/** @return {?string} */
+function __bgEntropyDump() {}
 
 /**
  * @param {string} data
