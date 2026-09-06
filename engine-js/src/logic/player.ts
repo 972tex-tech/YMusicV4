@@ -15,11 +15,8 @@ import {
   statusPlayer,
   stopPlayer,
 } from "./player/boot";
-import {
-  listCaptionTracks,
-  runCaptionSession,
-  setCaptionVss,
-} from "./player/captions";
+import { runCatalogSession, runProgressSession } from "./player/push";
+import { listCaptionTracks, runCaptionSession, setCaptionVss } from "./player/captions";
 import { lastPlayerResponseJson } from "./player/skip_ads";
 
 createHtmlMedia();
@@ -121,6 +118,44 @@ onAccept(
     if (p) await p;
   }),
 );
+
+onAccept("player/progress", async (pipe) => {
+  try {
+    await runProgressSession(pipe);
+    const pr = pipe.sink.close();
+    if (pr) await pr;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/^EPIPE\b/.test(msg)) {
+      try {
+        const code = e instanceof JsEngineErrorImpl ? e.code : "E20001";
+        const pr2 = pipe.sink.close(JSON.stringify({ "code": code, "message": msg }));
+        if (pr2) await pr2;
+      } catch (_e) {}
+    }
+  } finally {
+    pipe.source.close();
+  }
+});
+
+onAccept("player/catalog", async (pipe) => {
+  try {
+    await runCatalogSession(pipe);
+    const pr = pipe.sink.close();
+    if (pr) await pr;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/^EPIPE\b/.test(msg)) {
+      try {
+        const code = e instanceof JsEngineErrorImpl ? e.code : "E20001";
+        const pr2 = pipe.sink.close(JSON.stringify({ "code": code, "message": msg }));
+        if (pr2) await pr2;
+      } catch (_e) {}
+    }
+  } finally {
+    pipe.source.close();
+  }
+});
 
 onAccept(
   "player/captions",

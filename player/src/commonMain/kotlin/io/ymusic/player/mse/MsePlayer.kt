@@ -32,7 +32,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -92,6 +91,7 @@ class MsePlayer internal constructor(
     private var playWhenReady = false
     private var applied = PlaybackConfig()
     private var pollJob: Job? = null
+    private var catalogJob: Job? = null
     private var captionJob: Job? = null
     private var pendingVideoSurface: MseVideoSurface? = null
     private var hasPendingVideoSurface = false
@@ -119,6 +119,7 @@ class MsePlayer internal constructor(
         this.playWhenReady = playWhenReady
         applied = config
         pollJob?.cancel()
+        catalogJob?.cancel()
         _status.update {
             it.copy(
                 state = PlaybackState.Uninitialized(isInitializing = true),
@@ -141,7 +142,7 @@ class MsePlayer internal constructor(
                 applyCaptionConfig(config)
                 if (playWhenReady) p.play(log) else p.pause(log)
                 refreshTracks()
-                startPoll()
+                startPush()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -173,6 +174,7 @@ class MsePlayer internal constructor(
         if (released) return
         playWhenReady = false
         pollJob?.cancel()
+        catalogJob?.cancel()
         captionJob?.cancel()
         _captionLines.value = emptyList()
         scope.launch { runCatching { engine().stop(log) } }
@@ -219,6 +221,7 @@ class MsePlayer internal constructor(
         if (released) return
         released = true
         pollJob?.cancel()
+        catalogJob?.cancel()
         captionJob?.cancel()
         scope.launch {
             runCatching { player?.close() }
@@ -292,22 +295,28 @@ class MsePlayer internal constructor(
         if (applied.captionVisible) applyCaptionConfig(applied)
     }
 
-    private fun startPoll() {
+    private fun startPush() {
         pollJob?.cancel()
+        catalogJob?.cancel()
         pollJob = scope.launch {
-            while (true) {
-                try {
-                    applyStatus(engine().status(log))
-                } catch (_: CancellationException) {
-                    throw CancellationException()
-                } catch (_: Throwable) {
-                }
-                delay(200)
+            try {
+                engine().collectProgress({ applyProgress(it) }, log)
+            } catch (_: CancellationException) {
+                throw CancellationException()
+            } catch (_: Throwable) {
+            }
+        }
+        catalogJob = scope.launch {
+            try {
+                engine().collectCatalog({ applyCatalog(it) }, log)
+            } catch (_: CancellationException) {
+                throw CancellationException()
+            } catch (_: Throwable) {
             }
         }
     }
 
-    private fun applyStatus(st: JsonObject) {
+    private fun applyProgress(st: JsonObject) {
         val paused = st.bool("paused", default = true)
         val ended = st.bool("ended", default = false)
         val ready = (st["readyState"] as? JsonPrimitive)?.intOrNull ?: 0
@@ -336,6 +345,9 @@ class MsePlayer internal constructor(
         }
         val live = st.bool("live", default = false)
         _status.update { it.copy(state = state, videoSize = size, live = live) }
+    }
+
+    private fun applyCatalog(st: JsonObject) {
         val actual = st.str("quality") ?: VideoQualityState.AUTO
         val prefer = st.str("preferQuality") ?: applied.preferVideoQuality.first
         val options = st.qualityOptions()

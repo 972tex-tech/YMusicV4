@@ -701,6 +701,7 @@ class Player {
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
     /* Do not seek. Video SourceBuffer already reports a sliver, so SABR
        fetches video on the next tick without jumping leftover audio. */
+    notifyCatalog();
   }
 
   private pinTinyIfVod(): void {
@@ -751,6 +752,7 @@ class Player {
     }
     await waitCaptionIngest(ingestAt, 8000);
     if (q === "zero") this.pinTinyIfVod();
+    notifyCatalog();
     out["step"] = "ok";
     out["ok"] = true;
     return out;
@@ -809,21 +811,9 @@ class Player {
     this.seek(0);
   }
 
-  status(): Record<string, unknown> {
+  progress(): Record<string, unknown> {
     const v = activeHtmlMedia();
     const dur = v ? Number(v["duration"]) : NaN;
-    const player = this.player;
-    const host = moviePlayer();
-    const pref = isAudioOnly()
-      ? "zero"
-      : host && typeof host["getUserPlaybackQualityPreference"] === "function"
-        ? String((host["getUserPlaybackQualityPreference"] as () => string)())
-        : ymQuality();
-    const actual = isAudioOnly()
-      ? "zero"
-      : host && typeof host["getPlaybackQuality"] === "function"
-        ? String((host["getPlaybackQuality"] as () => string)())
-        : ymQuality();
     let bufferedMs = 0;
     if (v) {
       const b = v["buffered"] as { length?: number; end?: (i: number) => number } | null;
@@ -888,11 +878,36 @@ class Player {
       "videoWidth": v ? Number(v["videoWidth"]) : 0,
       "videoHeight": v ? Number(v["videoHeight"]) : 0,
       "audioOnly": isAudioOnly(),
+    };
+  }
+
+  catalog(): Record<string, unknown> {
+    const host = moviePlayer();
+    const pref = isAudioOnly()
+      ? "zero"
+      : host && typeof host["getUserPlaybackQualityPreference"] === "function"
+        ? String((host["getUserPlaybackQualityPreference"] as () => string)())
+        : ymQuality();
+    const actual = isAudioOnly()
+      ? "zero"
+      : host && typeof host["getPlaybackQuality"] === "function"
+        ? String((host["getPlaybackQuality"] as () => string)())
+        : ymQuality();
+    return {
       "quality": actual,
       "preferQuality": pref,
       "qualities": this.qualityOptions(),
       "caption": selectedCaptionVss(),
     };
+  }
+
+  status(): Record<string, unknown> {
+    const p = this.progress();
+    const c = this.catalog();
+    const out: Record<string, unknown> = {};
+    for (const k in p) out[k] = p[k];
+    for (const k in c) out[k] = c[k];
+    return out;
   }
 
   private qualityOptions(): Record<string, unknown>[] {
@@ -996,4 +1011,22 @@ export function stopPlayer(): void {
 
 export function statusPlayer(): Record<string, unknown> {
   return ytPlayer.status();
+}
+
+export function progressPlayer(): Record<string, unknown> {
+  return ytPlayer.progress();
+}
+
+export function catalogPlayer(): Record<string, unknown> {
+  return ytPlayer.catalog();
+}
+
+let catalogHook: (() => void) | null = null;
+
+export function setCatalogHook(fn: (() => void) | null): void {
+  catalogHook = fn;
+}
+
+function notifyCatalog(): void {
+  if (catalogHook) catalogHook();
 }

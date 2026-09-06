@@ -76,6 +76,43 @@ class DynamicEnginePlayer private constructor(
         return engine.jsonCommand("player/status", { }, logger) { it.readObject() }
     }
 
+    /** Frequent clock/state until cancelled. */
+    suspend fun collectProgress(onProgress: (JsonObject) -> Unit, logger: Logger? = null) {
+        collectJsonPipe("player/progress", onProgress, logger)
+    }
+
+    /** Qualities + selected caption until cancelled. Emitted on load/setQuality. */
+    suspend fun collectCatalog(onCatalog: (JsonObject) -> Unit, logger: Logger? = null) {
+        collectJsonPipe("player/catalog", onCatalog, logger)
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private suspend fun collectJsonPipe(
+        command: String,
+        onObj: (JsonObject) -> Unit,
+        logger: Logger?,
+    ) {
+        val pipe = engine.openPipe(command)
+        try {
+            val reader = JsonReader(pipe.source.asBufferedSource())
+            while (true) {
+                val obj = try {
+                    reader.readObject()
+                } catch (_: JsonSyntaxException) {
+                    break
+                } catch (e: PipeResetException) {
+                    throw decodeEngineError(e.reason, e)
+                }
+                onObj(obj)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } finally {
+            pipe.sink.close()
+            pipe.source.close()
+        }
+    }
+
     suspend fun captionTracks(logger: Logger? = null): List<CaptionTrackInfo> {
         val o = engine.jsonCommand("player/captions", { }, logger) { it.readObject() }
         val arr = o["tracks"] as? JsonArray ?: return emptyList()
