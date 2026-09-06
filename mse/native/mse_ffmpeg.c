@@ -1314,6 +1314,39 @@ static int continuation_total(const uint8_t *p, size_t n, size_t *total)
     return 1;
 }
 
+/* After seek, SABR clusters can demux at a multiple of the playhead (log21:
+   t=453s → first=2252s, ×5) or as a GOP that starts near 0. Snap to v_sent. */
+static void align_video_pts(Cfb *tmp, double playhead)
+{
+    double first, last, ratio, err;
+    int k, i;
+    if (!tmp->n || playhead < 1.0)
+        return;
+    first = tmp->f[0].pts;
+    last = tmp->f[tmp->n - 1].pts + tmp->f[tmp->n - 1].dur;
+    if (first > playhead + 5.0) {
+        ratio = first / playhead;
+        k = (int)(ratio + 0.5);
+        err = ratio - k;
+        if (err < 0)
+            err = -err;
+        if (k >= 2 && k <= 10 && err < 0.08) {
+            vlog("pts/%d first=%.3f playhead=%.3f", k, first, playhead);
+            for (i = 0; i < (int)tmp->n; i++) {
+                tmp->f[i].pts /= (double)k;
+                tmp->f[i].dur /= (double)k;
+            }
+        }
+        return;
+    }
+    if (last < playhead - 0.5) {
+        double shift = playhead - first;
+        vlog("pts+%.3f first=%.3f playhead=%.3f", shift, first, playhead);
+        for (i = 0; i < (int)tmp->n; i++)
+            tmp->f[i].pts += shift;
+    }
+}
+
 static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, double win_end,
                        MseAvIngest *r)
 {
@@ -1566,6 +1599,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                 avcodec_parameters_free(&par);
             }
         }
+        if (!audio && tmp.n)
+            align_video_pts(&tmp, a->v_sent);
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
         cfb_free(&tmp);
         if (a->pend_n[idx] > total)
