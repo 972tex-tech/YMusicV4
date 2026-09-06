@@ -683,18 +683,10 @@ class HTMLMediaElement {
   }
 
   get ["videoWidth"](): number {
-    if (typeof __mseVideoSize === "function") {
-      const s = __mseVideoSize();
-      if (s && s[0]! > 0) return s[0]!;
-    }
-    return 0;
+    return 640;
   }
   get ["videoHeight"](): number {
-    if (typeof __mseVideoSize === "function") {
-      const s = __mseVideoSize();
-      if (s && s[1]! > 0) return s[1]!;
-    }
-    return 0;
+    return 360;
   }
 
   ["canPlayType"](t: string): string {

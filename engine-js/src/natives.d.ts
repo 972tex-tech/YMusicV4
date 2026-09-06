@@ -95,7 +95,6 @@ declare function __mseRemove(audio: number, start: number, end: number): void;
 declare function __mseAbort(audio: number): void;
 declare function __mseBuffered(audio: number): number[];
 declare function __mseReset(): void;
-declare function __mseVideoSize(): number[];
 
 declare function atob(data: string): string;
 declare function btoa(data: string): string;

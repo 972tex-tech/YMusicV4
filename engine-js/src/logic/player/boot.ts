@@ -32,9 +32,6 @@ import {
 import { playerStorageReady } from "./storage";
 
 const ORIGIN = "https://www.youtube.com";
-/* Viewport YouTube ABR reads for itag pick. */
-const VIEW_W = 1920;
-const VIEW_H = 1080;
 let lastQualityExtra = -1;
 
 function asRec(v: unknown): Record<string, unknown> | null {
@@ -51,8 +48,8 @@ function sizePlayerEl(
   } | null,
 ): void {
   if (!el) return;
-  el.clientWidth = el.offsetWidth = VIEW_W;
-  el.clientHeight = el.offsetHeight = VIEW_H;
+  el.clientWidth = el.offsetWidth = 640;
+  el.clientHeight = el.offsetHeight = 360;
 }
 
 function sizePlayerTree(): void {
@@ -114,28 +111,6 @@ function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   };
   (wrapped as { __ym?: boolean }).__ym = true;
   host["getPlaybackQuality"] = wrapped;
-}
-
-function applyPlaybackQuality(app: YtApp, q: string): void {
-  bindMoviePlayerApi(app);
-  const hosts: Record<string, unknown>[] = [];
-  const el = moviePlayer();
-  if (el) hosts.push(el);
-  hosts.push(app as unknown as Record<string, unknown>);
-  for (let i = 0; i < hosts.length; i++) {
-    const host = hosts[i]!;
-    const range = host["setPlaybackQualityRange"];
-    const one = host["setPlaybackQuality"];
-    if (typeof range === "function") {
-      range.call(host, q, q);
-      return;
-    }
-    if (typeof one === "function") {
-      (one as (q: string) => void).call(host, q);
-      return;
-    }
-  }
-  if (MSE_DEBUG) console.log("mse setQuality no API q=" + q);
 }
 
 function bindMoviePlayerApi(app: YtApp | null): void {
@@ -307,18 +282,9 @@ function installSabrObserver(): void {
           : null;
       const rect = getRect
         ? getRect.call(rec)
-        : {
-            x: 0,
-            y: 0,
-            width: VIEW_W,
-            height: VIEW_H,
-            top: 0,
-            left: 0,
-            bottom: VIEW_H,
-            right: VIEW_W,
-          };
-      const w = Number(rect["width"]) || VIEW_W;
-      const h = Number(rect["height"]) || VIEW_H;
+        : { x: 0, y: 0, width: 640, height: 360, top: 0, left: 0, bottom: 360, right: 640 };
+      const w = Number(rect["width"]) || 640;
+      const h = Number(rect["height"]) || 360;
       Promise.resolve().then(function () {
         const cb = self["_cb"];
         if (typeof cb !== "function") return;
@@ -377,12 +343,12 @@ function installPlayerTree(): void {
   wrap.className = "html5-video-container";
   video.id = "player-html5-video";
   video.className = "video-stream html5-main-video";
-  player.clientWidth = player.offsetWidth = VIEW_W;
-  player.clientHeight = player.offsetHeight = VIEW_H;
-  movie.clientWidth = movie.offsetWidth = VIEW_W;
-  movie.clientHeight = movie.offsetHeight = VIEW_H;
-  video.clientWidth = video.offsetWidth = VIEW_W;
-  video.clientHeight = video.offsetHeight = VIEW_H;
+  player.clientWidth = player.offsetWidth = 640;
+  player.clientHeight = player.offsetHeight = 360;
+  movie.clientWidth = movie.offsetWidth = 640;
+  movie.clientHeight = movie.offsetHeight = 360;
+  video.clientWidth = video.offsetWidth = 640;
+  video.clientHeight = video.offsetHeight = 360;
   wrap.appendChild(video);
   movie.appendChild(wrap);
   player.appendChild(movie);
@@ -675,7 +641,7 @@ class Player {
     };
     const param2 = {
       "args": playerVars,
-      "attrs": { "id": "movie_player", "width": String(VIEW_W), "height": String(VIEW_H) },
+      "attrs": { "id": "movie_player", "width": "640", "height": "360" },
       "loaded": true,
     };
     const root = document.getElementById("movie_player");
@@ -724,10 +690,17 @@ class Player {
       dumpDrain("setQuality-zero");
       return;
     }
+    const wasAudioOnly = isAudioOnly();
     setAudioOnly(false);
     setYmQuality(q);
-    dropVideoTrack();
-    applyPlaybackQuality(player, q);
+    if (wasAudioOnly) dropVideoTrack();
+    const host = moviePlayer() || (player as unknown as Record<string, unknown>);
+    const range = host["setPlaybackQualityRange"];
+    const one = host["setPlaybackQuality"];
+    if (typeof range === "function") range.call(host, q, q);
+    else if (typeof one === "function") (one as (q: string) => void).call(host, q);
+    /* Do not seek. Video SourceBuffer already reports a sliver, so SABR
+       fetches video on the next tick without jumping leftover audio. */
     notifyCatalog();
   }
 
@@ -735,7 +708,11 @@ class Player {
     if (!isKnownVod()) return;
     const player = this.player;
     if (!player) return;
-    applyPlaybackQuality(player, "tiny");
+    const host = moviePlayer() || (player as unknown as Record<string, unknown>);
+    const range = host["setPlaybackQualityRange"];
+    const one = host["setPlaybackQuality"];
+    if (typeof range === "function") range.call(host, "tiny", "tiny");
+    else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
   }
 
   async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
