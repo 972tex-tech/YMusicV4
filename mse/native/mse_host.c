@@ -35,6 +35,7 @@ struct MseHost {
     int busy;
     int gate;
     int eos;
+    int seek_wait;
     double hold;
     double origin_ns;
     double seek_base;
@@ -106,6 +107,18 @@ static double media_dur(MseHost *h)
     return d;
 }
 
+static int video_covers(MseHost *h, double t)
+{
+    double pairs[16];
+    int np, i;
+    np = mse_av_buffered(h->av, 0, pairs, 8);
+    for (i = 0; i < np; i++) {
+        if (pairs[2 * i] <= t + 0.5 && pairs[2 * i + 1] >= t - 0.05)
+            return 1;
+    }
+    return 0;
+}
+
 static double clock_locked(MseHost *h)
 {
     double t, first = 0, last = 0, hold;
@@ -113,6 +126,17 @@ static double clock_locked(MseHost *h)
 
     hold = h->hold < 0 ? 0 : h->hold;
     t = hold;
+    /* After seek, leftover is empty or a hole: freeze currentTime at t so
+       SABR fetches that time and the first GOP is not recv-late (log21:
+       t=198.862, first GOP 198.031, clock already 199.999). */
+    if (h->seek_wait) {
+        if (video_covers(h, hold)) {
+            h->seek_wait = 0;
+            h->origin_ns = now_ns();
+        } else {
+            return hold;
+        }
+    }
     have = mse_av_span(h->av, &first, &last) && last > first;
     /* Seek/hold outside leftover: keep currentTime at the seek so JS/SABR
        fetch that time. Clamping to `last` jumped the playhead to the
@@ -891,6 +915,7 @@ void mse_host_play(MseHost *h)
     if (h->eos && dur > 0 && clock >= dur - 0.05) {
         h->hold = 0;
         h->seek_base = 0;
+        h->seek_wait = 0;
         mse_av_seek(h->av, 0);
         h->eos = 0;
 #ifdef MSE_DAC
@@ -951,23 +976,30 @@ void mse_host_pause(MseHost *h)
 static void seek_common(MseHost *h, double seconds)
 {
     fprintf(stderr, "mse seek t=%.3f\n", seconds);
+    /* Stop the decoder before AudioQueueFlush so wait_idle is not stuck
+       behind thousands of HOLD logs at the old clock (log21: JS seek at
+       4.6s, C seek ~2k lines later). Jump currentTime now so SABR fetches
+       during the drain. */
+    pthread_mutex_lock(&h->mu);
+    h->gate = 1;
+    h->hold = seconds;
+    h->seek_base = seconds;
+    h->seek_wait = 1;
+    h->origin_ns = now_ns();
+    h->eos = 0;
+    h->vpts = -1;
+    pthread_cond_broadcast(&h->cv);
+    pthread_mutex_unlock(&h->mu);
 #ifdef MSE_DAC
     aq_pause_flush(h);
 #endif
     pthread_mutex_lock(&h->mu);
-    h->gate = 1;
-    pthread_cond_broadcast(&h->cv);
     wait_idle(h);
-    h->hold = seconds;
-    h->seek_base = seconds;
-    h->origin_ns = now_ns();
-    h->eos = 0;
 #ifdef MSE_DAC
     h->samples_played = 0;
     h->aq_started = 0;
     h->ring_r = h->ring_w = h->ring_n = 0;
 #endif
-    h->vpts = -1;
     mse_av_seek(h->av, seconds);
     h->gate = 0;
     pthread_cond_broadcast(&h->cv);
@@ -989,6 +1021,7 @@ void mse_host_reset(MseHost *h)
     h->gate = 0;
     h->hold = 0;
     h->seek_base = 0;
+    h->seek_wait = 0;
     h->yt_dur = 0;
     h->origin_ns = 0;
     h->eos = 0;

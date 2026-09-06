@@ -79,6 +79,8 @@ struct MseAv {
     int need_rap[2];
     double starve_log_pts;
     double starve_log_clock;
+    double hold_log_pts;
+    double hold_log_clock;
     AVFrame *vhold;
     AVBSFContext *vbsf;
     AVCodecParameters *vpar;
@@ -162,6 +164,22 @@ static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
     a->starve_log_pts = nxt;
     a->starve_log_clock = clock;
     vlog_state(a, clock, "starve-ahead", nxt - clock);
+}
+
+static void vlog_hold(MseAv *a, double clock, const char *why, double extra)
+{
+    double hp = -1;
+    if (a->vhold && a->vhold->pts != AV_NOPTS_VALUE)
+        hp = a->vhold->pts / 1000.0;
+#ifdef __ANDROID__
+    if (a->mc_hold)
+        hp = a->mc_hold_pts_us / 1e6;
+#endif
+    if (hp == a->hold_log_pts && clock - a->hold_log_clock < 1.0)
+        return;
+    a->hold_log_pts = hp;
+    a->hold_log_clock = clock;
+    vlog_state(a, clock, why, extra);
 }
 
 static int cf_cmp(const void *a, const void *b)
@@ -858,8 +876,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         double p = a->mc_hold_pts_us / 1e6;
         double d = p - clock;
         if (p > clock + early) {
-            if (vdbg_ok() || d > 0.2)
-                vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
+            vlog_hold(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             return 0;
         }
         if (p < clock - late) {
@@ -886,8 +903,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 a->mc_hold = 1;
                 a->mc_hold_ix = (int)ox;
                 a->mc_hold_pts_us = info.presentationTimeUs;
-                if (vdbg_ok() || d > 0.2)
-                    vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
+                vlog_hold(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 return 0;
             }
             if (p < clock - late) {
@@ -1314,35 +1330,119 @@ static int continuation_total(const uint8_t *p, size_t n, size_t *total)
     return 1;
 }
 
-/* After seek, SABR clusters can demux at a multiple of the playhead (log21:
-   t=453s → first=2252s, ×5) or as a GOP that starts near 0. Snap to v_sent. */
-static void align_video_pts(Cfb *tmp, double playhead)
+static int near_std_fps(double fps)
 {
-    double first, last, ratio, err;
-    int k, i;
-    if (!tmp->n || playhead < 1.0)
+    static const double want[] = {24, 25, 30, 48, 50, 60};
+    int i;
+    for (i = 0; i < 6; i++) {
+        double d = fps - want[i];
+        if (d < 0)
+            d = -d;
+        if (d < 1.5)
+            return 1;
+    }
+    return 0;
+}
+
+static void scale_coded_pts(Cfb *tmp, int k)
+{
+    int i;
+    for (i = 0; i < (int)tmp->n; i++) {
+        tmp->f[i].pts /= (double)k;
+        tmp->f[i].dur /= (double)k;
+    }
+}
+
+/* Integer 2..10 if num/den is that multiple (399: 90.180/18.018 = 5). */
+static int ratio_k(double num, double den)
+{
+    double ratio, err;
+    int k;
+    if (den < 0.5 || num <= den + 1.0)
+        return 1;
+    ratio = num / den;
+    k = (int)(ratio + 0.5);
+    err = ratio - k;
+    if (err < 0)
+        err = -err;
+    if (k >= 2 && k <= 10 && err < 0.08)
+        return k;
+    return 1;
+}
+
+static double std_fps_err(double fps)
+{
+    static const double want[] = {24, 25, 30, 48, 50, 60};
+    double best = 1e9;
+    int i;
+    for (i = 0; i < 6; i++) {
+        double d = fps - want[i];
+        if (d < 0)
+            d = -d;
+        if (d < best)
+            best = d;
+    }
+    return best;
+}
+
+/* SABR WebM 60fps (itag 399) often demuxes ×5 vs MEDIA_HEADER (18.018s → 90.180s)
+   because the cluster timescale is wrong. Snap using leftover tail, GOP fps, or
+   a GOP that landed entirely before the playhead. Do not scale vs playhead
+   (90/3.7 ≈ 24 is not a timescale). */
+static void align_video_pts(Cfb *tmp, double playhead, double tail)
+{
+    double first, last, span, fps;
+    int k, i, n, best_k;
+    double best;
+    if (!tmp->n)
         return;
+    n = (int)tmp->n;
     first = tmp->f[0].pts;
-    last = tmp->f[tmp->n - 1].pts + tmp->f[tmp->n - 1].dur;
-    if (first > playhead + 5.0) {
-        ratio = first / playhead;
-        k = (int)(ratio + 0.5);
-        err = ratio - k;
-        if (err < 0)
-            err = -err;
-        if (k >= 2 && k <= 10 && err < 0.08) {
-            vlog("pts/%d first=%.3f playhead=%.3f", k, first, playhead);
-            for (i = 0; i < (int)tmp->n; i++) {
-                tmp->f[i].pts /= (double)k;
-                tmp->f[i].dur /= (double)k;
+    last = tmp->f[n - 1].pts + tmp->f[n - 1].dur;
+    span = last - first;
+    k = ratio_k(first, tail);
+    if (k > 1) {
+        vlog("pts/%d first=%.3f tail=%.3f", k, first, tail);
+        scale_coded_pts(tmp, k);
+        first /= (double)k;
+        last /= (double)k;
+    } else if (n >= 24 && span > 0.5) {
+        fps = (n - 1) / span;
+        if (!near_std_fps(fps)) {
+            best_k = 1;
+            best = 1e9;
+            for (k = 2; k <= 10; k++) {
+                double f = fps * (double)k;
+                double score, pe, scaled;
+                if (std_fps_err(f) > 1.5)
+                    continue;
+                scaled = first / (double)k;
+                score = std_fps_err(f);
+                if ((f > 29 && f < 31) || (f > 59 && f < 61))
+                    score -= 0.4;
+                if (playhead >= 1.0) {
+                    pe = scaled - playhead;
+                    if (pe < 0)
+                        pe = -pe;
+                    score += pe * 0.05;
+                }
+                if (score < best) {
+                    best = score;
+                    best_k = k;
+                }
+            }
+            if (best_k > 1) {
+                vlog("pts/%d first=%.3f fps=%.2f playhead=%.3f", best_k, first, fps, playhead);
+                scale_coded_pts(tmp, best_k);
+                first /= (double)best_k;
+                last /= (double)best_k;
             }
         }
-        return;
     }
-    if (last < playhead - 0.5) {
+    if (playhead >= 1.0 && last < playhead - 0.5) {
         double shift = playhead - first;
         vlog("pts+%.3f first=%.3f playhead=%.3f", shift, first, playhead);
-        for (i = 0; i < (int)tmp->n; i++)
+        for (i = 0; i < n; i++)
             tmp->f[i].pts += shift;
     }
 }
@@ -1599,8 +1699,12 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                 avcodec_parameters_free(&par);
             }
         }
-        if (!audio && tmp.n)
-            align_video_pts(&tmp, a->v_sent);
+        if (!audio && tmp.n) {
+            double tail = -1;
+            if (a->vf.n)
+                tail = a->vf.f[a->vf.n - 1].pts + a->vf.f[a->vf.n - 1].dur;
+            align_video_pts(&tmp, a->v_sent, tail);
+        }
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
         cfb_free(&tmp);
         if (a->pend_n[idx] > total)
@@ -2013,8 +2117,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
         double d = p - clock;
         if (p > clock + early) {
-            if (vdbg_ok() || d > 0.2)
-                vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
+            vlog_hold(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
@@ -2047,8 +2150,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             double d = p - clock;
             if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
                 a->vhold = frame;
-                if (vdbg_ok() || d > 0.2)
-                    vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
+                vlog_hold(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
