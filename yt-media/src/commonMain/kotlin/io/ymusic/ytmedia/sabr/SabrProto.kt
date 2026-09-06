@@ -251,7 +251,7 @@ class StreamerContext(
 }
 
 // optional ClientAbrState client_abr_state = 1;
-// repeated FormatId selected_format_ids = 2;          // initialized formats (WEB often empty)
+// repeated FormatId selected_format_ids = 2;          // initialized formats
 // repeated BufferedRange buffered_ranges = 3;         // what the client has per itag
 // optional bytes video_playback_ustreamer_config = 5;
 // repeated FormatId selected_audio_format_ids = 16;   // playable audio formats
