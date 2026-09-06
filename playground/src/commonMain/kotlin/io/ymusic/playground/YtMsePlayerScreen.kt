@@ -563,10 +563,11 @@ private fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifi
                 .graphicsLayer { translationY = offset.value },
         ) {
             repeat(pad) { Spacer(Modifier.height(lineH)) }
+            val wrap = columnIds.count { it >= 0 } <= 1
             columnIds.forEach { id ->
                 key(id) {
                     val text = if (id < 0) "" else textHold[id].orEmpty()
-                    CaptionLineRow(text, lineH)
+                    CaptionLineRow(text, lineH, maxLines = if (wrap) 2 else 1)
                 }
             }
         }
@@ -574,16 +575,16 @@ private fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun CaptionLineRow(text: String, lineH: Dp) {
+private fun CaptionLineRow(text: String, lineH: Dp, maxLines: Int) {
     Text(
         text = text,
         color = Color.White,
         style = MaterialTheme.typography.bodyLarge,
-        maxLines = 1,
-        overflow = TextOverflow.Clip,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
-            .height(lineH)
+            .height(lineH * maxLines)
             .then(
                 if (text.isNotEmpty()) Modifier.background(Color.Black.copy(alpha = 0.55f))
                 else Modifier,
