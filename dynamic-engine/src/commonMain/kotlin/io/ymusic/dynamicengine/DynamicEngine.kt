@@ -3,6 +3,7 @@ package io.ymusic.dynamicengine
 import io.ymusic.dynamicengine.internal.ENGINE_JS
 import io.ymusic.dynamicengine.internal.ParkedLoggers
 import io.ymusic.dynamicengine.internal.installCache
+import io.ymusic.dynamicengine.internal.installCapture
 import io.ymusic.dynamicengine.internal.installCookies
 import io.ymusic.dynamicengine.internal.installHttp
 import io.ymusic.dynamicengine.internal.installSettings
@@ -201,6 +202,7 @@ class DynamicEngine internal constructor(
         ) {
             runtime.installHttp(client, parked)
             runtime.installCookies(cookieJar, parked)
+            runtime.installCapture(cacheStore, parked)
             if (cacheStore != null) runtime.installCache(cacheStore, parked)
             if (settings != null) runtime.installSettings(settings, parked)
         }

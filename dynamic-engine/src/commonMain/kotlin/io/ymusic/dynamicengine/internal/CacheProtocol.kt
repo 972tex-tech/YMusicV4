@@ -10,6 +10,7 @@ import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.quickjs.asAsyncSink
 import io.ymusic.quickjs.asAsyncSource
 import kmpcommon.error.CodedError
+import kmpcommon.error.TechnicalException
 import kmpcommon.error.codedError
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
@@ -49,6 +50,35 @@ import okio.use
  * Failures RESET the typed [WireError] contract: `E20050` (missing/blank `scope`/`key` or a malformed
  * head) and `E20051` (the store threw), a [CodedError] from the store keeping its own code.
  */
+/**
+ * `log/capture` — JS reports a coded failure (PO reject) and optionally names a cache blob
+ * to attach. Host [Logger.captureError]; [SentryLogger] turns ByteArray props into attachments.
+ */
+internal fun QuickJsRuntime.installCapture(store: CacheStore?, parked: ParkedLoggers) {
+    onAccept("log/capture") { pipe ->
+        serve(pipe, parked, "log/capture") { head, _ ->
+            val code = head["code"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() } ?: "E20088"
+            val message = head["message"]?.jsonPrimitive?.contentOrNull ?: "PO rejected"
+            val scopeName = head["scope"]?.jsonPrimitive?.contentOrNull
+            val key = head["key"]?.jsonPrimitive?.contentOrNull
+            val bytes = if (store != null && !scopeName.isNullOrEmpty() && !key.isNullOrEmpty()) {
+                withContext(Dispatchers.IO) {
+                    val entry = store.get(scopeName, key) ?: return@withContext null
+                    BufferedAsyncSource(entry.open()).use { it.readFully().readByteArray() }
+                }
+            } else {
+                null
+            }
+            val prop = mutableMapOf<String, Any>(
+                "cache.scope" to (scopeName ?: ""),
+                "cache.key" to (key ?: ""),
+            )
+            if (bytes != null) prop["bg-session.json"] = bytes
+            parked.root?.captureError(TechnicalException(code, message), message, prop)
+        }
+    }
+}
+
 internal fun QuickJsRuntime.installCache(store: CacheStore, parked: ParkedLoggers) {
     // Every store touch leaves the engine thread (the engine-thread rule, AGENTS.md): SQLite
     // behind a lock or slow disk on the engine thread would wedge every command at once.

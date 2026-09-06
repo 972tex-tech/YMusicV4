@@ -1,15 +1,23 @@
 // Hold the last homepage miller so a later harness run can: (1) reload the
 // program, (2) mint a content PO, (3) POST the captured SABR body and read SPS.
-// Console lines are 3k chunks (console.log caps at 8192). Playground reassembles
-// them into build/bg-dump/. BG_DUMP compile define; stripped in prod.
+// Always persisted under cache scope yt.bg.session (one key per mill). Console
+// chunks are BG_DUMP-only. SPS≠1 → log/capture with that cache blob on Sentry.
 
+import { callHost } from "../../protocol/command";
+import { keepCount, scopedCache } from "../../protocol/cache";
 import { DESKTOP_UA } from "../yt/session";
 
+const SCOPE = "yt.bg.session";
+const KEEP = 4;
 const held: Record<string, unknown> = {};
+let sessionKey = "";
+let persistChain: Promise<void> = Promise.resolve();
 let dumpedSps = 0;
 let dumpedPot = false;
 let dumpedSabr = false;
 let dumpedFirstSps = 0;
+let reportedReject = false;
+let storeP: Promise<Awaited<ReturnType<typeof scopedCache>>> | null = null;
 
 function u8ToB64url(u: Uint8Array): string {
   let s = "";
@@ -17,8 +25,81 @@ function u8ToB64url(u: Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+function store(): Promise<Awaited<ReturnType<typeof scopedCache>>> {
+  if (!storeP) storeP = scopedCache(SCOPE, keepCount(KEEP));
+  return storeP;
+}
+
+function persistHeld(): void {
+  if (!sessionKey) sessionKey = String(Date.now());
+  const key = sessionKey;
+  const snap: Record<string, unknown> = {};
+  const names = [
+    "eventId",
+    "visitorData",
+    "clientVersion",
+    "globalName",
+    "interpUrl",
+    "program",
+    "snapshot",
+    "integrityToken",
+    "programLen",
+    "jsLen",
+    "snapLen",
+    "itLen",
+    "ua",
+    "mintId",
+    "pot",
+    "sabrUrl",
+    "sabrBody",
+  ];
+  for (let i = 0; i < names.length; i++) {
+    const k = names[i]!;
+    if (held[k] !== undefined) snap[k] = held[k];
+  }
+  snap["sessionKey"] = key;
+  persistChain = persistChain.then(function () {
+    return store()
+      .then(function (s) {
+        return s.setJson(key, snap);
+      })
+      .then(
+        function () {},
+        function (e: unknown) {
+          console.log(
+            "bg session cache write skipped: " + (e instanceof Error ? e.message : String(e)),
+          );
+        },
+      );
+  });
+}
+
+function reportPoReject(sps: number): void {
+  if (reportedReject) return;
+  reportedReject = true;
+  const key = sessionKey;
+  persistChain = persistChain.then(function () {
+    return callHost("log/capture", async function (pipe) {
+      let p = pipe.sink.writeObjectAsJson({
+        "code": "E20088",
+        "message": "PO rejected sps=" + sps,
+        "scope": SCOPE,
+        "key": key,
+      });
+      if (p) await p;
+      p = pipe.sink.close();
+      if (p) await p;
+      await pipe.source.readUtf8();
+    }).then(
+      function () {},
+      function (e: unknown) {
+        console.log("bg po-reject report skipped: " + (e instanceof Error ? e.message : String(e)));
+      },
+    );
+  });
+}
+
 export function recordBgChallenge(p: Record<string, unknown>): void {
-  if (!BG_DUMP) return;
   const keys = [
     "eventId",
     "visitorData",
@@ -43,15 +124,19 @@ export function recordBgChallenge(p: Record<string, unknown>): void {
   dumpedPot = false;
   dumpedSabr = false;
   dumpedFirstSps = 0;
+  reportedReject = false;
+  sessionKey = String(Date.now());
+  persistHeld();
 }
 
 export function recordBgMint(id: Uint8Array, token: unknown): void {
-  if (!BG_DUMP) return;
   held["mintId"] = new TextDecoder().decode(id);
   if (token instanceof Uint8Array) held["pot"] = u8ToB64url(token);
   else if (typeof token === "string") held["pot"] = token;
   else held["pot"] = "";
   dumpedSps = 0;
+  persistHeld();
+  if (!BG_DUMP) return;
   if (!dumpedPot && held["pot"]) {
     dumpedPot = true;
     console.log("bg dump mintId " + held["mintId"]);
@@ -61,9 +146,10 @@ export function recordBgMint(id: Uint8Array, token: unknown): void {
 
 /** Last /videoplayback POST — replay this body with a new PO to read SPS. */
 export function recordSabrForDump(url: string, body: Uint8Array | null): void {
-  if (!BG_DUMP) return;
   held["sabrUrl"] = url;
   held["sabrBody"] = body && body.length ? u8ToB64url(body) : "";
+  persistHeld();
+  if (!BG_DUMP) return;
   if (dumpedSabr) return;
   dumpedSabr = true;
   dumpSabrCapture();
@@ -138,11 +224,13 @@ export function dumpFirstSps(sps: number): void {
   console.log("bg dump sps " + sps);
 }
 
-/** First sps=2/3 for this mint — full challenge again (mint dump may have lacked pot/SABR). */
+/** First SPS≠1 for this mint — persist + Sentry. Console dump is BG_DUMP-only. */
 export function dumpBgOnSps(sps: number): void {
-  if (!BG_DUMP) return;
   dumpFirstSps(sps);
-  if (sps !== 2 && sps !== 3) return;
+  if (sps === 1 || sps <= 0) return;
+  persistHeld();
+  reportPoReject(sps);
+  if (!BG_DUMP) return;
   if (dumpedSps === sps) return;
   dumpedSps = sps;
   dumpBgParams("sps=" + sps);

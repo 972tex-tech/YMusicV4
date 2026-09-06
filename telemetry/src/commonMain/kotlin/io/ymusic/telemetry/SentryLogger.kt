@@ -1,5 +1,6 @@
 package io.ymusic.telemetry
 
+import io.sentry.kotlin.multiplatform.Attachment
 import io.sentry.kotlin.multiplatform.Sentry
 import io.sentry.kotlin.multiplatform.log.SentryLogLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
@@ -72,7 +73,12 @@ class SentryLogger private constructor(
             // data — right where the reader already is, in step with every other crumb.
             for (c in trail) scope.addBreadcrumb(Breadcrumb(message = c.tag, data = c.prop?.let(::HashMap)))
             message?.let { scope.setExtra("capture.message", it) }
-            prop?.forEach { (k, v) -> scope.setContext("capture.$k", v) }
+            prop?.forEach { (k, v) ->
+                when (v) {
+                    is ByteArray -> scope.addAttachment(Attachment(v, k))
+                    else -> scope.setContext("capture.$k", v)
+                }
+            }
         }
     }
 

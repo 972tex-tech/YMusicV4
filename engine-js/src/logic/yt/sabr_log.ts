@@ -225,7 +225,6 @@ function maxMhSeq(body: Uint8Array): number | null {
 export function logSabrResponse(url: string, status: number, body: Uint8Array): void {
   if (url.indexOf("/videoplayback") < 0) return;
   const audioOnly = isAudioOnly();
-  if (!SABR_DEBUG && !audioOnly) return;
   const parts: string[] = [];
   let i = 0;
   let sps = -1;
@@ -285,7 +284,7 @@ export function logSabrResponse(url: string, status: number, body: Uint8Array): 
     console.log(line);
   }
   dumpFirstSps(sps);
-  if (sps === 2 || sps === 3) dumpBgOnSps(sps);
+  if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
   if (audioOnly) {
     dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
     if (media > 0) {
