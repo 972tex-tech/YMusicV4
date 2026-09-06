@@ -60,7 +60,9 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) â
 
 - **Player** â€” `DynamicEnginePlayer` is a sibling of `DynamicEngine`: same HTTP/cookies/cache/settings
   plus native `:mse` (or pipe MSE in tests). App commands are
-  `player/init|load|play|pause|seek|stop|status|mintPo`. Pass the scraping [DynamicEngineManager] as
+  `player/init|load|play|pause|seek|stop|status|mintPo`. Host opens `listen/player/status` and
+  `listen/player/catalog` to subscribe (JS pushes; host close unsubscribes), same as
+  `player/caption`. Pass the scraping [DynamicEngineManager] as
   `main` so player JS `open("host/main/"+command)` is a one-way host proxy (homepage
   `get_player_config` for minter EVENT_ID + `ytAtN` program). Content PO is homepage minter
   (GenerateIT + OWL `wpc.m`) **before** `base.js`; KEVLAR_WATCH `Application.create` then

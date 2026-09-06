@@ -76,14 +76,14 @@ class DynamicEnginePlayer private constructor(
         return engine.jsonCommand("player/status", { }, logger) { it.readObject() }
     }
 
-    /** Frequent clock/state until cancelled. */
-    suspend fun collectProgress(onProgress: (JsonObject) -> Unit, logger: Logger? = null) {
-        collectJsonPipe("player/progress", onProgress, logger)
+    /** Subscribe to clock/state until cancelled. Host close unsubscribes. */
+    suspend fun collectStatus(onStatus: (JsonObject) -> Unit, logger: Logger? = null) {
+        collectJsonPipe("listen/player/status", onStatus, logger)
     }
 
-    /** Qualities + selected caption until cancelled. Emitted on load/setQuality. */
+    /** Subscribe to qualities + caption until cancelled. Host close unsubscribes. */
     suspend fun collectCatalog(onCatalog: (JsonObject) -> Unit, logger: Logger? = null) {
-        collectJsonPipe("player/catalog", onCatalog, logger)
+        collectJsonPipe("listen/player/catalog", onCatalog, logger)
     }
 
     @Suppress("UNUSED_PARAMETER")

@@ -1,4 +1,4 @@
-// Push pipes: frequent progress vs once-per-video catalog. Host subscribes like player/caption.
+// Host opens listen/player/status or listen/player/catalog to subscribe (same as player/caption).
 
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { activeHtmlMedia } from "../../protocol/mse";
@@ -31,7 +31,7 @@ async function waitHostClose(pipe: Pipe): Promise<void> {
 }
 
 export async function runProgressSession(pipe: Pipe): Promise<void> {
-  if (progressPipe) throw new JsEngineErrorImpl("player/progress busy", "E20089");
+  if (progressPipe) throw new JsEngineErrorImpl("listen/player/status busy", "E20089");
   progressPipe = pipe;
   const last = { json: "" };
   const onEvt = function (): void {
@@ -64,7 +64,7 @@ export async function runProgressSession(pipe: Pipe): Promise<void> {
 }
 
 export async function runCatalogSession(pipe: Pipe): Promise<void> {
-  if (catalogPipe) throw new JsEngineErrorImpl("player/catalog busy", "E20090");
+  if (catalogPipe) throw new JsEngineErrorImpl("listen/player/catalog busy", "E20090");
   catalogPipe = pipe;
   const last = { json: "" };
   const push = function (): void {

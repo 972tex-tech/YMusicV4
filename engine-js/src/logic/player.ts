@@ -119,7 +119,7 @@ onAccept(
   }),
 );
 
-onAccept("player/progress", async (pipe) => {
+onAccept("listen/player/status", async (pipe) => {
   try {
     await runProgressSession(pipe);
     const pr = pipe.sink.close();
@@ -138,7 +138,7 @@ onAccept("player/progress", async (pipe) => {
   }
 });
 
-onAccept("player/catalog", async (pipe) => {
+onAccept("listen/player/catalog", async (pipe) => {
   try {
     await runCatalogSession(pipe);
     const pr = pipe.sink.close();

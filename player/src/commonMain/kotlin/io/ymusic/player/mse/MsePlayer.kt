@@ -90,7 +90,7 @@ class MsePlayer internal constructor(
     private var pendingRefresh = false
     private var playWhenReady = false
     private var applied = PlaybackConfig()
-    private var pollJob: Job? = null
+    private var statusJob: Job? = null
     private var catalogJob: Job? = null
     private var captionJob: Job? = null
     private var pendingVideoSurface: MseVideoSurface? = null
@@ -118,7 +118,7 @@ class MsePlayer internal constructor(
         if (released) return
         this.playWhenReady = playWhenReady
         applied = config
-        pollJob?.cancel()
+        statusJob?.cancel()
         catalogJob?.cancel()
         _status.update {
             it.copy(
@@ -142,7 +142,7 @@ class MsePlayer internal constructor(
                 applyCaptionConfig(config)
                 if (playWhenReady) p.play(log) else p.pause(log)
                 refreshTracks()
-                startPush()
+                startListen()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -173,7 +173,7 @@ class MsePlayer internal constructor(
     override fun stop() {
         if (released) return
         playWhenReady = false
-        pollJob?.cancel()
+        statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
         _captionLines.value = emptyList()
@@ -220,7 +220,7 @@ class MsePlayer internal constructor(
     override fun release() {
         if (released) return
         released = true
-        pollJob?.cancel()
+        statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
         scope.launch {
@@ -295,12 +295,12 @@ class MsePlayer internal constructor(
         if (applied.captionVisible) applyCaptionConfig(applied)
     }
 
-    private fun startPush() {
-        pollJob?.cancel()
+    private fun startListen() {
+        statusJob?.cancel()
         catalogJob?.cancel()
-        pollJob = scope.launch {
+        statusJob = scope.launch {
             try {
-                engine().collectProgress({ applyProgress(it) }, log)
+                engine().collectStatus({ applyProgress(it) }, log)
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Throwable) {
