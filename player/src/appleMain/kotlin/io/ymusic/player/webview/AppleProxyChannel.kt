@@ -88,7 +88,7 @@ internal class AppleProxyChannel(
     private suspend fun open(msg: JsonObject): String {
         val url = msg["url"]?.jsonPrimitive?.contentOrNull ?: throw IllegalArgumentException("missing url")
         val method = msg["method"]?.jsonPrimitive?.contentOrNull ?: "GET"
-        val body = msg["body"]?.jsonPrimitive?.contentOrNull?.let { Base64.decode(it) }
+        val body = msg["body"]?.jsonPrimitive?.contentOrNull?.let { Buffer().write(Base64.decode(it)) }
         val response = withContext(Dispatchers.Default) { proxy.serveRequest(url, method, body) }
         val id = "r${++nextId}"
         streams[id] = response.body

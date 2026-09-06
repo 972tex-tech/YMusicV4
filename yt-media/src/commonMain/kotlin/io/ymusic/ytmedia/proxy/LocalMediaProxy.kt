@@ -15,7 +15,7 @@ import kmpcommon.log.debug
 import kmpcommon.uri.PercentEncoder
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
-import kmphttp.RequestBodyX.toRequestBody
+import kmphttp.RequestBodyX.asOneshotRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import okio.Buffer
@@ -106,7 +106,7 @@ class LocalMediaProxy(
         // A body that fails to decode must not silently forward the request bodiless — a SABR POST
         // without its proto answers with a mystery failure downstream.
         val body = params["body"]?.let {
-            runCatching { Base64.decode(it) }
+            runCatching { Buffer().write(Base64.decode(it)) }
                 .onFailure { e -> log?.log(Logger.Level.WARN, "forward body base64 decode failed", e) }
                 .getOrNull()
         }
@@ -125,7 +125,7 @@ class LocalMediaProxy(
     suspend fun serveRequest(
         url: String,
         method: String,
-        body: ByteArray?,
+        body: Buffer?,
         extraHeaders: List<Pair<String, String>> = emptyList(),
     ): ProxyResponse {
         val sabrReq = parseSabrRequest(url, method, body)
@@ -143,7 +143,7 @@ class LocalMediaProxy(
     private fun serveFromCache(
         url: String,
         method: String,
-        body: ByteArray?,
+        body: Buffer?,
         sabrReq: VideoPlaybackAbrRequest?,
     ): ProxyResponse? {
         val started = TimeSource.Monotonic.markNow()
@@ -199,7 +199,7 @@ class LocalMediaProxy(
     private suspend fun forward(
         url: String,
         method: String,
-        body: ByteArray?,
+        body: Buffer?,
         extraHeaders: List<Pair<String, String>> = emptyList(),
     ): ProxyResponse {
         val builder = RequestBuilder().url(url)
@@ -210,7 +210,7 @@ class LocalMediaProxy(
         if (extraHeaders.none { it.first.equals("user-agent", ignoreCase = true) }) {
             builder.header("user-agent", userAgent)
         }
-        if (body != null) builder.method(method, body.toRequestBody(null)) else builder.get()
+        if (body != null) builder.method(method, body.asOneshotRequestBody(null, body.size)) else builder.get()
         val response = client.execute(builder.build(), RedirectOptions(followRedirects = true, followSslRedirects = true))
         val length = response.body.contentLength().takeIf { it >= 0 }
         val headers = buildList {
@@ -271,9 +271,11 @@ class LocalMediaProxy(
     private fun isSabrCache(url: String) =
         url.contains("sabr=1") && !url.contains("live=1") && !url.contains("noclen=1")
 
-    private fun parseSabrRequest(url: String, method: String, body: ByteArray?): VideoPlaybackAbrRequest? {
+    private fun parseSabrRequest(url: String, method: String, body: Buffer?): VideoPlaybackAbrRequest? {
         if (!url.contains("sabr=1") || method != "POST" || body == null) return null
-        return runCatching { VideoPlaybackAbrRequest.from(ProtoReader(body).readAllFields()) }.getOrNull()
+        return runCatching {
+            VideoPlaybackAbrRequest.from(ProtoReader(body.copy(), body.size).readAllFields())
+        }.getOrNull()
     }
 
     private fun text(status: Int, reason: String, body: String): ProxyResponse {

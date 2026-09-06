@@ -15,6 +15,7 @@ import kmphttp.ResponseBody
 import kmphttp.ResponseBuilder
 import kmphttp.SslConfig
 import kotlinx.coroutines.CoroutineDispatcher
+import okio.Buffer
 import kotlin.time.Duration
 
 /**
@@ -68,7 +69,7 @@ class SabrProxyHttpClient(
     }
 }
 
-internal expect suspend fun readRequestBody(body: RequestBody): ByteArray
+internal expect suspend fun readRequestBody(body: RequestBody): Buffer
 
 internal expect fun proxyResponseBody(
     source: AsyncSource,

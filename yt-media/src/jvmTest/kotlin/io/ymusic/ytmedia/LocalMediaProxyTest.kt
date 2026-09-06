@@ -189,7 +189,7 @@ class LocalMediaProxyTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1",
             "POST",
-            abrRequest().encode().toByteArray(),
+            Buffer().write(abrRequest().encode().toByteArray()),
         )
         assertEquals(200, resp.status)
         val bytes = drain(resp.body)
@@ -205,7 +205,7 @@ class LocalMediaProxyTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1&live=1",
             "POST",
-            abrRequest().encode().toByteArray(),
+            Buffer().write(abrRequest().encode().toByteArray()),
         )
         assertEquals(200, resp.status)
         val bytes = drain(resp.body)
@@ -220,7 +220,7 @@ class LocalMediaProxyTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1",
             "POST",
-            abrRequest(audioOnly = false).encode().toByteArray(),
+            Buffer().write(abrRequest(audioOnly = false).encode().toByteArray()),
         )
         assertEquals(origin.size.toLong(), resp.contentLength)
         val bytes = drain(resp.body)

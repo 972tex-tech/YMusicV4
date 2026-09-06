@@ -13,13 +13,13 @@ import okio.Source
 import okio.Timeout
 import okio.buffer
 
-internal actual suspend fun readRequestBody(body: RequestBody): ByteArray {
+internal actual suspend fun readRequestBody(body: RequestBody): Buffer {
     val buf = Buffer()
     /* writeTo → runBlocking on a oneshot pipe. Must not run on the engine
        thread or JS never finishes writing the SABR POST and execute hangs
        (playground: two sabr=1 logs, no HTTP 200). */
     withContext(Dispatchers.IO) { body.writeTo(buf) }
-    return buf.readByteArray()
+    return buf
 }
 
 internal actual fun proxyResponseBody(

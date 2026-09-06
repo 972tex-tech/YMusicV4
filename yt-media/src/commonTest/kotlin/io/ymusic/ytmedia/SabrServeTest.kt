@@ -208,7 +208,7 @@ class SabrServeTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1",
             "POST",
-            request(0, videoItag = 243).encode().toByteArray(),
+            Buffer().write(request(0, videoItag = 243).encode().toByteArray()),
         )
         assertEquals(200, resp.status)
         val bytes = drain(resp.body)

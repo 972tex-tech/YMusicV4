@@ -1,14 +1,19 @@
 package io.ymusic.ytmedia.proxy
 
 import kmpcommon.io.AsyncSource
-import kmpcommon.io.readByteArray
+import kmpcommon.io.writeAll
 import kmphttp.MediaType
 import kmphttp.MediaTypeX.toMediaTypeOrNull
 import kmphttp.RequestBody
 import kmphttp.ResponseBody
+import okio.Buffer
+import okio.use
 
-internal actual suspend fun readRequestBody(body: RequestBody): ByteArray =
-    body.openRead().readByteArray()
+internal actual suspend fun readRequestBody(body: RequestBody): Buffer {
+    val buf = Buffer()
+    body.openRead().use { buf.writeAll(it) }
+    return buf
+}
 
 internal actual fun proxyResponseBody(
     source: AsyncSource,
