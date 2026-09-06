@@ -275,6 +275,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   if (typeof ms === "number" && ms > 0) builder.timeout(ms);
   (async function () {
     try {
+      /* Cookie always (browser). SAPISIDHASH only for youtubei that did not already send Authorization. */
       let auth: AuthContext | undefined = undefined;
       if (isYoutubeiUrl(url)) {
         let hasAuth = false;

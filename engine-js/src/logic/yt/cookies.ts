@@ -44,6 +44,16 @@ export function isYoutubeiUrl(url: string): boolean {
   return url.indexOf("/youtubei/") >= 0;
 }
 
+/** youtube.com / youtu.be / googlevideo.com — browser Cookie header rides regardless of Authorization. */
+export function isYoutubeHost(url: string): boolean {
+  return (
+    url.indexOf("youtube.com") !== -1 ||
+    url.indexOf("youtu.be") !== -1 ||
+    url.indexOf("googlevideo.com") !== -1 ||
+    url.indexOf("youtubekids.com") !== -1
+  );
+}
+
 /**
  * Cook Cookie (and, when [auth] is passed, SAPISIDHASH) onto [builder]. Shared by
  * [executeWithCookies] and the player XHR/fetch shims.
@@ -86,7 +96,7 @@ async function requestCookieMap(url: string): Promise<Record<string, string | un
     const v = map[name];
     if (v === undefined || v.length === 0) delete map[name];
   }
-  if (url.indexOf("youtube.com") !== -1) {
+  if (isYoutubeHost(url) && url.indexOf("googlevideo.com") === -1) {
     await ensureConsent(map);
     await syncLanguagePref(map);
   }
@@ -287,5 +297,3 @@ async function applySetCookieValues(url: string, values: string[]): Promise<void
     }
   }
 }
-
-

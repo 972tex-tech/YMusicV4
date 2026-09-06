@@ -601,6 +601,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     logSabrRequest(p.url, p.body);
   }
   if (p.redirect === "manual" || p.redirect === "error") builder.followRedirects(false);
+  /* Cookie always (browser). SAPISIDHASH only for youtubei that did not already send Authorization. */
   let auth: AuthContext | undefined = undefined;
   if (isYoutubeiUrl(p.url) && !p.headers["has"]("authorization")) {
     const session = await getSession(SESSION_MAX_AGE_MS);
