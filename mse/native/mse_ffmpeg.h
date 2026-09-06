@@ -43,6 +43,8 @@ int mse_av_span(MseAv *a, double *first, double *last);
 
 /* Unsent packets remain (rd < n). */
 int mse_av_video_pending(MseAv *a);
+/* 1 if pull can send or present now (not waiting on a future pts). */
+int mse_av_video_due(MseAv *a, double clock);
 int mse_av_audio_pending(MseAv *a);
 int mse_av_has_video(MseAv *a);
 

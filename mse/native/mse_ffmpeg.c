@@ -77,6 +77,8 @@ struct MseAv {
     size_t pend_n[2];
     size_t pend_cap[2];
     int need_rap[2];
+    double starve_log_pts;
+    double starve_log_clock;
     AVFrame *vhold;
     AVBSFContext *vbsf;
     AVCodecParameters *vpar;
@@ -97,6 +99,8 @@ struct MseAv {
 };
 
 static int vdbg_n;
+
+#define MSE_SEND_AHEAD 0.08
 
 static void vlog(const char *fmt, ...)
 {
@@ -140,6 +144,24 @@ static void vlog_state(MseAv *a, double clock, const char *why, double extra)
     vlog("%s clock=%.3f extra=%.3f v_sent=%.3f hold=%.3f vf rd=%zu/%zu next=%.3f q=%.3f..%.3f nkey=%d next_key=%.3f rap=%d delay=%d bframes=%d",
          why, clock, extra, a->v_sent, hp, a->vf.rd, a->vf.n, np, p0, p1, nkey, nk, a->need_rap[0],
          a->vdec ? a->vdec->delay : -1, a->vdec ? a->vdec->has_b_frames : -1);
+}
+
+static size_t vf_send_rd(const MseAv *a)
+{
+    size_t rd = a->vf.rd;
+    while (rd < a->vf.n && a->need_rap[0] && !a->vf.f[rd].key)
+        rd++;
+    return rd;
+}
+
+static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
+{
+    double nxt = a->vf.f[rd].pts;
+    if (nxt == a->starve_log_pts && clock - a->starve_log_clock < 1.0)
+        return;
+    a->starve_log_pts = nxt;
+    a->starve_log_clock = clock;
+    vlog_state(a, clock, "starve-ahead", nxt - clock);
 }
 
 static int cf_cmp(const void *a, const void *b)
@@ -895,9 +917,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                     vlog_state(a, clock, "starve-empty", 0);
                 break;
             }
-            if (a->vf.f[a->vf.rd].pts > clock + 0.08) {
-                if (vdbg_ok())
-                    vlog_state(a, clock, "starve-ahead", a->vf.f[a->vf.rd].pts - clock);
+            if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {
+                vlog_starve_ahead(a, clock, a->vf.rd);
                 break;
             }
             {
@@ -1678,6 +1699,31 @@ int mse_av_video_pending(MseAv *a)
     return n;
 }
 
+int mse_av_video_due(MseAv *a, double clock)
+{
+    size_t rd;
+    int due;
+    if (!a)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+#ifdef __ANDROID__
+    if (a->mc_hold) {
+        due = a->mc_hold_pts_us / 1e6 <= clock + 0.04;
+        pthread_mutex_unlock(&a->mu);
+        return due;
+    }
+#endif
+    if (a->vhold && a->vhold->pts != AV_NOPTS_VALUE) {
+        due = a->vhold->pts / 1000.0 <= clock + 0.04;
+        pthread_mutex_unlock(&a->mu);
+        return due;
+    }
+    rd = vf_send_rd(a);
+    due = rd < a->vf.n && a->vf.f[rd].pts <= clock + MSE_SEND_AHEAD;
+    pthread_mutex_unlock(&a->mu);
+    return due;
+}
+
 int mse_av_audio_pending(MseAv *a)
 {
     int n;
@@ -1983,9 +2029,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 vlog_state(a, clock, "starve-empty", got);
             break;
         }
-        if (a->vf.f[a->vf.rd].pts > clock + 0.08) {
-            if (vdbg_ok())
-                vlog_state(a, clock, "starve-ahead", a->vf.f[a->vf.rd].pts - clock);
+        if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {
+            vlog_starve_ahead(a, clock, a->vf.rd);
             break;
         }
         {

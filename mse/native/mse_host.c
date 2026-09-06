@@ -652,11 +652,9 @@ static void *dec_loop(void *arg)
             if (ring_ms(h) < 80 && mse_av_audio_pending(h->av))
                 wait_ns = 0;
 #endif
-            /* Late with coded video still queued: spin to catch up.
-               Empty leftover must sleep — spinning blocked JS from
-               appending SABR that was already on the wire. */
+            /* Late + sendable now: spin. Future pts: sleep. */
             if (h->vw > 0 && (h->vpts < 0 || clock - h->vpts > 0.12) &&
-                mse_av_video_pending(h->av))
+                mse_av_video_due(h->av, clock))
                 wait_ns = 0;
             pthread_mutex_unlock(&h->mu);
             if (wait_ns > 0) {
