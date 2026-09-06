@@ -527,9 +527,9 @@ static void *dec_loop(void *arg)
 
         /* Video first so VP9 stays ahead of the DAC. Audio preroll used to run
            8× before any video send, then packets were only 80ms ahead of clock. */
-        if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0 && bgra) {
+        if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0) {
 #ifdef __ANDROID__
-            {
+            if (bgra) {
                 ANativeWindow *win;
                 pthread_mutex_lock(&h->mu);
                 win = (ANativeWindow *)h->window;
@@ -542,23 +542,24 @@ static void *dec_loop(void *arg)
                 }
             }
 #endif
-            if (h->on_frame)
+            if (bgra && h->on_frame)
                 h->on_frame(h->user, w, ht, bgra);
-            /* Publish pixels on frame_mu so UI memcpy does not stall the clock/DAC. */
-            pthread_mutex_lock(&h->frame_mu);
-            free(h->last_bgra);
-            h->last_bgra = bgra;
-            h->last_w = w;
-            h->last_h = ht;
-            h->frame_gen++;
-            pthread_mutex_unlock(&h->frame_mu);
+            if (bgra) {
+                pthread_mutex_lock(&h->frame_mu);
+                free(h->last_bgra);
+                h->last_bgra = bgra;
+                h->last_w = w;
+                h->last_h = ht;
+                h->frame_gen++;
+                pthread_mutex_unlock(&h->frame_mu);
+                bgra = NULL;
+            }
             pthread_mutex_lock(&h->mu);
             h->vw = w;
             h->vh = ht;
             h->vpts = pts;
             h->frames++;
             pthread_mutex_unlock(&h->mu);
-            bgra = NULL;
         }
 
 #ifdef MSE_DAC
@@ -774,6 +775,7 @@ void mse_host_destroy(MseHost *h)
     h->ring = NULL;
 #endif
 #ifdef __ANDROID__
+    mse_av_set_window(h->av, NULL);
     if (h->window)
         ANativeWindow_release((ANativeWindow *)h->window);
     h->window = NULL;
@@ -795,9 +797,14 @@ void mse_host_set_video_surface(MseHost *h, void *window)
         return;
     pthread_mutex_lock(&h->mu);
 #ifdef __ANDROID__
-    if (h->window)
-        ANativeWindow_release((ANativeWindow *)h->window);
-    h->window = window;
+    {
+        void *old = h->window;
+        /* Close MediaCodec on the old window before releasing it. */
+        mse_av_set_window(h->av, window);
+        h->window = window;
+        if (old)
+            ANativeWindow_release((ANativeWindow *)old);
+    }
 #else
     (void)window;
 #endif
@@ -805,8 +812,7 @@ void mse_host_set_video_surface(MseHost *h, void *window)
 }
 
 #ifdef __ANDROID__
-/* Software path: BGRA from libav → RGBX window. Next is AMediaCodec → Surface
- * (mse/README.md Android backend). */
+/* Fallback when MediaCodec cannot take the TextureView Surface. */
 static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra)
 {
     ANativeWindow_Buffer buf;

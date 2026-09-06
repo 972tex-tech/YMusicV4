@@ -27,7 +27,11 @@ void mse_av_flush(MseAv *a, int audio, int video);
 void mse_av_abort(MseAv *a, int audio);
 void mse_av_seek(MseAv *a, double seconds);
 
-/* 1 = frame, 0 = none yet, -1 = error. Caller free()s *bgra. */
+/* Android: borrowed ANativeWindow, or NULL to detach. No-op elsewhere. */
+void mse_av_set_window(MseAv *a, void *window);
+
+/* 1 = frame, 0 = none yet, -1 = error. Caller free()s *bgra when non-NULL.
+ * Android MediaCodec surface path returns 1 with *bgra == NULL (already shown). */
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts);
 /* 1 = pcm, 0 = none. *s16 is interleaved S16, caller free()s. */
 int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *rate, int *ch, double *pts);

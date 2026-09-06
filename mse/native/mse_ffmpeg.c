@@ -27,7 +27,13 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef __ANDROID__
+#include <stdbool.h>
+#endif
+#ifdef __ANDROID__
 #include <android/log.h>
+#include <android/native_window.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
 #endif
 
 typedef struct {
@@ -72,6 +78,18 @@ struct MseAv {
     int need_rap[2];
     AVFrame *vhold;
     AVBSFContext *vbsf;
+    AVCodecParameters *vpar;
+#ifdef __ANDROID__
+    AMediaCodec *mc;
+    ANativeWindow *mc_win;
+    enum AVCodecID mc_codec_id;
+    int mc_fail;
+    int mc_hold;
+    int mc_hold_ix;
+    int64_t mc_hold_pts_us;
+    int mc_w;
+    int mc_h;
+#endif
 };
 
 static int vdbg_n;
@@ -531,6 +549,396 @@ static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelF
 }
 #endif
 
+#ifdef __ANDROID__
+static const char *mc_mime(enum AVCodecID id)
+{
+    switch (id) {
+    case AV_CODEC_ID_H264:
+        return "video/avc";
+    case AV_CODEC_ID_HEVC:
+        return "video/hevc";
+    case AV_CODEC_ID_VP9:
+        return "video/x-vnd.on2.vp9";
+    case AV_CODEC_ID_VP8:
+        return "video/x-vnd.on2.vp8";
+    case AV_CODEC_ID_AV1:
+        return "video/av01";
+    case AV_CODEC_ID_MPEG4:
+        return "video/mp4v-es";
+    default:
+        return NULL;
+    }
+}
+
+static void mc_hold_drop(MseAv *a, int render)
+{
+    if (!a->mc || !a->mc_hold)
+        return;
+    AMediaCodec_releaseOutputBuffer(a->mc, (size_t)a->mc_hold_ix, render);
+    a->mc_hold = 0;
+}
+
+static void mc_close(MseAv *a)
+{
+    if (!a->mc)
+        return;
+    mc_hold_drop(a, 0);
+    AMediaCodec_stop(a->mc);
+    AMediaCodec_delete(a->mc);
+    a->mc = NULL;
+    vlog("close mediacodec");
+}
+
+static int mc_set_avcc_csd(AMediaFormat *fmt, const uint8_t *p, int n)
+{
+    int i, nsps, npps, sl, pl;
+    uint8_t *sps, *pps;
+    if (n < 7 || p[0] != 1)
+        return -1;
+    i = 5;
+    nsps = p[i++] & 0x1f;
+    if (nsps < 1 || i + 2 > n)
+        return -1;
+    sl = (p[i] << 8) | p[i + 1];
+    i += 2;
+    if (sl <= 0 || i + sl > n)
+        return -1;
+    sps = malloc((size_t)sl + 4);
+    if (!sps)
+        return -1;
+    sps[0] = sps[1] = sps[2] = 0;
+    sps[3] = 1;
+    memcpy(sps + 4, p + i, (size_t)sl);
+    i += sl;
+    if (i >= n) {
+        free(sps);
+        return -1;
+    }
+    npps = p[i++];
+    if (npps < 1 || i + 2 > n) {
+        free(sps);
+        return -1;
+    }
+    pl = (p[i] << 8) | p[i + 1];
+    i += 2;
+    if (pl <= 0 || i + pl > n) {
+        free(sps);
+        return -1;
+    }
+    pps = malloc((size_t)pl + 4);
+    if (!pps) {
+        free(sps);
+        return -1;
+    }
+    pps[0] = pps[1] = pps[2] = 0;
+    pps[3] = 1;
+    memcpy(pps + 4, p + i, (size_t)pl);
+    AMediaFormat_setBuffer(fmt, "csd-0", sps, (size_t)sl + 4);
+    AMediaFormat_setBuffer(fmt, "csd-1", pps, (size_t)pl + 4);
+    free(sps);
+    free(pps);
+    return 0;
+}
+
+static void mc_set_csd(AMediaFormat *fmt, AVCodecParameters *par)
+{
+    const uint8_t *p = par->extradata;
+    int n = par->extradata_size;
+    if (!p || n <= 0)
+        return;
+    if (par->codec_id == AV_CODEC_ID_H264 && mc_set_avcc_csd(fmt, p, n) == 0)
+        return;
+    AMediaFormat_setBuffer(fmt, "csd-0", p, (size_t)n);
+}
+
+static int mc_open(MseAv *a)
+{
+    const char *mime;
+    AMediaFormat *fmt;
+    media_status_t st;
+    int w, h;
+    if (!a->mc_win || !a->vpar)
+        return -1;
+    mime = mc_mime(a->vpar->codec_id);
+    if (!mime)
+        return -1;
+    mc_close(a);
+    a->mc = AMediaCodec_createDecoderByType(mime);
+    if (!a->mc)
+        return -1;
+    fmt = AMediaFormat_new();
+    if (!fmt) {
+        mc_close(a);
+        return -1;
+    }
+    w = a->vpar->width > 0 ? a->vpar->width : 64;
+    h = a->vpar->height > 0 ? a->vpar->height : 64;
+    AMediaFormat_setString(fmt, AMEDIAFORMAT_KEY_MIME, mime);
+    AMediaFormat_setInt32(fmt, AMEDIAFORMAT_KEY_WIDTH, w);
+    AMediaFormat_setInt32(fmt, AMEDIAFORMAT_KEY_HEIGHT, h);
+    AMediaFormat_setInt32(fmt, AMEDIAFORMAT_KEY_MAX_INPUT_SIZE, 2 * 1024 * 1024);
+    mc_set_csd(fmt, a->vpar);
+    st = AMediaCodec_configure(a->mc, fmt, a->mc_win, NULL, 0);
+    AMediaFormat_delete(fmt);
+    if (st != AMEDIA_OK) {
+        vlog("mediacodec configure %s %dx%d fail=%d", mime, w, h, (int)st);
+        mc_close(a);
+        return -1;
+    }
+    st = AMediaCodec_start(a->mc);
+    if (st != AMEDIA_OK) {
+        vlog("mediacodec start fail=%d", (int)st);
+        mc_close(a);
+        return -1;
+    }
+    a->mc_codec_id = a->vpar->codec_id;
+    a->mc_w = w;
+    a->mc_h = h;
+    a->mc_hold = 0;
+    {
+        double t = a->v_sent >= 0 ? a->v_sent : 0;
+        size_t i, key = a->vf.n;
+        for (i = 0; i < a->vf.n; i++) {
+            if (a->vf.f[i].key && a->vf.f[i].pts <= t + 0.05)
+                key = i;
+        }
+        if (key < a->vf.n) {
+            a->vf.rd = key;
+            for (i = key; i < a->vf.n; i++)
+                a->vf.f[i].sent = 0;
+            a->need_rap[0] = 1;
+        }
+    }
+    if (a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf) {
+        const AVBitStreamFilter *f = av_bsf_get_by_name("vp9_superframe");
+        if (f && av_bsf_alloc(f, &a->vbsf) == 0) {
+            avcodec_parameters_copy(a->vbsf->par_in, a->vpar);
+            a->vbsf->time_base_in = (AVRational){ 1, 1000 };
+            if (av_bsf_init(a->vbsf) < 0)
+                av_bsf_free(&a->vbsf);
+        }
+    }
+    vlog("open mediacodec %s %dx%d", mime, w, h);
+    return 0;
+}
+
+static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int key)
+{
+    ssize_t ix;
+    size_t cap = 0;
+    uint8_t *buf;
+    uint32_t flags = 0;
+    if (!a->mc || n <= 0)
+        return 0;
+    ix = AMediaCodec_dequeueInputBuffer(a->mc, 2000);
+    if (ix < 0)
+        return AVERROR(EAGAIN);
+    buf = AMediaCodec_getInputBuffer(a->mc, (size_t)ix, &cap);
+    if (!buf || cap < (size_t)n)
+        return -1;
+    memcpy(buf, data, (size_t)n);
+#ifdef AMEDIACODEC_BUFFER_FLAG_KEY_FRAME
+    if (key)
+        flags |= AMEDIACODEC_BUFFER_FLAG_KEY_FRAME;
+#else
+    (void)key;
+#endif
+    if (AMediaCodec_queueInputBuffer(a->mc, (size_t)ix, 0, (size_t)n, pts_us, flags) != AMEDIA_OK)
+        return -1;
+    return 0;
+}
+
+static int mc_send_one(MseAv *a)
+{
+    Cf *cf;
+    int r;
+    if (!a->mc || a->vf.rd >= a->vf.n)
+        return 0;
+    cf = &a->vf.f[a->vf.rd];
+    if (a->vbsf) {
+        AVPacket *pkt = av_packet_alloc();
+        if (!pkt)
+            return -1;
+        if (av_new_packet(pkt, (int)cf->n) < 0) {
+            av_packet_free(&pkt);
+            return -1;
+        }
+        memcpy(pkt->data, cf->data, cf->n);
+        pkt->pts = pkt->dts = (int64_t)(cf->pts * 1000.0);
+        pkt->time_base = (AVRational){ 1, 1000 };
+        if (cf->key)
+            pkt->flags |= AV_PKT_FLAG_KEY;
+        r = av_bsf_send_packet(a->vbsf, pkt);
+        av_packet_free(&pkt);
+        if (r == AVERROR(EAGAIN))
+            return 0;
+        if (r < 0)
+            return r;
+        cf->sent = 1;
+        a->vf.rd++;
+        pkt = av_packet_alloc();
+        if (!pkt)
+            return -1;
+        for (;;) {
+            r = av_bsf_receive_packet(a->vbsf, pkt);
+            if (r == AVERROR(EAGAIN) || r == AVERROR_EOF)
+                break;
+            if (r < 0) {
+                av_packet_free(&pkt);
+                return r;
+            }
+            r = mc_queue(a, pkt->data, pkt->size, (int64_t)(cf->pts * 1e6), cf->key);
+            av_packet_unref(pkt);
+            if (r < 0 && r != AVERROR(EAGAIN)) {
+                av_packet_free(&pkt);
+                return r;
+            }
+        }
+        av_packet_free(&pkt);
+        return 0;
+    }
+    r = mc_queue(a, cf->data, (int)cf->n, (int64_t)(cf->pts * 1e6), cf->key);
+    if (r == AVERROR(EAGAIN))
+        return 0;
+    cf->sent = 1;
+    a->vf.rd++;
+    return r < 0 ? r : 0;
+}
+
+static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
+{
+    const double early = 0.04;
+    const double late = 0.08;
+    int i;
+    if (a->mc_hold) {
+        double p = a->mc_hold_pts_us / 1e6;
+        double d = p - clock;
+        if (p > clock + early) {
+            if (vdbg_ok() || d > 0.2)
+                vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
+            return 0;
+        }
+        if (p < clock - late) {
+            vlog_state(a, clock, "hold-late", d);
+            mc_hold_drop(a, 0);
+        } else {
+            mc_hold_drop(a, 1);
+            *pts = p;
+            a->v_sent = p;
+            *w = a->mc_w;
+            *h = a->mc_h;
+            if (vdbg_ok())
+                vlog_state(a, clock, "show-hold", d);
+            return 1;
+        }
+    }
+    for (i = 0; i < 96; i++) {
+        AMediaCodecBufferInfo info;
+        ssize_t ox = AMediaCodec_dequeueOutputBuffer(a->mc, &info, 0);
+        if (ox >= 0) {
+            double p = info.presentationTimeUs / 1e6;
+            double d = p - clock;
+            if (p > clock + early) {
+                a->mc_hold = 1;
+                a->mc_hold_ix = (int)ox;
+                a->mc_hold_pts_us = info.presentationTimeUs;
+                if (vdbg_ok() || d > 0.2)
+                    vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
+                return 0;
+            }
+            if (p < clock - late) {
+                if (vdbg_ok() || d < -0.25)
+                    vlog_state(a, clock, "recv-late", d);
+                AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
+                continue;
+            }
+            AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 1);
+            *pts = p;
+            a->v_sent = p;
+            *w = a->mc_w;
+            *h = a->mc_h;
+            if (vdbg_ok())
+                vlog_state(a, clock, "show", d);
+            return 1;
+        }
+        if (ox == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+            AMediaFormat *fmt = AMediaCodec_getOutputFormat(a->mc);
+            if (fmt) {
+                int32_t mw = 0, mh = 0;
+                AMediaFormat_getInt32(fmt, AMEDIAFORMAT_KEY_WIDTH, &mw);
+                AMediaFormat_getInt32(fmt, AMEDIAFORMAT_KEY_HEIGHT, &mh);
+                if (mw > 0)
+                    a->mc_w = mw;
+                if (mh > 0)
+                    a->mc_h = mh;
+                AMediaFormat_delete(fmt);
+                vlog("mediacodec size %dx%d", a->mc_w, a->mc_h);
+            }
+            continue;
+        }
+        if (ox == AMEDIACODEC_INFO_TRY_AGAIN_LATER ||
+            ox == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED) {
+            size_t rd0 = a->vf.rd;
+            int sr;
+            while (a->vf.rd < a->vf.n && a->need_rap[0] && !a->vf.f[a->vf.rd].key) {
+                a->vf.f[a->vf.rd].sent = 1;
+                a->vf.rd++;
+            }
+            if (a->vf.rd != rd0)
+                vlog_state(a, clock, "rap-skip", a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
+            if (a->vf.rd >= a->vf.n) {
+                if (vdbg_ok())
+                    vlog_state(a, clock, "starve-empty", 0);
+                break;
+            }
+            if (a->vf.f[a->vf.rd].pts > clock + 0.08) {
+                if (vdbg_ok())
+                    vlog_state(a, clock, "starve-ahead", a->vf.f[a->vf.rd].pts - clock);
+                break;
+            }
+            {
+                double sp = a->vf.f[a->vf.rd].pts;
+                int key = a->vf.f[a->vf.rd].key;
+                sr = mc_send_one(a);
+                if (sr < 0) {
+                    vlog("mediacodec send-err pts=%.3f key=%d r=%d", sp, key, sr);
+                    continue;
+                }
+                if (key)
+                    a->need_rap[0] = 0;
+                if (vdbg_ok())
+                    vlog("send pts=%.3f key=%d clock=%.3f", sp, key, clock);
+            }
+            continue;
+        }
+        break;
+    }
+    return 0;
+}
+
+static int mc_try_open(MseAv *a)
+{
+    if (!a->mc_win || !a->vpar || a->mc_fail)
+        return -1;
+    if (a->mc)
+        return 0;
+    if (mc_open(a) < 0) {
+        a->mc_fail = 1;
+        vlog("mediacodec unavailable, software blit");
+        return -1;
+    }
+    if (a->vdec) {
+        av_frame_free(&a->vhold);
+        avcodec_free_context(&a->vdec);
+        if (a->sws) {
+            sws_freeContext(a->sws);
+            a->sws = NULL;
+        }
+    }
+    return 0;
+}
+#endif
+
 static const AVCodec *find_video_codec(enum AVCodecID id)
 {
     const AVCodec *c;
@@ -732,6 +1140,10 @@ void mse_av_destroy(MseAv *a)
     avcodec_free_context(&a->adec);
     avcodec_free_context(&a->vdec);
     av_bsf_free(&a->vbsf);
+    avcodec_parameters_free(&a->vpar);
+#ifdef __ANDROID__
+    mc_close(a);
+#endif
     if (a->swr)
         swr_free(&a->swr);
     if (a->sws)
@@ -1087,8 +1499,29 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                 if (!audio)
                     av_bsf_free(&a->vbsf);
             }
-            open_decoder(a, !audio, par);
-            avcodec_parameters_free(&par);
+            if (!audio) {
+                avcodec_parameters_free(&a->vpar);
+                a->vpar = avcodec_parameters_alloc();
+                if (a->vpar)
+                    avcodec_parameters_copy(a->vpar, par);
+#ifdef __ANDROID__
+                if (a->mc &&
+                    (a->mc_codec_id != par->codec_id ||
+                     (par->width > 0 && a->mc_w > 0 && par->width != a->mc_w) ||
+                     (par->height > 0 && a->mc_h > 0 && par->height != a->mc_h))) {
+                    mc_close(a);
+                    a->mc_fail = 0;
+                }
+                if (mc_try_open(a) == 0) {
+                    avcodec_parameters_free(&par);
+                    par = NULL;
+                }
+#endif
+            }
+            if (par) {
+                open_decoder(a, !audio, par);
+                avcodec_parameters_free(&par);
+            }
         }
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
         cfb_free(&tmp);
@@ -1117,6 +1550,9 @@ static void close_video_decoder(MseAv *a)
         sws_freeContext(a->sws);
         a->sws = NULL;
     }
+#ifdef __ANDROID__
+    mc_close(a);
+#endif
     a->pend_n[0] = 0;
     a->need_rap[0] = 1;
     /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
@@ -1139,6 +1575,12 @@ void mse_av_abort(MseAv *a, int audio)
         avcodec_flush_buffers(a->vdec);
     if (!audio && a->vbsf)
         av_bsf_flush(a->vbsf);
+#ifdef __ANDROID__
+    if (!audio && a->mc) {
+        mc_hold_drop(a, 0);
+        AMediaCodec_flush(a->mc);
+    }
+#endif
     pthread_mutex_unlock(&a->mu);
 }
 
@@ -1165,6 +1607,12 @@ void mse_av_flush(MseAv *a, int audio, int video)
         avcodec_flush_buffers(a->vdec);
     if (video && a->vbsf)
         av_bsf_flush(a->vbsf);
+#ifdef __ANDROID__
+    if (video && a->mc) {
+        mc_hold_drop(a, 0);
+        AMediaCodec_flush(a->mc);
+    }
+#endif
     if (audio) {
         a->pend_n[1] = 0;
         a->need_rap[1] = 1;
@@ -1311,6 +1759,12 @@ void mse_av_seek(MseAv *a, double seconds)
         avcodec_flush_buffers(a->vdec);
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
+#ifdef __ANDROID__
+    if (a->mc && a->vf.rd < a->vf.n && a->vf.f[a->vf.rd].key) {
+        mc_hold_drop(a, 0);
+        AMediaCodec_flush(a->mc);
+    }
+#endif
     av_frame_free(&a->vhold);
     vdbg_n = 0;
     pthread_mutex_unlock(&a->mu);
@@ -1364,6 +1818,29 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
     return 0;
 }
 
+void mse_av_set_window(MseAv *a, void *window)
+{
+#ifdef __ANDROID__
+    ANativeWindow *win = (ANativeWindow *)window;
+    if (!a)
+        return;
+    pthread_mutex_lock(&a->mu);
+    if (a->mc_win == win) {
+        pthread_mutex_unlock(&a->mu);
+        return;
+    }
+    mc_close(a);
+    a->mc_win = win;
+    a->mc_fail = 0;
+    if (win)
+        mc_try_open(a);
+    pthread_mutex_unlock(&a->mu);
+#else
+    (void)a;
+    (void)window;
+#endif
+}
+
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts)
 {
     AVFrame *frame;
@@ -1375,6 +1852,18 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     *bgra = NULL;
     pthread_mutex_lock(&a->mu);
+#ifdef __ANDROID__
+    if (a->vf.n == 0) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
+    mc_try_open(a);
+    if (a->mc) {
+        int r = pull_mc(a, clock, w, h, pts);
+        pthread_mutex_unlock(&a->mu);
+        return r;
+    }
+#endif
     if (!a->vdec || a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
         return 0;
