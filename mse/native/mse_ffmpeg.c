@@ -528,16 +528,22 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
                 pts = ts * tb;
             if (pkt->duration > 0)
                 dur = pkt->duration * tb;
-            /* SABR WebM Cluster Timecode is milliseconds. A non-1ms
-               TimestampScale turns 18s into 90s and a seek to 453s into
-               2252s (log21 starve-ahead extra=1799). */
-            if (want_video && tb > 0 && (tb > 0.002 || tb < 0.0005)) {
-                if (nadd == 0)
-                    vlog("webm tb=%d/%d -> 1ms", st->time_base.num, st->time_base.den);
-                if (ts != AV_NOPTS_VALUE)
-                    pts = ts * 0.001;
-                if (pkt->duration > 0)
-                    dur = pkt->duration * 0.001;
+            /* Coarse TimestampScale only (2–10ms/tick). 1/60000 is valid
+               (1ms×60); treating those ticks as ms made start play at 1fps. */
+            if (want_video && tb > 0.002) {
+                double k = tb / 0.001;
+                int ik = (int)(k + 0.5);
+                double err = k - ik;
+                if (err < 0)
+                    err = -err;
+                if (ik >= 2 && ik <= 10 && err < 0.08) {
+                    if (nadd == 0)
+                        vlog("webm tb=%d/%d -> 1ms", st->time_base.num, st->time_base.den);
+                    if (ts != AV_NOPTS_VALUE)
+                        pts = ts * 0.001;
+                    if (pkt->duration > 0)
+                        dur = pkt->duration * 0.001;
+                }
             }
             pts += ts_off;
             if (cfb_push(dst, pts, dur, !!(pkt->flags & AV_PKT_FLAG_KEY),
