@@ -39,52 +39,28 @@ function asRec(v: unknown): Record<string, unknown> | null {
   return v as Record<string, unknown>;
 }
 
-function sizePlayerEl(
-  el: {
-    clientWidth?: number;
-    clientHeight?: number;
-    offsetWidth?: number;
-    offsetHeight?: number;
-  } | null,
-): void {
+function sizePlayerEl(el: Element | null): void {
   if (!el) return;
   el.clientWidth = el.offsetWidth = 640;
   el.clientHeight = el.offsetHeight = 360;
 }
 
+function sizeNodeList(list: { length: number; [i: number]: Element | undefined } | null): void {
+  if (!list) return;
+  for (let i = 0; i < list.length; i++) sizePlayerEl(list[i] ?? null);
+}
+
 function sizePlayerTree(): void {
-  sizePlayerEl(
-    document.getElementById("player") as {
-      clientWidth?: number;
-      clientHeight?: number;
-      offsetWidth?: number;
-      offsetHeight?: number;
-    } | null,
-  );
-  sizePlayerEl(
-    document.getElementById("movie_player") as {
-      clientWidth?: number;
-      clientHeight?: number;
-      offsetWidth?: number;
-      offsetHeight?: number;
-    } | null,
-  );
-  sizePlayerEl(
-    document.getElementById("video-player") as {
-      clientWidth?: number;
-      clientHeight?: number;
-      offsetWidth?: number;
-      offsetHeight?: number;
-    } | null,
-  );
-  sizePlayerEl(
-    document.getElementById("player-html5-video") as {
-      clientWidth?: number;
-      clientHeight?: number;
-      offsetWidth?: number;
-      offsetHeight?: number;
-    } | null,
-  );
+  sizePlayerEl(document.getElementById("player"));
+  sizePlayerEl(document.getElementById("movie_player"));
+  sizePlayerEl(document.getElementById("video-player"));
+  const doc = document as unknown as {
+    getElementsByTagName: (n: string) => { length: number; [i: number]: Element | undefined };
+    getElementsByClassName: (n: string) => { length: number; [i: number]: Element | undefined };
+  };
+  sizeNodeList(doc.getElementsByTagName("video"));
+  sizeNodeList(doc.getElementsByClassName("html5-video-container"));
+  sizeNodeList(doc.getElementsByClassName("html5-video-player"));
 }
 
 function moviePlayer(): Record<string, unknown> | null {
@@ -92,11 +68,6 @@ function moviePlayer(): Record<string, unknown> | null {
   return el as unknown as Record<string, unknown> | null;
 }
 
-/**
- * YouTube copies api.state.D onto template.element in MY(). That element is not
- * always #movie_player in this DOM, so the IFrame names never land there.
- * Copy the bag onto #movie_player the same way MY() does.
- */
 function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   if (!host || typeof host["getPlaybackQuality"] !== "function") return;
   const orig = host["getPlaybackQuality"] as (...a: unknown[]) => unknown;
@@ -113,25 +84,27 @@ function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   host["getPlaybackQuality"] = wrapped;
 }
 
+/** App.FC copies IFrame names (state.Y) onto template.element = #movie_player
+ *  when create() is given #player. Copy state.Y if FC landed elsewhere. */
 function bindMoviePlayerApi(app: YtApp | null): void {
   const el = moviePlayer();
   if (!el || !app) return;
   wrapGetPlaybackQuality(el);
   wrapGetPlaybackQuality(app as unknown as Record<string, unknown>);
-  if (typeof el["getAvailableQualityData"] === "function") return;
+  if (typeof el["getPlaybackQuality"] === "function") return;
   const rec = app as unknown as Record<string, unknown>;
   for (const k in rec) {
     try {
       const v = rec[k];
       if (!v || typeof v !== "object") continue;
       const st = (v as Record<string, unknown>)["state"] as Record<string, unknown> | undefined;
-      const d = st ? (st["D"] as Record<string, unknown> | undefined) : undefined;
-      if (!d || typeof d["getAvailableQualityData"] !== "function") continue;
-      for (const name in d) {
-        if (Object.prototype.hasOwnProperty.call(d, name)) el[name] = d[name];
+      const y = st ? (st["Y"] as Record<string, unknown> | undefined) : undefined;
+      if (!y || typeof y["getPlaybackQuality"] !== "function") continue;
+      for (const name in y) {
+        if (Object.prototype.hasOwnProperty.call(y, name)) el[name] = y[name];
       }
       wrapGetPlaybackQuality(el);
-      wrapGetPlaybackQuality(d);
+      wrapGetPlaybackQuality(y);
       return;
     } catch (_e) {}
   }
@@ -334,24 +307,13 @@ function installSabrObserver(): void {
 function installPlayerTree(): void {
   if (document.getElementById("player")) return;
   const player = document.createElement("div");
-  const movie = document.createElement("div");
-  const wrap = document.createElement("div");
-  const video = document.createElement("video");
   player.id = "player";
-  movie.id = "movie_player";
-  movie.className = "html5-video-player";
-  wrap.className = "html5-video-container";
-  video.id = "player-html5-video";
-  video.className = "video-stream html5-main-video";
-  player.clientWidth = player.offsetWidth = 640;
-  player.clientHeight = player.offsetHeight = 360;
-  movie.clientWidth = movie.offsetWidth = 640;
-  movie.clientHeight = movie.offsetHeight = 360;
-  video.clientWidth = video.offsetWidth = 640;
-  video.clientHeight = video.offsetHeight = 360;
-  wrap.appendChild(video);
-  movie.appendChild(wrap);
-  player.appendChild(movie);
+  sizePlayerEl(player);
+  const origAppend = player.appendChild;
+  player.appendChild = function (this: Element, child: Element) {
+    sizePlayerEl(child);
+    return origAppend.call(this, child);
+  };
   document.body.appendChild(player);
 }
 
@@ -641,17 +603,30 @@ class Player {
     };
     const param2 = {
       "args": playerVars,
-      "attrs": { "id": "movie_player", "width": "640", "height": "360" },
+      "attrs": { "id": "video-player", "width": "640", "height": "360" },
       "loaded": true,
     };
-    const root = document.getElementById("movie_player");
-    if (!root) throw new JsEngineErrorImpl("missing #movie_player", "E20076");
+    /* Arg 1 is the parent. Application.create appends a new div whose id is
+       ctx.rootElementId ("movie_player") and copies the IFrame API onto it. */
+    const root = document.getElementById("player");
+    if (!root) throw new JsEngineErrorImpl("missing #player", "E20076");
     out["step"] = "create";
     try {
       this.player = create(root, param2, this.createCtx) as YtApp;
       (globalThis as unknown as Record<string, unknown>)["__ymPlayer"] = this.player;
       sizePlayerTree();
       bindMoviePlayerApi(this.player);
+      if (MSE_DEBUG) {
+        const el = moviePlayer();
+        console.log(
+          "mse create api movie=" +
+            (el && typeof el["getPlaybackQuality"] === "function" ? "1" : "0") +
+            " range=" +
+            (el && typeof el["setPlaybackQualityRange"] === "function" ? "1" : "0") +
+            " levels=" +
+            (el && typeof el["getAvailableQualityLevels"] === "function" ? "1" : "0"),
+        );
+      }
     } catch (e) {
       throw new JsEngineErrorImpl(
         "Application.create: " + (e instanceof Error ? e.message : String(e)),
@@ -699,6 +674,7 @@ class Player {
     const one = host["setPlaybackQuality"];
     if (typeof range === "function") range.call(host, q, q);
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
+    else if (MSE_DEBUG) console.log("mse setQuality no API q=" + q);
     /* Do not seek. Video SourceBuffer already reports a sliver, so SABR
        fetches video on the next tick without jumping leftover audio. */
     notifyCatalog();
