@@ -33,13 +33,21 @@ plugins {
 val backendVersion = Versions.engineJsBackendVersion
 
 // Compile-time define: a bare `declare const` identifier substituted inline at bundle time —
-// no runtime global, no extern. SABR_DEBUG / MSE_DEBUG / BG_DUMP are off in prod
-// (`-PsabrDebug=true` / `-PmseDebug=true` / `-PbgDump=true` to enable).
-val sabrDebug = project.findProperty("sabrDebug") == "true"
-val mseDebug = project.findProperty("mseDebug") == "true"
-val bgDump = project.findProperty("bgDump") == "true"
+// no runtime global, no extern. `-Pproduction=true` for the shipped bundle; SABR_DEBUG /
+// MSE_DEBUG / BG_DUMP then default off (override with `-PsabrDebug=true` etc.).
+fun optFlag(name: String, default: Boolean): Boolean =
+    when (project.findProperty(name)?.toString()) {
+        "true" -> true
+        "false" -> false
+        else -> default
+    }
+val production = project.findProperty("production") == "true"
+val sabrDebug = optFlag("sabrDebug", !production)
+val mseDebug = optFlag("mseDebug", !production)
+val bgDump = optFlag("bgDump", !production)
 val esbuildDefines = arrayOf(
     "--define:BACKEND_VERSION=$backendVersion",
+    "--define:PRODUCTION=$production",
     "--define:SABR_DEBUG=$sabrDebug",
     "--define:MSE_DEBUG=$mseDebug",
     "--define:BG_DUMP=$bgDump",

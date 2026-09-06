@@ -33,8 +33,9 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **`BACKEND_VERSION`** — the manually-bumped bundle revision, in build.gradle.kts; an esbuild `--define`
   compile-time const — `declare const`, inlined, never a runtime global.
 
-- **`SABR_DEBUG` / `MSE_DEBUG` / `BG_DUMP`** — same `--define` inlining; false in prod.
-  `-PsabrDebug=true` / `-PmseDebug=true` / `-PbgDump=true` to keep the corresponding logs.
+- **`PRODUCTION` / `SABR_DEBUG` / `MSE_DEBUG` / `BG_DUMP`** — same `--define` inlining.
+  `-Pproduction=true` for the shipped bundle (debug gates default off). Without it, the gates
+  default on. Override any one with `-PsabrDebug=true|false` / `-PmseDebug=` / `-PbgDump=`.
 
 - **Versioning / backward compat** — the host installs the frozen, non-writable `versions` global from C (`{app}`:
   the app version identifies the whole host surface — transport, protocols, app ship as one build) before the
