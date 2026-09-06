@@ -162,21 +162,6 @@ Java_io_ymusic_mse_MseHostNative_copyFrameBytes(JNIEnv *env, jclass cls, jlong h
     return arr;
 }
 
-#ifdef __ANDROID__
-#include <android/native_window.h>
-#include <android/native_window_jni.h>
-
-JNIEXPORT void JNICALL
-Java_io_ymusic_mse_MseHostNative_setVideoSurface(JNIEnv *env, jclass cls, jlong handle, jobject surface)
-{
-    MseHost *h = (MseHost *)(intptr_t)handle;
-    ANativeWindow *win = NULL;
-    (void)cls;
-    if (surface)
-        win = ANativeWindow_fromSurface(env, surface);
-    mse_host_set_video_surface(h, win);
-}
-
 JNIEXPORT jboolean JNICALL
 Java_io_ymusic_mse_MseHostNative_videoSize(JNIEnv *env, jclass cls, jlong handle, jintArray outWh)
 {
@@ -191,5 +176,50 @@ Java_io_ymusic_mse_MseHostNative_videoSize(JNIEnv *env, jclass cls, jlong handle
     wh[1] = ht;
     (*env)->SetIntArrayRegion(env, outWh, 0, 2, wh);
     return JNI_TRUE;
+}
+
+#ifdef __APPLE__
+#include "mse_vt_present.h"
+
+JNIEXPORT jboolean JNICALL
+Java_io_ymusic_mse_MseHostNative_setVideoComponent(JNIEnv *env, jclass cls, jlong handle, jobject component)
+{
+    MseHost *h = (MseHost *)(intptr_t)handle;
+    void *layer = NULL;
+    (void)cls;
+    if (!h)
+        return JNI_FALSE;
+    if (component)
+        layer = mse_vt_attach_component(env, component);
+    mse_host_set_video_surface(h, layer);
+    return layer ? JNI_TRUE : JNI_FALSE;
+}
+#else
+#ifndef __ANDROID__
+JNIEXPORT jboolean JNICALL
+Java_io_ymusic_mse_MseHostNative_setVideoComponent(JNIEnv *env, jclass cls, jlong handle, jobject component)
+{
+    (void)env;
+    (void)cls;
+    (void)handle;
+    (void)component;
+    return JNI_FALSE;
+}
+#endif
+#endif
+
+#ifdef __ANDROID__
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setVideoSurface(JNIEnv *env, jclass cls, jlong handle, jobject surface)
+{
+    MseHost *h = (MseHost *)(intptr_t)handle;
+    ANativeWindow *win = NULL;
+    (void)cls;
+    if (surface)
+        win = ANativeWindow_fromSurface(env, surface);
+    mse_host_set_video_surface(h, win);
 }
 #endif

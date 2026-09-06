@@ -44,6 +44,13 @@ actual object MseHostNative {
     @JvmStatic
     external fun setSink(handle: Long, sink: MseHostSink)
 
+    @JvmStatic
+    external fun videoSize(handle: Long, outWh: IntArray): Boolean
+
+    /** macOS: overlay VideoToolbox on [component] via JAWT. Other JVMs return false. */
+    @JvmStatic
+    external fun setVideoComponent(handle: Long, component: java.awt.Component?): Boolean
+
     private fun loadLibrary() {
         if (!loaded.compareAndSet(false, true)) return
         val name = "mseffmpegjni"

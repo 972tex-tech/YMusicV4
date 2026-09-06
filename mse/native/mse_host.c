@@ -11,6 +11,7 @@
 #ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
 #include <mach/mach_time.h>
+#include "mse_vt_present.h"
 #endif
 #ifdef __ANDROID__
 #include <android/native_window.h>
@@ -780,6 +781,13 @@ void mse_host_destroy(MseHost *h)
         ANativeWindow_release((ANativeWindow *)h->window);
     h->window = NULL;
 #endif
+#ifdef __APPLE__
+    mse_av_set_window(h->av, NULL);
+    if (h->window) {
+        mse_vt_detach(h->window);
+        h->window = NULL;
+    }
+#endif
     pthread_mutex_lock(&h->frame_mu);
     free(h->last_bgra);
     h->last_bgra = NULL;
@@ -804,6 +812,14 @@ void mse_host_set_video_surface(MseHost *h, void *window)
         h->window = window;
         if (old)
             ANativeWindow_release((ANativeWindow *)old);
+    }
+#elif defined(__APPLE__)
+    {
+        void *old = h->window;
+        mse_av_set_window(h->av, window);
+        h->window = window;
+        if (old && old != window)
+            mse_vt_detach(old);
     }
 #else
     (void)window;

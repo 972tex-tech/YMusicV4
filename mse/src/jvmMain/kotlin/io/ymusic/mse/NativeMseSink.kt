@@ -35,11 +35,20 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
 
     override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
 
+    private var bufA: BufferedImage? = null
+    private var bufB: BufferedImage? = null
+    private var useA = true
+
     private fun bgraToImage(w: Int, h: Int, bgra: ByteArray): BufferedImage {
-        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        val img = if (useA) ensure(w, h, bufA).also { bufA = it } else ensure(w, h, bufB).also { bufB = it }
+        useA = !useA
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
         ByteBuffer.wrap(bgra).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
             .get(pixels, 0, minOf(pixels.size, w * h))
         return img
     }
+
+    private fun ensure(w: Int, h: Int, cur: BufferedImage?): BufferedImage =
+        if (cur != null && cur.width == w && cur.height == h) cur
+        else BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
 }

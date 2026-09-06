@@ -36,12 +36,19 @@ endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(AV REQUIRED libavformat libavcodec libavutil libswscale libswresample)
 
+if(APPLE)
+    enable_language(OBJC)
+endif()
+
 add_library(mseffmpegjni SHARED mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c)
 target_include_directories(mseffmpegjni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../quickjs/native)
 target_include_directories(mseffmpegjni PRIVATE ${AV_INCLUDE_DIRS})
 target_link_directories(mseffmpegjni PRIVATE ${AV_LIBRARY_DIRS})
 target_link_libraries(mseffmpegjni PRIVATE ${AV_LIBRARIES})
 if(APPLE)
+  target_sources(mseffmpegjni PRIVATE mse_vt_present.m)
+  set_source_files_properties(mse_vt_present.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  find_library(JAWT_LIB jawt HINTS "$ENV{JAVA_HOME}/lib" "$ENV{JAVA_HOME}/lib/jli")
   target_link_options(mseffmpegjni PRIVATE "-Wl,-rpath,${AV_LIBRARY_DIRS}")
   target_link_libraries(mseffmpegjni PRIVATE
     "-framework AudioToolbox"
@@ -50,7 +57,12 @@ if(APPLE)
     "-framework CoreMedia"
     "-framework CoreFoundation"
     "-framework CoreVideo"
+    "-framework AVFoundation"
+    "-framework QuartzCore"
   )
+  if(JAWT_LIB)
+    target_link_libraries(mseffmpegjni PRIVATE ${JAWT_LIB})
+  endif()
 endif()
 
 if(NOT DEFINED ENV{JAVA_HOME})

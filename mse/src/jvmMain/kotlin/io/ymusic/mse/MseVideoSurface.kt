@@ -9,11 +9,28 @@ actual class MseVideoSurface {
     private val _frame = MutableStateFlow<BufferedImage?>(null)
     val frame: StateFlow<BufferedImage?> = _frame.asStateFlow()
 
+    /** C `MseHost*` as a Long, set by bindNativeMse. 0 = none. */
+    var host: Long = 0L
+
+    @Volatile
+    var nativePresent: Boolean = false
+        private set
+
     internal fun publish(frame: BufferedImage) {
         _frame.value = frame
     }
 
     internal fun clear() {
         _frame.value = null
+    }
+
+    /** Overlay HW video on [component] when the platform can. Call from Swing after the peer exists. */
+    fun attach(component: java.awt.Component?): Boolean {
+        if (host == 0L) {
+            nativePresent = false
+            return false
+        }
+        nativePresent = MseHostNative.setVideoComponent(host, component)
+        return nativePresent
     }
 }

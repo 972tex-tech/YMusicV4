@@ -175,7 +175,7 @@ class DynamicEnginePlayer private constructor(
             token
         }
 
-    /** Android: pass the TextureView [Surface] when it appears; null on destroy. JVM bitmap path ignores this. */
+    /** Android TextureView [Surface]; JVM Swing hole attaches via [MseVideoSurface.attach]. */
     fun setVideoSurface(surface: MseVideoSurface?) {
         nativeMse?.setVideoSurface(surface)
     }

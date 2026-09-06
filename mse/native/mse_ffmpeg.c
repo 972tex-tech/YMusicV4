@@ -18,6 +18,7 @@
 #ifdef __APPLE__
 #include <libavutil/hwcontext.h>
 #include <libavutil/pixdesc.h>
+#include "mse_vt_present.h"
 #endif
 
 #include <pthread.h>
@@ -79,6 +80,9 @@ struct MseAv {
     AVFrame *vhold;
     AVBSFContext *vbsf;
     AVCodecParameters *vpar;
+#ifdef __APPLE__
+    void *vt_layer;
+#endif
 #ifdef __ANDROID__
     AMediaCodec *mc;
     ANativeWindow *mc_win;
@@ -1553,6 +1557,10 @@ static void close_video_decoder(MseAv *a)
 #ifdef __ANDROID__
     mc_close(a);
 #endif
+#ifdef __APPLE__
+    if (a->vt_layer)
+        mse_vt_flush(a->vt_layer);
+#endif
     a->pend_n[0] = 0;
     a->need_rap[0] = 1;
     /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
@@ -1765,9 +1773,30 @@ void mse_av_seek(MseAv *a, double seconds)
         AMediaCodec_flush(a->mc);
     }
 #endif
+#ifdef __APPLE__
+    if (a->vt_layer)
+        mse_vt_flush(a->vt_layer);
+#endif
     av_frame_free(&a->vhold);
     vdbg_n = 0;
     pthread_mutex_unlock(&a->mu);
+}
+
+static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h);
+
+static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
+{
+#ifdef __APPLE__
+    if (a->vt_layer && frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3]) {
+        if (mse_vt_show(a->vt_layer, frame->data[3], frame->width, frame->height) == 0) {
+            *bgra = NULL;
+            *w = frame->width;
+            *h = frame->height;
+            return 0;
+        }
+    }
+#endif
+    return scale_bgra(a, frame, bgra, w, h);
 }
 
 static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
@@ -1820,23 +1849,34 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 
 void mse_av_set_window(MseAv *a, void *window)
 {
-#ifdef __ANDROID__
-    ANativeWindow *win = (ANativeWindow *)window;
     if (!a)
         return;
+#ifdef __ANDROID__
+    {
+        ANativeWindow *win = (ANativeWindow *)window;
+        pthread_mutex_lock(&a->mu);
+        if (a->mc_win == win) {
+            pthread_mutex_unlock(&a->mu);
+            return;
+        }
+        mc_close(a);
+        a->mc_win = win;
+        a->mc_fail = 0;
+        if (win)
+            mc_try_open(a);
+        pthread_mutex_unlock(&a->mu);
+    }
+#elif defined(__APPLE__)
     pthread_mutex_lock(&a->mu);
-    if (a->mc_win == win) {
+    if (a->vt_layer == window) {
         pthread_mutex_unlock(&a->mu);
         return;
     }
-    mc_close(a);
-    a->mc_win = win;
-    a->mc_fail = 0;
-    if (win)
-        mc_try_open(a);
+    if (a->vt_layer)
+        mse_vt_flush(a->vt_layer);
+    a->vt_layer = window;
     pthread_mutex_unlock(&a->mu);
 #else
-    (void)a;
     (void)window;
 #endif
 }
@@ -1880,7 +1920,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         if (p < clock - late) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
-        } else if (scale_bgra(a, a->vhold, bgra, w, h) == 0) {
+        } else if (present_frame(a, a->vhold, bgra, w, h) == 0) {
             *pts = p;
             a->v_sent = p;
             if (vdbg_ok())
@@ -1919,7 +1959,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                     i--;
                 continue;
             }
-            if (scale_bgra(a, frame, bgra, w, h) < 0)
+            if (present_frame(a, frame, bgra, w, h) < 0)
                 break;
             *pts = p;
             a->v_sent = p;
