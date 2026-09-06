@@ -530,6 +530,16 @@ Document.prototype.documentElement;
  */
 Document.prototype.getElementById = function (id) {};
 /**
+ * @param {string} name
+ * @return {{length: number}}
+ */
+Document.prototype.getElementsByTagName = function (name) {};
+/**
+ * @param {string} name
+ * @return {{length: number}}
+ */
+Document.prototype.getElementsByClassName = function (name) {};
+/**
  * @param {string} tagName
  * @return {!Element}
  */

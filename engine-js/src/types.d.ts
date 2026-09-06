@@ -330,7 +330,8 @@ interface XMLHttpRequestConstructor {
 declare var XMLHttpRequest: XMLHttpRequestConstructor;
 
 // Fake page DOM (env.raw.js). In-bundle callers use dotted names; the matching Closure
-// externs keep getElementById / createElement / appendChild from being mangled.
+// externs keep getElementById / getElementsByTagName / getElementsByClassName /
+// createElement / appendChild from being mangled.
 interface Element {
   id: string;
   className: string;
@@ -357,6 +358,11 @@ interface Location {
   valueOf(): string;
 }
 
+interface HTMLCollection {
+  readonly length: number;
+  [index: number]: Element;
+}
+
 interface Document {
   URL: string;
   documentURI: string;
@@ -366,6 +372,8 @@ interface Document {
   head: Element;
   documentElement: Element;
   getElementById(id: string): Element | null;
+  getElementsByTagName(name: string): HTMLCollection;
+  getElementsByClassName(name: string): HTMLCollection;
   createElement(tagName: string): Element;
 }
 

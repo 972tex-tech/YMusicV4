@@ -46,7 +46,7 @@ function sizePlayerEl(el: Element | null): void {
   el.clientHeight = el.offsetHeight = viewportHeight();
 }
 
-function sizeNodeList(list: { length: number; [i: number]: Element | undefined } | null): void {
+function sizeNodeList(list: HTMLCollection | null): void {
   if (!list) return;
   for (let i = 0; i < list.length; i++) sizePlayerEl(list[i] ?? null);
 }
@@ -55,13 +55,9 @@ function sizePlayerTree(): void {
   sizePlayerEl(document.getElementById("player"));
   sizePlayerEl(document.getElementById("movie_player"));
   sizePlayerEl(document.getElementById("video-player"));
-  const doc = document as unknown as {
-    getElementsByTagName: (n: string) => { length: number; [i: number]: Element | undefined };
-    getElementsByClassName: (n: string) => { length: number; [i: number]: Element | undefined };
-  };
-  sizeNodeList(doc.getElementsByTagName("video"));
-  sizeNodeList(doc.getElementsByClassName("html5-video-container"));
-  sizeNodeList(doc.getElementsByClassName("html5-video-player"));
+  sizeNodeList(document.getElementsByTagName("video"));
+  sizeNodeList(document.getElementsByClassName("html5-video-container"));
+  sizeNodeList(document.getElementsByClassName("html5-video-player"));
 }
 
 function moviePlayer(): Record<string, unknown> | null {
@@ -317,8 +313,8 @@ function installPlayerTree(): void {
 
 function fireWindowResize(): void {
   try {
-    const g = globalThis as unknown as { dispatchEvent?: (ev: unknown) => unknown };
-    if (typeof g.dispatchEvent === "function") g.dispatchEvent({ type: "resize" });
+    const fn = (globalThis as unknown as Record<string, unknown>)["dispatchEvent"];
+    if (typeof fn === "function") (fn as (ev: unknown) => unknown)({ type: "resize" });
   } catch (_e) {}
 }
 
