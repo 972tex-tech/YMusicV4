@@ -140,7 +140,10 @@ static double clock_locked(MseHost *h)
            accrues through the wait and the next chunk is recv-late. */
         if (have) {
             double cap = last;
-            int near_eos = h->yt_dur > 0 && last + 0.5 >= h->yt_dur;
+            /* VOD catching the real end — not live leftover past a stale
+               MediaSource duration (log23 recreate: yt_dur=17253, vf to 17266). */
+            int near_eos = h->yt_dur > 0 && last + 0.5 >= h->yt_dur &&
+                           last <= h->yt_dur + 0.75;
             /* 1s behind leftover end is for video readahead. Audio-only
                (no C video) must play to audio last or the clock freezes
                1s early and SABR audio never appends (log2: clock=570.884). */
@@ -159,7 +162,9 @@ static double clock_locked(MseHost *h)
             }
         }
     }
-    if (h->yt_dur > 0 && t > h->yt_dur)
+    /* Live leftover grows past a snapshot duration. Chrome duration is
+       Infinity; clamping currentTime there freezes the playhead (log23). */
+    if (h->yt_dur > 0 && t > h->yt_dur && (!have || last <= h->yt_dur + 0.75))
         t = h->yt_dur;
     return t < 0 ? 0 : t;
 }
@@ -1074,7 +1079,9 @@ void mse_host_set_duration(MseHost *h, double seconds)
     if (!h)
         return;
     pthread_mutex_lock(&h->mu);
-    if (seconds > h->yt_dur)
+    if (seconds <= 0)
+        h->yt_dur = 0;
+    else if (seconds > h->yt_dur)
         h->yt_dur = seconds;
     pthread_mutex_unlock(&h->mu);
 }

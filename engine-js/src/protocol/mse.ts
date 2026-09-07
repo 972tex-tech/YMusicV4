@@ -586,7 +586,10 @@ class MediaSource {
   }
   set ["duration"](v: number) {
     this._duration = v;
-    if (isFinite(v) && v > 0) __mseSetDuration(v);
+    /* Infinity = live. A leftover finite head must not keep clamping
+       currentTime (log23: clock stuck at 17253 after sourceopen). */
+    if (v === Infinity || !isFinite(v) || v <= 0) __mseSetDuration(0);
+    else __mseSetDuration(v);
     coverDummyVideo();
   }
 
@@ -853,7 +856,8 @@ class HTMLMediaElement {
   }
   set ["duration"](v: number) {
     if (this._ms) this._ms["duration"] = v;
-    if (isFinite(v) && v > 0) __mseSetDuration(v);
+    else if (v === Infinity || !isFinite(v) || v <= 0) __mseSetDuration(0);
+    else __mseSetDuration(v);
   }
 
   get ["buffered"](): { length: number; start(i: number): number; end(i: number): number } {
