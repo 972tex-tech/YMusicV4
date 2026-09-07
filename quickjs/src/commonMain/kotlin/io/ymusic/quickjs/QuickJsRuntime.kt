@@ -245,25 +245,11 @@ class QuickJsRuntime private constructor(
     }
 
     internal fun onOpen(id: Int, command: String): Int {
-        // JNI onOpen must not throw: a pending Java exception turns the next __hostOpen into
-        // "refused by host" (rc=-1) and YouTube's MSE updateend setTimeout then abort-loops.
-        return try {
-            openAccepted(id, command)
-        } catch (e: Throwable) {
-            runCatching { logHandler?.invoke(LOG_ERROR, "onOpen(\"$command\", $id) ${e.message}") }
-            -1
-        }
-    }
-
-    private fun openAccepted(id: Int, command: String): Int {
         val handler = handlerFor(command) ?: return -1
-        if (closed.load()) return -1
-        val stale = pipes.remove(id)
-        if (stale != null) {
-            // JS reused an id Kotlin still held (C already dropped the buffer). Fail the orphan
-            // so its parked readers don't sit forever, then accept the new pipe.
-            stale.failPending(QuickJsException("stale pipe id $id"))
-        }
+        // Refuse a colliding id rather than overwrite a live pipe: a buggy/hostile bundle reusing an
+        // id (or opening an odd Kotlin-range id) would otherwise orphan the old PipeImpl, whose
+        // parked continuation close()'s failPending — walking only the pipes map — could never fail.
+        if (pipes.containsKey(id)) return -1
         val impl = PipeImpl(id, command)
         pipes[id] = impl
         scope.launch {
