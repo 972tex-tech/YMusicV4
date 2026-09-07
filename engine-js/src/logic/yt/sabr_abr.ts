@@ -110,15 +110,77 @@ function rewriteCas(cas: Uint8Array, audioOnly: boolean): Uint8Array {
   return writeFields(out);
 }
 
+function formatItag(msg: Uint8Array): number | null {
+  const fs = readFields(msg);
+  if (!fs) return null;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.n === 1 && f.w === 0) return f.v as number;
+  }
+  return null;
+}
+
+function rangeItag(msg: Uint8Array): number | null {
+  const fs = readFields(msg);
+  if (!fs) return null;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.n === 1 && f.w === 2 && f.v instanceof Uint8Array) return formatItag(f.v);
+  }
+  return null;
+}
+
+function isAudioItag(t: number): boolean {
+  return (
+    t === 139 ||
+    t === 140 ||
+    t === 141 ||
+    t === 249 ||
+    t === 250 ||
+    t === 251 ||
+    t === 599 ||
+    t === 600
+  );
+}
+
 function rewriteAbr(u: Uint8Array, audioOnly: boolean): Uint8Array {
   const fs = readFields(u);
   if (!fs) return u;
+  const audioItags: number[] = [];
+  if (audioOnly) {
+    for (let i = 0; i < fs.length; i++) {
+      const f = fs[i]!;
+      if (f.n === 16 && f.w === 2 && f.v instanceof Uint8Array) {
+        const t = formatItag(f.v);
+        if (t != null) audioItags.push(t);
+      }
+    }
+  }
+  const keepItag = function (t: number | null): boolean {
+    if (t == null) return true;
+    if (audioItags.length) {
+      for (let i = 0; i < audioItags.length; i++) if (audioItags[i] === t) return true;
+      return false;
+    }
+    return isAudioItag(t);
+  };
   const out: Field[] = [];
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
     if (f.n === 1 && f.w === 2 && f.v instanceof Uint8Array) {
       out.push({ n: 1, w: 2, v: rewriteCas(f.v, audioOnly) });
-    } else out.push(f);
+      continue;
+    }
+    if (audioOnly) {
+      /* Dummy video TimeRanges must not appear as SABR leftover. The server
+         then skips real audio, and YouTube never appendBuffer's it (log23). */
+      if (f.n === 17) continue;
+      if (f.n === 2 && f.w === 2 && f.v instanceof Uint8Array && !keepItag(formatItag(f.v)))
+        continue;
+      if (f.n === 3 && f.w === 2 && f.v instanceof Uint8Array && !keepItag(rangeItag(f.v)))
+        continue;
+    }
+    out.push(f);
   }
   return writeFields(out);
 }

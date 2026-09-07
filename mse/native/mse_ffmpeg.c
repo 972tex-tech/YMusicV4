@@ -2324,7 +2324,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return r;
     }
 #endif
-    if (!a->vdec && a->vpar)
+    if (!a->vdec && a->vpar && a->vf.n)
         open_decoder(a, 1, a->vpar);
     if (!a->vdec || a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
@@ -2392,7 +2392,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             return 1;
         }
         maybe_apply_video_rep(a);
-        if (!a->vdec && a->vpar)
+        if (!a->vdec && a->vpar && a->vf.n)
             open_decoder(a, 1, a->vpar);
         if (!a->vdec)
             break;

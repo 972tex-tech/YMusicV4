@@ -132,14 +132,24 @@ class LiveMseTraceTest {
             session.player.setQuality("zero", session.log)
             delay(500)
             val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val samplesAtSwitch = surface.samplesPlayed()
             /* Leftover audio at switch is a few seconds. 30s of clock after
-               zero is past that (log12 je=3s then freeze). */
+               zero is past that (log12/log23 je=0 then freeze, SABR audio
+               never reached appendBuffer). Clock moving is not playback. */
             delay(30_000)
             val after = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val samplesAfter = surface.samplesPlayed()
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
-            println("live switch-zero $later -> $after frames $framesAtSwitch -> ${frames.get()}")
+            println(
+                "live switch-zero $later -> $after frames $framesAtSwitch -> ${frames.get()} " +
+                    "samples $samplesAtSwitch -> $samplesAfter",
+            )
             assertTrue(!proof.contains("mse ignore seek-0"), "switch to zero seek-0")
             assertTrue(after > later + 25_000, "clock stuck after zero leftover $later -> $after (need 30s)")
+            assertTrue(
+                samplesAfter > samplesAtSwitch,
+                "audio not running after zero samples=$samplesAfter at-switch=$samplesAtSwitch clock $later -> $after",
+            )
             assertTrue(
                 frames.get() <= framesAtSwitch + 2,
                 "video still rendering after zero ${frames.get()} vs $framesAtSwitch",
