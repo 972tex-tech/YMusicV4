@@ -1691,17 +1691,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         }
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
         if (!audio && a->v_reopen) {
-            double t = a->v_sent >= 0 ? a->v_sent : r.first;
-            vf_resync_key(a, t);
+            vf_resync_key(a, a->v_sent >= 0 ? a->v_sent : r.first);
             a->v_reopen = 0;
-            /* Live: new itag GOP is at the live head, 1–6s ahead. Dropping
-               leftover then starve-ahead freezes the picture (log23 extra=5).
-               Forced quality may snap to a RAP within 8s. */
-            if (a->vf.rd < a->vf.n) {
-                double key = a->vf.f[a->vf.rd].pts;
-                if (key > t + 0.5 && key <= t + 8.0)
-                    r.snap = key;
-            }
         }
         cfb_free(&tmp);
         if (a->pend_n[idx] > total)
