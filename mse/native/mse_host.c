@@ -1151,6 +1151,10 @@ int mse_host_append(MseHost *h, int audio, const uint8_t *p, int n, double ts_of
             "mse append a=%d bytes=%d n=%d init=%d first=%.3f last=%.3f tsOff=%.3f win=%.3g..%.3g clock=%.3f\n",
             audio, n, r.n, r.is_init, r.first, r.last, ts_off, win_start, win_end,
             mse_host_current_time(h));
+    if (r.snap > 0) {
+        mse_logf("mse quality-snap t=%.3f\n", r.snap);
+        mse_host_set_current_time(h, r.snap);
+    }
     return r.n >= 0 ? 1 : 0;
 }
 

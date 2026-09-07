@@ -18,6 +18,9 @@ typedef struct {
     int is_init;
     double first;
     double last;
+    /* Quality switch: new RAP this many seconds ahead of the playhead (0 = none).
+       Host snaps the clock here when 0.5s < snap-playhead <= 8s. */
+    double snap;
 } MseAvIngest;
 
 MseAv *mse_av_create(void);
