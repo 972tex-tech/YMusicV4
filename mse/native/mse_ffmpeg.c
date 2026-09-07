@@ -71,8 +71,6 @@ struct MseAv {
     struct SwsContext *sws;
     int rate;
     int channels;
-    int v_open_w;
-    int v_open_h;
     double duration;
     double a_sent;
     double v_sent;
@@ -82,8 +80,6 @@ struct MseAv {
     int need_rap[2];
     double starve_log_pts;
     double starve_log_clock;
-    double hold_log_pts;
-    double hold_log_clock;
     AVFrame *vhold;
     AVBSFContext *vbsf;
     AVCodecParameters *vpar;
@@ -100,8 +96,6 @@ struct MseAv {
     int64_t mc_hold_pts_us;
     int mc_w;
     int mc_h;
-    int mc_par_w;
-    int mc_par_h;
 #endif
 };
 
@@ -185,22 +179,6 @@ static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
     a->starve_log_pts = nxt;
     a->starve_log_clock = clock;
     vlog_state(a, clock, "starve-ahead", nxt - clock);
-}
-
-static void vlog_hold(MseAv *a, double clock, const char *why, double extra)
-{
-    double hp = -1;
-    if (a->vhold && a->vhold->pts != AV_NOPTS_VALUE)
-        hp = a->vhold->pts / 1000.0;
-#ifdef __ANDROID__
-    if (a->mc_hold)
-        hp = a->mc_hold_pts_us / 1e6;
-#endif
-    if (hp == a->hold_log_pts && clock - a->hold_log_clock < 1.0)
-        return;
-    a->hold_log_pts = hp;
-    a->hold_log_clock = clock;
-    vlog_state(a, clock, why, extra);
 }
 
 static int cf_cmp(const void *a, const void *b)
@@ -562,28 +540,10 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
             AVStream *st = fmt->streams[st_idx];
             double pts = 0, dur = 0;
             int64_t ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
-            double tb = av_q2d(st->time_base);
             if (ts != AV_NOPTS_VALUE)
-                pts = ts * tb;
+                pts = ts * av_q2d(st->time_base);
             if (pkt->duration > 0)
-                dur = pkt->duration * tb;
-            /* Coarse TimestampScale only (2–10ms/tick). 1/60000 is valid
-               (1ms×60); treating those ticks as ms made start play at 1fps. */
-            if (want_video && tb > 0.002) {
-                double k = tb / 0.001;
-                int ik = (int)(k + 0.5);
-                double err = k - ik;
-                if (err < 0)
-                    err = -err;
-                if (ik >= 2 && ik <= 10 && err < 0.08) {
-                    if (nadd == 0)
-                        vlog("webm tb=%d/%d -> 1ms", st->time_base.num, st->time_base.den);
-                    if (ts != AV_NOPTS_VALUE)
-                        pts = ts * 0.001;
-                    if (pkt->duration > 0)
-                        dur = pkt->duration * 0.001;
-                }
-            }
+                dur = pkt->duration * av_q2d(st->time_base);
             pts += ts_off;
             if (cfb_push(dst, pts, dur, !!(pkt->flags & AV_PKT_FLAG_KEY),
                          pkt->data, (size_t)pkt->size) == 0)
@@ -669,8 +629,6 @@ static void mc_close(MseAv *a)
     AMediaCodec_stop(a->mc);
     AMediaCodec_delete(a->mc);
     a->mc = NULL;
-    a->mc_par_w = 0;
-    a->mc_par_h = 0;
     vlog("close mediacodec");
 }
 
@@ -779,8 +737,6 @@ static int mc_open(MseAv *a)
     a->mc_codec_id = a->vpar->codec_id;
     a->mc_w = w;
     a->mc_h = h;
-    a->mc_par_w = w;
-    a->mc_par_h = h;
     a->mc_hold = 0;
     {
         double t = a->v_sent >= 0 ? a->v_sent : 0;
@@ -901,7 +857,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         double p = a->mc_hold_pts_us / 1e6;
         double d = p - clock;
         if (p > clock + early) {
-            vlog_hold(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
+            if (vdbg_ok() || d > 0.2)
+                vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             return 0;
         }
         if (p < clock - late) {
@@ -928,7 +885,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 a->mc_hold = 1;
                 a->mc_hold_ix = (int)ox;
                 a->mc_hold_pts_us = info.presentationTimeUs;
-                vlog_hold(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
+                if (vdbg_ok() || d > 0.2)
+                    vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 return 0;
             }
             if (p < clock - late) {
@@ -1049,22 +1007,11 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
         int same = (*ctxp)->codec_id == par->codec_id;
-        /* Compare container par to the size we opened with, not ctx after
-           decode. 399 bitstream is 1080p while FORMAT_INIT stays 854x480;
-           dav1d then reports 1920 and the next GOP reopened every ~6s
-           (log21: play ~5s, stall, play). AV1/VP9 retarget on a key. */
-        if (same && video && par->width > 0 && a->v_open_w > 0 &&
-            (par->width != a->v_open_w || par->height != a->v_open_h) &&
-            (par->codec_id == AV_CODEC_ID_H264 || par->codec_id == AV_CODEC_ID_HEVC))
+        if (same && par->width > 0 && (*ctxp)->width > 0 &&
+            (par->width != (*ctxp)->width || par->height != (*ctxp)->height))
             same = 0;
-        if (same) {
-            if (video && par->width > 0 && (*ctxp)->width > 0 &&
-                (par->width != (*ctxp)->width || par->height != (*ctxp)->height))
-                vlog("keep %s par=%dx%d ctx=%dx%d",
-                     (*ctxp)->codec && (*ctxp)->codec->name ? (*ctxp)->codec->name : "?",
-                     par->width, par->height, (*ctxp)->width, (*ctxp)->height);
+        if (same)
             return 0;
-        }
         avcodec_free_context(ctxp);
         if (video) {
             av_bsf_free(&a->vbsf);
@@ -1073,8 +1020,6 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
                 a->sws = NULL;
             }
             a->need_rap[0] = 1;
-            a->v_open_w = 0;
-            a->v_open_h = 0;
         }
     }
     codec = video ? find_video_codec(par->codec_id) : avcodec_find_decoder(par->codec_id);
@@ -1120,12 +1065,9 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 opened:
     (*ctxp)->pkt_timebase = (AVRational){ 1, 1000 };
     (*ctxp)->time_base = (AVRational){ 1, 1000 };
-    if (video) {
-        a->v_open_w = par->width;
-        a->v_open_h = par->height;
+    if (video)
         vlog("open %s %dx%d threads=%d", codec->name, (*ctxp)->width, (*ctxp)->height,
              (*ctxp)->thread_count);
-    }
     if (video && par->codec_id == AV_CODEC_ID_VP9 && !a->vbsf) {
         const AVBitStreamFilter *f = av_bsf_get_by_name("vp9_superframe");
         if (f && av_bsf_alloc(f, &a->vbsf) == 0) {
@@ -1371,123 +1313,6 @@ static int continuation_total(const uint8_t *p, size_t n, size_t *total)
     return 1;
 }
 
-static int near_std_fps(double fps)
-{
-    static const double want[] = {24, 25, 30, 48, 50, 60};
-    int i;
-    for (i = 0; i < 6; i++) {
-        double d = fps - want[i];
-        if (d < 0)
-            d = -d;
-        if (d < 1.5)
-            return 1;
-    }
-    return 0;
-}
-
-static void scale_coded_pts(Cfb *tmp, int k)
-{
-    int i;
-    for (i = 0; i < (int)tmp->n; i++) {
-        tmp->f[i].pts /= (double)k;
-        tmp->f[i].dur /= (double)k;
-    }
-}
-
-/* Integer 2..10 if num/den is that multiple (399: 90.180/18.018 = 5). */
-static int ratio_k(double num, double den)
-{
-    double ratio, err;
-    int k;
-    if (den < 0.5 || num <= den + 1.0)
-        return 1;
-    ratio = num / den;
-    k = (int)(ratio + 0.5);
-    err = ratio - k;
-    if (err < 0)
-        err = -err;
-    if (k >= 2 && k <= 10 && err < 0.08)
-        return k;
-    return 1;
-}
-
-static double std_fps_err(double fps)
-{
-    static const double want[] = {24, 25, 30, 48, 50, 60};
-    double best = 1e9;
-    int i;
-    for (i = 0; i < 6; i++) {
-        double d = fps - want[i];
-        if (d < 0)
-            d = -d;
-        if (d < best)
-            best = d;
-    }
-    return best;
-}
-
-/* SABR WebM 60fps (itag 399) often demuxes ×5 vs MEDIA_HEADER (18.018s → 90.180s)
-   because the cluster timescale is wrong. Snap using leftover tail, GOP fps, or
-   a GOP that landed entirely before the playhead. Do not scale vs playhead
-   (90/3.7 ≈ 24 is not a timescale). */
-static void align_video_pts(Cfb *tmp, double playhead, double tail)
-{
-    double first, last, span, fps;
-    int k, i, n, best_k;
-    double best;
-    if (!tmp->n)
-        return;
-    n = (int)tmp->n;
-    first = tmp->f[0].pts;
-    last = tmp->f[n - 1].pts + tmp->f[n - 1].dur;
-    span = last - first;
-    k = ratio_k(first, tail);
-    if (k > 1) {
-        vlog("pts/%d first=%.3f tail=%.3f", k, first, tail);
-        scale_coded_pts(tmp, k);
-        first /= (double)k;
-        last /= (double)k;
-    } else if (n >= 24 && span > 0.5) {
-        fps = (n - 1) / span;
-        if (!near_std_fps(fps)) {
-            best_k = 1;
-            best = 1e9;
-            for (k = 2; k <= 10; k++) {
-                double f = fps * (double)k;
-                double score, pe, scaled;
-                if (std_fps_err(f) > 1.5)
-                    continue;
-                scaled = first / (double)k;
-                score = std_fps_err(f);
-                if ((f > 29 && f < 31) || (f > 59 && f < 61))
-                    score -= 0.4;
-                if (playhead >= 1.0) {
-                    pe = scaled - playhead;
-                    if (pe < 0)
-                        pe = -pe;
-                    score += pe * 0.05;
-                }
-                if (score < best) {
-                    best = score;
-                    best_k = k;
-                }
-            }
-            if (best_k > 1) {
-                vlog("pts/%d first=%.3f fps=%.2f playhead=%.3f", best_k, first, fps, playhead);
-                scale_coded_pts(tmp, best_k);
-                first /= (double)best_k;
-                last /= (double)best_k;
-            }
-        }
-    }
-    if (playhead >= 1.0 && last < playhead - 0.5) {
-        double shift = playhead - first;
-        vlog("pts+%.3f first=%.3f playhead=%.3f", shift, first, playhead);
-        for (i = 0; i < n; i++)
-            tmp->f[i].pts += shift;
-    }
-}
-
 static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, double win_end,
                        MseAvIngest *r)
 {
@@ -1559,39 +1384,26 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
             }
             free(sp);
         }
-        /* Start at the last unsent key at/before the playhead so a seek into
-           a GOP (log21: t=217 rd=46, t=526 rd=177) still feeds the RAP.
-           Floor-at-playhead skipped that key and dav1d got P-frames
-           (Error parsing OBU). Sequential appends have the previous key
-           already sent, so rd stays on the first unsent at/after want. */
+        /* rd = first unsent at/after the playhead, not an older island
+           (seek 526s + leftover 0–30s) and not a later append's start
+           (Auto at 5.3s + 10–14s segment jumped rd to 23s → starve-ahead).
+           v_sent/a_sent < 0 means nothing shown yet (audio-only → video):
+           keep sequential rd or leftover starts ahead of the clock forever. */
         {
             double want = idx ? a->a_sent : a->v_sent;
-            size_t key = dst->n, u = dst->n;
+            double floor_pts = first;
+            if (want < 0)
+                floor_pts = -1e9;
+            else if (want < first)
+                floor_pts = want;
+            dst->rd = dst->n;
             for (i = 0; i < (int)dst->n; i++) {
                 if (dst->f[i].sent)
                     continue;
-                if (dst->f[i].key && (want < 0 || dst->f[i].pts <= want + 0.05))
-                    key = (size_t)i;
-                if (u == dst->n &&
-                    (want < 0 || dst->f[i].pts + dst->f[i].dur >= want - 0.5))
-                    u = (size_t)i;
-            }
-            if (key < dst->n) {
-                if (key < rd0 && !idx) {
-                    a->need_rap[0] = 1;
-                    if (a->vdec)
-                        avcodec_flush_buffers(a->vdec);
-                    av_frame_free(&a->vhold);
-#ifdef __ANDROID__
-                    if (a->mc) {
-                        mc_hold_drop(a, 0);
-                        AMediaCodec_flush(a->mc);
-                    }
-#endif
-                }
-                dst->rd = key;
-            } else {
-                dst->rd = u;
+                if (dst->f[i].pts + dst->f[i].dur < floor_pts - 0.5)
+                    continue;
+                dst->rd = (size_t)i;
+                break;
             }
         }
         if (nsp > 0 || dst->rd + 2 < rd0)
@@ -1737,8 +1549,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 #ifdef __ANDROID__
                 if (a->mc &&
                     (a->mc_codec_id != par->codec_id ||
-                     (par->width > 0 && a->mc_par_w > 0 && par->width != a->mc_par_w) ||
-                     (par->height > 0 && a->mc_par_h > 0 && par->height != a->mc_par_h))) {
+                     (par->width > 0 && a->mc_w > 0 && par->width != a->mc_w) ||
+                     (par->height > 0 && a->mc_h > 0 && par->height != a->mc_h))) {
                     mc_close(a);
                     a->mc_fail = 0;
                 }
@@ -1752,12 +1564,6 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                 open_decoder(a, !audio, par);
                 avcodec_parameters_free(&par);
             }
-        }
-        if (!audio && tmp.n) {
-            double tail = -1;
-            if (a->vf.n)
-                tail = a->vf.f[a->vf.n - 1].pts + a->vf.f[a->vf.n - 1].dur;
-            align_video_pts(&tmp, a->v_sent, tail);
         }
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
         cfb_free(&tmp);
@@ -1795,8 +1601,6 @@ static void close_video_decoder(MseAv *a)
 #endif
     a->pend_n[0] = 0;
     a->need_rap[0] = 1;
-    a->v_open_w = 0;
-    a->v_open_h = 0;
     /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
        (log17: 1.1MB of n=0 after close-video wiped init → black). Container
        switch already drops the other header in mse_av_append. */
@@ -2018,12 +1822,10 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
-    /* No RAP at the new playhead: drop stale leftover (0–18s after a seek
-       to 453s) and the decoder. Next append reopens. */
-    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key) {
-        cfb_free(&a->vf);
+    /* No RAP at the new playhead: drop the decoder instead of feeding leftover
+       P-frames (live DVR -10s SIGILL). Next append reopens. */
+    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key)
         close_video_decoder(a);
-    }
     else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
     if (a->vbsf)
@@ -2173,7 +1975,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
         double d = p - clock;
         if (p > clock + early) {
-            vlog_hold(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
+            if (vdbg_ok() || d > 0.2)
+                vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
@@ -2206,7 +2009,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             double d = p - clock;
             if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
                 a->vhold = frame;
-                vlog_hold(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
+                if (vdbg_ok() || d > 0.2)
+                    vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
