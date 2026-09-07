@@ -71,6 +71,8 @@ struct MseAv {
     struct SwsContext *sws;
     int rate;
     int channels;
+    int v_open_w;
+    int v_open_h;
     double duration;
     double a_sent;
     double v_sent;
@@ -98,6 +100,8 @@ struct MseAv {
     int64_t mc_hold_pts_us;
     int mc_w;
     int mc_h;
+    int mc_par_w;
+    int mc_par_h;
 #endif
 };
 
@@ -665,6 +669,8 @@ static void mc_close(MseAv *a)
     AMediaCodec_stop(a->mc);
     AMediaCodec_delete(a->mc);
     a->mc = NULL;
+    a->mc_par_w = 0;
+    a->mc_par_h = 0;
     vlog("close mediacodec");
 }
 
@@ -773,6 +779,8 @@ static int mc_open(MseAv *a)
     a->mc_codec_id = a->vpar->codec_id;
     a->mc_w = w;
     a->mc_h = h;
+    a->mc_par_w = w;
+    a->mc_par_h = h;
     a->mc_hold = 0;
     {
         double t = a->v_sent >= 0 ? a->v_sent : 0;
@@ -1041,11 +1049,22 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
         int same = (*ctxp)->codec_id == par->codec_id;
-        if (same && par->width > 0 && (*ctxp)->width > 0 &&
-            (par->width != (*ctxp)->width || par->height != (*ctxp)->height))
+        /* Compare container par to the size we opened with, not ctx after
+           decode. 399 bitstream is 1080p while FORMAT_INIT stays 854x480;
+           dav1d then reports 1920 and the next GOP reopened every ~6s
+           (log21: play ~5s, stall, play). AV1/VP9 retarget on a key. */
+        if (same && video && par->width > 0 && a->v_open_w > 0 &&
+            (par->width != a->v_open_w || par->height != a->v_open_h) &&
+            (par->codec_id == AV_CODEC_ID_H264 || par->codec_id == AV_CODEC_ID_HEVC))
             same = 0;
-        if (same)
+        if (same) {
+            if (video && par->width > 0 && (*ctxp)->width > 0 &&
+                (par->width != (*ctxp)->width || par->height != (*ctxp)->height))
+                vlog("keep %s par=%dx%d ctx=%dx%d",
+                     (*ctxp)->codec && (*ctxp)->codec->name ? (*ctxp)->codec->name : "?",
+                     par->width, par->height, (*ctxp)->width, (*ctxp)->height);
             return 0;
+        }
         avcodec_free_context(ctxp);
         if (video) {
             av_bsf_free(&a->vbsf);
@@ -1054,6 +1073,8 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
                 a->sws = NULL;
             }
             a->need_rap[0] = 1;
+            a->v_open_w = 0;
+            a->v_open_h = 0;
         }
     }
     codec = video ? find_video_codec(par->codec_id) : avcodec_find_decoder(par->codec_id);
@@ -1099,9 +1120,12 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 opened:
     (*ctxp)->pkt_timebase = (AVRational){ 1, 1000 };
     (*ctxp)->time_base = (AVRational){ 1, 1000 };
-    if (video)
+    if (video) {
+        a->v_open_w = par->width;
+        a->v_open_h = par->height;
         vlog("open %s %dx%d threads=%d", codec->name, (*ctxp)->width, (*ctxp)->height,
              (*ctxp)->thread_count);
+    }
     if (video && par->codec_id == AV_CODEC_ID_VP9 && !a->vbsf) {
         const AVBitStreamFilter *f = av_bsf_get_by_name("vp9_superframe");
         if (f && av_bsf_alloc(f, &a->vbsf) == 0) {
@@ -1542,11 +1566,9 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
            keep sequential rd or leftover starts ahead of the clock forever. */
         {
             double want = idx ? a->a_sent : a->v_sent;
-            double floor_pts = first;
-            if (want < 0)
-                floor_pts = -1e9;
-            else if (want < first)
-                floor_pts = want;
+            /* Floor at the playhead so an overlapping quality-switch GOP
+               (log21: rd 811→684) does not rewind already-shown frames. */
+            double floor_pts = want < 0 ? -1e9 : want;
             dst->rd = dst->n;
             for (i = 0; i < (int)dst->n; i++) {
                 if (dst->f[i].sent)
@@ -1700,8 +1722,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 #ifdef __ANDROID__
                 if (a->mc &&
                     (a->mc_codec_id != par->codec_id ||
-                     (par->width > 0 && a->mc_w > 0 && par->width != a->mc_w) ||
-                     (par->height > 0 && a->mc_h > 0 && par->height != a->mc_h))) {
+                     (par->width > 0 && a->mc_par_w > 0 && par->width != a->mc_par_w) ||
+                     (par->height > 0 && a->mc_par_h > 0 && par->height != a->mc_par_h))) {
                     mc_close(a);
                     a->mc_fail = 0;
                 }
@@ -1758,6 +1780,8 @@ static void close_video_decoder(MseAv *a)
 #endif
     a->pend_n[0] = 0;
     a->need_rap[0] = 1;
+    a->v_open_w = 0;
+    a->v_open_h = 0;
     /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
        (log17: 1.1MB of n=0 after close-video wiped init → black). Container
        switch already drops the other header in mse_av_append. */
