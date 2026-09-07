@@ -104,7 +104,168 @@ class HeadlessPlaybackTest {
         }
     }
 
+    @Test
+    fun quality_then_seek_keeps_playing() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val session = HeadlessSession.boot(MseVideoSurface())
+        try {
+            session.player.load(VIDEO_ID, session.log, "auto")
+            session.player.setViewport(1920, 1080, session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minPos = 2_000, minDelta = 800, timeoutMs = 60_000, label = "first play")
+
+            session.player.setQuality("hd1080", session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minDelta = 6_500, timeoutMs = 30_000, stallMs = 8_000, label = "after hd1080")
+
+            session.player.setQuality("tiny", session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minDelta = 6_500, timeoutMs = 30_000, stallMs = 8_000, label = "after tiny")
+
+            session.player.seekTo(30_000, session.log)
+            session.player.play(session.log)
+            val land = session.awaitLand(25_000L..40_000L, timeoutMs = 20_000, label = "seek 30s")
+            session.awaitAdvance(from = land, minDelta = 800, timeoutMs = 15_000, label = "play after seek")
+
+            session.player.setQuality("hd1080", session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minDelta = 6_500, timeoutMs = 30_000, stallMs = 8_000, label = "hd1080 after seek")
+
+            dumpMseProof(session, "quality_then_seek")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun quality_then_second_load_plays() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val session = HeadlessSession.boot(MseVideoSurface())
+        try {
+            session.player.load(VIDEO_ID, session.log, "auto")
+            session.player.setViewport(1920, 1080, session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minPos = 2_000, minDelta = 800, timeoutMs = 60_000, label = "first video")
+
+            session.player.setQuality("hd1080", session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minDelta = 6_500, timeoutMs = 30_000, stallMs = 8_000, label = "after hd1080")
+            session.player.setQuality("tiny", session.log)
+            session.player.play(session.log)
+            session.awaitAdvance(minDelta = 6_500, timeoutMs = 30_000, stallMs = 8_000, label = "after tiny")
+
+            val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            val srcs = proof.lineSequence().filter { it.contains("mse video.src blob:mse/") }.toList()
+            println("quality srcs=${srcs.size}")
+            for (s in srcs) println("  src $s")
+            if (srcs.size >= 2) {
+                val after = proof.substringAfter(srcs.last())
+                val leftoverStuck = after.contains("120240+") || after.contains("90180+")
+                assertTrue(!leftoverStuck, "new MediaSource still reporting previous ×5 leftover")
+            }
+
+            session.player.load(SECOND_ID, session.log, "auto")
+            session.player.play(session.log)
+            val land = session.awaitLand(0L..20_000L, timeoutMs = 60_000, label = "second load")
+            session.awaitAdvance(from = land, minDelta = 800, timeoutMs = 20_000, label = "second load play")
+            dumpMseProof(session, "quality_then_second_load")
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
+        private const val SECOND_ID = "wjhyk-Cx6wk"
     }
+}
+
+private suspend fun HeadlessSession.clockMs(): Long =
+    (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+
+/** Wait until the clock is in [range]. Returns the landed position. */
+private suspend fun HeadlessSession.awaitLand(
+    range: LongRange,
+    timeoutMs: Long,
+    label: String,
+): Long {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var pos = clockMs()
+    while (System.currentTimeMillis() < deadline) {
+        pos = clockMs()
+        if (pos in range) {
+            println("$label land -> $pos")
+            return pos
+        }
+        delay(250)
+    }
+    throw AssertionError("$label did not land in $range pos=$pos")
+}
+
+/**
+ * Wait for the playhead to move. [minPos] is an absolute floor; [minDelta] is
+ * relative to [from] (or the position at call time). Fail if the clock freezes
+ * for [stallMs] before we hit the target.
+ */
+private suspend fun HeadlessSession.awaitAdvance(
+    from: Long? = null,
+    minPos: Long = 0,
+    minDelta: Long = 800,
+    timeoutMs: Long,
+    stallMs: Long = 8_000,
+    label: String,
+): Pair<Long, Long> {
+    var start = from ?: clockMs()
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var lastMoveAt = System.currentTimeMillis()
+    var last = start
+    while (System.currentTimeMillis() < deadline) {
+        delay(250)
+        val now = clockMs()
+        if (now + 500 < last) {
+            /* New MediaSource / load() resets currentTime to 0. Restart the window. */
+            println("$label clock reset $last -> $now")
+            start = now
+            last = now
+            lastMoveAt = System.currentTimeMillis()
+            continue
+        }
+        if (now > last + 200) lastMoveAt = System.currentTimeMillis()
+        last = now
+        if (now >= minPos && now > start + minDelta) {
+            println("$label clock $start -> $now")
+            return start to now
+        }
+        if (System.currentTimeMillis() - lastMoveAt > stallMs) {
+            dumpMseProof(this, "$label FROZEN")
+            throw AssertionError("$label clock frozen at ${now}ms (from $start)")
+        }
+    }
+    dumpMseProof(this, "$label TIMEOUT")
+    throw AssertionError("$label did not advance $start -> $last (need +$minDelta, minPos=$minPos)")
+}
+
+private fun dumpMseProof(session: HeadlessSession, label: String) {
+    val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+    val keys = listOf(
+        "mse video.src",
+        "mse leftover",
+        "mse append",
+        "changeType",
+        "__mseReset",
+        "__mseChangeType",
+        "Error parsing",
+        "mse load failed",
+        "mse=[",
+    )
+    println("--- proof $label ---")
+    val lines = proof.lineSequence().filter { line -> keys.any { line.contains(it) } }.toList()
+    for (line in lines.takeLast(40)) println("  $line")
+    println("--- /proof $label n=${lines.size} ---")
 }
