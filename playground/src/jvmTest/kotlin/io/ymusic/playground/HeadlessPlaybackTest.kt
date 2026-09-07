@@ -323,6 +323,52 @@ class HeadlessPlaybackTest {
         }
     }
 
+    /**
+     * log21: clicking 480→360→240→144 in a few seconds reopens dav1d.
+     * Mid-GOP P-frames return INVALIDDATA, then later keys fail too
+     * (decoder poisoned). Clock/audio keep running, video frozen.
+     */
+    @Test
+    fun fast_quality_switch_video_keeps_presenting() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(LONG_ID, session.log, "auto")
+            session.player.setViewport(1280, 720, session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 2_000,
+                timeoutMs = 60_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "before switch",
+                requireNoJump = false,
+            )
+            for (q in listOf("large", "medium", "small", "tiny")) {
+                session.player.setQuality(q, session.log)
+                delay(250)
+            }
+            session.player.play(session.log)
+            /* Four MediaSource recreations; SABR refill is a startup, not a
+               single forced-quality 0.5s stall. Video must present again. */
+            session.watchPlay(
+                surface,
+                minDelta = 2_000,
+                timeoutMs = 30_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "after fast quality",
+                requireNoJump = false,
+            )
+            dumpMseProof(session, "fast_quality_switch")
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val SECOND_ID = "wjhyk-Cx6wk"

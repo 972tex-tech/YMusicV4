@@ -1029,6 +1029,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 sr = mc_send_one(a);
                 if (sr < 0) {
                     vlog("mediacodec send-err pts=%.3f key=%d r=%d", sp, key, sr);
+                    a->need_rap[0] = 1;
                     continue;
                 }
                 if (key)
@@ -1227,10 +1228,10 @@ static int send_coded(Cfb *b, AVCodecContext *dec, AVBSFContext *bsf)
     av_packet_free(&pkt);
     if (r == AVERROR(EAGAIN))
         return 0;
-    cf->sent = 1;
-    b->rd++;
     if (r < 0 && r != AVERROR_EOF)
         return r;
+    cf->sent = 1;
+    b->rd++;
     return 0;
 }
 
@@ -2113,6 +2114,22 @@ void mse_av_set_window(MseAv *a, void *window)
 #endif
 }
 
+/* After INVALIDDATA dav1d stays poisoned: later keys also fail (log21
+   12.045/18.018 key=1) and the clock starve-aheads with a frozen picture.
+   Flush and wait for a key. Split VP9 superframes without a BSF are
+   INVALIDDATA on their own — those must not flush. */
+static void video_decode_error(MseAv *a)
+{
+    if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf)
+        return;
+    if (a->vdec)
+        avcodec_flush_buffers(a->vdec);
+    if (a->vbsf)
+        av_bsf_flush(a->vbsf);
+    av_frame_free(&a->vhold);
+    a->need_rap[0] = 1;
+}
+
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts)
 {
     AVFrame *frame;
@@ -2228,8 +2245,14 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 av_strerror(sr, err, sizeof(err));
                 vlog("send-err pts=%.3f key=%d r=%d %s", sp, key, sr, err);
                 vlog_state(a, clock, "send-fail", sp);
-                /* Split VP9 superframes are INVALIDDATA on their own; the BSF
-                   merges them. Do not RAP-skip the rest of the GOP. */
+                /* Split VP9 superframes without a BSF are INVALIDDATA on
+                   their own — drop this packet, keep the GOP. */
+                if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf) {
+                    a->vf.f[a->vf.rd].sent = 1;
+                    a->vf.rd++;
+                } else {
+                    video_decode_error(a);
+                }
                 continue;
             }
             if (key)
