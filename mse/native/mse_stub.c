@@ -22,6 +22,12 @@ int mse_host_frames(void *h)
     return 0;
 }
 
+int64_t mse_host_samples_played(void *h)
+{
+    (void)h;
+    return 0;
+}
+
 int mse_host_copy_frame(void *h, uint8_t *dst, int cap, int *w, int *ht, int *gen)
 {
     (void)h;

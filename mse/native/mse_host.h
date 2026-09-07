@@ -34,6 +34,7 @@ double mse_host_duration(MseHost *h);
 void mse_host_set_duration(MseHost *h, double seconds);
 int mse_host_video_size(MseHost *h, int *w, int *ht);
 int mse_host_frames(MseHost *h);
+int64_t mse_host_samples_played(MseHost *h);
 /* Last decoded BGRA. dst=NULL or cap too small → returns bytes needed (w/h/gen still set). 0 = none. */
 int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int *gen);
 

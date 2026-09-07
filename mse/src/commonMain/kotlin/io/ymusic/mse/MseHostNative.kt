@@ -9,5 +9,7 @@ expect object MseHostNative {
 
     fun frames(handle: Long): Int
 
+    fun samplesPlayed(handle: Long): Long
+
     fun copyFrame(handle: Long, afterGen: Int = -1): NativeMseFrame?
 }

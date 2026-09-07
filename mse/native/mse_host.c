@@ -56,6 +56,7 @@ struct MseHost {
     int rate;
     int ch;
     int64_t samples_played;
+    int64_t samples_pulled;
 #ifdef MSE_DAC
     uint8_t *ring;
     int ring_cap;
@@ -607,6 +608,7 @@ static void *dec_loop(void *arg)
                     start_sl(h, rate, ch);
                 dac = h->sl_player != NULL;
 #endif
+                h->samples_pulled += frames;
                 if (dac && !h->flushing)
                     ring_write(h, (const uint8_t *)pcm, nbytes);
                 if (dac && !h->aq_started && ring_ms(h) >= 80) {
@@ -638,6 +640,9 @@ static void *dec_loop(void *arg)
             int nbytes = frames * ch * (int)sizeof(int16_t);
             if (h->on_pcm)
                 h->on_pcm(h->user, rate, ch, pcm, nbytes);
+            pthread_mutex_lock(&h->mu);
+            h->samples_pulled += frames;
+            pthread_mutex_unlock(&h->mu);
             free(pcm);
         }
 #endif
@@ -1119,6 +1124,17 @@ int mse_host_frames(MseHost *h)
         return 0;
     pthread_mutex_lock(&h->mu);
     n = h->frames;
+    pthread_mutex_unlock(&h->mu);
+    return n;
+}
+
+int64_t mse_host_samples_played(MseHost *h)
+{
+    int64_t n;
+    if (!h)
+        return 0;
+    pthread_mutex_lock(&h->mu);
+    n = h->samples_pulled;
     pthread_mutex_unlock(&h->mu);
     return n;
 }

@@ -132,6 +132,14 @@ Java_io_ymusic_mse_MseHostNative_frames(JNIEnv *env, jclass cls, jlong handle)
     return mse_host_frames((MseHost *)(intptr_t)handle);
 }
 
+JNIEXPORT jlong JNICALL
+Java_io_ymusic_mse_MseHostNative_samplesPlayed(JNIEnv *env, jclass cls, jlong handle)
+{
+    (void)env;
+    (void)cls;
+    return (jlong)mse_host_samples_played((MseHost *)(intptr_t)handle);
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_io_ymusic_mse_MseHostNative_copyFrameBytes(JNIEnv *env, jclass cls, jlong handle, jint afterGen, jintArray meta)
 {

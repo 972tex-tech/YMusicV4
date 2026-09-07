@@ -4,6 +4,7 @@ import io.ymusic.mse.cinterop.mse_host_copy_frame
 import io.ymusic.mse.cinterop.mse_host_create
 import io.ymusic.mse.cinterop.mse_host_destroy
 import io.ymusic.mse.cinterop.mse_host_frames
+import io.ymusic.mse.cinterop.mse_host_samples_played
 import io.ymusic.mse.cinterop.mse_host_vtable
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -34,6 +35,11 @@ actual object MseHostNative {
     actual fun frames(handle: Long): Int {
         if (handle == 0L) return 0
         return mse_host_frames(handle.toCPointer<COpaque>())
+    }
+
+    actual fun samplesPlayed(handle: Long): Long {
+        if (handle == 0L) return 0L
+        return mse_host_samples_played(handle.toCPointer<COpaque>())
     }
 
     actual fun copyFrame(handle: Long, afterGen: Int): NativeMseFrame? {

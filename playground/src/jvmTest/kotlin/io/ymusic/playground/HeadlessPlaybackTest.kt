@@ -111,17 +111,13 @@ class HeadlessPlaybackTest {
             return@runBlocking
         }
         val surface = MseVideoSurface()
-        val frames = AtomicInteger(0)
-        val frameWatch = launch {
-            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
-        }
         val session = HeadlessSession.boot(surface)
         try {
             session.player.load(VIDEO_ID, session.log, "auto")
             session.player.setViewport(1920, 1080, session.log)
             session.player.play(session.log)
             session.watchPlay(
-                frames,
+                surface,
                 minDelta = 2_000,
                 timeoutMs = 60_000,
                 audioStallBudget = STARTUP_AUDIO_STALL_MS,
@@ -129,15 +125,15 @@ class HeadlessPlaybackTest {
                 requireNoJump = false,
             )
 
-            session.switchQuality("hd1080", frames, forced = true, label = "hd1080")
-            session.switchQuality("tiny", frames, forced = true, label = "tiny")
-            session.switchQuality("auto", frames, forced = false, label = "auto")
+            session.switchQuality(surface, "hd1080", forced = true, label = "hd1080")
+            session.switchQuality(surface, "tiny", forced = true, label = "tiny")
+            session.switchQuality(surface, "auto", forced = false, label = "auto")
 
             session.player.seekTo(30_000, session.log)
             session.player.play(session.log)
             val land = session.awaitLand(25_000L..40_000L, timeoutMs = 20_000, label = "seek 30s")
             session.watchPlay(
-                frames,
+                surface,
                 from = land,
                 minDelta = 800,
                 timeoutMs = 15_000,
@@ -145,10 +141,23 @@ class HeadlessPlaybackTest {
                 label = "play after seek",
                 requireNoJump = false,
             )
-            session.switchQuality("hd1080", frames, forced = true, label = "hd1080 after seek")
+            session.switchQuality(surface, "hd1080", forced = true, label = "hd1080 after seek")
+
+            /* log21: seek far past leftover — clock ran, fps=0, audio stopped. */
+            session.player.seekTo(150_000, session.log)
+            session.player.play(session.log)
+            val far = session.awaitLand(140_000L..165_000L, timeoutMs = 20_000, label = "seek 150s")
+            session.watchPlay(
+                surface,
+                from = far,
+                minDelta = 2_000,
+                timeoutMs = 20_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "play after far seek",
+                requireNoJump = false,
+            )
             dumpMseProof(session, "quality_then_seek")
         } finally {
-            frameWatch.cancel()
             session.close()
         }
     }
@@ -160,25 +169,21 @@ class HeadlessPlaybackTest {
             return@runBlocking
         }
         val surface = MseVideoSurface()
-        val frames = AtomicInteger(0)
-        val frameWatch = launch {
-            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
-        }
         val session = HeadlessSession.boot(surface)
         try {
             session.player.load(VIDEO_ID, session.log, "auto")
             session.player.setViewport(1920, 1080, session.log)
             session.player.play(session.log)
             session.watchPlay(
-                frames,
+                surface,
                 minDelta = 2_000,
                 timeoutMs = 60_000,
                 audioStallBudget = STARTUP_AUDIO_STALL_MS,
                 label = "first video",
                 requireNoJump = false,
             )
-            session.switchQuality("hd1080", frames, forced = true, label = "hd1080")
-            session.switchQuality("tiny", frames, forced = true, label = "tiny")
+            session.switchQuality(surface, "hd1080", forced = true, label = "hd1080")
+            session.switchQuality(surface, "tiny", forced = true, label = "tiny")
 
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             val srcs = proof.lineSequence().filter { it.contains("mse video.src blob:mse/") }.toList()
@@ -189,7 +194,7 @@ class HeadlessPlaybackTest {
             session.player.play(session.log)
             val land = session.awaitLand(0L..20_000L, timeoutMs = 60_000, label = "second load")
             session.watchPlay(
-                frames,
+                surface,
                 from = land,
                 minDelta = 800,
                 timeoutMs = 20_000,
@@ -199,7 +204,6 @@ class HeadlessPlaybackTest {
             )
             dumpMseProof(session, "quality_then_second_load")
         } finally {
-            frameWatch.cancel()
             session.close()
         }
     }
@@ -226,8 +230,8 @@ private suspend fun HeadlessSession.clockMs(): Long =
     (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
 
 private suspend fun HeadlessSession.switchQuality(
+    surface: MseVideoSurface,
     quality: String,
-    frames: AtomicInteger,
     forced: Boolean,
     label: String,
 ) {
@@ -235,7 +239,7 @@ private suspend fun HeadlessSession.switchQuality(
     player.setQuality(quality, log)
     player.play(log)
     watchPlay(
-        frames,
+        surface,
         from = before,
         minDelta = 6_500,
         timeoutMs = 30_000,
@@ -246,17 +250,15 @@ private suspend fun HeadlessSession.switchQuality(
 }
 
 /**
- * Sample the audio clock (~currentTime) and video frames.
+ * Clock moving is not playback. Fail if native fps stays 0 or DAC/pull
+ * samples do not advance (log21: starve-ahead currentTime with no A/V).
  *
- * YouTube: a quality change may snap to a nearby keyframe (at ~2s that
- * nearby point is 0). Forced quality may stall audio+video ~0.5s; auto
- * plays leftover then switches. A jump farther than [NEARBY_SNAP_MS] is
- * a restart, not a snap. Video may lag the clock by up to 5s. JVM blit
- * often publishes 0 frames even when native v_sent runs — only count
- * video lag after we have seen a frame.
+ * YouTube: a quality change may snap to a nearby RAP; forced quality may
+ * stall A+V ~0.5s; auto plays leftover then switches. Video may lag 5s
+ * behind running audio. A jump farther than [NEARBY_SNAP_MS] is a restart.
  */
 private suspend fun HeadlessSession.watchPlay(
-    frames: AtomicInteger,
+    surface: MseVideoSurface,
     from: Long? = null,
     minDelta: Long,
     timeoutMs: Long,
@@ -268,10 +270,12 @@ private suspend fun HeadlessSession.watchPlay(
     val deadline = System.currentTimeMillis() + timeoutMs
     var lastClock = start
     var lastWall = System.currentTimeMillis()
-    var lastFrames = frames.get()
-    var seenFrames = lastFrames > 0
-    var audioStall = 0L
-    var videoStall = 0L
+    var baseFrames = surface.presentedFrames()
+    var baseSamples = surface.samplesPlayed()
+    var lastFrames = baseFrames
+    var lastSamples = baseSamples
+    var audioGap = 0L
+    var videoGap = 0L
     var maxAudioStall = 0L
     var maxVideoLag = 0L
     var maxJump = 0L
@@ -280,6 +284,8 @@ private suspend fun HeadlessSession.watchPlay(
         val wall = System.currentTimeMillis()
         val now = clockMs()
         val wallDt = wall - lastWall
+        val frames = surface.presentedFrames()
+        val samples = surface.samplesPlayed()
         if (now + JUMP_MS < lastClock) {
             val jump = lastClock - now
             maxJump = maxOf(maxJump, jump)
@@ -288,7 +294,12 @@ private suspend fun HeadlessSession.watchPlay(
                 start = now
                 lastClock = now
                 lastWall = wall
-                audioStall = 0
+                baseFrames = frames
+                baseSamples = samples
+                lastFrames = frames
+                lastSamples = samples
+                audioGap = 0
+                videoGap = 0
                 continue
             }
             if (requireNoJump) {
@@ -299,47 +310,61 @@ private suspend fun HeadlessSession.watchPlay(
             }
         }
         val clockDt = now - lastClock
-        if (clockDt < 50 && wallDt >= 80) {
-            audioStall += wallDt
-            maxAudioStall = maxOf(maxAudioStall, audioStall)
-        } else {
-            audioStall = 0
+        if (samples > lastSamples) {
+            audioGap = 0
+        } else if (clockDt >= 50) {
+            audioGap += wallDt
+            maxAudioStall = maxOf(maxAudioStall, audioGap)
         }
-        val n = frames.get()
-        if (n > lastFrames) {
-            seenFrames = true
-            videoStall = 0
-            lastFrames = n
-        } else if (seenFrames && clockDt >= 50) {
-            videoStall += wallDt
-            maxVideoLag = maxOf(maxVideoLag, videoStall)
+        if (frames > lastFrames) {
+            videoGap = 0
+        } else if (samples > lastSamples) {
+            videoGap += wallDt
+            maxVideoLag = maxOf(maxVideoLag, videoGap)
         }
         lastClock = now
         lastWall = wall
+        lastFrames = frames
+        lastSamples = samples
         if (maxAudioStall > audioStallBudget) {
             dumpMseProof(this, "$label AUDIO-STALL")
             throw AssertionError(
-                "$label audio stalled ${maxAudioStall}ms (budget ${audioStallBudget}ms) clock=$now",
+                "$label audio not running ${maxAudioStall}ms (budget ${audioStallBudget}ms) " +
+                    "clock=$now samples=$samples Δ=${samples - baseSamples}",
             )
         }
-        if (seenFrames && maxVideoLag > VIDEO_LAG_MS) {
+        if (maxVideoLag > VIDEO_LAG_MS) {
             dumpMseProof(this, "$label VIDEO-LAG")
             throw AssertionError(
-                "$label video lagged ${maxVideoLag}ms behind running audio (budget ${VIDEO_LAG_MS}ms) clock=$now frames=$n",
+                "$label fps=0 for ${maxVideoLag}ms while audio ran (budget ${VIDEO_LAG_MS}ms) " +
+                    "clock=$now frames=$frames Δ=${frames - baseFrames}",
             )
         }
         if (now > start + minDelta) {
+            val dFrames = frames - baseFrames
+            val dSamples = samples - baseSamples
+            val elapsed = (now - start).coerceAtLeast(1L)
+            val fps = dFrames * 1000.0 / elapsed
             println(
                 "$label clock $start -> $now audioStall=${maxAudioStall}ms videoLag=${maxVideoLag}ms " +
-                    "jump=${maxJump}ms frames=$n",
+                    "jump=${maxJump}ms frames=$dFrames fps=${"%.1f".format(fps)} samples=$dSamples",
             )
+            if (dFrames <= 0) {
+                dumpMseProof(this, "$label FPS=0")
+                throw AssertionError("$label fps=0 clock moved $start -> $now frames=$frames")
+            }
+            if (dSamples <= 0) {
+                dumpMseProof(this, "$label NO-AUDIO")
+                throw AssertionError("$label audio not run clock moved $start -> $now samples=$samples")
+            }
             return start to now
         }
     }
     dumpMseProof(this, "$label TIMEOUT")
     throw AssertionError(
         "$label did not advance $start -> $lastClock (need +$minDelta) " +
-            "audioStall=${maxAudioStall}ms videoLag=${maxVideoLag}ms frames=${frames.get()}",
+            "audioStall=${maxAudioStall}ms videoLag=${maxVideoLag}ms " +
+            "frames=${surface.presentedFrames() - baseFrames} samples=${surface.samplesPlayed() - baseSamples}",
     )
 }
 
