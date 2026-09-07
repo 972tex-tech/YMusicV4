@@ -104,6 +104,7 @@ struct MseAv {
 
 static int vdbg_n;
 static void vf_resync_key(MseAv *a, double t);
+static void close_video_decoder(MseAv *a);
 
 #define MSE_SEND_AHEAD 0.08
 
@@ -1088,6 +1089,25 @@ static const AVCodec *find_video_codec(enum AVCodecID id)
     return avcodec_find_decoder(id);
 }
 
+/* Same itag/config: reuse the decoder. A new quality's init (size or
+   sequence header) must not keep feeding leftover packets of the old GOP. */
+static int vpar_compat(const AVCodecParameters *have, const AVCodecParameters *par)
+{
+    if (!have || !par)
+        return 0;
+    if (have->codec_id != par->codec_id)
+        return 0;
+    if (par->width > 0 && have->width > 0 &&
+        (par->width != have->width || par->height != have->height))
+        return 0;
+    if (have->extradata_size != par->extradata_size)
+        return 0;
+    if (have->extradata_size > 0 && have->extradata && par->extradata &&
+        memcmp(have->extradata, par->extradata, (size_t)have->extradata_size) != 0)
+        return 0;
+    return 1;
+}
+
 static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 {
     const AVCodec *codec;
@@ -1639,6 +1659,13 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                     av_bsf_free(&a->vbsf);
             }
             if (!audio) {
+                if (a->vpar && !vpar_compat(a->vpar, par)) {
+                    vlog("video-rep %dx%d -> %dx%d drop vf=%zu",
+                         a->vpar->width, a->vpar->height, par->width, par->height, a->vf.n);
+                    close_video_decoder(a);
+                    cfb_free(&a->vf);
+                    a->v_reopen = 1;
+                }
                 avcodec_parameters_free(&a->vpar);
                 a->vpar = avcodec_parameters_alloc();
                 if (a->vpar)
@@ -2153,20 +2180,19 @@ void mse_av_set_window(MseAv *a, void *window)
 #endif
 }
 
-/* After INVALIDDATA dav1d stays poisoned: later keys also fail (log21
-   12.045/18.018 key=1) and the clock starve-aheads with a frozen picture.
-   Flush and resync from the previous key near the playhead. Split VP9
-   superframes without a BSF are INVALIDDATA on their own — those must
-   not flush. */
+/* After INVALIDDATA dav1d stays poisoned: flush is not enough — later
+   keys also fail (log21 12.045/18.018 key=1) and the clock starve-aheads
+   with a frozen picture. Close and reopen, then resync from the previous
+   key near the playhead. Split VP9 superframes without a BSF are
+   INVALIDDATA on their own — those must not tear the decoder down. */
 static void video_decode_error(MseAv *a, double pts)
 {
     if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf)
         return;
-    if (a->vdec)
-        avcodec_flush_buffers(a->vdec);
-    if (a->vbsf)
-        av_bsf_flush(a->vbsf);
-    av_frame_free(&a->vhold);
+    vlog("decode-err close-reopen t=%.3f", pts);
+    close_video_decoder(a);
+    if (a->vpar)
+        open_decoder(a, 1, a->vpar);
     vf_resync_key(a, a->v_sent >= 0 ? a->v_sent : pts);
 }
 
