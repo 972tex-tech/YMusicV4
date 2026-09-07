@@ -30,8 +30,24 @@ function store(): Promise<Awaited<ReturnType<typeof scopedCache>>> {
   return storeP;
 }
 
+/** UTC `yyyyMMdd-HHmmss-SSS` — sorts as latest last, matches playground dump dirs. */
+function utcStamp(): string {
+  const iso = new Date().toISOString();
+  return (
+    iso.slice(0, 4) +
+    iso.slice(5, 7) +
+    iso.slice(8, 10) +
+    "-" +
+    iso.slice(11, 13) +
+    iso.slice(14, 16) +
+    iso.slice(17, 19) +
+    "-" +
+    iso.slice(20, 23)
+  );
+}
+
 function persistHeld(): void {
-  if (!sessionKey) sessionKey = String(Date.now());
+  if (!sessionKey) sessionKey = utcStamp();
   const key = sessionKey;
   const snap: Record<string, unknown> = {};
   const names = [
@@ -125,7 +141,7 @@ export function recordBgChallenge(p: Record<string, unknown>): void {
   dumpedSabr = false;
   dumpedFirstSps = 0;
   reportedReject = false;
-  sessionKey = String(Date.now());
+  sessionKey = utcStamp();
   persistHeld();
 }
 
@@ -204,14 +220,12 @@ export function dumpBgParams(why: string): void {
     "mintId": held["mintId"] || "",
     "potLen": String(held["pot"] || "").length,
     "sabrUrlLen": String(held["sabrUrl"] || "").length,
+    "sessionKey": sessionKey || utcStamp(),
   };
+  if (why.indexOf("sps=") === 0) rec["sps"] = Number(why.slice(4));
   const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
   if (perf && typeof perf.timeOrigin === "number") rec["timeOrigin"] = perf.timeOrigin;
   console.log("bg dump meta " + JSON.stringify(rec));
-  console.log("bg dump eventId " + String(held["eventId"] || ""));
-  console.log("bg dump interpUrl " + String(held["interpUrl"] || ""));
-  if (perf && typeof perf.timeOrigin === "number")
-    console.log("bg dump timeOrigin " + perf.timeOrigin);
   logBig("bg dump visitorData", String(held["visitorData"] || ""));
   logBig("bg dump program", String(held["program"] || ""));
   logBig("bg dump snapshot", String(held["snapshot"] || ""));

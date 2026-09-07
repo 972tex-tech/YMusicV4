@@ -32,41 +32,65 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 
-/** Reassemble `bg dump` console chunks into files a later miller/SPS run can load. */
-internal class BgCapture(val dumpDir: File) {
+/** Reassemble `bg dump` console chunks into one timestamped session dir. */
+internal class BgCapture(private val parentDir: File) {
     private val parts = HashMap<String, Array<String?>>()
     private var metaJson = ""
+    private var dumpDir: File? = null
     private val millerReady = AtomicBoolean(false)
     private val sabrReady = AtomicBoolean(false)
 
     @Synchronized
+    fun dir(): File {
+        dumpDir?.let { return it }
+        val stamp = field("sessionKey").ifEmpty { utcStamp() }
+        val created = File(parentDir, stamp)
+        created.mkdirs()
+        dumpDir = created
+        pointLatest(parentDir, stamp)
+        println("log[DEBUG] bg-dump dir=${created.absolutePath}")
+        return created
+    }
+
+    @Synchronized
     fun ingest(message: String) {
         if (!message.startsWith("bg dump ")) return
-        dumpDir.mkdirs()
-        File(dumpDir, "console.txt").appendText(message + "\n")
         val rest = message.substring("bg dump ".length)
         when {
             rest.startsWith("meta ") -> {
                 metaJson = rest.substring("meta ".length).trim()
-                File(dumpDir, "meta.json").writeText(metaJson + "\n")
+                File(dir(), "meta.json").writeText(metaJson + "\n")
+                File(dir(), "console.txt").appendText(message + "\n")
                 maybeMillerReady()
             }
-            rest.startsWith("sabr meta ") -> Unit
-            rest.startsWith("entropy meta ") -> Unit
-            rest.startsWith("timeOrigin ") ->
-                File(dumpDir, "timeOrigin.txt").writeText(rest.substring("timeOrigin ".length).trim() + "\n")
-            rest.startsWith("eventId ") ->
-                File(dumpDir, "event_id.txt").writeText(rest.substring("eventId ".length).trim())
-            rest.startsWith("interpUrl ") ->
-                File(dumpDir, "interp_url.txt").writeText(rest.substring("interpUrl ".length).trim())
-            rest.startsWith("mintId ") ->
-                File(dumpDir, "mintId.txt").writeText(rest.substring("mintId ".length).trim())
+            rest.startsWith("sabr meta ") ->
+                File(dir(), "console.txt").appendText(message + "\n")
+            rest.startsWith("entropy meta ") ->
+                File(dir(), "console.txt").appendText(message + "\n")
+            rest.startsWith("timeOrigin ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaValue("timeOrigin", rest.substring("timeOrigin ".length).trim())
+            }
+            rest.startsWith("eventId ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaString("eventId", rest.substring("eventId ".length).trim())
+            }
+            rest.startsWith("interpUrl ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaString("interpUrl", rest.substring("interpUrl ".length).trim())
+            }
+            rest.startsWith("mintId ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaString("mintId", rest.substring("mintId ".length).trim())
+            }
             rest.startsWith("sps ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
                 val sps = rest.substring("sps ".length).trim()
-                File(dumpDir, "sps.txt").writeText(sps + "\n")
-                println("log[DEBUG] bg capture sps $sps dir=${dumpDir.absolutePath}")
+                putMetaValue("sps", sps)
+                println("log[DEBUG] bg capture sps $sps dir=${dir().absolutePath}")
             }
             else -> {
+                File(dir(), "console.txt").appendText(message + "\n")
                 val sp = rest.indexOf(' ')
                 if (sp < 0) return
                 val kind = rest.substring(0, sp)
@@ -106,7 +130,7 @@ internal class BgCapture(val dumpDir: File) {
             "entropy" -> "entropy.txt"
             else -> return
         }
-        File(dumpDir, name).writeText(value)
+        File(dir(), name).writeText(value)
         if (kind == "program") writeInject(value)
     }
 
@@ -118,12 +142,31 @@ internal class BgCapture(val dumpDir: File) {
             "{\"globalName\":${jsonStr(globalName)},\"interpreterHash\":${jsonStr(hash)}," +
                 "\"program\":${jsonStr(program)},\"requestKey\":\"O43z0dpjhgX20SCx4KAo\"," +
                 "\"source\":\"playground-bg-dump\"}"
-        File(dumpDir, "challenge_inject.js").writeText("globalThis.__BBD_BG = $payload;\n")
+        File(dir(), "challenge_inject.js").writeText("globalThis.__BBD_BG = $payload;\n")
     }
 
     private fun field(key: String): String {
         val m = Regex("\"$key\":\"([^\"]*)\"").find(metaJson) ?: return ""
         return m.groupValues[1]
+    }
+
+    private fun putMetaString(key: String, value: String) {
+        putMetaValue(key, jsonStr(value))
+    }
+
+    private fun putMetaValue(key: String, jsonValue: String) {
+        if (jsonValue.isEmpty()) return
+        val existing = Regex("\"$key\":(\"[^\"]*\"|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)")
+        metaJson = if (metaJson.isBlank()) {
+            "{\"$key\":$jsonValue}"
+        } else if (existing.containsMatchIn(metaJson)) {
+            existing.replace(metaJson, "\"$key\":$jsonValue")
+        } else {
+            val inner = metaJson.trim().removeSuffix("}").trimEnd()
+            val sep = if (inner.endsWith("{")) "" else ","
+            "$inner$sep\"$key\":$jsonValue}"
+        }
+        File(dir(), "meta.json").writeText(metaJson + "\n")
     }
 
     private fun jsonStr(s: String): String {
@@ -143,7 +186,7 @@ internal class BgCapture(val dumpDir: File) {
     }
 
     private fun fileLen(name: String): Int {
-        val f = File(dumpDir, name)
+        val f = File(dir(), name)
         return if (f.isFile) f.length().toInt() else 0
     }
 
@@ -153,14 +196,15 @@ internal class BgCapture(val dumpDir: File) {
         val it = fileLen("integrityToken.txt")
         if (program <= 0 || snap <= 0 || it <= 0) return
         if (!millerReady.compareAndSet(false, true)) return
-        val eventId = File(dumpDir, "event_id.txt").let { if (it.isFile) it.readText().trim() else field("eventId") }
-        File(dumpDir, "REPLAY.txt").writeText(
-            "dir ${dumpDir.absolutePath}\n" +
-                "mill: python3 harness/po_replay.py mill ${dumpDir.absolutePath}\n" +
-                "sps:  python3 harness/po_replay.py sps ${dumpDir.absolutePath}\n",
+        val out = dir()
+        val eventId = field("eventId")
+        File(out, "REPLAY.txt").writeText(
+            "dir ${out.absolutePath}\n" +
+                "mill: python3 harness/po_replay.py mill ${out.absolutePath}\n" +
+                "sps:  python3 harness/po_replay.py sps ${out.absolutePath}\n",
         )
         println(
-            "log[DEBUG] bg capture miller dir=${dumpDir.absolutePath} " +
+            "log[DEBUG] bg capture miller dir=${out.absolutePath} " +
                 "program=$program snap=$snap it=$it eventId=$eventId",
         )
     }
@@ -170,31 +214,45 @@ internal class BgCapture(val dumpDir: File) {
         val url = fileLen("sabr_url.txt")
         if (body <= 0 || url <= 0) return
         if (!sabrReady.compareAndSet(false, true)) return
+        val out = dir()
         println(
-            "log[DEBUG] bg capture sabr dir=${dumpDir.absolutePath} url=$url body=$body",
+            "log[DEBUG] bg capture sabr dir=${out.absolutePath} url=$url body=$body",
         )
+    }
+}
+
+private fun utcStamp(): String =
+    java.time.Instant.now().atOffset(java.time.ZoneOffset.UTC)
+        .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"))
+
+private fun pointLatest(root: File, stamp: String) {
+    val latest = File(root, "latest")
+    try {
+        val path = latest.toPath()
+        java.nio.file.Files.deleteIfExists(path)
+        java.nio.file.Files.createSymbolicLink(path, java.nio.file.Path.of(stamp))
+    } catch (_: Exception) {
+        latest.writeText(stamp + "\n")
     }
 }
 
 internal class StdoutLog private constructor(
     crumbs: List<Crumb>,
     private val proofFile: File,
-    private val dumpDir: File,
     private val jar: CookieJar?,
     private val dumpedCookies: AtomicBoolean,
     private val capture: BgCapture,
 ) : CrumbLogger(crumbs) {
-    constructor(proofFile: File, dumpDir: File, jar: CookieJar) : this(
+    constructor(proofFile: File, dumpRoot: File, jar: CookieJar) : this(
         emptyList(),
         proofFile,
-        dumpDir,
         jar,
         AtomicBoolean(false),
-        BgCapture(dumpDir),
+        BgCapture(dumpRoot),
     )
 
     override fun fork(crumbs: List<Crumb>): CrumbLogger =
-        StdoutLog(crumbs, proofFile, dumpDir, jar, dumpedCookies, capture)
+        StdoutLog(crumbs, proofFile, jar, dumpedCookies, capture)
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
         val line = "log[$level] $path $message${error?.let { " err=${it::class.simpleName}: ${it.message}" } ?: ""}"
@@ -227,6 +285,7 @@ internal class StdoutLog private constructor(
 
     private fun dumpCookieJar() {
         val jar = jar ?: return
+        val dumpDir = capture.dir()
         dumpDir.mkdirs()
         val seen = LinkedHashSet<String>()
         val out = StringBuilder("# Netscape HTTP Cookie File\n")
@@ -297,10 +356,9 @@ internal class HeadlessSession(
                 direct()
             }.build()
             val proofFile = File.createTempFile("po-proof-", ".log").also { it.writeText("") }
-            val dumpDir = File(File(System.getProperty("user.dir"), "build"), "bg-dump")
-            dumpDir.mkdirs()
-            val log = StdoutLog(proofFile, dumpDir, jar)
-            println("log[DEBUG] bg-dump dir=${dumpDir.absolutePath}")
+            val dumpRoot = File(File(System.getProperty("user.dir"), "build"), "bg-dump")
+            dumpRoot.mkdirs()
+            val log = StdoutLog(proofFile, dumpRoot, jar)
             val cacheDir = File(System.getProperty("java.io.tmpdir"), "ymusic-playground-engine-cache")
             cacheDir.deleteRecursively()
             val cache = desktopEngineCacheStore(cacheDir, log)

@@ -8,8 +8,10 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 
 - **Desktop JVM** — `./gradlew :playground:run`
 
-BotGuard capture (no cookies) lands in `build/bg-dump/` as files a later miller/SPS run can load
-(`BG_DUMP` defaults on unless `-Pproduction=true`). Watch for:
+BotGuard capture (no cookies) lands in `build/bg-dump/<yyyyMMdd-HHmmss-SSS>/`
+(UTC stamp = session key; `build/bg-dump/latest` points at the newest). Scalars
+live in `meta.json`; only large payloads are separate files. `BG_DUMP` defaults
+on unless `-Pproduction=true`. Watch for:
 
 ```
 bg capture miller dir=… program=N snap=N it=N
