@@ -1163,7 +1163,17 @@ export function dropVideoTrack(): void {
     coverDummyVideo();
     __mseRemove(0, 0, 1e300);
     __mseAbort(0);
-    if (dummySb) dummySb["abort"]();
+    if (dummySb) {
+      if (dummySb["updating"]) dummySb["abort"]();
+      else {
+        /* abort() with updating=false must not emit updateend (re-enters
+           YouTube's listener until the stack blows). The SABR queue still
+           needs that event to flush into appendBuffer (log10: abort upd=0
+           then updateend then audio appends; log23 today: no updateend,
+           d=0/a=0, clock frozen at leftover end). */
+        fire(dummySb, "updateend");
+      }
+    }
     return;
   }
   __mseRemove(0, 0, 1e300);
