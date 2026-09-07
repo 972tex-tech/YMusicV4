@@ -80,6 +80,7 @@ struct MseAv {
     size_t pend_n[2];
     size_t pend_cap[2];
     int need_rap[2];
+    int v_reopen;
     double starve_log_pts;
     double starve_log_clock;
     AVFrame *vhold;
@@ -102,6 +103,7 @@ struct MseAv {
 };
 
 static int vdbg_n;
+static void vf_resync_key(MseAv *a, double t);
 
 #define MSE_SEND_AHEAD 0.08
 
@@ -1093,9 +1095,14 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
         int same = (*ctxp)->codec_id == par->codec_id;
-        if (same && par->width > 0 && (*ctxp)->width > 0 &&
-            (par->width != (*ctxp)->width || par->height != (*ctxp)->height))
+        int cw = (*ctxp)->width > 0 ? (*ctxp)->width : (*ctxp)->coded_width;
+        int ch = (*ctxp)->height > 0 ? (*ctxp)->height : (*ctxp)->coded_height;
+        if (same && par->width > 0 && cw > 0 &&
+            (par->width != cw || par->height != ch)) {
+            vlog("reopen size %dx%d -> %dx%d", cw, ch, par->width, par->height);
             same = 0;
+        } else if (!same)
+            vlog("reopen codec %d -> %d", (int)(*ctxp)->codec_id, (int)par->codec_id);
         if (same)
             return 0;
         avcodec_free_context(ctxp);
@@ -1106,6 +1113,7 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
                 a->sws = NULL;
             }
             a->need_rap[0] = 1;
+            a->v_reopen = 1;
         }
     }
     codec = video ? find_video_codec(par->codec_id) : avcodec_find_decoder(par->codec_id);
@@ -1655,6 +1663,10 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             }
         }
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
+        if (!audio && a->v_reopen) {
+            vf_resync_key(a, a->v_sent >= 0 ? a->v_sent : r.first);
+            a->v_reopen = 0;
+        }
         cfb_free(&tmp);
         if (a->pend_n[idx] > total)
             memmove(a->pend[idx], a->pend[idx] + total, a->pend_n[idx] - total);
@@ -1690,6 +1702,7 @@ static void close_video_decoder(MseAv *a)
 #endif
     a->pend_n[0] = 0;
     a->need_rap[0] = 1;
+    a->v_reopen = 0;
     /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
        (log17: 1.1MB of n=0 after close-video wiped init → black). Container
        switch already drops the other header in mse_av_append. */
@@ -1919,6 +1932,32 @@ static void cfb_seek_rd_key(Cfb *b, double t)
     b->rd = last_key;
 }
 
+/* After a decoder reset, feed the last key at/before t (one GOP), not the
+ * next key 3s ahead (log21: reopen 720p mid-GOP, rap-skip 944→948, freeze). */
+static void vf_resync_key(MseAv *a, double t)
+{
+    size_t i, prev = a->vf.n, next = a->vf.n, key;
+    for (i = 0; i < a->vf.n; i++) {
+        if (!a->vf.f[i].key)
+            continue;
+        if (a->vf.f[i].pts <= t + 0.05)
+            prev = i;
+        else if (next == a->vf.n)
+            next = i;
+    }
+    if (prev < a->vf.n && t - a->vf.f[prev].pts <= 8.0)
+        key = prev;
+    else
+        key = next;
+    if (key >= a->vf.n)
+        return;
+    for (i = key; i < a->vf.n; i++)
+        a->vf.f[i].sent = 0;
+    a->vf.rd = key;
+    a->need_rap[0] = 1;
+    vlog("resync key=%.3f rd=%zu n=%zu t=%.3f", a->vf.f[key].pts, key, a->vf.n, t);
+}
+
 void mse_av_seek(MseAv *a, double seconds)
 {
     if (!a)
@@ -2116,9 +2155,10 @@ void mse_av_set_window(MseAv *a, void *window)
 
 /* After INVALIDDATA dav1d stays poisoned: later keys also fail (log21
    12.045/18.018 key=1) and the clock starve-aheads with a frozen picture.
-   Flush and wait for a key. Split VP9 superframes without a BSF are
-   INVALIDDATA on their own — those must not flush. */
-static void video_decode_error(MseAv *a)
+   Flush and resync from the previous key near the playhead. Split VP9
+   superframes without a BSF are INVALIDDATA on their own — those must
+   not flush. */
+static void video_decode_error(MseAv *a, double pts)
 {
     if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf)
         return;
@@ -2127,7 +2167,7 @@ static void video_decode_error(MseAv *a)
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
     av_frame_free(&a->vhold);
-    a->need_rap[0] = 1;
+    vf_resync_key(a, a->v_sent >= 0 ? a->v_sent : pts);
 }
 
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts)
@@ -2251,7 +2291,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                     a->vf.f[a->vf.rd].sent = 1;
                     a->vf.rd++;
                 } else {
-                    video_decode_error(a);
+                    video_decode_error(a, sp);
                 }
                 continue;
             }

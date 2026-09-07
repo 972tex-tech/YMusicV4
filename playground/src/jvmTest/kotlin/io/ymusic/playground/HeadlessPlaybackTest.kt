@@ -369,6 +369,50 @@ class HeadlessPlaybackTest {
         }
     }
 
+    /**
+     * log21: after a far seek, 720p GOPs reopen dav1d at the same 1280×720.
+     * Mid-GOP P-frames fail, recover skipped to the next key (~3s), audio
+     * starve-ahead, picture frozen. Play through several GOPs after 944s.
+     */
+    @Test
+    fun hd720_after_far_seek_no_gop_stall() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(LONG_ID, session.log, "hd720", 1280, 720)
+            session.player.setViewport(1280, 720, session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 2_000,
+                timeoutMs = 60_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "hd720 start",
+                requireNoJump = false,
+            )
+            session.player.seekTo(944_000, session.log)
+            session.player.play(session.log)
+            val land = session.awaitLand(930_000L..960_000L, timeoutMs = 25_000, label = "seek 944s")
+            session.watchPlay(
+                surface,
+                from = land,
+                minDelta = 8_000,
+                timeoutMs = 30_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "hd720 after 944s",
+                requireNoJump = false,
+                videoLagBudget = 2_000L,
+            )
+            dumpMseProof(session, "hd720_after_far_seek")
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val SECOND_ID = "wjhyk-Cx6wk"
@@ -427,6 +471,7 @@ private suspend fun HeadlessSession.watchPlay(
     audioStallBudget: Long,
     label: String,
     requireNoJump: Boolean,
+    videoLagBudget: Long = VIDEO_LAG_MS,
 ): Pair<Long, Long> {
     var start = from ?: clockMs()
     val deadline = System.currentTimeMillis() + timeoutMs
@@ -495,10 +540,10 @@ private suspend fun HeadlessSession.watchPlay(
                     "clock=$now samples=$samples Δ=${samples - baseSamples}",
             )
         }
-        if (maxVideoLag > VIDEO_LAG_MS) {
+        if (maxVideoLag > videoLagBudget) {
             dumpMseProof(this, "$label VIDEO-LAG")
             throw AssertionError(
-                "$label fps=0 for ${maxVideoLag}ms while audio ran (budget ${VIDEO_LAG_MS}ms) " +
+                "$label fps=0 for ${maxVideoLag}ms while audio ran (budget ${videoLagBudget}ms) " +
                     "clock=$now frames=$frames Δ=${frames - baseFrames}",
             )
         }
