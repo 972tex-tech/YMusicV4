@@ -861,21 +861,12 @@ class HTMLMediaElement {
   }
 
   get ["buffered"](): { length: number; start(i: number): number; end(i: number): number } {
-    /* Spec is intersection of SourceBuffers. Video SB dummy is only for
-       YouTube's per-track je (empty video skips the SABR drain). The
-       element must still report real audio leftover — dummy-only je of
-       15s left SABR audio un-appended and the clock frozen at audio end
-       (log23 setQuality zero). */
-    if (dummyCoverEnd > dummyCoverStart && isAudioOnly()) {
-      const dummy: Array<[number, number]> = [[dummyCoverStart, dummyCoverEnd]];
-      const r = __mseBuffered(1);
-      if (!r || r.length < 2) return makeTimeRanges(dummy);
-      const audio: Array<[number, number]> = [];
-      for (let i = 0; i + 1 < r.length; i += 2) audio.push([r[i]!, r[i + 1]!]);
-      const hit = intersectRanges(dummy, audio);
-      return makeTimeRanges(hit.length ? hit : dummy);
-    }
-    if (dummyCoverEnd > dummyCoverStart && !videoHasLeftover()) {
+    /* Spec is intersection of SourceBuffers. Audio leftover ends at the
+       playhead, so je()=DI(buffered, currentTime) is ~0, YouTube sets
+       buffering (Ys) and BZY skips SABR already in the append queue.
+       Long dummy keeps je() large until C has real video leftover — including
+       after leave-audio, when the video SB getter reports only a sliver. */
+    if (dummyCoverEnd > dummyCoverStart && (isAudioOnly() || !videoHasLeftover())) {
       return makeTimeRanges([[dummyCoverStart, dummyCoverEnd]]);
     }
     const ms = this._ms;
