@@ -591,6 +591,35 @@ interface TimerSlot {
 }
 const timers = new Map<Pipe, TimerSlot>();
 
+function dummyTimerPipe(): Pipe {
+  const close = function () {};
+  return { id: -1, command: "timer", source: { close: close }, sink: { close: close } } as Pipe;
+}
+
+/** Host open refused (JNI leftover exception, stale id). Do not throw — YouTube's MSE
+ *  updateend setTimeout abort-loops until the stack blows. Next-tick only; no busy-wait. */
+function startLocalTimer(
+  cb: (...args: unknown[]) => void,
+  _repeat: boolean,
+  args: unknown[],
+): Pipe {
+  const pipe = dummyTimerPipe();
+  const slot: TimerSlot = { cb: cb, cleared: false };
+  timers.set(pipe, slot);
+  Promise.resolve().then(function () {
+    if (slot.cleared || !slot.cb) {
+      timers.delete(pipe);
+      return;
+    }
+    const fn = slot.cb;
+    slot.cleared = true;
+    slot.cb = null;
+    timers.delete(pipe);
+    fn.apply(null, args);
+  });
+  return pipe;
+}
+
 function startTimer(
   cb: (...args: unknown[]) => void,
   ms: number | undefined,
@@ -598,7 +627,12 @@ function startTimer(
   repeat: boolean,
   args: unknown[],
 ): Pipe {
-  const pipe = open(command);
+  let pipe: Pipe;
+  try {
+    pipe = open(command);
+  } catch (_e) {
+    return startLocalTimer(cb, repeat, args);
+  }
   // Delay as a big-endian 8-byte long — fixed width self-frames it (Kotlin reads it with okio
   // readLong).
   pipe.sink.writeLong(Math.max(0, Math.floor(Number(ms) || 0)));
