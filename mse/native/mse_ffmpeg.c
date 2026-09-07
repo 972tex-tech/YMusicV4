@@ -1559,24 +1559,39 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
             }
             free(sp);
         }
-        /* rd = first unsent at/after the playhead, not an older island
-           (seek 526s + leftover 0–30s) and not a later append's start
-           (Auto at 5.3s + 10–14s segment jumped rd to 23s → starve-ahead).
-           v_sent/a_sent < 0 means nothing shown yet (audio-only → video):
-           keep sequential rd or leftover starts ahead of the clock forever. */
+        /* Start at the last unsent key at/before the playhead so a seek into
+           a GOP (log21: t=217 rd=46, t=526 rd=177) still feeds the RAP.
+           Floor-at-playhead skipped that key and dav1d got P-frames
+           (Error parsing OBU). Sequential appends have the previous key
+           already sent, so rd stays on the first unsent at/after want. */
         {
             double want = idx ? a->a_sent : a->v_sent;
-            /* Floor at the playhead so an overlapping quality-switch GOP
-               (log21: rd 811→684) does not rewind already-shown frames. */
-            double floor_pts = want < 0 ? -1e9 : want;
-            dst->rd = dst->n;
+            size_t key = dst->n, u = dst->n;
             for (i = 0; i < (int)dst->n; i++) {
                 if (dst->f[i].sent)
                     continue;
-                if (dst->f[i].pts + dst->f[i].dur < floor_pts - 0.5)
-                    continue;
-                dst->rd = (size_t)i;
-                break;
+                if (dst->f[i].key && (want < 0 || dst->f[i].pts <= want + 0.05))
+                    key = (size_t)i;
+                if (u == dst->n &&
+                    (want < 0 || dst->f[i].pts + dst->f[i].dur >= want - 0.5))
+                    u = (size_t)i;
+            }
+            if (key < dst->n) {
+                if (key < rd0 && !idx) {
+                    a->need_rap[0] = 1;
+                    if (a->vdec)
+                        avcodec_flush_buffers(a->vdec);
+                    av_frame_free(&a->vhold);
+#ifdef __ANDROID__
+                    if (a->mc) {
+                        mc_hold_drop(a, 0);
+                        AMediaCodec_flush(a->mc);
+                    }
+#endif
+                }
+                dst->rd = key;
+            } else {
+                dst->rd = u;
             }
         }
         if (nsp > 0 || dst->rd + 2 < rd0)
