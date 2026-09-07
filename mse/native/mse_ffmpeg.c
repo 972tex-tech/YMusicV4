@@ -1697,7 +1697,10 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         cfb_free(&tmp);
         if (a->pend_n[idx] > total)
             memmove(a->pend[idx], a->pend[idx] + total, a->pend_n[idx] - total);
-        a->pend_n[idx] -= total;
+        if (a->pend_n[idx] >= total)
+            a->pend_n[idx] -= total;
+        else
+            a->pend_n[idx] = 0;
         if (a->pend_n[idx] == 0)
             break;
     }
@@ -1727,10 +1730,12 @@ static void close_video_decoder(MseAv *a)
     if (a->vt_layer)
         mse_vt_flush(a->vt_layer);
 #endif
-    a->pend_n[0] = 0;
     a->need_rap[0] = 1;
     a->v_reopen = 0;
-    /* Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
+    /* Do not zero pend_n[0]: mse_av_append can close the decoder mid-cluster
+       (quality switch). Wiping pend then subtracting `total` underflows and
+       memmove crashes (log22). Abort/changeType/remove/seek clear pend themselves.
+       Keep vinit. Leave-audio re-appends moof/clusters with no moov/EBML
        (log17: 1.1MB of n=0 after close-video wiped init → black). Container
        switch already drops the other header in mse_av_append. */
 }
@@ -1791,8 +1796,10 @@ void mse_av_remove(MseAv *a, int audio, double start, double end)
     pthread_mutex_lock(&a->mu);
     cfb_drop(audio ? &a->af : &a->vf, start, end);
     /* Audio-only (or a full video wipe): nothing left to decode. */
-    if (!audio && a->vf.n == 0)
+    if (!audio && a->vf.n == 0) {
+        a->pend_n[0] = 0;
         close_video_decoder(a);
+    }
     pthread_mutex_unlock(&a->mu);
 }
 
@@ -2004,8 +2011,10 @@ void mse_av_seek(MseAv *a, double seconds)
         avcodec_flush_buffers(a->adec);
     /* No RAP at the new playhead: drop the decoder instead of feeding leftover
        P-frames (live DVR -10s SIGILL). Next append reopens. */
-    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key)
+    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key) {
+        a->pend_n[0] = 0;
         close_video_decoder(a);
+    }
     else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
     if (a->vbsf)
