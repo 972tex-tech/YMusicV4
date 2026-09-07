@@ -1630,6 +1630,31 @@ void mse_av_abort(MseAv *a, int audio)
     pthread_mutex_unlock(&a->mu);
 }
 
+void mse_av_change_type(MseAv *a, int audio)
+{
+    if (!a)
+        return;
+    pthread_mutex_lock(&a->mu);
+    if (audio) {
+        a->pend_n[1] = 0;
+        a->need_rap[1] = 1;
+        free(a->ainit);
+        a->ainit = NULL;
+        a->ainit_n = 0;
+        avcodec_free_context(&a->adec);
+        if (a->swr)
+            swr_free(&a->swr);
+    } else {
+        a->pend_n[0] = 0;
+        free(a->vinit);
+        a->vinit = NULL;
+        a->vinit_n = 0;
+        close_video_decoder(a);
+    }
+    vlog("changeType a=%d", audio);
+    pthread_mutex_unlock(&a->mu);
+}
+
 void mse_av_remove(MseAv *a, int audio, double start, double end)
 {
     if (!a)

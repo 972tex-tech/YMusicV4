@@ -179,6 +179,20 @@ static JSValue js_abort(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
+static JSValue js_change_type(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    int audio = 0;
+    (void)this_val;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (argc < 1 || JS_ToInt32(ctx, &audio, argv[0]))
+        return JS_EXCEPTION;
+    if (g_vt->change_type)
+        g_vt->change_type(h, audio);
+    return JS_UNDEFINED;
+}
+
 static JSValue js_set_duration(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     void *h = host_of(ctx);
@@ -240,6 +254,7 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseAppend", JS_NewCFunction(ctx, js_append, "__mseAppend", 5));
     JS_SetPropertyStr(ctx, g, "__mseRemove", JS_NewCFunction(ctx, js_remove, "__mseRemove", 3));
     JS_SetPropertyStr(ctx, g, "__mseAbort", JS_NewCFunction(ctx, js_abort, "__mseAbort", 1));
+    JS_SetPropertyStr(ctx, g, "__mseChangeType", JS_NewCFunction(ctx, js_change_type, "__mseChangeType", 1));
     JS_SetPropertyStr(ctx, g, "__mseBuffered", JS_NewCFunction(ctx, js_buffered, "__mseBuffered", 1));
     JS_SetPropertyStr(ctx, g, "__mseReset", JS_NewCFunction(ctx, js_reset, "__mseReset", 0));
     JS_FreeValue(ctx, g);

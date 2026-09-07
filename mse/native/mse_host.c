@@ -1195,6 +1195,12 @@ void mse_host_abort(MseHost *h, int audio)
         mse_av_abort(h->av, audio);
 }
 
+void mse_host_change_type(MseHost *h, int audio)
+{
+    if (h)
+        mse_av_change_type(h->av, audio);
+}
+
 int mse_host_buffered(MseHost *h, int audio, double *pairs, int max_pairs)
 {
     if (!h)

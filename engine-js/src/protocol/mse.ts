@@ -220,18 +220,26 @@ function fire(
 /* Chrome: append/remove while updating is InvalidStateError (code 11). TypeError
    is not a DOMException; YouTube's TZP then returns 4 → reattachOnAppend and
    never drains the SABR append queue. */
-function invalidState(msg: string): Error {
+function domException(name: string, msg: string, code: number): Error {
   const Ctor = (globalThis as unknown as { DOMException?: new (m: string, n: string) => Error })
     .DOMException;
   if (typeof Ctor === "function") {
     try {
-      return new Ctor(msg, "InvalidStateError");
+      return new Ctor(msg, name);
     } catch (_e) {}
   }
   const err = new Error(msg);
-  err.name = "InvalidStateError";
-  (err as unknown as { code: number }).code = 11;
+  err.name = name;
+  (err as unknown as { code: number }).code = code;
   return err;
+}
+
+function invalidState(msg: string): Error {
+  return domException("InvalidStateError", msg, 11);
+}
+
+function notSupported(msg: string): Error {
+  return domException("NotSupportedError", msg, 9);
 }
 
 function completeUpdate(sb: SourceBuffer): void {
@@ -251,18 +259,20 @@ class SourceBuffer {
   ["timestampOffset"]: number;
   ["appendWindowStart"]: number;
   ["appendWindowEnd"]: number;
+  _ms: MediaSource | null;
   _listeners: Record<string, Listener[]>;
   /* One TimeRanges object for the life of the SB. base.js HS(!0) caches
      this by reference; start/end must read current leftover/dummy. */
   _liveBuffered: { length: number; start(i: number): number; end(i: number): number } | null;
 
-  constructor(mime: string) {
+  constructor(mime: string, ms: MediaSource | null) {
     this["mimeType"] = mime;
     this["id"] = nextId++;
     this["updating"] = false;
     this["timestampOffset"] = 0;
     this["appendWindowStart"] = 0;
     this["appendWindowEnd"] = Infinity;
+    this._ms = ms;
     this._listeners = {};
     this._liveBuffered = null;
   }
@@ -313,9 +323,26 @@ class SourceBuffer {
   }
 
   ["changeType"](mime: string): void {
+    /* Chrome SourceBuffer::ChangeType_Locked (WICG / MSE codec switching):
+       empty type → TypeError; removed or updating → InvalidStateError;
+       unsupported type → NotSupportedError; ended parent → open+sourceopen;
+       reset parser state; pending initialization segment = true. */
     const next = String(mime || "");
+    if (!next) throw new TypeError("The type provided is empty");
+    const parent = this._ms;
+    if (!parent || parent["sourceBuffers"].indexOf(this) < 0)
+      throw invalidState("SourceBuffer.changeType: removed");
+    if (this["updating"]) throw invalidState("SourceBuffer.changeType: updating");
+    if (!MediaSource["isTypeSupported"](next))
+      throw notSupported("Changing to the type provided ('" + next + "') is not supported.");
+    if (parent["readyState"] === "ended") {
+      parent["readyState"] = "open";
+      fire(parent, "sourceopen");
+      fire(parent, "webkitsourceopen");
+    }
     const wasDummy = isDummyVideoMime(this["mimeType"]);
     const nowDummy = isDummyVideoMime(next);
+    const audio = audioFlag(next);
     this["mimeType"] = next;
     if (!wasDummy && nowDummy) {
       dummySb = this;
@@ -326,7 +353,11 @@ class SourceBuffer {
       if (dummySb === this) dummySb = null;
       dummyCoverStart = 0;
       dummyCoverEnd = 0;
+      __mseChangeType(audio);
+    } else if (!nowDummy) {
+      __mseChangeType(audio);
     }
+    mseLog("mse changeType a=" + audio + " " + next);
   }
 
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
@@ -572,7 +603,7 @@ class MediaSource {
     }
     mseLog("mse addSourceBuffer " + mime);
     if (isDummyVideoMime(mime)) mseLog("mse dummy SB " + mime);
-    const sb = new SourceBuffer(mime);
+    const sb = new SourceBuffer(mime, this);
     this["sourceBuffers"].push(sb);
     if (isDummyVideoMime(mime)) {
       dummySb = sb;
@@ -584,6 +615,15 @@ class MediaSource {
       coverDummyVideo();
     }
     return sb;
+  }
+
+  ["removeSourceBuffer"](sb: SourceBuffer): void {
+    const i = this["sourceBuffers"].indexOf(sb);
+    if (i < 0) throw invalidState("MediaSource.removeSourceBuffer: not in sourceBuffers");
+    if (sb["updating"]) sb["abort"]();
+    this["sourceBuffers"].splice(i, 1);
+    sb._ms = null;
+    if (dummySb === sb) dummySb = null;
   }
 
   ["endOfStream"](): void {
@@ -600,6 +640,21 @@ class MediaSource {
     if (!list) return;
     const i = list.indexOf(fn);
     if (i >= 0) list.splice(i, 1);
+  }
+}
+
+function detachMediaSource(ms: MediaSource): void {
+  const bufs = ms["sourceBuffers"].slice();
+  for (let i = 0; i < bufs.length; i++) {
+    bufs[i]!["updating"] = false;
+    bufs[i]!._ms = null;
+  }
+  ms["sourceBuffers"].length = 0;
+  ms._duration = NaN;
+  if (ms["readyState"] !== "closed") {
+    ms["readyState"] = "closed";
+    fire(ms, "sourceclose");
+    fire(ms, "webkitsourceclose");
   }
 }
 
@@ -696,7 +751,25 @@ class HTMLMediaElement {
     return t.indexOf("webm") >= 0 || t.indexOf("mp4") >= 0 ? "probably" : "";
   }
 
-  ["load"](): void {}
+  ["load"](): void {
+    /* HTML media element load algorithm: stop, forget the resource, then
+       resource-select src again. MSE detach closes the MediaSource. */
+    const url = this._src;
+    this["paused"] = true;
+    this["ended"] = false;
+    this["seeking"] = false;
+    stopMediaTick();
+    __msePause();
+    if (this._ms) detachMediaSource(this._ms);
+    dummySb = null;
+    dummyCoverStart = 0;
+    dummyCoverEnd = 0;
+    __mseReset();
+    this._ms = null;
+    this._src = "";
+    this["readyState"] = 0;
+    if (url) this["src"] = url;
+  }
 
   ["play"](): Promise<void> {
     const self = this;
@@ -727,20 +800,27 @@ class HTMLMediaElement {
   }
   set ["src"](url: string) {
     const prev = this._ms;
-    this._src = url;
     const ms = blobUrls[url] || null;
-    this._ms = ms;
+    this._src = url;
     mseLog("mse video.src " + url + (ms ? " mse" : " not-mse"));
-    if (prev && prev !== ms && prev["readyState"] === "open") {
-      prev["readyState"] = "closed";
-      fire(prev, "sourceclose");
-      fire(prev, "webkitsourceclose");
-    }
-    if (ms && ms["readyState"] === "closed") {
-      ms["readyState"] = "open";
-      fire(ms, "sourceopen");
-      fire(ms, "webkitsourceopen");
-      mseLog("mse sourceopen");
+    if (prev !== ms) {
+      /* Chrome: assigning a new media resource detaches the old MediaSource
+         (readyState closed, sourceBuffers removed) and the pipeline demuxer
+         is a new empty ChunkDemuxer. */
+      if (prev) detachMediaSource(prev);
+      dummySb = null;
+      dummyCoverStart = 0;
+      dummyCoverEnd = 0;
+      __mseReset();
+      this._ms = ms;
+      if (ms && ms["readyState"] === "closed") {
+        ms["readyState"] = "open";
+        fire(ms, "sourceopen");
+        fire(ms, "webkitsourceopen");
+        mseLog("mse sourceopen");
+      }
+    } else {
+      this._ms = ms;
     }
     this["readyState"] = 1;
     const self = this;
@@ -1087,6 +1167,7 @@ export async function resetMse(): Promise<void> {
   const v = activeMedia;
   if (v) {
     v["paused"] = true;
+    if (v._ms) detachMediaSource(v._ms);
     v._src = "";
     v._ms = null;
     v["readyState"] = 0;

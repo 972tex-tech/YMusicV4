@@ -93,6 +93,7 @@ declare function __mseAppend(
 ): void;
 declare function __mseRemove(audio: number, start: number, end: number): void;
 declare function __mseAbort(audio: number): void;
+declare function __mseChangeType(audio: number): void;
 declare function __mseBuffered(audio: number): number[];
 declare function __mseReset(): void;
 

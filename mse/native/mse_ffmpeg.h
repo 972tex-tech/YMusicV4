@@ -28,6 +28,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 void mse_av_remove(MseAv *a, int audio, double start, double end);
 void mse_av_flush(MseAv *a, int audio, int video);
 void mse_av_abort(MseAv *a, int audio);
+/* MSE changeType: reset parser + drop init for that track; leftover stays. */
+void mse_av_change_type(MseAv *a, int audio);
 void mse_av_seek(MseAv *a, double seconds);
 
 /* Android: borrowed ANativeWindow, or NULL to detach. No-op elsewhere. */
