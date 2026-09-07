@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef __ANDROID__
 #include <stdbool.h>
 #endif
@@ -104,6 +105,22 @@ static int vdbg_n;
 
 #define MSE_SEND_AHEAD 0.08
 
+void mse_logf(const char *fmt, ...)
+{
+    struct timespec ts;
+    struct tm tm;
+    va_list ap;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    localtime_r(&ts.tv_sec, &tm);
+    flockfile(stderr);
+    fprintf(stderr, "%02d:%02d:%02d.%03d ", tm.tm_hour, tm.tm_min, tm.tm_sec,
+            (int)(ts.tv_nsec / 1000000));
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    funlockfile(stderr);
+}
+
 static void vlog(const char *fmt, ...)
 {
     char buf[512];
@@ -114,7 +131,7 @@ static void vlog(const char *fmt, ...)
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_INFO, "mse-v", "%s", buf);
 #endif
-    fprintf(stderr, "mse-v %s\n", buf);
+    mse_logf("mse-v %s\n", buf);
 }
 
 static int vdbg_ok(void)

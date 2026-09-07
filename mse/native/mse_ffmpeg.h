@@ -8,6 +8,9 @@
 extern "C" {
 #endif
 
+/* HH:mm:ss.SSS on stderr. C writes bypass Java System.err. */
+void mse_logf(const char *fmt, ...);
+
 typedef struct MseAv MseAv;
 
 typedef struct {
