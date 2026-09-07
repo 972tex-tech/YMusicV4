@@ -102,18 +102,15 @@ function coverDummyVideo(): void {
   const aEnd = audioBufferedEnd();
   /* Format-switch seek-to-0 (DVR start) must not collapse the dummy window. */
   if (ct < 1 && dummyCoverStart > 10) ct = dummyCoverStart + 1;
-  const live = isLiveDuration();
   /* Pin cover to C audio so a hole past leftover is not marked buffered. */
   const pastAudio = aEnd > 1 && ct > aEnd + 0.5;
   if (pastAudio) ct = aEnd;
   const start = Math.max(0, ct - 1);
   const head = Math.max(ct, aEnd);
-  /* Live NRP target is ~15s. */
-  const target = live
-    ? Math.max(start + 1, head + 15)
-    : pastAudio
-      ? Math.max(start + 1, aEnd + 1.25)
-      : Math.max(start + 1, aEnd, Math.min(ct + DUMMY_READAHEAD_S, dummyDurationCap(ct)));
+  /* Audio-only dummy must be >0 (empty video HS/je → xpp skips drain) but
+     not a 15s NRP lie: that made YouTube skip appendBuffer of SABR audio
+     (log23 je=16s d=0/a=0; log10 je≈3s then audio appends). */
+  const target = Math.max(start + 1, head + 2.5);
   if (dummyCoverStart <= start + 0.05 && dummyCoverEnd >= target - 0.05) return;
   const jump = Math.abs(start - dummyCoverStart) >= 1 || Math.abs(target - dummyCoverEnd) >= 1;
   dummyCoverStart = start;
@@ -300,10 +297,9 @@ class SourceBuffer {
   }
 
   _bufferedPairs(): Array<[number, number]> {
-    /* Audio-only: long dummy so BZY still drains SABR audio (empty video
-       HS/je → xpp skips the drain). Leave-audio: a sliver ahead of the
-       playhead so SABR's video readahead check fails now — the long dummy
-       made googlevideo skip video until audio leftover hit minReadahead. */
+    /* Audio-only: short dummy so video je>0 (xpp still drains) but SABR
+       still appends audio. Leave-audio: a sliver so video readahead fails
+       and googlevideo sends video now. */
     if (
       audioFlag(this["mimeType"]) === 0 &&
       dummyCoverEnd > dummyCoverStart &&
