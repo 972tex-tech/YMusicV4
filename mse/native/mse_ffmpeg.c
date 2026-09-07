@@ -467,6 +467,67 @@ static int64_t mem_seek(void *opaque, int64_t offset, int whence)
     return offset;
 }
 
+static int near_std_fps(double fps)
+{
+    static const double want[] = { 24, 25, 30, 48, 50, 60 };
+    int i;
+    for (i = 0; i < 6; i++) {
+        double d = fps - want[i];
+        if (d < 0)
+            d = -d;
+        if (d < 1.5)
+            return 1;
+    }
+    return 0;
+}
+
+/* SABR WebM 60fps clusters often demux at 12fps ×5 duration (18s → 90s,
+   266s → 1321s, log21 tb=1/11988). Scale so GOP fps is a standard rate.
+   Do not use the playhead (90/3.7 ≈ 24 is not a timescale). */
+static void scale_gop_pts(Cfb *tmp)
+{
+    double first, last, span, fps;
+    int n, k, i;
+    if (!tmp || tmp->n < 24)
+        return;
+    n = (int)tmp->n;
+    first = tmp->f[0].pts;
+    last = tmp->f[n - 1].pts + tmp->f[n - 1].dur;
+    span = last - first;
+    if (span < 0.5)
+        return;
+    fps = (n - 1) / span;
+    if (near_std_fps(fps))
+        return;
+    {
+        int best_k = 0;
+        double best = 1e9;
+        for (k = 2; k <= 10; k++) {
+            double f = fps * (double)k;
+            double score;
+            if (!near_std_fps(f))
+                continue;
+            score = f;
+            /* Prefer 30/60 over 24 when 12fps ×2 and ×5 both match. */
+            if ((f > 29 && f < 31) || (f > 59 && f < 61))
+                score -= 100;
+            else
+                score += 10;
+            if (score < best) {
+                best = score;
+                best_k = k;
+            }
+        }
+        if (best_k > 1) {
+            vlog("pts/%d fps=%.2f->%.2f first=%.3f n=%d", best_k, fps, fps * best_k, first, n);
+            for (i = 0; i < n; i++) {
+                tmp->f[i].pts /= (double)best_k;
+                tmp->f[i].dur /= (double)best_k;
+            }
+        }
+    }
+}
+
 static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg, size_t seg_n,
                          double ts_off, int want_video, Cfb *dst, AVCodecParameters **par,
                          double *fmt_dur)
@@ -540,10 +601,32 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
             AVStream *st = fmt->streams[st_idx];
             double pts = 0, dur = 0;
             int64_t ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+            double tb = av_q2d(st->time_base);
             if (ts != AV_NOPTS_VALUE)
-                pts = ts * av_q2d(st->time_base);
+                pts = ts * tb;
             if (pkt->duration > 0)
-                dur = pkt->duration * av_q2d(st->time_base);
+                dur = pkt->duration * tb;
+            if (want_video && nadd == 0)
+                vlog("webm tb=%d/%d pts=%.3f", st->time_base.num, st->time_base.den, pts);
+            /* WebM Cluster Timecode is milliseconds. A TimestampScale of
+               2–10ms/tick (libav time_base 1/200 = 5ms) turns 18.018s into
+               90.180s and a seek to 266s into 1321s (log21). 1/60000 is a
+               real 60fps tick — do not treat those as milliseconds. */
+            if (want_video && tb > 0.002) {
+                double k = tb / 0.001;
+                int ik = (int)(k + 0.5);
+                double err = k - ik;
+                if (err < 0)
+                    err = -err;
+                if (ik >= 2 && ik <= 10 && err < 0.08) {
+                    if (nadd == 0)
+                        vlog("webm tb=%d/%d -> 1ms", st->time_base.num, st->time_base.den);
+                    if (ts != AV_NOPTS_VALUE)
+                        pts = ts * 0.001;
+                    if (pkt->duration > 0)
+                        dur = pkt->duration * 0.001;
+                }
+            }
             pts += ts_off;
             if (cfb_push(dst, pts, dur, !!(pkt->flags & AV_PKT_FLAG_KEY),
                          pkt->data, (size_t)pkt->size) == 0)
@@ -1530,6 +1613,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         }
         if (nadd < 0)
             nadd = 0;
+        if (!audio && nadd > 0)
+            scale_gop_pts(&tmp);
         if (dur > a->duration)
             a->duration = dur;
         if (par) {

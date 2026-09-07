@@ -208,9 +208,78 @@ class HeadlessPlaybackTest {
         }
     }
 
+    /**
+     * log21: auto at 640×360 (itag 397), grow the viewport so ABR appends 398,
+     * then seek. 398 demuxed ×5 (18s → 90s, 266s → 1321s) so the clock ran
+     * with fps=0. Catch that: presented frames + PCM after the seek.
+     */
+    @Test
+    fun auto_viewport_grow_then_far_seek_plays() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(LONG_ID, session.log, "auto", 256, 144)
+            session.player.setViewport(256, 144, session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 2_000,
+                timeoutMs = 60_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "auto 144p",
+                requireNoJump = false,
+            )
+            run {
+                val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+                val low = listOf("394:", "395:", "396:", "397:").any { proof.contains(it) }
+                println("small viewport low-itag=$low")
+                assertTrue(low, "small viewport did not start on a low itag (394-397)")
+            }
+
+            session.player.setViewport(1920, 1080, session.log)
+            session.player.play(session.log)
+            val up = System.currentTimeMillis() + 20_000
+            var saw398 = false
+            while (System.currentTimeMillis() < up) {
+                val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+                if (proof.contains("398:") || proof.contains("399:")) {
+                    saw398 = true
+                    break
+                }
+                delay(250)
+            }
+            println("viewport grow higher-itag=$saw398")
+            assertTrue(saw398, "ABR did not append 398/399 after viewport 1920x1080")
+
+            session.player.seekTo(266_000, session.log)
+            session.player.play(session.log)
+            val land = session.awaitLand(250_000L..280_000L, timeoutMs = 25_000, label = "seek 266s")
+            session.watchPlay(
+                surface,
+                from = land,
+                minDelta = 2_000,
+                timeoutMs = 20_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "play after 266s",
+                requireNoJump = false,
+            )
+            val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            val leftoverStuck = proof.lineSequence().any { it.contains("1321474+") }
+            assertTrue(!leftoverStuck, "398 leftover still at ×5 timestamps (1321s) after 266s seek")
+            dumpMseProof(session, "auto_viewport_grow_then_far_seek")
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val SECOND_ID = "wjhyk-Cx6wk"
+        private const val LONG_ID = "wjhyk-Cx6wk"
     }
 }
 
