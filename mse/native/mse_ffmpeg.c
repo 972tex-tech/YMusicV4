@@ -69,6 +69,8 @@ struct MseAv {
     int swr_ch;
     int swr_fmt;
     struct SwsContext *sws;
+    uint8_t *sws_pad;
+    size_t sws_pad_n;
     int rate;
     int channels;
     double duration;
@@ -1273,6 +1275,7 @@ void mse_av_destroy(MseAv *a)
         swr_free(&a->swr);
     if (a->sws)
         sws_freeContext(a->sws);
+    free(a->sws_pad);
     free(a->ainit);
     free(a->vinit);
     free(a->pend[0]);
@@ -1972,10 +1975,25 @@ static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *
     return scale_bgra(a, frame, bgra, w, h);
 }
 
+static uint8_t *sws_scratch(MseAv *a, size_t n)
+{
+    uint8_t *p;
+    if (a->sws_pad && a->sws_pad_n >= n)
+        return a->sws_pad;
+    p = realloc(a->sws_pad, n);
+    if (!p)
+        return NULL;
+    a->sws_pad = p;
+    a->sws_pad_n = n;
+    return p;
+}
+
 static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 {
     AVFrame *sw = frame;
-    uint8_t *dst;
+    uint8_t *dst = NULL;
+    uint8_t *conv;
+    int vis_w, vis_h, src_w, flags, y;
     int linesize[4] = { 0 };
     uint8_t *dsts[4] = { 0 };
 #ifdef __APPLE__
@@ -1990,32 +2008,73 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         }
     }
 #endif
-    *w = sw->width;
-    *h = sw->height;
-    a->sws = sws_getCachedContext(a->sws, *w, *h, (enum AVPixelFormat)sw->format, *w, *h, AV_PIX_FMT_BGRA,
-                                  SWS_BILINEAR, NULL, NULL, NULL);
-    if (!a->sws) {
+    vis_w = sw->width;
+    vis_h = sw->height;
+    if (vis_w <= 0 || vis_h <= 0) {
 #ifdef __APPLE__
-        if (tmp)
-            av_frame_free(&tmp);
-#endif
-        return -1;
-    }
-    dst = malloc((size_t)(*w) * (size_t)(*h) * 4);
-    if (!dst) {
-#ifdef __APPLE__
-        if (tmp)
-            av_frame_free(&tmp);
-#endif
-        return -1;
-    }
-    dsts[0] = dst;
-    linesize[0] = (*w) * 4;
-    sws_scale(a->sws, (const uint8_t *const *)sw->data, sw->linesize, 0, *h, dsts, linesize);
-#ifdef __APPLE__
-    if (tmp)
         av_frame_free(&tmp);
 #endif
+        return -1;
+    }
+    /* libswscale bilinear SIMD drops the last (width % 8) columns. YouTube
+       854×480 (itag 397) is remainder 6; 426×240 remainder 2 is fine. Convert
+       an 8-aligned width when the plane is padded (dav1d stride 896) and copy
+       the visible columns. Packed 854 falls back to SWS_ACCURATE_RND. */
+    src_w = vis_w;
+    flags = SWS_BILINEAR;
+    if (vis_w & 7) {
+        int aligned = (vis_w + 7) & ~7;
+        if (sw->linesize[0] >= aligned)
+            src_w = aligned;
+        else
+            flags |= SWS_ACCURATE_RND;
+    }
+    {
+        struct SwsContext *prev = a->sws;
+        a->sws = sws_getCachedContext(a->sws, src_w, vis_h, (enum AVPixelFormat)sw->format,
+                                      src_w, vis_h, AV_PIX_FMT_BGRA, flags, NULL, NULL, NULL);
+        if (a->sws && a->sws != prev && src_w != vis_w)
+            vlog("sws pad %dx%d ls=%d convert=%d", vis_w, vis_h, sw->linesize[0], src_w);
+    }
+    if (!a->sws) {
+#ifdef __APPLE__
+        av_frame_free(&tmp);
+#endif
+        return -1;
+    }
+    dst = malloc((size_t)vis_w * (size_t)vis_h * 4);
+    if (!dst) {
+#ifdef __APPLE__
+        av_frame_free(&tmp);
+#endif
+        return -1;
+    }
+    if (src_w != vis_w) {
+        conv = sws_scratch(a, (size_t)src_w * (size_t)vis_h * 4);
+        if (!conv) {
+            free(dst);
+#ifdef __APPLE__
+            av_frame_free(&tmp);
+#endif
+            return -1;
+        }
+        dsts[0] = conv;
+        linesize[0] = src_w * 4;
+    } else {
+        dsts[0] = dst;
+        linesize[0] = vis_w * 4;
+    }
+    sws_scale(a->sws, (const uint8_t *const *)sw->data, sw->linesize, 0, vis_h, dsts, linesize);
+    if (src_w != vis_w) {
+        size_t row = (size_t)vis_w * 4;
+        for (y = 0; y < vis_h; y++)
+            memcpy(dst + (size_t)y * row, dsts[0] + (size_t)y * (size_t)src_w * 4, row);
+    }
+#ifdef __APPLE__
+    av_frame_free(&tmp);
+#endif
+    *w = vis_w;
+    *h = vis_h;
     *bgra = dst;
     return 0;
 }

@@ -1,5 +1,6 @@
 package io.ymusic.playground
 
+import io.ymusic.mse.MseHostNative
 import io.ymusic.mse.MseVideoSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -276,6 +277,52 @@ class HeadlessPlaybackTest {
         }
     }
 
+    /**
+     * log21: only 480p (itag 397, 854×480) has a broken right edge. 854 % 8 = 6,
+     * so libswscale bilinear SIMD drops the last 6 columns (black or white strip).
+     * 144p/720p/1080p are 8-aligned; 240p remainder 2 is fine.
+     */
+    @Test
+    fun av1_480p_right_edge_not_garbage() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(LONG_ID, session.log, "large", 854, 480)
+            session.player.setViewport(854, 480, session.log)
+            session.player.setQuality("large", session.log)
+            session.player.play(session.log)
+            val deadline = System.currentTimeMillis() + 60_000
+            var saw854 = 0
+            var last = "none"
+            var gen = -1
+            while (System.currentTimeMillis() < deadline && saw854 < 3) {
+                val frame = MseHostNative.copyFrame(surface.host, gen)
+                if (frame == null) {
+                    delay(20)
+                    continue
+                }
+                gen = frame.gen
+                last = "${frame.width}x${frame.height}"
+                if (frame.width != 854 || frame.height != 480) continue
+                val garbage = rightEdgeFlatGarbageBgra(frame.bgra, frame.width, frame.height)
+                println("480p frame gen=$gen ${frame.width}x${frame.height} right-edge-garbage=$garbage")
+                if (garbage) {
+                    dumpMseProof(session, "480p right edge")
+                    throw AssertionError("854x480 rightmost columns are flat black/white (sws SIMD tail)")
+                }
+                saw854++
+            }
+            assertTrue(saw854 >= 3, "never got 854x480 frames (last=$last)")
+            dumpMseProof(session, "480p right edge ok")
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val SECOND_ID = "wjhyk-Cx6wk"
@@ -454,6 +501,26 @@ private suspend fun HeadlessSession.awaitLand(
         delay(250)
     }
     throw AssertionError("$label did not land in $range pos=$pos")
+}
+
+/** True when the last (width % 8) columns are ~all black or ~all white. */
+private fun rightEdgeFlatGarbageBgra(bgra: ByteArray, w: Int, h: Int): Boolean {
+    val tail = w and 7
+    if (tail == 0 || bgra.size < w * h * 4) return false
+    val n = h * tail
+    var black = 0
+    var white = 0
+    for (y in 0 until h) {
+        for (x in (w - tail) until w) {
+            val i = (y * w + x) * 4
+            val b = bgra[i].toInt() and 0xFF
+            val g = bgra[i + 1].toInt() and 0xFF
+            val r = bgra[i + 2].toInt() and 0xFF
+            if (r == 0 && g == 0 && b == 0) black++
+            else if (r == 255 && g == 255 && b == 255) white++
+        }
+    }
+    return black * 10 >= n * 9 || white * 10 >= n * 9
 }
 
 private fun dumpMseProof(session: HeadlessSession, label: String) {
