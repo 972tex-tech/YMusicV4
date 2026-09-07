@@ -27,6 +27,7 @@
  * confinement: every JNI entry point runs on the one Kotlin engine thread.
  */
 #include <jni.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -168,12 +169,52 @@ static void flush_pending(Engine *e, JNIEnv *env) {
 
 /* A Kotlin callback that threw leaves a pending Java exception; continuing to run JS (or making
  * further JNI calls) with one pending is undefined behavior. Convert it into a JS exception so the
- * the transport JS's normal failure paths (RESET the pipe, reject the caller) take over. */
+ * the transport JS's normal failure paths (RESET the pipe, reject the caller) take over.
+ * Do not map this to open() rc=-1: that looks like "setTimeout refused" and hides the real throw. */
 static int check_java_exception(Engine *e, JNIEnv *env, JSContext *ctx) {
+    jthrowable t;
+    jclass objCls, classCls, thCls;
+    jmethodID getName, getMessage;
+    jstring jcn, jmsg;
+    char *cn = NULL, *msg = NULL;
+    char line[512];
+    (void)e;
     if (!(*env)->ExceptionCheck(env)) return 0;
-    (*env)->ExceptionDescribe(env);
+    t = (*env)->ExceptionOccurred(env);
     (*env)->ExceptionClear(env);
-    JS_ThrowInternalError(ctx, "host callback threw");
+    line[0] = 0;
+    if (t) {
+        objCls = (*env)->GetObjectClass(env, t);
+        classCls = (*env)->FindClass(env, "java/lang/Class");
+        thCls = (*env)->FindClass(env, "java/lang/Throwable");
+        getName = classCls ? (*env)->GetMethodID(env, classCls, "getName", "()Ljava/lang/String;") : NULL;
+        getMessage = thCls ? (*env)->GetMethodID(env, thCls, "getMessage", "()Ljava/lang/String;") : NULL;
+        jcn = (getName && objCls) ? (jstring)(*env)->CallObjectMethod(env, objCls, getName) : NULL;
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            jcn = NULL;
+        }
+        jmsg = getMessage ? (jstring)(*env)->CallObjectMethod(env, t, getMessage) : NULL;
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            jmsg = NULL;
+        }
+        if (jcn) cn = jstring_to_utf8(env, jcn, NULL);
+        if (jmsg) msg = jstring_to_utf8(env, jmsg, NULL);
+        if (cn && msg && msg[0])
+            snprintf(line, sizeof(line), "%s: %s", cn, msg);
+        else if (cn && cn[0])
+            snprintf(line, sizeof(line), "%s", cn);
+        free(cn);
+        free(msg);
+        if (jcn) (*env)->DeleteLocalRef(env, jcn);
+        if (jmsg) (*env)->DeleteLocalRef(env, jmsg);
+        if (objCls) (*env)->DeleteLocalRef(env, objCls);
+        if (classCls) (*env)->DeleteLocalRef(env, classCls);
+        if (thCls) (*env)->DeleteLocalRef(env, thCls);
+        (*env)->DeleteLocalRef(env, t);
+    }
+    JS_ThrowInternalError(ctx, "%s", line[0] ? line : "host callback threw");
     return 1;
 }
 
@@ -187,18 +228,18 @@ static JSValue js_host_open(JSContext *ctx, JSValueConst this_val, int argc, JSV
     if (e->in_critical) return JS_NewInt32(ctx, -2);
     JNIEnv *env = engine_env(e);
     uint32_t id = 0;
-    JS_ToUint32(ctx, &id, argv[0]);
     size_t len = 0;
-    const char *cmd = JS_ToCStringLen(ctx, &len, argv[1]);
-    jstring jcmd = utf8_to_jstring(env, cmd ? cmd : "", cmd ? len : 0);
+    const char *cmd;
+    jstring jcmd;
+    jint rc;
+    if (check_java_exception(e, env, ctx)) return JS_EXCEPTION;
+    JS_ToUint32(ctx, &id, argv[0]);
+    cmd = JS_ToCStringLen(ctx, &len, argv[1]);
+    jcmd = utf8_to_jstring(env, cmd ? cmd : "", cmd ? len : 0);
     if (cmd) JS_FreeCString(ctx, cmd);
-    jint rc = (*env)->CallStaticIntMethod(env, e->bridgeClass, e->onOpen, (jlong)(intptr_t)e, (jint)id, jcmd);
+    rc = (*env)->CallStaticIntMethod(env, e->bridgeClass, e->onOpen, (jlong)(intptr_t)e, (jint)id, jcmd);
     (*env)->DeleteLocalRef(env, jcmd);
-    if ((*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionDescribe(env);
-        (*env)->ExceptionClear(env);
-        rc = -1;
-    }
+    if (check_java_exception(e, env, ctx)) return JS_EXCEPTION;
     return JS_NewInt32(ctx, rc);
 }
 
@@ -209,6 +250,7 @@ static JSValue js_host_data(JSContext *ctx, JSValueConst this_val, int argc, JSV
     Engine *e = (Engine *)JS_GetContextOpaque(ctx);
     if (e->in_critical) return JS_ThrowInternalError(ctx, "__hostData during data delivery");
     JNIEnv *env = engine_env(e);
+    if (check_java_exception(e, env, ctx)) return JS_EXCEPTION;
     uint32_t id = 0;
     int64_t off = 0, len = 0;
     JS_ToUint32(ctx, &id, argv[0]);
