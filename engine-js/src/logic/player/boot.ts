@@ -143,11 +143,11 @@ function setLocation(href: string, pathname: string, search: string): void {
   location.search = search;
   location.hash = "";
   location.origin = ORIGIN;
-  location.toString = asNative("toString", function () {
-    return String((this as { href?: string }).href || href);
+  location.toString = asNative("toString", function (this: Location) {
+    return String(this.href || href);
   });
-  location.valueOf = asNative("valueOf", function () {
-    return String((this as { href?: string }).href || href);
+  location.valueOf = asNative("valueOf", function (this: Location) {
+    return String(this.href || href);
   });
   origin = ORIGIN;
   document.URL = href;
@@ -156,8 +156,8 @@ function setLocation(href: string, pathname: string, search: string): void {
   document.location = location;
 }
 
-function asNative(name: string, impl: Function): Function {
-  if (typeof __nativeFn === "function") return __nativeFn(name, impl);
+function asNative<T extends Function>(name: string, impl: T): T {
+  if (typeof __nativeFn === "function") return __nativeFn(name, impl) as unknown as T;
   return impl;
 }
 
@@ -226,7 +226,7 @@ function installNativeUrl(): void {
     };
     return o;
   }
-  const ctor = asNative("URL", urlCtor) as Function & Record<string, unknown>;
+  const ctor = asNative("URL", urlCtor) as unknown as Function & Record<string, unknown>;
   ctor.prototype = urlCtor.prototype || {};
   ctor["createObjectURL"] = asNative("createObjectURL", function (obj: unknown) {
     return mseCreateObjectURL(obj as { __id?: number });
