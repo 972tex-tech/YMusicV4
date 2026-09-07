@@ -143,12 +143,12 @@ function setLocation(href: string, pathname: string, search: string): void {
   location.search = search;
   location.hash = "";
   location.origin = ORIGIN;
-  location.toString = function () {
-    return href;
-  };
-  location.valueOf = function () {
-    return href;
-  };
+  location.toString = asNative("toString", function () {
+    return String((this as { href?: string }).href || href);
+  });
+  location.valueOf = asNative("valueOf", function () {
+    return String((this as { href?: string }).href || href);
+  });
   origin = ORIGIN;
   document.URL = href;
   document.documentURI = href;

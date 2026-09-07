@@ -219,6 +219,9 @@
     });
   }
 
+  function locHref() {
+    return String(this && this.href != null ? this.href : "");
+  }
   globalThis.location = {
     href: "https://www.youtube.com/",
     protocol: "https:",
@@ -230,6 +233,8 @@
     hash: "",
     origin: "https://www.youtube.com",
     ancestorOrigins: { length: 0 },
+    toString: native("toString", locHref),
+    valueOf: native("valueOf", locHref),
   };
 
   /* Shape only — EVENT_ID / data_ come from live ytcfg (installYtcfg).
@@ -1686,6 +1691,8 @@
       search: "",
       hash: "",
       origin: "null",
+      toString: native("toString", locHref),
+      valueOf: native("valueOf", locHref),
     };
     inner.origin = inner.location.origin;
     inner.history = globalThis.history;
