@@ -86,6 +86,10 @@ struct MseAv {
     AVFrame *vhold;
     AVBSFContext *vbsf;
     AVCodecParameters *vpar;
+    /* New quality (size/extradata) while leftover still covers currentTime.
+       Chrome changeType keeps those packets; switch the decoder at the new GOP. */
+    AVCodecParameters *vpar_next;
+    double v_switch_pts;
 #ifdef __APPLE__
     void *vt_layer;
 #endif
@@ -105,6 +109,7 @@ struct MseAv {
 static int vdbg_n;
 static void vf_resync_key(MseAv *a, double t);
 static void close_video_decoder(MseAv *a);
+static void maybe_apply_video_rep(MseAv *a);
 
 #define MSE_SEND_AHEAD 0.08
 
@@ -1011,6 +1016,9 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             ox == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED) {
             size_t rd0 = a->vf.rd;
             int sr;
+            maybe_apply_video_rep(a);
+            if (!a->mc)
+                break;
             while (a->vf.rd < a->vf.n && a->need_rap[0] && !a->vf.f[a->vf.rd].key) {
                 a->vf.f[a->vf.rd].sent = 1;
                 a->vf.rd++;
@@ -1089,8 +1097,9 @@ static const AVCodec *find_video_codec(enum AVCodecID id)
     return avcodec_find_decoder(id);
 }
 
-/* Same itag/config: reuse the decoder. A new quality's init (size or
-   sequence header) must not keep feeding leftover packets of the old GOP. */
+/* Same itag/config: reuse the decoder. A new quality (size or sequence
+   header) must not feed leftover packets into the new decoder — keep
+   leftover covering currentTime and switch at the new GOP. */
 static int vpar_compat(const AVCodecParameters *have, const AVCodecParameters *par)
 {
     if (!have || !par)
@@ -1200,6 +1209,56 @@ opened:
     return 0;
 }
 
+/* 1 while leftover of the old quality still has to be decoded/shown. */
+static int leftover_before_switch(const MseAv *a)
+{
+    if (!a->vpar_next)
+        return 0;
+    if (a->v_switch_pts < 0)
+        return 1;
+    if (a->vhold && a->vhold->pts != AV_NOPTS_VALUE &&
+        a->vhold->pts / 1000.0 < a->v_switch_pts - 0.001)
+        return 1;
+#ifdef __ANDROID__
+    if (a->mc_hold && a->mc_hold_pts_us / 1e6 < a->v_switch_pts - 0.001)
+        return 1;
+#endif
+    if (a->vf.rd < a->vf.n && a->vf.f[a->vf.rd].pts < a->v_switch_pts - 0.001)
+        return 1;
+    return 0;
+}
+
+static void apply_pending_video_rep(MseAv *a)
+{
+    if (!a->vpar_next)
+        return;
+    vlog("video-rep apply %dx%d -> %dx%d switch=%.3f vf=%zu rd=%zu",
+         a->vpar ? a->vpar->width : 0, a->vpar ? a->vpar->height : 0,
+         a->vpar_next->width, a->vpar_next->height, a->v_switch_pts, a->vf.n,
+         a->vf.rd);
+    close_video_decoder(a);
+    avcodec_parameters_free(&a->vpar);
+    a->vpar = a->vpar_next;
+    a->vpar_next = NULL;
+    a->v_switch_pts = -1;
+#ifdef __ANDROID__
+    a->mc_fail = 0;
+    if (mc_try_open(a) == 0)
+        return;
+#endif
+    open_decoder(a, 1, a->vpar);
+    a->v_reopen = 0;
+}
+
+static void maybe_apply_video_rep(MseAv *a)
+{
+    if (!a->vpar_next)
+        return;
+    if (leftover_before_switch(a))
+        return;
+    apply_pending_video_rep(a);
+}
+
 static int send_coded(Cfb *b, AVCodecContext *dec, AVBSFContext *bsf)
 {
     AVPacket *pkt;
@@ -1271,6 +1330,7 @@ MseAv *mse_av_create(void)
     pthread_mutex_init(&a->mu, NULL);
     a->a_sent = -1;
     a->v_sent = -1;
+    a->v_switch_pts = -1;
     a->need_rap[0] = 1;
     a->need_rap[1] = 1;
     av_log_set_level(AV_LOG_ERROR);
@@ -1297,6 +1357,7 @@ void mse_av_destroy(MseAv *a)
     avcodec_free_context(&a->vdec);
     av_bsf_free(&a->vbsf);
     avcodec_parameters_free(&a->vpar);
+    avcodec_parameters_free(&a->vpar_next);
 #ifdef __ANDROID__
     mc_close(a);
 #endif
@@ -1650,46 +1711,77 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         if (dur > a->duration)
             a->duration = dur;
         if (par) {
-            AVCodecContext **ctxp = audio ? &a->adec : &a->vdec;
-            if (*ctxp && (*ctxp)->codec_id != par->codec_id) {
-                avcodec_free_context(ctxp);
-                if (audio && a->swr)
-                    swr_free(&a->swr);
-                if (!audio)
-                    av_bsf_free(&a->vbsf);
-            }
-            if (!audio) {
-                if (a->vpar && !vpar_compat(a->vpar, par)) {
-                    vlog("video-rep %dx%d -> %dx%d drop vf=%zu",
-                         a->vpar->width, a->vpar->height, par->width, par->height, a->vf.n);
-                    close_video_decoder(a);
-                    cfb_free(&a->vf);
-                    a->v_reopen = 1;
+            if (audio) {
+                if (a->adec && a->adec->codec_id != par->codec_id) {
+                    avcodec_free_context(&a->adec);
+                    if (a->swr)
+                        swr_free(&a->swr);
                 }
-                avcodec_parameters_free(&a->vpar);
-                a->vpar = avcodec_parameters_alloc();
-                if (a->vpar)
-                    avcodec_parameters_copy(a->vpar, par);
-#ifdef __ANDROID__
-                if (a->mc &&
-                    (a->mc_codec_id != par->codec_id ||
-                     (par->width > 0 && a->mc_w > 0 && par->width != a->mc_w) ||
-                     (par->height > 0 && a->mc_h > 0 && par->height != a->mc_h))) {
-                    mc_close(a);
-                    a->mc_fail = 0;
-                }
-                if (mc_try_open(a) == 0) {
+                open_decoder(a, 0, par);
+                avcodec_parameters_free(&par);
+                par = NULL;
+            } else {
+                int pending_same = a->vpar_next && vpar_compat(a->vpar_next, par);
+                int incompat = a->vpar && !vpar_compat(a->vpar, par);
+                if (pending_same || incompat) {
+                    if (!pending_same) {
+                        avcodec_parameters_free(&a->vpar_next);
+                        a->vpar_next = avcodec_parameters_alloc();
+                        if (a->vpar_next)
+                            avcodec_parameters_copy(a->vpar_next, par);
+                        a->v_switch_pts = -1;
+                        vlog("video-rep %dx%d -> %dx%d keep vf=%zu",
+                             a->vpar->width, a->vpar->height, par->width, par->height,
+                             a->vf.n);
+                        if (!a->vdec)
+                            open_decoder(a, 1, a->vpar);
+                    }
                     avcodec_parameters_free(&par);
                     par = NULL;
-                }
+                } else {
+                    if (a->vpar_next) {
+                        avcodec_parameters_free(&a->vpar_next);
+                        a->v_switch_pts = -1;
+                    }
+                    avcodec_parameters_free(&a->vpar);
+                    a->vpar = avcodec_parameters_alloc();
+                    if (a->vpar)
+                        avcodec_parameters_copy(a->vpar, par);
+#ifdef __ANDROID__
+                    if (a->mc &&
+                        (a->mc_codec_id != par->codec_id ||
+                         (par->width > 0 && a->mc_w > 0 && par->width != a->mc_w) ||
+                         (par->height > 0 && a->mc_h > 0 && par->height != a->mc_h))) {
+                        mc_close(a);
+                        a->mc_fail = 0;
+                    }
+                    if (mc_try_open(a) == 0) {
+                        avcodec_parameters_free(&par);
+                        par = NULL;
+                    }
 #endif
-            }
-            if (par) {
-                open_decoder(a, !audio, par);
-                avcodec_parameters_free(&par);
+                    if (par) {
+                        open_decoder(a, 1, par);
+                        avcodec_parameters_free(&par);
+                        par = NULL;
+                    }
+                }
             }
         }
         keep_coded(a, idx, &tmp, dst, win_start, win_end, &r);
+        if (!audio && a->vpar_next && a->v_switch_pts < 0) {
+            size_t ki;
+            for (ki = 0; ki < tmp.n; ki++) {
+                if (tmp.f[ki].key) {
+                    a->v_switch_pts = tmp.f[ki].pts;
+                    break;
+                }
+            }
+            if (a->v_switch_pts < 0 && tmp.n)
+                a->v_switch_pts = tmp.f[0].pts;
+        }
+        if (!audio)
+            maybe_apply_video_rep(a);
         if (!audio && a->v_reopen) {
             vf_resync_key(a, a->v_sent >= 0 ? a->v_sent : r.first);
             a->v_reopen = 0;
@@ -1800,6 +1892,8 @@ void mse_av_remove(MseAv *a, int audio, double start, double end)
         a->pend_n[0] = 0;
         close_video_decoder(a);
     }
+    if (!audio)
+        maybe_apply_video_rep(a);
     pthread_mutex_unlock(&a->mu);
 }
 
@@ -2031,6 +2125,7 @@ void mse_av_seek(MseAv *a, double seconds)
 #endif
     av_frame_free(&a->vhold);
     vdbg_n = 0;
+    maybe_apply_video_rep(a);
     pthread_mutex_unlock(&a->mu);
 }
 
@@ -2216,6 +2311,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     *bgra = NULL;
     pthread_mutex_lock(&a->mu);
+    maybe_apply_video_rep(a);
 #ifdef __ANDROID__
     if (a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
@@ -2228,6 +2324,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return r;
     }
 #endif
+    if (!a->vdec && a->vpar)
+        open_decoder(a, 1, a->vpar);
     if (!a->vdec || a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
         return 0;
@@ -2293,6 +2391,11 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             pthread_mutex_unlock(&a->mu);
             return 1;
         }
+        maybe_apply_video_rep(a);
+        if (!a->vdec && a->vpar)
+            open_decoder(a, 1, a->vpar);
+        if (!a->vdec)
+            break;
         {
             size_t rd0 = a->vf.rd;
             while (a->vf.rd < a->vf.n && a->need_rap[0] && !a->vf.f[a->vf.rd].key) {

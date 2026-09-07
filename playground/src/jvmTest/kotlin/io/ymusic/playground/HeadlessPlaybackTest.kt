@@ -370,6 +370,49 @@ class HeadlessPlaybackTest {
     }
 
     /**
+     * log23: live 144p leftover covered currentTime; 1080p init dropped
+     * vf and left a hole. Chrome keeps leftover and switches at the new
+     * GOP. Fail if fps stays 0 or audio stops while the clock runs.
+     */
+    @Test
+    fun live_quality_switch_plays_leftover() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(LIVE_ID, session.log, "auto")
+            session.player.setViewport(1920, 1080, session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 2_000,
+                timeoutMs = 60_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "live before switch",
+                requireNoJump = false,
+            )
+            session.player.setQuality("tiny", session.log)
+            delay(1_500)
+            session.player.setQuality("hd1080", session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 6_500,
+                timeoutMs = 30_000,
+                audioStallBudget = FORCED_AUDIO_STALL_MS,
+                label = "live 144p->1080p",
+                requireNoJump = true,
+            )
+            dumpMseProof(session, "live_quality_switch")
+        } finally {
+            session.close()
+        }
+    }
+
+    /**
      * log21: after a far seek, 720p GOPs reopen dav1d at the same 1280×720.
      * Mid-GOP P-frames fail, recover skipped to the next key (~3s), audio
      * starve-ahead, picture frozen. Play through several GOPs after 944s.
@@ -417,6 +460,7 @@ class HeadlessPlaybackTest {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val SECOND_ID = "wjhyk-Cx6wk"
         private const val LONG_ID = "wjhyk-Cx6wk"
+        private const val LIVE_ID = "hEeAXerJ5n0"
     }
 }
 
