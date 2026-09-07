@@ -205,9 +205,13 @@ export function dumpBgParams(why: string): void {
     "potLen": String(held["pot"] || "").length,
     "sabrUrlLen": String(held["sabrUrl"] || "").length,
   };
+  const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
+  if (perf && typeof perf.timeOrigin === "number") rec["timeOrigin"] = perf.timeOrigin;
   console.log("bg dump meta " + JSON.stringify(rec));
   console.log("bg dump eventId " + String(held["eventId"] || ""));
   console.log("bg dump interpUrl " + String(held["interpUrl"] || ""));
+  if (perf && typeof perf.timeOrigin === "number")
+    console.log("bg dump timeOrigin " + perf.timeOrigin);
   logBig("bg dump visitorData", String(held["visitorData"] || ""));
   logBig("bg dump program", String(held["program"] || ""));
   logBig("bg dump snapshot", String(held["snapshot"] || ""));

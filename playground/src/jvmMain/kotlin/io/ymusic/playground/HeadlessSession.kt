@@ -53,6 +53,8 @@ internal class BgCapture(val dumpDir: File) {
             }
             rest.startsWith("sabr meta ") -> Unit
             rest.startsWith("entropy meta ") -> Unit
+            rest.startsWith("timeOrigin ") ->
+                File(dumpDir, "timeOrigin.txt").writeText(rest.substring("timeOrigin ".length).trim() + "\n")
             rest.startsWith("eventId ") ->
                 File(dumpDir, "event_id.txt").writeText(rest.substring("eventId ".length).trim())
             rest.startsWith("interpUrl ") ->
@@ -359,7 +361,7 @@ internal actual suspend fun bootMseSession(surface: MseVideoSurface): MseSession
     HeadlessSession.boot(surface)
 
 internal actual fun defaultMseVideoId(): String =
-    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "Vm4MIgcpSWI"
+    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "wjhyk-Cx6wk"
 
 private const val DESKTOP_UA =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
