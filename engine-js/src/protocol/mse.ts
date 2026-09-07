@@ -484,6 +484,7 @@ class SourceBuffer {
   ["abort"](): void {
     const dummy = isDummyVideoMime(this["mimeType"]);
     const audio = audioFlag(this["mimeType"]);
+    const wasUpdating = this["updating"];
     drainCalls.abort++;
     mseLog(
       "mse abort dummy=" +
@@ -491,19 +492,25 @@ class SourceBuffer {
         " a=" +
         audio +
         " upd=" +
-        (this["updating"] ? "1" : "0"),
+        (wasUpdating ? "1" : "0"),
     );
     if (dummy) {
       this["updating"] = false;
-      fire(this, "abort");
-      fire(this, "updateend");
+      /* MSE: abort/updateend only if an update was in progress. Firing updateend while
+       * already in updateend (updating=false) re-enters YouTube's listener until the stack blows. */
+      if (wasUpdating) {
+        fire(this, "abort");
+        fire(this, "updateend");
+      }
       if (isAudioOnly()) coverDummyVideo();
       return;
     }
     __mseAbort(audio);
     this["updating"] = false;
-    fire(this, "abort");
-    fire(this, "updateend");
+    if (wasUpdating) {
+      fire(this, "abort");
+      fire(this, "updateend");
+    }
   }
 }
 
