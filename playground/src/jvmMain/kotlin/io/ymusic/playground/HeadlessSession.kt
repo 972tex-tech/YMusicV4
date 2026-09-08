@@ -273,6 +273,12 @@ internal class StdoutLog private constructor(
             message.indexOf("mse sourceopen") >= 0 ||
             message.indexOf("mse createObjectURL") >= 0 ||
             message.indexOf("mse append") >= 0 ||
+            message.indexOf("mse changeType") >= 0 ||
+            message.indexOf("mse setQuality") >= 0 ||
+            message.indexOf("mse drain") >= 0 ||
+            message.indexOf("FORMAT_INIT") >= 0 ||
+            message.indexOf("MEDIA_HEADER") >= 0 ||
+            message.indexOf("sabr HTTP") >= 0 ||
             message.indexOf("mse dummy SB") >= 0 ||
             message.indexOf("player RSP") >= 0 ||
             message.indexOf("mse=[") >= 0 ||
@@ -419,7 +425,7 @@ internal actual suspend fun bootMseSession(surface: MseVideoSurface): MseSession
     HeadlessSession.boot(surface)
 
 internal actual fun defaultMseVideoId(): String =
-    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "wjhyk-Cx6wk"
+    System.getenv("MSE_VIDEO_ID")?.takeIf { it.isNotBlank() } ?: "0_LTL7O1xX0"
 
 private const val DESKTOP_UA =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +

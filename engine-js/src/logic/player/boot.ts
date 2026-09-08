@@ -689,6 +689,11 @@ class Player {
     if (typeof range === "function") range.call(host, q, q);
     else if (typeof one === "function") (one as (q: string) => void).call(host, q);
     else if (MSE_DEBUG) console.log("mse setQuality no API q=" + q);
+    if (MSE_DEBUG)
+      console.log(
+        "mse setQuality q=" + q + " clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0),
+      );
+    dumpDrain("setQuality-" + q);
     /* Do not seek. Video SourceBuffer already reports a sliver, so SABR
        fetches video on the next tick without jumping leftover audio. */
     notifyCatalog();

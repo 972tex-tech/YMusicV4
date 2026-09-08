@@ -150,6 +150,24 @@ function shortStack(): string {
   return dummyStackOnce;
 }
 
+function nativeRanges(audio: number): {
+  length: number;
+  start(i: number): number;
+  end(i: number): number;
+} | null {
+  const r = __mseBuffered(audio);
+  if (!r || r.length < 2) return null;
+  return {
+    "length": r.length / 2,
+    "start": function (i: number) {
+      return r[i * 2]!;
+    },
+    "end": function (i: number) {
+      return r[i * 2 + 1]!;
+    },
+  };
+}
+
 function fmtBr(
   br: { length: number; start(i: number): number; end(i: number): number } | null,
 ): string {
@@ -336,9 +354,31 @@ class SourceBuffer {
       fire(parent, "sourceopen");
       fire(parent, "webkitsourceopen");
     }
-    const wasDummy = isDummyVideoMime(this["mimeType"]);
+    const prev = String(this["mimeType"] || "");
+    const wasDummy = isDummyVideoMime(prev);
     const nowDummy = isDummyVideoMime(next);
     const audio = audioFlag(next);
+    try {
+      const ct = __mseCurrentTime();
+      const br = nativeRanges(audio);
+      mseLog(
+        "mse changeType a=" +
+          audio +
+          " from=" +
+          prev +
+          " to=" +
+          next +
+          " ct=" +
+          ct.toFixed(3) +
+          " leftover=" +
+          leftoverMs(br, ct) +
+          " br=[" +
+          fmtBr(br) +
+          "]",
+      );
+    } catch (_e) {
+      mseLog("mse changeType a=" + audio + " from=" + prev + " to=" + next);
+    }
     this["mimeType"] = next;
     if (!wasDummy && nowDummy) {
       dummySb = this;
@@ -353,7 +393,6 @@ class SourceBuffer {
     } else if (!nowDummy) {
       __mseChangeType(audio);
     }
-    mseLog("mse changeType a=" + audio + " " + next);
   }
 
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
@@ -415,22 +454,30 @@ class SourceBuffer {
         } else {
           drainCalls.video++;
         }
-        {
-          const br = __mseBuffered(audio);
+        try {
+          const ct = __mseCurrentTime();
+          const ranges = nativeRanges(audio);
           mseLog(
             "mse append a=" +
               audio +
               " bytes=" +
               u8.length +
+              " mime=" +
+              self["mimeType"] +
               " tsOff=" +
               tsOff +
               " win=" +
               winStart +
               ".." +
               winEnd +
-              " br=" +
-              (br ? Array.prototype.join.call(br, ",") : ""),
+              " leftover=" +
+              leftoverMs(ranges, ct) +
+              " br=[" +
+              fmtBr(ranges) +
+              "]",
           );
+        } catch (_e) {
+          mseLog("mse append a=" + audio + " bytes=" + u8.length);
         }
       }
     } catch (e) {

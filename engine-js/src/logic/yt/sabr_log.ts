@@ -82,6 +82,119 @@ function protoVarint(buf: Uint8Array, want: number): number | null {
   return null;
 }
 
+function protoString(buf: Uint8Array, want: number): string | null {
+  const b = protoBytes(buf, want);
+  if (!b) return null;
+  let s = "";
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]!);
+  return s;
+}
+
+function looksAscii(buf: Uint8Array): boolean {
+  if (buf.length === 0) return false;
+  for (let i = 0; i < buf.length; i++) {
+    const c = buf[i]!;
+    if (c < 32 || c > 126) return false;
+  }
+  return true;
+}
+
+function asciiOf(buf: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]!);
+  return s;
+}
+
+function fmtFormatId(p: Uint8Array): string {
+  const itag = protoVarint(p, 1);
+  const lmt = protoVarint(p, 2);
+  const xtag = protoString(p, 3);
+  let s = "itag=" + (itag != null ? itag : "-");
+  if (lmt != null) s += " lmt=" + lmt;
+  if (xtag) s += " xtag=" + xtag;
+  return s;
+}
+
+/** Compact protobuf field dump. Nested FormatId on 2/13, TimeRange on 15. */
+function fmtProto(buf: Uint8Array): string {
+  const parts: string[] = [];
+  let i = 0;
+  while (i < buf.length) {
+    const k = readVarint(buf, i);
+    if (!k) break;
+    i = k.i;
+    const field = k.v >>> 3;
+    const wire = k.v & 7;
+    if (wire === 0) {
+      const n = readVarint(buf, i);
+      if (!n) break;
+      i = n.i;
+      parts.push(field + "=" + n.v);
+    } else if (wire === 2) {
+      const n = readVarint(buf, i);
+      if (!n) break;
+      i = n.i;
+      const len = n.v;
+      if (len < 0 || i + len > buf.length) break;
+      const inner = buf.subarray(i, i + len);
+      i += len;
+      if (field === 13) parts.push("13{" + fmtFormatId(inner) + "}");
+      else if (field === 15) parts.push("tr{" + fmtProto(inner) + "}");
+      else if (looksAscii(inner) && inner.length < 80)
+        parts.push(field + "=\"" + asciiOf(inner) + "\"");
+      else parts.push(field + ":len=" + len);
+    } else if (wire === 1) {
+      i += 8;
+      parts.push(field + ":i64");
+    } else if (wire === 5) {
+      i += 4;
+      parts.push(field + ":i32");
+    } else break;
+  }
+  return parts.join(" ");
+}
+
+function fmtFormatInit(p: Uint8Array): string {
+  const vid = protoString(p, 1);
+  const fid = protoBytes(p, 2);
+  let s = "FORMAT_INIT";
+  if (vid) s += " vid=" + vid;
+  if (fid) s += " " + fmtFormatId(fid);
+  const rest = fmtProto(p);
+  if (rest) s += " [" + rest + "]";
+  return s;
+}
+
+function fmtMediaHeader(p: Uint8Array): string {
+  const hid = protoVarint(p, 1);
+  const vid = protoString(p, 2);
+  const itag = protoVarint(p, 3);
+  const lmt = protoVarint(p, 4);
+  const range = protoVarint(p, 6);
+  const init = protoVarint(p, 8);
+  const seq = protoVarint(p, 9);
+  const t = protoVarint(p, 11);
+  const dur = protoVarint(p, 12);
+  const fid = protoBytes(p, 13);
+  const clen = protoVarint(p, 14);
+  const tr = protoBytes(p, 15);
+  let s = "MEDIA_HEADER hid=" + (hid != null ? hid : "-");
+  if (itag != null) s += " itag=" + itag;
+  else if (fid) s += " " + fmtFormatId(fid);
+  s += " init=" + (init === 1 ? "1" : "0");
+  if (seq != null) s += " seq=" + seq;
+  if (t != null) s += " startMs=" + t;
+  if (dur != null) s += " durMs=" + dur;
+  if (range != null) s += " range=" + range;
+  if (clen != null) s += " clen=" + clen;
+  if (lmt != null) s += " lmt=" + lmt;
+  if (vid) s += " vid=" + vid;
+  if (tr) s += " tr{" + fmtProto(tr) + "}";
+  const rest = fmtProto(p);
+  if (rest) s += " [" + rest + "]";
+  return s;
+}
+
 function protoRepeated(buf: Uint8Array, want: number): Uint8Array[] {
   const out: Uint8Array[] = [];
   let i = 0;
@@ -242,10 +355,10 @@ export function logSabrResponse(url: string, status: number, body: Uint8Array): 
       break;
     }
     const name = UMP_NAME[id.v] || String(id.v);
+    const payload = body.subarray(start, end);
     if (id.v === 21) media += sz.v;
     if (id.v === 58) {
-      const p = body.subarray(start, end);
-      const v = protoVarint(p, 1);
+      const v = protoVarint(payload, 1);
       sps = v != null ? v : -1;
       parts.push("SPS=" + sps + "(" + spsLabel(sps) + ")");
     } else if (id.v === 44) {
@@ -253,6 +366,27 @@ export function logSabrResponse(url: string, status: number, body: Uint8Array): 
       parts.push("SABR_ERROR");
     } else if (id.v === 43) {
       parts.push("REDIRECT");
+    } else if (id.v === 42) {
+      const fi = fmtFormatInit(payload);
+      const fid = protoBytes(payload, 2);
+      const itag = fid ? protoVarint(fid, 1) : protoVarint(payload, 3);
+      parts.push("FORMAT_INIT:itag=" + (itag != null ? itag : "-"));
+      if (SABR_DEBUG) console.log("sabr " + fi);
+    } else if (id.v === 20) {
+      const mh = fmtMediaHeader(payload);
+      const itag = protoVarint(payload, 3);
+      const init = protoVarint(payload, 8) === 1 ? 1 : 0;
+      const seq = protoVarint(payload, 9);
+      const t = protoVarint(payload, 11);
+      parts.push(
+        "MH:itag=" +
+          (itag != null ? itag : "-") +
+          ":init=" +
+          init +
+          (seq != null ? ":seq=" + seq : "") +
+          (t != null ? ":t=" + t : ""),
+      );
+      if (SABR_DEBUG) console.log("sabr " + mh);
     } else {
       parts.push(name + ":" + sz.v);
     }
