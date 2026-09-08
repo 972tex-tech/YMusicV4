@@ -17,6 +17,7 @@
 #include <libswscale/swscale.h>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
+#include <os/log.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/pixdesc.h>
 #include "mse_vt_present.h"
@@ -119,21 +120,65 @@ static void maybe_apply_video_rep(MseAv *a);
 
 #define MSE_SEND_AHEAD 0.08
 
+#ifdef __APPLE__
+static os_log_t mse_oslog(void)
+{
+    static os_log_t log;
+    static int once;
+    if (!once) {
+        once = 1;
+        log = os_log_create("com.ymusic.mse", "v");
+    }
+    return log;
+}
+
+static void mse_oslog_line(os_log_type_t type, const char *msg)
+{
+    os_log_with_type(mse_oslog(), type, "%{public}s", msg);
+}
+
+static void mse_av_log(void *ptr, int level, const char *fmt, va_list vl)
+{
+    if (level <= AV_LOG_ERROR) {
+        char buf[512];
+        va_list copy;
+        size_t n;
+        va_copy(copy, vl);
+        vsnprintf(buf, sizeof(buf), fmt, copy);
+        va_end(copy);
+        n = strlen(buf);
+        while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
+            buf[--n] = 0;
+        os_log_with_type(mse_oslog(), OS_LOG_TYPE_ERROR, "ffmpeg %{public}s", buf);
+    }
+    av_log_default_callback(ptr, level, fmt, vl);
+}
+#endif
+
 void mse_logf(const char *fmt, ...)
 {
 #if MSE_DEBUG
+    char msg[768];
     struct timespec ts;
     struct tm tm;
     va_list ap;
     clock_gettime(CLOCK_REALTIME, &ts);
     localtime_r(&ts.tv_sec, &tm);
-    flockfile(stderr);
-    fprintf(stderr, "%02d:%02d:%02d.%03d ", tm.tm_hour, tm.tm_min, tm.tm_sec,
-            (int)(ts.tv_nsec / 1000000));
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
+    flockfile(stderr);
+    fprintf(stderr, "%02d:%02d:%02d.%03d %s", tm.tm_hour, tm.tm_min, tm.tm_sec,
+            (int)(ts.tv_nsec / 1000000), msg);
     funlockfile(stderr);
+#ifdef __APPLE__
+    {
+        size_t n = strlen(msg);
+        while (n && (msg[n - 1] == '\n' || msg[n - 1] == '\r'))
+            msg[--n] = 0;
+        mse_oslog_line(OS_LOG_TYPE_INFO, msg);
+    }
+#endif
 #else
     (void)fmt;
 #endif
@@ -1419,6 +1464,9 @@ MseAv *mse_av_create(void)
     a->need_rap[0] = 1;
     a->need_rap[1] = 1;
     av_log_set_level(AV_LOG_ERROR);
+#ifdef __APPLE__
+    av_log_set_callback(mse_av_log);
+#endif
     {
         /* Alder Lake E-cores have no AVX-512. ffmpeg probes on a P-core then
            a decode worker SIGILLs (log16 leave-audio, crash thread already

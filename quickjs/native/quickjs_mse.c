@@ -6,6 +6,7 @@
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
+#include <os/log.h>
 #include <sys/sysctl.h>
 #endif
 #endif
@@ -278,6 +279,8 @@ static int ios_iphone_av1(void)
     if (sscanf(machine, "iPhone%d", &major) == 1 && major >= 16)
         ok = 1;
     fprintf(stderr, "mse ios machine=%s av1=%d\n", machine, ok);
+    os_log_with_type(os_log_create("com.ymusic.mse", "v"), OS_LOG_TYPE_INFO,
+                     "mse ios machine=%{public}s av1=%d", machine, ok);
     return ok;
 }
 #endif
