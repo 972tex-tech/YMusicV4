@@ -1944,7 +1944,11 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                         vlog("video-rep %dx%d -> %dx%d keep vf=%zu",
                              a->vpar->width, a->vpar->height, par->width, par->height,
                              a->vf.n);
-                        if (!a->vdec)
+                        if (!a->vdec
+#ifdef __APPLE__
+                            && a->vpar->codec_id != AV_CODEC_ID_H264
+#endif
+                        )
                             open_decoder(a, 1, a->vpar);
                     }
                     avcodec_parameters_free(&par);
@@ -1967,6 +1971,15 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                         a->mc_fail = 0;
                     }
                     if (mc_try_open(a) == 0) {
+                        avcodec_parameters_free(&par);
+                        par = NULL;
+                    }
+#endif
+#ifdef __APPLE__
+                    /* Native VTDecompressionSession in pull_video. A second
+                       ffmpeg h264_videotoolbox session on the simulator
+                       enqueued black frames (61 fps, empty picture). */
+                    if (par && par->codec_id == AV_CODEC_ID_H264) {
                         avcodec_parameters_free(&par);
                         par = NULL;
                     }
@@ -2017,7 +2030,11 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 /* Caller holds a->mu. */
 static void close_video_decoder(MseAv *a)
 {
-    if (a->vdec)
+    if (a->vdec
+#ifdef __APPLE__
+        || a->vt_dec
+#endif
+    )
         vlog("close-video");
     av_frame_free(&a->vhold);
     avcodec_free_context(&a->vdec);

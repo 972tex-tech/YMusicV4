@@ -3,6 +3,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#import <os/log.h>
 #import <string.h>
 
 void mse_vt_detach(void *p)
@@ -28,8 +29,13 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     if (!p || !pb)
         return -1;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
-    if (layer.status == AVQueuedSampleBufferRenderingStatusFailed)
+    if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) {
+        NSError *err = layer.error;
+        os_log(os_log_create("com.ymusic.mse", "v"),
+               "mse-v vt-show layer-failed %{public}s",
+               err.localizedDescription.UTF8String ?: "?");
         [layer flush];
+    }
     st = CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, pb, &fmt);
     if (st != noErr || !fmt)
         return -1;
