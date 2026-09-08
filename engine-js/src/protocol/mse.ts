@@ -103,9 +103,10 @@ function coverDummyVideo(): void {
   const aEnd = audioBufferedEnd();
   /* Format-switch seek-to-0 (DVR start) must not collapse the dummy window. */
   if (ct < 1 && dummyCoverStart > 10) ct = dummyCoverStart + 1;
-  /* Pin cover to C audio so a hole past leftover is not marked buffered. */
-  const pastAudio = aEnd > 1 && ct > aEnd + 0.5;
-  if (pastAudio) ct = aEnd;
+  /* Live head: pin dummy to C audio so a seek past leftover is not a
+     fake 15s window. VOD hole-seek (log25: 675→1491) must cover t or
+     video je=0 and BZY never appends the SABR audio already in flight. */
+  if (isLiveDuration() && aEnd > 1 && ct > aEnd + 0.5) ct = aEnd;
   const start = Math.max(0, ct - 1);
   const head = Math.max(ct, aEnd);
   /* Audio-only dummy must be >0 (empty video HS/je → xpp skips drain) but
