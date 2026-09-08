@@ -24,10 +24,8 @@ function isDummyVideoMime(mime: string): boolean {
 }
 
 /* Audio-only: server sends no video (SABR field 40=1) but base.js still locksteps
-   on the video SourceBuffer. Report a leading buffered window locally — do not
-   download, decode, or render. Video must lead or audio never appends.
-   Cover to duration (else 120s) so ABR's video readahead check is satisfied. */
-const DUMMY_READAHEAD_S = 120;
+   on the video SourceBuffer. Report a short buffered window locally — do not
+   download, decode, or render. Video must lead or audio never appends. */
 let dummySb: SourceBuffer | null = null;
 let dummyCoverStart = 0;
 let dummyCoverEnd = 0;
@@ -51,20 +49,6 @@ function videoHasLeftover(): boolean {
     if (r[i + 1]! > ct) return true;
   }
   return false;
-}
-
-function dummyDurationCap(ct: number): number {
-  const el = activeMedia;
-  if (el) {
-    const d = Number(el["duration"]);
-    if (isFinite(d) && d > 0) return d;
-    const ms = el._ms;
-    if (ms) {
-      const md = Number(ms["duration"]);
-      if (isFinite(md) && md > 0) return md;
-    }
-  }
-  return ct + DUMMY_READAHEAD_S;
 }
 
 export function isLiveDuration(): boolean {
@@ -210,7 +194,7 @@ function fire(
 ): void {
   const list = target._listeners[type];
   if (!list) return;
-  if (isAudioOnly() && type === "updateend") {
+  if (MSE_DEBUG && isAudioOnly() && type === "updateend") {
     const mime = String((target as { ["mimeType"]?: string })["mimeType"] || "");
     mseLog("mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length);
   }
@@ -360,26 +344,28 @@ class SourceBuffer {
     const wasDummy = isDummyVideoMime(prev);
     const nowDummy = isDummyVideoMime(next);
     const audio = audioFlag(next);
-    try {
-      const ct = __mseCurrentTime();
-      const br = nativeRanges(audio);
-      mseLog(
-        "mse changeType a=" +
-          audio +
-          " from=" +
-          prev +
-          " to=" +
-          next +
-          " ct=" +
-          ct.toFixed(3) +
-          " leftover=" +
-          leftoverMs(br, ct) +
-          " br=[" +
-          fmtBr(br) +
-          "]",
-      );
-    } catch (_e) {
-      mseLog("mse changeType a=" + audio + " from=" + prev + " to=" + next);
+    if (MSE_DEBUG) {
+      try {
+        const ct = __mseCurrentTime();
+        const br = nativeRanges(audio);
+        mseLog(
+          "mse changeType a=" +
+            audio +
+            " from=" +
+            prev +
+            " to=" +
+            next +
+            " ct=" +
+            ct.toFixed(3) +
+            " leftover=" +
+            leftoverMs(br, ct) +
+            " br=[" +
+            fmtBr(br) +
+            "]",
+        );
+      } catch (_e) {
+        mseLog("mse changeType a=" + audio + " from=" + prev + " to=" + next);
+      }
     }
     this["mimeType"] = next;
     if (!wasDummy && nowDummy) {
@@ -398,20 +384,9 @@ class SourceBuffer {
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
     const dummy = isDummyVideoMime(this["mimeType"]);
     const audio = audioFlag(this["mimeType"]);
-    let nbytes = -1;
-    try {
-      nbytes = asU8(data).length;
-    } catch (_e) {}
     if (this["updating"]) {
       drainCalls.throw++;
-      mseLog(
-        "mse append throw updating dummy=" +
-          (dummy ? "1" : "0") +
-          " a=" +
-          audio +
-          " bytes=" +
-          nbytes,
-      );
+      if (MSE_DEBUG) mseLog("mse append throw updating dummy=" + (dummy ? "1" : "0") + " a=" + audio);
       throw invalidState("SourceBuffer.appendBuffer: updating");
     }
     this["updating"] = true;
@@ -422,16 +397,15 @@ class SourceBuffer {
         drainCalls.dummy++;
         dummySb = self;
         coverDummyVideo();
-        mseLog(
-          "mse append dummy v bytes=" +
-            nbytes +
-            " mime=" +
-            self["mimeType"] +
-            " ue=" +
-            lisN(self, "updateend") +
-            " " +
-            shortStack(),
-        );
+        if (MSE_DEBUG)
+          mseLog(
+            "mse append dummy v mime=" +
+              self["mimeType"] +
+              " ue=" +
+              lisN(self, "updateend") +
+              " " +
+              shortStack(),
+          );
       } else {
         const u8 = asU8(data);
         const tsOff = self["timestampOffset"];
@@ -454,30 +428,32 @@ class SourceBuffer {
         } else {
           drainCalls.video++;
         }
-        try {
-          const ct = __mseCurrentTime();
-          const ranges = nativeRanges(audio);
-          mseLog(
-            "mse append a=" +
-              audio +
-              " bytes=" +
-              u8.length +
-              " mime=" +
-              self["mimeType"] +
-              " tsOff=" +
-              tsOff +
-              " win=" +
-              winStart +
-              ".." +
-              winEnd +
-              " leftover=" +
-              leftoverMs(ranges, ct) +
-              " br=[" +
-              fmtBr(ranges) +
-              "]",
-          );
-        } catch (_e) {
-          mseLog("mse append a=" + audio + " bytes=" + u8.length);
+        if (MSE_DEBUG) {
+          try {
+            const ct = __mseCurrentTime();
+            const ranges = nativeRanges(audio);
+            mseLog(
+              "mse append a=" +
+                audio +
+                " bytes=" +
+                u8.length +
+                " mime=" +
+                self["mimeType"] +
+                " tsOff=" +
+                tsOff +
+                " win=" +
+                winStart +
+                ".." +
+                winEnd +
+                " leftover=" +
+                leftoverMs(ranges, ct) +
+                " br=[" +
+                fmtBr(ranges) +
+                "]",
+            );
+          } catch (_e) {
+            mseLog("mse append a=" + audio + " bytes=" + u8.length);
+          }
         }
       }
     } catch (e) {

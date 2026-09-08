@@ -19,7 +19,6 @@ import { logSabrRequest, logSabrResponse } from "./sabr_log";
 import { prepareSabrBody } from "./sabr_abr";
 import { allowEngineJsUrl } from "./jsAllow";
 import { applyRequestRewrite, applyResponseRewrite, wantsJsonRewrite } from "./xhr";
-import { isAudioOnly } from "../player/audio_only";
 
 /* Keep both bindings live when SABR_DEBUG is compile-time false (Closure). */
 void logSabrResponse;
@@ -661,7 +660,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   }
   const inner = httpPull(httpRes, detach);
   let pull = inner;
-  if ((SABR_DEBUG || isAudioOnly()) && p.url.indexOf("/videoplayback") >= 0) {
+  if (SABR_DEBUG && p.url.indexOf("/videoplayback") >= 0) {
     const sabrChunks: Uint8Array[] = [];
     let sabrN = 0;
     pull = async function () {

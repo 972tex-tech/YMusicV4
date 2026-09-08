@@ -107,7 +107,9 @@ struct MseAv {
 #endif
 };
 
+#if MSE_DEBUG
 static int vdbg_n;
+#endif
 static void vf_resync_key(MseAv *a, double t);
 static void close_video_decoder(MseAv *a);
 static void maybe_apply_video_rep(MseAv *a);
@@ -116,6 +118,7 @@ static void maybe_apply_video_rep(MseAv *a);
 
 void mse_logf(const char *fmt, ...)
 {
+#if MSE_DEBUG
     struct timespec ts;
     struct tm tm;
     va_list ap;
@@ -128,10 +131,14 @@ void mse_logf(const char *fmt, ...)
     vfprintf(stderr, fmt, ap);
     va_end(ap);
     funlockfile(stderr);
+#else
+    (void)fmt;
+#endif
 }
 
 static void vlog(const char *fmt, ...)
 {
+#if MSE_DEBUG
     char buf[512];
     va_list ap;
     va_start(ap, fmt);
@@ -141,16 +148,24 @@ static void vlog(const char *fmt, ...)
     __android_log_print(ANDROID_LOG_INFO, "mse-v", "%s", buf);
 #endif
     mse_logf("mse-v %s\n", buf);
+#else
+    (void)fmt;
+#endif
 }
 
 static int vdbg_ok(void)
 {
+#if MSE_DEBUG
     vdbg_n++;
     return vdbg_n <= 120 || (vdbg_n % 40) == 0;
+#else
+    return 0;
+#endif
 }
 
 static void vlog_state(MseAv *a, double clock, const char *why, double extra)
 {
+#if MSE_DEBUG
     double p0 = -1, p1 = -1, nk = -1, hp = -1, np = -1;
     int nkey = 0;
     size_t i;
@@ -172,6 +187,12 @@ static void vlog_state(MseAv *a, double clock, const char *why, double extra)
     vlog("%s clock=%.3f extra=%.3f v_sent=%.3f hold=%.3f vf rd=%zu/%zu next=%.3f q=%.3f..%.3f nkey=%d next_key=%.3f rap=%d delay=%d bframes=%d",
          why, clock, extra, a->v_sent, hp, a->vf.rd, a->vf.n, np, p0, p1, nkey, nk, a->need_rap[0],
          a->vdec ? a->vdec->delay : -1, a->vdec ? a->vdec->has_b_frames : -1);
+#else
+    (void)a;
+    (void)clock;
+    (void)why;
+    (void)extra;
+#endif
 }
 
 static size_t vf_send_rd(const MseAv *a)

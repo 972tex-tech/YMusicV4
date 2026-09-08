@@ -4,6 +4,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Protocol traces (append/seek/decoder). 0 in shipped builds; cmake -DMSE_DEBUG=ON
+   or -DMSE_DEBUG=1 matches engine-js MSE_DEBUG. */
+#ifndef MSE_DEBUG
+#define MSE_DEBUG 0
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

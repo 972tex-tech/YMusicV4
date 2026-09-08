@@ -11,6 +11,17 @@ plugins {
 
 val mseNativeSrc = projectDir.resolve("native")
 
+fun optFlag(name: String, default: Boolean): Boolean =
+    when (project.findProperty(name)?.toString()) {
+        "true" -> true
+        "false" -> false
+        else -> default
+    }
+val production = project.findProperty("production") == "true"
+val mseNativeDebug = optFlag("mseDebug", !production)
+val mseDebugCflag = if (mseNativeDebug) "-DMSE_DEBUG=1" else "-DMSE_DEBUG=0"
+val mseDebugCmake = if (mseNativeDebug) "ON" else "OFF"
+
 fun mseSdkPath(sdk: String): String =
     ProcessBuilder("xcrun", "--sdk", sdk, "--show-sdk-path").start()
         .inputStream.bufferedReader().readText().trim()
@@ -68,11 +79,11 @@ fun registerMseNativeLib(targetName: String): TaskProvider<Exec> {
         val cmd = if (ffmpeg != null) {
             val srcs = listOf("mse_host.c", "mse_ffmpeg.c", "mse_vt.c")
                 .joinToString(" ") { "'${mseNativeSrc.resolve(it)}'" }
-            "set -e; cc $arch -O2 -w -c $srcs " +
+            "set -e; cc $arch -O2 -w $mseDebugCflag -c $srcs " +
                 "-I'${mseNativeSrc.absolutePath}' -I'${qjsInc.absolutePath}' " +
                 "-I'${File(ffmpeg, "include").absolutePath}' && ar rcs libmsehost.a *.o"
         } else {
-            "set -e; cc $arch -O2 -w -c '${mseNativeSrc.resolve("mse_stub.c")}' " +
+            "set -e; cc $arch -O2 -w $mseDebugCflag -c '${mseNativeSrc.resolve("mse_stub.c")}' " +
                 "-I'${mseNativeSrc.absolutePath}' && ar rcs libmsehost.a *.o"
         }
         commandLine("bash", "-c", cmd)
@@ -170,9 +181,13 @@ val mseCmakeConfigure by tasks.registering(Exec::class) {
     doFirst { out.mkdirs() }
     inputs.dir(mseNativeSrc)
     inputs.property("javaHome", javaHomeForJni)
+    inputs.property("mseDebug", mseNativeDebug)
     outputs.file(File(out, "CMakeCache.txt"))
     environment("JAVA_HOME", javaHomeForJni)
-    commandLine("cmake", "-S", mseNativeSrc.absolutePath, "-B", out.absolutePath, "-DCMAKE_BUILD_TYPE=Release")
+    commandLine(
+        "cmake", "-S", mseNativeSrc.absolutePath, "-B", out.absolutePath,
+        "-DCMAKE_BUILD_TYPE=Release", "-DMSE_DEBUG=$mseDebugCmake",
+    )
 }
 val mseCmakeBuild by tasks.registering(Exec::class) {
     dependsOn(mseCmakeConfigure)
@@ -244,6 +259,7 @@ val stageAndroidJni by tasks.registering {
                 "-DCMAKE_TOOLCHAIN_FILE=${toolchain.absolutePath}",
                 "-DANDROID_ABI=$abi", "-DANDROID_PLATFORM=android-${Versions.minSdk}",
                 "-DCMAKE_BUILD_TYPE=Release",
+                "-DMSE_DEBUG=$mseDebugCmake",
                 "-DFFMPEG_ROOT=${prefix.absolutePath}",
             )
             sh("cmake", "--build", buildDir.absolutePath, "-j", "4")

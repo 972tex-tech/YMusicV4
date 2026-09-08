@@ -6,6 +6,12 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Matches engine-js MSE_DEBUG. Default off (shipped). Playground passes -DMSE_DEBUG=ON.
+option(MSE_DEBUG "Verbose MSE protocol logs (append/seek/decoder)" OFF)
+if(MSE_DEBUG)
+  add_compile_definitions(MSE_DEBUG=1)
+endif()
+
 if(ANDROID)
   add_library(mseffmpegjni SHARED mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c)
   target_include_directories(mseffmpegjni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../quickjs/native)
