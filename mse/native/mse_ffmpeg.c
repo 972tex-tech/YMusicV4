@@ -42,6 +42,7 @@
 
 typedef struct {
     double pts;
+    double dts;
     double dur;
     int key;
     int sent;
@@ -101,6 +102,11 @@ struct MseAv {
 #ifdef __APPLE__
     void *vt_layer;
     void *vt_dec;
+    double vt_shown_at;
+    void *vt_q_pb[8];
+    double vt_q_pts[8];
+    int vt_q_w[8], vt_q_h[8];
+    int vt_q_n;
     /* Codec that failed VideoToolbox. Skip VT for that id (simulator AV1). */
     enum AVCodecID vt_fail_id;
 #endif
@@ -330,7 +336,9 @@ static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
 
 static int cf_cmp(const void *a, const void *b)
 {
-    double d = ((const Cf *)a)->pts - ((const Cf *)b)->pts;
+    double d = ((const Cf *)a)->dts - ((const Cf *)b)->dts;
+    if (d == 0)
+        d = ((const Cf *)a)->pts - ((const Cf *)b)->pts;
     return (d > 0) - (d < 0);
 }
 
@@ -343,7 +351,7 @@ static void cfb_free(Cfb *b)
     memset(b, 0, sizeof(*b));
 }
 
-static int cfb_push(Cfb *b, double pts, double dur, int key, const uint8_t *p, size_t n)
+static int cfb_push(Cfb *b, double pts, double dts, double dur, int key, const uint8_t *p, size_t n)
 {
     uint8_t *d;
     if (!p || !n)
@@ -361,6 +369,7 @@ static int cfb_push(Cfb *b, double pts, double dur, int key, const uint8_t *p, s
         return -1;
     memcpy(d, p, n);
     b->f[b->n].pts = pts;
+    b->f[b->n].dts = dts;
     b->f[b->n].dur = dur > 0 ? dur : 0.02;
     b->f[b->n].key = key;
     b->f[b->n].sent = 0;
@@ -669,6 +678,7 @@ static void scale_gop_pts(Cfb *tmp)
             vlog("pts/%d fps=%.2f->%.2f first=%.3f n=%d", best_k, fps, fps * best_k, first, n);
             for (i = 0; i < n; i++) {
                 tmp->f[i].pts /= (double)best_k;
+                tmp->f[i].dts /= (double)best_k;
                 tmp->f[i].dur /= (double)best_k;
             }
         }
@@ -746,11 +756,18 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
     while (av_read_frame(fmt, pkt) >= 0) {
         if (pkt->stream_index == st_idx && pkt->size > 0) {
             AVStream *st = fmt->streams[st_idx];
-            double pts = 0, dur = 0;
-            int64_t ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+            double pts = 0, dts = 0, dur = 0;
+            int64_t pts64 = pkt->pts;
+            int64_t dts64 = pkt->dts;
             double tb = av_q2d(st->time_base);
-            if (ts != AV_NOPTS_VALUE)
-                pts = ts * tb;
+            if (pts64 == AV_NOPTS_VALUE)
+                pts64 = dts64;
+            if (dts64 == AV_NOPTS_VALUE)
+                dts64 = pts64;
+            if (pts64 != AV_NOPTS_VALUE)
+                pts = pts64 * tb;
+            if (dts64 != AV_NOPTS_VALUE)
+                dts = dts64 * tb;
             if (pkt->duration > 0)
                 dur = pkt->duration * tb;
             if (want_video && nadd == 0)
@@ -768,14 +785,17 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
                 if (ik >= 2 && ik <= 10 && err < 0.08) {
                     if (nadd == 0)
                         vlog("webm tb=%d/%d -> 1ms", st->time_base.num, st->time_base.den);
-                    if (ts != AV_NOPTS_VALUE)
-                        pts = ts * 0.001;
+                    if (pts64 != AV_NOPTS_VALUE)
+                        pts = pts64 * 0.001;
+                    if (dts64 != AV_NOPTS_VALUE)
+                        dts = dts64 * 0.001;
                     if (pkt->duration > 0)
                         dur = pkt->duration * 0.001;
                 }
             }
             pts += ts_off;
-            if (cfb_push(dst, pts, dur, !!(pkt->flags & AV_PKT_FLAG_KEY),
+            dts += ts_off;
+            if (cfb_push(dst, pts, dts, dur, !!(pkt->flags & AV_PKT_FLAG_KEY),
                          pkt->data, (size_t)pkt->size) == 0)
                 nadd++;
         }
@@ -1044,7 +1064,8 @@ static int mc_send_one(MseAv *a)
             return -1;
         }
         memcpy(pkt->data, cf->data, cf->n);
-        pkt->pts = pkt->dts = (int64_t)(cf->pts * 1000.0);
+        pkt->pts = (int64_t)(cf->pts * 1000.0);
+        pkt->dts = (int64_t)(cf->dts * 1000.0);
         pkt->time_base = (AVRational){ 1, 1000 };
         if (cf->key)
             pkt->flags |= AV_PKT_FLAG_KEY;
@@ -1483,7 +1504,8 @@ static int send_coded(Cfb *b, AVCodecContext *dec, AVBSFContext *bsf)
         return -1;
     }
     memcpy(pkt->data, cf->data, cf->n);
-    pkt->pts = pkt->dts = (int64_t)(cf->pts * 1000.0);
+    pkt->pts = (int64_t)(cf->pts * 1000.0);
+    pkt->dts = (int64_t)(cf->dts * 1000.0);
     pkt->time_base = (AVRational){ 1, 1000 };
     if (cf->key)
         pkt->flags |= AV_PKT_FLAG_KEY;
@@ -1716,7 +1738,7 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
         if (a->need_rap[idx] && (idx ? !tmp->f[i].key : !coded_is_rap(a, &tmp->f[i])))
             continue;
         a->need_rap[idx] = 0;
-        cfb_push(&kept, tmp->f[i].pts, tmp->f[i].dur, tmp->f[i].key,
+        cfb_push(&kept, tmp->f[i].pts, tmp->f[i].dts, tmp->f[i].dur, tmp->f[i].key,
                  tmp->f[i].data, tmp->f[i].n);
     }
     if (kept.n) {
@@ -1752,7 +1774,7 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
         }
         cfb_drop(dst, first, last);
         for (i = 0; i < (int)kept.n; i++)
-            cfb_push(dst, kept.f[i].pts, kept.f[i].dur, kept.f[i].key,
+            cfb_push(dst, kept.f[i].pts, kept.f[i].dts, kept.f[i].dur, kept.f[i].key,
                      kept.f[i].data, kept.f[i].n);
         qsort(dst->f, dst->n, sizeof(Cf), cf_cmp);
         if (sp) {
@@ -2055,6 +2077,14 @@ static void close_video_decoder(MseAv *a)
     a->need_rap[0] = 1;
     a->v_seen_idr = 0;
     a->v_reopen = 0;
+#ifdef __APPLE__
+    a->vt_shown_at = 0;
+    while (a->vt_q_n > 0) {
+        a->vt_q_n--;
+        mse_vt_pb_release(a->vt_q_pb[a->vt_q_n]);
+        a->vt_q_pb[a->vt_q_n] = NULL;
+    }
+#endif
     /* Do not zero pend_n[0]: mse_av_append can close the decoder mid-cluster
        (quality switch). Wiping pend then subtracting `total` underflows and
        memmove crashes (log22). Abort/changeType/remove/seek clear pend themselves.
@@ -2362,6 +2392,14 @@ void mse_av_seek(MseAv *a, double seconds)
     } else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
     a->show_late = 1;
+#ifdef __APPLE__
+    a->vt_shown_at = 0;
+    while (a->vt_q_n > 0) {
+        a->vt_q_n--;
+        mse_vt_pb_release(a->vt_q_pb[a->vt_q_n]);
+        a->vt_q_pb[a->vt_q_n] = NULL;
+    }
+#endif
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
 #ifdef __ANDROID__
@@ -2577,61 +2615,130 @@ static void video_decode_error(MseAv *a, double pts)
 }
 
 #ifdef __APPLE__
-static int pull_vt(MseAv *a, double clock, int *w, int *h, double *pts)
+static double mono_sec(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+static void vt_q_put(MseAv *a, void *pb, int w, int h, double pts)
+{
+    int i, j;
+    if (a->vt_q_n >= 8) {
+        /* Full: drop the newest (end), never the next-to-show at [0]. */
+        if (pts >= a->vt_q_pts[a->vt_q_n - 1]) {
+            mse_vt_pb_release(pb);
+            return;
+        }
+        mse_vt_pb_release(a->vt_q_pb[a->vt_q_n - 1]);
+        a->vt_q_n--;
+    }
+    for (i = 0; i < a->vt_q_n && a->vt_q_pts[i] <= pts; i++)
+        ;
+    for (j = a->vt_q_n; j > i; j--) {
+        a->vt_q_pb[j] = a->vt_q_pb[j - 1];
+        a->vt_q_pts[j] = a->vt_q_pts[j - 1];
+        a->vt_q_w[j] = a->vt_q_w[j - 1];
+        a->vt_q_h[j] = a->vt_q_h[j - 1];
+    }
+    a->vt_q_pb[i] = pb;
+    a->vt_q_pts[i] = pts;
+    a->vt_q_w[i] = w;
+    a->vt_q_h[i] = h;
+    a->vt_q_n++;
+}
+
+static int vt_q_take(MseAv *a, double clock, int *w, int *h, double *pts)
 {
     const double early = 0.04;
+    const double late = 0.08;
+    while (a->vt_q_n > 0) {
+        double p = a->vt_q_pts[0];
+        void *pb;
+        int i;
+        if (p > clock + early)
+            return 0;
+        pb = a->vt_q_pb[0];
+        if (p < clock - late) {
+            mse_vt_pb_release(pb);
+        } else if (a->vt_shown_at > 0 && mono_sec() - a->vt_shown_at < 1.0 / 59.0) {
+            return 0;
+        } else if (a->vt_layer && mse_vt_show(a->vt_layer, pb, a->vt_q_w[0], a->vt_q_h[0]) == 0) {
+            mse_vt_pb_release(pb);
+            *w = a->vt_q_w[0];
+            *h = a->vt_q_h[0];
+            *pts = p;
+            a->v_sent = p;
+            a->show_late = 0;
+            a->vt_shown_at = mono_sec();
+            a->vt_q_n--;
+            for (i = 0; i < a->vt_q_n; i++) {
+                a->vt_q_pb[i] = a->vt_q_pb[i + 1];
+                a->vt_q_pts[i] = a->vt_q_pts[i + 1];
+                a->vt_q_w[i] = a->vt_q_w[i + 1];
+                a->vt_q_h[i] = a->vt_q_h[i + 1];
+            }
+            if (vdbg_ok())
+                vlog("vt-show pts=%.3f clock=%.3f q=%d", p, clock, a->vt_q_n);
+            return 1;
+        } else {
+            mse_vt_pb_release(pb);
+        }
+        a->vt_q_n--;
+        for (i = 0; i < a->vt_q_n; i++) {
+            a->vt_q_pb[i] = a->vt_q_pb[i + 1];
+            a->vt_q_pts[i] = a->vt_q_pts[i + 1];
+            a->vt_q_w[i] = a->vt_q_w[i + 1];
+            a->vt_q_h[i] = a->vt_q_h[i + 1];
+        }
+    }
+    return 0;
+}
+
+static int pull_vt(MseAv *a, double clock, int *w, int *h, double *pts)
+{
     const double late = 0.08;
     int i;
     if (!a->vt_dec)
         return 0;
+    if (vt_q_take(a, clock, w, h, pts))
+        return 1;
+    if (a->vt_q_n >= 4)
+        return 0;
     for (i = 0; i < 96; i++) {
         void *pb = NULL;
-        int rw = 0, rh = 0;
+        int rw = 0, rh = 0, output;
+        Cf *c;
         while (a->vf.rd < a->vf.n && a->need_rap[0] &&
                !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
             a->vf.f[a->vf.rd].sent = 1;
             a->vf.rd++;
         }
         if (a->vf.rd >= a->vf.n)
-            return 0;
-        {
-            Cf *c = &a->vf.f[a->vf.rd];
-            if (c->pts > clock + early && a->v_seen_idr)
-                return 0;
-            if (c->pts > clock + MSE_SEND_AHEAD)
-                return 0;
-            if (mse_vt_dec_send(a->vt_dec, c->data, (int)c->n) < 0) {
-                c->sent = 1;
-                a->vf.rd++;
-                continue;
-            }
-            if (coded_is_rap(a, c)) {
-                a->need_rap[0] = 0;
-                a->v_seen_idr = 1;
-            }
+            return vt_q_take(a, clock, w, h, pts);
+        c = &a->vf.f[a->vf.rd];
+        /* Send in DTS order. A P 50ms ahead is a ref for the B due now. */
+        if (c->dts > clock + MSE_SEND_AHEAD && c->pts > clock + MSE_SEND_AHEAD)
+            return vt_q_take(a, clock, w, h, pts);
+        output = (a->v_seen_idr || coded_is_rap(a, c)) && c->pts >= clock - late;
+        if (mse_vt_dec_send(a->vt_dec, c->data, (int)c->n, output) < 0) {
             c->sent = 1;
             a->vf.rd++;
-            if (!a->v_seen_idr)
-                continue;
-            if (c->pts > clock + early)
-                return 0;
-            if (c->pts < clock - late && !(a->show_late && c->pts >= clock - 0.35))
-                continue;
-            if (!mse_vt_dec_recv(a->vt_dec, &pb, &rw, &rh) || !pb)
-                continue;
-            if (a->vt_layer && mse_vt_show(a->vt_layer, pb, rw, rh) == 0) {
-                mse_vt_pb_release(pb);
-                *w = rw;
-                *h = rh;
-                *pts = c->pts;
-                a->v_sent = c->pts;
-                a->show_late = 0;
-                if (vdbg_ok())
-                    vlog("vt-show pts=%.3f clock=%.3f", c->pts, clock);
-                return 1;
-            }
-            mse_vt_pb_release(pb);
+            continue;
         }
+        if (coded_is_rap(a, c)) {
+            a->need_rap[0] = 0;
+            a->v_seen_idr = 1;
+        }
+        c->sent = 1;
+        a->vf.rd++;
+        if (output && mse_vt_dec_recv(a->vt_dec, &pb, &rw, &rh) && pb)
+            vt_q_put(a, pb, rw, rh, c->pts);
+        if (vt_q_take(a, clock, w, h, pts))
+            return 1;
+        if (a->vt_q_n >= 4)
+            return 0;
     }
     return 0;
 }

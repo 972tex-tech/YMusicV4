@@ -23,7 +23,7 @@ void mse_vt_flush(void *layer);
 void *mse_vt_dec_open(const uint8_t *avcc, int avcc_n, int w, int h);
 void mse_vt_dec_close(void *dec);
 void mse_vt_dec_flush(void *dec);
-int mse_vt_dec_send(void *dec, const uint8_t *data, int n);
+int mse_vt_dec_send(void *dec, const uint8_t *data, int n, int output);
 /* 1 = pixel buffer in *cvpb (caller CVPixelBufferRelease), 0 = none. */
 int mse_vt_dec_recv(void *dec, void **cvpb, int *w, int *h);
 void mse_vt_pb_release(void *cvpb);

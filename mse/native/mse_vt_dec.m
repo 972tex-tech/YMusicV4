@@ -190,7 +190,7 @@ void mse_vt_dec_flush(void *dec)
     }
 }
 
-int mse_vt_dec_send(void *dec, const uint8_t *data, int n)
+int mse_vt_dec_send(void *dec, const uint8_t *data, int n, int output)
 {
     struct MseVtDec *d = dec;
     CMBlockBufferRef bb = NULL;
@@ -198,6 +198,7 @@ int mse_vt_dec_send(void *dec, const uint8_t *data, int n)
     OSStatus st;
     void *copy;
     size_t sz;
+    VTDecodeFrameFlags flags = output ? 0 : kVTDecodeFrame_DoNotOutputFrame;
     if (!d || !d->session || !data || n <= 0)
         return -1;
     if (!d->logged) {
@@ -221,12 +222,12 @@ int mse_vt_dec_send(void *dec, const uint8_t *data, int n)
     if (st != noErr || !sbuf)
         return -1;
     d->last_st = noErr;
-    st = VTDecompressionSessionDecodeFrame(d->session, sbuf, 0, NULL, NULL);
+    st = VTDecompressionSessionDecodeFrame(d->session, sbuf, flags, NULL, NULL);
     CFRelease(sbuf);
     if (st != noErr)
         return -1;
     VTDecompressionSessionWaitForAsynchronousFrames(d->session);
-    if (d->last_st != noErr)
+    if (output && d->last_st != noErr)
         return -1;
     return 0;
 }

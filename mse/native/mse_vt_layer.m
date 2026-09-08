@@ -6,6 +6,8 @@
 #import <os/log.h>
 #import <string.h>
 
+static CVPixelBufferRef g_shown;
+
 void mse_vt_detach(void *p)
 {
     AVSampleBufferDisplayLayer *layer;
@@ -13,6 +15,10 @@ void mse_vt_detach(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+    if (g_shown) {
+        CVPixelBufferRelease(g_shown);
+        g_shown = NULL;
+    }
 }
 
 int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
@@ -50,6 +56,11 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     }
     [layer enqueueSampleBuffer:sbuf];
     CFRelease(sbuf);
+    /* Keep the last IOSurface alive so VT's pool cannot recycle it while
+       the layer is still compositing — that mix is the two-frame ghost. */
+    if (g_shown)
+        CVPixelBufferRelease(g_shown);
+    g_shown = CVPixelBufferRetain(pb);
     return 0;
 }
 
@@ -88,5 +99,9 @@ void mse_vt_flush(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+    if (g_shown) {
+        CVPixelBufferRelease(g_shown);
+        g_shown = NULL;
+    }
 }
 #endif
