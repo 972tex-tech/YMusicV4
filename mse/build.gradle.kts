@@ -79,9 +79,12 @@ fun registerMseNativeLib(targetName: String): TaskProvider<Exec> {
         val cmd = if (ffmpeg != null) {
             val srcs = listOf("mse_host.c", "mse_ffmpeg.c", "mse_vt.c")
                 .joinToString(" ") { "'${mseNativeSrc.resolve(it)}'" }
+            val objc = "'${mseNativeSrc.resolve("mse_vt_layer.m")}'"
             "set -e; cc $arch -O2 -w $mseDebugCflag -c $srcs " +
                 "-I'${mseNativeSrc.absolutePath}' -I'${qjsInc.absolutePath}' " +
-                "-I'${File(ffmpeg, "include").absolutePath}' && ar rcs libmsehost.a *.o"
+                "-I'${File(ffmpeg, "include").absolutePath}' && " +
+                "cc $arch -O2 -w $mseDebugCflag -fobjc-arc -c $objc " +
+                "-I'${mseNativeSrc.absolutePath}' && ar rcs libmsehost.a *.o"
         } else {
             "set -e; cc $arch -O2 -w $mseDebugCflag -c '${mseNativeSrc.resolve("mse_stub.c")}' " +
                 "-I'${mseNativeSrc.absolutePath}' && ar rcs libmsehost.a *.o"
@@ -111,6 +114,8 @@ val configureMseNative: KotlinNativeTarget.() -> Unit = {
                 "-framework", "CoreMedia",
                 "-framework", "CoreFoundation",
                 "-framework", "CoreVideo",
+                "-framework", "AVFoundation",
+                "-framework", "QuartzCore",
                 "-lz", "-lbz2", "-liconv",
             )
         }

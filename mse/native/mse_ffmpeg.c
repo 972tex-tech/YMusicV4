@@ -2193,7 +2193,16 @@ static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *
         }
     }
 #endif
-    return scale_bgra(a, frame, bgra, w, h);
+    if (scale_bgra(a, frame, bgra, w, h) != 0)
+        return -1;
+#ifdef __APPLE__
+    if (a->vt_layer && *bgra && mse_vt_show_bgra(a->vt_layer, *bgra, *w, *h) == 0) {
+        free(*bgra);
+        *bgra = NULL;
+        return 0;
+    }
+#endif
+    return 0;
 }
 
 static uint8_t *sws_scratch(MseAv *a, size_t n)

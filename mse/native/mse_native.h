@@ -15,6 +15,7 @@ const void *mse_host_vtable(void);
 int mse_host_frames(void *h);
 int64_t mse_host_samples_played(void *h);
 int mse_host_copy_frame(void *h, uint8_t *dst, int cap, int *w, int *ht, int *gen);
+void mse_host_set_video_surface(void *h, void *window);
 
 #ifdef __cplusplus
 }

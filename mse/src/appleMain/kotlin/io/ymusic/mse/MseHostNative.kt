@@ -5,8 +5,10 @@ import io.ymusic.mse.cinterop.mse_host_create
 import io.ymusic.mse.cinterop.mse_host_destroy
 import io.ymusic.mse.cinterop.mse_host_frames
 import io.ymusic.mse.cinterop.mse_host_samples_played
+import io.ymusic.mse.cinterop.mse_host_set_video_surface
 import io.ymusic.mse.cinterop.mse_host_vtable
 import kotlinx.cinterop.COpaque
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.UByteVar
@@ -26,6 +28,11 @@ actual object MseHostNative {
     actual fun vtable(): Long = mse_host_vtable()?.rawValue?.toLong() ?: 0L
 
     actual fun create(): Long = mse_host_create()?.rawValue?.toLong() ?: 0L
+
+    fun setVideoLayer(handle: Long, layer: COpaquePointer?) {
+        if (handle == 0L) return
+        mse_host_set_video_surface(handle.toCPointer<COpaque>(), layer)
+    }
 
     actual fun destroy(handle: Long) {
         if (handle == 0L) return

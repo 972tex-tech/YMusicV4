@@ -28,6 +28,6 @@ Then in js-black-box-discover: `python3 harness/po_replay.py mill DIR` and `pyth
 
 - `commonMain` — `YtMsePlayerScreen`, `MseNativeVideo` expect, session expect
 - `jvmMain` — SwingPanel blit (`contains() = false` so clicks stay in Compose)
-- `iosMain` — UIKitView + UIImageView (`isInteractive = false`)
+- `iosMain` — UIKitView + `AVSampleBufferDisplayLayer` (`isInteractive = false`)
 - `androidMain` — TextureView + ANativeWindow (`setVideoSurface`)
 - `:playground-android` — thin AGP application shell (AGP 9 cannot combine `application` with KMP)

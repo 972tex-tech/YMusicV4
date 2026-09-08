@@ -41,3 +41,9 @@ int mse_host_copy_frame(void *h, uint8_t *dst, int cap, int *w, int *ht, int *ge
         *gen = 0;
     return 0;
 }
+
+void mse_host_set_video_surface(void *h, void *window)
+{
+    (void)h;
+    (void)window;
+}
