@@ -79,7 +79,8 @@ fun registerMseNativeLib(targetName: String): TaskProvider<Exec> {
         val cmd = if (ffmpeg != null) {
             val srcs = listOf("mse_host.c", "mse_ffmpeg.c", "mse_vt.c")
                 .joinToString(" ") { "'${mseNativeSrc.resolve(it)}'" }
-            val objc = "'${mseNativeSrc.resolve("mse_vt_layer.m")}'"
+            val objc = listOf("mse_vt_layer.m", "mse_vt_dec.m")
+                .joinToString(" ") { "'${mseNativeSrc.resolve(it)}'" }
             "set -e; cc $arch -O2 -w $mseDebugCflag -c $srcs " +
                 "-I'${mseNativeSrc.absolutePath}' -I'${qjsInc.absolutePath}' " +
                 "-I'${File(ffmpeg, "include").absolutePath}' && " +

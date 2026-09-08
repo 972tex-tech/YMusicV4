@@ -100,6 +100,7 @@ struct MseAv {
     int v_seen_idr;
 #ifdef __APPLE__
     void *vt_layer;
+    void *vt_dec;
     /* Codec that failed VideoToolbox. Skip VT for that id (simulator AV1). */
     enum AVCodecID vt_fail_id;
 #endif
@@ -2031,6 +2032,8 @@ static void close_video_decoder(MseAv *a)
 #ifdef __APPLE__
     if (a->vt_layer)
         mse_vt_flush(a->vt_layer);
+    mse_vt_dec_close(a->vt_dec);
+    a->vt_dec = NULL;
 #endif
     a->need_rap[0] = 1;
     a->v_seen_idr = 0;
@@ -2556,6 +2559,67 @@ static void video_decode_error(MseAv *a, double pts)
     vf_resync_key(a, a->v_sent >= 0 ? a->v_sent : pts);
 }
 
+#ifdef __APPLE__
+static int pull_vt(MseAv *a, double clock, int *w, int *h, double *pts)
+{
+    const double early = 0.04;
+    const double late = 0.08;
+    int i;
+    if (!a->vt_dec)
+        return 0;
+    for (i = 0; i < 96; i++) {
+        void *pb = NULL;
+        int rw = 0, rh = 0;
+        while (a->vf.rd < a->vf.n && a->need_rap[0] &&
+               !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
+            a->vf.f[a->vf.rd].sent = 1;
+            a->vf.rd++;
+        }
+        if (a->vf.rd >= a->vf.n)
+            return 0;
+        {
+            Cf *c = &a->vf.f[a->vf.rd];
+            if (c->pts > clock + early && a->v_seen_idr)
+                return 0;
+            if (c->pts > clock + MSE_SEND_AHEAD)
+                return 0;
+            if (mse_vt_dec_send(a->vt_dec, c->data, (int)c->n) < 0) {
+                c->sent = 1;
+                a->vf.rd++;
+                continue;
+            }
+            if (coded_is_rap(a, c)) {
+                a->need_rap[0] = 0;
+                a->v_seen_idr = 1;
+            }
+            c->sent = 1;
+            a->vf.rd++;
+            if (!a->v_seen_idr)
+                continue;
+            if (c->pts > clock + early)
+                return 0;
+            if (c->pts < clock - late && !(a->show_late && c->pts >= clock - 0.35))
+                continue;
+            if (!mse_vt_dec_recv(a->vt_dec, &pb, &rw, &rh) || !pb)
+                continue;
+            if (a->vt_layer && mse_vt_show(a->vt_layer, pb, rw, rh) == 0) {
+                mse_vt_pb_release(pb);
+                *w = rw;
+                *h = rh;
+                *pts = c->pts;
+                a->v_sent = c->pts;
+                a->show_late = 0;
+                if (vdbg_ok())
+                    vlog("vt-show pts=%.3f clock=%.3f", c->pts, clock);
+                return 1;
+            }
+            mse_vt_pb_release(pb);
+        }
+    }
+    return 0;
+}
+#endif
+
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts)
 {
     AVFrame *frame;
@@ -2572,6 +2636,24 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return 0;
     }
     maybe_apply_video_rep(a);
+#ifdef __APPLE__
+    if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_H264 && a->vpar->extradata) {
+        if (!a->vt_dec && a->vf.rd < a->vf.n &&
+            (!a->need_rap[0] || coded_is_rap(a, &a->vf.f[a->vf.rd]))) {
+            a->vt_dec = mse_vt_dec_open(a->vpar->extradata, a->vpar->extradata_size,
+                                        a->vpar->width, a->vpar->height);
+            if (a->vt_dec)
+                vlog("open h264 vt-dec %dx%d", a->vpar->width, a->vpar->height);
+            else
+                vlog("vt-dec open fail");
+        }
+        if (a->vt_dec) {
+            int r = pull_vt(a, clock, w, h, pts);
+            pthread_mutex_unlock(&a->mu);
+            return r;
+        }
+    }
+#endif
 #ifdef __ANDROID__
     if (a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);

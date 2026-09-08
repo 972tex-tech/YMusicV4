@@ -18,6 +18,16 @@ int mse_vt_show(void *layer, void *cv_pixel_buffer, int w, int h);
 int mse_vt_show_bgra(void *layer, const uint8_t *bgra, int w, int h);
 void mse_vt_flush(void *layer);
 
+/* H.264 VTDecompressionSession. Enable HW, do not Require it (simulator
+   uses Apple software VT). NULL if create fails. */
+void *mse_vt_dec_open(const uint8_t *avcc, int avcc_n, int w, int h);
+void mse_vt_dec_close(void *dec);
+void mse_vt_dec_flush(void *dec);
+int mse_vt_dec_send(void *dec, const uint8_t *data, int n);
+/* 1 = pixel buffer in *cvpb (caller CVPixelBufferRelease), 0 = none. */
+int mse_vt_dec_recv(void *dec, void **cvpb, int *w, int *h);
+void mse_vt_pb_release(void *cvpb);
+
 #ifdef __cplusplus
 }
 #endif
