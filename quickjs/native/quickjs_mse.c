@@ -271,6 +271,21 @@ static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 #endif
 }
 
+/* iOS libav has no libvpx. Native ffmpeg `vp9` SIGSEGV in receive_frame on
+   live DVR seek (MseLab 14:03, FAR 0x28). VT-VP9 is not available on most
+   iPhones or the simulator — live uses H.264 VT instead. */
+static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+#if TARGET_OS_IPHONE
+    return JS_NewInt32(ctx, 0);
+#else
+    return JS_NewInt32(ctx, 1);
+#endif
+}
+
 void qjs_mse_install(JSContext *ctx)
 {
     JSValue g = JS_GetGlobalObject(ctx);
@@ -291,5 +306,6 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseBuffered", JS_NewCFunction(ctx, js_buffered, "__mseBuffered", 1));
     JS_SetPropertyStr(ctx, g, "__mseReset", JS_NewCFunction(ctx, js_reset, "__mseReset", 0));
     JS_SetPropertyStr(ctx, g, "__mseAv1Ok", JS_NewCFunction(ctx, js_av1_ok, "__mseAv1Ok", 0));
+    JS_SetPropertyStr(ctx, g, "__mseVp9Ok", JS_NewCFunction(ctx, js_vp9_ok, "__mseVp9Ok", 0));
     JS_FreeValue(ctx, g);
 }

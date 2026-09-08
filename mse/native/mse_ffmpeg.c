@@ -1114,6 +1114,10 @@ static const AVCodec *find_video_codec(enum AVCodecID id)
         c = avcodec_find_decoder_by_name("libvpx-vp9");
         if (c)
             return c;
+#if TARGET_OS_IPHONE
+        /* No libvpx. Native `vp9` SIGSEGV on live DVR seek (receive_frame 0x28). */
+        return NULL;
+#endif
     } else if (id == AV_CODEC_ID_VP8) {
         c = avcodec_find_decoder_by_name("libvpx");
         if (c)
@@ -2188,6 +2192,12 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
+#ifdef __APPLE__
+    /* Native vp9 flush-then-receive SIGSEGV on iOS live +10s. Always drop;
+       next key reopens (H.264 VT is cheap). */
+    a->pend_n[0] = 0;
+    close_video_decoder(a);
+#else
     /* No RAP at the new playhead: drop the decoder instead of feeding leftover
        P-frames (live DVR -10s SIGILL). Next append reopens. */
     if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key) {
@@ -2196,6 +2206,7 @@ void mse_av_seek(MseAv *a, double seconds)
     }
     else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
+#endif
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
 #ifdef __ANDROID__
@@ -2475,6 +2486,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     {
     int late_skips = 0;
     for (i = 0; i < 96; i++) {
+        if (!a->vdec)
+            break;
         got = avcodec_receive_frame(a->vdec, frame);
         if (got == 0) {
             double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : clock;

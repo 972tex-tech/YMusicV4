@@ -620,6 +620,12 @@ class MediaSource {
         return false;
       }
     }
+    if (m.indexOf("vp9") >= 0 || m.indexOf("vp09") >= 0) {
+      if (typeof __mseVp9Ok === "function" && !__mseVp9Ok()) {
+        mseLog("mse isTypeSupported reject vp9");
+        return false;
+      }
+    }
     return (
       m.indexOf("fakesb") === 0 ||
       m.indexOf("audio/webm") === 0 ||
@@ -785,6 +791,9 @@ class HTMLMediaElement {
     if (t.indexOf("fakesb") === 0) return "probably";
     if ((t.indexOf("av01") >= 0 || t.indexOf("av1.") >= 0) &&
         typeof __mseAv1Ok === "function" && !__mseAv1Ok())
+      return "";
+    if ((t.indexOf("vp9") >= 0 || t.indexOf("vp09") >= 0) &&
+        typeof __mseVp9Ok === "function" && !__mseVp9Ok())
       return "";
     return t.indexOf("webm") >= 0 || t.indexOf("mp4") >= 0 ? "probably" : "";
   }
