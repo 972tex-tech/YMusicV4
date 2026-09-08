@@ -4,17 +4,25 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -45,6 +53,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.player.CaptionLine
 import io.ymusic.dynamicengine.player.CaptionTrackInfo
+import io.ymusic.dynamicengine.player.DynamicEnginePlayer
 import io.ymusic.mse.MseVideoSurface
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -269,36 +278,58 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text("YMusic · MSE YouTube (engine-js + libav)", style = MaterialTheme.typography.titleMedium)
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (booting) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator()
-                Text("Booting engine (homepage scrape + BotGuard + base.js)…")
-            }
-        } else if (loading) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator()
-                Text("Loading video…")
-            }
-        }
+    val clockText = buildString {
+        append(
+            when {
+                live && !seekable -> "LIVE"
+                live && liveOffsetMs > -1_000L -> "LIVE"
+                live -> "${formatClock(liveOffsetMs)} / LIVE"
+                duration > 0L -> "${formatClock(position)} / ${formatClock(duration)}"
+                else -> "${formatClock(position)} / --:--"
+            },
+        )
+        append("  $fpsText  frames=$frames  frame=$frameLabel  q=$quality")
+        if (reportedQuality.isNotEmpty() && reportedQuality != quality) append(" ($reportedQuality)")
+    }
+    val videoPlaceholder = when {
+        booting -> "Starting…"
+        loading -> "Loading video…"
+        quality == "zero" -> "Audio only"
+        else -> "Waiting for video…"
+    }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = videoId,
-                onValueChange = { videoId = it.trim() },
-                label = { Text("YouTube video id") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-                enabled = ready,
+    BoxWithConstraints(modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+        val wide = maxWidth >= 600.dp
+        val videoHole: @Composable (Modifier) -> Unit = { holeMod ->
+            MseVideoHole(
+                surface = surface,
+                player = session?.player,
+                sink = sink,
+                placeholder = videoPlaceholder,
+                pictureW = pictureW,
+                pictureH = pictureH,
+                fpsText = fpsText,
+                frames = frames,
+                overlayClicks = overlayClicks,
+                onOverlayClick = {
+                    overlayClicks++
+                    println("mse compose overlay click $overlayClicks")
+                },
+                captionLines = captionLines,
+                onHoleSize = { holeSize = it },
+                modifier = holeMod,
             )
-            Button(
-                onClick = {
-                    val s = session ?: return@Button
+        }
+        val chrome: @Composable () -> Unit = {
+            PlaygroundChrome(
+                ready = ready,
+                booting = booting,
+                loading = loading,
+                error = error,
+                videoId = videoId,
+                onVideoId = { videoId = it.trim() },
+                onLoad = {
+                    val s = session ?: return@PlaygroundChrome
                     loading = true
                     error = null
                     val id = videoId
@@ -324,166 +355,64 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                         loading = false
                     }
                 },
-                enabled = ready && videoId.isNotEmpty(),
-            ) { Text("Load") }
-        }
-
-        Text("State: $stateText", style = MaterialTheme.typography.bodyMedium)
-        Text(
-            buildString {
-                append(
-                    when {
-                        live && !seekable -> "LIVE"
-                        live && liveOffsetMs > -1_000L -> "LIVE"
-                        live -> "${formatClock(liveOffsetMs)} / LIVE"
-                        duration > 0L -> "${formatClock(position)} / ${formatClock(duration)}"
-                        else -> "${formatClock(position)} / --:--"
-                    },
-                )
-                append("  $fpsText  frames=$frames  frame=$frameLabel  q=$quality")
-                if (reportedQuality.isNotEmpty() && reportedQuality != quality) append(" ($reportedQuality)")
-            },
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            QUALITY_CHOICES.forEach { (token, label) ->
-                FilterChip(
-                    selected = quality == token,
-                    onClick = {
-                        if (quality == token) return@FilterChip
-                        val s = session ?: return@FilterChip
-                        quality = token
-                        scope.launch {
-                            try {
-                                withContext(Dispatchers.Default) { s.player.setQuality(token, s.log) }
-                            } catch (t: Throwable) {
-                                error = t.message ?: t.toString()
-                                println("mse setQuality failed: $t")
-                            }
-                        }
-                    },
-                    enabled = ready,
-                    label = { Text(label) },
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            FilterChip(
-                selected = captionVss == null,
-                onClick = {
-                    if (captionVss == null) return@FilterChip
-                    val s = session ?: return@FilterChip
-                    captionVss = null
-                    captionLines = emptyList()
+                stateText = stateText,
+                clockText = clockText,
+                quality = quality,
+                captionVss = captionVss,
+                captionTracks = captionTracks,
+                onQuality = { token ->
+                    if (quality == token) return@PlaygroundChrome
+                    val s = session ?: return@PlaygroundChrome
+                    quality = token
                     scope.launch {
                         try {
-                            withContext(Dispatchers.Default) { s.player.setCaption(null, s.log) }
+                            withContext(Dispatchers.Default) { s.player.setQuality(token, s.log) }
+                        } catch (t: Throwable) {
+                            error = t.message ?: t.toString()
+                            println("mse setQuality failed: $t")
+                        }
+                    }
+                },
+                onCaption = { vss ->
+                    if (captionVss == vss) return@PlaygroundChrome
+                    val s = session ?: return@PlaygroundChrome
+                    captionVss = vss
+                    if (vss == null) captionLines = emptyList()
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.Default) { s.player.setCaption(vss, s.log) }
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse setCaption failed: $t")
                         }
                     }
                 },
-                enabled = ready,
-                label = { Text("CC off") },
-            )
-            captionTracks.forEach { track ->
-                FilterChip(
-                    selected = captionVss == track.vssId,
-                    onClick = {
-                        if (captionVss == track.vssId) return@FilterChip
-                        val s = session ?: return@FilterChip
-                        captionVss = track.vssId
-                        scope.launch {
-                            try {
-                                withContext(Dispatchers.Default) { s.player.setCaption(track.vssId, s.log) }
-                            } catch (t: Throwable) {
-                                error = t.message ?: t.toString()
-                                println("mse setCaption failed: $t")
-                            }
-                        }
-                    },
-                    enabled = ready,
-                    label = { Text(track.displayName) },
-                )
-            }
-        }
-
-        Box(Modifier.fillMaxWidth().weight(1f).onSizeChanged { holeSize = it }) {
-            MseNativeVideo(
-                surface = surface,
-                player = session?.player,
-                sink = sink,
-                placeholder = when {
-                    booting -> "Starting…"
-                    loading -> "Loading video…"
-                    quality == "zero" -> "Audio only"
-                    else -> "Waiting for video…"
-                },
-                modifier = Modifier.fillMaxSize(),
-                pictureWidth = pictureW,
-                pictureHeight = pictureH,
-            )
-            if (frames > 0) {
-                Text(
-                    fpsText,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp)
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-            }
-            Button(
-                onClick = {
-                    overlayClicks++
-                    println("mse compose overlay click $overlayClicks")
-                },
-                modifier = Modifier.align(Alignment.Center),
-            ) {
-                Text(if (overlayClicks == 0) "Compose click" else "Compose click ×$overlayClicks")
-            }
-            CaptionOverlay(
-                lines = captionLines,
-                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = 8.dp),
             )
         }
-
-        Slider(
-            value = scrubFrac
-                ?: ((position - windowStart).toFloat() / windowSpan).coerceIn(0f, 1f),
-            onValueChange = { frac -> scrubFrac = frac },
-            onValueChangeFinished = {
-                val frac = scrubFrac ?: return@Slider
-                val s = session ?: return@Slider
-                if (canSeek) {
+        val transport: @Composable () -> Unit = {
+            PlaygroundTransport(
+                canSeek = canSeek,
+                ready = ready,
+                scrubFrac = scrubFrac,
+                position = position,
+                windowStart = windowStart,
+                windowSpan = windowSpan,
+                onScrub = { scrubFrac = it },
+                onSeek = { ms ->
+                    val s = session ?: return@PlaygroundTransport
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) {
-                                val t = windowStart + (frac * windowSpan).toLong()
-                                s.player.seekTo(t.coerceIn(windowStart, windowEnd), s.log)
+                                s.player.seekTo(ms.coerceIn(windowStart, windowEnd), s.log)
                             }
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse seek failed: $t")
                         }
                     }
-                }
-            },
-            enabled = canSeek,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(
-                onClick = {
-                    val s = session ?: return@Button
+                },
+                onPlay = {
+                    val s = session ?: return@PlaygroundTransport
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.play(s.log) }
@@ -493,11 +422,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 },
-                enabled = ready,
-            ) { Text("Play") }
-            Button(
-                onClick = {
-                    val s = session ?: return@Button
+                onPause = {
+                    val s = session ?: return@PlaygroundTransport
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.pause(s.log) }
@@ -507,43 +433,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 },
-                enabled = ready,
-            ) { Text("Pause") }
-            Button(
-                onClick = {
-                    val s = session ?: return@Button
-                    scope.launch {
-                        try {
-                            withContext(Dispatchers.Default) {
-                                s.player.seekTo((position - 10_000).coerceIn(windowStart, windowEnd), s.log)
-                            }
-                        } catch (t: Throwable) {
-                            error = t.message ?: t.toString()
-                            println("mse seek failed: $t")
-                        }
-                    }
-                },
-                enabled = canSeek,
-            ) { Text("−10s") }
-            Button(
-                onClick = {
-                    val s = session ?: return@Button
-                    scope.launch {
-                        try {
-                            withContext(Dispatchers.Default) {
-                                s.player.seekTo((position + 10_000).coerceIn(windowStart, windowEnd), s.log)
-                            }
-                        } catch (t: Throwable) {
-                            error = t.message ?: t.toString()
-                            println("mse seek failed: $t")
-                        }
-                    }
-                },
-                enabled = canSeek,
-            ) { Text("+10s") }
-            Button(
-                onClick = {
-                    val s = session ?: return@Button
+                onStop = {
+                    val s = session ?: return@PlaygroundTransport
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.stop(s.log) }
@@ -553,10 +444,234 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 },
-                enabled = ready,
-            ) { Text("Stop") }
+            )
         }
-        Spacer(Modifier.height(4.dp))
+        if (wide) {
+            Row(
+                Modifier.fillMaxSize().padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    FittedVideo(pictureW, pictureH) { videoHole(it) }
+                }
+                Column(
+                    Modifier
+                        .widthIn(min = 280.dp, max = 440.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    chrome()
+                    transport()
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        } else {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                chrome()
+                FittedVideo(pictureW, pictureH, Modifier.fillMaxWidth()) { videoHole(it) }
+                transport()
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FittedVideo(
+    pictureW: Int,
+    pictureH: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable (Modifier) -> Unit,
+) {
+    val ratio = if (pictureW > 0 && pictureH > 0) pictureW.toFloat() / pictureH else 16f / 9f
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val unbounded = maxHeight == Dp.Infinity || maxHeight == Dp.Unspecified
+        val parentRatio = if (!unbounded && maxHeight > 0.dp) maxWidth / maxHeight else ratio
+        val hole =
+            if (unbounded || parentRatio <= ratio) {
+                Modifier.fillMaxWidth().aspectRatio(ratio)
+            } else {
+                Modifier.fillMaxHeight().aspectRatio(ratio)
+            }
+        content(hole)
+    }
+}
+
+@Composable
+private fun MseVideoHole(
+    surface: MseVideoSurface,
+    player: DynamicEnginePlayer?,
+    sink: MseVideoSink,
+    placeholder: String,
+    pictureW: Int,
+    pictureH: Int,
+    fpsText: String,
+    frames: Int,
+    overlayClicks: Int,
+    onOverlayClick: () -> Unit,
+    captionLines: List<CaptionLine>,
+    onHoleSize: (IntSize) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.onSizeChanged(onHoleSize)) {
+        MseNativeVideo(
+            surface = surface,
+            player = player,
+            sink = sink,
+            placeholder = placeholder,
+            modifier = Modifier.fillMaxSize(),
+            pictureWidth = pictureW,
+            pictureHeight = pictureH,
+        )
+        if (frames > 0) {
+            Text(
+                fpsText,
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        Button(onClick = onOverlayClick, modifier = Modifier.align(Alignment.Center)) {
+            Text(if (overlayClicks == 0) "Compose click" else "Compose click ×$overlayClicks")
+        }
+        CaptionOverlay(
+            lines = captionLines,
+            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = 8.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlaygroundChrome(
+    ready: Boolean,
+    booting: Boolean,
+    loading: Boolean,
+    error: String?,
+    videoId: String,
+    onVideoId: (String) -> Unit,
+    onLoad: () -> Unit,
+    stateText: String,
+    clockText: String,
+    quality: String,
+    captionVss: String?,
+    captionTracks: List<CaptionTrackInfo>,
+    onQuality: (String) -> Unit,
+    onCaption: (String?) -> Unit,
+) {
+    Text("YMusic · MSE YouTube (engine-js + libav)", style = MaterialTheme.typography.titleMedium)
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (booting) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator()
+            Text("Booting engine (homepage scrape + BotGuard + base.js)…")
+        }
+    } else if (loading) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator()
+            Text("Loading video…")
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = videoId,
+            onValueChange = onVideoId,
+            label = { Text("YouTube video id") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+            enabled = ready,
+        )
+        Button(onClick = onLoad, enabled = ready && videoId.isNotEmpty()) { Text("Load") }
+    }
+    Text("State: $stateText", style = MaterialTheme.typography.bodyMedium)
+    Text(clockText, style = MaterialTheme.typography.bodySmall)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        QUALITY_CHOICES.forEach { (token, label) ->
+            FilterChip(
+                selected = quality == token,
+                onClick = { onQuality(token) },
+                enabled = ready,
+                label = { Text(label) },
+            )
+        }
+    }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            selected = captionVss == null,
+            onClick = { onCaption(null) },
+            enabled = ready,
+            label = { Text("CC off") },
+        )
+        captionTracks.forEach { track ->
+            FilterChip(
+                selected = captionVss == track.vssId,
+                onClick = { onCaption(track.vssId) },
+                enabled = ready,
+                label = { Text(track.displayName) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlaygroundTransport(
+    canSeek: Boolean,
+    ready: Boolean,
+    scrubFrac: Float?,
+    position: Long,
+    windowStart: Long,
+    windowSpan: Long,
+    onScrub: (Float) -> Unit,
+    onSeek: (Long) -> Unit,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Slider(
+        value = scrubFrac ?: ((position - windowStart).toFloat() / windowSpan).coerceIn(0f, 1f),
+        onValueChange = onScrub,
+        onValueChangeFinished = {
+            val frac = scrubFrac ?: return@Slider
+            if (canSeek) onSeek(windowStart + (frac * windowSpan).toLong())
+        },
+        enabled = canSeek,
+    )
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(onClick = onPlay, enabled = ready) { Text("Play") }
+        Button(onClick = onPause, enabled = ready) { Text("Pause") }
+        Button(
+            onClick = { onSeek(position - 10_000) },
+            enabled = canSeek,
+        ) { Text("−10s") }
+        Button(
+            onClick = { onSeek(position + 10_000) },
+            enabled = canSeek,
+        ) { Text("+10s") }
+        Button(onClick = onStop, enabled = ready) { Text("Stop") }
     }
 }
 

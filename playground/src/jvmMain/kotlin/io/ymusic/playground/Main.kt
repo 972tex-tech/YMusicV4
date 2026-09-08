@@ -15,7 +15,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             title = "YMusic · MSE playground",
-            state = rememberWindowState(size = DpSize(560.dp, 680.dp)),
+            state = rememberWindowState(size = DpSize(960.dp, 720.dp)),
         ) {
             MaterialTheme {
                 Surface { YtMsePlayerScreen() }
