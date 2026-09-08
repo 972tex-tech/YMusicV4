@@ -45,6 +45,8 @@ internal actual fun MseNativeVideo(
     sink: MseVideoSink,
     placeholder: String,
     modifier: Modifier,
+    @Suppress("UNUSED_PARAMETER") pictureWidth: Int,
+    @Suppress("UNUSED_PARAMETER") pictureHeight: Int,
 ) {
     val view = remember(sink) { MseBlitView(sink) }
     LaunchedEffect(surface, player, view) {

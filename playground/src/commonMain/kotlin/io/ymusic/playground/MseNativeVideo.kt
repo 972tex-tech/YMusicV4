@@ -32,4 +32,7 @@ internal expect fun MseNativeVideo(
     sink: MseVideoSink,
     placeholder: String,
     modifier: Modifier = Modifier,
+    /** Coded picture size from listen/player/status (webview `_aspect_ratio`). 0 = unknown. */
+    pictureWidth: Int = 0,
+    pictureHeight: Int = 0,
 )

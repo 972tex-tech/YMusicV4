@@ -57,6 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.time.TimeSource
 
@@ -90,6 +91,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     var captionLines by remember { mutableStateOf<List<CaptionLine>>(emptyList()) }
     var holeSize by remember { mutableStateOf(IntSize.Zero) }
     var didLoad by remember { mutableStateOf(false) }
+    var pictureW by remember { mutableStateOf(0) }
+    var pictureH by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         try {
@@ -172,20 +175,53 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     val liveOffsetMs = displayMediaMs - windowEnd
     LaunchedEffect(session) {
         val s = session ?: return@LaunchedEffect
+        val incoming = Channel<JsonObject>(Channel.CONFLATED)
+        val job = launch(Dispatchers.Default) {
+            try {
+                s.player.collectStatus({ incoming.trySend(it) }, s.log)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main.immediate) {
+                    error = t.message ?: t.toString()
+                    println("mse status session failed: $t")
+                }
+            } finally {
+                incoming.close()
+            }
+        }
+        try {
+            for (st in incoming) {
+                position = st.longField("positionMs")
+                duration = st.longField("durationMs")
+                live = (st["live"] as? JsonPrimitive)?.content == "true"
+                seekable = (st["seekable"] as? JsonPrimitive)?.content != "false"
+                seekableStart = st.longField("seekableStartMs")
+                seekableEnd = st.longField("seekableEndMs")
+                paused = (st["paused"] as? JsonPrimitive)?.content != "false"
+                reportedQuality = (st["preferQuality"] as? JsonPrimitive)?.content
+                    ?: (st["quality"] as? JsonPrimitive)?.content
+                    ?: ""
+                val pw = st.intField("videoWidth")
+                val ph = st.intField("videoHeight")
+                if (pw != pictureW) pictureW = pw
+                if (ph != pictureH) pictureH = ph
+                val scrub = scrubFrac
+                if (scrub != null && windowEnd > windowStart) {
+                    val target = windowStart + (scrub * (windowEnd - windowStart)).toLong()
+                    if (kotlin.math.abs(position - target) < 1_000L)
+                        scrubFrac = null
+                }
+            }
+        } finally {
+            job.cancel()
+        }
+    }
+    LaunchedEffect(session) {
+        val s = session ?: return@LaunchedEffect
         var fpsCount = sink.frameCount
         var fpsMark = TimeSource.Monotonic.markNow()
         while (true) {
-            val st = withContext(Dispatchers.Default) { s.player.status(s.log) }
-            position = st.longField("positionMs")
-            duration = st.longField("durationMs")
-            live = (st["live"] as? JsonPrimitive)?.content == "true"
-            seekable = (st["seekable"] as? JsonPrimitive)?.content != "false"
-            seekableStart = st.longField("seekableStartMs")
-            seekableEnd = st.longField("seekableEndMs")
-            paused = (st["paused"] as? JsonPrimitive)?.content != "false"
-            reportedQuality = (st["preferQuality"] as? JsonPrimitive)?.content
-                ?: (st["quality"] as? JsonPrimitive)?.content
-                ?: ""
             val n = sink.frameCount
             if (n != frames) {
                 if (frames == 0 && n > 0) {
@@ -203,12 +239,6 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 fpsMark = TimeSource.Monotonic.markNow()
             }
             logMseLab("ok pos=$position dur=$duration frames=$frames $fpsText")
-            val scrub = scrubFrac
-            if (scrub != null && windowEnd > windowStart) {
-                val target = windowStart + (scrub * (windowEnd - windowStart)).toLong()
-                if (kotlin.math.abs(position - target) < 1_000L)
-                    scrubFrac = null
-            }
             delay(250)
         }
     }
@@ -394,6 +424,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     else -> "Waiting for video…"
                 },
                 modifier = Modifier.fillMaxSize(),
+                pictureWidth = pictureW,
+                pictureHeight = pictureH,
             )
             if (frames > 0) {
                 Text(
@@ -650,6 +682,9 @@ private val QUALITY_CHOICES = listOf(
 
 private fun JsonObject.longField(key: String): Long =
     (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
+
+private fun JsonObject.intField(key: String): Int =
+    (this[key] as? JsonPrimitive)?.intOrNull ?: 0
 
 private fun formatClock(ms: Long): String {
     val total = kotlin.math.abs(ms) / 1000
