@@ -20,8 +20,16 @@ import { installXhr } from "../yt/xhr";
 import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
-import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
-import { isKnownVod } from "./live";
+import {
+  isAudioOnly,
+  isLiveVideoRest,
+  isProductZero,
+  setAudioOnly,
+  setLiveVideoRest,
+  setYmQuality,
+  ymQuality,
+} from "./audio_only";
+import { isKnownVod, isYmLive } from "./live";
 import {
   captionIngestTick,
   installCaptionMinter,
@@ -70,7 +78,7 @@ function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   const orig = host["getPlaybackQuality"] as (...a: unknown[]) => unknown;
   if ((orig as { __ym?: boolean }).__ym) return;
   const wrapped = function (this: unknown) {
-    if (isAudioOnly()) return "zero";
+    if (isProductZero()) return "zero";
     try {
       const q = orig.call(this);
       if (q != null && String(q) !== "") return q;
@@ -668,21 +676,21 @@ class Player {
     if (!player)
       throw new JsEngineErrorImpl("player/setQuality before Application.create", "E20085");
     if (q === "zero") {
-      /* Product token stays "zero". VOD: pin YouTube "tiny" so ABR binds
-         144p. Live: do not pin — that drops leftover IY from vid=. */
-      setAudioOnly(true);
-      dropVideoTrack();
+      this.applyZero();
       resetDrainCounts();
-      this.pinTinyIfVod();
       if (MSE_DEBUG)
         console.log("mse setQuality zero clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0));
       dumpDrain("setQuality-zero");
       return;
     }
-    const wasAudioOnly = isAudioOnly();
+    const wasDummy = isAudioOnly();
     setAudioOnly(false);
+    if (isLiveVideoRest()) {
+      setLiveVideoRest(false);
+      __mseRestVideo(0);
+    }
     setYmQuality(q);
-    if (wasAudioOnly) dropVideoTrack();
+    if (wasDummy) dropVideoTrack();
     const host = moviePlayer() || (player as unknown as Record<string, unknown>);
     const range = host["setPlaybackQualityRange"];
     const one = host["setPlaybackQuality"];
@@ -699,8 +707,7 @@ class Player {
     notifyCatalog();
   }
 
-  private pinTinyIfVod(): void {
-    if (!isKnownVod()) return;
+  private pinTiny(): void {
     const player = this.player;
     if (!player) return;
     const host = moviePlayer() || (player as unknown as Record<string, unknown>);
@@ -708,6 +715,23 @@ class Player {
     const one = host["setPlaybackQuality"];
     if (typeof range === "function") range.call(host, "tiny", "tiny");
     else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
+  }
+
+  /** VOD: dummy SB + SABR 40=1. Live: real 144p, decoder rest, black. */
+  private applyZero(): void {
+    if (isYmLive()) {
+      setAudioOnly(false);
+      setLiveVideoRest(true);
+      this.pinTiny();
+      __mseRestVideo(1);
+      return;
+    }
+    if (!isKnownVod()) return;
+    setLiveVideoRest(false);
+    __mseRestVideo(0);
+    setAudioOnly(true);
+    dropVideoTrack();
+    this.pinTiny();
   }
 
   async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
@@ -746,7 +770,7 @@ class Player {
       );
     }
     await waitCaptionIngest(ingestAt, 8000);
-    if (q === "zero") this.pinTinyIfVod();
+    if (q === "zero") this.applyZero();
     notifyCatalog();
     out["step"] = "ok";
     out["ok"] = true;
@@ -872,18 +896,18 @@ class Player {
       "readyState": v ? Number(v["readyState"]) : 0,
       "videoWidth": v ? Number(v["videoWidth"]) : 0,
       "videoHeight": v ? Number(v["videoHeight"]) : 0,
-      "audioOnly": isAudioOnly(),
+      "audioOnly": isProductZero(),
     };
   }
 
   catalog(): Record<string, unknown> {
     const host = moviePlayer();
-    const pref = isAudioOnly()
+    const pref = isProductZero()
       ? "zero"
       : host && typeof host["getUserPlaybackQualityPreference"] === "function"
         ? String((host["getUserPlaybackQualityPreference"] as () => string)())
         : ymQuality();
-    const actual = isAudioOnly()
+    const actual = isProductZero()
       ? "zero"
       : host && typeof host["getPlaybackQuality"] === "function"
         ? String((host["getPlaybackQuality"] as () => string)())

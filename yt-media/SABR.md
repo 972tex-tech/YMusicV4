@@ -166,20 +166,17 @@ audio stops.
 
 ## Audio-only (product `"zero"`)
 
-`"zero"` is a player wire token. JS sets `__ymAudioOnly` and rewrites
-`enabled_track_types_bitfield = 1` (and DRC). Real googlevideo then sends
-**no video**. Do not invent a video UMP tail — that is a new stream on the
-leftover IY (kills `br=`, `Si=-`, seek 0).
+`"zero"` is a player wire token. Two surfaces:
 
-Product `"zero"` pins YouTube quality `"tiny"` (144p) on **VOD** so ABR
-binds a real ladder itag. Live must **not** pin tiny: that drops leftover
-IY (often 243) from `vid=`.
+**VOD:** `__ymAudioOnly` + SABR `enabled_track_types_bitfield = 1` (field 40).
+Googlevideo sends no video. Dummy SourceBuffer `buffered` keeps drain’s
+video leftover non-empty; non-audio appends never reach C. Pins YouTube
+`"tiny"` so ABR still binds a real ladder itag.
 
-Audio-only surface (MSE + HTTP only — no `base.js` internals):
+**Live:** do **not** set field 40 (lockstep dies). Pin `"tiny"` (144p), keep
+appending video as a normal quality switch, and rest the C video decoder
+(`__mseRestVideo(1)`) so the picture is black. SABR / MSE / leftover are
+untouched.
 
-1. SABR request field `40=1` (and DRC). Cache must not serve leftover video.
-2. Dummy SourceBuffer `buffered` so drain’s MSE intersection is non-empty.
-   Non-audio appends never reach C. `dropVideoTrack` wipes leftover.
-
-Do not forge request `selected_format_ids` / `buffered_ranges`. Do not write
-YouTube player fields (`Cx`, `Ds.L`, …).
+Do not invent a video UMP tail. Do not forge `selected_format_ids` /
+`buffered_ranges`. Do not write YouTube player fields (`Cx`, `Ds.L`, …).

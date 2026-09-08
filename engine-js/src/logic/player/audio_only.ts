@@ -20,3 +20,16 @@ export function ymQuality(): string {
 export function setYmQuality(quality: string): void {
   if (quality && quality !== "zero") g()["__ymQuality"] = quality;
 }
+
+/** Live product "zero": real 144p still appends; C decoder is rested. */
+export function isLiveVideoRest(): boolean {
+  return !!g()["__ymRestVideo"];
+}
+
+export function setLiveVideoRest(on: boolean): void {
+  g()["__ymRestVideo"] = on;
+}
+
+export function isProductZero(): boolean {
+  return isAudioOnly() || isLiveVideoRest();
+}
