@@ -24,13 +24,20 @@ function isDummyVideoMime(mime: string): boolean {
 }
 
 /* Audio-only: server sends no video (SABR field 40=1) but base.js still locksteps
-   on the video SourceBuffer. Report a leading buffered window locally — do not
+   on the video SourceBuffer. Report a short buffered window locally — do not
    download, decode, or render. Video must lead or audio never appends.
-   Cover to duration (else 120s) so ABR's video readahead check is satisfied. */
+   Dummy is ~2.5s past the playhead (not audio leftover end): aEnd can be a
+   far island (log25 dummy=709..1422) and leave-audio then waits that out. */
 const DUMMY_READAHEAD_S = 120;
+const DUMMY_AHEAD_S = 2.5;
 let dummySb: SourceBuffer | null = null;
 let dummyCoverStart = 0;
 let dummyCoverEnd = 0;
+/* After leave-audio, hide C leftover from YouTube until a new video append
+   actually extends the playhead island. Otherwise video je is 15–30s of
+   kept leftover and SABR skips the fetch (log25 setQuality-auto je=21313). */
+let maskVideoLeftover = false;
+let maskUntilVideoEnd = 0;
 
 function audioBufferedEnd(): number {
   const r = __mseBuffered(1);
@@ -51,6 +58,33 @@ function videoHasLeftover(): boolean {
     if (r[i + 1]! > ct) return true;
   }
   return false;
+}
+
+function videoIslandEnd(): number {
+  const r = __mseBuffered(0);
+  if (!r) return 0;
+  const ct = __mseCurrentTime();
+  let end = 0;
+  for (let i = 0; i + 1 < r.length; i += 2) {
+    if (r[i]! <= ct && r[i + 1]! > ct && r[i + 1]! > end) end = r[i + 1]!;
+  }
+  return end;
+}
+
+function dummyOwnsVideo(): boolean {
+  return dummyCoverEnd > dummyCoverStart && (isAudioOnly() || maskVideoLeftover);
+}
+
+function clearDummyCover(): void {
+  dummyCoverStart = 0;
+  dummyCoverEnd = 0;
+}
+
+function resetDummyState(): void {
+  dummySb = null;
+  clearDummyCover();
+  maskVideoLeftover = false;
+  maskUntilVideoEnd = 0;
 }
 
 function dummyDurationCap(ct: number): number {
@@ -88,16 +122,7 @@ function bindDummySb(): void {
   }
 }
 
-function coverDummyVideo(): void {
-  if (!isAudioOnly()) {
-    /* Keep the dummy window until C has real video, or media.buffered
-       (intersection) goes empty and YouTube stalls. */
-    if (videoHasLeftover()) {
-      dummyCoverStart = 0;
-      dummyCoverEnd = 0;
-    }
-    return;
-  }
+function slideDummyCover(): void {
   if (!dummySb) bindDummySb();
   let ct = activeMedia ? __mseCurrentTime() : 0;
   const aEnd = audioBufferedEnd();
@@ -108,11 +133,10 @@ function coverDummyVideo(): void {
      video je=0 and BZY never appends the SABR audio already in flight. */
   if (isLiveDuration() && aEnd > 1 && ct > aEnd + 0.5) ct = aEnd;
   const start = Math.max(0, ct - 1);
-  const head = Math.max(ct, aEnd);
-  /* Audio-only dummy must be >0 (empty video HS/je → xpp skips drain) but
-     not a 15s NRP lie: that made YouTube skip appendBuffer of SABR audio
-     (log23 je=16s d=0/a=0; log10 je≈3s then audio appends). */
-  const target = Math.max(start + 1, head + 2.5);
+  /* Past playhead, not audio leftover end. aEnd is the last island across
+     all ranges (log25: 40s leftover → dummy=5..42; later 1422s island
+     while playing at 710 → dummy=709..1422). */
+  const target = Math.max(start + 1, ct + DUMMY_AHEAD_S);
   if (dummyCoverStart <= start + 0.05 && dummyCoverEnd >= target - 0.05) return;
   const jump = Math.abs(start - dummyCoverStart) >= 1 || Math.abs(target - dummyCoverEnd) >= 1;
   dummyCoverStart = start;
@@ -121,6 +145,30 @@ function coverDummyVideo(): void {
   /* Do not pulse SourceBuffer.updating. base.js caches buffered by object
      reference (HS(!0)) and treats updating as "don't append / don't refresh".
      The getter is live, so sliding the numbers is enough. */
+}
+
+function coverDummyVideo(): void {
+  if (!isAudioOnly()) {
+    if (maskVideoLeftover) {
+      slideDummyCover();
+      return;
+    }
+    clearDummyCover();
+    return;
+  }
+  maskVideoLeftover = true;
+  slideDummyCover();
+}
+
+function noteVideoAppend(): void {
+  if (!maskVideoLeftover || isAudioOnly()) return;
+  const end = videoIslandEnd();
+  if (end > maskUntilVideoEnd + 0.4) {
+    mseLog("mse unmask video leftover " + maskUntilVideoEnd + ".." + end);
+    maskVideoLeftover = false;
+    maskUntilVideoEnd = 0;
+    clearDummyCover();
+  }
 }
 
 function asU8(data: ArrayBuffer | ArrayBufferView): Uint8Array {
@@ -319,12 +367,8 @@ class SourceBuffer {
   _bufferedPairs(): Array<[number, number]> {
     /* Audio-only: short dummy so video je>0 (xpp still drains) but SABR
        still appends audio. Leave-audio: a sliver so video readahead fails
-       and googlevideo sends video now. */
-    if (
-      audioFlag(this["mimeType"]) === 0 &&
-      dummyCoverEnd > dummyCoverStart &&
-      (isAudioOnly() || !videoHasLeftover())
-    ) {
+       and googlevideo sends video now — even if kept C leftover covers t. */
+    if (audioFlag(this["mimeType"]) === 0 && dummyOwnsVideo()) {
       if (isAudioOnly()) return [[dummyCoverStart, dummyCoverEnd]];
       const ct = __mseCurrentTime();
       const start = Math.max(0, ct - 0.05);
@@ -387,8 +431,7 @@ class SourceBuffer {
       coverDummyVideo();
     } else if (wasDummy && !nowDummy) {
       if (dummySb === this) dummySb = null;
-      dummyCoverStart = 0;
-      dummyCoverEnd = 0;
+      clearDummyCover();
       __mseChangeType(audio);
     } else if (!nowDummy) {
       __mseChangeType(audio);
@@ -453,6 +496,7 @@ class SourceBuffer {
           coverDummyVideo();
         } else {
           drainCalls.video++;
+          noteVideoAppend();
         }
         try {
           const ct = __mseCurrentTime();
@@ -662,8 +706,7 @@ class MediaSource {
       dummySb = sb;
       /* Keep the live dummy window across YouTube's vp9→avc1 SourceBuffer swap. */
       if (!isAudioOnly() || dummyCoverEnd <= dummyCoverStart) {
-        dummyCoverStart = 0;
-        dummyCoverEnd = 0;
+        clearDummyCover();
       }
       coverDummyVideo();
     }
@@ -814,9 +857,7 @@ class HTMLMediaElement {
     stopMediaTick();
     __msePause();
     if (this._ms) detachMediaSource(this._ms);
-    dummySb = null;
-    dummyCoverStart = 0;
-    dummyCoverEnd = 0;
+    resetDummyState();
     __mseReset();
     this._ms = null;
     this._src = "";
@@ -861,9 +902,7 @@ class HTMLMediaElement {
          (readyState closed, sourceBuffers removed) and the pipeline demuxer
          is a new empty ChunkDemuxer. */
       if (prev) detachMediaSource(prev);
-      dummySb = null;
-      dummyCoverStart = 0;
-      dummyCoverEnd = 0;
+      resetDummyState();
       __mseReset();
       this._ms = ms;
       if (ms && ms["readyState"] === "closed") {
@@ -907,9 +946,10 @@ class HTMLMediaElement {
     /* Spec is intersection of SourceBuffers. Audio leftover ends at the
        playhead, so je()=DI(buffered, currentTime) is ~0, YouTube sets
        buffering (Ys) and BZY skips SABR already in the append queue.
-       Long dummy keeps je() large until C has real video leftover — including
-       after leave-audio, when the video SB getter reports only a sliver. */
-    if (dummyCoverEnd > dummyCoverStart && (isAudioOnly() || !videoHasLeftover())) {
+       Dummy (~2.5s past t) keeps je() > 0 until a post-leave video append
+       extends leftover — including after leave-audio, when the video SB
+       getter reports only a sliver. */
+    if (dummyOwnsVideo()) {
       return makeTimeRanges([[dummyCoverStart, dummyCoverEnd]]);
     }
     const ms = this._ms;
@@ -961,7 +1001,7 @@ class HTMLMediaElement {
     /* Live format-switch seeks 0 (DVR start). Ignore while dummy still
        owns video — including leave-audio, after __ymAudioOnly is already
        false. Feeding that seek into C starts VP9/AV1 on a P-frame (SIGILL). */
-    if (t < 1 && prev > 10 && (isAudioOnly() || !videoHasLeftover())) {
+    if (t < 1 && prev > 10 && (isAudioOnly() || maskVideoLeftover || !videoHasLeftover())) {
       mseLog("mse ignore seek-0 audio-only from " + prev);
       return;
     }
@@ -1200,11 +1240,13 @@ export function dumpMseDrain(): string {
  *  the decoder instead so audio is not interrupted on zero↔video. */
 export function dropVideoTrack(): void {
   if (isAudioOnly()) {
+    maskVideoLeftover = true;
     bindDummySb();
     coverDummyVideo();
     __mseRestVideo(1);
     return;
   }
+  if (maskVideoLeftover) maskUntilVideoEnd = videoIslandEnd();
   coverDummyVideo();
 }
 
@@ -1221,9 +1263,7 @@ export async function resetMse(): Promise<void> {
     v["seeking"] = false;
     v["ended"] = false;
   }
-  dummySb = null;
-  dummyCoverStart = 0;
-  dummyCoverEnd = 0;
+  resetDummyState();
   __mseReset();
 }
 
