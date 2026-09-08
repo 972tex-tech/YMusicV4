@@ -1170,8 +1170,14 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         }
     }
     codec = video ? find_video_codec(par->codec_id) : avcodec_find_decoder(par->codec_id);
-    if (!codec)
+    if (!codec) {
+        static int logged_id;
+        if (logged_id != (int)par->codec_id) {
+            logged_id = (int)par->codec_id;
+            vlog("no decoder id=%d", (int)par->codec_id);
+        }
         return -1;
+    }
     *ctxp = avcodec_alloc_context3(codec);
     if (!*ctxp)
         return -1;
@@ -1206,6 +1212,7 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
                 goto opened;
         }
 #endif
+        vlog("open decoder fail id=%d %s", (int)par->codec_id, codec->name);
         avcodec_free_context(ctxp);
         return -1;
     }
@@ -2308,6 +2315,8 @@ void mse_av_set_window(MseAv *a, void *window)
         mc_close(a);
         a->mc_win = win;
         a->mc_fail = 0;
+        vlog("window %p vpar=%d %dx%d", (void *)win, a->vpar ? 1 : 0,
+             a->vpar ? a->vpar->width : 0, a->vpar ? a->vpar->height : 0);
         if (win)
             mc_try_open(a);
         pthread_mutex_unlock(&a->mu);

@@ -1014,6 +1014,9 @@ void mse_host_reset(MseHost *h)
     h->vpts = -1;
     mse_av_destroy(h->av);
     h->av = mse_av_create();
+    /* MediaSource reset drops MseAv (and mc_win / VT layer). Keep the
+       already-attached window so AV1/MediaCodec can open after load. */
+    mse_av_set_window(h->av, h->window);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
 }
