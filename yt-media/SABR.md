@@ -168,10 +168,11 @@ audio stops.
 
 `"zero"` is a player wire token. Two surfaces:
 
-**VOD:** `__ymAudioOnly` + SABR `enabled_track_types_bitfield = 1` (field 40).
-Googlevideo sends no video. Dummy SourceBuffer `buffered` keeps drain’s
-video leftover non-empty; non-audio appends never reach C. Pins YouTube
-`"tiny"` so ABR still binds a real ladder itag.
+**VOD:** `__ymAudioOnly` + SABR field `40=1`. Dummy `SourceBuffer.buffered`
+keeps drain’s video leftover non-empty. Do **not** wipe C video leftover
+(that snapped audio ~0.5s). Rest the decoder (`__mseRestVideo(1)`) and
+keep packets; clock follows audio while rest is on. Load-as-zero still
+pins `"tiny"` so ABR binds a ladder itag. Mid-play zero does not pin.
 
 **Live:** do **not** set field 40 (lockstep dies). Pin `"tiny"` (144p), keep
 appending video as a normal quality switch, and rest the C video decoder

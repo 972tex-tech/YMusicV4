@@ -685,7 +685,7 @@ class Player {
     }
     const wasDummy = isAudioOnly();
     setAudioOnly(false);
-    if (isLiveVideoRest()) {
+    if (isLiveVideoRest() || wasDummy) {
       setLiveVideoRest(false);
       __mseRestVideo(0);
     }
@@ -728,10 +728,11 @@ class Player {
     }
     if (!isKnownVod()) return;
     setLiveVideoRest(false);
-    __mseRestVideo(0);
     setAudioOnly(true);
     dropVideoTrack();
-    this.pinTiny();
+    /* pinTiny mid-play is a forced quality switch (~0.5s A/V stall).
+       Load-as-zero (clock ~0) still pins so ABR binds a ladder itag. */
+    if (__mseCurrentTime() < 1) this.pinTiny();
   }
 
   async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {

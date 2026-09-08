@@ -1232,23 +1232,13 @@ static void show_black(MseHost *h)
         return;
     pthread_mutex_lock(&h->frame_mu);
     if (!h->last_bgra || h->last_w <= 0 || h->last_h <= 0) {
-        w = 640;
-        ht = 360;
-        if ((uint64_t)w * (uint64_t)ht <= (uint64_t)(INT_MAX / 4)) {
-            black = calloc((size_t)w * (size_t)ht * 4, 1);
-            if (black) {
-                free(h->last_bgra);
-                h->last_bgra = black;
-                h->last_w = w;
-                h->last_h = ht;
-            }
-        }
-    } else {
-        memset(h->last_bgra, 0, (size_t)h->last_w * (size_t)h->last_h * 4);
-        w = h->last_w;
-        ht = h->last_h;
-        black = h->last_bgra;
+        pthread_mutex_unlock(&h->frame_mu);
+        return;
     }
+    memset(h->last_bgra, 0, (size_t)h->last_w * (size_t)h->last_h * 4);
+    w = h->last_w;
+    ht = h->last_h;
+    black = h->last_bgra;
     if (black)
         h->frame_gen++;
     pthread_mutex_unlock(&h->frame_mu);

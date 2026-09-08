@@ -46,8 +46,9 @@ function audioBufferedEnd(): number {
 function videoHasLeftover(): boolean {
   const r = __mseBuffered(0);
   if (!r) return false;
+  const ct = __mseCurrentTime();
   for (let i = 0; i + 1 < r.length; i += 2) {
-    if (r[i + 1]! > r[i]!) return true;
+    if (r[i + 1]! > ct) return true;
   }
   return false;
 }
@@ -383,8 +384,6 @@ class SourceBuffer {
     if (!wasDummy && nowDummy) {
       dummySb = this;
       coverDummyVideo();
-      __mseRemove(0, 0, 1e300);
-      __mseAbort(0);
     } else if (wasDummy && !nowDummy) {
       if (dummySb === this) dummySb = null;
       dummyCoverStart = 0;
@@ -1196,34 +1195,16 @@ export function dumpMseDrain(): string {
   return parts.join(" ");
 }
 
-/** Drop decoded video leftover. Audio-only recaps the dummy window. Leaving
- *  audio-only keeps that window until C has real video leftover. */
+/** Dummy video.buffered for YouTube drain. Do not wipe C leftover — rest
+ *  the decoder instead so audio is not interrupted on zero↔video. */
 export function dropVideoTrack(): void {
   if (isAudioOnly()) {
-    /* Dummy window first so video.buffered never goes empty — YouTube's
-       append drain (l7/BZY) skips SABR audio if video HS/je is 0. */
     bindDummySb();
     coverDummyVideo();
-    __mseRemove(0, 0, 1e300);
-    __mseAbort(0);
-    if (dummySb) {
-      if (dummySb["updating"]) dummySb["abort"]();
-      else {
-        /* abort() with updating=false must not emit updateend (re-enters
-           YouTube's listener until the stack blows). The SABR queue still
-           needs that event to flush into appendBuffer (log10: abort upd=0
-           then updateend then audio appends; log23 today: no updateend,
-           d=0/a=0, clock frozen at leftover end). */
-        fire(dummySb, "updateend");
-      }
-    }
+    __mseRestVideo(1);
     return;
   }
-  __mseRemove(0, 0, 1e300);
-  __mseAbort(0);
-  /* Leaving audio-only: keep dummy cover until C has video leftover so
-     media.buffered still contains the playhead (intersection). Aborting
-     here emptied video.buffered and stalled. */
+  coverDummyVideo();
 }
 
 /** Drop the current MediaSource attachment and native decoder so the next video can start clean. */

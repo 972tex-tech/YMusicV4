@@ -1963,7 +1963,9 @@ int mse_av_span(MseAv *a, double *first, double *last)
         return 0;
     pthread_mutex_lock(&a->mu);
     ha = cfb_span(&a->af, &af, &al);
-    hv = cfb_span(&a->vf, &vf, &vl);
+    /* Resting decoder: leftover stays in vf but the clock must follow
+       audio or currentTime snaps when video last is behind playhead. */
+    hv = a->v_rest ? 0 : cfb_span(&a->vf, &vf, &vl);
     pthread_mutex_unlock(&a->mu);
     if (!ha && !hv)
         return 0;
@@ -2033,7 +2035,7 @@ int mse_av_has_video(MseAv *a)
     if (!a)
         return 0;
     pthread_mutex_lock(&a->mu);
-    n = a->vf.n > 0;
+    n = !a->v_rest && a->vf.n > 0;
     pthread_mutex_unlock(&a->mu);
     return n;
 }
