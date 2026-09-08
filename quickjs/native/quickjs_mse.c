@@ -261,16 +261,18 @@ static JSValue js_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-/* iPhone16,1 = 15 Pro (A17 AV1). iPhone15,* is A16 / 14 Pro — no AV1 HW.
-   Simulator reports "arm64", not iPhoneN,M. Everyone else gets H.264. */
+/* AV1 HW: A17 Pro / A18 / M3 / M4. Simulator reports "arm64", not iPhoneN,M.
+   iPhone16,1 = 15 Pro. iPhone15,* = A16 / 14 Pro — no AV1.
+   iPad16,* = mini A17 Pro, Pro M4, Air M4. iPad15,3–15,6 = Air M3 (has AV1);
+   iPad15,7–15,8 = A16 iPad (no AV1). Everyone else gets H.264. */
 #if TARGET_OS_IPHONE
-static int ios_iphone_av1(void)
+static int ios_av1_hw(void)
 {
     static int probed;
     static int ok;
     char machine[64];
     size_t n = sizeof(machine);
-    int major = 0;
+    int major = 0, minor = 0;
     if (probed)
         return ok;
     probed = 1;
@@ -278,6 +280,12 @@ static int ios_iphone_av1(void)
         machine[0] = 0;
     if (sscanf(machine, "iPhone%d", &major) == 1 && major >= 16)
         ok = 1;
+    else if (sscanf(machine, "iPad%d,%d", &major, &minor) == 2) {
+        if (major >= 16)
+            ok = 1;
+        else if (major == 15 && minor >= 3 && minor <= 6)
+            ok = 1;
+    }
     fprintf(stderr, "mse ios machine=%s av1=%d\n", machine, ok);
     os_log_with_type(os_log_create("com.ymusic.mse", "v"), OS_LOG_TYPE_INFO,
                      "mse ios machine=%{public}s av1=%d", machine, ok);
@@ -291,7 +299,7 @@ static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     (void)argc;
     (void)argv;
 #if TARGET_OS_IPHONE
-    return JS_NewInt32(ctx, ios_iphone_av1());
+    return JS_NewInt32(ctx, ios_av1_hw());
 #else
     return JS_NewInt32(ctx, 1);
 #endif
