@@ -1,5 +1,9 @@
 // movie_player.getPlayerResponse() is the playing video (webview-js
 // skip_ads.ts isLive, webview_api.ts getCurrentPlayerRes).
+//
+// isLiveContent stays true after the broadcast ends (post-live VOD,
+// e.g. 0_LTL7O1xX0). Only videoDetails.isLive is on-air. Ended streams
+// are VOD: dummy SB + SABR 40=1.
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
@@ -18,16 +22,12 @@ function videoDetails(): Record<string, unknown> | null {
   }
 }
 
-function detailsAreLive(vd: Record<string, unknown>): boolean {
-  return vd["isLive"] === true || vd["isLiveContent"] === true;
-}
-
 export function isYmLive(): boolean {
   const vd = videoDetails();
-  return !!vd && detailsAreLive(vd);
+  return !!vd && vd["isLive"] === true;
 }
 
 export function isKnownVod(): boolean {
   const vd = videoDetails();
-  return !!vd && !detailsAreLive(vd);
+  return !!vd && vd["isLive"] !== true;
 }
