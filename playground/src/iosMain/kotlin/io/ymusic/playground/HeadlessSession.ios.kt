@@ -3,6 +3,7 @@ package io.ymusic.playground
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.player.DynamicEnginePlayer
+import io.ymusic.mse.MseHostNative
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.InMemorySettingsStore
@@ -12,7 +13,6 @@ import kmpcommon.log.Logger
 import kmphttp.UrlSessionKmpHttpClient
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.withContext
-import platform.Foundation.NSLog
 import platform.Foundation.NSProcessInfo
 import kotlin.time.Duration.Companion.seconds
 
@@ -68,7 +68,7 @@ internal actual fun defaultMseVideoId(): String {
 }
 
 internal actual fun logMseLab(line: String) {
-    NSLog("%@", "[ios-mse] $line")
+    MseHostNative.log("[ios-mse] $line")
 }
 
 private class PrintLog private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs) {
@@ -78,6 +78,6 @@ private class PrintLog private constructor(crumbs: List<Crumb>) : CrumbLogger(cr
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
         val extra = error?.let { " err=${it.message}" } ?: ""
-        NSLog("%@", "log[$level] $path $message$extra")
+        MseHostNative.log("log[$level] $path $message$extra")
     }
 }

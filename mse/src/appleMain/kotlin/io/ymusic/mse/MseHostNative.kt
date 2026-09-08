@@ -8,6 +8,7 @@ import io.ymusic.mse.cinterop.mse_host_samples_played
 import io.ymusic.mse.cinterop.mse_host_set_video_surface
 import io.ymusic.mse.cinterop.mse_host_video_size
 import io.ymusic.mse.cinterop.mse_host_vtable
+import io.ymusic.mse.cinterop.mse_ios_log
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -25,6 +26,10 @@ import kotlinx.cinterop.value
 @OptIn(ExperimentalForeignApi::class)
 actual object MseHostNative {
     private var frameScratch = ByteArray(0)
+
+    fun log(msg: String) {
+        mse_ios_log(msg)
+    }
 
     actual fun vtable(): Long = mse_host_vtable()?.rawValue?.toLong() ?: 0L
 

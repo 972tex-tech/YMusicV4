@@ -48,6 +48,11 @@ void mse_host_set_video_surface(void *h, void *window)
     (void)window;
 }
 
+void mse_ios_log(const char *msg)
+{
+    (void)msg;
+}
+
 int mse_host_video_size(void *h, int *w, int *ht)
 {
     (void)h;

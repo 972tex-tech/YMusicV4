@@ -11,6 +11,7 @@
 #ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
 #include <mach/mach_time.h>
+#include <os/log.h>
 #include "mse_vt_present.h"
 #endif
 #ifdef __ANDROID__
@@ -1287,4 +1288,14 @@ int mse_host_buffered(MseHost *h, int audio, double *pairs, int max_pairs)
     if (!h)
         return 0;
     return mse_av_buffered(h->av, audio, pairs, max_pairs);
+}
+
+void mse_ios_log(const char *msg)
+{
+    if (!msg)
+        return;
+#ifdef __APPLE__
+    os_log_with_type(os_log_create("com.ymusic.mse", "v"), OS_LOG_TYPE_INFO, "%{public}s", msg);
+#endif
+    fprintf(stderr, "%s\n", msg);
 }
