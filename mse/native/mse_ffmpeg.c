@@ -1345,14 +1345,12 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         (*ctxp)->thread_type = 0;
     }
 #ifdef __APPLE__
-    /* Device: H.264/AV1 VT. Simulator ffmpeg VT init fails
-       (videotoolbox_vld) then paints garbage after seek. Software + show_bgra. */
+    /* H.264/AV1 VideoToolbox. ffmpeg used to Require HW; simulator has none
+       so session create failed. After the allow-sw patch, VT still runs
+       (Apple software decoder on sim, HW on device). */
     (*ctxp)->opaque = a;
     {
         int use_vt = video && !vp9 && par->codec_id != a->vt_fail_id;
-#if TARGET_OS_SIMULATOR
-        use_vt = 0;
-#endif
         if (use_vt) {
             AVBufferRef *hw = NULL;
             if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) >= 0) {
