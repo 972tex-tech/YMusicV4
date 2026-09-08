@@ -192,12 +192,15 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
         }
         try {
             for (st in incoming) {
-                position = st.longField("positionMs")
+                val pos = st.longField("positionMs")
+                val skStart = st.longField("seekableStartMs")
+                val skEnd = st.longField("seekableEndMs")
+                position = pos
                 duration = st.longField("durationMs")
                 live = (st["live"] as? JsonPrimitive)?.content == "true"
                 seekable = (st["seekable"] as? JsonPrimitive)?.content != "false"
-                seekableStart = st.longField("seekableStartMs")
-                seekableEnd = st.longField("seekableEndMs")
+                seekableStart = skStart
+                seekableEnd = skEnd
                 paused = (st["paused"] as? JsonPrimitive)?.content != "false"
                 reportedQuality = (st["preferQuality"] as? JsonPrimitive)?.content
                     ?: (st["quality"] as? JsonPrimitive)?.content
@@ -207,9 +210,9 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 if (pw != pictureW) pictureW = pw
                 if (ph != pictureH) pictureH = ph
                 val scrub = scrubFrac
-                if (scrub != null && windowEnd > windowStart) {
-                    val target = windowStart + (scrub * (windowEnd - windowStart)).toLong()
-                    if (kotlin.math.abs(position - target) < 1_000L)
+                if (scrub != null && skEnd > skStart) {
+                    val target = skStart + (scrub * (skEnd - skStart)).toLong()
+                    if (kotlin.math.abs(pos - target) < 1_000L)
                         scrubFrac = null
                 }
             }

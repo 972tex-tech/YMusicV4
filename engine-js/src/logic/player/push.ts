@@ -39,6 +39,10 @@ export async function runProgressSession(pipe: Pipe): Promise<void> {
     void emit(sink, progressPlayer(), last);
   };
   const v = activeHtmlMedia();
+  /* Clock lives in C. HTML timeupdate only runs while mediaTick is on
+     (HTMLMediaElement.play). YouTube can leave that off after load/reset
+     while DAC still plays — poll so the seek bar does not freeze. */
+  const tick = setInterval(onEvt, 250);
   try {
     if (v) {
       v["addEventListener"]("timeupdate", onEvt);
@@ -52,6 +56,7 @@ export async function runProgressSession(pipe: Pipe): Promise<void> {
     await emit(pipe.sink, progressPlayer(), last);
     await waitHostClose(pipe);
   } finally {
+    clearInterval(tick);
     setProgressHook(null);
     if (v) {
       v["removeEventListener"]("timeupdate", onEvt);
