@@ -68,7 +68,7 @@ internal actual fun defaultMseVideoId(): String {
 }
 
 internal actual fun logMseLab(line: String) {
-    NSLog("[ios-mse] %@", line)
+    NSLog("%@", "[ios-mse] $line")
 }
 
 private class PrintLog private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs) {
@@ -77,6 +77,7 @@ private class PrintLog private constructor(crumbs: List<Crumb>) : CrumbLogger(cr
     override fun fork(crumbs: List<Crumb>): CrumbLogger = PrintLog(crumbs)
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
-        NSLog("log[%@] %@ %@", level.toString(), path, message + (error?.let { " err=${it.message}" } ?: ""))
+        val extra = error?.let { " err=${it.message}" } ?: ""
+        NSLog("%@", "log[$level] $path $message$extra")
     }
 }

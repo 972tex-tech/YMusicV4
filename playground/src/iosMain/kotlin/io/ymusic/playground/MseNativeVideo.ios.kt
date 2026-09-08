@@ -82,11 +82,11 @@ internal actual fun MseNativeVideo(
         val p = player ?: return@LaunchedEffect
         val lp = layerPtr
         if (lp != null) {
-            platform.Foundation.NSLog("[ios-mse] attach vt layer")
+            platform.Foundation.NSLog("%@", "[ios-mse] attach vt layer")
             p.setVideoSurface(MseVideoSurface().apply { layer = lp })
             sink.surfaceReady = true
         } else {
-            platform.Foundation.NSLog("[ios-mse] detach vt layer")
+            platform.Foundation.NSLog("%@", "[ios-mse] detach vt layer")
             p.setVideoSurface(null)
             sink.surfaceReady = false
         }
