@@ -1,9 +1,13 @@
 #include "quickjs_mse.h"
 
 #include <limits.h>
+#include <stdio.h>
 #include <string.h>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include <sys/sysctl.h>
+#endif
 #endif
 
 static const QjsMseVt *g_vt;
@@ -256,14 +260,35 @@ static JSValue js_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-/* iOS plays H.264 VideoToolbox. Do not claim AV1/VP9. */
+/* iPhone16,1 = 15 Pro (A17 AV1). iPhone15,* is A16 / 14 Pro — no AV1 HW.
+   Simulator reports "arm64", not iPhoneN,M. Everyone else gets H.264. */
+#if TARGET_OS_IPHONE
+static int ios_iphone_av1(void)
+{
+    static int probed;
+    static int ok;
+    char machine[64];
+    size_t n = sizeof(machine);
+    int major = 0;
+    if (probed)
+        return ok;
+    probed = 1;
+    if (sysctlbyname("hw.machine", machine, &n, NULL, 0) != 0)
+        machine[0] = 0;
+    if (sscanf(machine, "iPhone%d", &major) == 1 && major >= 16)
+        ok = 1;
+    fprintf(stderr, "mse ios machine=%s av1=%d\n", machine, ok);
+    return ok;
+}
+#endif
+
 static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     (void)this_val;
     (void)argc;
     (void)argv;
 #if TARGET_OS_IPHONE
-    return JS_NewInt32(ctx, 0);
+    return JS_NewInt32(ctx, ios_iphone_av1());
 #else
     return JS_NewInt32(ctx, 1);
 #endif
