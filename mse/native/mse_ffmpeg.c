@@ -95,6 +95,9 @@ struct MseAv {
     int v_rest;
     /* After seek: present RAP-to-playhead even if pts is behind clock. */
     int show_late;
+    /* H.264: AV_PKT_FLAG_KEY can be a recovery point, not IDR. Don't show
+       until an IDR NAL has been sent (open-GOP seek = broken picture). */
+    int v_seen_idr;
 #ifdef __APPLE__
     void *vt_layer;
     /* Codec that failed VideoToolbox. Skip VT for that id (simulator AV1). */
@@ -121,6 +124,59 @@ static void close_video_decoder(MseAv *a);
 static void maybe_apply_video_rep(MseAv *a);
 
 #define MSE_SEND_AHEAD 0.08
+
+static int h264_nal_len_size(const AVCodecParameters *par)
+{
+    if (!par || !par->extradata || par->extradata_size < 5)
+        return 4;
+    if (par->extradata[0] == 1)
+        return (par->extradata[4] & 3) + 1;
+    return 4;
+}
+
+static int h264_is_idr(const uint8_t *p, size_t n, int nal_len)
+{
+    size_t i = 0;
+    if (!p || n < 2)
+        return 0;
+    if (nal_len < 1 || nal_len > 4)
+        nal_len = 4;
+    while (i + (size_t)nal_len < n) {
+        uint32_t sz = 0;
+        int k;
+        for (k = 0; k < nal_len; k++)
+            sz = (sz << 8) | p[i + (size_t)k];
+        i += (size_t)nal_len;
+        if (sz < 1 || i + sz > n)
+            break;
+        if ((p[i] & 0x1F) == 5)
+            return 1;
+        i += sz;
+    }
+    for (i = 0; i + 4 < n; i++) {
+        size_t nal;
+        if (p[i] || p[i + 1])
+            continue;
+        if (p[i + 2] == 1)
+            nal = i + 3;
+        else if (p[i + 2] == 0 && p[i + 3] == 1)
+            nal = i + 4;
+        else
+            continue;
+        if (nal < n && (p[nal] & 0x1F) == 5)
+            return 1;
+    }
+    return 0;
+}
+
+static int coded_is_rap(const MseAv *a, const Cf *c)
+{
+    if (!c)
+        return 0;
+    if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_H264)
+        return h264_is_idr(c->data, c->n, h264_nal_len_size(a->vpar));
+    return c->key;
+}
 
 #ifdef __APPLE__
 static os_log_t mse_oslog(void)
@@ -254,7 +310,7 @@ static void vlog_state(MseAv *a, double clock, const char *why, double extra)
 static size_t vf_send_rd(const MseAv *a)
 {
     size_t rd = a->vf.rd;
-    while (rd < a->vf.n && a->need_rap[0] && !a->vf.f[rd].key)
+    while (rd < a->vf.n && a->need_rap[0] && !coded_is_rap(a, &a->vf.f[rd]))
         rd++;
     return rd;
 }
@@ -1104,7 +1160,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             maybe_apply_video_rep(a);
             if (!a->mc)
                 break;
-            while (a->vf.rd < a->vf.n && a->need_rap[0] && !a->vf.f[a->vf.rd].key) {
+            while (a->vf.rd < a->vf.n && a->need_rap[0] &&
+                   !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
                 a->vf.f[a->vf.rd].sent = 1;
                 a->vf.rd++;
             }
@@ -1655,7 +1712,7 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
             a->need_rap[idx] = 1;
             continue;
         }
-        if (a->need_rap[idx] && !tmp->f[i].key)
+        if (a->need_rap[idx] && (idx ? !tmp->f[i].key : !coded_is_rap(a, &tmp->f[i])))
             continue;
         a->need_rap[idx] = 0;
         cfb_push(&kept, tmp->f[i].pts, tmp->f[i].dur, tmp->f[i].key,
@@ -1976,6 +2033,7 @@ static void close_video_decoder(MseAv *a)
         mse_vt_flush(a->vt_layer);
 #endif
     a->need_rap[0] = 1;
+    a->v_seen_idr = 0;
     a->v_reopen = 0;
     /* Do not zero pend_n[0]: mse_av_append can close the decoder mid-cluster
        (quality switch). Wiping pend then subtracting `total` underflows and
@@ -2526,7 +2584,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     }
 #endif
     if (!a->vdec && a->vpar && a->vf.rd < a->vf.n &&
-        (!a->need_rap[0] || a->vf.f[a->vf.rd].key))
+        (!a->need_rap[0] || coded_is_rap(a, &a->vf.f[a->vf.rd])))
         open_decoder(a, 1, a->vpar);
 #ifdef __APPLE__
     if (a->vdec && a->vdec->hw_device_ctx && a->vt_fail_id == a->vdec->codec_id)
@@ -2547,6 +2605,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         }
         if (p < clock - late && !a->show_late) {
             vlog_state(a, clock, "hold-late", d);
+            av_frame_free(&a->vhold);
+        } else if (!a->v_seen_idr) {
             av_frame_free(&a->vhold);
         } else if (present_frame(a, a->vhold, bgra, w, h) == 0) {
             *pts = p;
@@ -2590,6 +2650,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                     i--;
                 continue;
             }
+            if (!a->v_seen_idr) {
+                av_frame_unref(frame);
+                continue;
+            }
             if (present_frame(a, frame, bgra, w, h) < 0)
                 break;
             *pts = p;
@@ -2603,13 +2667,14 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         }
         maybe_apply_video_rep(a);
         if (!a->vdec && a->vpar && a->vf.rd < a->vf.n &&
-            (!a->need_rap[0] || a->vf.f[a->vf.rd].key))
+            (!a->need_rap[0] || coded_is_rap(a, &a->vf.f[a->vf.rd])))
             open_decoder(a, 1, a->vpar);
         if (!a->vdec)
             break;
         {
             size_t rd0 = a->vf.rd;
-            while (a->vf.rd < a->vf.n && a->need_rap[0] && !a->vf.f[a->vf.rd].key) {
+            while (a->vf.rd < a->vf.n && a->need_rap[0] &&
+                   !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
                 a->vf.f[a->vf.rd].sent = 1;
                 a->vf.rd++;
             }
@@ -2628,6 +2693,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         {
             double sp = a->vf.f[a->vf.rd].pts;
             int key = a->vf.f[a->vf.rd].key;
+            int rap = coded_is_rap(a, &a->vf.f[a->vf.rd]);
             int sr = send_coded(&a->vf, a->vdec, a->vbsf);
             if (sr < 0) {
                 char err[64];
@@ -2644,8 +2710,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 }
                 continue;
             }
-            if (key)
+            if (rap) {
                 a->need_rap[0] = 0;
+                a->v_seen_idr = 1;
+            }
             if (vdbg_ok())
                 vlog("send pts=%.3f key=%d clock=%.3f", sp, key, clock);
         }
