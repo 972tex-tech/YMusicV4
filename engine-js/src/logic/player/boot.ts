@@ -89,11 +89,58 @@ function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   host["getPlaybackQuality"] = wrapped;
 }
 
+let pictureW = 0;
+let pictureH = 0;
+
+/** First adaptiveFormats width/height — same as webview-js onVideoDataChange → `_aspect_ratio`. */
+function applyPictureFromResponse(): boolean {
+  const el = moviePlayer();
+  const fn = el ? el["getPlayerResponse"] : undefined;
+  if (typeof fn !== "function") return false;
+  let pr: unknown;
+  try {
+    pr = (fn as () => unknown).call(el);
+  } catch (_e) {
+    return false;
+  }
+  const rec = asRec(pr);
+  const sd = rec ? asRec(rec["streamingData"]) : null;
+  const formats = sd ? sd["adaptiveFormats"] : null;
+  if (!Array.isArray(formats)) return false;
+  for (let i = 0; i < formats.length; i++) {
+    const fmt = asRec(formats[i]);
+    if (!fmt) continue;
+    const w = Number(fmt["width"]);
+    const h = Number(fmt["height"]);
+    if (isFinite(w) && w > 0 && isFinite(h) && h > 0) {
+      const iw = Math.round(w);
+      const ih = Math.round(h);
+      if (pictureW === iw && pictureH === ih) return false;
+      pictureW = iw;
+      pictureH = ih;
+      if (MSE_DEBUG) console.log("mse picture " + iw + "x" + ih);
+      return true;
+    }
+  }
+  return false;
+}
+
+function bindPictureSize(el: Record<string, unknown>): void {
+  if ((el as { __ymPicture?: boolean }).__ymPicture) return;
+  (el as { __ymPicture?: boolean }).__ymPicture = true;
+  const add = el["addEventListener"];
+  if (typeof add !== "function") return;
+  (add as (name: string, fn: () => void) => void).call(el, "onVideoDataChange", function () {
+    if (applyPictureFromResponse()) notifyProgress();
+  });
+}
+
 /** App.FC copies IFrame names (state.Y) onto template.element = #movie_player
  *  when create() is given #player. Copy state.Y if FC landed elsewhere. */
 function bindMoviePlayerApi(app: YtApp | null): void {
   const el = moviePlayer();
   if (!el || !app) return;
+  bindPictureSize(el);
   wrapGetPlaybackQuality(el);
   wrapGetPlaybackQuality(app as unknown as Record<string, unknown>);
   if (typeof el["getPlaybackQuality"] === "function") return;
@@ -750,6 +797,9 @@ class Player {
       this.pause();
       await resetMse();
     }
+    pictureW = 0;
+    pictureH = 0;
+    notifyProgress();
     const player = this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. Create
      * stays without video_id so this is the only /player POST. */
@@ -772,6 +822,8 @@ class Player {
     }
     await waitCaptionIngest(ingestAt, 8000);
     if (q === "zero") this.applyZero();
+    applyPictureFromResponse();
+    notifyProgress();
     notifyCatalog();
     out["step"] = "ok";
     out["ok"] = true;
@@ -895,8 +947,8 @@ class Player {
       "paused": v ? !!v["paused"] : true,
       "ended": !!ended,
       "readyState": v ? Number(v["readyState"]) : 0,
-      "videoWidth": v ? Number(v["videoWidth"]) : 0,
-      "videoHeight": v ? Number(v["videoHeight"]) : 0,
+      "videoWidth": isProductZero() ? 0 : pictureW,
+      "videoHeight": isProductZero() ? 0 : pictureH,
       "audioOnly": isProductZero(),
     };
   }
@@ -1042,11 +1094,20 @@ export function catalogPlayer(): Record<string, unknown> {
 }
 
 let catalogHook: (() => void) | null = null;
+let progressHook: (() => void) | null = null;
 
 export function setCatalogHook(fn: (() => void) | null): void {
   catalogHook = fn;
 }
 
+export function setProgressHook(fn: (() => void) | null): void {
+  progressHook = fn;
+}
+
 function notifyCatalog(): void {
   if (catalogHook) catalogHook();
+}
+
+function notifyProgress(): void {
+  if (progressHook) progressHook();
 }

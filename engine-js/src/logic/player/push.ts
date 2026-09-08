@@ -2,7 +2,7 @@
 
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { activeHtmlMedia } from "../../protocol/mse";
-import { catalogPlayer, progressPlayer, setCatalogHook } from "./boot";
+import { catalogPlayer, progressPlayer, setCatalogHook, setProgressHook } from "./boot";
 
 let progressPipe: Pipe | null = null;
 let catalogPipe: Pipe | null = null;
@@ -48,9 +48,11 @@ export async function runProgressSession(pipe: Pipe): Promise<void> {
       v["addEventListener"]("ended", onEvt);
       v["addEventListener"]("durationchange", onEvt);
     }
+    setProgressHook(onEvt);
     await emit(pipe.sink, progressPlayer(), last);
     await waitHostClose(pipe);
   } finally {
+    setProgressHook(null);
     if (v) {
       v["removeEventListener"]("timeupdate", onEvt);
       v["removeEventListener"]("play", onEvt);

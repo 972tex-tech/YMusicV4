@@ -1,4 +1,5 @@
-// Display viewport YouTube ABR sees (player clientWidth/Height, media videoWidth/Height).
+// Display viewport YouTube ABR sees (player clientWidth/Height).
+// Picture size (adaptiveFormats width/height) is listen/player/status videoWidth/Height.
 // Default 360p; host overrides with the real hole size.
 
 const DEFAULT_W = 640;
