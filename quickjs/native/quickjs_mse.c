@@ -256,13 +256,17 @@ static JSValue js_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-/* Claim AV1/VP9 when libav has dav1d / libvpx (or VT on device). */
+/* iOS plays H.264 VideoToolbox. Do not claim AV1/VP9. */
 static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     (void)this_val;
     (void)argc;
     (void)argv;
+#if TARGET_OS_IPHONE
+    return JS_NewInt32(ctx, 0);
+#else
     return JS_NewInt32(ctx, 1);
+#endif
 }
 
 static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -270,7 +274,11 @@ static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     (void)this_val;
     (void)argc;
     (void)argv;
+#if TARGET_OS_IPHONE
+    return JS_NewInt32(ctx, 0);
+#else
     return JS_NewInt32(ctx, 1);
+#endif
 }
 
 void qjs_mse_install(JSContext *ctx)
