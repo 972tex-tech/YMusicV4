@@ -137,21 +137,23 @@ static int h264_nal_len_size(const AVCodecParameters *par)
 static int h264_is_idr(const uint8_t *p, size_t n, int nal_len)
 {
     size_t i = 0;
+    int avcc = nal_len >= 1 && nal_len <= 4;
     if (!p || n < 2)
         return 0;
-    if (nal_len < 1 || nal_len > 4)
-        nal_len = 4;
-    while (i + (size_t)nal_len < n) {
-        uint32_t sz = 0;
-        int k;
-        for (k = 0; k < nal_len; k++)
-            sz = (sz << 8) | p[i + (size_t)k];
-        i += (size_t)nal_len;
-        if (sz < 1 || i + sz > n)
-            break;
-        if ((p[i] & 0x1F) == 5)
-            return 1;
-        i += sz;
+    if (avcc) {
+        while (i + (size_t)nal_len < n) {
+            uint32_t sz = 0;
+            int k;
+            for (k = 0; k < nal_len; k++)
+                sz = (sz << 8) | p[i + (size_t)k];
+            i += (size_t)nal_len;
+            if (sz < 1 || i + sz > n)
+                return 0;
+            if ((p[i] & 0x1F) == 5)
+                return 1;
+            i += sz;
+        }
+        return 0;
     }
     for (i = 0; i + 4 < n; i++) {
         size_t nal;
@@ -2331,9 +2333,10 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
-    /* No RAP at the new playhead: drop the decoder instead of feeding leftover
-       P-frames (broken picture / POC errors). Next key reopens. */
-    if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key) {
+    /* No IDR covering t: drop leftover (old 0–30s mixed with new 1890s
+       after a far seek) and wait for SABR to append a real IDR. */
+    if (a->vf.rd >= a->vf.n || !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
+        cfb_free(&a->vf);
         a->pend_n[0] = 0;
         close_video_decoder(a);
     } else if (a->vdec)
@@ -2601,7 +2604,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
-        if (p < clock - late && !a->show_late) {
+        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
         } else if (!a->v_seen_idr) {
@@ -2640,7 +2643,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            if (p < clock - late && !a->show_late && frame->pts != AV_NOPTS_VALUE) {
+            /* show_late: decode the GOP but only present near the playhead.
+               Showing pts=1890 at clock=1895 after seek is the smashed picture. */
+            if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
+                !(a->show_late && p >= clock - 0.35)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
