@@ -1224,6 +1224,67 @@ void mse_host_change_type(MseHost *h, int audio)
         mse_av_change_type(h->av, audio);
 }
 
+static void show_black(MseHost *h)
+{
+    uint8_t *black = NULL;
+    int w = 0, ht = 0;
+    if (!h)
+        return;
+    pthread_mutex_lock(&h->frame_mu);
+    if (!h->last_bgra || h->last_w <= 0 || h->last_h <= 0) {
+        w = 640;
+        ht = 360;
+        if ((uint64_t)w * (uint64_t)ht <= (uint64_t)(INT_MAX / 4)) {
+            black = calloc((size_t)w * (size_t)ht * 4, 1);
+            if (black) {
+                free(h->last_bgra);
+                h->last_bgra = black;
+                h->last_w = w;
+                h->last_h = ht;
+            }
+        }
+    } else {
+        memset(h->last_bgra, 0, (size_t)h->last_w * (size_t)h->last_h * 4);
+        w = h->last_w;
+        ht = h->last_h;
+        black = h->last_bgra;
+    }
+    if (black)
+        h->frame_gen++;
+    pthread_mutex_unlock(&h->frame_mu);
+    if (!black)
+        return;
+#ifdef __ANDROID__
+    {
+        ANativeWindow *win;
+        pthread_mutex_lock(&h->mu);
+        win = (ANativeWindow *)h->window;
+        if (win)
+            ANativeWindow_acquire(win);
+        pthread_mutex_unlock(&h->mu);
+        if (win) {
+            blit_window(win, w, ht, black);
+            ANativeWindow_release(win);
+        }
+    }
+#endif
+    if (h->on_frame)
+        h->on_frame(h->user, w, ht, black);
+    pthread_mutex_lock(&h->mu);
+    h->vw = w;
+    h->vh = ht;
+    pthread_mutex_unlock(&h->mu);
+}
+
+void mse_host_rest_video(MseHost *h, int on)
+{
+    if (!h)
+        return;
+    mse_av_rest_video(h->av, on);
+    if (on)
+        show_black(h);
+}
+
 int mse_host_buffered(MseHost *h, int audio, double *pairs, int max_pairs)
 {
     if (!h)

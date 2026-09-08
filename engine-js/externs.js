@@ -197,6 +197,7 @@ function __mseAppend(audio, bytes, tsOff, winStart, winEnd) {}
 function __mseRemove(audio, start, end) {}
 function __mseAbort(audio) {}
 function __mseChangeType(audio) {}
+function __mseRestVideo(on) {}
 function __mseBuffered(audio) {}
 function __mseReset() {}
 function __bgEntropyStart() {}

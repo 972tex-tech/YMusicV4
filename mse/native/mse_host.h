@@ -42,6 +42,7 @@ int mse_host_append(MseHost *h, int audio, const uint8_t *p, int n, double ts_of
 void mse_host_remove(MseHost *h, int audio, double start, double end);
 void mse_host_abort(MseHost *h, int audio);
 void mse_host_change_type(MseHost *h, int audio);
+void mse_host_rest_video(MseHost *h, int on);
 int mse_host_buffered(MseHost *h, int audio, double *pairs, int max_pairs);
 
 #ifdef __cplusplus

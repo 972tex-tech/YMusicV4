@@ -30,6 +30,8 @@ void mse_av_flush(MseAv *a, int audio, int video);
 void mse_av_abort(MseAv *a, int audio);
 /* MSE changeType: reset parser + drop init for that track; leftover stays. */
 void mse_av_change_type(MseAv *a, int audio);
+/* Live audio-only: keep appending video leftover, do not decode. */
+void mse_av_rest_video(MseAv *a, int on);
 void mse_av_seek(MseAv *a, double seconds);
 
 /* Android: borrowed ANativeWindow, or NULL to detach. No-op elsewhere. */

@@ -24,6 +24,7 @@ typedef struct QjsMseVt {
     int (*buffered)(void *, int audio, double *pairs, int max_pairs);
     int (*video_size)(void *, int *w, int *h);
     void (*change_type)(void *, int audio);
+    void (*rest_video)(void *, int on);
 } QjsMseVt;
 
 #ifdef __cplusplus

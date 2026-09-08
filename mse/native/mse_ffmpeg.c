@@ -90,6 +90,7 @@ struct MseAv {
        Chrome changeType keeps those packets; switch the decoder at the new GOP. */
     AVCodecParameters *vpar_next;
     double v_switch_pts;
+    int v_rest;
 #ifdef __APPLE__
     void *vt_layer;
 #endif
@@ -1121,6 +1122,8 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 {
     const AVCodec *codec;
     AVCodecContext **ctxp = video ? &a->vdec : &a->adec;
+    if (video && a->v_rest)
+        return 0;
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
         int same = (*ctxp)->codec_id == par->codec_id;
@@ -1881,6 +1884,23 @@ void mse_av_change_type(MseAv *a, int audio)
     pthread_mutex_unlock(&a->mu);
 }
 
+void mse_av_rest_video(MseAv *a, int on)
+{
+    if (!a)
+        return;
+    pthread_mutex_lock(&a->mu);
+    on = on ? 1 : 0;
+    if (a->v_rest == on) {
+        pthread_mutex_unlock(&a->mu);
+        return;
+    }
+    a->v_rest = on;
+    if (on)
+        close_video_decoder(a);
+    vlog("rest-video %d vf=%zu", on, a->vf.n);
+    pthread_mutex_unlock(&a->mu);
+}
+
 void mse_av_remove(MseAv *a, int audio, double start, double end)
 {
     if (!a)
@@ -2311,6 +2331,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     *bgra = NULL;
     pthread_mutex_lock(&a->mu);
+    if (a->v_rest) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
     maybe_apply_video_rep(a);
 #ifdef __ANDROID__
     if (a->vf.n == 0) {

@@ -17,6 +17,7 @@ static const QjsMseVt kVt = {
     .buffered = (int (*)(void *, int, double *, int))mse_host_buffered,
     .video_size = (int (*)(void *, int *, int *))mse_host_video_size,
     .change_type = (void (*)(void *, int))mse_host_change_type,
+    .rest_video = (void (*)(void *, int))mse_host_rest_video,
 };
 
 const void *mse_host_vtable(void)
