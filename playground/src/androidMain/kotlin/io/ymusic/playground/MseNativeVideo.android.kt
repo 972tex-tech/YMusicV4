@@ -1,8 +1,10 @@
 package io.ymusic.playground
 
 import android.graphics.SurfaceTexture
+import android.util.Log
 import android.view.Surface
 import android.view.TextureView
+import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +21,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 /**
- * TextureView hole: C blits BGRA into an ANativeWindow. Compose chrome sits on top.
+ * TextureView hole: MediaCodec renders into the Surface; software blit is the
+ * fallback. Compose chrome sits on top. Android ffmpeg has no AV1 decoder, so
+ * this Surface must reach C before pull_video or AV1 stays frames=0.
  */
 @Composable
 internal actual fun MseNativeVideo(
@@ -30,38 +34,75 @@ internal actual fun MseNativeVideo(
     modifier: Modifier,
 ) {
     var androidSurface by remember { mutableStateOf<Surface?>(null) }
+    remember {
+        sink.surfaceReady = false
+        true
+    }
+
+    fun bindTexture(tv: TextureView) {
+        val st = tv.surfaceTexture
+        if (!tv.isAvailable || st == null) return
+        val cur = androidSurface
+        if (cur != null && cur.isValid) {
+            sink.surfaceReady = true
+            return
+        }
+        androidSurface = Surface(st)
+        sink.surfaceReady = true
+    }
 
     AndroidView(
         factory = { ctx ->
             TextureView(ctx).apply {
                 isOpaque = true
+                keepScreenOn = true
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+                        Log.i("mse", "texture available ${w}x$h")
                         androidSurface = Surface(st)
+                        sink.surfaceReady = true
                     }
 
                     override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = Unit
 
                     override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+                        Log.i("mse", "texture destroyed")
                         androidSurface = null
+                        sink.surfaceReady = false
                         return true
                     }
 
                     override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
                 }
+                post { bindTexture(this) }
             }
         },
+        update = { bindTexture(it) },
         modifier = modifier,
     )
 
     LaunchedEffect(player, androidSurface) {
-        val p = player
+        val p = player ?: return@LaunchedEffect
         val s = androidSurface
-        if (p != null && s != null) p.setVideoSurface(MseVideoSurface(s))
-        else p?.setVideoSurface(null)
+        if (s != null && s.isValid) {
+            Log.i("mse", "attach video surface")
+            p.setVideoSurface(MseVideoSurface(s))
+            sink.surfaceReady = true
+        } else {
+            Log.i("mse", "detach video surface")
+            p.setVideoSurface(null)
+            sink.surfaceReady = false
+        }
     }
     DisposableEffect(player) {
-        onDispose { player?.setVideoSurface(null) }
+        onDispose {
+            player?.setVideoSurface(null)
+            sink.surfaceReady = false
+        }
     }
     LaunchedEffect(surface) {
         val wh = IntArray(2)

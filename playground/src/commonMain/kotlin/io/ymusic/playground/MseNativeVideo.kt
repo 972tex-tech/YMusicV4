@@ -16,6 +16,9 @@ internal class MseVideoSink {
     @Volatile var frameW: Int = 0
 
     @Volatile var frameH: Int = 0
+
+    /** Android TextureView Surface is attached. JVM/iOS blit has no window, so this stays true. */
+    @Volatile var surfaceReady: Boolean = true
 }
 
 /**

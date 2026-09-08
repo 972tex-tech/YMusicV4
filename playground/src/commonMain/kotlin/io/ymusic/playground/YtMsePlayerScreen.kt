@@ -114,6 +114,12 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
         }
         if (didLoad) return@LaunchedEffect
         if (w <= 0 || h <= 0) return@LaunchedEffect
+        var waited = 0
+        while (!sink.surfaceReady && waited < 3000) {
+            delay(16)
+            waited += 16
+        }
+        if (!sink.surfaceReady) logMseLab("load without video surface after ${waited}ms")
         didLoad = true
         try {
             withContext(Dispatchers.Default) {
