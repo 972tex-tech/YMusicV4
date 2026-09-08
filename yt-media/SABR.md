@@ -69,6 +69,93 @@ looks like start-of-file there. Gold **live** media `MH` omits it (and
 `lmt` / `duration_ms` / `content_length`): segments are seq/`start_ms`,
 ~1s apart.
 
+## Gapless quality switch (WEB MSE)
+
+Captured 2026-09-08: VOD `x72VDoEpTIU` auto↔tiny↔auto (AV1 398↔394);
+live DVR `0_LTL7O1xX0` auto↔tiny↔auto (VP9 302↔278↔303). Logs:
+`playground/build/gapless-{vod,live}.log`. Proof filter also records
+`changeType` / `appendBuffer`.
+
+### `FORMAT_INIT` (UMP 42)
+
+Register a format the client has not initialized (`itag` not in `sel=`).
+Fields on these bodies:
+
+| Field | Wire | Example |
+|---|---|---|
+| 1 | string | `video_id` |
+| 2 | FormatId | `itag` + `lmt` (+ `xtag` on DRC audio) |
+| 3 | varint | duration ms (VOD length, or DVR window ~8h) |
+| 4 | varint | 174 AV1 / 4837 VP9 / 86–2902 audio |
+| 5 | string | mime (`video/mp4; codecs="av01.0.08M.08"`, `video/webm; codecs="vp09.00.40.08"`, `audio/webm; codecs="opus"`) |
+| 6, 7 | bytes | short (5–7 B) |
+| 9 | varint | VOD 13065216; live often repeats field 3 |
+| 10 | varint | timescale (15360 AV1, 1000 WebM) |
+
+Not an init segment. The init bytes are the next `MEDIA_HEADER` with `is_init_seg=1`.
+
+### `MEDIA_HEADER` (UMP 20)
+
+| Field | Init (`8=1`) | Media (`8=0`) |
+|---|---|---|
+| 1 `header_id` | yes | yes |
+| 2 `video_id` | yes | yes |
+| 3 `itag` | yes | yes |
+| 4 `lmt` | yes | yes |
+| 5 `xtags` | audio DRC | audio DRC |
+| 6 `start_range` | **0** | byte offset in that itag’s file (prev `range+clen`) |
+| 8 `is_init_seg` | 1 | 0 |
+| 9 `sequence_number` | omit | GOP/segment index (VOD from 1; live continues) |
+| 10 | size/bitrate hint | yes |
+| 11 `start_ms` | omit | presentation start |
+| 12 `duration_ms` | omit | GOP length (~5s AV1, ~5–6s VP9, 10s opus) |
+| 13 FormatId | itag+lmt | itag+lmt |
+| 14 `content_length` | init size (AV1 ~2820, VP9 ~90k, opus ~1.7k–53k) | media size |
+| 15 TimeRange | omit | `1=startTicks 2=durationTicks 3=timescale` |
+
+This DVR live **does** send `start_range` / `lmt` / `clen` / `duration_ms`
+(same shape as VOD). Gold miller live (`BEtsctac5KQ`) omitted those; do not
+treat “live ⇒ no byte range” as universal.
+
+UMP order for a **new** itag:
+
+```
+FORMAT_INIT(itag)
+MEDIA_HEADER init=1 range=0     MEDIA_DATA(init) MEDIA_END
+MEDIA_HEADER init=0 seq=N t=T   MEDIA_DATA...    MEDIA_END
+```
+
+Already in `sel=` → no `FORMAT_INIT`; media `MH` only.
+
+### What MSE does
+
+`SourceBuffer.changeType` was **never** called. Mime stays generic:
+`video/mp4; codecs="av01.0.08M.08"` across 398↔394, `video/webm; codecs="vp9"`
+across 302↔278↔303. Tiny’s FORMAT_INIT codec (`av01.0.00M.08` / `vp09.00.11.08`)
+is SABR metadata, not the SourceBuffer type.
+
+`appendBuffer` of the new init does **not** clear leftover. After auto-back
+on live: video `br=[0+28233]` (278 leftover), then FORMAT_INIT 303 + init MH
++ media `seq=6 startMs=28233` → append grows `br` to `[0+34233]`. Clock does
+not seek. That is gapless: new GOP is glued at leftover end.
+
+Forced tiny right after join **recreated MediaSource** (`sourceopen` again,
+clock 0, `seq=1 t=0`). That is a new stream, not the leftover path.
+
+### Two shapes
+
+| | Forced tiny at join | Auto-back (gapless) |
+|---|---|---|
+| MediaSource | recreate, clock 0 | keep |
+| `changeType` | no | no |
+| FORMAT_INIT | new itag | new itag |
+| init MH | `range=0` | `range=0` |
+| first media MH | `seq=1 startMs=0` | `seq` / `startMs` = leftover end |
+| MSE `buffered` | empty then fill from 0 | leftover stays, then extends |
+
+C leftover-keep (`vpar_next`, switch at next key) is what makes the init
+append of a different size not punch a hole. YouTube never seeks `currentTime`.
+
 ## VOD vs live
 
 Same UMP schema. Live adds `LIVE_METADATA`, URL `live=1` (uncached), huge

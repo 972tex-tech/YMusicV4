@@ -7,6 +7,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.test.Test
@@ -456,11 +457,75 @@ class HeadlessPlaybackTest {
         }
     }
 
+    /**
+     * Capture auto↔144p (tiny) on VOD: FORMAT_INIT, MEDIA_HEADER,
+     * changeType, appendBuffer. Write the proof log for the write-up.
+     */
+    @Test
+    fun gapless_vod_auto_tiny_auto() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(VIDEO_ID, session.log, "auto")
+            session.player.setViewport(1920, 1080, session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 3_000,
+                timeoutMs = 60_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "vod auto",
+                requireNoJump = false,
+            )
+            session.switchQuality(surface, "tiny", forced = true, label = "vod tiny")
+            session.switchQuality(surface, "auto", forced = false, label = "vod auto-back")
+            dumpGaplessProof(session, "vod")
+        } finally {
+            session.close()
+        }
+    }
+
+    /**
+     * Same auto↔144p capture on live. Tiny pin is a real quality change
+     * here (not audio-only). FORMAT_INIT vs media MH is the point.
+     */
+    @Test
+    fun gapless_live_auto_tiny_auto() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(LIVE_ID, session.log, "auto")
+            session.player.setViewport(1920, 1080, session.log)
+            session.player.play(session.log)
+            session.watchPlay(
+                surface,
+                minDelta = 3_000,
+                timeoutMs = 60_000,
+                audioStallBudget = STARTUP_AUDIO_STALL_MS,
+                label = "live auto",
+                requireNoJump = false,
+            )
+            session.switchQuality(surface, "tiny", forced = true, label = "live tiny")
+            session.switchQuality(surface, "auto", forced = false, label = "live auto-back")
+            dumpGaplessProof(session, "live")
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val SECOND_ID = "wjhyk-Cx6wk"
         private const val LONG_ID = "wjhyk-Cx6wk"
-        private const val LIVE_ID = "hEeAXerJ5n0"
+        private const val LIVE_ID = "0_LTL7O1xX0"
     }
 }
 
@@ -658,6 +723,29 @@ private fun rightEdgeFlatGarbageBgra(bgra: ByteArray, w: Int, h: Int): Boolean {
     return black * 10 >= n * 9 || white * 10 >= n * 9
 }
 
+private fun dumpGaplessProof(session: HeadlessSession, label: String) {
+    val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+    val keys = listOf(
+        "mse setQuality",
+        "mse changeType",
+        "FORMAT_INIT",
+        "MEDIA_HEADER",
+        "mse append",
+        "sabr HTTP",
+        "video-rep",
+        "changeType",
+        "mse drain setQuality",
+    )
+    println("--- gapless $label ---")
+    val lines = proof.lineSequence().filter { line -> keys.any { line.contains(it) } }.toList()
+    for (line in lines) println("  $line")
+    println("--- /gapless $label n=${lines.size} ---")
+    val dest = File(File(System.getProperty("user.dir"), "build"), "gapless-$label.log")
+    dest.parentFile.mkdirs()
+    dest.writeText(proof)
+    println("wrote ${dest.absolutePath} bytes=${dest.length()}")
+}
+
 private fun dumpMseProof(session: HeadlessSession, label: String) {
     val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
     val keys = listOf(
@@ -665,6 +753,11 @@ private fun dumpMseProof(session: HeadlessSession, label: String) {
         "mse leftover",
         "mse append",
         "changeType",
+        "mse setQuality",
+        "FORMAT_INIT",
+        "MEDIA_HEADER",
+        "sabr HTTP",
+        "video-rep",
         "__mseReset",
         "__mseChangeType",
         "Error parsing",
