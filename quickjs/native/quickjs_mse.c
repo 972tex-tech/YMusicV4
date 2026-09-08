@@ -256,34 +256,21 @@ static JSValue js_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-/* ffmpeg's `av1` decoder is VideoToolbox-only. iOS Simulator has no AV1 HW
-   and this tree does not link libdav1d, so claiming av01 makes YouTube pick
-   a format we cannot send() (ENOSYS, fps=0). Device VT AV1 stays on. */
+/* Claim AV1/VP9 when libav has dav1d / libvpx (or VT on device). */
 static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     (void)this_val;
     (void)argc;
     (void)argv;
-#if defined(__APPLE__) && TARGET_OS_SIMULATOR
-    return JS_NewInt32(ctx, 0);
-#else
     return JS_NewInt32(ctx, 1);
-#endif
 }
 
-/* iOS libav has no libvpx. Native ffmpeg `vp9` SIGSEGV in receive_frame on
-   live DVR seek (MseLab 14:03, FAR 0x28). VT-VP9 is not available on most
-   iPhones or the simulator — live uses H.264 VT instead. */
 static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     (void)this_val;
     (void)argc;
     (void)argv;
-#if TARGET_OS_IPHONE
-    return JS_NewInt32(ctx, 0);
-#else
     return JS_NewInt32(ctx, 1);
-#endif
 }
 
 void qjs_mse_install(JSContext *ctx)

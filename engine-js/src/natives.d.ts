@@ -97,9 +97,9 @@ declare function __mseChangeType(audio: number): void;
 declare function __mseRestVideo(on: number): void;
 declare function __mseBuffered(audio: number): number[];
 declare function __mseReset(): void;
-/** 0 if this host cannot decode AV1 (iOS Simulator: no VT AV1, no dav1d). */
+/** 0 if this host cannot decode AV1. */
 declare function __mseAv1Ok(): number;
-/** 0 if this host cannot safely decode VP9 (iOS: no libvpx, native vp9 crashes). */
+/** 0 if this host cannot decode VP9. */
 declare function __mseVp9Ok(): number;
 
 declare function atob(data: string): string;

@@ -107,6 +107,9 @@ val configureMseNative: KotlinNativeTarget.() -> Unit = {
             // Baked into the klib, so :dynamic-engine / :playground do not repeat -L/-l/frameworks.
             linkerOpts("-L${File(ffmpeg, "lib").absolutePath}")
             linkerOpts("-lavformat", "-lavcodec", "-lswscale", "-lswresample", "-lavutil")
+            val flib = File(ffmpeg, "lib")
+            if (File(flib, "libdav1d.a").isFile) linkerOpts("-ldav1d")
+            if (File(flib, "libvpx.a").isFile) linkerOpts("-lvpx")
             linkerOpts(
                 "-framework", "AudioToolbox",
                 "-framework", "CoreAudio",

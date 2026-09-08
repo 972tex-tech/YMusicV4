@@ -46,6 +46,8 @@ kotlin {
             if (lib != null && lib.resolve("libavcodec.a").isFile) {
                 linkerOpts("-L${lib.absolutePath}")
                 linkerOpts("-lavformat", "-lavcodec", "-lswscale", "-lswresample", "-lavutil")
+                if (lib.resolve("libdav1d.a").isFile) linkerOpts("-ldav1d")
+                if (lib.resolve("libvpx.a").isFile) linkerOpts("-lvpx")
                 linkerOpts(
                     "-framework", "AudioToolbox",
                     "-framework", "CoreAudio",

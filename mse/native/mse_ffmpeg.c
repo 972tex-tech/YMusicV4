@@ -1103,33 +1103,42 @@ static int mc_try_open(MseAv *a)
 }
 #endif
 
-static const AVCodec *find_video_codec(enum AVCodecID id)
+/* sw_only: skip VideoToolbox-hosted `av1` (simulator / vt_fail). Never native `vp9`. */
+static const AVCodec *find_video_codec(enum AVCodecID id, int sw_only)
 {
     const AVCodec *c;
-    /* avcodec_find_decoder(VP9) is FFmpeg native `vp9`, not libvpx. Native
-       VP9 + VT (log15) and native VP9 software (log16) both SIGILL on
-       leave-audio: ffmpeg worker threads, AVX-512 on Alder Lake E-cores,
-       and no error return on a bad P-frame. libvpx returns INVALIDDATA. */
     if (id == AV_CODEC_ID_VP9) {
         c = avcodec_find_decoder_by_name("libvpx-vp9");
         if (c)
             return c;
-#if TARGET_OS_IPHONE
-        /* No libvpx. Native `vp9` SIGSEGV on live DVR seek (receive_frame 0x28). */
         return NULL;
-#endif
-    } else if (id == AV_CODEC_ID_VP8) {
+    }
+    if (id == AV_CODEC_ID_VP8) {
         c = avcodec_find_decoder_by_name("libvpx");
         if (c)
             return c;
-    } else if (id == AV_CODEC_ID_AV1) {
+        return NULL;
+    }
+    if (id == AV_CODEC_ID_AV1) {
+        if (sw_only) {
+            c = avcodec_find_decoder_by_name("libdav1d");
+            return c;
+        }
+#if defined(__APPLE__) && TARGET_OS_SIMULATOR
         c = avcodec_find_decoder_by_name("libdav1d");
         if (c)
             return c;
-#if defined(__APPLE__) && TARGET_OS_SIMULATOR
-        /* ffmpeg `av1` is a VT hwaccel wrapper. Simulator has no AV1 HW. */
         return NULL;
 #endif
+#ifdef __APPLE__
+        c = avcodec_find_decoder(id);
+        if (c)
+            return c;
+#endif
+        c = avcodec_find_decoder_by_name("libdav1d");
+        if (c)
+            return c;
+        return avcodec_find_decoder(id);
     }
     return avcodec_find_decoder(id);
 }
@@ -1184,7 +1193,13 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
             a->v_reopen = 1;
         }
     }
-    codec = video ? find_video_codec(par->codec_id) : avcodec_find_decoder(par->codec_id);
+    codec = video ? find_video_codec(par->codec_id,
+#ifdef __APPLE__
+        par->codec_id == a->vt_fail_id
+#else
+        0
+#endif
+        ) : avcodec_find_decoder(par->codec_id);
     if (!codec) {
         static int logged_id;
         if (logged_id != (int)par->codec_id) {
