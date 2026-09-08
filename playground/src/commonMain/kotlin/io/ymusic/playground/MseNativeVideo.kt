@@ -17,7 +17,10 @@ internal class MseVideoSink {
 
     @Volatile var frameH: Int = 0
 
-    /** Android TextureView Surface is attached. JVM/iOS blit has no window, so this stays true. */
+    /**
+     * Native present target is attached (Android TextureView / iOS
+     * AVSampleBufferDisplayLayer). JVM blit has no window, so it stays true.
+     */
     @Volatile var surfaceReady: Boolean = true
 }
 

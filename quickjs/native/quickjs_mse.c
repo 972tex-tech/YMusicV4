@@ -2,6 +2,9 @@
 
 #include <limits.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 static const QjsMseVt *g_vt;
 
@@ -253,6 +256,21 @@ static JSValue js_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
+/* ffmpeg's `av1` decoder is VideoToolbox-only. iOS Simulator has no AV1 HW
+   and this tree does not link libdav1d, so claiming av01 makes YouTube pick
+   a format we cannot send() (ENOSYS, fps=0). Device VT AV1 stays on. */
+static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+#if defined(__APPLE__) && TARGET_OS_SIMULATOR
+    return JS_NewInt32(ctx, 0);
+#else
+    return JS_NewInt32(ctx, 1);
+#endif
+}
+
 void qjs_mse_install(JSContext *ctx)
 {
     JSValue g = JS_GetGlobalObject(ctx);
@@ -272,5 +290,6 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseRestVideo", JS_NewCFunction(ctx, js_rest_video, "__mseRestVideo", 1));
     JS_SetPropertyStr(ctx, g, "__mseBuffered", JS_NewCFunction(ctx, js_buffered, "__mseBuffered", 1));
     JS_SetPropertyStr(ctx, g, "__mseReset", JS_NewCFunction(ctx, js_reset, "__mseReset", 0));
+    JS_SetPropertyStr(ctx, g, "__mseAv1Ok", JS_NewCFunction(ctx, js_av1_ok, "__mseAv1Ok", 0));
     JS_FreeValue(ctx, g);
 }

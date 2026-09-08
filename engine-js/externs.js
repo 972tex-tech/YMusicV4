@@ -200,6 +200,7 @@ function __mseChangeType(audio) {}
 function __mseRestVideo(on) {}
 function __mseBuffered(audio) {}
 function __mseReset() {}
+function __mseAv1Ok() {}
 function __bgEntropyStart() {}
 function __bgEntropyBegin() {}
 function __bgEntropyEnd() {}

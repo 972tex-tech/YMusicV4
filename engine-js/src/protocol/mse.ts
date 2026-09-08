@@ -614,6 +614,12 @@ class MediaSource {
 
   static ["isTypeSupported"](mime: string): boolean {
     const m = String(mime).toLowerCase();
+    if (m.indexOf("av01") >= 0 || m.indexOf("av1.") >= 0) {
+      if (typeof __mseAv1Ok === "function" && !__mseAv1Ok()) {
+        mseLog("mse isTypeSupported reject av01");
+        return false;
+      }
+    }
     return (
       m.indexOf("fakesb") === 0 ||
       m.indexOf("audio/webm") === 0 ||
@@ -777,6 +783,9 @@ class HTMLMediaElement {
   ["canPlayType"](t: string): string {
     t = String(t || "").toLowerCase();
     if (t.indexOf("fakesb") === 0) return "probably";
+    if ((t.indexOf("av01") >= 0 || t.indexOf("av1.") >= 0) &&
+        typeof __mseAv1Ok === "function" && !__mseAv1Ok())
+      return "";
     return t.indexOf("webm") >= 0 || t.indexOf("mp4") >= 0 ? "probably" : "";
   }
 

@@ -16,6 +16,7 @@
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 #ifdef __APPLE__
+#include <TargetConditionals.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/pixdesc.h>
 #include "mse_vt_present.h"
@@ -93,6 +94,8 @@ struct MseAv {
     int v_rest;
 #ifdef __APPLE__
     void *vt_layer;
+    /* Codec that failed VideoToolbox. Skip VT for that id (simulator AV1). */
+    enum AVCodecID vt_fail_id;
 #endif
 #ifdef __ANDROID__
     AMediaCodec *mc;
@@ -1115,6 +1118,14 @@ static const AVCodec *find_video_codec(enum AVCodecID id)
         c = avcodec_find_decoder_by_name("libvpx");
         if (c)
             return c;
+    } else if (id == AV_CODEC_ID_AV1) {
+        c = avcodec_find_decoder_by_name("libdav1d");
+        if (c)
+            return c;
+#if defined(__APPLE__) && TARGET_OS_SIMULATOR
+        /* ffmpeg `av1` is a VT hwaccel wrapper. Simulator has no AV1 HW. */
+        return NULL;
+#endif
     }
     return avcodec_find_decoder(id);
 }
@@ -1178,6 +1189,12 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         }
         return -1;
     }
+#ifdef __APPLE__
+    /* VT-failed AV1 with no dav1d: do not reopen the hwaccel-only `av1`. */
+    if (video && par->codec_id == AV_CODEC_ID_AV1 && par->codec_id == a->vt_fail_id &&
+        !avcodec_find_decoder_by_name("libdav1d"))
+        return -1;
+#endif
     *ctxp = avcodec_alloc_context3(codec);
     if (!*ctxp)
         return -1;
@@ -1192,13 +1209,25 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         (*ctxp)->thread_type = 0;
     }
 #ifdef __APPLE__
-    /* H.264/AV1 VideoToolbox is fine. VP8/VP9 stay software (libvpx). */
-    if (video && !vp9) {
-        AVBufferRef *hw = NULL;
-        if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) >= 0) {
-            (*ctxp)->hw_device_ctx = av_buffer_ref(hw);
-            (*ctxp)->get_format = get_hw_format;
-            av_buffer_unref(&hw);
+    /* H.264 VT works on device and simulator. AV1 VT is device-only — the
+       simulator hwaccel inits then send() is ENOSYS ("doesn't support
+       hardware accelerated AV1") and close-reopen loops forever. VP8/VP9
+       stay libvpx. Software frames still present on AVSampleBufferDisplayLayer. */
+    {
+        int use_vt = video && !vp9 && par->codec_id != a->vt_fail_id;
+#if TARGET_OS_SIMULATOR
+        if (par->codec_id == AV_CODEC_ID_AV1)
+            use_vt = 0;
+#endif
+        if (use_vt) {
+            AVBufferRef *hw = NULL;
+            if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) >= 0) {
+                (*ctxp)->hw_device_ctx = av_buffer_ref(hw);
+                (*ctxp)->get_format = get_hw_format;
+                av_buffer_unref(&hw);
+            }
+        } else if (video && !vp9) {
+            vlog("vt skip id=%d fail=%d", (int)par->codec_id, (int)a->vt_fail_id);
         }
     }
 #endif
@@ -1220,8 +1249,14 @@ opened:
     (*ctxp)->pkt_timebase = (AVRational){ 1, 1000 };
     (*ctxp)->time_base = (AVRational){ 1, 1000 };
     if (video)
-        vlog("open %s %dx%d threads=%d", codec->name, (*ctxp)->width, (*ctxp)->height,
-             (*ctxp)->thread_count);
+        vlog("open %s %dx%d threads=%d vt=%d", codec->name, (*ctxp)->width, (*ctxp)->height,
+             (*ctxp)->thread_count,
+#ifdef __APPLE__
+             (*ctxp)->hw_device_ctx ? 1 : 0
+#else
+             0
+#endif
+        );
     if (video && par->codec_id == AV_CODEC_ID_VP9 && !a->vbsf) {
         const AVBitStreamFilter *f = av_bsf_get_by_name("vp9_superframe");
         if (f && av_bsf_alloc(f, &a->vbsf) == 0) {
@@ -2339,6 +2374,7 @@ void mse_av_set_window(MseAv *a, void *window)
     if (a->vt_layer)
         mse_vt_flush(a->vt_layer);
     a->vt_layer = window;
+    vlog("vt-layer %p", window);
     pthread_mutex_unlock(&a->mu);
 #else
     (void)window;
@@ -2354,6 +2390,18 @@ static void video_decode_error(MseAv *a, double pts)
 {
     if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf)
         return;
+#ifdef __APPLE__
+    if (a->vdec && a->vdec->hw_device_ctx) {
+        a->vt_fail_id = a->vdec->codec_id;
+        vlog("vt-fail software id=%d", (int)a->vt_fail_id);
+    } else if (a->vdec) {
+        /* Software `av1` send() is ENOSYS without libdav1d. Do not reopen. */
+        a->vt_fail_id = a->vdec->codec_id;
+        vlog("decode-dead id=%d t=%.3f", (int)a->vt_fail_id, pts);
+        close_video_decoder(a);
+        return;
+    }
+#endif
     vlog("decode-err close-reopen t=%.3f", pts);
     close_video_decoder(a);
     if (a->vpar)

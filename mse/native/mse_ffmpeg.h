@@ -40,11 +40,12 @@ void mse_av_change_type(MseAv *a, int audio);
 void mse_av_rest_video(MseAv *a, int on);
 void mse_av_seek(MseAv *a, double seconds);
 
-/* Android: borrowed ANativeWindow, or NULL to detach. No-op elsewhere. */
+/* Android: borrowed ANativeWindow. Apple: borrowed AVSampleBufferDisplayLayer.
+ * NULL detaches. No-op on other hosts. */
 void mse_av_set_window(MseAv *a, void *window);
 
 /* 1 = frame, 0 = none yet, -1 = error. Caller free()s *bgra when non-NULL.
- * Android MediaCodec surface path returns 1 with *bgra == NULL (already shown). */
+ * Android MediaCodec / Apple VT layer return 1 with *bgra == NULL (already shown). */
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts);
 /* 1 = pcm, 0 = none. *s16 is interleaved S16, caller free()s. */
 int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *rate, int *ch, double *pts);

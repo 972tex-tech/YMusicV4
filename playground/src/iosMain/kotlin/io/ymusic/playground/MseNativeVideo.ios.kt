@@ -51,6 +51,10 @@ internal actual fun MseNativeVideo(
     pictureHeight: Int,
 ) {
     var layerPtr by remember { mutableStateOf<COpaquePointer?>(null) }
+    remember {
+        sink.surfaceReady = false
+        true
+    }
 
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         val hole =
@@ -78,20 +82,32 @@ internal actual fun MseNativeVideo(
         val p = player ?: return@LaunchedEffect
         val lp = layerPtr
         if (lp != null) {
+            println("[ios-mse] attach vt layer")
             p.setVideoSurface(MseVideoSurface().apply { layer = lp })
             sink.surfaceReady = true
         } else {
+            println("[ios-mse] detach vt layer")
             p.setVideoSurface(null)
             sink.surfaceReady = false
         }
     }
     DisposableEffect(player) {
-        onDispose { player?.setVideoSurface(null) }
+        onDispose {
+            player?.setVideoSurface(null)
+            sink.surfaceReady = false
+        }
     }
     LaunchedEffect(surface) {
+        val wh = IntArray(2)
         while (isActive) {
             val host = surface.host
-            if (host != 0L) sink.frameCount = MseHostNative.frames(host)
+            if (host != 0L) {
+                sink.frameCount = MseHostNative.frames(host)
+                if (MseHostNative.videoSize(host, wh)) {
+                    sink.frameW = wh[0]
+                    sink.frameH = wh[1]
+                }
+            }
             delay(16)
         }
     }

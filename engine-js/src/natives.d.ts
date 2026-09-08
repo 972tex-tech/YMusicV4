@@ -97,6 +97,8 @@ declare function __mseChangeType(audio: number): void;
 declare function __mseRestVideo(on: number): void;
 declare function __mseBuffered(audio: number): number[];
 declare function __mseReset(): void;
+/** 0 if this host cannot decode AV1 (iOS Simulator: no VT AV1, no dav1d). */
+declare function __mseAv1Ok(): number;
 
 declare function atob(data: string): string;
 declare function btoa(data: string): string;

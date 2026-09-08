@@ -6,6 +6,7 @@ import io.ymusic.mse.cinterop.mse_host_destroy
 import io.ymusic.mse.cinterop.mse_host_frames
 import io.ymusic.mse.cinterop.mse_host_samples_played
 import io.ymusic.mse.cinterop.mse_host_set_video_surface
+import io.ymusic.mse.cinterop.mse_host_video_size
 import io.ymusic.mse.cinterop.mse_host_vtable
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
@@ -32,6 +33,21 @@ actual object MseHostNative {
     fun setVideoLayer(handle: Long, layer: COpaquePointer?) {
         if (handle == 0L) return
         mse_host_set_video_surface(handle.toCPointer<COpaque>(), layer)
+    }
+
+    fun videoSize(handle: Long, outWh: IntArray): Boolean {
+        if (handle == 0L || outWh.size < 2) return false
+        return memScoped {
+            val w = alloc<IntVar>()
+            val ht = alloc<IntVar>()
+            if (mse_host_video_size(handle.toCPointer<COpaque>(), w.ptr, ht.ptr) == 0) {
+                false
+            } else {
+                outWh[0] = w.value
+                outWh[1] = ht.value
+                true
+            }
+        }
     }
 
     actual fun destroy(handle: Long) {

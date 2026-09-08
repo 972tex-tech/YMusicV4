@@ -47,3 +47,13 @@ void mse_host_set_video_surface(void *h, void *window)
     (void)h;
     (void)window;
 }
+
+int mse_host_video_size(void *h, int *w, int *ht)
+{
+    (void)h;
+    if (w)
+        *w = 0;
+    if (ht)
+        *ht = 0;
+    return 0;
+}

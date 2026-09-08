@@ -31,9 +31,33 @@ kotlin {
     }
 
     withComposeIosTargets {
+        val ffmpegSlug = when (name) {
+            "iosArm64" -> "ios-arm64"
+            "iosSimulatorArm64" -> "ios-simulator-arm64"
+            else -> null
+        }
         binaries.framework {
             baseName = "MsePlayground"
             isStatic = false
+            // cinterop linkerOpts is ignored on this Kotlin; bake libav + VT into the app framework.
+            val lib = ffmpegSlug?.let {
+                rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$it/lib")
+            }
+            if (lib != null && lib.resolve("libavcodec.a").isFile) {
+                linkerOpts("-L${lib.absolutePath}")
+                linkerOpts("-lavformat", "-lavcodec", "-lswscale", "-lswresample", "-lavutil")
+                linkerOpts(
+                    "-framework", "AudioToolbox",
+                    "-framework", "CoreAudio",
+                    "-framework", "VideoToolbox",
+                    "-framework", "CoreMedia",
+                    "-framework", "CoreFoundation",
+                    "-framework", "CoreVideo",
+                    "-framework", "AVFoundation",
+                    "-framework", "QuartzCore",
+                    "-lz", "-lbz2", "-liconv",
+                )
+            }
         }
     }
 
