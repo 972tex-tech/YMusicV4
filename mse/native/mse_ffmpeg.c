@@ -93,6 +93,8 @@ struct MseAv {
     AVCodecParameters *vpar_next;
     double v_switch_pts;
     int v_rest;
+    /* After seek: present RAP-to-playhead even if pts is behind clock. */
+    int show_late;
 #ifdef __APPLE__
     void *vt_layer;
     /* Codec that failed VideoToolbox. Skip VT for that id (simulator AV1). */
@@ -150,6 +152,12 @@ static void mse_av_log(void *ptr, int level, const char *fmt, va_list vl)
         while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
             buf[--n] = 0;
         os_log_with_type(mse_oslog(), OS_LOG_TYPE_ERROR, "ffmpeg %{public}s", buf);
+        if (fmt && strstr(fmt, "hwaccel initialisation returned error")) {
+            AVCodecContext *ctx = ptr;
+            MseAv *a = ctx && ctx->opaque ? (MseAv *)ctx->opaque : NULL;
+            if (a && ctx->codec_id)
+                a->vt_fail_id = ctx->codec_id;
+        }
     }
     av_log_default_callback(ptr, level, fmt, vl);
 }
@@ -746,9 +754,16 @@ fail:
 static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts)
 {
     const enum AVPixelFormat *p;
-    (void)ctx;
+    MseAv *a = ctx && ctx->opaque ? (MseAv *)ctx->opaque : NULL;
+    int allow_vt = !a || a->vt_fail_id != ctx->codec_id;
+    if (allow_vt) {
+        for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+            if (*p == AV_PIX_FMT_VIDEOTOOLBOX)
+                return *p;
+        }
+    }
     for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
-        if (*p == AV_PIX_FMT_VIDEOTOOLBOX)
+        if (*p != AV_PIX_FMT_VIDEOTOOLBOX)
             return *p;
     }
     return pix_fmts[0];
@@ -1273,15 +1288,13 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         (*ctxp)->thread_type = 0;
     }
 #ifdef __APPLE__
-    /* H.264 VT works on device and simulator. AV1 VT is device-only — the
-       simulator hwaccel inits then send() is ENOSYS ("doesn't support
-       hardware accelerated AV1") and close-reopen loops forever. VP8/VP9
-       stay libvpx. Software frames still present on AVSampleBufferDisplayLayer. */
+    /* Device: H.264/AV1 VT. Simulator ffmpeg VT init fails
+       (videotoolbox_vld) then paints garbage after seek. Software + show_bgra. */
+    (*ctxp)->opaque = a;
     {
         int use_vt = video && !vp9 && par->codec_id != a->vt_fail_id;
 #if TARGET_OS_SIMULATOR
-        if (par->codec_id == AV_CODEC_ID_AV1)
-            use_vt = 0;
+        use_vt = 0;
 #endif
         if (use_vt) {
             AVBufferRef *hw = NULL;
@@ -1301,6 +1314,7 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
             av_buffer_unref(&(*ctxp)->hw_device_ctx);
             (*ctxp)->hw_device_ctx = NULL;
             (*ctxp)->get_format = NULL;
+            a->vt_fail_id = par->codec_id;
             if (avcodec_open2(*ctxp, codec, NULL) >= 0)
                 goto opened;
         }
@@ -1309,6 +1323,12 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         return -1;
     }
+#ifdef __APPLE__
+    if (video && a->vt_fail_id == par->codec_id && (*ctxp)->hw_device_ctx) {
+        avcodec_free_context(ctxp);
+        return open_decoder(a, video, par);
+    }
+#endif
 opened:
     (*ctxp)->pkt_timebase = (AVRational){ 1, 1000 };
     (*ctxp)->time_base = (AVRational){ 1, 1000 };
@@ -2255,21 +2275,14 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
-#ifdef __APPLE__
-    /* Native vp9 flush-then-receive SIGSEGV on iOS live +10s. Always drop;
-       next key reopens (H.264 VT is cheap). */
-    a->pend_n[0] = 0;
-    close_video_decoder(a);
-#else
     /* No RAP at the new playhead: drop the decoder instead of feeding leftover
-       P-frames (live DVR -10s SIGILL). Next append reopens. */
+       P-frames (broken picture / POC errors). Next key reopens. */
     if (a->vf.rd >= a->vf.n || !a->vf.f[a->vf.rd].key) {
         a->pend_n[0] = 0;
         close_video_decoder(a);
-    }
-    else if (a->vdec)
+    } else if (a->vdec)
         avcodec_flush_buffers(a->vdec);
-#endif
+    a->show_late = 1;
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
 #ifdef __ANDROID__
@@ -2293,7 +2306,8 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h);
 static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 {
 #ifdef __APPLE__
-    if (a->vt_layer && frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3]) {
+    if (a->vt_layer && frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3] &&
+        a->vt_fail_id != (a->vdec ? a->vdec->codec_id : (enum AVCodecID)0)) {
         if (mse_vt_show(a->vt_layer, frame->data[3], frame->width, frame->height) == 0) {
             *bgra = NULL;
             *w = frame->width;
@@ -2511,8 +2525,13 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return r;
     }
 #endif
-    if (!a->vdec && a->vpar && a->vf.n)
+    if (!a->vdec && a->vpar && a->vf.rd < a->vf.n &&
+        (!a->need_rap[0] || a->vf.f[a->vf.rd].key))
         open_decoder(a, 1, a->vpar);
+#ifdef __APPLE__
+    if (a->vdec && a->vdec->hw_device_ctx && a->vt_fail_id == a->vdec->codec_id)
+        video_decode_error(a, clock);
+#endif
     if (!a->vdec || a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
         return 0;
@@ -2526,12 +2545,13 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
-        if (p < clock - late) {
+        if (p < clock - late && !a->show_late) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
         } else if (present_frame(a, a->vhold, bgra, w, h) == 0) {
             *pts = p;
             a->v_sent = p;
+            a->show_late = 0;
             if (vdbg_ok())
                 vlog_state(a, clock, "show-hold", d);
             av_frame_free(&a->vhold);
@@ -2562,7 +2582,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            if (p < clock - late && frame->pts != AV_NOPTS_VALUE) {
+            if (p < clock - late && !a->show_late && frame->pts != AV_NOPTS_VALUE) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
@@ -2574,6 +2594,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 break;
             *pts = p;
             a->v_sent = p;
+            a->show_late = 0;
             if (vdbg_ok())
                 vlog_state(a, clock, "show", d);
             av_frame_free(&frame);
@@ -2581,7 +2602,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             return 1;
         }
         maybe_apply_video_rep(a);
-        if (!a->vdec && a->vpar && a->vf.n)
+        if (!a->vdec && a->vpar && a->vf.rd < a->vf.n &&
+            (!a->need_rap[0] || a->vf.f[a->vf.rd].key))
             open_decoder(a, 1, a->vpar);
         if (!a->vdec)
             break;
