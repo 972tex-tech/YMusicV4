@@ -102,7 +102,8 @@ struct MseAv {
 #ifdef __APPLE__
     void *vt_layer;
     void *vt_dec;
-    double vt_shown_at;
+    /* Decoded pictures waiting in PTS (display) order. H.264 B-frames are
+       sent in DTS order; showing them as they decode is the broken picture. */
     void *vt_q_pb[8];
     double vt_q_pts[8];
     int vt_q_w[8], vt_q_h[8];
@@ -2078,7 +2079,6 @@ static void close_video_decoder(MseAv *a)
     a->v_seen_idr = 0;
     a->v_reopen = 0;
 #ifdef __APPLE__
-    a->vt_shown_at = 0;
     while (a->vt_q_n > 0) {
         a->vt_q_n--;
         mse_vt_pb_release(a->vt_q_pb[a->vt_q_n]);
@@ -2393,7 +2393,6 @@ void mse_av_seek(MseAv *a, double seconds)
         avcodec_flush_buffers(a->vdec);
     a->show_late = 1;
 #ifdef __APPLE__
-    a->vt_shown_at = 0;
     while (a->vt_q_n > 0) {
         a->vt_q_n--;
         mse_vt_pb_release(a->vt_q_pb[a->vt_q_n]);
@@ -2615,13 +2614,6 @@ static void video_decode_error(MseAv *a, double pts)
 }
 
 #ifdef __APPLE__
-static double mono_sec(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
-
 static void vt_q_put(MseAv *a, void *pb, int w, int h, double pts)
 {
     int i, j;
@@ -2662,8 +2654,6 @@ static int vt_q_take(MseAv *a, double clock, int *w, int *h, double *pts)
         pb = a->vt_q_pb[0];
         if (p < clock - late) {
             mse_vt_pb_release(pb);
-        } else if (a->vt_shown_at > 0 && mono_sec() - a->vt_shown_at < 1.0 / 59.0) {
-            return 0;
         } else if (a->vt_layer && mse_vt_show(a->vt_layer, pb, a->vt_q_w[0], a->vt_q_h[0]) == 0) {
             mse_vt_pb_release(pb);
             *w = a->vt_q_w[0];
@@ -2671,7 +2661,6 @@ static int vt_q_take(MseAv *a, double clock, int *w, int *h, double *pts)
             *pts = p;
             a->v_sent = p;
             a->show_late = 0;
-            a->vt_shown_at = mono_sec();
             a->vt_q_n--;
             for (i = 0; i < a->vt_q_n; i++) {
                 a->vt_q_pb[i] = a->vt_q_pb[i + 1];
