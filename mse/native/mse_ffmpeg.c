@@ -1451,11 +1451,16 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         return -1;
     }
-    /* One thread: ffmpeg/dav1d workers probe AVX-512 on a P-core then SIGILL
-       on an Alder Lake E-core (leave-audio live). VP8/VP9 already required this. */
+    /* dav1d/ffmpeg workers: one thread (Alder Lake AVX-512 SIGILL).
+       libvpx VP9: Chrome uses ~4 decoder threads (VpxVideoDecoder). */
     if (video) {
-        (*ctxp)->thread_count = 1;
-        (*ctxp)->thread_type = 0;
+        if (vp9) {
+            (*ctxp)->thread_count = 4;
+            (*ctxp)->thread_type = FF_THREAD_FRAME;
+        } else {
+            (*ctxp)->thread_count = 1;
+            (*ctxp)->thread_type = 0;
+        }
     }
 #ifdef __APPLE__
     /* H.264/AV1 VideoToolbox. ffmpeg used to Require HW; simulator has none
