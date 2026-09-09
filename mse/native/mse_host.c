@@ -135,18 +135,29 @@ static double clock_locked(MseHost *h)
                 t = dac;
         }
 #endif
-        /* Linear play: stay inside leftover (audio+video span). Do not cap
-           at video last only — that froze the playhead when 1440p leftover
-           ended (~5s) while audio remained, then both stalled. */
+        /* Linear play: stay inside leftover. Sit 1s behind leftover end
+           (live head of what we have) so SABR can fetch+parse the next
+           second before we empty. Rebase origin on clamp or wall time
+           accrues through the wait and the next chunk is recv-late. */
         if (have) {
+            double cap = last;
+            /* VOD catching the real end — not live leftover past a stale
+               MediaSource duration (log23 recreate: yt_dur=17253, vf to 17266). */
+            int near_eos = h->yt_dur > 0 && last + 0.5 >= h->yt_dur &&
+                           last <= h->yt_dur + 0.75;
+            /* 1s behind leftover end is for video readahead. Audio-only
+               (no C video) must play to audio last or the clock freezes
+               1s early and SABR audio never appends (log2: clock=570.884). */
+            if (!near_eos && last - first >= 1.0 && mse_av_has_video(h->av))
+                cap = last - 1.0;
             if (t < first)
                 t = first;
-            else if (t > last) {
-                t = last;
-                h->hold = last;
+            else if (t > cap) {
+                t = cap;
+                h->hold = cap;
                 h->origin_ns = now_ns();
 #ifdef MSE_DAC
-                h->seek_base = last;
+                h->seek_base = cap;
                 h->samples_played = 0;
 #endif
             }

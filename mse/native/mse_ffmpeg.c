@@ -1488,9 +1488,6 @@ static void apply_pending_video_rep(MseAv *a)
 #endif
     open_decoder(a, 1, a->vpar);
     a->v_reopen = 0;
-    /* 45fps cap uses v_sent. Old quality PTS would skip every new GOP
-       picture (1440p switch → 0 fps). */
-    a->v_sent = -1;
 }
 
 static void maybe_apply_video_rep(MseAv *a)
@@ -2153,8 +2150,7 @@ void mse_av_change_type(MseAv *a, int audio)
         free(a->vinit);
         a->vinit = NULL;
         a->vinit_n = 0;
-        /* Keep decoding leftover until video-rep at the new GOP.
-           close_video_decoder here made 1440p switch 0 fps until a RAP. */
+        close_video_decoder(a);
     }
     vlog("changeType a=%d", audio);
     pthread_mutex_unlock(&a->mu);
@@ -2824,9 +2820,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     AVFrame *frame;
     int i, got;
     const double early = 0.04;
-    /* Convert at most 45 fps. Decoder still gets every packet (refs). Extra
-       pictures skip sws. Do not pause the decoder or leftover lags audio. */
-    const double min_dt = 1.0 / 45.0;
+    const double late = 0.08;
 
     if (!a || !bgra || !w || !h || !pts)
         return -1;
@@ -2887,10 +2881,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
-        if (a->show_late && p < clock - 0.35) {
+        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
             vlog_state(a, clock, "hold-late", d);
-            av_frame_free(&a->vhold);
-        } else if (a->v_sent >= 0 && p >= a->v_sent && p - a->v_sent < min_dt) {
             av_frame_free(&a->vhold);
         } else if (!a->v_seen_idr) {
             av_frame_free(&a->vhold);
@@ -2913,6 +2905,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     }
     {
+    int late_skips = 0;
     for (i = 0; i < 96; i++) {
         if (!a->vdec)
             break;
@@ -2927,15 +2920,16 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            /* Seek only: do not flash the old GOP. */
-            if (a->show_late && p < clock - 0.35 && frame->pts != AV_NOPTS_VALUE) {
+            /* show_late: decode the GOP but only present near the playhead.
+               Showing pts=1890 at clock=1895 after seek is the smashed picture. */
+            if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
+                !(a->show_late && p >= clock - 0.35) &&
+                !(late_skips > 0 && p >= clock - 1.0)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                continue;
-            }
-            if (a->v_sent >= 0 && p >= a->v_sent && p - a->v_sent < min_dt) {
-                av_frame_unref(frame);
+                if (late_skips++ < 512)
+                    i--;
                 continue;
             }
             if (!a->v_seen_idr) {
