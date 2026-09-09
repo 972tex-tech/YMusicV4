@@ -58,8 +58,6 @@ double mse_av_duration(MseAv *a);
 
 /* First..last PTS across leftover. 1 if any packets. */
 int mse_av_span(MseAv *a, double *first, double *last);
-/* Video leftover only (not audio). 1 if any video packets and not resting. */
-int mse_av_video_span(MseAv *a, double *first, double *last);
 
 /* Unsent packets remain (rd < n). */
 int mse_av_video_pending(MseAv *a);

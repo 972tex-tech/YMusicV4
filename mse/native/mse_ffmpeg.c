@@ -2238,17 +2238,6 @@ static int cfb_span(const Cfb *b, double *first, double *last)
     return 1;
 }
 
-int mse_av_video_span(MseAv *a, double *first, double *last)
-{
-    int hv;
-    if (!a || !first || !last)
-        return 0;
-    pthread_mutex_lock(&a->mu);
-    hv = a->v_rest ? 0 : cfb_span(&a->vf, first, last);
-    pthread_mutex_unlock(&a->mu);
-    return hv;
-}
-
 int mse_av_span(MseAv *a, double *first, double *last)
 {
     double af = 0, al = 0, vf = 0, vl = 0;

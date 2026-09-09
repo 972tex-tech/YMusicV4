@@ -135,21 +135,18 @@ static double clock_locked(MseHost *h)
                 t = dac;
         }
 #endif
-        /* Linear play: stay inside leftover. Cap at *video* last when we
-           have video — audio leftover is longer, so a combined last let
-           the clock run past video (seek plays ~5s then 0 fps). */
+        /* Linear play: stay inside leftover (audio+video span). Do not cap
+           at video last only — that froze the playhead when 1440p leftover
+           ended (~5s) while audio remained, then both stalled. */
         if (have) {
-            double cap = last, v0 = 0, v1 = 0;
-            if (mse_av_video_span(h->av, &v0, &v1) && v1 < cap)
-                cap = v1;
             if (t < first)
                 t = first;
-            else if (t > cap) {
-                t = cap;
-                h->hold = cap;
+            else if (t > last) {
+                t = last;
+                h->hold = last;
                 h->origin_ns = now_ns();
 #ifdef MSE_DAC
-                h->seek_base = cap;
+                h->seek_base = last;
                 h->samples_played = 0;
 #endif
             }
