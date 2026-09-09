@@ -2949,15 +2949,31 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 return 0;
             }
             /* show_late: decode the GOP but only present near the playhead.
-               Showing pts=1890 at clock=1895 after seek is the smashed picture. */
+               Showing pts=1890 at clock=1895 after seek is the smashed picture.
+               Do not convert 1s-late 4K (log28: sws 7–18ms, 1 fps because
+               512 late libvpx packets froze the DAC). Cap decode-only per
+               pull so audio/clock keep moving. */
             if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
-                !(a->show_late && p >= clock - 0.35) &&
-                !(late_skips > 0 && p >= clock - 1.0)) {
+                !(a->show_late && p >= clock - 0.35)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                if (late_skips++ < 512)
-                    i--;
+                if (!a->show_late && d < -1.0) {
+                    size_t rd0 = a->vf.rd;
+                    vf_resync_key(a, clock);
+                    if (a->vf.rd != rd0) {
+                        if (a->vdec)
+                            avcodec_flush_buffers(a->vdec);
+                        if (a->vbsf)
+                            av_bsf_flush(a->vbsf);
+                        a->need_rap[0] = 1;
+                        av_frame_free(&frame);
+                        pthread_mutex_unlock(&a->mu);
+                        return 0;
+                    }
+                }
+                if (++late_skips >= 8)
+                    break;
                 continue;
             }
             if (!a->v_seen_idr) {
