@@ -2149,7 +2149,8 @@ void mse_av_change_type(MseAv *a, int audio)
         free(a->vinit);
         a->vinit = NULL;
         a->vinit_n = 0;
-        close_video_decoder(a);
+        /* Keep decoding leftover until video-rep at the new GOP.
+           close_video_decoder here made 1440p switch 0 fps until a RAP. */
     }
     vlog("changeType a=%d", audio);
     pthread_mutex_unlock(&a->mu);
@@ -2235,6 +2236,17 @@ static int cfb_span(const Cfb *b, double *first, double *last)
     *first = b->f[0].pts;
     *last = b->f[b->n - 1].pts + b->f[b->n - 1].dur;
     return 1;
+}
+
+int mse_av_video_span(MseAv *a, double *first, double *last)
+{
+    int hv;
+    if (!a || !first || !last)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+    hv = a->v_rest ? 0 : cfb_span(&a->vf, first, last);
+    pthread_mutex_unlock(&a->mu);
+    return hv;
 }
 
 int mse_av_span(MseAv *a, double *first, double *last)

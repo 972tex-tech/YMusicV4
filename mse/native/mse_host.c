@@ -135,19 +135,21 @@ static double clock_locked(MseHost *h)
                 t = dac;
         }
 #endif
-        /* Linear play: stay inside leftover. Do not sit 1s behind last —
-           1440p leftover is often 1–2s, so that cap froze the clock and
-           every later picture was HOLD-FAR (seek plays ~1s then 0 fps).
-           Chrome plays to buffered end and waits for the next append. */
+        /* Linear play: stay inside leftover. Cap at *video* last when we
+           have video — audio leftover is longer, so a combined last let
+           the clock run past video (seek plays ~5s then 0 fps). */
         if (have) {
+            double cap = last, v0 = 0, v1 = 0;
+            if (mse_av_video_span(h->av, &v0, &v1) && v1 < cap)
+                cap = v1;
             if (t < first)
                 t = first;
-            else if (t > last) {
-                t = last;
-                h->hold = last;
+            else if (t > cap) {
+                t = cap;
+                h->hold = cap;
                 h->origin_ns = now_ns();
 #ifdef MSE_DAC
-                h->seek_base = last;
+                h->seek_base = cap;
                 h->samples_played = 0;
 #endif
             }
