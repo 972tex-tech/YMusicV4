@@ -2816,9 +2816,9 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     AVFrame *frame;
     int i, got;
     const double early = 0.04;
-    /* Convert of 1440p/4K can take >80ms. The old 80ms window then skipped
-       every picture (0 fps) while audio kept the clock. Show up to 1s late. */
-    const double late = 1.0;
+    /* Do not convert 60fps source faster than this. Extra frames are dropped
+       before sws so 4K/1440p can stay on the clock without a freeze-then-jump. */
+    const double min_dt = 1.0 / 45.0;
 
     if (!a || !bgra || !w || !h || !pts)
         return -1;
@@ -2870,10 +2870,14 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
-    /* Behind: jump leftover to a key near now. Do not close the decoder
-       (that froze the next load at 0 fps). */
-    if (a->v_sent >= 0 && clock - a->v_sent > 1.0) {
-        vlog("catch-up v_sent=%.3f clock=%.3f", a->v_sent, clock);
+    if (a->v_sent >= 0 && clock - a->v_sent < min_dt) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
+    /* Unsent packets older than 250ms: skip to a key near now. Last shown
+       frame stays on screen (no 1s black). Do not close the decoder. */
+    if (a->vf.rd < a->vf.n && a->vf.f[a->vf.rd].pts < clock - 0.25) {
+        vlog("drop-behind rd=%.3f clock=%.3f", a->vf.f[a->vf.rd].pts, clock);
         vf_resync_key(a, clock);
         if (a->vdec)
             avcodec_flush_buffers(a->vdec);
@@ -2881,7 +2885,6 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             av_bsf_flush(a->vbsf);
         av_frame_free(&a->vhold);
         a->show_late = 1;
-        a->v_sent = clock;
     }
     if (a->vhold) {
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
@@ -2892,7 +2895,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
-        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
+        if (a->show_late && p < clock - 0.35) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
         } else if (!a->v_seen_idr) {
@@ -2916,7 +2919,6 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     }
     {
-    int late_skips = 0;
     for (i = 0; i < 96; i++) {
         if (!a->vdec)
             break;
@@ -2931,14 +2933,12 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            /* Too far behind to show (smashed GOP after seek). Within `late`,
-               show it: 30–60 fps is fine, freeze is not. */
-            if (p < clock - late && frame->pts != AV_NOPTS_VALUE) {
+            /* Seek only: do not flash the old GOP. Normal play always shows
+               (fps cap already dropped extras). */
+            if (a->show_late && p < clock - 0.35 && frame->pts != AV_NOPTS_VALUE) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                if (late_skips++ < 512)
-                    i--;
                 continue;
             }
             if (!a->v_seen_idr) {
