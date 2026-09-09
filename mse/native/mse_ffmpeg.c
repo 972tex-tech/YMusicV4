@@ -75,9 +75,10 @@ struct MseAv {
     struct SwsContext *sws;
     uint8_t *sws_pad;
     size_t sws_pad_n;
-    uint8_t *bgra_buf[2];
-    size_t bgra_n[2];
+    uint8_t *bgra_buf[3];
+    size_t bgra_n[3];
     int bgra_i;
+    int bgra_hold;
     AVFrame *hw_sw;
     int blit_w, blit_h;
     int blit_log_dw, blit_log_dh;
@@ -1571,6 +1572,7 @@ MseAv *mse_av_create(void)
     a->v_switch_pts = -1;
     a->need_rap[0] = 1;
     a->need_rap[1] = 1;
+    a->bgra_hold = -1;
     av_log_set_level(AV_LOG_ERROR);
 #ifdef __APPLE__
     av_log_set_callback(mse_av_log);
@@ -1610,6 +1612,7 @@ void mse_av_destroy(MseAv *a)
     av_frame_free(&a->hw_sw);
     free(a->bgra_buf[0]);
     free(a->bgra_buf[1]);
+    free(a->bgra_buf[2]);
     free(a->ainit);
     free(a->vinit);
     free(a->pend[0]);
@@ -2479,7 +2482,7 @@ static uint8_t *sws_scratch(MseAv *a, size_t n)
 
 static uint8_t *bgra_pool(MseAv *a, int w, int h)
 {
-    int i = a->bgra_i ^ 1;
+    int i = 0, k;
     size_t n;
     uint8_t *p;
     if (w <= 0 || h <= 0)
@@ -2487,6 +2490,11 @@ static uint8_t *bgra_pool(MseAv *a, int w, int h)
     if ((size_t)h != 0 && (size_t)w > (SIZE_MAX / 4) / (size_t)h)
         return NULL;
     n = (size_t)w * (size_t)h * 4;
+    for (k = 1; k <= 3; k++) {
+        i = (a->bgra_i + k) % 3;
+        if (i != a->bgra_hold)
+            break;
+    }
     if (a->bgra_buf[i] && a->bgra_n[i] >= n) {
         a->bgra_i = i;
         return a->bgra_buf[i];
@@ -2644,6 +2652,24 @@ void mse_av_set_window(MseAv *a, void *window)
 #else
     (void)window;
 #endif
+}
+
+void mse_av_hold_ptr(MseAv *a, const uint8_t *p)
+{
+    int i;
+    if (!a)
+        return;
+    pthread_mutex_lock(&a->mu);
+    a->bgra_hold = -1;
+    if (p) {
+        for (i = 0; i < 3; i++) {
+            if (a->bgra_buf[i] == p) {
+                a->bgra_hold = i;
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&a->mu);
 }
 
 void mse_av_set_blit_size(MseAv *a, int w, int h)
