@@ -2416,8 +2416,10 @@ static void vf_skip_to_clock(MseAv *a, double t, double max_behind)
     }
     if (prev < a->vf.n && t - a->vf.f[prev].pts <= max_behind)
         key = prev;
-    else
+    else if (next < a->vf.n && a->vf.f[next].pts <= t + 0.35)
         key = next;
+    else
+        return;
     if (key >= a->vf.n || key <= a->vf.rd)
         return;
     for (i = key; i < a->vf.n; i++)
@@ -2954,6 +2956,14 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     if (!a->show_late && a->vf.rd < a->vf.n &&
         a->vf.f[a->vf.rd].pts < clock - 0.5)
         vf_skip_to_clock(a, clock, 0.5);
+    /* No key near the playhead: keep the last bitmap, do not burn this
+       thread on 4K P-frames we will never show (log28 skip-clock to 6.84
+       at t=4.0 = 0 fps then jump). */
+    if (!a->show_late && a->vf.rd < a->vf.n &&
+        a->vf.f[a->vf.rd].pts < clock - 0.5) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
     if (a->vhold) {
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : due;
         double d = p - due;
