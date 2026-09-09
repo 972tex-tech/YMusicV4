@@ -3157,11 +3157,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                if (d < -0.50) {
-                    while (vf_skip_stale(a, clock))
-                        ;
-                    break;
-                }
+                /* 4K libvpx sits ~0.5s behind. Breaking here never reached
+                   the 1s catch-up present → 0fps at clock 18s/25s (log28 20:47). */
                 if (late_skips++ < 8)
                     i--;
                 continue;
