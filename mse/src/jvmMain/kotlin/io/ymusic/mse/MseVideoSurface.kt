@@ -11,6 +11,23 @@ actual class MseVideoSurface {
 
     /** C `MseHost*` as a Long, set by bindNativeMse. 0 = none. */
     var host: Long = 0L
+        set(value) {
+            field = value
+            if (value != 0L && blitW > 0 && blitH > 0) {
+                MseHostNative.setBlitSize(value, blitW, blitH)
+            }
+        }
+
+    private var blitW = 0
+    private var blitH = 0
+
+    actual fun setBlitSize(width: Int, height: Int) {
+        blitW = width.coerceAtLeast(0)
+        blitH = height.coerceAtLeast(0)
+        if (host != 0L) {
+            MseHostNative.setBlitSize(host, blitW, blitH)
+        }
+    }
 
     /** Native presented video frames (`mse_host_frames`). */
     fun presentedFrames(): Int = if (host == 0L) 0 else MseHostNative.frames(host)

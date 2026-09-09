@@ -10,4 +10,6 @@ actual class MseVideoSurface {
     /** Borrowed `AVSampleBufferDisplayLayer*`. Kotlin owns the layer. */
     @OptIn(ExperimentalForeignApi::class)
     var layer: COpaquePointer? = null
+
+    actual fun setBlitSize(width: Int, height: Int) = Unit
 }

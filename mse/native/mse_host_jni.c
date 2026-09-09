@@ -11,6 +11,8 @@ typedef struct {
     jmethodID onFrame;
     jmethodID onPcm;
     jmethodID onProgress;
+    jbyteArray frameArr;
+    int frameArrN;
 } JniSink;
 
 static JavaVM *g_jvm;
@@ -31,7 +33,6 @@ static void on_frame(void *user, int w, int h, const uint8_t *bgra)
 {
     JniSink *s = (JniSink *)user;
     JNIEnv *env;
-    jbyteArray arr;
     int n;
     if (!s || !bgra || w <= 0 || h <= 0)
         return;
@@ -41,12 +42,24 @@ static void on_frame(void *user, int w, int h, const uint8_t *bgra)
     if ((uint64_t)w * (uint64_t)h > (uint64_t)(INT_MAX / 4))
         return;
     n = w * h * 4;
-    arr = (*env)->NewByteArray(env, n);
-    if (!arr)
-        return;
-    (*env)->SetByteArrayRegion(env, arr, 0, n, (const jbyte *)bgra);
-    (*env)->CallVoidMethod(env, s->sink, s->onFrame, w, h, arr);
-    (*env)->DeleteLocalRef(env, arr);
+    if (!s->frameArr || s->frameArrN < n) {
+        jbyteArray local;
+        if (s->frameArr) {
+            (*env)->DeleteGlobalRef(env, s->frameArr);
+            s->frameArr = NULL;
+            s->frameArrN = 0;
+        }
+        local = (*env)->NewByteArray(env, n);
+        if (!local)
+            return;
+        s->frameArr = (*env)->NewGlobalRef(env, local);
+        (*env)->DeleteLocalRef(env, local);
+        if (!s->frameArr)
+            return;
+        s->frameArrN = n;
+    }
+    (*env)->SetByteArrayRegion(env, s->frameArr, 0, n, (const jbyte *)bgra);
+    (*env)->CallVoidMethod(env, s->sink, s->onFrame, w, h, s->frameArr);
 }
 
 static void on_pcm(void *user, int rate, int ch, const int16_t *s16, int nbytes)
@@ -168,6 +181,14 @@ Java_io_ymusic_mse_MseHostNative_copyFrameBytes(JNIEnv *env, jclass cls, jlong h
         (*env)->SetIntArrayRegion(env, meta, 0, 3, m);
     }
     return arr;
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setBlitSize(JNIEnv *env, jclass cls, jlong handle, jint w, jint ht)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_blit_size((MseHost *)(intptr_t)handle, w, ht);
 }
 
 JNIEXPORT jboolean JNICALL

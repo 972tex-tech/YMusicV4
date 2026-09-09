@@ -44,8 +44,12 @@ void mse_av_seek(MseAv *a, double seconds);
  * NULL detaches. No-op on other hosts. */
 void mse_av_set_window(MseAv *a, void *window);
 
-/* 1 = frame, 0 = none yet, -1 = error. Caller free()s *bgra when non-NULL.
- * Android MediaCodec / Apple VT layer return 1 with *bgra == NULL (already shown). */
+/* JVM desktop blit hole in pixels. 0×0 = decode size. Downscale-only min-fit
+ * (never upscale; dest is the fitted picture, not a letterboxed panel). */
+void mse_av_set_blit_size(MseAv *a, int w, int h);
+
+/* 1 = frame, 0 = none yet, -1 = error. *bgra is borrowed from MseAv (do not
+ * free). Android MediaCodec / Apple VT layer return 1 with *bgra == NULL. */
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts);
 /* 1 = pcm, 0 = none. *s16 is interleaved S16, caller free()s. */
 int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *rate, int *ch, double *pts);

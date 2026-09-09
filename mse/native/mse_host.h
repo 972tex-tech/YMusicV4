@@ -21,6 +21,8 @@ const void *mse_host_vtable(void);
 void mse_host_set_sinks(MseHost *h, MseFrameFn on_frame, MsePcmFn on_pcm, MseProgressFn on_prog, void *user);
 /* JNI/app: the only host call. JS drives play/pause/currentTime via C trampolines. */
 void mse_host_set_video_surface(MseHost *h, void *window);
+/* JVM desktop: convert/scale dest. 0×0 = decode size. See mse_av_set_blit_size. */
+void mse_host_set_blit_size(MseHost *h, int w, int ht);
 
 void mse_host_play(MseHost *h);
 void mse_host_pause(MseHost *h);

@@ -50,6 +50,10 @@ actual object MseHostNative {
     @JvmStatic
     external fun videoSize(handle: Long, outWh: IntArray): Boolean
 
+    /** 0×0 = decode size. Downscale-only letterbox fit when both > 0. */
+    @JvmStatic
+    external fun setBlitSize(handle: Long, width: Int, height: Int)
+
     /** macOS: overlay VideoToolbox on [component] via JAWT. Other JVMs return false. */
     @JvmStatic
     external fun setVideoComponent(handle: Long, component: java.awt.Component?): Boolean

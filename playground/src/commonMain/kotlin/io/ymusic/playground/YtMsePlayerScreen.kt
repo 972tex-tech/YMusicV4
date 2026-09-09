@@ -318,7 +318,12 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     println("mse compose overlay click $overlayClicks")
                 },
                 captionLines = captionLines,
-                onHoleSize = { holeSize = it },
+                onHoleSize = {
+                    holeSize = it
+                    if (it.width > 0 && it.height > 0) {
+                        surface.setBlitSize(it.width, it.height)
+                    }
+                },
                 modifier = holeMod,
             )
         }

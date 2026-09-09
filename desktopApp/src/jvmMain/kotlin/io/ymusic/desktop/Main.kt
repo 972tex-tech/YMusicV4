@@ -20,7 +20,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -719,8 +722,19 @@ private fun DesktopPlayerSurface(
     LaunchedEffect(mseSurface, msePanel) {
         mseSurface.frame.collect { msePanel.setImage(it) }
     }
-
-    Box(modifier.onSizeChanged { size = it }) {
+    modifier.drawWithContent {
+        this.drawIntoCanvas { canvas ->
+            canvas.nativeCanvas
+        }
+    }
+    Box(
+        modifier.onSizeChanged {
+            size = it
+            if (it.width > 0 && it.height > 0) {
+                mseSurface.setBlitSize(it.width, it.height)
+            }
+        },
+    ) {
         if (localVisible) {
             Box(Modifier.fillMaxSize().background(Color.Black))
             if (localBitmap != null) {

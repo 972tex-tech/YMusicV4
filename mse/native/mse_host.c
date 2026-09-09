@@ -52,6 +52,7 @@ struct MseHost {
     uint8_t *last_bgra;
     int last_w;
     int last_h;
+    size_t last_cap;
     int frame_gen;
     double vpts;
     int rate;
@@ -501,6 +502,32 @@ static int ring_ms(MseHost *h)
 
 /* Decode thread pulls frames; JS thread only appends/seeks. on_frame/on_pcm
    run on the decode thread. Do not touch MseHost from a third thread. */
+static void keep_bgra(MseHost *h, int w, int ht, const uint8_t *bgra)
+{
+    size_t n;
+    uint8_t *p;
+    if (!bgra || w <= 0 || ht <= 0)
+        return;
+    if ((uint64_t)w * (uint64_t)ht > (uint64_t)(INT_MAX / 4))
+        return;
+    n = (size_t)w * (size_t)ht * 4;
+    pthread_mutex_lock(&h->frame_mu);
+    if (n > h->last_cap) {
+        p = realloc(h->last_bgra, n);
+        if (!p) {
+            pthread_mutex_unlock(&h->frame_mu);
+            return;
+        }
+        h->last_bgra = p;
+        h->last_cap = n;
+    }
+    memcpy(h->last_bgra, bgra, n);
+    h->last_w = w;
+    h->last_h = ht;
+    h->frame_gen++;
+    pthread_mutex_unlock(&h->frame_mu);
+}
+
 static void *dec_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
@@ -552,16 +579,8 @@ static void *dec_loop(void *arg)
 #endif
             if (bgra && h->on_frame)
                 h->on_frame(h->user, w, ht, bgra);
-            if (bgra) {
-                pthread_mutex_lock(&h->frame_mu);
-                free(h->last_bgra);
-                h->last_bgra = bgra;
-                h->last_w = w;
-                h->last_h = ht;
-                h->frame_gen++;
-                pthread_mutex_unlock(&h->frame_mu);
-                bgra = NULL;
-            }
+            if (bgra)
+                keep_bgra(h, w, ht, bgra);
             pthread_mutex_lock(&h->mu);
             h->vw = w;
             h->vh = ht;
@@ -800,6 +819,9 @@ void mse_host_destroy(MseHost *h)
     pthread_mutex_lock(&h->frame_mu);
     free(h->last_bgra);
     h->last_bgra = NULL;
+    h->last_w = 0;
+    h->last_h = 0;
+    h->last_cap = 0;
     pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
     pthread_mutex_destroy(&h->frame_mu);
@@ -874,6 +896,13 @@ void mse_host_set_sinks(MseHost *h, MseFrameFn on_frame, MsePcmFn on_pcm, MsePro
     h->on_prog = on_prog;
     h->user = user;
     pthread_mutex_unlock(&h->mu);
+}
+
+void mse_host_set_blit_size(MseHost *h, int w, int ht)
+{
+    if (!h)
+        return;
+    mse_av_set_blit_size(h->av, w, ht);
 }
 
 static void ensure_thread(MseHost *h)
@@ -1212,6 +1241,7 @@ void mse_host_remove(MseHost *h, int audio, double start, double end)
         h->last_bgra = NULL;
         h->last_w = 0;
         h->last_h = 0;
+        h->last_cap = 0;
         pthread_mutex_unlock(&h->frame_mu);
         pthread_mutex_lock(&h->mu);
         h->vw = 0;
