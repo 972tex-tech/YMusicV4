@@ -25,7 +25,7 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
         surface?.clear()
     }
 
-    override fun onFrame(width: Int, height: Int, bgra: ByteArray) {
+    override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
         surface?.publish(bgraToImage(width, height, bgra))
     }
 
@@ -39,12 +39,15 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
     private var bufB: BufferedImage? = null
     private var useA = true
 
-    private fun bgraToImage(w: Int, h: Int, bgra: ByteArray): BufferedImage {
+    private fun bgraToImage(w: Int, h: Int, bgra: ByteBuffer): BufferedImage {
         val img = if (useA) ensure(w, h, bufA).also { bufA = it } else ensure(w, h, bufB).also { bufB = it }
         useA = !useA
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
-        ByteBuffer.wrap(bgra).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
-            .get(pixels, 0, minOf(pixels.size, w * h))
+        val n = w * h
+        bgra.order(ByteOrder.LITTLE_ENDIAN)
+        bgra.position(0)
+        bgra.limit((n * 4).coerceAtMost(bgra.capacity()))
+        bgra.asIntBuffer().get(pixels, 0, minOf(pixels.size, n))
         return img
     }
 

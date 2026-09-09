@@ -1,13 +1,14 @@
 package io.ymusic.mse
 
 import java.io.File
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 interface MseHostSink {
-    fun onFrame(width: Int, height: Int, bgra: ByteArray)
+    fun onFrame(width: Int, height: Int, bgra: ByteBuffer)
     fun onPcm(rate: Int, channels: Int, s16: ByteArray)
     fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
 }

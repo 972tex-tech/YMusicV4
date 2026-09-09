@@ -49,10 +49,9 @@ struct MseHost {
     int vw;
     int vh;
     int frames;
-    uint8_t *last_bgra;
+    uint8_t *last_bgra; /* borrowed from MseAv ping-pong; do not free */
     int last_w;
     int last_h;
-    size_t last_cap;
     int frame_gen;
     double vpts;
     int rate;
@@ -502,26 +501,12 @@ static int ring_ms(MseHost *h)
 
 /* Decode thread pulls frames; JS thread only appends/seeks. on_frame/on_pcm
    run on the decode thread. Do not touch MseHost from a third thread. */
-static void keep_bgra(MseHost *h, int w, int ht, const uint8_t *bgra)
+static void keep_bgra(MseHost *h, int w, int ht, uint8_t *bgra)
 {
-    size_t n;
-    uint8_t *p;
     if (!bgra || w <= 0 || ht <= 0)
         return;
-    if ((uint64_t)w * (uint64_t)ht > (uint64_t)(INT_MAX / 4))
-        return;
-    n = (size_t)w * (size_t)ht * 4;
     pthread_mutex_lock(&h->frame_mu);
-    if (n > h->last_cap) {
-        p = realloc(h->last_bgra, n);
-        if (!p) {
-            pthread_mutex_unlock(&h->frame_mu);
-            return;
-        }
-        h->last_bgra = p;
-        h->last_cap = n;
-    }
-    memcpy(h->last_bgra, bgra, n);
+    h->last_bgra = bgra;
     h->last_w = w;
     h->last_h = ht;
     h->frame_gen++;
@@ -817,11 +802,9 @@ void mse_host_destroy(MseHost *h)
     }
 #endif
     pthread_mutex_lock(&h->frame_mu);
-    free(h->last_bgra);
     h->last_bgra = NULL;
     h->last_w = 0;
     h->last_h = 0;
-    h->last_cap = 0;
     pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
     pthread_mutex_destroy(&h->frame_mu);
@@ -1237,11 +1220,9 @@ void mse_host_remove(MseHost *h, int audio, double start, double end)
                 h->on_frame(h->user, w, ht, black);
         }
         pthread_mutex_lock(&h->frame_mu);
-        free(h->last_bgra);
         h->last_bgra = NULL;
         h->last_w = 0;
         h->last_h = 0;
-        h->last_cap = 0;
         pthread_mutex_unlock(&h->frame_mu);
         pthread_mutex_lock(&h->mu);
         h->vw = 0;

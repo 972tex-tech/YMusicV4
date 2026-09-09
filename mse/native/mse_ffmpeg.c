@@ -21,10 +21,6 @@
 #include <libavutil/hwcontext.h>
 #include <libavutil/pixdesc.h>
 #include "mse_vt_present.h"
-#if !TARGET_OS_IPHONE
-#include <CoreVideo/CoreVideo.h>
-#include <VideoToolbox/VideoToolbox.h>
-#endif
 #endif
 
 #include <pthread.h>
@@ -79,17 +75,12 @@ struct MseAv {
     struct SwsContext *sws;
     uint8_t *sws_pad;
     size_t sws_pad_n;
-    uint8_t *bgra_buf;
-    size_t bgra_buf_n;
-    int bgra_w, bgra_h;
+    uint8_t *bgra_buf[2];
+    size_t bgra_n[2];
+    int bgra_i;
+    AVFrame *hw_sw;
     int blit_w, blit_h;
-    int blit_log_dw, blit_log_dh, blit_log_vt;
-#if defined(__APPLE__) && !TARGET_OS_IPHONE
-    void *vt_xfer;
-    void *vt_dst;
-    int vt_dst_w, vt_dst_h;
-    int vt_xfer_fail;
-#endif
+    int blit_log_dw, blit_log_dh;
     int rate;
     int channels;
     double duration;
@@ -146,9 +137,6 @@ static int vdbg_n;
 static void vf_resync_key(MseAv *a, double t);
 static void close_video_decoder(MseAv *a);
 static void maybe_apply_video_rep(MseAv *a);
-#if defined(__APPLE__) && !TARGET_OS_IPHONE
-static void vt_xfer_reset(MseAv *a);
-#endif
 
 #define MSE_SEND_AHEAD 0.08
 
@@ -1619,10 +1607,9 @@ void mse_av_destroy(MseAv *a)
     if (a->sws)
         sws_freeContext(a->sws);
     free(a->sws_pad);
-#if defined(__APPLE__) && !TARGET_OS_IPHONE
-    vt_xfer_reset(a);
-#endif
-    free(a->bgra_buf);
+    av_frame_free(&a->hw_sw);
+    free(a->bgra_buf[0]);
+    free(a->bgra_buf[1]);
     free(a->ainit);
     free(a->vinit);
     free(a->pend[0]);
@@ -2492,6 +2479,7 @@ static uint8_t *sws_scratch(MseAv *a, size_t n)
 
 static uint8_t *bgra_pool(MseAv *a, int w, int h)
 {
+    int i = a->bgra_i ^ 1;
     size_t n;
     uint8_t *p;
     if (w <= 0 || h <= 0)
@@ -2499,18 +2487,16 @@ static uint8_t *bgra_pool(MseAv *a, int w, int h)
     if ((size_t)h != 0 && (size_t)w > (SIZE_MAX / 4) / (size_t)h)
         return NULL;
     n = (size_t)w * (size_t)h * 4;
-    if (a->bgra_buf && a->bgra_buf_n >= n) {
-        a->bgra_w = w;
-        a->bgra_h = h;
-        return a->bgra_buf;
+    if (a->bgra_buf[i] && a->bgra_n[i] >= n) {
+        a->bgra_i = i;
+        return a->bgra_buf[i];
     }
-    p = realloc(a->bgra_buf, n);
+    p = realloc(a->bgra_buf[i], n);
     if (!p)
         return NULL;
-    a->bgra_buf = p;
-    a->bgra_buf_n = n;
-    a->bgra_w = w;
-    a->bgra_h = h;
+    a->bgra_buf[i] = p;
+    a->bgra_n[i] = n;
+    a->bgra_i = i;
     return p;
 }
 
@@ -2542,208 +2528,80 @@ static int blit_fit(int src_w, int src_h, int hole_w, int hole_h, int *dw, int *
     return 0;
 }
 
-#if defined(__APPLE__) && !TARGET_OS_IPHONE
-static void vt_xfer_reset(MseAv *a)
-{
-    if (a->vt_dst) {
-        CVPixelBufferRelease((CVPixelBufferRef)a->vt_dst);
-        a->vt_dst = NULL;
-    }
-    a->vt_dst_w = a->vt_dst_h = 0;
-    if (a->vt_xfer) {
-        VTPixelTransferSessionInvalidate((VTPixelTransferSessionRef)a->vt_xfer);
-        CFRelease((CFTypeRef)a->vt_xfer);
-        a->vt_xfer = NULL;
-    }
-}
-
-static int vt_scale_bgra(MseAv *a, AVFrame *frame, uint8_t *dst, int dw, int dh)
-{
-    CVPixelBufferRef src, dest;
-    uint8_t *base;
-    size_t stride, row;
-    int y;
-    OSStatus st;
-
-    if (a->vt_xfer_fail)
-        return -1;
-    if (frame->format != AV_PIX_FMT_VIDEOTOOLBOX || !frame->data[3] || !dst)
-        return -1;
-    src = (CVPixelBufferRef)frame->data[3];
-    if (!a->vt_xfer) {
-        VTPixelTransferSessionRef s = NULL;
-        if (VTPixelTransferSessionCreate(kCFAllocatorDefault, &s) != noErr || !s) {
-            a->vt_xfer_fail = 1;
-            vlog("vt-xfer create fail");
-            return -1;
-        }
-        a->vt_xfer = s;
-    }
-    if (!a->vt_dst || a->vt_dst_w != dw || a->vt_dst_h != dh) {
-        CFDictionaryRef iosurf;
-        CFMutableDictionaryRef attrs;
-        CVPixelBufferRef pb = NULL;
-        if (a->vt_dst) {
-            CVPixelBufferRelease((CVPixelBufferRef)a->vt_dst);
-            a->vt_dst = NULL;
-        }
-        a->vt_dst_w = a->vt_dst_h = 0;
-        iosurf = CFDictionaryCreate(kCFAllocatorDefault, NULL, NULL, 0,
-                                    &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-        attrs = CFDictionaryCreateMutable(kCFAllocatorDefault, 1,
-                                          &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-        if (!iosurf || !attrs) {
-            if (iosurf)
-                CFRelease(iosurf);
-            if (attrs)
-                CFRelease(attrs);
-            return -1;
-        }
-        CFDictionarySetValue(attrs, kCVPixelBufferIOSurfacePropertiesKey, iosurf);
-        CFRelease(iosurf);
-        if (CVPixelBufferCreate(kCFAllocatorDefault, (size_t)dw, (size_t)dh,
-                                kCVPixelFormatType_32BGRA, attrs, &pb) != kCVReturnSuccess || !pb) {
-            CFRelease(attrs);
-            return -1;
-        }
-        CFRelease(attrs);
-        a->vt_dst = pb;
-        a->vt_dst_w = dw;
-        a->vt_dst_h = dh;
-    }
-    dest = (CVPixelBufferRef)a->vt_dst;
-    st = VTPixelTransferSessionTransferImage((VTPixelTransferSessionRef)a->vt_xfer, src, dest);
-    if (st != noErr) {
-        vlog("vt-xfer %d", (int)st);
-        a->vt_xfer_fail = 1;
-        return -1;
-    }
-    if (CVPixelBufferLockBaseAddress(dest, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
-        return -1;
-    base = (uint8_t *)CVPixelBufferGetBaseAddress(dest);
-    stride = CVPixelBufferGetBytesPerRow(dest);
-    row = (size_t)dw * 4;
-    if (!base || stride < row) {
-        CVPixelBufferUnlockBaseAddress(dest, kCVPixelBufferLock_ReadOnly);
-        return -1;
-    }
-    for (y = 0; y < dh; y++)
-        memcpy(dst + (size_t)y * row, base + (size_t)y * stride, row);
-    CVPixelBufferUnlockBaseAddress(dest, kCVPixelBufferLock_ReadOnly);
-    return 0;
-}
-#endif
-
 static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 {
     AVFrame *sw = frame;
     uint8_t *dst;
     uint8_t *conv;
-    int vis_w, vis_h, dw, dh, src_w, flags, y, used_vt = 0;
+    int vis_w, vis_h, dw, dh, src_w, flags, y;
     int linesize[4] = { 0 };
     uint8_t *dsts[4] = { 0 };
+    /* Swing needs a CPU BGRA. GPU 32BGRA then LockBaseAddress is a 4 B/px
+       readback (1440p ~15MB) and a pipeline stall; NV12 download is 1.5 B/px
+       then sws writes BGRA. That path held 1440p near 60fps. */
 #ifdef __APPLE__
-    AVFrame *tmp = NULL;
+    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+        if (!a->hw_sw)
+            a->hw_sw = av_frame_alloc();
+        if (!a->hw_sw)
+            return -1;
+        av_frame_unref(a->hw_sw);
+        if (av_hwframe_transfer_data(a->hw_sw, frame, 0) < 0)
+            return -1;
+        sw = a->hw_sw;
+    }
 #endif
-    vis_w = frame->width;
-    vis_h = frame->height;
+    vis_w = sw->width;
+    vis_h = sw->height;
     if (blit_fit(vis_w, vis_h, a->blit_w, a->blit_h, &dw, &dh) != 0)
         return -1;
     dst = bgra_pool(a, dw, dh);
     if (!dst)
         return -1;
-#if defined(__APPLE__) && !TARGET_OS_IPHONE
-    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX &&
-        vt_scale_bgra(a, frame, dst, dw, dh) == 0)
-        used_vt = 1;
-#endif
-    if (!used_vt) {
-#ifdef __APPLE__
-        if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
-            tmp = av_frame_alloc();
-            if (tmp && av_hwframe_transfer_data(tmp, frame, 0) >= 0)
-                sw = tmp;
-            else if (tmp) {
-                av_frame_free(&tmp);
-                tmp = NULL;
-            }
-        }
-#endif
-        vis_w = sw->width;
-        vis_h = sw->height;
-        if (blit_fit(vis_w, vis_h, a->blit_w, a->blit_h, &dw, &dh) != 0) {
-#ifdef __APPLE__
-            av_frame_free(&tmp);
-#endif
-            return -1;
-        }
-        dst = bgra_pool(a, dw, dh);
-        if (!dst) {
-#ifdef __APPLE__
-            av_frame_free(&tmp);
-#endif
-            return -1;
-        }
-        /* libswscale bilinear SIMD drops the last (width % 8) columns. YouTube
-           854×480 (itag 397) is remainder 6; 426×240 remainder 2 is fine. Convert
-           an 8-aligned width when the plane is padded (dav1d stride 896) and copy
-           the visible columns. Packed 854 falls back to SWS_ACCURATE_RND. */
-        src_w = vis_w;
-        flags = SWS_BILINEAR;
-        if (dw == vis_w && dh == vis_h && (vis_w & 7)) {
-            int aligned = (vis_w + 7) & ~7;
-            if (sw->linesize[0] >= aligned)
-                src_w = aligned;
-            else
-                flags |= SWS_ACCURATE_RND;
-        } else if ((dw & 7) || (vis_w & 7)) {
+    /* libswscale bilinear SIMD drops the last (width % 8) columns. YouTube
+       854×480 (itag 397) is remainder 6; 426×240 remainder 2 is fine. Convert
+       an 8-aligned width when the plane is padded (dav1d stride 896) and copy
+       the visible columns. Packed 854 falls back to SWS_ACCURATE_RND.
+       Downscale uses plain bilinear: ACCURATE_RND is too slow for 1440p. */
+    src_w = vis_w;
+    flags = SWS_BILINEAR;
+    if (dw == vis_w && dh == vis_h && (vis_w & 7)) {
+        int aligned = (vis_w + 7) & ~7;
+        if (sw->linesize[0] >= aligned)
+            src_w = aligned;
+        else
             flags |= SWS_ACCURATE_RND;
-        }
-        {
-            int dst_w = (dw == vis_w && dh == vis_h) ? src_w : dw;
-            int dst_h = dh;
-            struct SwsContext *prev = a->sws;
-            a->sws = sws_getCachedContext(a->sws, src_w, vis_h, (enum AVPixelFormat)sw->format,
-                                          dst_w, dst_h, AV_PIX_FMT_BGRA, flags, NULL, NULL, NULL);
-            if (a->sws && a->sws != prev && src_w != vis_w)
-                vlog("sws pad %dx%d ls=%d convert=%d", vis_w, vis_h, sw->linesize[0], src_w);
-        }
-        if (!a->sws) {
-#ifdef __APPLE__
-            av_frame_free(&tmp);
-#endif
-            return -1;
-        }
-        if (dw == vis_w && dh == vis_h && src_w != vis_w) {
-            conv = sws_scratch(a, (size_t)src_w * (size_t)vis_h * 4);
-            if (!conv) {
-#ifdef __APPLE__
-                av_frame_free(&tmp);
-#endif
-                return -1;
-            }
-            dsts[0] = conv;
-            linesize[0] = src_w * 4;
-        } else {
-            dsts[0] = dst;
-            linesize[0] = dw * 4;
-        }
-        sws_scale(a->sws, (const uint8_t *const *)sw->data, sw->linesize, 0, vis_h, dsts, linesize);
-        if (dw == vis_w && dh == vis_h && src_w != vis_w) {
-            size_t row = (size_t)vis_w * 4;
-            for (y = 0; y < vis_h; y++)
-                memcpy(dst + (size_t)y * row, dsts[0] + (size_t)y * (size_t)src_w * 4, row);
-        }
-#ifdef __APPLE__
-        av_frame_free(&tmp);
-#endif
     }
-    if (dw != a->blit_log_dw || dh != a->blit_log_dh || used_vt != a->blit_log_vt) {
+    {
+        int dst_w = (dw == vis_w && dh == vis_h) ? src_w : dw;
+        struct SwsContext *prev = a->sws;
+        a->sws = sws_getCachedContext(a->sws, src_w, vis_h, (enum AVPixelFormat)sw->format,
+                                      dst_w, dh, AV_PIX_FMT_BGRA, flags, NULL, NULL, NULL);
+        if (a->sws && a->sws != prev && src_w != vis_w)
+            vlog("sws pad %dx%d ls=%d convert=%d", vis_w, vis_h, sw->linesize[0], src_w);
+    }
+    if (!a->sws)
+        return -1;
+    if (dw == vis_w && dh == vis_h && src_w != vis_w) {
+        conv = sws_scratch(a, (size_t)src_w * (size_t)vis_h * 4);
+        if (!conv)
+            return -1;
+        dsts[0] = conv;
+        linesize[0] = src_w * 4;
+    } else {
+        dsts[0] = dst;
+        linesize[0] = dw * 4;
+    }
+    sws_scale(a->sws, (const uint8_t *const *)sw->data, sw->linesize, 0, vis_h, dsts, linesize);
+    if (dw == vis_w && dh == vis_h && src_w != vis_w) {
+        size_t row = (size_t)vis_w * 4;
+        for (y = 0; y < vis_h; y++)
+            memcpy(dst + (size_t)y * row, dsts[0] + (size_t)y * (size_t)src_w * 4, row);
+    }
+    if (dw != a->blit_log_dw || dh != a->blit_log_dh) {
         a->blit_log_dw = dw;
         a->blit_log_dh = dh;
-        a->blit_log_vt = used_vt;
-        vlog("blit %dx%d -> %dx%d hole=%dx%d %s", vis_w, vis_h, dw, dh, a->blit_w, a->blit_h,
-             used_vt ? "vt-xfer" : "sws");
+        vlog("blit %dx%d -> %dx%d hole=%dx%d sws", vis_w, vis_h, dw, dh, a->blit_w, a->blit_h);
     }
     *w = dw;
     *h = dh;
