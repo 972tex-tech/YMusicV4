@@ -2868,19 +2868,6 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
-    /* 4K/60: convert can take >80ms so every picture is recv-late and we
-       never show while audio keeps the clock. Jump to a key near now. */
-    if (a->v_sent >= 0 && clock - a->v_sent > 1.0) {
-        vlog("catch-up v_sent=%.3f clock=%.3f", a->v_sent, clock);
-        vf_resync_key(a, clock);
-        /* Key may be ~2s behind (YouTube GOP). Stamp clock or the next
-           pull sees clock-v_sent>1 again and never reopens. */
-        a->v_sent = clock;
-        close_video_decoder(a);
-        a->show_late = 1;
-        pthread_mutex_unlock(&a->mu);
-        return 0;
-    }
     if (a->vhold) {
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
         double d = p - clock;

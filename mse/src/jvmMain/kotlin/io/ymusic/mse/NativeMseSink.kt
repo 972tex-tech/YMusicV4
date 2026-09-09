@@ -26,7 +26,7 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
     }
 
     override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
-        val img = grab(width, height) ?: return
+        val img = grab(width, height)
         blit(img, width, height, bgra)
         lastPub = img
         surface?.publish(img)
@@ -42,20 +42,19 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
     private var lastPub: BufferedImage? = null
 
     /** Third buffer so we never write the image Swing is painting (half-frame tear). */
-    private fun grab(w: Int, h: Int): BufferedImage? {
+    private fun grab(w: Int, h: Int): BufferedImage {
         val shown = surface?.swingShown
-        val pending = lastPub
         for (i in 0..2) {
             val cur = bufs[i]
-            /* null === swingShown is true before the first paint; that skipped
-               every empty slot and never allocated (black, 0 fps). */
-            if (cur != null && (cur === shown || cur === pending)) continue
+            if (cur != null && cur === shown) continue
             if (cur != null && cur.width == w && cur.height == h) return cur
             val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             bufs[i] = img
             return img
         }
-        return null
+        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        bufs[0] = img
+        return img
     }
 
     private fun blit(img: BufferedImage, w: Int, h: Int, bgra: ByteBuffer) {

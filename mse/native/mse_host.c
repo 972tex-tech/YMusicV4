@@ -1032,6 +1032,11 @@ void mse_host_reset(MseHost *h)
     h->ring_r = h->ring_w = h->ring_n = 0;
 #endif
     h->vpts = -1;
+    pthread_mutex_lock(&h->frame_mu);
+    h->last_bgra = NULL;
+    h->last_w = 0;
+    h->last_h = 0;
+    pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
     h->av = mse_av_create();
     /* MediaSource reset drops MseAv (and mc_win / VT layer). Keep the
