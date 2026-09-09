@@ -30,10 +30,12 @@ struct MseHost {
     pthread_mutex_t frame_mu;
     pthread_cond_t cv;
     pthread_t dec;
+    pthread_t vdec;
     int started;
     int released;
     int playing;
     int busy;
+    int vbusy;
     int gate;
     int eos;
     double hold;
@@ -516,27 +518,17 @@ static void keep_bgra(MseHost *h, int w, int ht, uint8_t *bgra)
     pthread_mutex_unlock(&h->frame_mu);
 }
 
-static void *dec_loop(void *arg)
+static void *vid_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
     while (1) {
         double clock, dur;
         uint8_t *bgra = NULL;
         uint8_t *show = NULL;
-        int16_t *pcm = NULL;
-        int w = 0, ht = 0, show_w = 0, show_ht = 0, frames = 0, rate = 0, ch = 0;
+        int w = 0, ht = 0, show_w = 0, show_ht = 0;
         double pts = 0;
-#ifdef MSE_DAC
-        int filled;
-#ifdef __APPLE__
-        AudioQueueRef start_q = NULL;
-#endif
-#ifdef __ANDROID__
-        int start_sl_play = 0;
-#endif
-#endif
         pthread_mutex_lock(&h->mu);
-        h->busy = 0;
+        h->vbusy = 0;
         pthread_cond_broadcast(&h->cv);
         while (!h->released && (!h->playing || h->gate))
             pthread_cond_wait(&h->cv, &h->mu);
@@ -544,13 +536,11 @@ static void *dec_loop(void *arg)
             pthread_mutex_unlock(&h->mu);
             return NULL;
         }
-        h->busy = 1;
+        h->vbusy = 1;
         clock = clock_locked(h);
         dur = mse_av_duration(h->av);
         pthread_mutex_unlock(&h->mu);
 
-        /* Video first so VP9 stays ahead of the DAC. Audio preroll used to run
-           8× before any video send, then packets were only 80ms ahead of clock. */
         if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0) {
 #ifdef __ANDROID__
             if (bgra) {
@@ -580,8 +570,59 @@ static void *dec_loop(void *arg)
             pthread_mutex_unlock(&h->mu);
         }
 
+        if (show && h->on_frame)
+            h->on_frame(h->user, show_w, show_ht, show);
+        if (h->on_prog)
+            h->on_prog(h->user, clock, dur, w, ht);
+        {
+            struct timespec sl;
+            int wait_ns = 4 * 1000 * 1000;
+            pthread_mutex_lock(&h->mu);
+            if (h->vw > 0 && (h->vpts < 0 || clock - h->vpts > 0.12) &&
+                mse_av_video_due(h->av, clock))
+                wait_ns = 0;
+            pthread_mutex_unlock(&h->mu);
+            if (wait_ns > 0) {
+                sl.tv_sec = 0;
+                sl.tv_nsec = wait_ns;
+                nanosleep(&sl, NULL);
+            }
+        }
+    }
+}
+
+static void *dec_loop(void *arg)
+{
+    MseHost *h = (MseHost *)arg;
+    while (1) {
+        double clock;
+        int16_t *pcm = NULL;
+        int frames = 0, rate = 0, ch = 0;
+        double pts = 0;
 #ifdef MSE_DAC
-        /* Decode audio ahead of the DAC so callbacks never pad 100ms of silence. */
+        int filled;
+#ifdef __APPLE__
+        AudioQueueRef start_q = NULL;
+#endif
+#ifdef __ANDROID__
+        int start_sl_play = 0;
+#endif
+#endif
+        pthread_mutex_lock(&h->mu);
+        h->busy = 0;
+        pthread_cond_broadcast(&h->cv);
+        while (!h->released && (!h->playing || h->gate))
+            pthread_cond_wait(&h->cv, &h->mu);
+        if (h->released) {
+            pthread_mutex_unlock(&h->mu);
+            return NULL;
+        }
+        h->busy = 1;
+        clock = clock_locked(h);
+        pthread_mutex_unlock(&h->mu);
+
+#ifdef MSE_DAC
+        /* Own thread: a late 4K GOP must not starve AudioQueue. */
         filled = 0;
         while (filled < 8) {
             int want;
@@ -663,12 +704,6 @@ static void *dec_loop(void *arg)
         }
 #endif
 
-        /* PCM ring first so a slow JNI copy cannot starve AudioQueue. */
-        if (show && h->on_frame)
-            h->on_frame(h->user, show_w, show_ht, show);
-
-        if (h->on_prog)
-            h->on_prog(h->user, clock, dur, w, ht);
         {
             struct timespec sl;
             int wait_ns = 4 * 1000 * 1000;
@@ -677,10 +712,6 @@ static void *dec_loop(void *arg)
             if (ring_ms(h) < 80 && mse_av_audio_pending(h->av))
                 wait_ns = 0;
 #endif
-            /* Late + sendable now: spin. Future pts: sleep. */
-            if (h->vw > 0 && (h->vpts < 0 || clock - h->vpts > 0.12) &&
-                mse_av_video_due(h->av, clock))
-                wait_ns = 0;
             pthread_mutex_unlock(&h->mu);
             if (wait_ns > 0) {
                 sl.tv_sec = 0;
@@ -764,7 +795,7 @@ static void aq_pause_flush(MseHost *h)
 
 static void wait_idle(MseHost *h)
 {
-    while (h->busy && !h->released)
+    while ((h->busy || h->vbusy) && !h->released)
         pthread_cond_wait(&h->cv, &h->mu);
 }
 
@@ -780,8 +811,10 @@ void mse_host_destroy(MseHost *h)
 #endif
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
-    if (h->started)
+    if (h->started) {
         pthread_join(h->dec, NULL);
+        pthread_join(h->vdec, NULL);
+    }
 #ifdef __APPLE__
     if (h->aq) {
         AudioQueueStop(h->aq, true);
@@ -912,6 +945,7 @@ static void ensure_thread(MseHost *h)
         return;
     h->started = 1;
     pthread_create(&h->dec, NULL, dec_loop, h);
+    pthread_create(&h->vdec, NULL, vid_loop, h);
 }
 
 void mse_host_play(MseHost *h)

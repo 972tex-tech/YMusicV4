@@ -61,6 +61,7 @@ typedef struct {
 
 struct MseAv {
     pthread_mutex_t mu;
+    pthread_mutex_t amu;
     uint8_t *ainit;
     size_t ainit_n;
     uint8_t *vinit;
@@ -1326,6 +1327,9 @@ static int vpar_compat(const AVCodecParameters *have, const AVCodecParameters *p
 }
 
 #ifdef __APPLE__
+/* Intel Mac: no VP9 VT decoder (kVTCouldNotFindVideoDecoderErr -12906). */
+static int vp9_vt_unavailable;
+
 /* H.264 and VP9 decode through native VTDecompressionSession, not ffmpeg's
    videotoolbox hwaccel (native `vp9` SIGILL). */
 static int apple_vt_codec(const AVCodecParameters *par)
@@ -1368,6 +1372,8 @@ static void *open_apple_vt(MseAv *a)
                                a->vpar->width, a->vpar->height);
     if (a->vpar->codec_id == AV_CODEC_ID_VP9) {
         uint8_t vpcc[12];
+        if (vp9_vt_unavailable)
+            return NULL;
         const uint8_t *extra = a->vpar->extradata;
         int extra_n = a->vpar->extradata_size;
         const uint8_t *frame = NULL;
@@ -1651,6 +1657,7 @@ MseAv *mse_av_create(void)
     if (!a)
         return NULL;
     pthread_mutex_init(&a->mu, NULL);
+    pthread_mutex_init(&a->amu, NULL);
     a->a_sent = -1;
     a->v_sent = -1;
     a->v_switch_pts = -1;
@@ -1674,11 +1681,33 @@ MseAv *mse_av_create(void)
     return a;
 }
 
+static void av_lock(MseAv *a, int audio)
+{
+    pthread_mutex_lock(audio ? &a->amu : &a->mu);
+}
+
+static void av_unlock(MseAv *a, int audio)
+{
+    pthread_mutex_unlock(audio ? &a->amu : &a->mu);
+}
+
+static void av_lock_all(MseAv *a)
+{
+    pthread_mutex_lock(&a->mu);
+    pthread_mutex_lock(&a->amu);
+}
+
+static void av_unlock_all(MseAv *a)
+{
+    pthread_mutex_unlock(&a->amu);
+    pthread_mutex_unlock(&a->mu);
+}
+
 void mse_av_destroy(MseAv *a)
 {
     if (!a)
         return;
-    pthread_mutex_lock(&a->mu);
+    av_lock_all(a);
     avcodec_free_context(&a->adec);
     avcodec_free_context(&a->vdec);
     av_bsf_free(&a->vbsf);
@@ -1702,7 +1731,8 @@ void mse_av_destroy(MseAv *a)
     cfb_free(&a->af);
     cfb_free(&a->vf);
     av_frame_free(&a->vhold);
-    pthread_mutex_unlock(&a->mu);
+    av_unlock_all(a);
+    pthread_mutex_destroy(&a->amu);
     pthread_mutex_destroy(&a->mu);
     free(a);
 }
@@ -1930,10 +1960,10 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 
     if (!a || !p || n <= 0)
         return r;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, audio);
     idx = audio ? 1 : 0;
     if (pend_add(a, audio, p, n) < 0) {
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, audio);
         return r;
     }
     initp = audio ? &a->ainit : &a->vinit;
@@ -2144,7 +2174,7 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
     if (!audio && r.n)
         vlog("append n=%d first=%.3f last=%.3f vf=%zu rd=%zu rap=%d",
              r.n, r.first, r.last, a->vf.n, a->vf.rd, a->need_rap[0]);
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, audio);
     return r;
 }
 
@@ -2196,7 +2226,7 @@ void mse_av_abort(MseAv *a, int audio)
     int idx;
     if (!a)
         return;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, audio);
     idx = audio ? 1 : 0;
     a->pend_n[idx] = 0;
     a->need_rap[idx] = 1;
@@ -2212,14 +2242,14 @@ void mse_av_abort(MseAv *a, int audio)
         AMediaCodec_flush(a->mc);
     }
 #endif
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, audio);
 }
 
 void mse_av_change_type(MseAv *a, int audio)
 {
     if (!a)
         return;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, audio);
     if (audio) {
         a->pend_n[1] = 0;
         a->need_rap[1] = 1;
@@ -2237,7 +2267,7 @@ void mse_av_change_type(MseAv *a, int audio)
         close_video_decoder(a);
     }
     vlog("changeType a=%d", audio);
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, audio);
 }
 
 void mse_av_rest_video(MseAv *a, int on)
@@ -2272,7 +2302,7 @@ void mse_av_remove(MseAv *a, int audio, double start, double end)
 {
     if (!a)
         return;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, audio);
     cfb_drop(audio ? &a->af : &a->vf, start, end);
     /* Audio-only (or a full video wipe): nothing left to decode. */
     if (!audio && a->vf.n == 0) {
@@ -2281,14 +2311,14 @@ void mse_av_remove(MseAv *a, int audio, double start, double end)
     }
     if (!audio)
         maybe_apply_video_rep(a);
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, audio);
 }
 
 void mse_av_flush(MseAv *a, int audio, int video)
 {
     if (!a)
         return;
-    pthread_mutex_lock(&a->mu);
+    av_lock_all(a);
     if (audio && a->adec)
         avcodec_flush_buffers(a->adec);
     if (video && a->vdec)
@@ -2310,7 +2340,7 @@ void mse_av_flush(MseAv *a, int audio, int video)
         a->need_rap[0] = 1;
         av_frame_free(&a->vhold);
     }
-    pthread_mutex_unlock(&a->mu);
+    av_unlock_all(a);
 }
 
 static int cfb_span(const Cfb *b, double *first, double *last)
@@ -2328,12 +2358,12 @@ int mse_av_span(MseAv *a, double *first, double *last)
     int ha, hv;
     if (!a || !first || !last)
         return 0;
-    pthread_mutex_lock(&a->mu);
+    av_lock_all(a);
     ha = cfb_span(&a->af, &af, &al);
     /* Resting decoder: leftover stays in vf but the clock must follow
        audio or currentTime snaps when video last is behind playhead. */
     hv = a->v_rest ? 0 : cfb_span(&a->vf, &vf, &vl);
-    pthread_mutex_unlock(&a->mu);
+    av_unlock_all(a);
     if (!ha && !hv)
         return 0;
     if (ha && hv) {
@@ -2390,9 +2420,9 @@ int mse_av_audio_pending(MseAv *a)
     int n;
     if (!a)
         return 0;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, 1);
     n = a->af.rd < a->af.n;
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, 1);
     return n;
 }
 
@@ -2479,7 +2509,7 @@ void mse_av_seek(MseAv *a, double seconds)
 {
     if (!a)
         return;
-    pthread_mutex_lock(&a->mu);
+    av_lock_all(a);
     cfb_clear_sent(&a->af);
     cfb_clear_sent(&a->vf);
     cfb_seek_rd(&a->af, seconds);
@@ -2529,7 +2559,7 @@ void mse_av_seek(MseAv *a, double seconds)
     av_frame_free(&a->vhold);
     vdbg_n = 0;
     maybe_apply_video_rep(a);
-    pthread_mutex_unlock(&a->mu);
+    av_unlock_all(a);
 }
 
 static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h);
@@ -2993,6 +3023,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             else {
                 vlog("vt-dec open fail id=%d", (int)a->vpar->codec_id);
                 a->vt_fail_id = a->vpar->codec_id;
+                if (a->vpar->codec_id == AV_CODEC_ID_VP9)
+                    vp9_vt_unavailable = 1;
             }
         }
         if (a->vt_dec) {
@@ -3170,14 +3202,14 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     if (!a || !s16 || !frames || !rate || !ch || !pts)
         return -1;
     *s16 = NULL;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, 1);
     if (!a->adec) {
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, 1);
         return 0;
     }
     frame = av_frame_alloc();
     if (!frame) {
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, 1);
         return -1;
     }
     got = 1;
@@ -3208,7 +3240,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     }
     if (got != 0) {
         av_frame_free(&frame);
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, 1);
         return 0;
     }
     {
@@ -3230,7 +3262,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
                 swr_init(a->swr) < 0) {
                 av_channel_layout_uninit(&out_ch);
                 av_frame_free(&frame);
-                pthread_mutex_unlock(&a->mu);
+                av_unlock(a, 1);
                 return -1;
             }
             av_channel_layout_uninit(&out_ch);
@@ -3245,7 +3277,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     tmp = malloc((size_t)max_out * (size_t)a->channels * 2);
     if (!tmp) {
         av_frame_free(&frame);
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, 1);
         return -1;
     }
     dsts[0] = tmp;
@@ -3255,7 +3287,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     av_frame_free(&frame);
     if (got <= 0) {
         free(tmp);
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, 1);
         return 0;
     }
     a->a_sent = *pts;
@@ -3263,7 +3295,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     *frames = got;
     *rate = a->rate;
     *ch = a->channels;
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, 1);
     return 1;
 }
 
@@ -3286,10 +3318,10 @@ int mse_av_buffered(MseAv *a, int audio, double *pairs, int max_pairs)
     double rs, re;
     if (!a || !pairs || max_pairs <= 0)
         return 0;
-    pthread_mutex_lock(&a->mu);
+    av_lock(a, audio);
     b = audio ? &a->af : &a->vf;
     if (b->n == 0) {
-        pthread_mutex_unlock(&a->mu);
+        av_unlock(a, audio);
         return 0;
     }
     rs = b->f[0].pts;
@@ -3313,6 +3345,6 @@ int mse_av_buffered(MseAv *a, int audio, double *pairs, int max_pairs)
         pairs[n * 2 + 1] = re;
         n++;
     }
-    pthread_mutex_unlock(&a->mu);
+    av_unlock(a, audio);
     return n;
 }
