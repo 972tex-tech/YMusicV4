@@ -2400,6 +2400,38 @@ static void vf_resync_key(MseAv *a, double t)
     vlog("resync key=%.3f rd=%zu n=%zu t=%.3f", a->vf.f[key].pts, key, a->vf.n, t);
 }
 
+/* Forward-only. If the covering key is more than max_behind before t, use
+   the next key. log28 4K: key=0 with clock=7.2 decoded 5s of GOP, one show,
+   then 0 fps. */
+static void vf_skip_to_clock(MseAv *a, double t, double max_behind)
+{
+    size_t i, prev = a->vf.n, next = a->vf.n, key;
+    for (i = 0; i < a->vf.n; i++) {
+        if (!a->vf.f[i].key)
+            continue;
+        if (a->vf.f[i].pts <= t + 0.05)
+            prev = i;
+        else if (next == a->vf.n)
+            next = i;
+    }
+    if (prev < a->vf.n && t - a->vf.f[prev].pts <= max_behind)
+        key = prev;
+    else
+        key = next;
+    if (key >= a->vf.n || key <= a->vf.rd)
+        return;
+    for (i = key; i < a->vf.n; i++)
+        a->vf.f[i].sent = 0;
+    a->vf.rd = key;
+    a->need_rap[0] = 1;
+    if (a->vdec)
+        avcodec_flush_buffers(a->vdec);
+    if (a->vbsf)
+        av_bsf_flush(a->vbsf);
+    av_frame_free(&a->vhold);
+    vlog("skip-clock key=%.3f rd=%zu t=%.3f", a->vf.f[key].pts, key, t);
+}
+
 void mse_av_seek(MseAv *a, double seconds)
 {
     if (!a)
@@ -2906,6 +2938,22 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     }
     if (a->show_late && a->v_sent >= 0)
         due = a->v_sent + 0.05;
+    if (a->show_late && clock > due + 0.35) {
+        a->show_late = 0;
+        due = clock;
+    }
+    if (a->vf.f[a->vf.n - 1].pts + 0.08 < clock) {
+        if (a->vf.rd < a->vf.n)
+            vlog("stale-gop last=%.3f clock=%.3f rd=%zu/%zu",
+                 a->vf.f[a->vf.n - 1].pts, clock, a->vf.rd, a->vf.n);
+        a->vf.rd = a->vf.n;
+        av_frame_free(&a->vhold);
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
+    if (!a->show_late && a->vf.rd < a->vf.n &&
+        a->vf.f[a->vf.rd].pts < clock - 0.5)
+        vf_skip_to_clock(a, clock, 0.5);
     if (a->vhold) {
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : due;
         double d = p - due;
