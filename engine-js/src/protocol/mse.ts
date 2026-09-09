@@ -971,6 +971,7 @@ class HTMLMediaElement {
     this["ended"] = false;
     const self = this;
     fire(self, "seeking");
+    mseLog("mse currentTime set t=" + t + " prev=" + prev);
     __mseSetCurrentTime(t);
     coverDummyVideo();
     const t0 = Date.now();

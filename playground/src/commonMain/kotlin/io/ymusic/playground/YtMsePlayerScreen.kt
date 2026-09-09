@@ -400,11 +400,19 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 windowSpan = windowSpan,
                 onScrub = { scrubFrac = it },
                 onSeek = { ms ->
-                    val s = session ?: return@PlaygroundTransport
+                    val clamped = ms.coerceIn(windowStart, windowEnd)
+                    println(
+                        "mse seek fire ms=$ms clamped=$clamped window=$windowStart..$windowEnd " +
+                            "pos=$position scrub=$scrubFrac",
+                    )
+                    val s = session ?: run {
+                        println("mse seek skipped: no session")
+                        return@PlaygroundTransport
+                    }
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) {
-                                s.player.seekTo(ms.coerceIn(windowStart, windowEnd), s.log)
+                                s.player.seekTo(clamped, s.log)
                             }
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
@@ -651,8 +659,11 @@ private fun PlaygroundTransport(
         value = scrubFrac ?: ((position - windowStart).toFloat() / windowSpan).coerceIn(0f, 1f),
         onValueChange = onScrub,
         onValueChangeFinished = {
-            val frac = scrubFrac ?: return@Slider
-            if (canSeek) onSeek(windowStart + (frac * windowSpan).toLong())
+            val frac = scrubFrac
+            val ms = if (frac != null) windowStart + (frac * windowSpan).toLong() else -1L
+            println("mse seek slider-up frac=$frac ms=$ms canSeek=$canSeek")
+            if (frac == null || !canSeek) return@Slider
+            onSeek(ms)
         },
         enabled = canSeek,
     )

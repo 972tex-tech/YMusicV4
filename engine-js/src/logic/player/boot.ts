@@ -861,6 +861,8 @@ class Player {
   seek(t: number): void {
     const player = this.player;
     if (!player) throw new JsEngineErrorImpl("player not created", "E20081");
+    const ct = activeHtmlMedia() ? __mseCurrentTime() : -1;
+    if (MSE_DEBUG) console.log("mse seek fire t=" + t + " ct=" + ct);
     player["seekTo"](t, true);
     onCaptionSeek();
   }
