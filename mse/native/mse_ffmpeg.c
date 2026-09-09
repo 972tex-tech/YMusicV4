@@ -2816,7 +2816,9 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     AVFrame *frame;
     int i, got;
     const double early = 0.04;
-    const double late = 0.08;
+    /* Convert of 1440p/4K can take >80ms. The old 80ms window then skipped
+       every picture (0 fps) while audio kept the clock. Show up to 1s late. */
+    const double late = 1.0;
 
     if (!a || !bgra || !w || !h || !pts)
         return -1;
@@ -2868,6 +2870,19 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
+    /* Behind: jump leftover to a key near now. Do not close the decoder
+       (that froze the next load at 0 fps). */
+    if (a->v_sent >= 0 && clock - a->v_sent > 1.0) {
+        vlog("catch-up v_sent=%.3f clock=%.3f", a->v_sent, clock);
+        vf_resync_key(a, clock);
+        if (a->vdec)
+            avcodec_flush_buffers(a->vdec);
+        if (a->vbsf)
+            av_bsf_flush(a->vbsf);
+        av_frame_free(&a->vhold);
+        a->show_late = 1;
+        a->v_sent = clock;
+    }
     if (a->vhold) {
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
         double d = p - clock;
@@ -2916,13 +2931,9 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            /* show_late: decode the GOP but only present near the playhead.
-               Showing pts=1890 at clock=1895 after seek is the smashed picture.
-               After late skips (4K convert > 80ms) show up to 1s behind
-               instead of freezing the picture while audio runs. */
-            if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
-                !(a->show_late && p >= clock - 0.35) &&
-                !(late_skips > 0 && p >= clock - 1.0)) {
+            /* Too far behind to show (smashed GOP after seek). Within `late`,
+               show it: 30–60 fps is fine, freeze is not. */
+            if (p < clock - late && frame->pts != AV_NOPTS_VALUE) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
