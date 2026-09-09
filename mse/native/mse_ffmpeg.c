@@ -2155,6 +2155,17 @@ void mse_av_rest_video(MseAv *a, int on)
     a->v_rest = on;
     if (on)
         close_video_decoder(a);
+    else {
+        /* Decoder was closed. Resume from the last key at/before the
+           playhead, not the P-frame rd was on (log28: send-err key=0
+           Invalid OBU, decode-dead, black while leftover still appends). */
+        double t = a->v_sent >= 0 ? a->v_sent : 0;
+        if (t <= 0 && a->vf.rd < a->vf.n)
+            t = a->vf.f[a->vf.rd].pts;
+        vf_resync_key(a, t);
+        if (a->vf.rd < a->vf.n)
+            a->v_sent = a->vf.f[a->vf.rd].pts;
+    }
     vlog("rest-video %d vf=%zu", on, a->vf.n);
     pthread_mutex_unlock(&a->mu);
 }
@@ -2590,7 +2601,7 @@ void mse_av_set_window(MseAv *a, void *window)
    with a frozen picture. Close and reopen, then resync from the previous
    key near the playhead. Split VP9 superframes without a BSF are
    INVALIDDATA on their own — those must not tear the decoder down. */
-static void video_decode_error(MseAv *a, double pts)
+static void video_decode_error(MseAv *a, double pts, int err)
 {
     if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_VP9 && !a->vbsf)
         return;
@@ -2598,8 +2609,9 @@ static void video_decode_error(MseAv *a, double pts)
     if (a->vdec && a->vdec->hw_device_ctx) {
         a->vt_fail_id = a->vdec->codec_id;
         vlog("vt-fail software id=%d", (int)a->vt_fail_id);
-    } else if (a->vdec) {
-        /* Software `av1` send() is ENOSYS without libdav1d. Do not reopen. */
+    } else if (a->vdec && err == AVERROR(ENOSYS)) {
+        /* Software `av1` send() is ENOSYS without libdav1d. Do not reopen.
+           dav1d Invalid OBU after rest is a missing key, not ENOSYS. */
         a->vt_fail_id = a->vdec->codec_id;
         vlog("decode-dead id=%d t=%.3f", (int)a->vt_fail_id, pts);
         close_video_decoder(a);
@@ -2784,7 +2796,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         open_decoder(a, 1, a->vpar);
 #ifdef __APPLE__
     if (a->vdec && a->vdec->hw_device_ctx && a->vt_fail_id == a->vdec->codec_id)
-        video_decode_error(a, clock);
+        video_decode_error(a, clock, 0);
 #endif
     if (!a->vdec || a->vf.n == 0) {
         pthread_mutex_unlock(&a->mu);
@@ -2905,7 +2917,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                     a->vf.f[a->vf.rd].sent = 1;
                     a->vf.rd++;
                 } else {
-                    video_decode_error(a, sp);
+                    video_decode_error(a, sp, sr);
                 }
                 continue;
             }
