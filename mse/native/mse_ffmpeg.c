@@ -2661,31 +2661,18 @@ static uint8_t *bgra_pool(MseAv *a, int w, int h)
     return p;
 }
 
-/* Min-fit into the hole. Never upscale. 0×0 hole → decode size. Dest is the
-   fitted picture (Swing letterboxes the panel). */
+/* TEMP: ignore the hole — YUV→BGRA at decode size, no viewport downscale. */
 static int blit_fit(int src_w, int src_h, int hole_w, int hole_h, int *dw, int *dh)
 {
+    (void)hole_w;
+    (void)hole_h;
     if (src_w <= 0 || src_h <= 0) {
         *dw = 0;
         *dh = 0;
         return -1;
     }
-    if (hole_w <= 0 || hole_h <= 0 || (src_w <= hole_w && src_h <= hole_h)) {
-        *dw = src_w;
-        *dh = src_h;
-        return 0;
-    }
-    if ((int64_t)src_w * hole_h <= (int64_t)src_h * hole_w) {
-        *dh = hole_h;
-        *dw = (int)((int64_t)src_w * hole_h / src_h);
-    } else {
-        *dw = hole_w;
-        *dh = (int)((int64_t)src_h * hole_w / src_w);
-    }
-    if (*dw < 1)
-        *dw = 1;
-    if (*dh < 1)
-        *dh = 1;
+    *dw = src_w;
+    *dh = src_h;
     return 0;
 }
 
