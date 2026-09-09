@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -655,15 +656,27 @@ private fun PlaygroundTransport(
     onPause: () -> Unit,
     onStop: () -> Unit,
 ) {
+    /* Slider onValueChangeFinished is the same frame as a click's onValueChange.
+       The scrubFrac parameter is still the previous composition, so a click
+       would no-op and leave the thumb latched. Write the fraction to a
+       holder onValueChange can see immediately. */
+    val lastFrac = remember { arrayOf<Float?>(null) }
+    val seek = rememberUpdatedState(onSeek)
+    val start = rememberUpdatedState(windowStart)
+    val span = rememberUpdatedState(windowSpan)
+    val enabled = rememberUpdatedState(canSeek)
     Slider(
         value = scrubFrac ?: ((position - windowStart).toFloat() / windowSpan).coerceIn(0f, 1f),
-        onValueChange = onScrub,
+        onValueChange = { frac ->
+            lastFrac[0] = frac
+            onScrub(frac)
+        },
         onValueChangeFinished = {
-            val frac = scrubFrac
-            val ms = if (frac != null) windowStart + (frac * windowSpan).toLong() else -1L
-            println("mse seek slider-up frac=$frac ms=$ms canSeek=$canSeek")
-            if (frac == null || !canSeek) return@Slider
-            onSeek(ms)
+            val frac = lastFrac[0]
+            val ms = if (frac != null) start.value + (frac * span.value).toLong() else -1L
+            println("mse seek slider-up frac=$frac ms=$ms canSeek=${enabled.value}")
+            if (frac == null || !enabled.value) return@Slider
+            seek.value(ms)
         },
         enabled = canSeek,
     )
