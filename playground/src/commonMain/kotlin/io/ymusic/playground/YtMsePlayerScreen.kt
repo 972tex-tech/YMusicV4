@@ -825,6 +825,8 @@ private val QUALITY_CHOICES = listOf(
     "hd720" to "720p",
     "hd1080" to "1080p",
     "hd1440" to "1440p",
+    "hd2160" to "4K",
+    "highres" to "8K",
 )
 
 private fun JsonObject.longField(key: String): Long =
