@@ -247,9 +247,13 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         h->samples_played += n / frame_bytes(h);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
-    if (n < cap)
-        memset((uint8_t *)buf->mAudioData + n, 0, (size_t)(cap - n));
-    buf->mAudioDataByteSize = (UInt32)cap;
+    /* Do not insert silence into a short read — that clicks while 4K is
+       at 60fps (log28 21:20). Only pad when the ring is empty. */
+    if (n <= 0) {
+        memset(buf->mAudioData, 0, (size_t)cap);
+        n = cap;
+    }
+    buf->mAudioDataByteSize = (UInt32)n;
     AudioQueueEnqueueBuffer(q, buf, 0, NULL);
 }
 
@@ -271,8 +275,8 @@ static int start_aq(MseHost *h, int rate, int ch)
     fmt.mBytesPerFrame = (UInt32)(ch * 2);
     fmt.mChannelsPerFrame = (UInt32)ch;
     fmt.mBitsPerChannel = 16;
-    cap = rate * ch * 2 / 2;
-    buf_bytes = 1024 * ch * 2;
+    cap = rate * ch * 2; /* 1s */
+    buf_bytes = 2048 * ch * 2;
     pthread_mutex_unlock(&h->mu);
     if (AudioQueueNewOutput(&fmt, aq_callback, h, NULL, kCFRunLoopCommonModes, 0, &aq) != 0) {
         pthread_mutex_lock(&h->mu);
@@ -400,8 +404,8 @@ static int start_sl(MseHost *h, int rate, int ch)
     SLresult r;
     if (h->sl_player)
         return 0;
-    cap = rate * ch * 2 / 2;
-    buf_bytes = 1024 * ch * 2;
+    cap = rate * ch * 2; /* 1s */
+    buf_bytes = 2048 * ch * 2;
     pthread_mutex_unlock(&h->mu);
     r = slCreateEngine(&engine, 0, NULL, 0, NULL, NULL);
     if (r != SL_RESULT_SUCCESS) {
@@ -625,7 +629,7 @@ static void *dec_loop(void *arg)
             int want;
             int dac = 0;
             pthread_mutex_lock(&h->mu);
-            want = ring_ms(h) < 250;
+            want = ring_ms(h) < 400;
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
@@ -665,7 +669,7 @@ static void *dec_loop(void *arg)
                 h->samples_pulled += frames;
                 if (dac && !h->flushing)
                     ring_write(h, (const uint8_t *)pcm, nbytes);
-                if (dac && !h->aq_started && ring_ms(h) >= 80) {
+                if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
                     h->samples_played = 0;
 #ifdef __APPLE__
@@ -706,7 +710,7 @@ static void *dec_loop(void *arg)
             int wait_ns = 4 * 1000 * 1000;
             pthread_mutex_lock(&h->mu);
 #ifdef MSE_DAC
-            if (ring_ms(h) < 80 && mse_av_audio_pending(h->av))
+            if (ring_ms(h) < 160 && mse_av_audio_pending(h->av))
                 wait_ns = 0;
 #endif
             pthread_mutex_unlock(&h->mu);
