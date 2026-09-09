@@ -39,11 +39,18 @@ actual class MseVideoSurface {
     var nativePresent: Boolean = false
         private set
 
+    /** Swing hole. Invoked off the decode thread; must not recompose Compose. */
+    @Volatile
+    var swingBlit: ((BufferedImage?) -> Unit)? = null
+
     internal fun publish(frame: BufferedImage) {
-        _frame.value = frame
+        val hole = swingBlit
+        if (hole != null) hole(frame)
+        else _frame.value = frame
     }
 
     internal fun clear() {
+        swingBlit?.invoke(null)
         _frame.value = null
     }
 

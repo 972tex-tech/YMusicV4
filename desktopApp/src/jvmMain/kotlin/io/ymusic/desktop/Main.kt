@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -719,8 +720,12 @@ private fun DesktopPlayerSurface(
     val webBitmap = remember(webFrame) { webFrame?.toComposeImageBitmap() }
     val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
     val msePanel = remember { MseVideoPanel() }
-    LaunchedEffect(mseSurface, msePanel) {
-        mseSurface.frame.collect { msePanel.setImage(it) }
+    DisposableEffect(mseSurface, msePanel) {
+        val blit: (java.awt.image.BufferedImage?) -> Unit = { msePanel.setImage(it) }
+        mseSurface.swingBlit = blit
+        onDispose {
+            if (mseSurface.swingBlit === blit) mseSurface.swingBlit = null
+        }
     }
     modifier.drawWithContent {
         this.drawIntoCanvas { canvas ->

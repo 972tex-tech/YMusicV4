@@ -47,9 +47,6 @@ void mse_av_set_window(MseAv *a, void *window);
 /* JVM desktop blit hole in pixels. 0×0 = decode size. Downscale-only min-fit
  * (never upscale; dest is the fitted picture, not a letterboxed panel). */
 void mse_av_set_blit_size(MseAv *a, int w, int h);
-/* Pin a pooled BGRA so scale_bgra will not overwrite it (async JVM blit).
- * p=NULL releases. */
-void mse_av_hold_ptr(MseAv *a, const uint8_t *p);
 
 /* 1 = frame, 0 = none yet, -1 = error. *bgra is borrowed from MseAv (do not
  * free). Android MediaCodec / Apple VT layer return 1 with *bgra == NULL. */

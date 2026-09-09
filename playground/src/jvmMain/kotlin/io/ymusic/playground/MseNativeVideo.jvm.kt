@@ -1,7 +1,7 @@
 package io.ymusic.playground
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
@@ -36,8 +36,12 @@ internal actual fun MseNativeVideo(
     @Suppress("UNUSED_PARAMETER") pictureHeight: Int,
 ) {
     val panel = remember(sink) { MseVideoPanel(sink) }
-    LaunchedEffect(surface, panel) {
-        surface.frame.collect { panel.setImage(it) }
+    DisposableEffect(surface, panel) {
+        val blit: (java.awt.image.BufferedImage?) -> Unit = { panel.setImage(it) }
+        surface.swingBlit = blit
+        onDispose {
+            if (surface.swingBlit === blit) surface.swingBlit = null
+        }
     }
     SwingPanel(
         background = Color.Black,

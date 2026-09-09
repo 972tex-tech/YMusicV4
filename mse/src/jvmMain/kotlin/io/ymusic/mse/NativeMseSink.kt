@@ -7,8 +7,8 @@ import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Optional Compose blit of decoded frames. Audio and the media clock live in native C.
- * [Flow] of bitmaps is a preview path, not a hardware surface.
+ * JVM desktop: copy pooled BGRA into a reused BufferedImage. The Swing hole
+ * paints it; Compose does not recompose per frame. Audio stays in native C.
  */
 class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : MseHostSink {
     private val released = AtomicBoolean(false)

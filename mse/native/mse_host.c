@@ -30,11 +30,7 @@ struct MseHost {
     pthread_mutex_t frame_mu;
     pthread_mutex_t blit_call_mu;
     pthread_cond_t cv;
-    pthread_cond_t blit_cv;
     pthread_t dec;
-    pthread_t blit;
-    int blit_started;
-    int blit_run;
     int started;
     int released;
     int playing;
@@ -515,7 +511,6 @@ static void keep_bgra(MseHost *h, int w, int ht, uint8_t *bgra)
     h->last_w = w;
     h->last_h = ht;
     h->frame_gen++;
-    pthread_cond_broadcast(&h->blit_cv);
     pthread_mutex_unlock(&h->frame_mu);
 }
 
@@ -536,43 +531,15 @@ static void call_on_frame(MseHost *h, int w, int ht, const uint8_t *bgra)
     pthread_mutex_unlock(&h->blit_call_mu);
 }
 
-/* JNI/Java blit on its own thread so a GC or 1440p copy cannot starve the
-   AudioQueue ring (both A+V hitch). Decode only publishes last_bgra. */
-static void *blit_loop(void *arg)
-{
-    MseHost *h = (MseHost *)arg;
-    int seen = -1;
-    while (1) {
-        uint8_t *ptr;
-        int w, ht;
-        pthread_mutex_lock(&h->frame_mu);
-        while (h->blit_run && h->frame_gen == seen)
-            pthread_cond_wait(&h->blit_cv, &h->frame_mu);
-        if (!h->blit_run) {
-            pthread_mutex_unlock(&h->frame_mu);
-            return NULL;
-        }
-        seen = h->frame_gen;
-        ptr = h->last_bgra;
-        w = h->last_w;
-        ht = h->last_h;
-        pthread_mutex_unlock(&h->frame_mu);
-        if (!ptr || w <= 0 || ht <= 0)
-            continue;
-        mse_av_hold_ptr(h->av, ptr);
-        call_on_frame(h, w, ht, ptr);
-        mse_av_hold_ptr(h->av, NULL);
-    }
-}
-
 static void *dec_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
     while (1) {
         double clock, dur;
         uint8_t *bgra = NULL;
+        uint8_t *show = NULL;
         int16_t *pcm = NULL;
-        int w = 0, ht = 0, frames = 0, rate = 0, ch = 0;
+        int w = 0, ht = 0, show_w = 0, show_ht = 0, frames = 0, rate = 0, ch = 0;
         double pts = 0;
 #ifdef MSE_DAC
         int filled;
@@ -614,8 +581,12 @@ static void *dec_loop(void *arg)
                 }
             }
 #endif
-            if (bgra)
+            if (bgra) {
                 keep_bgra(h, w, ht, bgra);
+                show = bgra;
+                show_w = w;
+                show_ht = ht;
+            }
             pthread_mutex_lock(&h->mu);
             h->vw = w;
             h->vh = ht;
@@ -707,6 +678,11 @@ static void *dec_loop(void *arg)
         }
 #endif
 
+        /* Audio ring is filled first. JNI/Swing copy may drop fps (ok 30–60)
+           but must not starve AudioQueue (A+V stall). */
+        if (show)
+            call_on_frame(h, show_w, show_ht, show);
+
         if (h->on_prog)
             h->on_prog(h->user, clock, dur, w, ht);
         {
@@ -740,7 +716,6 @@ MseHost *mse_host_create(void)
     pthread_mutex_init(&h->frame_mu, NULL);
     pthread_mutex_init(&h->blit_call_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
-    pthread_cond_init(&h->blit_cv, NULL);
     h->av = mse_av_create();
     h->playing = 0;
     h->vpts = -1;
@@ -822,14 +797,8 @@ void mse_host_destroy(MseHost *h)
 #endif
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
-    pthread_mutex_lock(&h->frame_mu);
-    h->blit_run = 0;
-    pthread_cond_broadcast(&h->blit_cv);
-    pthread_mutex_unlock(&h->frame_mu);
     if (h->started)
         pthread_join(h->dec, NULL);
-    if (h->blit_started)
-        pthread_join(h->blit, NULL);
 #ifdef __APPLE__
     if (h->aq) {
         AudioQueueStop(h->aq, true);
@@ -868,7 +837,6 @@ void mse_host_destroy(MseHost *h)
     pthread_mutex_destroy(&h->frame_mu);
     pthread_mutex_destroy(&h->blit_call_mu);
     pthread_mutex_destroy(&h->mu);
-    pthread_cond_destroy(&h->blit_cv);
     pthread_cond_destroy(&h->cv);
     free(h);
 }
@@ -939,18 +907,6 @@ void mse_host_set_sinks(MseHost *h, MseFrameFn on_frame, MsePcmFn on_pcm, MsePro
     h->on_prog = on_prog;
     h->user = user;
     pthread_mutex_unlock(&h->mu);
-    if (on_frame && !h->blit_started) {
-        pthread_mutex_lock(&h->frame_mu);
-        h->blit_run = 1;
-        pthread_mutex_unlock(&h->frame_mu);
-        if (pthread_create(&h->blit, NULL, blit_loop, h) == 0)
-            h->blit_started = 1;
-        else {
-            pthread_mutex_lock(&h->frame_mu);
-            h->blit_run = 0;
-            pthread_mutex_unlock(&h->frame_mu);
-        }
-    }
 }
 
 void mse_host_set_blit_size(MseHost *h, int w, int ht)
