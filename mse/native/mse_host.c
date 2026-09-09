@@ -135,26 +135,19 @@ static double clock_locked(MseHost *h)
                 t = dac;
         }
 #endif
-        /* Linear play: stay inside leftover. Sit 250ms behind leftover end
-           so SABR can fetch the next chunk. 1s was longer than 1440p
-           leftover (~1–2s): clock hit the cap, every later picture was
-           HOLD-FAR, 0 fps after ~1s. Audio-only must still play to last. */
+        /* Linear play: stay inside leftover. Do not sit 1s behind last —
+           1440p leftover is often 1–2s, so that cap froze the clock and
+           every later picture was HOLD-FAR (seek plays ~1s then 0 fps).
+           Chrome plays to buffered end and waits for the next append. */
         if (have) {
-            double cap = last;
-            /* VOD catching the real end — not live leftover past a stale
-               MediaSource duration (log23 recreate: yt_dur=17253, vf to 17266). */
-            int near_eos = h->yt_dur > 0 && last + 0.5 >= h->yt_dur &&
-                           last <= h->yt_dur + 0.75;
-            if (!near_eos && last - first > 0.3 && mse_av_has_video(h->av))
-                cap = last - 0.25;
             if (t < first)
                 t = first;
-            else if (t > cap) {
-                t = cap;
-                h->hold = cap;
+            else if (t > last) {
+                t = last;
+                h->hold = last;
                 h->origin_ns = now_ns();
 #ifdef MSE_DAC
-                h->seek_base = cap;
+                h->seek_base = last;
                 h->samples_played = 0;
 #endif
             }

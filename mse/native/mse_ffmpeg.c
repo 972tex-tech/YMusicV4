@@ -1485,6 +1485,9 @@ static void apply_pending_video_rep(MseAv *a)
 #endif
     open_decoder(a, 1, a->vpar);
     a->v_reopen = 0;
+    /* 45fps cap uses v_sent. Old quality PTS would skip every new GOP
+       picture (1440p switch → 0 fps). */
+    a->v_sent = -1;
 }
 
 static void maybe_apply_video_rep(MseAv *a)
