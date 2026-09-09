@@ -20,6 +20,7 @@
 #include <os/log.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/pixdesc.h>
+#include <CoreVideo/CoreVideo.h>
 #include "mse_vt_present.h"
 #endif
 
@@ -1324,6 +1325,68 @@ static int vpar_compat(const AVCodecParameters *have, const AVCodecParameters *p
     return 1;
 }
 
+#ifdef __APPLE__
+/* H.264 and VP9 decode through native VTDecompressionSession, not ffmpeg's
+   videotoolbox hwaccel (native `vp9` SIGILL). */
+static int apple_vt_codec(const AVCodecParameters *par)
+{
+    if (!par)
+        return 0;
+    if (par->codec_id == AV_CODEC_ID_H264)
+        return par->extradata && par->extradata_size >= 7;
+    if (par->codec_id == AV_CODEC_ID_VP9)
+        return par->width > 0 && par->height > 0;
+    return 0;
+}
+
+static void vp9_vpcc_from_par(uint8_t out[12], const AVCodecParameters *par,
+                              const uint8_t *frame, int n)
+{
+    int profile = 0, bpp = 8;
+    memset(out, 0, 12);
+    if (par->profile >= 0 && par->profile <= 3)
+        profile = par->profile;
+    if (frame && n >= 1 && (frame[0] >> 6) == 2) {
+        profile = (frame[0] >> 4) & 3;
+        if (profile >= 2)
+            bpp = 10;
+    }
+    out[0] = 1;
+    out[4] = (uint8_t)profile;
+    out[6] = (uint8_t)((bpp << 4) | (1 << 1));
+    out[7] = 1;
+    out[8] = 1;
+    out[9] = 1;
+}
+
+static void *open_apple_vt(MseAv *a)
+{
+    if (!a->vpar)
+        return NULL;
+    if (a->vpar->codec_id == AV_CODEC_ID_H264)
+        return mse_vt_dec_open(a->vpar->extradata, a->vpar->extradata_size,
+                               a->vpar->width, a->vpar->height);
+    if (a->vpar->codec_id == AV_CODEC_ID_VP9) {
+        uint8_t vpcc[12];
+        const uint8_t *extra = a->vpar->extradata;
+        int extra_n = a->vpar->extradata_size;
+        const uint8_t *frame = NULL;
+        int fn = 0;
+        if (a->vf.rd < a->vf.n) {
+            frame = a->vf.f[a->vf.rd].data;
+            fn = (int)a->vf.f[a->vf.rd].n;
+        }
+        if (!extra || extra_n < 12 || extra[0] != 1) {
+            vp9_vpcc_from_par(vpcc, a->vpar, frame, fn);
+            extra = vpcc;
+            extra_n = 12;
+        }
+        return mse_vt_dec_open_vp9(extra, extra_n, a->vpar->width, a->vpar->height);
+    }
+    return NULL;
+}
+#endif
+
 static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 {
     const AVCodec *codec;
@@ -1472,6 +1535,10 @@ static int leftover_before_switch(const MseAv *a)
     if (a->mc_hold && a->mc_hold_pts_us / 1e6 < a->v_switch_pts - 0.001)
         return 1;
 #endif
+#ifdef __APPLE__
+    if (a->vt_q_n > 0 && a->vt_q_pts[0] < a->v_switch_pts - 0.001)
+        return 1;
+#endif
     if (a->vf.rd < a->vf.n && a->vf.f[a->vf.rd].pts < a->v_switch_pts - 0.001)
         return 1;
     return 0;
@@ -1494,6 +1561,12 @@ static void apply_pending_video_rep(MseAv *a)
     a->mc_fail = 0;
     if (mc_try_open(a) == 0)
         return;
+#endif
+#ifdef __APPLE__
+    if (apple_vt_codec(a->vpar)) {
+        a->v_reopen = 0;
+        return;
+    }
 #endif
     open_decoder(a, 1, a->vpar);
     a->v_reopen = 0;
@@ -1992,7 +2065,7 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                              a->vf.n);
                         if (!a->vdec
 #ifdef __APPLE__
-                            && a->vpar->codec_id != AV_CODEC_ID_H264
+                            && !apple_vt_codec(a->vpar)
 #endif
                         )
                             open_decoder(a, 1, a->vpar);
@@ -2024,8 +2097,10 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 #ifdef __APPLE__
                     /* Native VTDecompressionSession in pull_video. A second
                        ffmpeg h264_videotoolbox session on the simulator
-                       enqueued black frames (61 fps, empty picture). */
-                    if (par && par->codec_id == AV_CODEC_ID_H264) {
+                       enqueued black frames (61 fps, empty picture). VP9
+                       uses the same Apple session — ffmpeg's VT hwaccel
+                       wraps native `vp9` (log15 SIGILL). */
+                    if (par && apple_vt_codec(par)) {
                         avcodec_parameters_free(&par);
                         par = NULL;
                     }
@@ -2423,8 +2498,14 @@ void mse_av_seek(MseAv *a, double seconds)
         cfb_free(&a->vf);
         a->pend_n[0] = 0;
         close_video_decoder(a);
-    } else if (a->vdec)
-        avcodec_flush_buffers(a->vdec);
+    } else {
+        if (a->vdec)
+            avcodec_flush_buffers(a->vdec);
+#ifdef __APPLE__
+        if (a->vt_dec)
+            mse_vt_dec_flush(a->vt_dec);
+#endif
+    }
     a->show_late = 1;
 #ifdef __APPLE__
     while (a->vt_q_n > 0) {
@@ -2724,6 +2805,49 @@ static void video_decode_error(MseAv *a, double pts, int err)
 }
 
 #ifdef __APPLE__
+/* JVM has no AVSampleBufferDisplayLayer (JAWT SIGSEGV). Lock the NV12
+   pixel buffer and reuse scale_bgra. iOS still shows on the layer. */
+static int present_cvpb(MseAv *a, void *pb, uint8_t **bgra, int *w, int *h)
+{
+    CVPixelBufferRef cv = (CVPixelBufferRef)pb;
+    OSType fmt;
+    AVFrame tmp;
+    int src_w, src_h, r = -1;
+
+    src_w = (int)CVPixelBufferGetWidth(cv);
+    src_h = (int)CVPixelBufferGetHeight(cv);
+    if (a->vt_layer && mse_vt_show(a->vt_layer, pb, src_w, src_h) == 0) {
+        *bgra = NULL;
+        *w = src_w;
+        *h = src_h;
+        return 0;
+    }
+    fmt = CVPixelBufferGetPixelFormatType(cv);
+    if (CVPixelBufferLockBaseAddress(cv, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
+        return -1;
+    memset(&tmp, 0, sizeof(tmp));
+    tmp.width = src_w;
+    tmp.height = src_h;
+    if (fmt == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+        fmt == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
+        tmp.format = AV_PIX_FMT_NV12;
+        tmp.data[0] = CVPixelBufferGetBaseAddressOfPlane(cv, 0);
+        tmp.data[1] = CVPixelBufferGetBaseAddressOfPlane(cv, 1);
+        tmp.linesize[0] = (int)CVPixelBufferGetBytesPerRowOfPlane(cv, 0);
+        tmp.linesize[1] = (int)CVPixelBufferGetBytesPerRowOfPlane(cv, 1);
+    } else if (fmt == kCVPixelFormatType_32BGRA) {
+        tmp.format = AV_PIX_FMT_BGRA;
+        tmp.data[0] = CVPixelBufferGetBaseAddress(cv);
+        tmp.linesize[0] = (int)CVPixelBufferGetBytesPerRow(cv);
+    } else {
+        CVPixelBufferUnlockBaseAddress(cv, kCVPixelBufferLock_ReadOnly);
+        return -1;
+    }
+    r = scale_bgra(a, &tmp, bgra, w, h);
+    CVPixelBufferUnlockBaseAddress(cv, kCVPixelBufferLock_ReadOnly);
+    return r;
+}
+
 static void vt_q_put(MseAv *a, void *pb, int w, int h, double pts)
 {
     int i, j;
@@ -2751,7 +2875,7 @@ static void vt_q_put(MseAv *a, void *pb, int w, int h, double pts)
     a->vt_q_n++;
 }
 
-static int vt_q_take(MseAv *a, double clock, int *w, int *h, double *pts)
+static int vt_q_take(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts)
 {
     const double early = 0.04;
     const double late = 0.08;
@@ -2764,10 +2888,8 @@ static int vt_q_take(MseAv *a, double clock, int *w, int *h, double *pts)
         pb = a->vt_q_pb[0];
         if (p < clock - late) {
             mse_vt_pb_release(pb);
-        } else if (a->vt_layer && mse_vt_show(a->vt_layer, pb, a->vt_q_w[0], a->vt_q_h[0]) == 0) {
+        } else if (present_cvpb(a, pb, bgra, w, h) == 0) {
             mse_vt_pb_release(pb);
-            *w = a->vt_q_w[0];
-            *h = a->vt_q_h[0];
             *pts = p;
             a->v_sent = p;
             a->show_late = 0;
@@ -2795,13 +2917,13 @@ static int vt_q_take(MseAv *a, double clock, int *w, int *h, double *pts)
     return 0;
 }
 
-static int pull_vt(MseAv *a, double clock, int *w, int *h, double *pts)
+static int pull_vt(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts)
 {
     const double late = 0.08;
     int i;
     if (!a->vt_dec)
         return 0;
-    if (vt_q_take(a, clock, w, h, pts))
+    if (vt_q_take(a, clock, bgra, w, h, pts))
         return 1;
     if (a->vt_q_n >= 4)
         return 0;
@@ -2815,11 +2937,11 @@ static int pull_vt(MseAv *a, double clock, int *w, int *h, double *pts)
             a->vf.rd++;
         }
         if (a->vf.rd >= a->vf.n)
-            return vt_q_take(a, clock, w, h, pts);
+            return vt_q_take(a, clock, bgra, w, h, pts);
         c = &a->vf.f[a->vf.rd];
         /* Send in DTS order. A P 50ms ahead is a ref for the B due now. */
         if (c->dts > clock + MSE_SEND_AHEAD && c->pts > clock + MSE_SEND_AHEAD)
-            return vt_q_take(a, clock, w, h, pts);
+            return vt_q_take(a, clock, bgra, w, h, pts);
         output = (a->v_seen_idr || coded_is_rap(a, c)) && c->pts >= clock - late;
         if (mse_vt_dec_send(a->vt_dec, c->data, (int)c->n, output) < 0) {
             c->sent = 1;
@@ -2834,7 +2956,7 @@ static int pull_vt(MseAv *a, double clock, int *w, int *h, double *pts)
         a->vf.rd++;
         if (output && mse_vt_dec_recv(a->vt_dec, &pb, &rw, &rh) && pb)
             vt_q_put(a, pb, rw, rh, c->pts);
-        if (vt_q_take(a, clock, w, h, pts))
+        if (vt_q_take(a, clock, bgra, w, h, pts))
             return 1;
         if (a->vt_q_n >= 4)
             return 0;
@@ -2860,18 +2982,21 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     }
     maybe_apply_video_rep(a);
 #ifdef __APPLE__
-    if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_H264 && a->vpar->extradata) {
+    if (a->vpar && apple_vt_codec(a->vpar) && a->vt_fail_id != a->vpar->codec_id) {
         if (!a->vt_dec && a->vf.rd < a->vf.n &&
             (!a->need_rap[0] || coded_is_rap(a, &a->vf.f[a->vf.rd]))) {
-            a->vt_dec = mse_vt_dec_open(a->vpar->extradata, a->vpar->extradata_size,
-                                        a->vpar->width, a->vpar->height);
+            a->vt_dec = open_apple_vt(a);
             if (a->vt_dec)
-                vlog("open h264 vt-dec %dx%d", a->vpar->width, a->vpar->height);
-            else
-                vlog("vt-dec open fail");
+                vlog("open %s vt-dec %dx%d",
+                     a->vpar->codec_id == AV_CODEC_ID_VP9 ? "vp9" : "h264",
+                     a->vpar->width, a->vpar->height);
+            else {
+                vlog("vt-dec open fail id=%d", (int)a->vpar->codec_id);
+                a->vt_fail_id = a->vpar->codec_id;
+            }
         }
         if (a->vt_dec) {
-            int r = pull_vt(a, clock, w, h, pts);
+            int r = pull_vt(a, clock, bgra, w, h, pts);
             pthread_mutex_unlock(&a->mu);
             return r;
         }

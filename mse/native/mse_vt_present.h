@@ -18,9 +18,12 @@ int mse_vt_show(void *layer, void *cv_pixel_buffer, int w, int h);
 int mse_vt_show_bgra(void *layer, const uint8_t *bgra, int w, int h);
 void mse_vt_flush(void *layer);
 
-/* H.264 VTDecompressionSession. Enable HW, do not Require it (simulator
-   uses Apple software VT). NULL if create fails. */
+/* H.264 / VP9 VTDecompressionSession. Enable HW, do not Require it
+   (simulator / Intel use Apple software VT). NULL if create fails.
+   ffmpeg's videotoolbox hwaccel wraps native `vp9` (SIGILL); this is
+   Apple's session, the Chrome path. */
 void *mse_vt_dec_open(const uint8_t *avcc, int avcc_n, int w, int h);
+void *mse_vt_dec_open_vp9(const uint8_t *vpcc, int vpcc_n, int w, int h);
 void mse_vt_dec_close(void *dec);
 void mse_vt_dec_flush(void *dec);
 int mse_vt_dec_send(void *dec, const uint8_t *data, int n, int output);

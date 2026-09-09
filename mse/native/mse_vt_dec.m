@@ -4,6 +4,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <VideoToolbox/VideoToolbox.h>
 #import <os/log.h>
+#import <stdint.h>
 #import <stdlib.h>
 #import <string.h>
 
@@ -47,6 +48,57 @@ static void vt_dec_cb(void *refcon, void *src, OSStatus status, VTDecodeInfoFlag
     if (d->out)
         CVPixelBufferRelease(d->out);
     d->out = CVPixelBufferRetain((CVPixelBufferRef)img);
+}
+
+static CFMutableDictionaryRef vt_dst_attrs(int w, int h)
+{
+    int32_t pix = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+    int32_t ww = w, hh = h;
+    CFNumberRef pixn, wn, hn;
+    CFMutableDictionaryRef iosurf, dst;
+    pixn = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &pix);
+    wn = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &ww);
+    hn = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &hh);
+    iosurf = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
+                                       &kCFTypeDictionaryKeyCallBacks,
+                                       &kCFTypeDictionaryValueCallBacks);
+    dst = CFDictionaryCreateMutable(kCFAllocatorDefault, 8,
+                                    &kCFTypeDictionaryKeyCallBacks,
+                                    &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(dst, kCVPixelBufferPixelFormatTypeKey, pixn);
+    CFDictionarySetValue(dst, kCVPixelBufferWidthKey, wn);
+    CFDictionarySetValue(dst, kCVPixelBufferHeightKey, hn);
+    CFDictionarySetValue(dst, kCVPixelBufferIOSurfacePropertiesKey, iosurf);
+    CFDictionarySetValue(dst, kCVPixelBufferMetalCompatibilityKey, kCFBooleanTrue);
+    CFRelease(pixn);
+    CFRelease(wn);
+    CFRelease(hn);
+    CFRelease(iosurf);
+    return dst;
+}
+
+static int vt_create_session(struct MseVtDec *d)
+{
+    CFMutableDictionaryRef spec, dst;
+    VTDecompressionOutputCallbackRecord cb;
+    OSStatus st;
+    spec = CFDictionaryCreateMutable(kCFAllocatorDefault, 1,
+                                     &kCFTypeDictionaryKeyCallBacks,
+                                     &kCFTypeDictionaryValueCallBacks);
+    /* Enable HW; do not Require it. Simulator / Intel use Apple software VT. */
+    CFDictionarySetValue(spec, kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder,
+                         kCFBooleanTrue);
+    dst = vt_dst_attrs(d->w, d->h);
+    cb.decompressionOutputCallback = vt_dec_cb;
+    cb.decompressionOutputRefCon = d;
+    st = VTDecompressionSessionCreate(kCFAllocatorDefault, d->fmt, spec, dst, &cb, &d->session);
+    CFRelease(dst);
+    CFRelease(spec);
+    if (st != noErr || !d->session) {
+        os_log(vt_oslog(), "mse-v vt-dec create status=%d", (int)st);
+        return -1;
+    }
+    return 0;
 }
 
 static int avcc_sets(const uint8_t *p, int n, const uint8_t **sets, size_t *setn, int *nset, int *nal_len)
@@ -96,8 +148,6 @@ void *mse_vt_dec_open(const uint8_t *avcc, int avcc_n, int w, int h)
     const uint8_t *sets[8];
     size_t setn[8];
     int nset = 0, nal_len = 4;
-    CFMutableDictionaryRef spec = NULL;
-    VTDecompressionOutputCallbackRecord cb;
     OSStatus st;
     if (!avcc || avcc_n < 7 || w <= 0 || h <= 0)
         return NULL;
@@ -115,50 +165,80 @@ void *mse_vt_dec_open(const uint8_t *avcc, int avcc_n, int w, int h)
         free(d);
         return NULL;
     }
-    spec = CFDictionaryCreateMutable(kCFAllocatorDefault, 1,
-                                     &kCFTypeDictionaryKeyCallBacks,
-                                     &kCFTypeDictionaryValueCallBacks);
-    /* Enable HW; do not Require it. Simulator uses Apple software VT. */
-    CFDictionarySetValue(spec, kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder,
-                         kCFBooleanTrue);
-    {
-        /* AVSampleBufferDisplayLayer needs IOSurface-backed NV12. NULL dest
-           lets software VT emit planar 420 with no IOSurface → enqueue
-           succeeds, picture stays black (61 fps, empty view). */
-        int32_t pix = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
-        int32_t ww = w, hh = h;
-        CFNumberRef pixn, wn, hn;
-        CFMutableDictionaryRef iosurf, dst;
-        pixn = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &pix);
-        wn = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &ww);
-        hn = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &hh);
-        iosurf = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
-                                           &kCFTypeDictionaryKeyCallBacks,
-                                           &kCFTypeDictionaryValueCallBacks);
-        dst = CFDictionaryCreateMutable(kCFAllocatorDefault, 8,
-                                        &kCFTypeDictionaryKeyCallBacks,
-                                        &kCFTypeDictionaryValueCallBacks);
-        CFDictionarySetValue(dst, kCVPixelBufferPixelFormatTypeKey, pixn);
-        CFDictionarySetValue(dst, kCVPixelBufferWidthKey, wn);
-        CFDictionarySetValue(dst, kCVPixelBufferHeightKey, hn);
-        CFDictionarySetValue(dst, kCVPixelBufferIOSurfacePropertiesKey, iosurf);
-        CFDictionarySetValue(dst, kCVPixelBufferMetalCompatibilityKey, kCFBooleanTrue);
-        CFRelease(pixn);
-        CFRelease(wn);
-        CFRelease(hn);
-        CFRelease(iosurf);
-        cb.decompressionOutputCallback = vt_dec_cb;
-        cb.decompressionOutputRefCon = d;
-        st = VTDecompressionSessionCreate(kCFAllocatorDefault, d->fmt, spec, dst, &cb, &d->session);
-        CFRelease(dst);
-    }
-    CFRelease(spec);
-    if (st != noErr || !d->session) {
-        os_log(vt_oslog(), "mse-v vt-dec create status=%d", (int)st);
+    /* AVSampleBufferDisplayLayer needs IOSurface-backed NV12. NULL dest
+       lets software VT emit planar 420 with no IOSurface → enqueue
+       succeeds, picture stays black (61 fps, empty view). */
+    if (vt_create_session(d) < 0) {
         CFRelease(d->fmt);
         free(d);
         return NULL;
     }
+    return d;
+}
+
+void *mse_vt_dec_open_vp9(const uint8_t *vpcc, int vpcc_n, int w, int h)
+{
+    struct MseVtDec *d;
+    CFMutableDictionaryRef atoms = NULL, ext = NULL;
+    CFDataRef data = NULL;
+    uint8_t syn[12];
+    OSStatus st;
+    if (w <= 0 || h <= 0)
+        return NULL;
+    if (!vpcc || vpcc_n < 8) {
+        /* FullBox vpcC: version=1, profile 0, 8-bit 4:2:0 BT.709. */
+        memset(syn, 0, sizeof(syn));
+        syn[0] = 1;
+        syn[4] = 0;
+        syn[5] = 0;
+        syn[6] = (8 << 4) | (1 << 1);
+        syn[7] = 1;
+        syn[8] = 1;
+        syn[9] = 1;
+        vpcc = syn;
+        vpcc_n = 12;
+    }
+    if (__builtin_available(macOS 11.0, iOS 14.0, *))
+        VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9);
+    d = calloc(1, sizeof(*d));
+    if (!d)
+        return NULL;
+    d->w = w;
+    d->h = h;
+    data = CFDataCreate(kCFAllocatorDefault, vpcc, vpcc_n);
+    atoms = CFDictionaryCreateMutable(kCFAllocatorDefault, 1,
+                                      &kCFTypeDictionaryKeyCallBacks,
+                                      &kCFTypeDictionaryValueCallBacks);
+    ext = CFDictionaryCreateMutable(kCFAllocatorDefault, 1,
+                                    &kCFTypeDictionaryKeyCallBacks,
+                                    &kCFTypeDictionaryValueCallBacks);
+    if (!data || !atoms || !ext) {
+        if (data)
+            CFRelease(data);
+        if (atoms)
+            CFRelease(atoms);
+        if (ext)
+            CFRelease(ext);
+        free(d);
+        return NULL;
+    }
+    CFDictionarySetValue(atoms, CFSTR("vpcC"), data);
+    CFDictionarySetValue(ext, kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms, atoms);
+    st = CMVideoFormatDescriptionCreate(kCFAllocatorDefault, kCMVideoCodecType_VP9, w, h, ext, &d->fmt);
+    CFRelease(data);
+    CFRelease(atoms);
+    CFRelease(ext);
+    if (st != noErr || !d->fmt) {
+        os_log(vt_oslog(), "mse-v vt-dec vp9 fmt status=%d", (int)st);
+        free(d);
+        return NULL;
+    }
+    if (vt_create_session(d) < 0) {
+        CFRelease(d->fmt);
+        free(d);
+        return NULL;
+    }
+    os_log(vt_oslog(), "mse-v vt-dec vp9 %dx%d", w, h);
     return d;
 }
 
