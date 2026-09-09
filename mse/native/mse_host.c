@@ -549,9 +549,39 @@ static void *dec_loop(void *arg)
         dur = mse_av_duration(h->av);
         pthread_mutex_unlock(&h->mu);
 
+        /* Video first so VP9 stays ahead of the DAC. Audio preroll used to run
+           8× before any video send, then packets were only 80ms ahead of clock. */
+        if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0) {
+#ifdef __ANDROID__
+            if (bgra) {
+                ANativeWindow *win;
+                pthread_mutex_lock(&h->mu);
+                win = (ANativeWindow *)h->window;
+                if (win)
+                    ANativeWindow_acquire(win);
+                pthread_mutex_unlock(&h->mu);
+                if (win) {
+                    blit_window(win, w, ht, bgra);
+                    ANativeWindow_release(win);
+                }
+            }
+#endif
+            if (bgra) {
+                keep_bgra(h, w, ht, bgra);
+                show = bgra;
+                show_w = w;
+                show_ht = ht;
+            }
+            pthread_mutex_lock(&h->mu);
+            h->vw = w;
+            h->vh = ht;
+            h->vpts = pts;
+            h->frames++;
+            pthread_mutex_unlock(&h->mu);
+        }
+
 #ifdef MSE_DAC
-        /* Audio first. One thread does both; 4K libvpx before PCM glitched
-           the DAC (log28). Video only when the ring has >80ms. */
+        /* Decode audio ahead of the DAC so callbacks never pad 100ms of silence. */
         filled = 0;
         while (filled < 8) {
             int want;
@@ -614,60 +644,13 @@ static void *dec_loop(void *arg)
             filled++;
         }
 #ifdef __APPLE__
-        if (start_q) {
+        if (start_q)
             AudioQueueStart(start_q, NULL);
-            start_q = NULL;
-        }
 #endif
 #ifdef __ANDROID__
-        if (start_sl_play) {
+        if (start_sl_play)
             sl_set_playing(h, 1);
-            start_sl_play = 0;
-        }
 #endif
-        {
-            int want_video = 1;
-            pthread_mutex_lock(&h->mu);
-            if (ring_ms(h) < 80 && mse_av_audio_pending(h->av))
-                want_video = 0;
-            pthread_mutex_unlock(&h->mu);
-            if (!want_video)
-                goto after_video;
-        }
-#endif
-
-        if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0) {
-#ifdef __ANDROID__
-            if (bgra) {
-                ANativeWindow *win;
-                pthread_mutex_lock(&h->mu);
-                win = (ANativeWindow *)h->window;
-                if (win)
-                    ANativeWindow_acquire(win);
-                pthread_mutex_unlock(&h->mu);
-                if (win) {
-                    blit_window(win, w, ht, bgra);
-                    ANativeWindow_release(win);
-                }
-            }
-#endif
-            if (bgra) {
-                keep_bgra(h, w, ht, bgra);
-                show = bgra;
-                show_w = w;
-                show_ht = ht;
-            }
-            pthread_mutex_lock(&h->mu);
-            h->vw = w;
-            h->vh = ht;
-            h->vpts = pts;
-            h->frames++;
-            pthread_mutex_unlock(&h->mu);
-        }
-
-#ifdef MSE_DAC
-after_video:
-        ;
 #else
         if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
             int nbytes = frames * ch * (int)sizeof(int16_t);

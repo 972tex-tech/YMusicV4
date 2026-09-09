@@ -2400,40 +2400,6 @@ static void vf_resync_key(MseAv *a, double t)
     vlog("resync key=%.3f rd=%zu n=%zu t=%.3f", a->vf.f[key].pts, key, a->vf.n, t);
 }
 
-/* Forward-only. If the covering key is more than max_behind before t, use
-   the next key. log28 4K: key=0 with clock=7.2 decoded 5s of GOP, one show,
-   then 0 fps. */
-static void vf_skip_to_clock(MseAv *a, double t, double max_behind)
-{
-    size_t i, prev = a->vf.n, next = a->vf.n, key;
-    for (i = 0; i < a->vf.n; i++) {
-        if (!a->vf.f[i].key)
-            continue;
-        if (a->vf.f[i].pts <= t + 0.05)
-            prev = i;
-        else if (next == a->vf.n)
-            next = i;
-    }
-    if (prev < a->vf.n && t - a->vf.f[prev].pts <= max_behind)
-        key = prev;
-    else if (next < a->vf.n && a->vf.f[next].pts <= t + 0.35)
-        key = next;
-    else
-        return;
-    if (key >= a->vf.n || key <= a->vf.rd)
-        return;
-    for (i = key; i < a->vf.n; i++)
-        a->vf.f[i].sent = 0;
-    a->vf.rd = key;
-    a->need_rap[0] = 1;
-    if (a->vdec)
-        avcodec_flush_buffers(a->vdec);
-    if (a->vbsf)
-        av_bsf_flush(a->vbsf);
-    av_frame_free(&a->vhold);
-    vlog("skip-clock key=%.3f rd=%zu t=%.3f", a->vf.f[key].pts, key, t);
-}
-
 void mse_av_seek(MseAv *a, double seconds)
 {
     if (!a)
@@ -2883,10 +2849,6 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     int i, got;
     const double early = 0.04;
     const double late = 0.08;
-    /* Seek/quality-switch: catch the seek target, not live DAC.
-       log28 hd2160 seek t=9.809 leftover from 6.84; 8 late-decodes/pull
-       vs a running clock never reached playhead (0 fps). */
-    double due = clock;
 
     if (!a || !bgra || !w || !h || !pts)
         return -1;
@@ -2938,42 +2900,16 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
-    if (a->show_late && a->v_sent >= 0)
-        due = a->v_sent + 0.05;
-    if (a->show_late && clock > due + 0.35) {
-        a->show_late = 0;
-        due = clock;
-    }
-    if (a->vf.f[a->vf.n - 1].pts + 0.08 < clock) {
-        if (a->vf.rd < a->vf.n)
-            vlog("stale-gop last=%.3f clock=%.3f rd=%zu/%zu",
-                 a->vf.f[a->vf.n - 1].pts, clock, a->vf.rd, a->vf.n);
-        a->vf.rd = a->vf.n;
-        av_frame_free(&a->vhold);
-        pthread_mutex_unlock(&a->mu);
-        return 0;
-    }
-    if (!a->show_late && a->vf.rd < a->vf.n &&
-        a->vf.f[a->vf.rd].pts < clock - 0.5)
-        vf_skip_to_clock(a, clock, 0.5);
-    /* No key near the playhead: keep the last bitmap, do not burn this
-       thread on 4K P-frames we will never show (log28 skip-clock to 6.84
-       at t=4.0 = 0 fps then jump). */
-    if (!a->show_late && a->vf.rd < a->vf.n &&
-        a->vf.f[a->vf.rd].pts < clock - 0.5) {
-        pthread_mutex_unlock(&a->mu);
-        return 0;
-    }
     if (a->vhold) {
-        double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : due;
-        double d = p - due;
-        if (p > due + early) {
+        double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
+        double d = p - clock;
+        if (p > clock + early) {
             if (vdbg_ok() || d > 0.2)
                 vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
-        if (p < due - late && !(a->show_late && p >= due - 0.35)) {
+        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
         } else if (!a->v_seen_idr) {
@@ -3003,31 +2939,25 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             break;
         got = avcodec_receive_frame(a->vdec, frame);
         if (got == 0) {
-            double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : due;
-            double d = p - due;
-            if (p > due + early && frame->pts != AV_NOPTS_VALUE) {
+            double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : clock;
+            double d = p - clock;
+            if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
                 a->vhold = frame;
                 if (vdbg_ok() || d > 0.2)
                     vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            /* show_late: catch the seek target (due), not live DAC.
-               Play: cap late decode-only so 4K libvpx cannot starve audio.
-               Do not vf_resync_key here: key=0 is still "near" t for 8s, so
-               every pull rewound rd=0 (log28 stall then jump at next_key 6.84). */
-            if (p < due - late && frame->pts != AV_NOPTS_VALUE &&
-                !(a->show_late && p >= due - 0.35)) {
+            /* show_late: decode the GOP but only present near the playhead.
+               Showing pts=1890 at clock=1895 after seek is the smashed picture. */
+            if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
+                !(a->show_late && p >= clock - 0.35) &&
+                !(late_skips > 0 && p >= clock - 1.0)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                if (a->show_late) {
-                    if (late_skips++ < 512)
-                        i--;
-                    continue;
-                }
-                if (++late_skips >= 8)
-                    break;
+                if (late_skips++ < 512)
+                    i--;
                 continue;
             }
             if (!a->v_seen_idr) {
