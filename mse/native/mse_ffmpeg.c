@@ -2505,6 +2505,38 @@ static void vf_resync_key(MseAv *a, double t)
     vlog("resync key=%.3f rd=%zu n=%zu t=%.3f", a->vf.f[key].pts, key, a->vf.n, t);
 }
 
+/* A RAP already >0.5s behind the DAC cannot be caught up on libvpx-4K
+   without holding mu for seconds — JS then cannot append audio, the ring
+   underruns, and sound glitches with the 0–1fps slog (log28 20:28). Drop
+   that GOP. If the next key is still in the future, wait; do not jump. */
+static int vf_skip_stale(MseAv *a, double clock)
+{
+    const double stale = 0.50;
+    size_t i, next;
+    double kpts, npts;
+    if (a->vf.rd >= a->vf.n)
+        return 0;
+    if (!coded_is_rap(a, &a->vf.f[a->vf.rd]))
+        return 0;
+    kpts = a->vf.f[a->vf.rd].pts;
+    if (kpts >= clock - stale)
+        return 0;
+    next = a->vf.n;
+    for (i = a->vf.rd + 1; i < a->vf.n; i++) {
+        if (coded_is_rap(a, &a->vf.f[i])) {
+            next = i;
+            break;
+        }
+    }
+    npts = next < a->vf.n ? a->vf.f[next].pts : -1;
+    for (i = a->vf.rd; i < next; i++)
+        a->vf.f[i].sent = 1;
+    a->vf.rd = next;
+    a->need_rap[0] = 1;
+    vlog("skip-stale key=%.3f next=%.3f clock=%.3f", kpts, npts, clock);
+    return 1;
+}
+
 void mse_av_seek(MseAv *a, double seconds)
 {
     if (!a)
@@ -3011,6 +3043,13 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return 0;
     }
     maybe_apply_video_rep(a);
+    while (vf_skip_stale(a, clock))
+        ;
+    if (a->vf.rd < a->vf.n && coded_is_rap(a, &a->vf.f[a->vf.rd]) &&
+        a->vf.f[a->vf.rd].pts > clock + early) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
 #ifdef __APPLE__
     if (a->vpar && apple_vt_codec(a->vpar) && a->vt_fail_id != a->vpar->codec_id) {
         if (!a->vt_dec && a->vf.rd < a->vf.n &&
@@ -3113,7 +3152,12 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                if (late_skips++ < 512)
+                if (d < -0.50) {
+                    while (vf_skip_stale(a, clock))
+                        ;
+                    break;
+                }
+                if (late_skips++ < 8)
                     i--;
                 continue;
             }
@@ -3148,6 +3192,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             if (a->vf.rd != rd0)
                 vlog_state(a, clock, "rap-skip", a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
         }
+        if (vf_skip_stale(a, clock))
+            break;
         if (a->vf.rd >= a->vf.n) {
             if (vdbg_ok())
                 vlog_state(a, clock, "starve-empty", got);
