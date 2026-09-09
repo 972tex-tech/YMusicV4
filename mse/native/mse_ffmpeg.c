@@ -521,6 +521,9 @@ static int has_marker(const uint8_t *p, size_t n, const uint8_t *m, size_t mn)
 #define MSE_ID_BLOCK        0xA1u
 #define MSE_ID_TIMECODE     0xE7u
 #define MSE_ID_PREVSIZE     0xABu
+/* log28: 1440p60 itag 308 Cluster clen=9425394. 8MB treated that GOP as
+   incomplete, leftover stayed empty, SABR would not refetch. 4K GOPs are larger. */
+#define MSE_CLUSTER_MAX (128ull * 1024ull * 1024ull)
 
 static int ebml_head(const uint8_t *p, size_t n, uint32_t *id, uint64_t *sz, int *unk, int *hdr)
 {
@@ -1657,7 +1660,7 @@ static int cluster_total(const uint8_t *p, size_t n, size_t *total)
     if (id != MSE_ID_CLUSTER)
         return 0;
     if (!unk) {
-        if (sz > 8u * 1024u * 1024u)
+        if (sz > MSE_CLUSTER_MAX)
             return 0;
         if ((size_t)hdr + (size_t)sz > n)
             return 0;
@@ -1681,7 +1684,7 @@ static int cluster_total(const uint8_t *p, size_t n, size_t *total)
         }
         if (cunk)
             return 0;
-        if (csz > 8u * 1024u * 1024u)
+        if (csz > MSE_CLUSTER_MAX)
             return 0;
         if (off + (size_t)chdr + (size_t)csz > n)
             return 0;
@@ -1719,7 +1722,7 @@ static int continuation_total(const uint8_t *p, size_t n, size_t *total)
         }
         if (unk)
             return 0;
-        if (sz > 8u * 1024u * 1024u)
+        if (sz > MSE_CLUSTER_MAX)
             return 0;
         if (off + (size_t)hdr + (size_t)sz > n) {
             if (off > 0) {
@@ -1923,7 +1926,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                    a->pend_n[idx] < total) {
             if (!continuation_total(a->pend[idx], a->pend_n[idx], &total) || total == 0 ||
                 a->pend_n[idx] < total) {
-                if (!audio && a->pend_n[idx] > 0 && a->pend_n[idx] < 96)
+                if (!audio && a->pend_n[idx] > 0 &&
+                    (a->pend_n[idx] < 96 || a->pend_n[idx] % (1024u * 1024u) == 0))
                     vlog("webm wait-cluster n=%zu b0=%02x", a->pend_n[idx], a->pend[idx][0]);
                 break;
             }
