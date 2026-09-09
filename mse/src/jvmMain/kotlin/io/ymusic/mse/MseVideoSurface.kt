@@ -43,6 +43,10 @@ actual class MseVideoSurface {
     @Volatile
     var swingBlit: ((BufferedImage?) -> Unit)? = null
 
+    /** Buffer the panel is painting. Decode must not write this image. */
+    @Volatile
+    var swingShown: BufferedImage? = null
+
     internal fun publish(frame: BufferedImage) {
         val hole = swingBlit
         if (hole != null) hole(frame)
@@ -51,6 +55,7 @@ actual class MseVideoSurface {
 
     internal fun clear() {
         swingBlit?.invoke(null)
+        swingShown = null
         _frame.value = null
     }
 

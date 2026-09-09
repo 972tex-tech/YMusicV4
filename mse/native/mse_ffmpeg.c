@@ -2868,6 +2868,18 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
+    /* 4K/60: convert can take >80ms so every picture is recv-late and we
+       never show while audio keeps the clock. Jump to a key near now. */
+    if (a->v_sent >= 0 && clock - a->v_sent > 1.0) {
+        vlog("catch-up v_sent=%.3f clock=%.3f", a->v_sent, clock);
+        vf_resync_key(a, clock);
+        if (a->vf.rd < a->vf.n)
+            a->v_sent = a->vf.f[a->vf.rd].pts;
+        close_video_decoder(a);
+        a->show_late = 1;
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
     if (a->vhold) {
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
         double d = p - clock;
@@ -2917,9 +2929,12 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 return 0;
             }
             /* show_late: decode the GOP but only present near the playhead.
-               Showing pts=1890 at clock=1895 after seek is the smashed picture. */
+               Showing pts=1890 at clock=1895 after seek is the smashed picture.
+               After late skips (4K convert > 80ms) show up to 1s behind
+               instead of freezing the picture while audio runs. */
             if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
-                !(a->show_late && p >= clock - 0.35)) {
+                !(a->show_late && p >= clock - 0.35) &&
+                !(late_skips > 0 && p >= clock - 1.0)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);

@@ -26,7 +26,10 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
     }
 
     override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
-        surface?.publish(bgraToImage(width, height, bgra))
+        val img = grab(width, height) ?: return
+        blit(img, width, height, bgra)
+        lastPub = img
+        surface?.publish(img)
     }
 
     override fun onPcm(rate: Int, channels: Int, s16: ByteArray) {
@@ -35,23 +38,30 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
 
     override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
 
-    private var bufA: BufferedImage? = null
-    private var bufB: BufferedImage? = null
-    private var useA = true
+    private val bufs = arrayOfNulls<BufferedImage>(3)
+    private var lastPub: BufferedImage? = null
 
-    private fun bgraToImage(w: Int, h: Int, bgra: ByteBuffer): BufferedImage {
-        val img = if (useA) ensure(w, h, bufA).also { bufA = it } else ensure(w, h, bufB).also { bufB = it }
-        useA = !useA
+    /** Third buffer so we never write the image Swing is painting (half-frame tear). */
+    private fun grab(w: Int, h: Int): BufferedImage? {
+        val shown = surface?.swingShown
+        val pending = lastPub
+        for (i in 0..2) {
+            val cur = bufs[i]
+            if (cur === shown || cur === pending) continue
+            if (cur != null && cur.width == w && cur.height == h) return cur
+            val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+            bufs[i] = img
+            return img
+        }
+        return null
+    }
+
+    private fun blit(img: BufferedImage, w: Int, h: Int, bgra: ByteBuffer) {
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
         val n = minOf(pixels.size, w * h)
         bgra.order(ByteOrder.LITTLE_ENDIAN)
         bgra.position(0)
         bgra.limit((n * 4).coerceAtMost(bgra.capacity()))
         bgra.asIntBuffer().get(pixels, 0, n)
-        return img
     }
-
-    private fun ensure(w: Int, h: Int, cur: BufferedImage?): BufferedImage =
-        if (cur != null && cur.width == w && cur.height == h) cur
-        else BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
 }

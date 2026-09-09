@@ -21,10 +21,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -721,15 +718,12 @@ private fun DesktopPlayerSurface(
     val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
     val msePanel = remember { MseVideoPanel() }
     DisposableEffect(mseSurface, msePanel) {
+        msePanel.onPainted = { mseSurface.swingShown = it }
         val blit: (java.awt.image.BufferedImage?) -> Unit = { msePanel.setImage(it) }
         mseSurface.swingBlit = blit
         onDispose {
+            msePanel.onPainted = null
             if (mseSurface.swingBlit === blit) mseSurface.swingBlit = null
-        }
-    }
-    modifier.drawWithContent {
-        this.drawIntoCanvas { canvas ->
-            canvas.nativeCanvas
         }
     }
     Box(
@@ -811,6 +805,9 @@ private fun DesktopPlayerSurface(
 private class MseVideoPanel : JPanel() {
     @Volatile private var img: BufferedImage? = null
 
+    @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
+    private val pending = java.util.concurrent.atomic.AtomicBoolean(false)
+
     init {
         isOpaque = true
         background = AwtColor.BLACK
@@ -822,12 +819,13 @@ private class MseVideoPanel : JPanel() {
     override fun contains(x: Int, y: Int): Boolean = false
 
     fun setImage(image: BufferedImage?) {
-        if (!SwingUtilities.isEventDispatchThread()) {
-            SwingUtilities.invokeLater { setImage(image) }
-            return
-        }
         img = image
-        repaint()
+        if (pending.compareAndSet(false, true)) {
+            SwingUtilities.invokeLater {
+                pending.set(false)
+                repaint()
+            }
+        }
     }
 
     override fun paintComponent(g: Graphics) {
@@ -836,13 +834,18 @@ private class MseVideoPanel : JPanel() {
         g2.color = AwtColor.BLACK
         g2.fillRect(0, 0, width, height)
         val image = img ?: return
+        onPainted?.invoke(image)
         val scale = min(width / image.width.toDouble(), height / image.height.toDouble())
         val dw = (image.width * scale).toInt().coerceAtLeast(1)
         val dh = (image.height * scale).toInt().coerceAtLeast(1)
         val x = (width - dw) / 2
         val y = (height - dh) / 2
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-        g2.drawImage(image, x, y, dw, dh, null)
+        if (dw == image.width && dh == image.height) {
+            g2.drawImage(image, x, y, null)
+        } else {
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g2.drawImage(image, x, y, dw, dh, null)
+        }
     }
 }
 

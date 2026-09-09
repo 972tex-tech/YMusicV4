@@ -12,6 +12,7 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.min
@@ -37,9 +38,11 @@ internal actual fun MseNativeVideo(
 ) {
     val panel = remember(sink) { MseVideoPanel(sink) }
     DisposableEffect(surface, panel) {
+        panel.onPainted = { surface.swingShown = it }
         val blit: (java.awt.image.BufferedImage?) -> Unit = { panel.setImage(it) }
         surface.swingBlit = blit
         onDispose {
+            panel.onPainted = null
             if (surface.swingBlit === blit) surface.swingBlit = null
         }
     }
@@ -63,6 +66,11 @@ private class MseVideoPanel(private val sink: MseVideoSink) : JPanel() {
     @Volatile
     private var img: BufferedImage? = null
 
+    @Volatile
+    var onPainted: ((BufferedImage?) -> Unit)? = null
+
+    private val pending = AtomicBoolean(false)
+
     init {
         isOpaque = true
         background = AwtColor.BLACK
@@ -78,17 +86,18 @@ private class MseVideoPanel(private val sink: MseVideoSink) : JPanel() {
     override fun contains(x: Int, y: Int): Boolean = false
 
     fun setImage(image: BufferedImage?) {
-        if (!SwingUtilities.isEventDispatchThread()) {
-            SwingUtilities.invokeLater { setImage(image) }
-            return
-        }
         img = image
         if (image != null) {
             sink.frameCount++
             sink.frameW = image.width
             sink.frameH = image.height
         }
-        repaint()
+        if (pending.compareAndSet(false, true)) {
+            SwingUtilities.invokeLater {
+                pending.set(false)
+                repaint()
+            }
+        }
     }
 
     override fun paintComponent(g: Graphics) {
@@ -97,6 +106,7 @@ private class MseVideoPanel(private val sink: MseVideoSink) : JPanel() {
         g2.color = AwtColor.BLACK
         g2.fillRect(0, 0, width, height)
         val image = img
+        onPainted?.invoke(image)
         if (image == null) {
             g2.color = AwtColor(255, 255, 255, 180)
             val s = placeholder
@@ -109,8 +119,12 @@ private class MseVideoPanel(private val sink: MseVideoSink) : JPanel() {
         val dh = (image.height * scale).toInt().coerceAtLeast(1)
         val x = (width - dw) / 2
         val y = (height - dh) / 2
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-        g2.drawImage(image, x, y, dw, dh, null)
+        if (dw == image.width && dh == image.height) {
+            g2.drawImage(image, x, y, null)
+        } else {
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g2.drawImage(image, x, y, dw, dh, null)
+        }
     }
 
     private fun repaintOnEdt() {
