@@ -282,6 +282,15 @@ static void vlog(const char *fmt, ...)
 #endif
 }
 
+#if MSE_DEBUG
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
+}
+#endif
+
 static int vdbg_ok(void)
 {
 #if MSE_DEBUG
@@ -2540,6 +2549,9 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
     int vis_w, vis_h, dw, dh, src_w, flags, y;
     int linesize[4] = { 0 };
     uint8_t *dsts[4] = { 0 };
+#if MSE_DEBUG
+    double t0, xfer_ms = 0, scale_ms;
+#endif
 #ifdef __APPLE__
     if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
         if (!a->hw_sw)
@@ -2547,8 +2559,14 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         if (!a->hw_sw)
             return -1;
         av_frame_unref(a->hw_sw);
+#if MSE_DEBUG
+        t0 = now_ms();
+#endif
         if (av_hwframe_transfer_data(a->hw_sw, frame, 0) < 0)
             return -1;
+#if MSE_DEBUG
+        xfer_ms = now_ms() - t0;
+#endif
         sw = a->hw_sw;
     }
 #endif
@@ -2593,7 +2611,13 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         dsts[0] = dst;
         linesize[0] = dw * 4;
     }
+#if MSE_DEBUG
+    t0 = now_ms();
+#endif
     sws_scale(a->sws, (const uint8_t *const *)sw->data, sw->linesize, 0, vis_h, dsts, linesize);
+#if MSE_DEBUG
+    scale_ms = now_ms() - t0;
+#endif
     if (dw == vis_w && dh == vis_h && src_w != vis_w) {
         size_t row = (size_t)vis_w * 4;
         for (y = 0; y < vis_h; y++)
@@ -2604,6 +2628,10 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         a->blit_log_dh = dh;
         vlog("blit %dx%d -> %dx%d hole=%dx%d sws", vis_w, vis_h, dw, dh, a->blit_w, a->blit_h);
     }
+#if MSE_DEBUG
+    vlog("sws %dx%d -> %dx%d fmt=%d xfer=%.2f scale=%.2f", vis_w, vis_h, dw, dh, sw->format,
+         xfer_ms, scale_ms);
+#endif
     *w = dw;
     *h = dh;
     *bgra = dst;
