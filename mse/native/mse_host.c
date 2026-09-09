@@ -185,9 +185,8 @@ static void ring_write(MseHost *h, const uint8_t *p, int n)
 {
     while (n > 0) {
         int space, chunk;
-        while (h->ring_n >= h->ring_cap && !h->released && !h->flushing && h->playing)
-            pthread_cond_wait(&h->cv, &h->mu);
-        if (h->released || h->flushing || !h->playing)
+        /* Do not wait while holding mu — AudioQueue cannot drain then. */
+        if (h->ring_n >= h->ring_cap || h->released || h->flushing || !h->playing)
             return;
         space = h->ring_cap - h->ring_n;
         chunk = n < space ? n : space;
@@ -248,11 +247,9 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         h->samples_played += n / frame_bytes(h);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
-    if (n <= 0) {
-        memset(buf->mAudioData, 0, (size_t)cap);
-        n = cap;
-    }
-    buf->mAudioDataByteSize = (UInt32)n;
+    if (n < cap)
+        memset((uint8_t *)buf->mAudioData + n, 0, (size_t)(cap - n));
+    buf->mAudioDataByteSize = (UInt32)cap;
     AudioQueueEnqueueBuffer(q, buf, 0, NULL);
 }
 
