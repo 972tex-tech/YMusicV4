@@ -2955,26 +2955,14 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 return 0;
             }
             /* show_late: catch the seek target (due), not live DAC.
-               Play: cap late decode-only so 4K libvpx cannot starve audio. */
+               Play: cap late decode-only so 4K libvpx cannot starve audio.
+               Do not vf_resync_key here: key=0 is still "near" t for 8s, so
+               every pull rewound rd=0 (log28 stall then jump at next_key 6.84). */
             if (p < due - late && frame->pts != AV_NOPTS_VALUE &&
                 !(a->show_late && p >= due - 0.35)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                if (!a->show_late && d < -1.0) {
-                    size_t rd0 = a->vf.rd;
-                    vf_resync_key(a, clock);
-                    if (a->vf.rd != rd0) {
-                        if (a->vdec)
-                            avcodec_flush_buffers(a->vdec);
-                        if (a->vbsf)
-                            av_bsf_flush(a->vbsf);
-                        a->need_rap[0] = 1;
-                        av_frame_free(&frame);
-                        pthread_mutex_unlock(&a->mu);
-                        return 0;
-                    }
-                }
                 if (a->show_late) {
                     if (late_skips++ < 512)
                         i--;
