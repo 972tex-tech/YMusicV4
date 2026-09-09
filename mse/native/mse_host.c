@@ -48,6 +48,9 @@ struct MseHost {
     void *window;
     int vw;
     int vh;
+    /* JVM hole. Survives mse_host_reset (new MseAv). 0×0 = decode size. */
+    int blit_w;
+    int blit_h;
     int frames;
     uint8_t *last_bgra; /* borrowed from MseAv ping-pong; do not free */
     int last_w;
@@ -892,7 +895,15 @@ void mse_host_set_blit_size(MseHost *h, int w, int ht)
 {
     if (!h)
         return;
+    if (w < 0)
+        w = 0;
+    if (ht < 0)
+        ht = 0;
+    pthread_mutex_lock(&h->mu);
+    h->blit_w = w;
+    h->blit_h = ht;
     mse_av_set_blit_size(h->av, w, ht);
+    pthread_mutex_unlock(&h->mu);
 }
 
 static void ensure_thread(MseHost *h)
@@ -1039,9 +1050,11 @@ void mse_host_reset(MseHost *h)
     pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
     h->av = mse_av_create();
-    /* MediaSource reset drops MseAv (and mc_win / VT layer). Keep the
-       already-attached window so AV1/MediaCodec can open after load. */
+    /* MediaSource reset drops MseAv (and mc_win / VT layer / blit size).
+       Keep the attached window so AV1/MediaCodec can open after load.
+       Keep the hole so 4K does not sws 3840×2160 (log28 hole=0x0, ~1 fps). */
     mse_av_set_window(h->av, h->window);
+    mse_av_set_blit_size(h->av, h->blit_w, h->blit_h);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
 }
