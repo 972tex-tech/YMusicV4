@@ -28,7 +28,6 @@ static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 struct MseHost {
     pthread_mutex_t mu;
     pthread_mutex_t frame_mu;
-    pthread_mutex_t blit_call_mu;
     pthread_cond_t cv;
     pthread_t dec;
     int started;
@@ -514,23 +513,6 @@ static void keep_bgra(MseHost *h, int w, int ht, uint8_t *bgra)
     pthread_mutex_unlock(&h->frame_mu);
 }
 
-static void call_on_frame(MseHost *h, int w, int ht, const uint8_t *bgra)
-{
-    MseFrameFn fn;
-    void *user;
-    if (!h || !bgra)
-        return;
-    pthread_mutex_lock(&h->mu);
-    fn = h->on_frame;
-    user = h->user;
-    pthread_mutex_unlock(&h->mu);
-    if (!fn)
-        return;
-    pthread_mutex_lock(&h->blit_call_mu);
-    fn(user, w, ht, bgra);
-    pthread_mutex_unlock(&h->blit_call_mu);
-}
-
 static void *dec_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
@@ -678,10 +660,9 @@ static void *dec_loop(void *arg)
         }
 #endif
 
-        /* Audio ring is filled first. JNI/Swing copy may drop fps (ok 30–60)
-           but must not starve AudioQueue (A+V stall). */
-        if (show)
-            call_on_frame(h, show_w, show_ht, show);
+        /* PCM ring first so a slow JNI copy cannot starve AudioQueue. */
+        if (show && h->on_frame)
+            h->on_frame(h->user, show_w, show_ht, show);
 
         if (h->on_prog)
             h->on_prog(h->user, clock, dur, w, ht);
@@ -714,7 +695,6 @@ MseHost *mse_host_create(void)
         return NULL;
     pthread_mutex_init(&h->mu, NULL);
     pthread_mutex_init(&h->frame_mu, NULL);
-    pthread_mutex_init(&h->blit_call_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
     h->av = mse_av_create();
     h->playing = 0;
@@ -835,7 +815,6 @@ void mse_host_destroy(MseHost *h)
     pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
     pthread_mutex_destroy(&h->frame_mu);
-    pthread_mutex_destroy(&h->blit_call_mu);
     pthread_mutex_destroy(&h->mu);
     pthread_cond_destroy(&h->cv);
     free(h);
@@ -1244,7 +1223,8 @@ void mse_host_remove(MseHost *h, int audio, double start, double end)
                 }
             }
 #endif
-            call_on_frame(h, w, ht, black);
+            if (h->on_frame)
+                h->on_frame(h->user, w, ht, black);
         }
         pthread_mutex_lock(&h->frame_mu);
         h->last_bgra = NULL;
@@ -1304,7 +1284,8 @@ static void show_black(MseHost *h)
         }
     }
 #endif
-    call_on_frame(h, w, ht, black);
+    if (h->on_frame)
+        h->on_frame(h->user, w, ht, black);
     pthread_mutex_lock(&h->mu);
     h->vw = w;
     h->vh = ht;

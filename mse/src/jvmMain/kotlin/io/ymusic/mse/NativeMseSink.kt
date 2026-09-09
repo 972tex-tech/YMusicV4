@@ -38,38 +38,17 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
     private var bufA: BufferedImage? = null
     private var bufB: BufferedImage? = null
     private var useA = true
-    private var viewA: java.nio.IntBuffer? = null
-    private var viewB: java.nio.IntBuffer? = null
-    private var viewSrcA: ByteBuffer? = null
-    private var viewSrcB: ByteBuffer? = null
 
     private fun bgraToImage(w: Int, h: Int, bgra: ByteBuffer): BufferedImage {
         val img = if (useA) ensure(w, h, bufA).also { bufA = it } else ensure(w, h, bufB).also { bufB = it }
-        val view = intView(bgra, useA)
         useA = !useA
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
         val n = minOf(pixels.size, w * h)
-        view.position(0)
-        view.limit(n)
-        view.get(pixels, 0, n)
+        bgra.order(ByteOrder.LITTLE_ENDIAN)
+        bgra.position(0)
+        bgra.limit((n * 4).coerceAtMost(bgra.capacity()))
+        bgra.asIntBuffer().get(pixels, 0, n)
         return img
-    }
-
-    private fun intView(bgra: ByteBuffer, slotA: Boolean): java.nio.IntBuffer {
-        if (slotA) {
-            if (viewSrcA !== bgra) {
-                bgra.order(ByteOrder.LITTLE_ENDIAN)
-                viewA = bgra.asIntBuffer()
-                viewSrcA = bgra
-            }
-            return viewA!!
-        }
-        if (viewSrcB !== bgra) {
-            bgra.order(ByteOrder.LITTLE_ENDIAN)
-            viewB = bgra.asIntBuffer()
-            viewSrcB = bgra
-        }
-        return viewB!!
     }
 
     private fun ensure(w: Int, h: Int, cur: BufferedImage?): BufferedImage =

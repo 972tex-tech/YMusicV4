@@ -2536,9 +2536,6 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
     int vis_w, vis_h, dw, dh, src_w, flags, y;
     int linesize[4] = { 0 };
     uint8_t *dsts[4] = { 0 };
-    /* Swing needs a CPU BGRA. GPU 32BGRA then LockBaseAddress is a 4 B/px
-       readback (1440p ~15MB) and a pipeline stall; NV12 download is 1.5 B/px
-       then sws writes BGRA. That path held 1440p near 60fps. */
 #ifdef __APPLE__
     if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
         if (!a->hw_sw)
