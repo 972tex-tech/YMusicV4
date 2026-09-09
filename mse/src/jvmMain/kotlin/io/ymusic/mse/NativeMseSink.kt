@@ -47,7 +47,9 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
         val pending = lastPub
         for (i in 0..2) {
             val cur = bufs[i]
-            if (cur === shown || cur === pending) continue
+            /* null === swingShown is true before the first paint; that skipped
+               every empty slot and never allocated (black, 0 fps). */
+            if (cur != null && (cur === shown || cur === pending)) continue
             if (cur != null && cur.width == w && cur.height == h) return cur
             val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             bufs[i] = img

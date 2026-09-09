@@ -2873,8 +2873,9 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     if (a->v_sent >= 0 && clock - a->v_sent > 1.0) {
         vlog("catch-up v_sent=%.3f clock=%.3f", a->v_sent, clock);
         vf_resync_key(a, clock);
-        if (a->vf.rd < a->vf.n)
-            a->v_sent = a->vf.f[a->vf.rd].pts;
+        /* Key may be ~2s behind (YouTube GOP). Stamp clock or the next
+           pull sees clock-v_sent>1 again and never reopens. */
+        a->v_sent = clock;
         close_video_decoder(a);
         a->show_late = 1;
         pthread_mutex_unlock(&a->mu);
