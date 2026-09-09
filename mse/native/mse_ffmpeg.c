@@ -2882,7 +2882,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         if (a->show_late && p < clock - 0.35) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
-        } else if (a->v_sent >= 0 && p - a->v_sent < min_dt) {
+        } else if (a->v_sent >= 0 && p >= a->v_sent && p - a->v_sent < min_dt) {
             av_frame_free(&a->vhold);
         } else if (!a->v_seen_idr) {
             av_frame_free(&a->vhold);
@@ -2926,7 +2926,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                 av_frame_unref(frame);
                 continue;
             }
-            if (a->v_sent >= 0 && p - a->v_sent < min_dt) {
+            if (a->v_sent >= 0 && p >= a->v_sent && p - a->v_sent < min_dt) {
                 av_frame_unref(frame);
                 continue;
             }
