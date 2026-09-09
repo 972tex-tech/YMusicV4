@@ -2849,6 +2849,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     int i, got;
     const double early = 0.04;
     const double late = 0.08;
+    /* Seek/quality-switch: catch the seek target, not live DAC.
+       log28 hd2160 seek t=9.809 leftover from 6.84; 8 late-decodes/pull
+       vs a running clock never reached playhead (0 fps). */
+    double due = clock;
 
     if (!a || !bgra || !w || !h || !pts)
         return -1;
@@ -2900,16 +2904,18 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
+    if (a->show_late && a->v_sent >= 0)
+        due = a->v_sent + 0.05;
     if (a->vhold) {
-        double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
-        double d = p - clock;
-        if (p > clock + early) {
+        double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : due;
+        double d = p - due;
+        if (p > due + early) {
             if (vdbg_ok() || d > 0.2)
                 vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             pthread_mutex_unlock(&a->mu);
             return 0;
         }
-        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
+        if (p < due - late && !(a->show_late && p >= due - 0.35)) {
             vlog_state(a, clock, "hold-late", d);
             av_frame_free(&a->vhold);
         } else if (!a->v_seen_idr) {
@@ -2939,22 +2945,19 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             break;
         got = avcodec_receive_frame(a->vdec, frame);
         if (got == 0) {
-            double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : clock;
-            double d = p - clock;
-            if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
+            double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : due;
+            double d = p - due;
+            if (p > due + early && frame->pts != AV_NOPTS_VALUE) {
                 a->vhold = frame;
                 if (vdbg_ok() || d > 0.2)
                     vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 pthread_mutex_unlock(&a->mu);
                 return 0;
             }
-            /* show_late: decode the GOP but only present near the playhead.
-               Showing pts=1890 at clock=1895 after seek is the smashed picture.
-               Do not convert 1s-late 4K (log28: sws 7–18ms, 1 fps because
-               512 late libvpx packets froze the DAC). Cap decode-only per
-               pull so audio/clock keep moving. */
-            if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
-                !(a->show_late && p >= clock - 0.35)) {
+            /* show_late: catch the seek target (due), not live DAC.
+               Play: cap late decode-only so 4K libvpx cannot starve audio. */
+            if (p < due - late && frame->pts != AV_NOPTS_VALUE &&
+                !(a->show_late && p >= due - 0.35)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
@@ -2971,6 +2974,11 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
                         pthread_mutex_unlock(&a->mu);
                         return 0;
                     }
+                }
+                if (a->show_late) {
+                    if (late_skips++ < 512)
+                        i--;
+                    continue;
                 }
                 if (++late_skips >= 8)
                     break;
