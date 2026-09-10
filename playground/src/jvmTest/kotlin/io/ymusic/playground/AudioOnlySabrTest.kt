@@ -50,8 +50,8 @@ class AudioOnlySabrTest {
             assertTrue(later >= 8_000 || pos >= 8_000, "audio playhead stuck $pos -> $later")
             assertTrue(abr.isNotEmpty(), "no sabr request logs. proof=\n$proof")
             assertTrue(
-                abr.none { it.contains("40=1") },
-                "SABR field 40=1 (dummy audio-only). abr=$abr",
+                abr.any { it.contains("40=1") },
+                "VOD zero SABR missing field 40=1. abr=$abr",
             )
             assertTrue(
                 !proof.contains("mse dummy SB"),
@@ -60,6 +60,10 @@ class AudioOnlySabrTest {
             assertTrue(
                 proof.contains("mse append a=1"),
                 "audio never appended. proof=\n$proof",
+            )
+            assertTrue(
+                proof.contains("mse sabr fake-ump"),
+                "VOD zero did not inject fake 144p UMP. proof=\n$proof",
             )
             println(
                 "aud/vid: " +
@@ -176,8 +180,8 @@ class AudioOnlySabrTest {
                 "DAC stalled after second load-as-zero samples=$samplesAt->$samples",
             )
             assertTrue(
-                abr.none { it.contains("40=1") },
-                "second load SABR field 40=1. abr=$abr",
+                abr.any { it.contains("40=1") },
+                "second load VOD zero SABR missing field 40=1. abr=$abr",
             )
             assertNo144pOnSabr(abr)
             assertTrue(

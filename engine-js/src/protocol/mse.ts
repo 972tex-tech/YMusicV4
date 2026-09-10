@@ -323,7 +323,12 @@ class SourceBuffer {
       const tsOff = self["timestampOffset"];
       const winStart = self["appendWindowStart"];
       const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
-      __mseAppend(audio, u8, tsOff, winStart, winEnd);
+      /* 2-byte init / 1-byte media: rest decoder, do not throw into UMP. */
+      if (!audio && (isLiveVideoRest() || isAudioOnly()) && u8.length <= 4) {
+        mseLog("mse append fake-rest a=0 bytes=" + u8.length);
+      } else {
+        __mseAppend(audio, u8, tsOff, winStart, winEnd);
+      }
       /* Live join: first media is at DVR head (e.g. 7406s) while
          currentTime is still 0. C starve-ahead until YouTube seeks
          (log6: 20k starve lines). Snap clock to that island. */

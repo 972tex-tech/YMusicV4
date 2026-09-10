@@ -759,21 +759,22 @@ class Player {
     notifyCatalog();
   }
 
-  private pinTiny(): void {
+  /** Auto (not tiny): pinning 144p changeType-interrupts leftover. */
+  private pinAuto(): void {
     const player = this.player;
     if (!player) return;
     const host = moviePlayer() || (player as unknown as Record<string, unknown>);
     const range = host["setPlaybackQualityRange"];
     const one = host["setPlaybackQuality"];
-    if (typeof range === "function") range.call(host, "tiny", "tiny");
-    else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
+    if (typeof range === "function") range.call(host, "auto", "auto");
+    else if (typeof one === "function") (one as (q: string) => void).call(host, "auto");
   }
 
-  /** Pin 144p and rest the C decoder. MSE stays a normal A/V pipeline. */
+  /** Rest the C decoder and keep Auto. VOD SABR then sends 40=1 + fake 144p UMP. */
   private applyZero(): void {
     setAudioOnly(false);
     setLiveVideoRest(true);
-    this.pinTiny();
+    this.pinAuto();
     __mseRestVideo(1);
   }
 

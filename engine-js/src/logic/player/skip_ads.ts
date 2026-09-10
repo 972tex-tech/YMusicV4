@@ -4,7 +4,8 @@
 import { utf8Decode, utf8Encode } from "../../transport";
 import { setXhrJsonRewrite } from "../yt/xhr";
 import { ingestPlayerCaptions } from "./captions";
-import { is144pItag } from "./itag_144";
+import { FAKE_LMT, is144pItag, recordFake144 } from "./itag_144";
+import type { Fake144Row } from "./itag_144";
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
@@ -44,8 +45,6 @@ export function transformPlayerRequest(rec: Record<string, unknown>): Record<str
   return rec;
 }
 
-const FAKE_LMT = "1770737429196304";
-
 function isVideoFmt(fmt: Record<string, unknown>): boolean {
   const mime = String(fmt["mimeType"] || "");
   return mime.indexOf("video/") === 0;
@@ -74,18 +73,25 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
   const formats = sd ? sd["adaptiveFormats"] : null;
   if (!Array.isArray(formats)) return;
   const itags: string[] = [];
+  const rows: Fake144Row[] = [];
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
     if (!fmt || !isVideoFmt(fmt) || !is144pItag(Number(fmt["itag"]))) continue;
-    if (String(fmt["lastModified"] || "") === FAKE_LMT) continue;
-    fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
-    fmt["lastModified"] = FAKE_LMT;
-    fmt["xtags"] = null;
-    fmt["xtag"] = null;
-    fmt["initRange"] = { "start": "0", "end": "1" };
-    fmt["indexRange"] = { "start": "2", "end": "3" };
-    itags.push(String(fmt["itag"]));
+    const itag = Number(fmt["itag"]);
+    if (String(fmt["lastModified"] || "") !== FAKE_LMT) {
+      fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
+      fmt["lastModified"] = FAKE_LMT;
+      fmt["xtags"] = null;
+      fmt["xtag"] = null;
+      fmt["initRange"] = { "start": "0", "end": "1" };
+      fmt["indexRange"] = { "start": "2", "end": "3" };
+    }
+    itags.push(String(itag));
+    rows.push({ itag: itag, mime: String(fmt["mimeType"] || "") });
   }
+  const vd = asRec(rec["videoDetails"]);
+  const vid = vd ? String(vd["videoId"] || "") : "";
+  recordFake144(vid, rows);
   if (itags.length)
     console.log("mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + FAKE_LMT);
   else console.log("mse fake-fmt skip: no 144p video");

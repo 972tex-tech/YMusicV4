@@ -9,7 +9,7 @@ import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
-import { prepareSabrBody } from "./sabr_abr";
+import { prepareSabrBody, appendFakeUmp } from "./sabr_abr";
 import { allowEngineJsUrl } from "./jsAllow";
 
 type Listener = (ev?: Record<string, unknown>) => void;
@@ -310,6 +310,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
           const text = responseRewrite(url, utf8Decode(u8));
           u8 = utf8Encode(text);
         }
+        u8 = appendFakeUmp(u8);
         logSabrResponse(url, res.status, u8);
         const copy = new Uint8Array(u8.byteLength);
         copy.set(u8);
