@@ -80,6 +80,12 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
     const itag = Number(fmt["itag"]);
     const lmt = String(fmt["lastModified"] || "0");
     if (String(fmt["mimeType"] || "").indexOf(".fake") < 0) {
+      if (fmt["_lastModified"] == null) fmt["_lastModified"] = fmt["lastModified"];
+      if (fmt["_mimeType"] == null) fmt["_mimeType"] = fmt["mimeType"];
+      if (fmt["_xtags"] == null) fmt["_xtags"] = fmt["xtags"];
+      if (fmt["_xtag"] == null) fmt["_xtag"] = fmt["xtag"];
+      if (fmt["_initRange"] == null) fmt["_initRange"] = fmt["initRange"];
+      if (fmt["_indexRange"] == null) fmt["_indexRange"] = fmt["indexRange"];
       fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
       fmt["xtags"] = null;
       fmt["xtag"] = null;
