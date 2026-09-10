@@ -43,37 +43,50 @@ export function transformPlayerRequest(rec: Record<string, unknown>): Record<str
   return rec;
 }
 
-const FAKE_ITAG = 10;
-const FAKE_MIME = 'video/mp4; codecs="av01.0.00M.08.fake"';
+const FAKE_LMT = "1770737429196304";
 
-function isVideoMp4(fmt: Record<string, unknown>): boolean {
+function isVideoFmt(fmt: Record<string, unknown>): boolean {
   const mime = String(fmt["mimeType"] || "");
-  return mime.indexOf("video/mp4") === 0;
+  return mime.indexOf("video/") === 0;
 }
 
-/** Lowest video/mp4 in adaptiveFormats (height, then bitrate). */
-function lowestVideoMp4(formats: unknown[]): Record<string, unknown> | null {
-  let best: Record<string, unknown> | null = null;
-  let bestH = Infinity;
-  let bestBr = Infinity;
+/** Prefer itag 399 (1080p AV1); else any video/mp4; else any video. */
+function cloneSrc(formats: unknown[]): Record<string, unknown> | null {
+  let mp4: Record<string, unknown> | null = null;
+  let any: Record<string, unknown> | null = null;
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
-    if (!fmt || !isVideoMp4(fmt)) continue;
-    const h = Number(fmt["height"]);
-    const br = Number(fmt["bitrate"] != null ? fmt["bitrate"] : fmt["averageBitrate"]);
-    const height = isFinite(h) && h > 0 ? h : Infinity;
-    const bitrate = isFinite(br) && br > 0 ? br : Infinity;
-    if (height < bestH || (height === bestH && bitrate < bestBr)) {
-      best = fmt;
-      bestH = height;
-      bestBr = bitrate;
-    }
+    if (!fmt || !isVideoFmt(fmt)) continue;
+    if (Number(fmt["itag"]) === 399) return fmt;
+    const mime = String(fmt["mimeType"] || "");
+    if (!mp4 && mime.indexOf("video/mp4") === 0) mp4 = fmt;
+    if (!any) any = fmt;
   }
-  return best;
+  return mp4 || any;
 }
 
+function durationMs(formats: unknown[], src: Record<string, unknown>): string {
+  const own = src["approxDurationMs"];
+  if (own != null && String(own) !== "") return String(own);
+  for (let i = 0; i < formats.length; i++) {
+    const fmt = asRec(formats[i]);
+    const d = fmt ? fmt["approxDurationMs"] : null;
+    if (d != null && String(d) !== "") return String(d);
+  }
+  return "0";
+}
+
+type FakeSpec = { itag: number; mime: string };
+
+/** itag 8=AV1, 9=avc1, 10=VP9. Codec strings are fake so SABR will not fetch them. */
+const FAKE_SPECS: FakeSpec[] = [
+  { itag: 8, mime: 'video/mp4; codecs="av01.0.00M.08.fake"' },
+  { itag: 9, mime: 'video/mp4; codecs="avc1.42c00a.fake"' },
+  { itag: 10, mime: 'video/webm; codecs="vp9.fake"' },
+];
+
 /**
- * Clone the lowest video/mp4 adaptiveFormat as itag 10.
+ * Clone a real adaptiveFormat into three tiny 144p rows (itags 8/9/10).
  * initRange/indexRange are inclusive byte indexes (YouTube 0–699 = 700 bytes).
  */
 function injectFakeMp4Format(rec: Record<string, unknown>): void {
@@ -82,34 +95,37 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
   if (!Array.isArray(formats)) return;
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
-    if (fmt && Number(fmt["itag"]) === FAKE_ITAG) return;
+    if (fmt && Number(fmt["itag"]) === 8) return;
   }
-  const src = lowestVideoMp4(formats);
+  const src = cloneSrc(formats);
   if (!src) {
-    console.log("mse fake-fmt skip: no video/mp4");
+    console.log("mse fake-fmt skip: no video format");
     return;
   }
-  const fake = asRec(JSON.parse(JSON.stringify(src)));
-  if (!fake) return;
-  fake["itag"] = FAKE_ITAG;
-  fake["mimeType"] = FAKE_MIME;
-  fake["initRange"] = { "start": "0", "end": "1" };
-  fake["indexRange"] = { "start": "2", "end": "3" };
-  fake["width"] = 50;
-  fake["height"] = 50;
-  fake["contentLength"] = "100";
-  fake["lastModified"] = "1770737429196304";
-  fake["quality"] = "tiny";
-  fake["qualityLabel"] = "100p";
-  fake["qualityOrdinal"] = "QUALITY_ORDINAL_UNKNOWN";
-  formats.push(fake);
-  console.log(
-    "mse fake-fmt itag=10 from=" +
-      String(src["itag"]) +
-      " " +
-      String(src["qualityLabel"] || "") +
-      " -> 100p",
-  );
+  const dur = durationMs(formats, src);
+  const from = String(src["itag"]);
+  for (let i = 0; i < FAKE_SPECS.length; i++) {
+    const spec = FAKE_SPECS[i]!;
+    const fake = asRec(JSON.parse(JSON.stringify(src)));
+    if (!fake) continue;
+    fake["itag"] = spec.itag;
+    fake["mimeType"] = spec.mime;
+    fake["initRange"] = { "start": "0", "end": "1" };
+    fake["indexRange"] = { "start": "2", "end": "3" };
+    fake["width"] = 50;
+    fake["height"] = 50;
+    fake["fps"] = 30;
+    fake["bitrate"] = 1;
+    fake["averageBitrate"] = 1;
+    fake["contentLength"] = "100";
+    fake["lastModified"] = FAKE_LMT;
+    fake["quality"] = "tiny";
+    fake["qualityLabel"] = "144p";
+    fake["qualityOrdinal"] = "QUALITY_ORDINAL_UNKNOWN";
+    fake["approxDurationMs"] = dur;
+    formats.push(fake);
+  }
+  console.log("mse fake-fmt itags=8,9,10 from=" + from + " dur=" + dur);
 }
 
 export function transformPlayerResponse(rec: Record<string, unknown>): Record<string, unknown> {

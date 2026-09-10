@@ -123,10 +123,12 @@ class AudioOnlySabrTest {
             val ms0 = proof0.lineSequence().count { it.contains("mse MediaSource create") }
             println(
                 proof0.lineSequence().filter {
-                    it.contains("mse fake-fmt") || it.contains("getAvailableQualityData")
+                    it.contains("mse fake-fmt") ||
+                        it.contains("getAvailableQualityData") ||
+                        it.contains("sabr sabr=")
                 }.joinToString("\n"),
             )
-            assertTrue(proof0.contains("mse fake-fmt itag=10"), "did not inject fake itag 10")
+            assertTrue(proof0.contains("mse fake-fmt itags=8,9,10"), "did not inject fake itags 8/9/10")
             session.player.preload(SECOND_ID, session.log)
             session.player.load(SECOND_ID, session.log, "zero")
             session.player.play(session.log)
