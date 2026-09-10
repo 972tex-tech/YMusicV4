@@ -25,7 +25,7 @@ export function fake144VideoId(): string {
 
 export function pickFake144(): Fake144Row | null {
   if (!lastRows.length) return null;
-  const prefer = [278, 394, 160];
+  const prefer = [394, 160, 278];
   for (let i = 0; i < prefer.length; i++) {
     const want = prefer[i]!;
     for (let j = 0; j < lastRows.length; j++) {

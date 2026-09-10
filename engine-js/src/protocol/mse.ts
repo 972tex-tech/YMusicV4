@@ -88,6 +88,16 @@ export function resetDrainCounts(): void {
   drainCalls.lisErr = 0;
 }
 
+/** Rest-mode video: YMF0 init / YMF1+start_ms+dur_ms media. Not a container. */
+export function appendRestCover(u8: Uint8Array): void {
+  const kind =
+    u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46
+      ? String.fromCharCode(u8[3]!)
+      : "?";
+  __mseAppend(0, u8, 0, 0, 1e300);
+  mseLog("mse append fake-cover a=0 kind=" + kind + " bytes=" + u8.length);
+}
+
 function nativeRanges(audio: number): {
   length: number;
   start(i: number): number;
@@ -323,12 +333,12 @@ class SourceBuffer {
       const tsOff = self["timestampOffset"];
       const winStart = self["appendWindowStart"];
       const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
-      /* 2-byte init / 1-byte media: rest decoder, do not throw into UMP. */
-      if (!audio && (isLiveVideoRest() || isAudioOnly()) && u8.length <= 4) {
-        mseLog("mse append fake-rest a=0 bytes=" + u8.length);
-      } else {
-        __mseAppend(audio, u8, tsOff, winStart, winEnd);
+      if (!audio && u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46) {
+        mseLog(
+          "mse append fake-cover a=0 kind=" + String.fromCharCode(u8[3]!) + " bytes=" + u8.length,
+        );
       }
+      __mseAppend(audio, u8, tsOff, winStart, winEnd);
       /* Live join: first media is at DVR head (e.g. 7406s) while
          currentTime is still 0. C starve-ahead until YouTube seeks
          (log6: 20k starve lines). Snap clock to that island. */
@@ -514,13 +524,15 @@ class MediaSource {
         return false;
       }
     }
-    return (
+    const ok =
       m.indexOf("audio/webm") === 0 ||
       m.indexOf("video/webm") === 0 ||
       m.indexOf("audio/mp4") === 0 ||
       m.indexOf("video/mp4") === 0 ||
-      m === "audio/mpeg"
-    );
+      m === "audio/mpeg";
+    if (m.indexOf(".fake") >= 0)
+      mseLog("mse isTypeSupported fake " + (ok ? "ok" : "reject") + " " + mime);
+    return ok;
   }
 
   ["addSourceBuffer"](mime: string): SourceBuffer {
@@ -945,7 +957,8 @@ function attachHtmlMedia(el: object): void {
       assignMediaSrc(el as HTMLMediaElement, String(v == null ? "" : v));
       return;
     }
-    if (typeof protoSet === "function") (protoSet as (n: string, v: unknown) => void).call(el, n, v);
+    if (typeof protoSet === "function")
+      (protoSet as (n: string, v: unknown) => void).call(el, n, v);
     else rec[n] = v;
   };
   const protoRemove = rec["removeAttribute"];

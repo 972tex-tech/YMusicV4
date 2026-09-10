@@ -423,6 +423,64 @@ static void cfb_drop(Cfb *b, double start, double end)
         b->rd = b->n;
 }
 
+static uint64_t le64(const uint8_t *p)
+{
+    return (uint64_t)p[0]
+        | ((uint64_t)p[1] << 8)
+        | ((uint64_t)p[2] << 16)
+        | ((uint64_t)p[3] << 24)
+        | ((uint64_t)p[4] << 32)
+        | ((uint64_t)p[5] << 40)
+        | ((uint64_t)p[6] << 48)
+        | ((uint64_t)p[7] << 56);
+}
+
+/* Rest-mode video UMP: YMF0 init, YMF1 + start_ms + dur_ms media. Not a container. */
+static int fake_ump(const uint8_t *p, int n, int *is_init, double *pts, double *dur)
+{
+    if (!p || n < 4 || p[0] != 'Y' || p[1] != 'M' || p[2] != 'F')
+        return 0;
+    if (p[3] == '0') {
+        *is_init = 1;
+        *pts = 0;
+        *dur = 0;
+        return 1;
+    }
+    if (p[3] == '1' && n >= 20) {
+        *is_init = 0;
+        *pts = (double)le64(p + 4) / 1000.0;
+        *dur = (double)le64(p + 12) / 1000.0;
+        if (*dur <= 0)
+            *dur = 1.0;
+        return 1;
+    }
+    return 0;
+}
+
+static void cfb_drop_fake(Cfb *b)
+{
+    size_t i, w = 0, dropped_before = 0;
+    for (i = 0; i < b->n; i++) {
+        int fake = b->f[i].n >= 4 && b->f[i].data
+            && b->f[i].data[0] == 'Y' && b->f[i].data[1] == 'M'
+            && b->f[i].data[2] == 'F';
+        if (fake) {
+            if (i < b->rd)
+                dropped_before++;
+            free(b->f[i].data);
+            continue;
+        }
+        b->f[w++] = b->f[i];
+    }
+    b->n = w;
+    if (b->rd > dropped_before)
+        b->rd -= dropped_before;
+    else
+        b->rd = 0;
+    if (b->rd > b->n)
+        b->rd = b->n;
+}
+
 static int looks_ebml(const uint8_t *p, size_t n)
 {
     return n >= 4 && p[0] == 0x1A && p[1] == 0x45 && p[2] == 0xDF && p[3] == 0xA3;
@@ -2059,13 +2117,34 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         return r;
     av_lock(a, audio);
     idx = audio ? 1 : 0;
+    dst = audio ? &a->af : &a->vf;
+    {
+        int is_init = 0;
+        double pts = 0, dur = 0;
+        if (!audio && fake_ump(p, n, &is_init, &pts, &dur)) {
+            r.n = 0;
+            r.is_init = is_init;
+            if (!is_init && a->v_rest) {
+                pts += ts_off;
+                if (!(pts + dur < win_start || pts > win_end)) {
+                    if (cfb_push(dst, pts, pts, dur, 1, p, (size_t)n) == 0) {
+                        r.n = 1;
+                        r.first = pts;
+                        r.last = pts + dur;
+                        vlog("fake-cover start=%.3f dur=%.3f vf=%zu", pts, dur, dst->n);
+                    }
+                }
+            }
+            av_unlock(a, audio);
+            return r;
+        }
+    }
     if (pend_add(a, audio, p, n) < 0) {
         av_unlock(a, audio);
         return r;
     }
     initp = audio ? &a->ainit : &a->vinit;
     initn = audio ? &a->ainit_n : &a->vinit_n;
-    dst = audio ? &a->af : &a->vf;
     for (;;) {
         size_t total = 0, coff = 0, prefix_hdr = 0;
         Cfb tmp;
@@ -2422,6 +2501,7 @@ void mse_av_rest_video(MseAv *a, int on)
     if (on)
         close_video_decoder(a);
     else {
+        cfb_drop_fake(&a->vf);
         /* Decoder was closed. Resume from the last key at/before the
            playhead, not the P-frame rd was on (log28: send-err key=0
            Invalid OBU, decode-dead, black while leftover still appends). */

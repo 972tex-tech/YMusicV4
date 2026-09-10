@@ -65,6 +65,14 @@ class AudioOnlySabrTest {
                 proof.contains("mse sabr fake-ump"),
                 "VOD zero did not inject fake 144p UMP. proof=\n$proof",
             )
+            assertTrue(
+                proof.contains("mse append fake-cover"),
+                "YouTube never appendBuffer'd the fake 144p. proof=\n$proof",
+            )
+            assertTrue(
+                !proof.contains("mse append fake-rest"),
+                "fake-rest still skips appendBuffer. proof=\n$proof",
+            )
             println(
                 "aud/vid: " +
                     Regex("""aud=([^ ]+) vid=([^ ]+)""").findAll(abr.joinToString("\n"))
@@ -94,6 +102,76 @@ class AudioOnlySabrTest {
             println("audio-only hole-seek play $seekPos -> $seekLater frames=${frames.get()}")
             assertTrue(seekLater > seekPos + 800, "audio-only seek did not play $seekPos -> $seekLater")
             assertTrue(frames.get() == 0, "video was rendered after audio-only seek frames=${frames.get()}")
+        } finally {
+            watch.cancel()
+            session.close()
+        }
+    }
+
+    @Test
+    fun load_zero_fake_format_appends_and_covers() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        val frames = AtomicInteger(0)
+        val watch = launch {
+            surface.frame.collect { img -> if (img != null) frames.incrementAndGet() }
+        }
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.load(INIT_VIDEO_ID, session.log, "zero")
+            session.player.play(session.log)
+            val deadline = System.currentTimeMillis() + 90_000
+            var pos = 0L
+            var lastMoveAt = System.currentTimeMillis()
+            var proof = ""
+            while (System.currentTimeMillis() < deadline) {
+                val st = session.player.status(session.log)
+                val next = (st["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (next > pos + 200) lastMoveAt = System.currentTimeMillis()
+                pos = next
+                proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+                val covered = proof.lineSequence().any { videoLeftoverCovers(it, pos) }
+                if (proof.contains("mse append fake-cover a=0 kind=1") &&
+                    proof.contains("mse append a=1") &&
+                    covered &&
+                    pos >= 3_000
+                ) {
+                    break
+                }
+                if (pos in 500 until 8_000 && System.currentTimeMillis() - lastMoveAt > 5_000) {
+                    dumpFakeInitProof(proof, pos)
+                    throw AssertionError("clock frozen at ${pos}ms")
+                }
+                delay(400)
+            }
+            proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            dumpFakeInitProof(proof, pos)
+            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            assertTrue(later >= 3_000 || pos >= 3_000, "audio playhead stuck $pos -> $later")
+            assertTrue(
+                proof.contains("mse append fake-cover a=0 kind=0"),
+                "fake init never reached appendBuffer. proof=\n$proof",
+            )
+            assertTrue(
+                proof.contains("mse append fake-cover a=0 kind=1"),
+                "fake media never reached appendBuffer. proof=\n$proof",
+            )
+            assertTrue(
+                proof.lineSequence().any { videoLeftoverCovers(it, pos) },
+                "video leftover does not cover clock=${pos}ms. proof=\n$proof",
+            )
+            assertTrue(
+                !proof.contains("mse append fake-rest"),
+                "fake-rest still skips appendBuffer",
+            )
+            assertTrue(frames.get() == 0, "video was rendered/decoded frames=${frames.get()}")
+            val inited = proof.lineSequence().any {
+                it.contains("mse sabr fake-ump") && it.contains(" init=0")
+            }
+            println("fake format inited (sel had 144p)=${if (inited) "1" else "0"}")
         } finally {
             watch.cancel()
             session.close()
@@ -196,9 +274,54 @@ class AudioOnlySabrTest {
 
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
+        private const val INIT_VIDEO_ID = "0AHAkBrBg5I"
         private const val FIRST_ID = "LXb3EKWsInQ"
         private const val SECOND_ID = "nftTbgktw90"
         private val ITAG_144P = setOf(160, 278, 330, 394, 598, 694)
+
+        private fun videoLeftoverCovers(line: String, posMs: Long): Boolean {
+            val leftover = Regex(""" leftover=(\d+)""").find(line)
+            if (leftover != null && leftover.groupValues[1].toInt() > 0 &&
+                line.contains("mse append a=0")
+            ) {
+                return true
+            }
+            val m = Regex("""mse=\[a:[^\]]* v:([^\]]*)\]""").find(line) ?: return false
+            val raw = m.groupValues[1]
+            if (raw.isBlank() || raw == "-") return false
+            val tMs = Regex(""" playerTimeMs=(\d+)""").find(line)?.groupValues?.get(1)?.toLong()
+                ?: Regex(""" clock=(\d+)""").find(line)?.groupValues?.get(1)?.toLong()
+                ?: posMs
+            val t = tMs / 1000.0
+            for (part in raw.split(',')) {
+                val win = Regex("""(\d+)\+(\d+)""").find(part.trim()) ?: continue
+                val start = win.groupValues[1].toDouble() / 1000.0
+                val dur = win.groupValues[2].toDouble() / 1000.0
+                if (t >= start - 0.05 && t <= start + dur + 0.05) return true
+            }
+            return false
+        }
+
+        private fun dumpFakeInitProof(proof: String, pos: Long) {
+            val keys = listOf(
+                "mse fake-fmt",
+                "mse isTypeSupported fake",
+                "mse isTypeSupported reject",
+                "mse addSourceBuffer",
+                "mse changeType",
+                "mse append fake-cover",
+                "mse sabr fake-ump",
+                "FORMAT_INIT",
+                "MEDIA_HEADER hid=",
+                "sabr sabr=",
+                "mse append a=0",
+            )
+            println("--- fake-init pos=$pos ---")
+            for (line in proof.lineSequence()) {
+                if (keys.any { line.contains(it) }) println("  $line")
+            }
+            println("--- /fake-init ---")
+        }
 
         private fun csvItags(raw: String): List<Int> {
             if (raw == "-" || raw.isEmpty()) return emptyList()

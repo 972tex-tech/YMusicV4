@@ -285,6 +285,8 @@ internal class StdoutLog private constructor(
             message.indexOf("mse sabr drop") >= 0 ||
             message.indexOf("mse sabr fake-ump") >= 0 ||
             message.indexOf("mse append fake-rest") >= 0 ||
+            message.indexOf("mse append fake-cover") >= 0 ||
+            message.indexOf("mse isTypeSupported fake") >= 0 ||
             message.indexOf("getAvailableQualityData") >= 0 ||
             message.indexOf("player RSP") >= 0 ||
             message.indexOf("mse=[") >= 0 ||

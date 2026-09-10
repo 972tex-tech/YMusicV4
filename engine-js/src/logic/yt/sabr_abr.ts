@@ -1,16 +1,13 @@
 // SABR VideoPlaybackAbrRequest: drop fake 144p from playable video (17),
 // initialized formats (2), and buffered_ranges (3). VOD product-zero also
-// sets ClientAbrState field 40=1 and prepends a fake 144p UMP (FORMAT_INIT
-// if sel lacks the itag, then a 1-byte media part covering playerTime).
+// sets ClientAbrState field 40=1 (server sends no real video) and appends a
+// fake 144p UMP. The media payload carries start_ms+dur; we appendBuffer it
+// onto the video SourceBuffer so leftover reports that TimeRange.
 
 import { isProductZero } from "../player/audio_only";
 import { isYmLive } from "../player/live";
-import {
-  FAKE_LMT_NUM,
-  fake144VideoId,
-  is144pItag,
-  pickFake144,
-} from "../player/itag_144";
+import { FAKE_LMT_NUM, fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
+import { appendRestCover } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
   if (body instanceof Uint8Array) return body;
@@ -160,8 +157,7 @@ function writeUmpVarint(v: number): number[] {
   if (v < 0) v = 0;
   if (v < 128) return [v];
   if (v < 16384) return [(v & 0x3f) | 0x80, (v >>> 6) & 0xff];
-  if (v < 2097152)
-    return [(v & 0x1f) | 0xc0, (v >>> 5) & 0xff, (v >>> 13) & 0xff];
+  if (v < 2097152) return [(v & 0x1f) | 0xc0, (v >>> 5) & 0xff, (v >>> 13) & 0xff];
   if (v < 268435456)
     return [(v & 0x0f) | 0xe0, (v >>> 4) & 0xff, (v >>> 12) & 0xff, (v >>> 20) & 0xff];
   return [0xf0, v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
@@ -186,9 +182,36 @@ function encodeFormatId(itag: number, lmt: number): Uint8Array {
 
 const INIT_HID = 0xf0;
 const MEDIA_HID = 0xf1;
-/** initRange 0–1 inclusive = 2 bytes. */
-const INIT_BYTES = new Uint8Array([0, 0]);
-const MEDIA_BYTES = new Uint8Array([0]);
+/** /player initRange 0–1 + indexRange 2–3. PP(0) expects both = 4 bytes. */
+const INIT_BYTES = new Uint8Array([0x59, 0x4d, 0x46, 0x30]);
+
+function writeU64LE(u: Uint8Array, off: number, v: number): void {
+  let n = Math.floor(v);
+  if (n < 0) n = 0;
+  for (let i = 0; i < 8; i++) {
+    u[off + i] = n & 0xff;
+    n = Math.floor(n / 256);
+  }
+}
+
+function encodeRange(start: number, end: number): Uint8Array {
+  return writeFields([
+    { n: 1, w: 0, v: start },
+    { n: 2, w: 0, v: end },
+  ]);
+}
+
+/** YMF1 + start_ms + duration_ms. C leftover reports this as buffered. */
+function fakeMediaBytes(startMs: number, durationMs: number): Uint8Array {
+  const u = new Uint8Array(20);
+  u[0] = 0x59;
+  u[1] = 0x4d;
+  u[2] = 0x46;
+  u[3] = 0x31;
+  writeU64LE(u, 4, startMs);
+  writeU64LE(u, 12, durationMs);
+  return u;
+}
 
 function formatInitUmp(
   videoId: string,
@@ -203,7 +226,11 @@ function formatInitUmp(
     { n: 2, w: 2, v: fid },
   ];
   if (durationMs > 0) fs.push({ n: 3, w: 0, v: durationMs });
+  fs.push({ n: 4, w: 0, v: 144 });
   fs.push({ n: 5, w: 2, v: asciiU8(mime) });
+  fs.push({ n: 6, w: 2, v: encodeRange(0, 1) });
+  fs.push({ n: 7, w: 2, v: encodeRange(2, 3) });
+  fs.push({ n: 9, w: 0, v: durationMs > 0 ? durationMs : 1000 });
   fs.push({ n: 10, w: 0, v: 1000 });
   return umpPart(42, writeFields(fs));
 }
@@ -227,10 +254,10 @@ function mediaHeaderUmp(opts: {
     { n: 3, w: 0, v: opts.itag },
     { n: 4, w: 0, v: opts.lmt },
     { n: 6, w: 0, v: opts.startRange },
-    { n: 8, w: 0, v: opts.init ? 1 : 0 },
     { n: 13, w: 2, v: fid },
     { n: 14, w: 0, v: opts.clen },
   ];
+  if (opts.init) fs.push({ n: 8, w: 0, v: 1 });
   if (!opts.init) {
     fs.push({ n: 9, w: 0, v: opts.seq });
     fs.push({ n: 11, w: 0, v: opts.startMs });
@@ -310,6 +337,7 @@ function durationMs(): number {
 
 let pendingFakeUmp: Uint8Array | null = null;
 let fakeSeq = 0;
+let fakeOff = 0;
 let fakeSeqVid = "";
 
 function fmtRange(itag: number, w: { start: number; dur: number } | null): string {
@@ -329,12 +357,14 @@ function buildFakeUmp(
   if (!videoId) return null;
   if (fakeSeqVid !== videoId) {
     fakeSeq = 0;
+    fakeOff = 0;
     fakeSeqVid = videoId;
   }
   const t = playerTimeMs > 0 ? playerTimeMs : clockMs();
   const startMs = t;
-  const coverMs = 1000;
+  const coverMs = 30_000;
   fakeSeq++;
+  const media = fakeMediaBytes(startMs, coverMs);
   const parts: Uint8Array[] = [];
   if (needInit) {
     parts.push(formatInitUmp(videoId, row.itag, FAKE_LMT_NUM, row.mime, durationMs()));
@@ -354,6 +384,7 @@ function buildFakeUmp(
     );
     parts.push(mediaDataUmp(INIT_HID, INIT_BYTES));
     parts.push(mediaEndUmp(INIT_HID));
+    fakeOff = INIT_BYTES.length;
   }
   parts.push(
     mediaHeaderUmp({
@@ -365,12 +396,15 @@ function buildFakeUmp(
       seq: fakeSeq,
       startMs: startMs,
       durationMs: coverMs,
-      startRange: INIT_BYTES.length,
-      clen: MEDIA_BYTES.length,
+      startRange: fakeOff,
+      clen: media.length,
     }),
   );
-  parts.push(mediaDataUmp(MEDIA_HID, MEDIA_BYTES));
+  parts.push(mediaDataUmp(MEDIA_HID, media));
   parts.push(mediaEndUmp(MEDIA_HID));
+  fakeOff += media.length;
+  if (needInit) appendRestCover(INIT_BYTES);
+  appendRestCover(media);
   console.log(
     "mse sabr fake-ump itag=" +
       row.itag +
@@ -382,6 +416,10 @@ function buildFakeUmp(
       startMs +
       " dur=" +
       coverMs +
+      " range=" +
+      (fakeOff - media.length) +
+      " clen=" +
+      media.length +
       " t=" +
       t +
       " audBr=" +
