@@ -834,10 +834,11 @@ class Player {
     if (q !== "zero") this.setQuality(q);
     else {
       /* loadVideoById often opens a new MediaSource. 40=1 before addSourceBuffer
-         leaves an empty MSE. Clear, attach, then apply zero. */
+         leaves an empty MSE. Keep 40=0 so YouTube adds SBs (SABR may send
+         video), but rest the decoder: black hole, no decode, until dummy. */
       setAudioOnly(false);
-      setLiveVideoRest(false);
-      __mseRestVideo(0);
+      setLiveVideoRest(true);
+      __mseRestVideo(1);
     }
     const msId = mseMediaSourceId();
     const gen0 = mseSourceBufferGen();
@@ -856,6 +857,7 @@ class Player {
     const waitMs = q === "zero" ? 2000 : 1000;
     while (Date.now() - t0 < waitMs) {
       mseAttachLatestIfStale(msId);
+      if (q === "zero") __mseRestVideo(1);
       const id = mseMediaSourceId();
       const n = mseSourceBufferCount();
       if ((id !== msId && n > 0) || mseSourceBufferGen() > gen0) break;

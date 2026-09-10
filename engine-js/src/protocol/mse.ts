@@ -2,7 +2,7 @@
 // Append/play/seek hit C trampolines (`__mse*`). Quoted names so Closure ADVANCED leaves the
 // DOM-shaped API intact for YouTube's player.
 
-import { isAudioOnly } from "../logic/player/audio_only";
+import { isAudioOnly, isLiveVideoRest } from "../logic/player/audio_only";
 import { isYmLive } from "../logic/player/live";
 import { viewportHeight, viewportWidth } from "../logic/player/viewport";
 
@@ -11,6 +11,12 @@ type Listener = (ev?: Record<string, unknown>) => void;
 function mseLog(s: string): void {
   if (!MSE_DEBUG) return;
   console.log(s);
+}
+
+/** src= / load() destroy MseAv (v_rest=0). Put the decoder back to sleep. */
+function resetPipeline(): void {
+  __mseReset();
+  if (isAudioOnly() || isLiveVideoRest()) __mseRestVideo(1);
 }
 
 function audioFlag(mime: string): number {
@@ -860,7 +866,7 @@ class HTMLMediaElement {
     dummySb = null;
     dummyCoverStart = 0;
     dummyCoverEnd = 0;
-    __mseReset();
+    resetPipeline();
     this._ms = null;
     this._src = "";
     this["readyState"] = 0;
@@ -907,7 +913,7 @@ class HTMLMediaElement {
       dummySb = null;
       dummyCoverStart = 0;
       dummyCoverEnd = 0;
-      __mseReset();
+      resetPipeline();
       this._ms = ms;
       if (ms && ms["readyState"] === "closed") notifySourceOpen(ms);
     } else {
@@ -1343,7 +1349,7 @@ export async function resetMse(): Promise<void> {
   dummySb = null;
   dummyCoverStart = 0;
   dummyCoverEnd = 0;
-  __mseReset();
+  resetPipeline();
 }
 
 installMseGlobals();
