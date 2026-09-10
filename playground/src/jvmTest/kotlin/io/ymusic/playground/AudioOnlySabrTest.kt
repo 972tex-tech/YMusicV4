@@ -162,6 +162,21 @@ class AudioOnlySabrTest {
                 "FORMAT_INIT lmt missing on fake-ump",
             )
             assertTrue(
+                proof.lineSequence().any {
+                    it.contains("mse sabr fake-ump") && it.contains("seq=1 start=0")
+                },
+                "VOD fake 144p must be one segment starting at 0. proof=\n$proof",
+            )
+            val coverDur = proof.lineSequence()
+                .mapNotNull { Regex("""mse sabr fake-ump .* seq=1 start=0 dur=(\d+)""").find(it) }
+                .map { it.groupValues[1].toLong() }
+                .filter { it > 0 }
+                .maxOrNull() ?: 0L
+            assertTrue(
+                coverDur > 30_000,
+                "VOD fake 144p must cover 0–videoDuration, not a 30s window. dur=$coverDur",
+            )
+            assertTrue(
                 !proof.contains("mse append fake-rest"),
                 "fake-rest still skips appendBuffer",
             )

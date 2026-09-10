@@ -1,8 +1,7 @@
 // SABR VideoPlaybackAbrRequest: drop fake 144p from playable video (17),
 // initialized formats (2), and buffered_ranges (3). VOD product-zero also
 // sets ClientAbrState field 40=1 (server sends no real video) and appends a
-// fake 144p UMP. The media payload carries start_ms+dur; we appendBuffer it
-// onto the video SourceBuffer so leftover reports that TimeRange.
+// fake 144p UMP: one media segment covering 0–duration.
 
 import { isProductZero, isVp9SwitchExp } from "../player/audio_only";
 import { isYmLive } from "../player/live";
@@ -387,33 +386,11 @@ function rewriteCas40(cas: Uint8Array): Uint8Array {
   return writeFields(out);
 }
 
-function clockMs(): number {
-  if (typeof __mseCurrentTime !== "function") return 0;
-  try {
-    return Math.round(__mseCurrentTime() * 1000);
-  } catch (_e) {
-    return 0;
-  }
-}
-
 function durationMs(): number {
   if (typeof __mseDuration !== "function") return 0;
   try {
     const d = __mseDuration();
     if (d > 0 && isFinite(d)) return Math.round(d * 1000);
-  } catch (_e) {}
-  return 0;
-}
-
-function leftoverCoverEndMs(tMs: number): number {
-  if (typeof __mseBuffered !== "function") return 0;
-  try {
-    const r = __mseBuffered(0);
-    if (!r || r.length < 2) return 0;
-    const t = tMs / 1000;
-    for (let i = 0; i + 1 < r.length; i += 2) {
-      if (t >= r[i]! - 0.05 && t <= r[i + 1]! + 0.05) return Math.round(r[i + 1]! * 1000);
-    }
   } catch (_e) {}
   return 0;
 }
@@ -467,15 +444,11 @@ function maxMediaHid(body: Uint8Array): number {
 }
 
 type PendingCover = {
-  playerTimeMs: number;
   needInit: boolean;
   audBr: string;
   fakeBr: string;
 };
 let pendingCover: PendingCover | null = null;
-let fakeSeq = 0;
-let fakeOff = 0;
-let fakeSeqVid = "";
 
 function fmtRange(itag: number, w: { start: number; dur: number } | null): string {
   if (!w) return String(itag);
@@ -483,7 +456,6 @@ function fmtRange(itag: number, w: { start: number; dur: number } | null): strin
 }
 
 function buildFakeUmp(
-  playerTimeMs: number,
   needInit: boolean,
   audBr: string,
   fakeBr: string,
@@ -494,21 +466,12 @@ function buildFakeUmp(
   if (!row) return null;
   const videoId = fake144VideoId();
   if (!videoId) return null;
-  if (fakeSeqVid !== videoId) {
-    fakeSeq = 0;
-    fakeOff = 0;
-    fakeSeqVid = videoId;
-  }
-  const t = playerTimeMs > 0 ? playerTimeMs : clockMs();
-  const cov = leftoverCoverEndMs(t);
-  const startMs = cov > 0 ? cov : t;
-  const coverMs = 30_000;
-  fakeSeq++;
+  const dur = durationMs();
   const init = initBytes(row);
-  const media = fakeMediaBytes(startMs, coverMs);
+  const media = fakeMediaBytes(0, dur);
   const parts: Uint8Array[] = [];
   if (needInit) {
-    parts.push(formatInitUmp(videoId, row, durationMs()));
+    parts.push(formatInitUmp(videoId, row, dur));
     parts.push(
       mediaHeaderUmp({
         hid: initHid,
@@ -525,7 +488,6 @@ function buildFakeUmp(
     );
     parts.push(mediaDataUmp(initHid, init));
     parts.push(mediaEndUmp(initHid));
-    fakeOff = init.length;
   }
   parts.push(
     mediaHeaderUmp({
@@ -534,16 +496,15 @@ function buildFakeUmp(
       itag: row.itag,
       lmt: row.lmt,
       init: false,
-      seq: fakeSeq,
-      startMs: startMs,
-      durationMs: coverMs,
-      startRange: fakeOff,
+      seq: 1,
+      startMs: 0,
+      durationMs: dur,
+      startRange: init.length,
       clen: media.length,
     }),
   );
   parts.push(mediaDataUmp(mediaHid, media));
   parts.push(mediaEndUmp(mediaHid));
-  fakeOff += media.length;
   if (needInit) appendRestCover(init);
   appendRestCover(media);
   console.log(
@@ -559,18 +520,12 @@ function buildFakeUmp(
       initHid +
       "," +
       mediaHid +
-      " seq=" +
-      fakeSeq +
-      " start=" +
-      startMs +
-      " dur=" +
-      coverMs +
+      " seq=1 start=0 dur=" +
+      dur +
       " range=" +
-      (fakeOff - media.length) +
+      init.length +
       " clen=" +
       media.length +
-      " t=" +
-      t +
       " audBr=" +
       (audBr || "-") +
       " fakeBr=" +
@@ -584,7 +539,6 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
   if (!fs) return u;
   const fake = pickFake144();
   const fakeItag = fake ? fake.itag : -1;
-  let playerTimeMs = 0;
   let selHasFake = false;
   const audParts: string[] = [];
   const fakeParts: string[] = [];
@@ -593,13 +547,6 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
     if (f.n === 1 && f.w === 2 && f.v instanceof Uint8Array) {
-      const cas = readFields(f.v);
-      if (cas) {
-        for (let j = 0; j < cas.length; j++) {
-          const c = cas[j]!;
-          if (c.n === 28 && c.w === 0) playerTimeMs = c.v as number;
-        }
-      }
       if (vodAudioOnly()) out.push({ n: 1, w: 2, v: rewriteCas40(f.v) });
       else out.push(f);
       continue;
@@ -628,7 +575,6 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
   pendingCover = null;
   if (vodAudioOnly()) {
     pendingCover = {
-      playerTimeMs: playerTimeMs,
       needInit: !selHasFake,
       audBr: audParts.join(","),
       fakeBr: fakeParts.join(","),
@@ -658,7 +604,7 @@ function emitPending(initHid: number, mediaHid: number): Uint8Array | null {
   const p = pendingCover;
   pendingCover = null;
   if (!p) return null;
-  return buildFakeUmp(p.playerTimeMs, p.needInit, p.audBr, p.fakeBr, initHid, mediaHid);
+  return buildFakeUmp(p.needInit, p.audBr, p.fakeBr, initHid, mediaHid);
 }
 
 /** Bytes to prepend on the matching SABR 200. Null if this request is not VOD zero. */
