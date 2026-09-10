@@ -66,8 +66,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.time.TimeSource
@@ -96,6 +98,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     var overlayClicks by remember { mutableStateOf(0) }
     var scrubFrac by remember { mutableStateOf<Float?>(null) }
     var quality by remember { mutableStateOf("auto") }
+    var qualityChoices by remember { mutableStateOf(FALLBACK_QUALITY_CHOICES) }
     var reportedQuality by remember { mutableStateOf("") }
     var captionTracks by remember { mutableStateOf<List<CaptionTrackInfo>>(emptyList()) }
     var captionVss by remember { mutableStateOf<String?>(null) }
@@ -141,6 +144,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 s.player.play(s.log)
             }
             captionTracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
+            qualityChoices = withContext(Dispatchers.Default) { pullQualityChoices(s) }
             captionVss = null
             captionLines = emptyList()
         } catch (t: Throwable) {
@@ -226,6 +230,31 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     if (kotlin.math.abs(pos - target) < 1_000L)
                         scrubFrac = null
                 }
+            }
+        } finally {
+            job.cancel()
+        }
+    }
+    LaunchedEffect(session) {
+        val s = session ?: return@LaunchedEffect
+        val incoming = Channel<JsonObject>(Channel.CONFLATED)
+        val job = launch(Dispatchers.Default) {
+            try {
+                s.player.collectCatalog({ incoming.trySend(it) }, s.log)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main.immediate) {
+                    println("mse catalog session failed: $t")
+                }
+            } finally {
+                incoming.close()
+            }
+        }
+        try {
+            for (st in incoming) {
+                val qs = st.qualityChoices()
+                if (qs.size > 2) qualityChoices = qs
             }
         } finally {
             job.cancel()
@@ -339,6 +368,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     val s = session ?: return@PlaygroundChrome
                     loading = true
                     error = null
+                    qualityChoices = FALLBACK_QUALITY_CHOICES
                     val id = videoId
                     scope.launch {
                         try {
@@ -350,6 +380,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                             }
                             val tracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
                             captionTracks = tracks
+                            qualityChoices = withContext(Dispatchers.Default) { pullQualityChoices(s) }
                             if (captionVss != null && tracks.none { it.vssId == captionVss }) {
                                 captionVss = null
                                 captionLines = emptyList()
@@ -365,6 +396,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 stateText = stateText,
                 clockText = clockText,
                 quality = quality,
+                qualityChoices = qualityChoices,
                 captionVss = captionVss,
                 captionTracks = captionTracks,
                 onQuality = { token ->
@@ -580,6 +612,7 @@ private fun PlaygroundChrome(
     stateText: String,
     clockText: String,
     quality: String,
+    qualityChoices: List<Pair<String, String>>,
     captionVss: String?,
     captionTracks: List<CaptionTrackInfo>,
     onQuality: (String) -> Unit,
@@ -616,7 +649,7 @@ private fun PlaygroundChrome(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        QUALITY_CHOICES.forEach { (token, label) ->
+        qualityChoices.forEach { (token, label) ->
             FilterChip(
                 selected = quality == token,
                 onClick = { onQuality(token) },
@@ -815,19 +848,33 @@ private suspend fun pullCaptionTracks(s: MseSession): List<CaptionTrackInfo> {
     return emptyList()
 }
 
-private val QUALITY_CHOICES = listOf(
+private val FALLBACK_QUALITY_CHOICES = listOf(
     "zero" to "Audio",
     "auto" to "Auto",
-    "tiny" to "144p",
-    "small" to "240p",
-    "medium" to "360p",
-    "large" to "480p",
-    "hd720" to "720p",
-    "hd1080" to "1080p",
-    "hd1440" to "1440p",
-    "hd2160" to "4K",
-    "highres" to "8K",
 )
+
+private fun JsonObject.qualityChoices(): List<Pair<String, String>> {
+    val arr = this["qualities"] as? JsonArray ?: return emptyList()
+    return arr.mapNotNull { el ->
+        val o = el as? JsonObject ?: return@mapNotNull null
+        val q = (o["quality"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }
+            ?: return@mapNotNull null
+        q to ((o["label"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() } ?: q)
+    }
+}
+
+private suspend fun pullQualityChoices(s: MseSession): List<Pair<String, String>> {
+    repeat(8) { i ->
+        val qs = s.player.status(s.log).qualityChoices()
+        if (qs.size > 2) {
+            println("mse quality chips=${qs.joinToString { it.second }} try=$i")
+            return qs
+        }
+        delay(250)
+    }
+    println("mse quality chips=fallback")
+    return FALLBACK_QUALITY_CHOICES
+}
 
 private fun JsonObject.longField(key: String): Long =
     (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
