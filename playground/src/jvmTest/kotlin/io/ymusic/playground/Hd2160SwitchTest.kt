@@ -39,7 +39,7 @@ class Hd2160SwitchTest {
             data class Tick(val t: Long, val frames: Int, val samples: Long, val pos: Long)
             val ticks = ArrayList<Tick>()
             val t0 = System.currentTimeMillis()
-            while (System.currentTimeMillis() - t0 < 22_000) {
+            while (System.currentTimeMillis() - t0 < 52_000) {
                 val p = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
                 ticks.add(Tick(System.currentTimeMillis() - t0, surface.presentedFrames(), surface.samplesPlayed(), p))
                 delay(250)
@@ -71,7 +71,7 @@ class Hd2160SwitchTest {
             println("hd2160 fps/sec after switch: " + fpsBySec.entries.joinToString { "${it.key}s=${it.value}" })
             println("hd2160 max audio stall ${maxAudioStall}ms samples $samplesAt->${ticks.last().samples}")
 
-            val settle = fpsBySec.filterKeys { it >= 4 }
+            val settle = fpsBySec.filterKeys { it >= 8 }
             val lowSecs = settle.filter { it.value <= 1 }.keys.sorted()
             var streak = 0
             var maxLowStreak = 0
@@ -90,7 +90,7 @@ class Hd2160SwitchTest {
                 "audio stalled ${maxAudioStall}ms after hd2160 (glitch with 0-1fps)",
             )
             assertTrue(
-                maxLowStreak < 3,
+                maxLowStreak < 2,
                 "stuck 0-1fps for ${maxLowStreak}s after settle fps=$settle",
             )
         } finally {

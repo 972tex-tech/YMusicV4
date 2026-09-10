@@ -91,6 +91,10 @@ struct MseAv {
     uint8_t *pend[2];
     size_t pend_n[2];
     size_t pend_cap[2];
+    /* Cluster Timecode (0xE7) from a prefix demux, prepended onto SimpleBlock
+       continuations so PTS stay cluster-relative. */
+    uint8_t cluster_tc[2][16];
+    size_t cluster_tc_n[2];
     int need_rap[2];
     int v_reopen;
     double starve_log_pts;
@@ -1853,6 +1857,94 @@ static int continuation_total(const uint8_t *p, size_t n, size_t *total)
     return 1;
 }
 
+/* Incomplete Cluster: Cluster header length and complete children we can
+   demux now. A 4K GOP is one 20MB Cluster; waiting for clen holds every
+   SimpleBlock until leftover is already empty. */
+static int cluster_prefix(const uint8_t *p, size_t n, size_t *hdr_out, size_t *body_out,
+                          int *nblocks)
+{
+    uint32_t id;
+    uint64_t sz;
+    int unk, hdr;
+    size_t off, last, cluster_end;
+    int blocks = 0;
+    if (!ebml_head(p, n, &id, &sz, &unk, &hdr))
+        return 0;
+    if (id != MSE_ID_CLUSTER)
+        return 0;
+    off = (size_t)hdr;
+    last = 0;
+    if (!unk) {
+        if (sz > MSE_CLUSTER_MAX)
+            return 0;
+        cluster_end = (size_t)hdr + (size_t)sz;
+        if (cluster_end <= n)
+            return 0;
+    } else {
+        cluster_end = (size_t)-1;
+    }
+    while (off < n && off < cluster_end) {
+        uint32_t cid;
+        uint64_t csz;
+        int cunk, chdr;
+        if (!ebml_head(p + off, n - off, &cid, &csz, &cunk, &chdr))
+            break;
+        if (cid == MSE_ID_CLUSTER || cid == MSE_ID_EBML)
+            break;
+        if (cunk)
+            break;
+        if (csz > MSE_CLUSTER_MAX)
+            break;
+        if (off + (size_t)chdr + (size_t)csz > n)
+            break;
+        if (off + (size_t)chdr + (size_t)csz > cluster_end)
+            break;
+        off += (size_t)chdr + (size_t)csz;
+        last = off;
+        if (cid == MSE_ID_SIMPLEBLOCK || cid == MSE_ID_BLOCKGROUP)
+            blocks++;
+    }
+    if (blocks < 1 || last <= (size_t)hdr)
+        return 0;
+    *hdr_out = (size_t)hdr;
+    *body_out = last - (size_t)hdr;
+    *nblocks = blocks;
+    return 1;
+}
+
+static void save_cluster_tc(MseAv *a, int idx, const uint8_t *p, size_t n)
+{
+    size_t off = 0;
+    while (off < n) {
+        uint32_t id;
+        uint64_t sz;
+        int unk, hdr;
+        if (!ebml_head(p + off, n - off, &id, &sz, &unk, &hdr))
+            break;
+        if (unk || off + (size_t)hdr + (size_t)sz > n)
+            break;
+        if (id == MSE_ID_TIMECODE) {
+            size_t el = (size_t)hdr + (size_t)sz;
+            if (el <= sizeof(a->cluster_tc[idx])) {
+                memcpy(a->cluster_tc[idx], p + off, el);
+                a->cluster_tc_n[idx] = el;
+            }
+            return;
+        }
+        off += (size_t)hdr + (size_t)sz;
+    }
+}
+
+static int ebml_id_at(const uint8_t *p, size_t n, uint32_t want)
+{
+    uint32_t id;
+    uint64_t sz;
+    int unk, hdr;
+    if (!ebml_head(p, n, &id, &sz, &unk, &hdr))
+        return 0;
+    return id == want;
+}
+
 static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, double win_end,
                        MseAvIngest *r)
 {
@@ -1975,11 +2067,12 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
     initn = audio ? &a->ainit_n : &a->vinit_n;
     dst = audio ? &a->af : &a->vf;
     for (;;) {
-        size_t total = 0, coff = 0;
+        size_t total = 0, coff = 0, prefix_hdr = 0;
         Cfb tmp;
         AVCodecParameters *par = NULL;
         double dur;
         int nadd;
+        int prefix = 0;
         wrap = 0;
         if (looks_ebml(a->pend[idx], a->pend_n[idx])) {
             if (*initn && looks_fmp4(*initp, *initn)) {
@@ -2040,12 +2133,23 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                    a->pend_n[idx] < total) {
             if (!continuation_total(a->pend[idx], a->pend_n[idx], &total) || total == 0 ||
                 a->pend_n[idx] < total) {
-                if (!audio && a->pend_n[idx] > 0 &&
-                    (a->pend_n[idx] < 96 || a->pend_n[idx] % (1024u * 1024u) == 0))
-                    vlog("webm wait-cluster n=%zu b0=%02x", a->pend_n[idx], a->pend[idx][0]);
-                break;
+                size_t body = 0;
+                int nblocks = 0;
+                int urgent = (dst->n == 0 || dst->rd + 8 >= dst->n);
+                if (cluster_prefix(a->pend[idx], a->pend_n[idx], &prefix_hdr, &body, &nblocks) &&
+                    nblocks > 0 && (body >= 128u * 1024u || nblocks >= 8 || urgent)) {
+                    total = prefix_hdr + body;
+                    wrap = 1;
+                    prefix = 1;
+                } else {
+                    if (!audio && a->pend_n[idx] > 0 &&
+                        (a->pend_n[idx] < 96 || a->pend_n[idx] % (1024u * 1024u) == 0))
+                        vlog("webm wait-cluster n=%zu b0=%02x", a->pend_n[idx], a->pend[idx][0]);
+                    break;
+                }
+            } else {
+                wrap = 1;
             }
-            wrap = 1;
         }
         if (total == 0) {
             if (!cluster_total(a->pend[idx], a->pend_n[idx], &total) || total == 0 ||
@@ -2055,7 +2159,20 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
         memset(&tmp, 0, sizeof(tmp));
         dur = a->duration;
         if (wrap) {
-            uint8_t *wseg = malloc(5 + total);
+            const uint8_t *src = a->pend[idx];
+            size_t src_n = total;
+            size_t tc_n = 0;
+            uint8_t *wseg;
+            if (prefix) {
+                save_cluster_tc(a, idx, a->pend[idx] + prefix_hdr, total - prefix_hdr);
+                src = a->pend[idx] + prefix_hdr;
+                src_n = total - prefix_hdr;
+            } else if (!ebml_id_at(src, src_n, MSE_ID_TIMECODE)) {
+                tc_n = a->cluster_tc_n[idx];
+            } else {
+                save_cluster_tc(a, idx, src, src_n);
+            }
+            wseg = malloc(5 + tc_n + src_n);
             if (!wseg)
                 break;
             wseg[0] = 0x1F;
@@ -2063,15 +2180,25 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             wseg[2] = 0xB6;
             wseg[3] = 0x75;
             wseg[4] = 0xFF;
-            memcpy(wseg + 5, a->pend[idx], total);
-            nadd = demux_packets(*initp, *initn, wseg, 5 + total, ts_off, !audio, &tmp, &par, &dur);
+            if (tc_n)
+                memcpy(wseg + 5, a->cluster_tc[idx], tc_n);
+            memcpy(wseg + 5 + tc_n, src, src_n);
+            nadd = demux_packets(*initp, *initn, wseg, 5 + tc_n + src_n, ts_off, !audio, &tmp, &par,
+                                 &dur);
             free(wseg);
         } else {
             nadd = demux_packets(*initp, *initn, a->pend[idx], total, ts_off, !audio, &tmp, &par, &dur);
+            a->cluster_tc_n[idx] = 0;
         }
         if (nadd < 0)
             nadd = 0;
-        if (!audio && nadd > 0)
+        if (prefix && nadd == 0) {
+            if (par)
+                avcodec_parameters_free(&par);
+            cfb_free(&tmp);
+            break;
+        }
+        if (!audio && nadd > 0 && !wrap)
             scale_gop_pts(&tmp);
         if (dur > a->duration)
             a->duration = dur;
@@ -2173,6 +2300,9 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             a->pend_n[idx] -= total;
         else
             a->pend_n[idx] = 0;
+        if (prefix && !audio)
+            vlog("webm prefix-cluster n=%d body=%zu pend=%zu", nadd, total - prefix_hdr,
+                 a->pend_n[idx]);
         if (a->pend_n[idx] == 0)
             break;
     }
@@ -2234,6 +2364,7 @@ void mse_av_abort(MseAv *a, int audio)
     av_lock(a, audio);
     idx = audio ? 1 : 0;
     a->pend_n[idx] = 0;
+    a->cluster_tc_n[idx] = 0;
     a->need_rap[idx] = 1;
     if (audio && a->adec)
         avcodec_flush_buffers(a->adec);
@@ -2257,6 +2388,7 @@ void mse_av_change_type(MseAv *a, int audio)
     av_lock(a, audio);
     if (audio) {
         a->pend_n[1] = 0;
+        a->cluster_tc_n[1] = 0;
         a->need_rap[1] = 1;
         free(a->ainit);
         a->ainit = NULL;
@@ -2266,6 +2398,7 @@ void mse_av_change_type(MseAv *a, int audio)
             swr_free(&a->swr);
     } else {
         a->pend_n[0] = 0;
+        a->cluster_tc_n[0] = 0;
         free(a->vinit);
         a->vinit = NULL;
         a->vinit_n = 0;
@@ -2312,6 +2445,7 @@ void mse_av_remove(MseAv *a, int audio, double start, double end)
     /* Audio-only (or a full video wipe): nothing left to decode. */
     if (!audio && a->vf.n == 0) {
         a->pend_n[0] = 0;
+        a->cluster_tc_n[0] = 0;
         close_video_decoder(a);
     }
     if (!audio)
@@ -2338,10 +2472,12 @@ void mse_av_flush(MseAv *a, int audio, int video)
 #endif
     if (audio) {
         a->pend_n[1] = 0;
+        a->cluster_tc_n[1] = 0;
         a->need_rap[1] = 1;
     }
     if (video) {
         a->pend_n[0] = 0;
+        a->cluster_tc_n[0] = 0;
         a->need_rap[0] = 1;
         av_frame_free(&a->vhold);
     }
@@ -2569,6 +2705,7 @@ void mse_av_seek(MseAv *a, double seconds)
     if (a->vf.rd >= a->vf.n || !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
         cfb_free(&a->vf);
         a->pend_n[0] = 0;
+        a->cluster_tc_n[0] = 0;
         close_video_decoder(a);
     } else {
         if (a->vdec)
