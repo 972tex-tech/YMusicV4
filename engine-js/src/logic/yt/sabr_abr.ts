@@ -1,10 +1,9 @@
 // SABR VideoPlaybackAbrRequest: drop fake 144p from playable video (17),
-// initialized formats (2), and buffered_ranges (3). VOD product-zero also
+// initialized formats (2), and buffered_ranges (3). Product-zero also
 // sets ClientAbrState field 40=1 (server sends no real video) and appends a
 // fake 144p UMP: one media segment covering 0–duration.
 
 import { isProductZero } from "../player/audio_only";
-import { isYmLive } from "../player/live";
 import { fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
 import type { Fake144Row } from "../player/itag_144";
 import { appendRestCover } from "../../protocol/mse";
@@ -316,10 +315,6 @@ function isAudioItag(t: number): boolean {
   );
 }
 
-function vodAudioOnly(): boolean {
-  return isProductZero() && !isYmLive();
-}
-
 function rewriteCas40(cas: Uint8Array): Uint8Array {
   const fs = readFields(cas);
   if (!fs) return cas;
@@ -494,7 +489,7 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
     if (f.n === 1 && f.w === 2 && f.v instanceof Uint8Array) {
-      if (vodAudioOnly()) out.push({ n: 1, w: 2, v: rewriteCas40(f.v) });
+      if (isProductZero()) out.push({ n: 1, w: 2, v: rewriteCas40(f.v) });
       else out.push(f);
       continue;
     }
@@ -520,14 +515,14 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
   }
   if (dropped.length) console.log("mse sabr drop 144 itags=" + dropped.join(","));
   pendingCover = null;
-  if (vodAudioOnly()) {
+  if (isProductZero()) {
     pendingCover = {
       needInit: !selHasFake,
       audBr: audParts.join(","),
       fakeBr: fakeParts.join(","),
     };
   }
-  if (!dropped.length && !vodAudioOnly()) return u;
+  if (!dropped.length && !isProductZero()) return u;
   return writeFields(out);
 }
 

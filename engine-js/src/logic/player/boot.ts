@@ -770,7 +770,7 @@ class Player {
     else if (typeof one === "function") (one as (q: string) => void).call(host, "auto");
   }
 
-  /** Rest the C decoder and keep Auto. VOD SABR then sends 40=1 + fake 144p UMP. */
+  /** Rest the C decoder and keep Auto. SABR then sends 40=1 + fake 144p UMP. */
   private applyZero(): void {
     setAudioOnly(false);
     setLiveVideoRest(true);

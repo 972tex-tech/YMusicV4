@@ -98,6 +98,16 @@ class LiveMseTraceTest {
             assertTrue(pos > 10_000, "live audio-only never joined DVR head pos=$pos")
             assertTrue(later > pos + 25_000, "live audio-only clock stuck $pos -> $later (need 30s)")
             assertTrue(frames.get() <= 1, "live audio-only decoded video frames=${frames.get()}")
+            val abr = proof.lineSequence().filter { it.contains("sabr sabr=") }.toList()
+            assertTrue(abr.any { it.contains("40=1") }, "live zero SABR missing field 40=1. abr=$abr")
+            assertTrue(
+                proof.contains("mse sabr fake-ump"),
+                "live zero did not inject fake 144p UMP. proof=\n$proof",
+            )
+            assertTrue(
+                proof.contains("mse append fake-cover"),
+                "live fake 144p leftover cover was not appended. proof=\n$proof",
+            )
         } finally {
             watch.cancel()
             session.close()
@@ -151,8 +161,14 @@ class LiveMseTraceTest {
                 "audio not running after zero samples=$samplesAfter at-switch=$samplesAtSwitch clock $later -> $after",
             )
             val afterZero = proof.lineSequence().dropWhile { !it.contains("setQuality zero") }.toList()
-            val liveForty = afterZero.any { it.contains("audioOnly=1") && it.contains("40=1") }
-            assertTrue(!liveForty, "live zero must not rewrite SABR field 40")
+            assertTrue(
+                afterZero.any { it.contains("40=1") },
+                "live zero SABR missing field 40=1",
+            )
+            assertTrue(
+                afterZero.any { it.contains("mse sabr fake-ump") },
+                "live zero did not inject fake 144p UMP",
+            )
         } finally {
             watch.cancel()
             session.close()
