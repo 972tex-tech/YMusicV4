@@ -5,6 +5,7 @@ import { utf8Decode, utf8Encode } from "../../transport";
 import { setXhrJsonRewrite } from "../yt/xhr";
 import { ingestPlayerCaptions } from "./captions";
 import { FAKE_LMT, is144pItag, recordFake144 } from "./itag_144";
+import { isVp9SwitchExp } from "./audio_only";
 import type { Fake144Row } from "./itag_144";
 
 function asRec(v: unknown): Record<string, unknown> | null {
@@ -92,8 +93,7 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
   const vd = asRec(rec["videoDetails"]);
   const vid = vd ? String(vd["videoId"] || "") : "";
   recordFake144(vid, rows);
-  if (itags.length)
-    console.log("mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + FAKE_LMT);
+  if (itags.length) console.log("mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + FAKE_LMT);
   else console.log("mse fake-fmt skip: no 144p video");
 }
 
@@ -106,7 +106,8 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   const pc = asRec(rec["playerConfig"]);
   const dai = pc ? asRec(pc["daiConfig"]) : null;
   if (dai) dai["sendSsdaiMissingAdBreakReasons"] = false;
-  injectFakeMp4Format(rec);
+  if (!isVp9SwitchExp()) injectFakeMp4Format(rec);
+  else console.log("mse exp278 skip /player 144p rewrite");
   ingestPlayerCaptions(rec);
   return rec;
 }

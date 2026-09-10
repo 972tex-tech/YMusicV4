@@ -4,7 +4,7 @@
 // fake 144p UMP. The media payload carries start_ms+dur; we appendBuffer it
 // onto the video SourceBuffer so leftover reports that TimeRange.
 
-import { isProductZero } from "../player/audio_only";
+import { isProductZero, isVp9SwitchExp } from "../player/audio_only";
 import { isYmLive } from "../player/live";
 import { FAKE_LMT_NUM, fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
 import { appendRestCover } from "../../protocol/mse";
@@ -304,6 +304,59 @@ function vodAudioOnly(): boolean {
   return isProductZero() && !isYmLive();
 }
 
+const VP9_144 = 278;
+let expN = 0;
+let expArmed = false;
+let keep278: Uint8Array | null = null;
+
+function rewriteVp9Switch(u: Uint8Array): Uint8Array {
+  const fs = readFields(u);
+  if (!fs) return u;
+  if (!expArmed) {
+    expArmed = true;
+    expN = 0;
+    keep278 = null;
+  }
+  const vidBefore: number[] = [];
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.n !== 17 || f.w !== 2 || !(f.v instanceof Uint8Array)) continue;
+    const t = formatItag(f.v);
+    if (t == null) continue;
+    vidBefore.push(t);
+    if (t === VP9_144) keep278 = f.v;
+  }
+  if (!vidBefore.length) {
+    console.log("mse exp278 skip-empty");
+    return u;
+  }
+  expN++;
+  if (expN < 2) {
+    console.log("mse exp278 n=" + expN + " pass vid=" + (vidBefore.join(",") || "-"));
+    return u;
+  }
+  if (!keep278) {
+    console.log("mse exp278 n=" + expN + " no-278 vid=" + (vidBefore.join(",") || "-"));
+    return u;
+  }
+  const out: Field[] = [];
+  let kept = false;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.n === 17) {
+      if (!kept) {
+        out.push({ n: 17, w: 2, v: keep278 });
+        kept = true;
+      }
+      continue;
+    }
+    out.push(f);
+  }
+  if (!kept) out.push({ n: 17, w: 2, v: keep278 });
+  console.log("mse exp278 n=" + expN + " from=" + (vidBefore.join(",") || "-") + " to=278");
+  return writeFields(out);
+}
+
 function rewriteCas40(cas: Uint8Array): Uint8Array {
   const fs = readFields(cas);
   if (!fs) return cas;
@@ -493,6 +546,11 @@ export function prepareSabrBody(url: string, body: unknown): unknown {
   if (url.indexOf("/videoplayback") < 0) return body;
   const u = asU8(body);
   if (!u || u.length === 0) return body;
+  if (isVp9SwitchExp()) {
+    pendingFakeUmp = null;
+    return rewriteVp9Switch(u);
+  }
+  expArmed = false;
   return rewriteAbr(u);
 }
 

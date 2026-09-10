@@ -29,6 +29,7 @@ import {
   setLiveVideoRest,
   setYmQuality,
   ymQuality,
+  setVp9SwitchExp,
 } from "./audio_only";
 import {
   captionIngestTick,
@@ -817,7 +818,10 @@ class Player {
     this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
-    if (q !== "zero") this.setQuality(q);
+    const exp278 = q === "exp278";
+    setVp9SwitchExp(exp278);
+    if (exp278) this.setQuality("auto");
+    else if (q !== "zero") this.setQuality(q);
     else {
       setAudioOnly(false);
       setLiveVideoRest(true);
