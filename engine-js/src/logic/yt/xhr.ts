@@ -10,6 +10,7 @@ import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
 import { prepareSabrBody, appendFakeUmp } from "./sabr_abr";
+import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 
 type Listener = (ev?: Record<string, unknown>) => void;
@@ -229,6 +230,7 @@ XhrImpl.prototype["getAllResponseHeaders"] = function (this: XhrJs): string {
 XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   const self = this;
   const url = self._url;
+  noteSabrPlaybackUrl(url);
   if (!allowEngineJsUrl(url)) {
     console.log("js deny " + url);
     Promise.resolve().then(function () {

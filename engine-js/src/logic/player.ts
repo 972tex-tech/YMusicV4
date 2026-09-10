@@ -20,7 +20,7 @@ import {
 import { applyViewport } from "./player/viewport";
 import { runCatalogSession, runProgressSession } from "./player/push";
 import { listCaptionTracks, runCaptionSession, setCaptionVss } from "./player/captions";
-import { lastPlayerResponseJson } from "./player/skip_ads";
+import { downloadWaitMs, peekDownloadJson, waitDownloadJson } from "./player/player_res";
 
 createHtmlMedia();
 
@@ -207,10 +207,18 @@ onAccept(
 onAccept(
   "player/playerResponse",
   commandHandler(async (src, out) => {
-    await src.readJsonObject();
-    const raw = lastPlayerResponseJson();
-    if (!raw) throw new JsEngineErrorImpl("player response not cached", "E20087");
-    const rec = JSON.parse(raw) as Record<string, unknown>;
+    const a = await src.readJsonObject();
+    const id = String(a["videoId"] ?? "");
+    if (!id) throw new JsEngineErrorImpl("player/playerResponse missing videoId", "E20087");
+    let rec = peekDownloadJson(id);
+    if (!rec) {
+      await preloadPlayer(id);
+      try {
+        rec = await waitDownloadJson(id, downloadWaitMs());
+      } catch (_e) {
+        throw new JsEngineErrorImpl("player response not cached", "E20087");
+      }
+    }
     const p = out.writeObjectAsJson(rec);
     if (p) await p;
   }),

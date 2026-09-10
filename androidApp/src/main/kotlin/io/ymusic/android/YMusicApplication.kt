@@ -23,7 +23,6 @@ import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.androidEngineCacheStore
-import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.defaultMemoryCacheBudget
@@ -39,10 +38,8 @@ import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.player.LocalPlayerContext
 import io.ymusic.player.PlayerEngines
-import io.ymusic.player.WebViewPlayerContext
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
-import io.ymusic.player.createWebViewPlayer
 import io.ymusic.player.isPlaying
 import io.ymusic.player.mse.MsePlayer
 import io.ymusic.remoteconfig.HttpApiService
@@ -420,18 +417,7 @@ class YMusicApplication : Application() {
             )
         }
 
-        // Playback is MSE. Downloads still cook player-response + PO token on a hidden WebView.
-        var downloadWebViewPlayer: io.ymusic.player.WebViewPlayer? = null
-        fun ensureDownloadWebView(): io.ymusic.player.WebViewPlayer {
-            val js = shared.webViewJs ?: error("YouTube engine unavailable")
-            return downloadWebViewPlayer ?: createWebViewPlayer(
-                WebViewPlayerContext(this, downloadContainer, mediaProxy),
-                engineJs = js,
-                appVersion = 5000,
-                embedHtml = { ua -> shared.engines.embedPage(ua) },
-                logger = rootLogger,
-            ).also { downloadWebViewPlayer = it }
-        }
+        var ytEngine: io.ymusic.player.YtEngine? = null
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
@@ -446,7 +432,10 @@ class YMusicApplication : Application() {
                         videoSurface = MseVideoSurface(),
                         main = shared.engines,
                         mediaProxy = mediaProxy,
-                    ).also { mseBridge.attach(it) }
+                    ).also {
+                        ytEngine = it
+                        mseBridge.attach(it)
+                    }
                 },
             ),
         )
@@ -457,9 +446,8 @@ class YMusicApplication : Application() {
             player.prepareYoutubeEngine()
         }
 
-        // Offline downloads: SABR download stack + on-device ffmpeg (libffmpeg.so). The spec resolver
-        // drives the playback WebView to prime each video's player response + PO token.
-        val downloadService = shared.webViewJs?.let {
+        // Offline downloads: SABR stack + on-device ffmpeg. Spec from MSE /player + decoded SABR URL.
+        val downloadService = run {
             val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")
                 .takeIf { f -> f.exists() }?.absolutePath
             // Probes a finished download's metadata into its Library bucket (same path as the folder scan,
@@ -481,10 +469,9 @@ class YMusicApplication : Application() {
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
                 now = { System.currentTimeMillis() },
                 resolver = io.ymusic.download.SabrSpecResolver { videoId ->
-                    val page = withContext(Dispatchers.Main) {
-                        ensureDownloadWebView().also { it.warmUp() }
-                    }
-                    WebViewSabrSpecResolver(page).resolve(videoId)
+                    withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+                    val yt = ytEngine ?: error("youtube engine missing")
+                    WebViewSabrSpecResolver(yt).resolve(videoId)
                 },
                 client = sabrClient,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),

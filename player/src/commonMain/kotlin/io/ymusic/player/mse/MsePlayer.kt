@@ -225,7 +225,7 @@ class MsePlayer internal constructor(
     }
 
     override suspend fun requestPlayerResponse(videoId: String): String =
-        engine().cachedPlayerResponse(log).toString()
+        engine().cachedPlayerResponse(videoId, log).toString()
 
     override suspend fun requestPoToken(videoId: String): String =
         engine().mintContentPoToken(videoId, log)

@@ -6,6 +6,7 @@ import { setXhrJsonRewrite } from "../yt/xhr";
 import { ingestPlayerCaptions } from "./captions";
 import { is144pItag, recordFake144 } from "./itag_144";
 import type { Fake144Row } from "./itag_144";
+import { notePlayerResponse } from "./player_res";
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
@@ -122,6 +123,11 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   const pc = asRec(rec["playerConfig"]);
   const dai = pc ? asRec(pc["daiConfig"]) : null;
   if (dai) dai["sendSsdaiMissingAdBreakReasons"] = false;
+  try {
+    notePlayerResponse(JSON.parse(JSON.stringify(rec)) as Record<string, unknown>);
+  } catch (e) {
+    console.log("mse player-res clone failed: " + errText(e));
+  }
   injectFakeMp4Format(rec);
   ingestPlayerCaptions(rec);
   return rec;
@@ -152,15 +158,7 @@ function rewriteResponse(url: string, text: string): string {
     console.log("player ads: transformPlayerResponse failed: " + errText(e));
     return text;
   }
-  const out = JSON.stringify(rec);
-  lastPlayerJson = out;
-  return out;
-}
-
-let lastPlayerJson = "";
-
-export function lastPlayerResponseJson(): string {
-  return lastPlayerJson;
+  return JSON.stringify(rec);
 }
 
 let installed = false;

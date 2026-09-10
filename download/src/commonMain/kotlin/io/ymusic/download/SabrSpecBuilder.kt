@@ -12,10 +12,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import okio.ByteString.Companion.decodeBase64
 
 /**
- * Turns the decoded player-response JSON (from `WebViewPlayer.requestPlayerResponse`) plus a PO token
- * (from `requestPoToken`) into a [SabrStreamSpec] for `SabrSession.download`. Pure data mapping — the
- * commonMain equivalent of the download probe's `buildSpec`/`toAdaptiveFormat`. The `serverAbrStreamingUrl`
- * already has sig/n decoded by webview-js; this only base64-decodes the ustreamer config + PO token.
+ * Turns the player-response JSON (from `YtEngine.requestPlayerResponse`) plus a PO token
+ * (from `requestPoToken`) into a [SabrStreamSpec] for `SabrSession.download`. Pure data mapping.
+ * `serverAbrStreamingUrl` already has sig/n decoded (player fetch, not a local decipher).
  */
 object SabrSpecBuilder {
 

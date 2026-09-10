@@ -17,6 +17,7 @@ import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
 import { appendFakeUmp, hasPendingFake, prepareSabrBody } from "./sabr_abr";
+import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 import { applyRequestRewrite, applyResponseRewrite, wantsJsonRewrite } from "./xhr";
 
@@ -570,6 +571,7 @@ function deniedJsResponse(url: string): FetchResponseJs {
 async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJs> {
   const p = parseInput(input, init);
   if (!p.url) throw new TypeError("fetch: invalid URL");
+  noteSabrPlaybackUrl(p.url);
   if (!allowEngineJsUrl(p.url)) {
     console.log("js deny " + p.url);
     return deniedJsResponse(p.url);

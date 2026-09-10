@@ -2,7 +2,7 @@ package io.ymusic.ui
 
 import io.ymusic.download.SabrSpecBuilder
 import io.ymusic.download.SabrSpecResolver
-import io.ymusic.player.WebViewPlayer
+import io.ymusic.player.YtEngine
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -10,24 +10,17 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Obtains SABR inputs for a download by asking a [WebViewPlayer] to **preload** the video's `/player`
- * response and mint a PO token — no playback. `requestPlayerResponse` preloads the response itself (it
- * fetches `/player` without loading the video on screen), and `requestPoToken` mints against the page's
- * BotGuard (page-level, not per-play), so nothing the user is listening to is disturbed. This is the one
- * piece of the download stack that isn't headless — the attestation chain lives in the page.
- *
- * A [Mutex] serializes access: the page handles one preload/response request cleanly at a time.
+ * Obtains SABR inputs for a download from a [YtEngine] (`MsePlayer` or WebView).
+ * `requestPlayerResponse` returns cached `/player` + a decoded SABR URL the player already
+ * fetched, or preloads the video so those requests fire. `requestPoToken` mints a content PO.
  */
 class WebViewSabrSpecResolver(
-    private val player: WebViewPlayer,
+    private val player: YtEngine,
 ) : SabrSpecResolver {
 
     private val mutex = Mutex()
 
     override suspend fun resolve(videoId: String): SabrStreamSpec = mutex.withLock {
-        // Ensure the page session is (being) built; warmUp is a no-op once it's up. Main thread — it
-        // touches the WebView. requestPlayerResponse/requestPoToken hop to Main internally and queue
-        // until the page connects, so a just-warmed engine resolves as soon as it's ready.
         withContext(Dispatchers.Main) { player.warmUp() }
         val playerResponse = player.requestPlayerResponse(videoId)
         val poToken = player.requestPoToken(videoId)

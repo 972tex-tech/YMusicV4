@@ -203,9 +203,13 @@ class DynamicEnginePlayer private constructor(
         }
     }
 
-    /** Warm the singleton PO minter if needed, then mint a content PO token for [videoId]. */
-    suspend fun cachedPlayerResponse(logger: Logger? = null): JsonObject =
-        engine.jsonCommand("player/playerResponse", { }, logger) { it.readObject() }
+    /** /player JSON plus decoded SABR URL captured from the player's googlevideo request. */
+    suspend fun cachedPlayerResponse(videoId: String, logger: Logger? = null): JsonObject =
+        engine.jsonCommand(
+            "player/playerResponse",
+            { w -> w.name("videoId").value(videoId) },
+            logger,
+        ) { it.readObject() }
 
     suspend fun mintContentPoToken(videoId: String, logger: Logger? = null): String =
         engine.jsonCommand("player/mintPo", { w -> w.name("videoId").value(videoId) }, logger) { r ->

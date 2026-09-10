@@ -56,7 +56,6 @@ import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.desktopEngineCacheStore
-import io.ymusic.dynamicengine.yt.embedPage
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.defaultMemoryCacheBudget
@@ -71,10 +70,8 @@ import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.player.LocalPlayerContext
 import io.ymusic.player.LocalVideoSurface
 import io.ymusic.player.PlayerEngines
-import io.ymusic.player.WebViewPlayerContext
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
-import io.ymusic.player.createWebViewPlayer
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.PersistentCookieJar
 import io.ymusic.remoteconfig.RemoteConfig
@@ -485,7 +482,6 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
 
     val localSurface = LocalVideoSurface()
     val webViewSurface = JcefOsrSurface()
-    val downloadWebViewSurface = JcefOsrSurface()
     val mseSurface = io.ymusic.mse.MseVideoSurface()
 
     // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
@@ -520,18 +516,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         )
     }
 
-    // Playback is MSE. Downloads still cook player-response + PO token on a hidden WebView page
-    // (no headless cooker yet). Recreated lazily; latest wins.
-    var downloadWebViewPlayer: io.ymusic.player.WebViewPlayer? = null
-    fun ensureDownloadWebView(): io.ymusic.player.WebViewPlayer {
-        return downloadWebViewPlayer ?: createWebViewPlayer(
-            WebViewPlayerContext(cefClient, downloadWebViewSurface, mediaProxy),
-            engineJs = cachedWebViewJs ?: readWebViewJs(),
-            appVersion = 5000,
-            embedHtml = { ua -> engines.embedPage(ua) },
-            logger = rootLogger,
-        ).also { downloadWebViewPlayer = it }
-    }
+    var ytEngine: io.ymusic.player.YtEngine? = null
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
@@ -547,7 +532,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
                         videoSurface = mseSurface,
                         main = engines,
                         mediaProxy = mediaProxy,
-                    )
+                    ).also { ytEngine = it }
                 },
             ),
         )
@@ -563,9 +548,8 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
     }
 
-    // Offline downloads: reuse the SABR download stack over the prebuilt ffmpeg. The spec resolver drives
-    // the playback WebView to prime each video's player response + PO token (so a download of a video the
-    // user isn't already playing briefly loads it into the player — a known first-cut limitation).
+    // Offline downloads: SABR stack over ffmpeg. Spec comes from the MSE engine's cached
+    // /player + decoded googlevideo URL (preload if that video is not already cached).
     val downloadService = withContext(Dispatchers.IO) {
         val ffmpegPath = resolveFfmpeg()
         val ffmpeg = ffmpegPath?.let { io.ymusic.download.Ffmpeg(it) }
@@ -588,10 +572,9 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
             defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
         }
         val resolver = io.ymusic.download.SabrSpecResolver { videoId ->
-            val page = withContext(Dispatchers.Main) {
-                ensureDownloadWebView().also { it.warmUp() }
-            }
-            WebViewSabrSpecResolver(page).resolve(videoId)
+            withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+            val yt = ytEngine ?: error("youtube engine missing")
+            WebViewSabrSpecResolver(yt).resolve(videoId)
         }
         // Own segment index (byte range per segment) → SABR resume across pause/re-attest. Separate from
         // the player cache DB: downloads store bytes in their own file, not the player blob cache.
