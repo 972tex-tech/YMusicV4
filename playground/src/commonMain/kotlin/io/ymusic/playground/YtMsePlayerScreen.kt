@@ -368,15 +368,15 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     val s = session ?: return@PlaygroundChrome
                     loading = true
                     error = null
-                    quality = "auto"
                     qualityChoices = FALLBACK_QUALITY_CHOICES
                     val id = videoId
+                    val q = quality
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) {
                                 val w = holeSize.width.takeIf { it > 0 }
                                 val h = holeSize.height.takeIf { it > 0 }
-                                s.player.load(id, s.log, "auto", w, h)
+                                s.player.load(id, s.log, q, w, h)
                                 s.player.play(s.log)
                             }
                             val tracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
