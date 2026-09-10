@@ -125,10 +125,16 @@ class AudioOnlySabrTest {
                 proof0.lineSequence().filter {
                     it.contains("mse fake-fmt") ||
                         it.contains("getAvailableQualityData") ||
+                        it.contains("mse isTypeSupported") ||
+                        it.contains("mse changeType") ||
                         it.contains("sabr sabr=")
                 }.joinToString("\n"),
             )
             assertTrue(proof0.contains("mse fake-fmt 144p itags="), "did not rewrite 144p formats")
+            assertTrue(
+                proof0.contains("mse isTypeSupported reject codec vp09.02.51.10.01.09.99.99.00"),
+                "Chrome VP9 profile probe must reject …99.99.00 so mdp() keeps .fake",
+            )
             session.player.preload(SECOND_ID, session.log)
             session.player.load(SECOND_ID, session.log, "zero")
             session.player.play(session.log)

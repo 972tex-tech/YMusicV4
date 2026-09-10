@@ -274,6 +274,7 @@ internal class StdoutLog private constructor(
             message.indexOf("mse createObjectURL") >= 0 ||
             message.indexOf("mse append") >= 0 ||
             message.indexOf("mse changeType") >= 0 ||
+            message.indexOf("mse isTypeSupported") >= 0 ||
             message.indexOf("mse setQuality") >= 0 ||
             message.indexOf("mse drain") >= 0 ||
             message.indexOf("FORMAT_INIT") >= 0 ||

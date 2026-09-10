@@ -23,6 +23,40 @@ function audioFlag(mime: string): number {
   return String(mime).toLowerCase().indexOf("audio/") === 0 ? 1 : 0;
 }
 
+/** First codecs="..." token, lowercased. */
+function mimeCodec(mime: string): string {
+  const m = String(mime).toLowerCase();
+  const key = "codecs=";
+  const i = m.indexOf(key);
+  if (i < 0) return "";
+  let s = m.slice(i + key.length);
+  if (s.charAt(0) === '"') {
+    const end = s.indexOf('"', 1);
+    return end >= 0 ? s.slice(1, end) : s.slice(1);
+  }
+  const sp = s.search(/[\s;]/);
+  return sp >= 0 ? s.slice(0, sp) : s;
+}
+
+/**
+ * Chrome MSE rejects illegal vp09/av01 profiles. YouTube mdp() probes
+ * vp09.02.51…09.16.09.00 vs …09.99.99.00; both true made we=0 and
+ * rewrote VP9 mime to codecs="vp9", stripping .fake.
+ */
+function chromeRejectsCodec(mime: string): boolean {
+  const c = mimeCodec(mime);
+  if (!c) return false;
+  if (c.indexOf("av99") === 0) return true;
+  if (c.indexOf("vp09.") !== 0) return false;
+  const p = c.split(".");
+  const prof = p[1] || "";
+  if (prof !== "00" && prof !== "01" && prof !== "02") return true;
+  for (let i = 5; i <= 7 && i < p.length; i++) {
+    if (p[i] === "99") return true;
+  }
+  return false;
+}
+
 let sbGen = 0;
 let lastMs: MediaSource | null = null;
 
@@ -459,6 +493,10 @@ class MediaSource {
 
   static ["isTypeSupported"](mime: string): boolean {
     const m = String(mime).toLowerCase();
+    if (chromeRejectsCodec(m)) {
+      mseLog("mse isTypeSupported reject codec " + mimeCodec(m));
+      return false;
+    }
     if (m.indexOf("av01") >= 0 || m.indexOf("av1.") >= 0) {
       if (typeof __mseAv1Ok === "function" && !__mseAv1Ok()) {
         mseLog("mse isTypeSupported reject av01");
@@ -657,6 +695,7 @@ class HTMLMediaElement {
 
   ["canPlayType"](t: string): string {
     t = String(t || "").toLowerCase();
+    if (chromeRejectsCodec(t)) return "";
     if (
       (t.indexOf("av01") >= 0 || t.indexOf("av1.") >= 0) &&
       typeof __mseAv1Ok === "function" &&
