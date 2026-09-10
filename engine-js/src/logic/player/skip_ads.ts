@@ -4,7 +4,7 @@
 import { utf8Decode, utf8Encode } from "../../transport";
 import { setXhrJsonRewrite } from "../yt/xhr";
 import { ingestPlayerCaptions } from "./captions";
-import { FAKE_LMT, is144pItag, recordFake144 } from "./itag_144";
+import { is144pItag, recordFake144 } from "./itag_144";
 import { isVp9SwitchExp } from "./audio_only";
 import type { Fake144Row } from "./itag_144";
 
@@ -79,21 +79,32 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
     const fmt = asRec(formats[i]);
     if (!fmt || !isVideoFmt(fmt) || !is144pItag(Number(fmt["itag"]))) continue;
     const itag = Number(fmt["itag"]);
-    if (String(fmt["lastModified"] || "") !== FAKE_LMT) {
+    const lmt = String(fmt["lastModified"] || "0");
+    if (String(fmt["mimeType"] || "").indexOf(".fake") < 0) {
       fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
-      fmt["lastModified"] = FAKE_LMT;
       fmt["xtags"] = null;
       fmt["xtag"] = null;
       fmt["initRange"] = { "start": "0", "end": "1" };
       fmt["indexRange"] = { "start": "2", "end": "3" };
     }
     itags.push(String(itag));
-    rows.push({ itag: itag, mime: String(fmt["mimeType"] || "") });
+    rows.push({
+      itag: itag,
+      mime: String(fmt["mimeType"] || ""),
+      lmt: lmt,
+      initStart: 0,
+      initEnd: 1,
+      indexStart: 2,
+      indexEnd: 3,
+    });
   }
   const vd = asRec(rec["videoDetails"]);
   const vid = vd ? String(vd["videoId"] || "") : "";
   recordFake144(vid, rows);
-  if (itags.length) console.log("mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + FAKE_LMT);
+  if (itags.length)
+    console.log(
+      "mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + (rows[0] ? rows[0].lmt : "-"),
+    );
   else console.log("mse fake-fmt skip: no 144p video");
 }
 

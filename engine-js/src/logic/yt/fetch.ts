@@ -16,7 +16,7 @@ import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
-import { prepareSabrBody, takePendingFakeUmp } from "./sabr_abr";
+import { appendFakeUmp, hasPendingFake, prepareSabrBody } from "./sabr_abr";
 import { allowEngineJsUrl } from "./jsAllow";
 import { applyRequestRewrite, applyResponseRewrite, wantsJsonRewrite } from "./xhr";
 
@@ -661,28 +661,28 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   const inner = httpPull(httpRes, detach);
   let pull = inner;
   const isSabr = p.url.indexOf("/videoplayback") >= 0;
-  const fakeUmp = isSabr ? takePendingFakeUmp() : null;
-  if (isSabr && (SABR_DEBUG || fakeUmp)) {
+  const wantFake = isSabr && hasPendingFake();
+  if (isSabr && (SABR_DEBUG || wantFake)) {
     const sabrChunks: Uint8Array[] = [];
     let sabrN = 0;
-    let trailing = fakeUmp;
+    let fakeSent = false;
     pull = async function () {
       const c = await inner();
       if (c) {
-        if (SABR_DEBUG) {
-          sabrChunks.push(c);
-          sabrN += c.length;
-        }
+        sabrChunks.push(c);
+        sabrN += c.length;
         return c;
       }
-      if (trailing) {
-        const u = trailing;
-        trailing = null;
-        if (SABR_DEBUG) {
-          sabrChunks.push(u);
-          sabrN += u.length;
+      if (wantFake && !fakeSent) {
+        fakeSent = true;
+        const body = concatBytes(sabrChunks, sabrN);
+        const all = appendFakeUmp(body);
+        if (all.length > body.length) {
+          const extra = all.subarray(body.length);
+          sabrChunks.push(extra);
+          sabrN = all.length;
+          return extra;
         }
-        return u;
       }
       if (SABR_DEBUG) logSabrResponse(p.url, httpRes.status, concatBytes(sabrChunks, sabrN));
       return c;

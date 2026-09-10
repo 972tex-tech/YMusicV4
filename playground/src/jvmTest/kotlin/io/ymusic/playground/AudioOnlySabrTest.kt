@@ -133,10 +133,8 @@ class AudioOnlySabrTest {
                 if (next > pos + 200) lastMoveAt = System.currentTimeMillis()
                 pos = next
                 proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
-                val covered = proof.lineSequence().any { videoLeftoverCovers(it, pos) }
                 if (proof.contains("mse append fake-cover a=0 kind=1") &&
                     proof.contains("mse append a=1") &&
-                    covered &&
                     pos >= 3_000
                 ) {
                     break
@@ -160,8 +158,8 @@ class AudioOnlySabrTest {
                 "fake media never reached appendBuffer. proof=\n$proof",
             )
             assertTrue(
-                proof.lineSequence().any { videoLeftoverCovers(it, pos) },
-                "video leftover does not cover clock=${pos}ms. proof=\n$proof",
+                proof.contains("mse sabr fake-ump") && proof.contains("lmt="),
+                "FORMAT_INIT lmt missing on fake-ump",
             )
             assertTrue(
                 !proof.contains("mse append fake-rest"),

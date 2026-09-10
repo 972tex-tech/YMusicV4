@@ -6,7 +6,8 @@
 
 import { isProductZero, isVp9SwitchExp } from "../player/audio_only";
 import { isYmLive } from "../player/live";
-import { FAKE_LMT_NUM, fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
+import { fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
+import type { Fake144Row } from "../player/itag_144";
 import { appendRestCover } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
@@ -33,13 +34,25 @@ function readVarint(buf: Uint8Array, i: number): { v: number; i: number } | null
 function writeVarint(v: number): number[] {
   const out: number[] = [];
   v = Math.floor(v);
-  if (v < 0) v = 0;
-  while (v >= 0x80) {
-    out.push((v & 0x7f) | 0x80);
+  if (!(v > 0)) return [0];
+  /* Do not use `&` — JS bitwise ops are 32-bit. lastModified is ~1.7e15. */
+  while (v >= 128) {
+    const low = v % 128;
+    out.push(low + 128);
     v = Math.floor(v / 128);
   }
   out.push(v);
   return out;
+}
+
+function decToNum(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const d = s.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) continue;
+    n = n * 10 + d;
+  }
+  return n;
 }
 
 type Field = { n: number; w: number; v: number | Uint8Array };
@@ -173,23 +186,32 @@ function umpPart(id: number, payload: Uint8Array): Uint8Array {
   return out;
 }
 
-function encodeFormatId(itag: number, lmt: number): Uint8Array {
+function encodeFormatId(itag: number, lmtDec: string): Uint8Array {
   return writeFields([
     { n: 1, w: 0, v: itag },
-    { n: 2, w: 0, v: lmt },
+    { n: 2, w: 0, v: decToNum(lmtDec) },
   ]);
 }
 
-const INIT_HID = 0xf0;
-const MEDIA_HID = 0xf1;
-/** /player initRange 0–1 + indexRange 2–3. PP(0) expects both = 4 bytes. */
-const INIT_BYTES = new Uint8Array([0x59, 0x4d, 0x46, 0x30]);
+function initLen(row: Fake144Row): number {
+  return row.initEnd - row.initStart + 1 + (row.indexEnd - row.indexStart + 1);
+}
+
+function initBytes(row: Fake144Row): Uint8Array {
+  const n = initLen(row);
+  const u = new Uint8Array(n > 0 ? n : 4);
+  u[0] = 0x59;
+  u[1] = 0x4d;
+  u[2] = 0x46;
+  u[3] = 0x30;
+  return u;
+}
 
 function writeU64LE(u: Uint8Array, off: number, v: number): void {
   let n = Math.floor(v);
   if (n < 0) n = 0;
   for (let i = 0; i < 8; i++) {
-    u[off + i] = n & 0xff;
+    u[off + i] = n % 256;
     n = Math.floor(n / 256);
   }
 }
@@ -213,23 +235,17 @@ function fakeMediaBytes(startMs: number, durationMs: number): Uint8Array {
   return u;
 }
 
-function formatInitUmp(
-  videoId: string,
-  itag: number,
-  lmt: number,
-  mime: string,
-  durationMs: number,
-): Uint8Array {
-  const fid = encodeFormatId(itag, lmt);
+function formatInitUmp(videoId: string, row: Fake144Row, durationMs: number): Uint8Array {
+  const fid = encodeFormatId(row.itag, row.lmt);
   const fs: Field[] = [
     { n: 1, w: 2, v: asciiU8(videoId) },
     { n: 2, w: 2, v: fid },
   ];
   if (durationMs > 0) fs.push({ n: 3, w: 0, v: durationMs });
   fs.push({ n: 4, w: 0, v: 144 });
-  fs.push({ n: 5, w: 2, v: asciiU8(mime) });
-  fs.push({ n: 6, w: 2, v: encodeRange(0, 1) });
-  fs.push({ n: 7, w: 2, v: encodeRange(2, 3) });
+  fs.push({ n: 5, w: 2, v: asciiU8(row.mime) });
+  fs.push({ n: 6, w: 2, v: encodeRange(row.initStart, row.initEnd) });
+  fs.push({ n: 7, w: 2, v: encodeRange(row.indexStart, row.indexEnd) });
   fs.push({ n: 9, w: 0, v: durationMs > 0 ? durationMs : 1000 });
   fs.push({ n: 10, w: 0, v: 1000 });
   return umpPart(42, writeFields(fs));
@@ -239,7 +255,7 @@ function mediaHeaderUmp(opts: {
   hid: number;
   videoId: string;
   itag: number;
-  lmt: number;
+  lmt: string;
   init: boolean;
   seq: number;
   startMs: number;
@@ -252,12 +268,13 @@ function mediaHeaderUmp(opts: {
     { n: 1, w: 0, v: opts.hid },
     { n: 2, w: 2, v: asciiU8(opts.videoId) },
     { n: 3, w: 0, v: opts.itag },
-    { n: 4, w: 0, v: opts.lmt },
+    { n: 4, w: 0, v: decToNum(opts.lmt) },
     { n: 6, w: 0, v: opts.startRange },
     { n: 13, w: 2, v: fid },
     { n: 14, w: 0, v: opts.clen },
   ];
   if (opts.init) fs.push({ n: 8, w: 0, v: 1 });
+  else fs.push({ n: 8, w: 0, v: 0 });
   if (!opts.init) {
     fs.push({ n: 9, w: 0, v: opts.seq });
     fs.push({ n: 11, w: 0, v: opts.startMs });
@@ -388,7 +405,74 @@ function durationMs(): number {
   return 0;
 }
 
-let pendingFakeUmp: Uint8Array | null = null;
+function leftoverCoverEndMs(tMs: number): number {
+  if (typeof __mseBuffered !== "function") return 0;
+  try {
+    const r = __mseBuffered(0);
+    if (!r || r.length < 2) return 0;
+    const t = tMs / 1000;
+    for (let i = 0; i + 1 < r.length; i += 2) {
+      if (t >= r[i]! - 0.05 && t <= r[i + 1]! + 0.05) return Math.round(r[i + 1]! * 1000);
+    }
+  } catch (_e) {}
+  return 0;
+}
+
+function readUmpVarint(buf: Uint8Array, i: number): { v: number; i: number } | null {
+  if (i >= buf.length) return null;
+  const p = buf[i++]!;
+  if (p < 0x80) return { v: p, i: i };
+  if (i >= buf.length) return null;
+  if (p < 0xc0) return { v: (p & 0x3f) + 64 * buf[i++]!, i: i };
+  if (i + 1 >= buf.length) return null;
+  if (p < 0xe0) return { v: (p & 0x1f) + 32 * (buf[i]! + 256 * buf[i + 1]!), i: i + 2 };
+  if (i + 2 >= buf.length) return null;
+  if (p < 0xf0)
+    return {
+      v: (p & 0x0f) + 16 * (buf[i]! + 256 * (buf[i + 1]! + 256 * buf[i + 2]!)),
+      i: i + 3,
+    };
+  if (i + 3 >= buf.length) return null;
+  return {
+    v: buf[i]! + 256 * (buf[i + 1]! + 256 * (buf[i + 2]! + 256 * buf[i + 3]!)),
+    i: i + 4,
+  };
+}
+
+function maxMediaHid(body: Uint8Array): number {
+  let i = 0;
+  let max = -1;
+  while (i < body.length) {
+    const id = readUmpVarint(body, i);
+    if (!id) break;
+    i = id.i;
+    const sz = readUmpVarint(body, i);
+    if (!sz) break;
+    i = sz.i;
+    if (id.v === 20 && sz.v > 0 && i + sz.v <= body.length) {
+      const fs = readFields(body.subarray(i, i + sz.v));
+      if (fs) {
+        for (let j = 0; j < fs.length; j++) {
+          const f = fs[j]!;
+          if (f.n === 1 && f.w === 0) {
+            const h = f.v as number;
+            if (h > max) max = h;
+          }
+        }
+      }
+    }
+    i += sz.v;
+  }
+  return max;
+}
+
+type PendingCover = {
+  playerTimeMs: number;
+  needInit: boolean;
+  audBr: string;
+  fakeBr: string;
+};
+let pendingCover: PendingCover | null = null;
 let fakeSeq = 0;
 let fakeOff = 0;
 let fakeSeqVid = "";
@@ -403,6 +487,8 @@ function buildFakeUmp(
   needInit: boolean,
   audBr: string,
   fakeBr: string,
+  initHid: number,
+  mediaHid: number,
 ): Uint8Array | null {
   const row = pickFake144();
   if (!row) return null;
@@ -414,37 +500,39 @@ function buildFakeUmp(
     fakeSeqVid = videoId;
   }
   const t = playerTimeMs > 0 ? playerTimeMs : clockMs();
-  const startMs = t;
+  const cov = leftoverCoverEndMs(t);
+  const startMs = cov > 0 ? cov : t;
   const coverMs = 30_000;
   fakeSeq++;
+  const init = initBytes(row);
   const media = fakeMediaBytes(startMs, coverMs);
   const parts: Uint8Array[] = [];
   if (needInit) {
-    parts.push(formatInitUmp(videoId, row.itag, FAKE_LMT_NUM, row.mime, durationMs()));
+    parts.push(formatInitUmp(videoId, row, durationMs()));
     parts.push(
       mediaHeaderUmp({
-        hid: INIT_HID,
+        hid: initHid,
         videoId: videoId,
         itag: row.itag,
-        lmt: FAKE_LMT_NUM,
+        lmt: row.lmt,
         init: true,
         seq: 0,
         startMs: 0,
         durationMs: 0,
-        startRange: 0,
-        clen: INIT_BYTES.length,
+        startRange: row.initStart,
+        clen: init.length,
       }),
     );
-    parts.push(mediaDataUmp(INIT_HID, INIT_BYTES));
-    parts.push(mediaEndUmp(INIT_HID));
-    fakeOff = INIT_BYTES.length;
+    parts.push(mediaDataUmp(initHid, init));
+    parts.push(mediaEndUmp(initHid));
+    fakeOff = init.length;
   }
   parts.push(
     mediaHeaderUmp({
-      hid: MEDIA_HID,
+      hid: mediaHid,
       videoId: videoId,
       itag: row.itag,
-      lmt: FAKE_LMT_NUM,
+      lmt: row.lmt,
       init: false,
       seq: fakeSeq,
       startMs: startMs,
@@ -453,16 +541,24 @@ function buildFakeUmp(
       clen: media.length,
     }),
   );
-  parts.push(mediaDataUmp(MEDIA_HID, media));
-  parts.push(mediaEndUmp(MEDIA_HID));
+  parts.push(mediaDataUmp(mediaHid, media));
+  parts.push(mediaEndUmp(mediaHid));
   fakeOff += media.length;
-  if (needInit) appendRestCover(INIT_BYTES);
+  if (needInit) appendRestCover(init);
   appendRestCover(media);
   console.log(
     "mse sabr fake-ump itag=" +
       row.itag +
+      " lmt=" +
+      row.lmt +
+      " mime=" +
+      row.mime +
       " init=" +
       (needInit ? "1" : "0") +
+      " hid=" +
+      initHid +
+      "," +
+      mediaHid +
       " seq=" +
       fakeSeq +
       " start=" +
@@ -529,14 +625,14 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
     out.push(f);
   }
   if (dropped.length) console.log("mse sabr drop 144 itags=" + dropped.join(","));
-  pendingFakeUmp = null;
+  pendingCover = null;
   if (vodAudioOnly()) {
-    pendingFakeUmp = buildFakeUmp(
-      playerTimeMs,
-      !selHasFake,
-      audParts.join(","),
-      fakeParts.join(","),
-    );
+    pendingCover = {
+      playerTimeMs: playerTimeMs,
+      needInit: !selHasFake,
+      audBr: audParts.join(","),
+      fakeBr: fakeParts.join(","),
+    };
   }
   if (!dropped.length && !vodAudioOnly()) return u;
   return writeFields(out);
@@ -547,22 +643,33 @@ export function prepareSabrBody(url: string, body: unknown): unknown {
   const u = asU8(body);
   if (!u || u.length === 0) return body;
   if (isVp9SwitchExp()) {
-    pendingFakeUmp = null;
+    pendingCover = null;
     return rewriteVp9Switch(u);
   }
   expArmed = false;
   return rewriteAbr(u);
 }
 
+export function hasPendingFake(): boolean {
+  return pendingCover != null;
+}
+
+function emitPending(initHid: number, mediaHid: number): Uint8Array | null {
+  const p = pendingCover;
+  pendingCover = null;
+  if (!p) return null;
+  return buildFakeUmp(p.playerTimeMs, p.needInit, p.audBr, p.fakeBr, initHid, mediaHid);
+}
+
 /** Bytes to prepend on the matching SABR 200. Null if this request is not VOD zero. */
 export function takePendingFakeUmp(): Uint8Array | null {
-  const u = pendingFakeUmp;
-  pendingFakeUmp = null;
-  return u;
+  return emitPending(0, 1);
 }
 
 export function appendFakeUmp(body: Uint8Array): Uint8Array {
-  const fake = takePendingFakeUmp();
+  if (!pendingCover) return body;
+  const max = maxMediaHid(body);
+  const fake = emitPending((max + 1) & 255, (max + 2) & 255);
   if (!fake || !fake.length) return body;
   return concatU8([body, fake]);
 }

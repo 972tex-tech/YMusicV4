@@ -9,7 +9,15 @@ export function is144pItag(itag: number): boolean {
   return ITAG_144P.indexOf(itag) >= 0;
 }
 
-export type Fake144Row = { itag: number; mime: string };
+export type Fake144Row = {
+  itag: number;
+  mime: string;
+  lmt: string;
+  initStart: number;
+  initEnd: number;
+  indexStart: number;
+  indexEnd: number;
+};
 
 let lastVideoId = "";
 let lastRows: Fake144Row[] = [];
@@ -25,7 +33,7 @@ export function fake144VideoId(): string {
 
 export function pickFake144(): Fake144Row | null {
   if (!lastRows.length) return null;
-  const prefer = [394, 160, 278];
+  const prefer = [278, 394, 160];
   for (let i = 0; i < prefer.length; i++) {
     const want = prefer[i]!;
     for (let j = 0; j < lastRows.length; j++) {
