@@ -1,6 +1,16 @@
 /** Adaptive 144p itags (Qf tiny). Fake in /player; strip from SABR vid=/br/sel. */
 export const ITAG_144P = [160, 278, 330, 394, 598, 694];
 
+/** Adaptive video itags by codec. Used to read SABR sel= and pick a matching 144p. */
+export const ITAG_AV1 = [
+  394, 395, 396, 397, 398, 399, 400, 401, 402, 571, 694, 695, 696, 697, 698, 699, 700,
+];
+export const ITAG_AVC = [160, 133, 134, 135, 136, 137, 138, 264, 266, 298, 299, 598];
+export const ITAG_VP9 = [
+  278, 242, 243, 244, 247, 248, 271, 272, 302, 303, 308, 313, 315, 330, 331, 332, 333, 334, 335,
+  336, 337,
+];
+
 export function is144pItag(itag: number): boolean {
   return ITAG_144P.indexOf(itag) >= 0;
 }
@@ -27,29 +37,44 @@ export function fake144VideoId(): string {
   return lastVideoId;
 }
 
-function mimeContainer(mime: string): string {
-  const m = String(mime).toLowerCase();
-  if (m.indexOf("video/mp4") === 0) return "mp4";
-  if (m.indexOf("video/webm") === 0) return "webm";
+function inSet(set: number[], itag: number): boolean {
+  return set.indexOf(itag) >= 0;
+}
+
+function codecOf(itag: number): string {
+  if (inSet(ITAG_AV1, itag)) return "av1";
+  if (inSet(ITAG_AVC, itag)) return "avc";
+  if (inSet(ITAG_VP9, itag)) return "vp9";
   return "";
 }
 
-/** Match the video SourceBuffer container. No SB leftover → mp4, not vp9/webm. */
-export function pickFake144(sbMime?: string): Fake144Row | null {
-  if (!lastRows.length) return null;
-  const have = mimeContainer(sbMime || "");
-  const want = have === "webm" ? "webm" : "mp4";
-  const pool: Fake144Row[] = [];
+export function fake144ByItag(itag: number): Fake144Row | null {
   for (let i = 0; i < lastRows.length; i++) {
-    if (mimeContainer(lastRows[i]!.mime) === want) pool.push(lastRows[i]!);
+    if (lastRows[i]!.itag === itag) return lastRows[i]!;
   }
-  const use = pool.length ? pool : lastRows;
-  const prefer = want === "webm" ? [278, 330] : [394, 160, 598, 694];
+  return null;
+}
+
+function rowWithItag(prefer: number[]): Fake144Row | null {
   for (let i = 0; i < prefer.length; i++) {
-    const itag = prefer[i]!;
-    for (let j = 0; j < use.length; j++) {
-      if (use[j]!.itag === itag) return use[j]!;
+    const row = fake144ByItag(prefer[i]!);
+    if (row) return row;
+  }
+  return null;
+}
+
+/** sel= initialized itags. No video sel → av1/avc (mp4), not vp9. */
+export function pickFake144(selItags: number[]): Fake144Row | null {
+  if (!lastRows.length) return null;
+  let codec = "";
+  for (let i = 0; i < selItags.length; i++) {
+    const c = codecOf(selItags[i]!);
+    if (c) {
+      codec = c;
+      break;
     }
   }
-  return use[0]!;
+  if (!codec) codec = "av1";
+  const prefer = codec === "vp9" ? [278, 330] : codec === "avc" ? [160, 598] : [394, 694];
+  return rowWithItag(prefer) || rowWithItag([394, 160, 598, 694, 278, 330]) || lastRows[0]!;
 }

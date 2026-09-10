@@ -4,9 +4,9 @@
 // fake 144p UMP: one media segment covering 0–duration.
 
 import { isProductZero } from "../player/audio_only";
-import { fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
+import { fake144ByItag, fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
 import type { Fake144Row } from "../player/itag_144";
-import { appendRestCover, videoSourceMime } from "../../protocol/mse";
+import { appendRestCover } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
   if (body instanceof Uint8Array) return body;
@@ -387,6 +387,7 @@ function maxMediaHid(body: Uint8Array): number {
 
 type PendingCover = {
   needInit: boolean;
+  itag: number;
   audBr: string;
   fakeBr: string;
 };
@@ -399,12 +400,13 @@ function fmtRange(itag: number, w: { start: number; dur: number } | null): strin
 
 function buildFakeUmp(
   needInit: boolean,
+  itag: number,
   audBr: string,
   fakeBr: string,
   initHid: number,
   mediaHid: number,
 ): Uint8Array | null {
-  const row = pickFake144(videoSourceMime());
+  const row = fake144ByItag(itag);
   if (!row) return null;
   const videoId = fake144VideoId();
   if (!videoId) return null;
@@ -479,9 +481,7 @@ function buildFakeUmp(
 function rewriteAbr(u: Uint8Array): Uint8Array {
   const fs = readFields(u);
   if (!fs) return u;
-  const fake = pickFake144(videoSourceMime());
-  const fakeItag = fake ? fake.itag : -1;
-  let selHasFake = false;
+  const selItags: number[] = [];
   const audParts: string[] = [];
   const fakeParts: string[] = [];
   const out: Field[] = [];
@@ -495,7 +495,7 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
     }
     if ((f.n === 17 || f.n === 2) && f.w === 2 && f.v instanceof Uint8Array) {
       const t = formatItag(f.v);
-      if (t != null && t === fakeItag && f.n === 2) selHasFake = true;
+      if (t != null && f.n === 2) selItags.push(t);
       if (t != null && is144pItag(t)) {
         dropped.push(t);
         continue;
@@ -516,8 +516,10 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
   if (dropped.length) console.log("mse sabr drop 144 itags=" + dropped.join(","));
   pendingCover = null;
   if (isProductZero()) {
+    const fake = pickFake144(selItags);
     pendingCover = {
-      needInit: !selHasFake,
+      needInit: !(fake && selItags.indexOf(fake.itag) >= 0),
+      itag: fake ? fake.itag : 0,
       audBr: audParts.join(","),
       fakeBr: fakeParts.join(","),
     };
@@ -541,7 +543,8 @@ function emitPending(initHid: number, mediaHid: number): Uint8Array | null {
   const p = pendingCover;
   pendingCover = null;
   if (!p) return null;
-  return buildFakeUmp(p.needInit, p.audBr, p.fakeBr, initHid, mediaHid);
+  if (!p.itag) return null;
+  return buildFakeUmp(p.needInit, p.itag, p.audBr, p.fakeBr, initHid, mediaHid);
 }
 
 export function appendFakeUmp(body: Uint8Array): Uint8Array {
