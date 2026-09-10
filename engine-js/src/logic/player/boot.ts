@@ -12,9 +12,11 @@ import {
   mseCreateObjectURL,
   mseRevokeObjectURL,
   mseSourceBufferCount,
+  mseMediaSourceId,
+  mseSourceBufferGen,
+  mseAttachLatestIfStale,
   dumpDrain,
   resetDrainCounts,
-  resetMse,
 } from "../../protocol/mse";
 import { installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
@@ -459,7 +461,14 @@ function installSharedOwl(mintFn: (id: Uint8Array) => unknown): void {
 }
 
 type YtApp = {
+  "loadVideoById"?: (id: string, start?: number) => unknown;
   "loadVideoByPlayerVars": (vars: Record<string, unknown>) => unknown;
+  "preloadVideoById"?: (id: string) => unknown;
+  "preloadVideoByPlayerVars"?: (
+    vars: Record<string, unknown>,
+    unused?: unknown,
+    expireSec?: number,
+  ) => unknown;
   "playVideo": () => void;
   "pauseVideo": () => void;
   "seekTo": (t: number, allowSeekAhead?: boolean) => void;
@@ -783,6 +792,28 @@ class Player {
     if (__mseCurrentTime() < 1) this.pinTiny();
   }
 
+  private ytHost(): Record<string, unknown> {
+    return moviePlayer() || (this.player as unknown as Record<string, unknown>);
+  }
+
+  private loadById(videoId: string): void {
+    const host = this.ytHost();
+    const byId = host["loadVideoById"];
+    if (typeof byId === "function") {
+      (byId as (id: string) => unknown).call(host, videoId);
+      return;
+    }
+    const byVars = host["loadVideoByPlayerVars"];
+    if (typeof byVars === "function") {
+      (byVars as (vars: Record<string, unknown>) => unknown).call(host, {
+        "video_id": videoId,
+        "autoplay": "1",
+      });
+      return;
+    }
+    throw new JsEngineErrorImpl("player/load loadVideoById missing", "E20077");
+  }
+
   async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
     const initOut = await this.init();
     const q = quality && quality.length ? quality : "zero";
@@ -792,56 +823,91 @@ class Player {
       "jsUrl": initOut["jsUrl"],
       "baseJsLen": initOut["baseJsLen"],
       "ytGets": initOut["ytGets"],
-      "step": "loadVideoByPlayerVars",
+      "step": "loadVideoById",
     };
-    if (this.player) {
-      this.pause();
-      await resetMse();
-    }
     pictureW = 0;
     pictureH = 0;
-    /* Audio-only leftover keeps SABR 40=1; YouTube will not addSourceBuffer
-       on a fresh MediaSource. Clear it so MSE attaches, then apply zero. */
-    setAudioOnly(false);
-    setLiveVideoRest(false);
-    __mseRestVideo(0);
     notifyProgress();
-    const player = this.ensureCreated(out);
-    /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. Create
-     * stays without video_id so this is the only /player POST. */
+    this.ensureCreated(out);
+    /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     if (q !== "zero") this.setQuality(q);
-    out["step"] = "loadVideoByPlayerVars";
+    else {
+      /* loadVideoById often opens a new MediaSource. 40=1 before addSourceBuffer
+         leaves an empty MSE. Clear, attach, then apply zero. */
+      setAudioOnly(false);
+      setLiveVideoRest(false);
+      __mseRestVideo(0);
+    }
+    const msId = mseMediaSourceId();
+    const gen0 = mseSourceBufferGen();
     const ingestAt = captionIngestTick();
     try {
-      /* No start:0 — live would pin the 7h DVR at t=0 (log: dummy 0..120, media=0). */
-      player["loadVideoByPlayerVars"]({
-        "video_id": videoId,
-        "autoplay": "1",
-      });
+      this.loadById(videoId);
     } catch (e) {
       throw new JsEngineErrorImpl(
-        "loadVideoByPlayerVars: " + (e instanceof Error ? e.message : String(e)),
+        "loadVideoById: " + (e instanceof Error ? e.message : String(e)),
         "E20077",
         { cause: e instanceof Error ? e : undefined },
       );
     }
     await waitCaptionIngest(ingestAt, 8000);
-    if (q === "zero") {
-      const t0 = Date.now();
-      while (Date.now() - t0 < 1000 && mseSourceBufferCount() === 0) {
-        await new Promise<void>(function (resolve) {
-          setTimeout(function () {
-            resolve(undefined);
-          }, 20);
-        });
-      }
-      this.setQuality("zero");
+    const t0 = Date.now();
+    const waitMs = q === "zero" ? 2000 : 1000;
+    while (Date.now() - t0 < waitMs) {
+      mseAttachLatestIfStale(msId);
+      const id = mseMediaSourceId();
+      const n = mseSourceBufferCount();
+      if ((id !== msId && n > 0) || mseSourceBufferGen() > gen0) break;
+      /* loadVideoById may reuse the open MediaSource (no new SB). */
+      if (n > 0 && Date.now() - t0 > 400) break;
+      await new Promise<void>(function (resolve) {
+        setTimeout(function () {
+          resolve(undefined);
+        }, 20);
+      });
     }
+    if (q === "zero") this.setQuality("zero");
     applyPictureFromResponse();
     notifyProgress();
     notifyCatalog();
     out["step"] = "ok";
+    out["ok"] = true;
+    return out;
+  }
+
+  async preload(videoId: string): Promise<Record<string, unknown>> {
+    const initOut = await this.init();
+    const out: Record<string, unknown> = {
+      "videoId": videoId,
+      "jsUrl": initOut["jsUrl"],
+      "step": "preload",
+    };
+    this.ensureCreated(out);
+    const host = this.ytHost();
+    const byVars = host["preloadVideoByPlayerVars"];
+    const byId = host["preloadVideoById"];
+    try {
+      /* IFrame preloadVideoById is a no-op unless embedsHostFlags.allowPreloadVideoById.
+         WEB uses preloadVideoByPlayerVars(vars, undefined, expireSec) like webview-js. */
+      if (typeof byVars === "function")
+        (byVars as (vars: Record<string, unknown>, u?: unknown, exp?: number) => unknown).call(
+          host,
+          { "video_id": videoId },
+          undefined,
+          60,
+        );
+      else if (typeof byId === "function") (byId as (id: string) => unknown).call(host, videoId);
+      else throw new JsEngineErrorImpl("player/preload API missing", "E20092");
+    } catch (e) {
+      if (e instanceof JsEngineErrorImpl) throw e;
+      throw new JsEngineErrorImpl(
+        "preload: " + (e instanceof Error ? e.message : String(e)),
+        "E20092",
+        { cause: e instanceof Error ? e : undefined },
+      );
+    }
+    if (MSE_DEBUG) console.log("mse preload " + videoId);
     out["ok"] = true;
     return out;
   }
@@ -1073,6 +1139,10 @@ export function initPlayer(): Promise<Record<string, unknown>> {
 
 export function loadPlayer(videoId: string, quality?: string): Promise<Record<string, unknown>> {
   return ytPlayer.load(videoId, quality);
+}
+
+export function preloadPlayer(videoId: string): Promise<Record<string, unknown>> {
+  return ytPlayer.preload(videoId);
 }
 
 export function setPlayerQuality(quality: string): void {

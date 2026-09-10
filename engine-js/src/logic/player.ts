@@ -1,5 +1,5 @@
 // App-facing player commands. init warms the singleton WEB player; load stamps the video id and
-// calls Application.loadVideoByPlayerVars. play/pause/seek/stop are playVideo/pauseVideo/seekTo.
+// calls loadVideoById. play/pause/seek/stop are playVideo/pauseVideo/seekTo.
 
 import { onAccept } from "../transport";
 import { commandHandler, JsEngineErrorImpl } from "../protocol/command";
@@ -8,6 +8,7 @@ import {
   initPlayer,
   loadPlayer,
   mintPlayerPo,
+  preloadPlayer,
   pausePlayer,
   playPlayer,
   seekPlayer,
@@ -43,6 +44,18 @@ onAccept(
     applyViewport(a["width"], a["height"]);
     const quality = a["quality"] != null ? String(a["quality"]) : undefined;
     const result = await loadPlayer(id, quality);
+    const p = out.writeObjectAsJson(result);
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/preload",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const id = String(a["videoId"] ?? "");
+    if (!id) throw new JsEngineErrorImpl("player/preload missing videoId", "E20091");
+    const result = await preloadPlayer(id);
     const p = out.writeObjectAsJson(result);
     if (p) await p;
   }),

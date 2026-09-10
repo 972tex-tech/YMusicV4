@@ -82,6 +82,15 @@ class DynamicEnginePlayer private constructor(
         ) { it.skipValue() }
     }
 
+    /** Cue the next video without interrupting current playback. */
+    suspend fun preload(videoId: String, logger: Logger? = null): JsonObject {
+        return engine.jsonCommand(
+            "player/preload",
+            { w -> w.name("videoId").value(videoId) },
+            logger,
+        ) { it.readObject() }
+    }
+
     /** `"zero"` is audio-only (no video download/decode/render). Other values are YouTube quality tokens. */
     suspend fun setQuality(quality: String, logger: Logger? = null) {
         engine.jsonCommand("player/setQuality", { w -> w.name("quality").value(quality) }, logger) { it.skipValue() }

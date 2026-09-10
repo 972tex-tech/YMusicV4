@@ -29,6 +29,8 @@ function isDummyVideoMime(mime: string): boolean {
 let dummySb: SourceBuffer | null = null;
 let dummyCoverStart = 0;
 let dummyCoverEnd = 0;
+let sbGen = 0;
+let lastMs: MediaSource | null = null;
 
 function audioBufferedEnd(): number {
   const r = __mseBuffered(1);
@@ -600,6 +602,7 @@ class MediaSource {
     this._listeners = {};
     this.__id = nextId++;
     this._openFired = false;
+    lastMs = this;
     mseLog("mse MediaSource create");
   }
 
@@ -647,6 +650,7 @@ class MediaSource {
       throw err;
     }
     mseLog("mse addSourceBuffer " + mime);
+    sbGen++;
     if (isDummyVideoMime(mime)) mseLog("mse dummy SB " + mime);
     const sb = new SourceBuffer(mime, this);
     this["sourceBuffers"].push(sb);
@@ -860,7 +864,7 @@ class HTMLMediaElement {
     this._ms = null;
     this._src = "";
     this["readyState"] = 0;
-    if (url) this["src"] = url;
+    if (url) assignMediaSrc(this, url);
   }
 
   ["play"](): Promise<void> {
@@ -1055,6 +1059,32 @@ class HTMLMediaElement {
   }
 }
 
+function srcAccessor(): PropertyDescriptor | undefined {
+  return Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+}
+
+/** YouTube video is a DOM stub, not `new HTMLMediaElement()`. removeAttribute('src')
+ *  deletes the copied accessor; later `video.src = blob` becomes a data property. */
+function bindMediaSrc(el: HTMLMediaElement): void {
+  const own = Object.getOwnPropertyDescriptor(el, "src");
+  if (own && typeof own.set === "function" && own.configurable === false) return;
+  const proto = srcAccessor();
+  if (!proto || typeof proto.get !== "function" || typeof proto.set !== "function") return;
+  const get = proto.get;
+  const set = proto.set;
+  Object.defineProperty(el, "src", {
+    get: get,
+    set: set,
+    enumerable: true,
+    configurable: false,
+  });
+}
+
+function assignMediaSrc(el: HTMLMediaElement, url: string): void {
+  bindMediaSrc(el);
+  el["src"] = url;
+}
+
 function attachHtmlMedia(el: object): void {
   initHtmlMedia(el as HTMLMediaElement);
   const proto = HTMLMediaElement.prototype as unknown as Record<string, unknown>;
@@ -1088,6 +1118,26 @@ function attachHtmlMedia(el: object): void {
     const d = Object.getOwnPropertyDescriptor(proto, n);
     if (d) Object.defineProperty(el, n, d);
   }
+  bindMediaSrc(el as HTMLMediaElement);
+  const rec = el as Record<string, unknown>;
+  const protoSet = rec["setAttribute"];
+  rec["setAttribute"] = function (n: string, v: unknown) {
+    if (String(n).toLowerCase() === "src") {
+      assignMediaSrc(el as HTMLMediaElement, String(v == null ? "" : v));
+      return;
+    }
+    if (typeof protoSet === "function") (protoSet as (n: string, v: unknown) => void).call(el, n, v);
+    else rec[n] = v;
+  };
+  const protoRemove = rec["removeAttribute"];
+  rec["removeAttribute"] = function (n: string) {
+    if (String(n).toLowerCase() === "src") {
+      assignMediaSrc(el as HTMLMediaElement, "");
+      return;
+    }
+    if (typeof protoRemove === "function") (protoRemove as (n: string) => void).call(el, n);
+    else delete rec[n];
+  };
 }
 
 export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null): string {
@@ -1097,8 +1147,10 @@ export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null):
   if (rec) blobUrls[url] = rec;
   mseLog("mse createObjectURL " + url);
   const el = activeMedia;
+  /* First load: YouTube may skip video.src. Do not steal a playing
+     element — preload creates a blob URL without swapping MSE. */
   if (el && rec && rec !== el._ms && !(el._ms && el._ms["sourceBuffers"].length > 0)) {
-    el["src"] = url;
+    assignMediaSrc(el, url);
   }
   return url;
 }
@@ -1106,6 +1158,28 @@ export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null):
 export function mseSourceBufferCount(): number {
   const el = activeMedia;
   return el && el._ms ? el._ms["sourceBuffers"].length : 0;
+}
+
+export function mseMediaSourceId(): number {
+  const el = activeMedia;
+  return el && el._ms ? el._ms.__id : -1;
+}
+
+export function mseSourceBufferGen(): number {
+  return sbGen;
+}
+
+/** After loadVideoById: attach the newest MediaSource if YouTube left the old one playing. */
+export function mseAttachLatestIfStale(prevId: number): boolean {
+  const el = activeMedia;
+  if (!el || !lastMs) return false;
+  if (lastMs.__id === prevId) return false;
+  if (el._ms === lastMs) return false;
+  const url = "blob:mse/" + String(lastMs.__id);
+  blobUrls[url] = lastMs;
+  mseLog("mse attach latest " + url + " prev=" + prevId);
+  assignMediaSrc(el, url);
+  return true;
 }
 
 export function mseRevokeObjectURL(url: string): void {

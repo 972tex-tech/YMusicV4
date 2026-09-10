@@ -121,6 +121,9 @@ class AudioOnlySabrTest {
             assertTrue(pos > 2_000, "first audio-only never played pos=$pos samples=${surface.samplesPlayed()}")
             val samplesAt = surface.samplesPlayed()
             val framesAt = surface.presentedFrames()
+            val proof0 = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            val ms0 = proof0.lineSequence().count { it.contains("mse MediaSource create") }
+            session.player.preload(SECOND_ID, session.log)
             session.player.load(SECOND_ID, session.log, "zero")
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 45_000
@@ -145,8 +148,9 @@ class AudioOnlySabrTest {
             val abr = after.lineSequence().filter { it.contains("sabr sabr=") }.toList()
             val append = after.lineSequence().filter { it.contains("mse append a=1") }.toList()
             val addSb = after.lineSequence().filter { it.contains("mse addSourceBuffer") }.toList()
+            val ms1 = proof.lineSequence().count { it.contains("mse MediaSource create") }
             println(
-                "second-load-zero pos=$pos samples $samplesAt->$samples frames $framesAt->${surface.presentedFrames()}",
+                "second-load-zero pos=$pos samples $samplesAt->$samples frames $framesAt->${surface.presentedFrames()} msCreate $ms0->$ms1",
             )
             for (l in addSb) println("  $l")
             for (l in abr.takeLast(6)) println("  $l")
@@ -164,6 +168,7 @@ class AudioOnlySabrTest {
                 surface.presentedFrames() - framesAt <= 2,
                 "video decoded after second audio-only load frames=$framesAt->${surface.presentedFrames()}",
             )
+            println("mse MediaSource create $ms0->$ms1 (YouTube may open a new MS on loadVideoById)")
         } finally {
             session.close()
         }

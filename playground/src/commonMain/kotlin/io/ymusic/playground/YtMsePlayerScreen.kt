@@ -83,6 +83,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     var error by remember { mutableStateOf<String?>(null) }
     var booting by remember { mutableStateOf(true) }
     var loading by remember { mutableStateOf(false) }
+    var preloading by remember { mutableStateOf(false) }
     var videoId by remember { mutableStateOf(defaultMseVideoId()) }
     var position by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }
@@ -361,6 +362,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 ready = ready,
                 booting = booting,
                 loading = loading,
+                preloading = preloading,
                 error = error,
                 videoId = videoId,
                 onVideoId = { videoId = it.trim() },
@@ -392,6 +394,23 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                             t.printStackTrace()
                         }
                         loading = false
+                    }
+                },
+                onPreload = {
+                    val s = session ?: return@PlaygroundChrome
+                    val id = videoId
+                    if (id.isEmpty()) return@PlaygroundChrome
+                    preloading = true
+                    error = null
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.Default) { s.player.preload(id, s.log) }
+                            println("mse preload ok $id")
+                        } catch (t: Throwable) {
+                            error = t.message ?: t.toString()
+                            println("mse preload failed: $t")
+                        }
+                        preloading = false
                     }
                 },
                 stateText = stateText,
@@ -606,10 +625,12 @@ private fun PlaygroundChrome(
     ready: Boolean,
     booting: Boolean,
     loading: Boolean,
+    preloading: Boolean,
     error: String?,
     videoId: String,
     onVideoId: (String) -> Unit,
     onLoad: () -> Unit,
+    onPreload: () -> Unit,
     stateText: String,
     clockText: String,
     quality: String,
@@ -631,6 +652,11 @@ private fun PlaygroundChrome(
             CircularProgressIndicator()
             Text("Loading video…")
         }
+    } else if (preloading) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator()
+            Text("Preloading…")
+        }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         OutlinedTextField(
@@ -641,7 +667,8 @@ private fun PlaygroundChrome(
             modifier = Modifier.weight(1f),
             enabled = ready,
         )
-        Button(onClick = onLoad, enabled = ready && videoId.isNotEmpty()) { Text("Load") }
+        Button(onClick = onLoad, enabled = ready && videoId.isNotEmpty() && !loading) { Text("Load") }
+        Button(onClick = onPreload, enabled = ready && videoId.isNotEmpty() && !preloading) { Text("Preload") }
     }
     Text("State: $stateText", style = MaterialTheme.typography.bodyMedium)
     Text(clockText, style = MaterialTheme.typography.bodySmall)

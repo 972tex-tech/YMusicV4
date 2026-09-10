@@ -33,7 +33,7 @@ E20073 - player/seek bad positionMs (engine-js logic/player.ts)
 E20074 - player/mintPo BotGuard VM or integrity-token mint failed (engine-js logic/player/pot.ts)
 E20075 - player/init could not fetch base.js (engine-js logic/player/boot.ts)
 E20076 - player/init yt.player.Application.create missing or threw (engine-js logic/player/boot.ts)
-E20077 - player/load loadVideoByPlayerVars threw (engine-js logic/player/boot.ts)
+E20077 - player/load loadVideoById threw or API missing (engine-js logic/player/boot.ts)
 E20078 - player main-proxy has no current main engine (dynamic-engine MainProxy)
 E20079 - player main-proxy empty command after host/main/ (dynamic-engine MainProxy)
 E20080 - player main-proxy: main JS refused the inner command (dynamic-engine MainProxy)
@@ -45,6 +45,8 @@ E20086 - player/caption busy (engine-js logic/player/captions.ts)
 E20087 - player response not cached (engine-js logic/player.ts)
 E20089 - listen/player/status busy (engine-js logic/player/push.ts)
 E20090 - listen/player/catalog busy (engine-js logic/player/push.ts)
+E20091 - player/preload missing videoId (engine-js logic/player.ts)
+E20092 - player/preload API missing or threw (engine-js logic/player/boot.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
