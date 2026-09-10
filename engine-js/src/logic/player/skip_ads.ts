@@ -43,6 +43,75 @@ export function transformPlayerRequest(rec: Record<string, unknown>): Record<str
   return rec;
 }
 
+const FAKE_ITAG = 10;
+const FAKE_MIME = 'video/mp4; codecs="av01.0.00M.08.fake"';
+
+function isVideoMp4(fmt: Record<string, unknown>): boolean {
+  const mime = String(fmt["mimeType"] || "");
+  return mime.indexOf("video/mp4") === 0;
+}
+
+/** Lowest video/mp4 in adaptiveFormats (height, then bitrate). */
+function lowestVideoMp4(formats: unknown[]): Record<string, unknown> | null {
+  let best: Record<string, unknown> | null = null;
+  let bestH = Infinity;
+  let bestBr = Infinity;
+  for (let i = 0; i < formats.length; i++) {
+    const fmt = asRec(formats[i]);
+    if (!fmt || !isVideoMp4(fmt)) continue;
+    const h = Number(fmt["height"]);
+    const br = Number(fmt["bitrate"] != null ? fmt["bitrate"] : fmt["averageBitrate"]);
+    const height = isFinite(h) && h > 0 ? h : Infinity;
+    const bitrate = isFinite(br) && br > 0 ? br : Infinity;
+    if (height < bestH || (height === bestH && bitrate < bestBr)) {
+      best = fmt;
+      bestH = height;
+      bestBr = bitrate;
+    }
+  }
+  return best;
+}
+
+/**
+ * Clone the lowest video/mp4 adaptiveFormat as itag 10.
+ * initRange/indexRange are inclusive byte indexes (YouTube 0–699 = 700 bytes).
+ */
+function injectFakeMp4Format(rec: Record<string, unknown>): void {
+  const sd = asRec(rec["streamingData"]);
+  const formats = sd ? sd["adaptiveFormats"] : null;
+  if (!Array.isArray(formats)) return;
+  for (let i = 0; i < formats.length; i++) {
+    const fmt = asRec(formats[i]);
+    if (fmt && Number(fmt["itag"]) === FAKE_ITAG) return;
+  }
+  const src = lowestVideoMp4(formats);
+  if (!src) {
+    console.log("mse fake-fmt skip: no video/mp4");
+    return;
+  }
+  const fake = asRec(JSON.parse(JSON.stringify(src)));
+  if (!fake) return;
+  fake["itag"] = FAKE_ITAG;
+  fake["mimeType"] = FAKE_MIME;
+  fake["initRange"] = { "start": "0", "end": "1" };
+  fake["indexRange"] = { "start": "2", "end": "3" };
+  fake["width"] = 50;
+  fake["height"] = 50;
+  fake["contentLength"] = "100";
+  fake["lastModified"] = "1770737429196304";
+  fake["quality"] = "tiny";
+  fake["qualityLabel"] = "100p";
+  fake["qualityOrdinal"] = "QUALITY_ORDINAL_UNKNOWN";
+  formats.push(fake);
+  console.log(
+    "mse fake-fmt itag=10 from=" +
+      String(src["itag"]) +
+      " " +
+      String(src["qualityLabel"] || "") +
+      " -> 100p",
+  );
+}
+
 export function transformPlayerResponse(rec: Record<string, unknown>): Record<string, unknown> {
   delete rec["adPlacements"];
   delete rec["adSlots"];
@@ -52,6 +121,7 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   const pc = asRec(rec["playerConfig"]);
   const dai = pc ? asRec(pc["daiConfig"]) : null;
   if (dai) dai["sendSsdaiMissingAdBreakReasons"] = false;
+  injectFakeMp4Format(rec);
   ingestPlayerCaptions(rec);
   return rec;
 }

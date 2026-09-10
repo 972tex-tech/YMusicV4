@@ -110,6 +110,7 @@ function applyPictureFromResponse(): boolean {
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
     if (!fmt) continue;
+    if (Number(fmt["itag"]) === 10) continue;
     const w = Number(fmt["width"]);
     const h = Number(fmt["height"]);
     if (isFinite(w) && w > 0 && isFinite(h) && h > 0) {
@@ -1068,48 +1069,57 @@ class Player {
     ];
     const seen: Record<string, boolean> = { "zero": true, "auto": true };
     function add(q: string, label?: string): void {
-      if (!q || q === "auto" || q === "default" || seen[q]) return;
+      if (!q || q === "auto" || q === "default") return;
+      const lab = label && label.length ? label : labels[q] || q;
+      for (let i = 0; i < rows.length; i++) {
+        if (String(rows[i]!["label"]) === lab) return;
+      }
       seen[q] = true;
-      rows.push({ "quality": q, "label": label || labels[q] || q });
+      rows.push({ "quality": q, "label": lab });
     }
     bindMoviePlayerApi(this.player);
     const host = moviePlayer();
     let dataN = 0;
     let levelsN = 0;
+    let dataLabs = "";
+    let levelList = "";
     try {
       if (host && typeof host["getAvailableQualityData"] === "function") {
         const data = (host["getAvailableQualityData"] as () => unknown)();
         const list = Array.isArray(data) ? data : [];
         dataN = list.length;
+        const labs: string[] = [];
         for (let i = 0; i < list.length; i++) {
           const o = asRec(list[i]);
           if (!o) continue;
           const q = o["quality"] != null ? String(o["quality"]) : "";
           const lab = o["qualityLabel"] != null ? String(o["qualityLabel"]) : "";
+          if (lab) labs.push(lab);
           add(q, lab);
         }
+        dataLabs = labs.join(",");
       }
       if (host && typeof host["getAvailableQualityLevels"] === "function") {
         const levels = (host["getAvailableQualityLevels"] as () => unknown)();
         const list = Array.isArray(levels) ? levels : [];
         levelsN = list.length;
+        levelList = list.join(",");
         for (let i = 0; i < list.length; i++) add(String(list[i]));
       }
     } catch (_e) {}
     const extra = rows.length - 2;
     if (extra !== lastQualityExtra) {
       lastQualityExtra = extra;
-      if (MSE_DEBUG)
-        console.log(
-          "mse qualityApi movie=" +
-            (host && typeof host["getAvailableQualityData"] === "function" ? "1" : "0") +
-            " data=" +
-            dataN +
-            " levels=" +
-            levelsN +
-            " extra=" +
-            extra,
-        );
+      console.log(
+        "mse getAvailableQualityData labels=" +
+          dataLabs +
+          " n=" +
+          dataN +
+          " levels=" +
+          levelList +
+          " extra=" +
+          extra,
+      );
     }
     return rows;
   }
