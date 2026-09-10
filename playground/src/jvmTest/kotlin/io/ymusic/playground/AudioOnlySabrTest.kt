@@ -97,7 +97,81 @@ class AudioOnlySabrTest {
         }
     }
 
+    @Test
+    fun leave_audio_then_second_load_plays_audio() = runBlocking {
+        if (!youtubeReachable()) {
+            println("skip: offline")
+            return@runBlocking
+        }
+        val surface = MseVideoSurface()
+        surface.setBlitSize(468, 263)
+        val session = HeadlessSession.boot(surface)
+        try {
+            session.player.init(session.log)
+            session.player.setViewport(468, 263, session.log)
+            session.player.load(FIRST_ID, session.log, "zero")
+            session.player.play(session.log)
+            val ready = System.currentTimeMillis() + 45_000
+            var pos = 0L
+            while (System.currentTimeMillis() < ready) {
+                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (pos > 2_000 && surface.samplesPlayed() > 8_000) break
+                delay(250)
+            }
+            assertTrue(pos > 2_000, "first audio-only never played pos=$pos samples=${surface.samplesPlayed()}")
+            val samplesAt = surface.samplesPlayed()
+            val framesAt = surface.presentedFrames()
+            session.player.load(SECOND_ID, session.log, "zero")
+            session.player.play(session.log)
+            val deadline = System.currentTimeMillis() + 45_000
+            var lastMoveAt = System.currentTimeMillis()
+            var lastSamples = samplesAt
+            while (System.currentTimeMillis() < deadline) {
+                val samples = surface.samplesPlayed()
+                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (samples > lastSamples + 2_000) lastMoveAt = System.currentTimeMillis()
+                lastSamples = samples
+                val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+                val after = proof.substringAfter("vid=$SECOND_ID", "")
+                if (samples > samplesAt + 48_000 && after.contains("mse append a=1")) break
+                if (System.currentTimeMillis() - lastMoveAt > 8_000 && samples > samplesAt) {
+                    break
+                }
+                delay(400)
+            }
+            val samples = surface.samplesPlayed()
+            val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
+            val after = proof.substringAfter("vid=$SECOND_ID", "")
+            val abr = after.lineSequence().filter { it.contains("sabr sabr=") }.toList()
+            val append = after.lineSequence().filter { it.contains("mse append a=1") }.toList()
+            val addSb = after.lineSequence().filter { it.contains("mse addSourceBuffer") }.toList()
+            println(
+                "second-load-zero pos=$pos samples $samplesAt->$samples frames $framesAt->${surface.presentedFrames()}",
+            )
+            for (l in addSb) println("  $l")
+            for (l in abr.takeLast(6)) println("  $l")
+            for (l in append.takeLast(4)) println("  $l")
+            assertTrue(append.isNotEmpty(), "second load never appended audio. after=\n$after")
+            assertTrue(
+                samples > samplesAt + 16_000,
+                "DAC stalled after second load-as-zero samples=$samplesAt->$samples",
+            )
+            assertTrue(
+                abr.any { it.contains("audioOnly=1") && it.contains("40=1") },
+                "second load not audio-only. abr=$abr",
+            )
+            assertTrue(
+                surface.presentedFrames() - framesAt <= 2,
+                "video decoded after second audio-only load frames=$framesAt->${surface.presentedFrames()}",
+            )
+        } finally {
+            session.close()
+        }
+    }
+
     companion object {
         private const val VIDEO_ID = "x72VDoEpTIU"
+        private const val FIRST_ID = "LXb3EKWsInQ"
+        private const val SECOND_ID = "nftTbgktw90"
     }
 }
