@@ -159,6 +159,12 @@ class AudioOnlySabrTest {
             )
             assertTrue(
                 proof.lineSequence().any {
+                    it.contains("mse sabr fake-ump") && it.contains("video/mp4")
+                },
+                "fake 144p must be mp4 when SB is mp4 or empty, not vp9/webm",
+            )
+            assertTrue(
+                proof.lineSequence().any {
                     it.contains("mse sabr fake-ump") && it.contains("seq=1 start=0")
                 },
                 "VOD fake 144p must be one segment starting at 0. proof=\n$proof",

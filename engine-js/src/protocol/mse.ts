@@ -992,6 +992,19 @@ export function mseSourceBufferCount(): number {
   return el && el._ms ? el._ms["sourceBuffers"].length : 0;
 }
 
+/** Video SourceBuffer mime, or "" if none. Used to pick fake 144p container. */
+export function videoSourceMime(): string {
+  const el = activeMedia;
+  const ms = el && el._ms ? el._ms : lastMs;
+  if (!ms) return "";
+  const bufs = ms["sourceBuffers"];
+  for (let i = 0; i < bufs.length; i++) {
+    const mime = String(bufs[i]!["mimeType"] || "");
+    if (mime && audioFlag(mime) === 0) return mime;
+  }
+  return "";
+}
+
 export function mseMediaSourceId(): number {
   const el = activeMedia;
   return el && el._ms ? el._ms.__id : -1;

@@ -27,14 +27,29 @@ export function fake144VideoId(): string {
   return lastVideoId;
 }
 
-export function pickFake144(): Fake144Row | null {
+function mimeContainer(mime: string): string {
+  const m = String(mime).toLowerCase();
+  if (m.indexOf("video/mp4") === 0) return "mp4";
+  if (m.indexOf("video/webm") === 0) return "webm";
+  return "";
+}
+
+/** Match the video SourceBuffer container. No SB leftover → mp4, not vp9/webm. */
+export function pickFake144(sbMime?: string): Fake144Row | null {
   if (!lastRows.length) return null;
-  const prefer = [278, 394, 160];
+  const have = mimeContainer(sbMime || "");
+  const want = have === "webm" ? "webm" : "mp4";
+  const pool: Fake144Row[] = [];
+  for (let i = 0; i < lastRows.length; i++) {
+    if (mimeContainer(lastRows[i]!.mime) === want) pool.push(lastRows[i]!);
+  }
+  const use = pool.length ? pool : lastRows;
+  const prefer = want === "webm" ? [278, 330] : [394, 160, 598, 694];
   for (let i = 0; i < prefer.length; i++) {
-    const want = prefer[i]!;
-    for (let j = 0; j < lastRows.length; j++) {
-      if (lastRows[j]!.itag === want) return lastRows[j]!;
+    const itag = prefer[i]!;
+    for (let j = 0; j < use.length; j++) {
+      if (use[j]!.itag === itag) return use[j]!;
     }
   }
-  return lastRows[0]!;
+  return use[0]!;
 }

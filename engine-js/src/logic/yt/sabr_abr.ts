@@ -6,7 +6,7 @@
 import { isProductZero } from "../player/audio_only";
 import { fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
 import type { Fake144Row } from "../player/itag_144";
-import { appendRestCover } from "../../protocol/mse";
+import { appendRestCover, videoSourceMime } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
   if (body instanceof Uint8Array) return body;
@@ -404,7 +404,7 @@ function buildFakeUmp(
   initHid: number,
   mediaHid: number,
 ): Uint8Array | null {
-  const row = pickFake144();
+  const row = pickFake144(videoSourceMime());
   if (!row) return null;
   const videoId = fake144VideoId();
   if (!videoId) return null;
@@ -479,7 +479,7 @@ function buildFakeUmp(
 function rewriteAbr(u: Uint8Array): Uint8Array {
   const fs = readFields(u);
   if (!fs) return u;
-  const fake = pickFake144();
+  const fake = pickFake144(videoSourceMime());
   const fakeItag = fake ? fake.itag : -1;
   let selHasFake = false;
   const audParts: string[] = [];
