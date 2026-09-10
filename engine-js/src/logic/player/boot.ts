@@ -11,6 +11,7 @@ import {
   isLiveDuration,
   mseCreateObjectURL,
   mseRevokeObjectURL,
+  mseSourceBufferCount,
   dumpDrain,
   resetDrainCounts,
   resetMse,
@@ -799,12 +800,17 @@ class Player {
     }
     pictureW = 0;
     pictureH = 0;
+    /* Audio-only leftover keeps SABR 40=1; YouTube will not addSourceBuffer
+       on a fresh MediaSource. Clear it so MSE attaches, then apply zero. */
+    setAudioOnly(false);
+    setLiveVideoRest(false);
+    __mseRestVideo(0);
     notifyProgress();
     const player = this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. Create
      * stays without video_id so this is the only /player POST. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
-    this.setQuality(q);
+    if (q !== "zero") this.setQuality(q);
     out["step"] = "loadVideoByPlayerVars";
     const ingestAt = captionIngestTick();
     try {
@@ -821,7 +827,17 @@ class Player {
       );
     }
     await waitCaptionIngest(ingestAt, 8000);
-    if (q === "zero") this.applyZero();
+    if (q === "zero") {
+      const t0 = Date.now();
+      while (Date.now() - t0 < 1000 && mseSourceBufferCount() === 0) {
+        await new Promise<void>(function (resolve) {
+          setTimeout(function () {
+            resolve(undefined);
+          }, 20);
+        });
+      }
+      this.setQuality("zero");
+    }
     applyPictureFromResponse();
     notifyProgress();
     notifyCatalog();

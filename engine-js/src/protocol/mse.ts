@@ -720,7 +720,17 @@ function detachMediaSource(ms: MediaSource): void {
 function notifySourceOpen(ms: MediaSource): void {
   if (ms["readyState"] === "closed") ms["readyState"] = "open";
   Promise.resolve().then(function () {
-    if (ms["readyState"] !== "open" || ms._openFired) return;
+    if (ms["readyState"] !== "open" || ms._openFired) {
+      mseLog(
+        "mse sourceopen skip rs=" +
+          ms["readyState"] +
+          " fired=" +
+          (ms._openFired ? "1" : "0") +
+          " n=" +
+          ms["sourceBuffers"].length,
+      );
+      return;
+    }
     ms._openFired = true;
     fire(ms, "sourceopen");
     fire(ms, "webkitsourceopen");
@@ -1087,15 +1097,15 @@ export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null):
   if (rec) blobUrls[url] = rec;
   mseLog("mse createObjectURL " + url);
   const el = activeMedia;
-  if (el && rec && rec !== el._ms) {
-    Promise.resolve().then(function () {
-      if (activeMedia !== el || blobUrls[url] !== rec) return;
-      if (el._ms === rec) return;
-      if (el._ms && el._ms["sourceBuffers"].length > 0) return;
-      el["src"] = url;
-    });
+  if (el && rec && rec !== el._ms && !(el._ms && el._ms["sourceBuffers"].length > 0)) {
+    el["src"] = url;
   }
   return url;
+}
+
+export function mseSourceBufferCount(): number {
+  const el = activeMedia;
+  return el && el._ms ? el._ms["sourceBuffers"].length : 0;
 }
 
 export function mseRevokeObjectURL(url: string): void {
