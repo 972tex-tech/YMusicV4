@@ -591,6 +591,7 @@ class MediaSource {
   _duration: number;
   _listeners: Record<string, Listener[]>;
   __id: number;
+  _openFired: boolean;
 
   constructor() {
     this["readyState"] = "closed";
@@ -598,6 +599,7 @@ class MediaSource {
     this["sourceBuffers"] = [];
     this._listeners = {};
     this.__id = nextId++;
+    this._openFired = false;
     mseLog("mse MediaSource create");
   }
 
@@ -639,6 +641,7 @@ class MediaSource {
 
   ["addSourceBuffer"](mime: string): SourceBuffer {
     if (this["readyState"] !== "open") {
+      mseLog("mse addSourceBuffer throw closed mime=" + mime);
       const err = new Error("MediaSource is not open");
       err.name = "InvalidStateError";
       throw err;
@@ -675,6 +678,19 @@ class MediaSource {
   ["addEventListener"](type: string, fn: Listener): void {
     const bag = this._listeners;
     (bag[type] || (bag[type] = [])).push(fn);
+    /* src= assigned sourceopen before this listener (reload / audio-only). */
+    if (
+      type === "sourceopen" &&
+      this["readyState"] === "open" &&
+      this._openFired &&
+      this["sourceBuffers"].length === 0
+    ) {
+      const self = this;
+      Promise.resolve().then(function () {
+        if (self["sourceBuffers"].length) return;
+        fn.call(self, { "type": "sourceopen", "target": self });
+      });
+    }
   }
 
   ["removeEventListener"](type: string, fn: Listener): void {
@@ -695,9 +711,21 @@ function detachMediaSource(ms: MediaSource): void {
   ms._duration = NaN;
   if (ms["readyState"] !== "closed") {
     ms["readyState"] = "closed";
+    ms._openFired = false;
     fire(ms, "sourceclose");
     fire(ms, "webkitsourceclose");
   }
+}
+
+function notifySourceOpen(ms: MediaSource): void {
+  if (ms["readyState"] === "closed") ms["readyState"] = "open";
+  Promise.resolve().then(function () {
+    if (ms["readyState"] !== "open" || ms._openFired) return;
+    ms._openFired = true;
+    fire(ms, "sourceopen");
+    fire(ms, "webkitsourceopen");
+    mseLog("mse sourceopen");
+  });
 }
 
 const blobUrls: Record<string, MediaSource> = {};
@@ -867,12 +895,7 @@ class HTMLMediaElement {
       dummyCoverEnd = 0;
       __mseReset();
       this._ms = ms;
-      if (ms && ms["readyState"] === "closed") {
-        ms["readyState"] = "open";
-        fire(ms, "sourceopen");
-        fire(ms, "webkitsourceopen");
-        mseLog("mse sourceopen");
-      }
+      if (ms && ms["readyState"] === "closed") notifySourceOpen(ms);
     } else {
       this._ms = ms;
     }
@@ -1063,6 +1086,15 @@ export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null):
   const url = "blob:mse/" + String(rec && rec.__id);
   if (rec) blobUrls[url] = rec;
   mseLog("mse createObjectURL " + url);
+  const el = activeMedia;
+  if (el && rec && rec !== el._ms) {
+    Promise.resolve().then(function () {
+      if (activeMedia !== el || blobUrls[url] !== rec) return;
+      if (el._ms === rec) return;
+      if (el._ms && el._ms["sourceBuffers"].length > 0) return;
+      el["src"] = url;
+    });
+  }
   return url;
 }
 
