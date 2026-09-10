@@ -386,7 +386,8 @@ class SourceBuffer {
     const audio = audioFlag(this["mimeType"]);
     if (this["updating"]) {
       drainCalls.throw++;
-      if (MSE_DEBUG) mseLog("mse append throw updating dummy=" + (dummy ? "1" : "0") + " a=" + audio);
+      if (MSE_DEBUG)
+        mseLog("mse append throw updating dummy=" + (dummy ? "1" : "0") + " a=" + audio);
       throw invalidState("SourceBuffer.appendBuffer: updating");
     }
     this["updating"] = true;
@@ -789,11 +790,17 @@ class HTMLMediaElement {
   ["canPlayType"](t: string): string {
     t = String(t || "").toLowerCase();
     if (t.indexOf("fakesb") === 0) return "probably";
-    if ((t.indexOf("av01") >= 0 || t.indexOf("av1.") >= 0) &&
-        typeof __mseAv1Ok === "function" && !__mseAv1Ok())
+    if (
+      (t.indexOf("av01") >= 0 || t.indexOf("av1.") >= 0) &&
+      typeof __mseAv1Ok === "function" &&
+      !__mseAv1Ok()
+    )
       return "";
-    if ((t.indexOf("vp9") >= 0 || t.indexOf("vp09") >= 0) &&
-        typeof __mseVp9Ok === "function" && !__mseVp9Ok())
+    if (
+      (t.indexOf("vp9") >= 0 || t.indexOf("vp09") >= 0) &&
+      typeof __mseVp9Ok === "function" &&
+      !__mseVp9Ok()
+    )
       return "";
     return t.indexOf("webm") >= 0 || t.indexOf("mp4") >= 0 ? "probably" : "";
   }
@@ -903,7 +910,8 @@ class HTMLMediaElement {
        buffering (Ys) and BZY skips SABR already in the append queue.
        Long dummy keeps je() large until C has real video leftover — including
        after leave-audio, when the video SB getter reports only a sliver. */
-    if (dummyCoverEnd > dummyCoverStart && (isAudioOnly() || !videoHasLeftover())) {
+    /* Dummy leftover with no video SB: YouTube je()>0 and never addSourceBuffer. */
+    if (dummySb && dummyCoverEnd > dummyCoverStart && (isAudioOnly() || !videoHasLeftover())) {
       return makeTimeRanges([[dummyCoverStart, dummyCoverEnd]]);
     }
     const ms = this._ms;
