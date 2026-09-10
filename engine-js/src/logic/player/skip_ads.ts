@@ -50,82 +50,51 @@ function isVideoFmt(fmt: Record<string, unknown>): boolean {
   return mime.indexOf("video/") === 0;
 }
 
-/** Prefer itag 399 (1080p AV1); else any video/mp4; else any video. */
-function cloneSrc(formats: unknown[]): Record<string, unknown> | null {
-  let mp4: Record<string, unknown> | null = null;
-  let any: Record<string, unknown> | null = null;
-  for (let i = 0; i < formats.length; i++) {
-    const fmt = asRec(formats[i]);
-    if (!fmt || !isVideoFmt(fmt)) continue;
-    if (Number(fmt["itag"]) === 399) return fmt;
-    const mime = String(fmt["mimeType"] || "");
-    if (!mp4 && mime.indexOf("video/mp4") === 0) mp4 = fmt;
-    if (!any) any = fmt;
-  }
-  return mp4 || any;
+function isTiny144(fmt: Record<string, unknown>): boolean {
+  if (String(fmt["quality"] || "") === "tiny") return true;
+  const lab = String(fmt["qualityLabel"] || "");
+  if (lab.indexOf("144p") === 0) return true;
+  return Number(fmt["height"]) === 144;
 }
 
-function durationMs(formats: unknown[], src: Record<string, unknown>): string {
-  const own = src["approxDurationMs"];
-  if (own != null && String(own) !== "") return String(own);
-  for (let i = 0; i < formats.length; i++) {
-    const fmt = asRec(formats[i]);
-    const d = fmt ? fmt["approxDurationMs"] : null;
-    if (d != null && String(d) !== "") return String(d);
-  }
-  return "0";
+/** Keep container; mark codec so SourceBuffer.changeType is visible. */
+function fakeMime(mime: string): string {
+  const m = String(mime);
+  const key = 'codecs="';
+  const i = m.indexOf(key);
+  if (i < 0) return m;
+  const start = i + key.length;
+  const end = m.indexOf('"', start);
+  if (end < 0) return m;
+  const codec = m.slice(start, end);
+  if (codec.indexOf(".fake") >= 0) return m;
+  return m.slice(0, end) + ".fake" + m.slice(end);
 }
-
-type FakeSpec = { itag: number; mime: string };
-
-/** itag 8=AV1, 9=avc1, 10=VP9. Codec strings are fake so SABR will not fetch them. */
-const FAKE_SPECS: FakeSpec[] = [
-  { itag: 8, mime: 'video/mp4; codecs="av01.0.00M.08.fake"' },
-  { itag: 9, mime: 'video/mp4; codecs="avc1.42c00a.fake"' },
-  { itag: 10, mime: 'video/webm; codecs="vp9.fake"' },
-];
 
 /**
- * Clone a real adaptiveFormat into three tiny 144p rows (itags 8/9/10).
+ * Rewrite real 144p adaptiveFormats in place (keep itag so Qf still maps qe).
  * initRange/indexRange are inclusive byte indexes (YouTube 0–699 = 700 bytes).
  */
 function injectFakeMp4Format(rec: Record<string, unknown>): void {
   const sd = asRec(rec["streamingData"]);
   const formats = sd ? sd["adaptiveFormats"] : null;
   if (!Array.isArray(formats)) return;
+  const itags: string[] = [];
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
-    if (fmt && Number(fmt["itag"]) === 8) return;
+    if (!fmt || !isVideoFmt(fmt) || !isTiny144(fmt)) continue;
+    if (String(fmt["lastModified"] || "") === FAKE_LMT) continue;
+    fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
+    fmt["lastModified"] = FAKE_LMT;
+    fmt["xtags"] = null;
+    fmt["xtag"] = null;
+    fmt["initRange"] = { "start": "0", "end": "1" };
+    fmt["indexRange"] = { "start": "2", "end": "3" };
+    itags.push(String(fmt["itag"]));
   }
-  const src = cloneSrc(formats);
-  if (!src) {
-    console.log("mse fake-fmt skip: no video format");
-    return;
-  }
-  const dur = durationMs(formats, src);
-  const from = String(src["itag"]);
-  for (let i = 0; i < FAKE_SPECS.length; i++) {
-    const spec = FAKE_SPECS[i]!;
-    const fake = asRec(JSON.parse(JSON.stringify(src)));
-    if (!fake) continue;
-    fake["itag"] = spec.itag;
-    fake["mimeType"] = spec.mime;
-    fake["initRange"] = { "start": "0", "end": "1" };
-    fake["indexRange"] = { "start": "2", "end": "3" };
-    fake["width"] = 50;
-    fake["height"] = 50;
-    fake["fps"] = 30;
-    fake["bitrate"] = 1;
-    fake["averageBitrate"] = 1;
-    fake["contentLength"] = "100";
-    fake["lastModified"] = FAKE_LMT;
-    fake["quality"] = "tiny";
-    fake["qualityLabel"] = "144p";
-    fake["qualityOrdinal"] = "QUALITY_ORDINAL_UNKNOWN";
-    fake["approxDurationMs"] = dur;
-    formats.push(fake);
-  }
-  console.log("mse fake-fmt itags=8,9,10 from=" + from + " dur=" + dur);
+  if (itags.length)
+    console.log("mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + FAKE_LMT);
+  else console.log("mse fake-fmt skip: no 144p video");
 }
 
 export function transformPlayerResponse(rec: Record<string, unknown>): Record<string, unknown> {

@@ -128,7 +128,7 @@ class AudioOnlySabrTest {
                         it.contains("sabr sabr=")
                 }.joinToString("\n"),
             )
-            assertTrue(proof0.contains("mse fake-fmt itags=8,9,10"), "did not inject fake itags 8/9/10")
+            assertTrue(proof0.contains("mse fake-fmt 144p itags="), "did not rewrite 144p formats")
             session.player.preload(SECOND_ID, session.log)
             session.player.load(SECOND_ID, session.log, "zero")
             session.player.play(session.log)

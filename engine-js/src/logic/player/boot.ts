@@ -110,8 +110,6 @@ function applyPictureFromResponse(): boolean {
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
     if (!fmt) continue;
-    const itag = Number(fmt["itag"]);
-    if (itag === 8 || itag === 9 || itag === 10) continue;
     const w = Number(fmt["width"]);
     const h = Number(fmt["height"]);
     if (isFinite(w) && w > 0 && isFinite(h) && h > 0) {
