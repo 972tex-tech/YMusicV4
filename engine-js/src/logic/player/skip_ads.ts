@@ -4,6 +4,7 @@
 import { utf8Decode, utf8Encode } from "../../transport";
 import { setXhrJsonRewrite } from "../yt/xhr";
 import { ingestPlayerCaptions } from "./captions";
+import { is144pItag } from "./itag_144";
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
@@ -50,13 +51,6 @@ function isVideoFmt(fmt: Record<string, unknown>): boolean {
   return mime.indexOf("video/") === 0;
 }
 
-function isTiny144(fmt: Record<string, unknown>): boolean {
-  if (String(fmt["quality"] || "") === "tiny") return true;
-  const lab = String(fmt["qualityLabel"] || "");
-  if (lab.indexOf("144p") === 0) return true;
-  return Number(fmt["height"]) === 144;
-}
-
 /** Keep container; mark codec so SourceBuffer.changeType is visible. */
 function fakeMime(mime: string): string {
   const m = String(mime);
@@ -82,7 +76,7 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
   const itags: string[] = [];
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
-    if (!fmt || !isVideoFmt(fmt) || !isTiny144(fmt)) continue;
+    if (!fmt || !isVideoFmt(fmt) || !is144pItag(Number(fmt["itag"]))) continue;
     if (String(fmt["lastModified"] || "") === FAKE_LMT) continue;
     fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
     fmt["lastModified"] = FAKE_LMT;

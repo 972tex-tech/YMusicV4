@@ -66,6 +66,7 @@ class AudioOnlySabrTest {
                     Regex("""aud=([^ ]+) vid=([^ ]+)""").findAll(abr.joinToString("\n"))
                         .map { it.value }.toList(),
             )
+            assertNo144pOnSabr(abr)
             assertTrue(frames.get() == 0, "video was rendered/decoded frames=${frames.get()}")
 
             session.player.seekTo(150_000, session.log)
@@ -124,6 +125,7 @@ class AudioOnlySabrTest {
             println(
                 proof0.lineSequence().filter {
                     it.contains("mse fake-fmt") ||
+                        it.contains("mse sabr drop") ||
                         it.contains("getAvailableQualityData") ||
                         it.contains("mse isTypeSupported") ||
                         it.contains("mse changeType") ||
@@ -131,6 +133,7 @@ class AudioOnlySabrTest {
                 }.joinToString("\n"),
             )
             assertTrue(proof0.contains("mse fake-fmt 144p itags="), "did not rewrite 144p formats")
+            assertNo144pOnSabr(proof0.lineSequence().filter { it.contains("sabr sabr=") }.toList())
             assertTrue(
                 proof0.contains("mse isTypeSupported reject codec vp09.02.51.10.01.09.99.99.00"),
                 "Chrome VP9 profile probe must reject …99.99.00 so mdp() keeps .fake",
@@ -176,6 +179,7 @@ class AudioOnlySabrTest {
                 abr.none { it.contains("40=1") },
                 "second load SABR field 40=1. abr=$abr",
             )
+            assertNo144pOnSabr(abr)
             assertTrue(
                 surface.presentedFrames() - framesAt <= 2,
                 "video decoded after second audio-only load frames=$framesAt->${surface.presentedFrames()}",
@@ -190,5 +194,34 @@ class AudioOnlySabrTest {
         private const val VIDEO_ID = "x72VDoEpTIU"
         private const val FIRST_ID = "LXb3EKWsInQ"
         private const val SECOND_ID = "nftTbgktw90"
+        private val ITAG_144P = setOf(160, 278, 330, 394, 598, 694)
+
+        private fun csvItags(raw: String): List<Int> {
+            if (raw == "-" || raw.isEmpty()) return emptyList()
+            return raw.split(',').mapNotNull { it.toIntOrNull() }
+        }
+
+        private fun sabrFieldItags(line: String, key: String): List<Int> {
+            val m = Regex(""" $key=([^ ]+)""").find(line) ?: return emptyList()
+            return csvItags(m.groupValues[1])
+        }
+
+        private fun sabrBrItags(line: String): List<Int> {
+            val m = Regex(""" br=\[([^\]]*)\]""").find(line) ?: return emptyList()
+            return Regex("""(\d+):""").findAll(m.groupValues[1]).map { it.groupValues[1].toInt() }.toList()
+        }
+
+        private fun assertNo144pOnSabr(abr: List<String>) {
+            val leaked = mutableListOf<String>()
+            for (line in abr) {
+                val itags = sabrFieldItags(line, "sel") +
+                    sabrFieldItags(line, "vid") +
+                    sabrBrItags(line)
+                for (t in itags) {
+                    if (t in ITAG_144P) leaked.add("$t in $line")
+                }
+            }
+            assertTrue(leaked.isEmpty(), "144p itag sent to SABR:\n${leaked.joinToString("\n")}")
+        }
     }
 }

@@ -282,6 +282,7 @@ internal class StdoutLog private constructor(
             message.indexOf("sabr HTTP") >= 0 ||
             message.indexOf("mse dummy SB") >= 0 ||
             message.indexOf("mse fake-fmt") >= 0 ||
+            message.indexOf("mse sabr drop") >= 0 ||
             message.indexOf("getAvailableQualityData") >= 0 ||
             message.indexOf("player RSP") >= 0 ||
             message.indexOf("mse=[") >= 0 ||
