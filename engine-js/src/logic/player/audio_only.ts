@@ -33,12 +33,3 @@ export function setLiveVideoRest(on: boolean): void {
 export function isProductZero(): boolean {
   return isAudioOnly() || isLiveVideoRest();
 }
-
-/** Experiment: real 144p /player, 2nd SABR vid=278 only. */
-export function isVp9SwitchExp(): boolean {
-  return !!g()["__ymVp9Switch"];
-}
-
-export function setVp9SwitchExp(on: boolean): void {
-  g()["__ymVp9Switch"] = on;
-}

@@ -1,10 +1,6 @@
 /** Adaptive 144p itags (Qf tiny). Fake in /player; strip from SABR vid=/br/sel. */
 export const ITAG_144P = [160, 278, 330, 394, 598, 694];
 
-/** lastModified stamped on rewritten 144p rows; FormatId lmt on fake UMP. */
-export const FAKE_LMT = "1770737429196304";
-export const FAKE_LMT_NUM = 1770737429196304;
-
 export function is144pItag(itag: number): boolean {
   return ITAG_144P.indexOf(itag) >= 0;
 }

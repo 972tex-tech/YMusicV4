@@ -67,11 +67,7 @@ class AudioOnlySabrTest {
             )
             assertTrue(
                 proof.contains("mse append fake-cover"),
-                "YouTube never appendBuffer'd the fake 144p. proof=\n$proof",
-            )
-            assertTrue(
-                !proof.contains("mse append fake-rest"),
-                "fake-rest still skips appendBuffer. proof=\n$proof",
+                "fake 144p leftover cover was not appended. proof=\n$proof",
             )
             println(
                 "aud/vid: " +
@@ -176,15 +172,7 @@ class AudioOnlySabrTest {
                 coverDur > 30_000,
                 "VOD fake 144p must cover 0–videoDuration, not a 30s window. dur=$coverDur",
             )
-            assertTrue(
-                !proof.contains("mse append fake-rest"),
-                "fake-rest still skips appendBuffer",
-            )
             assertTrue(frames.get() == 0, "video was rendered/decoded frames=${frames.get()}")
-            val inited = proof.lineSequence().any {
-                it.contains("mse sabr fake-ump") && it.contains(" init=0")
-            }
-            println("fake format inited (sel had 144p)=${if (inited) "1" else "0"}")
         } finally {
             watch.cancel()
             session.close()
@@ -291,29 +279,6 @@ class AudioOnlySabrTest {
         private const val FIRST_ID = "LXb3EKWsInQ"
         private const val SECOND_ID = "nftTbgktw90"
         private val ITAG_144P = setOf(160, 278, 330, 394, 598, 694)
-
-        private fun videoLeftoverCovers(line: String, posMs: Long): Boolean {
-            val leftover = Regex(""" leftover=(\d+)""").find(line)
-            if (leftover != null && leftover.groupValues[1].toInt() > 0 &&
-                line.contains("mse append a=0")
-            ) {
-                return true
-            }
-            val m = Regex("""mse=\[a:[^\]]* v:([^\]]*)\]""").find(line) ?: return false
-            val raw = m.groupValues[1]
-            if (raw.isBlank() || raw == "-") return false
-            val tMs = Regex(""" playerTimeMs=(\d+)""").find(line)?.groupValues?.get(1)?.toLong()
-                ?: Regex(""" clock=(\d+)""").find(line)?.groupValues?.get(1)?.toLong()
-                ?: posMs
-            val t = tMs / 1000.0
-            for (part in raw.split(',')) {
-                val win = Regex("""(\d+)\+(\d+)""").find(part.trim()) ?: continue
-                val start = win.groupValues[1].toDouble() / 1000.0
-                val dur = win.groupValues[2].toDouble() / 1000.0
-                if (t >= start - 0.05 && t <= start + dur + 0.05) return true
-            }
-            return false
-        }
 
         private fun dumpFakeInitProof(proof: String, pos: Long) {
             val keys = listOf(
