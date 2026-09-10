@@ -3,7 +3,7 @@
 //
 // isLiveContent stays true after the broadcast ends (post-live VOD,
 // e.g. 0_LTL7O1xX0). Only videoDetails.isLive is on-air. Ended streams
-// are VOD: dummy SB + SABR 40=1.
+// are VOD: pin tiny + rest decoder.
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;

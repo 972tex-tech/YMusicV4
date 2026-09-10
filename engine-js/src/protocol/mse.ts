@@ -23,41 +23,8 @@ function audioFlag(mime: string): number {
   return String(mime).toLowerCase().indexOf("audio/") === 0 ? 1 : 0;
 }
 
-/** Never send non-audio to C while audio-only. */
-function isDummyVideoMime(mime: string): boolean {
-  if (audioFlag(mime) === 1) return false;
-  return isAudioOnly();
-}
-
-/* Audio-only: server sends no video (SABR field 40=1) but base.js still locksteps
-   on the video SourceBuffer. Report a short buffered window locally — do not
-   download, decode, or render. Video must lead or audio never appends. */
-let dummySb: SourceBuffer | null = null;
-let dummyCoverStart = 0;
-let dummyCoverEnd = 0;
 let sbGen = 0;
 let lastMs: MediaSource | null = null;
-
-function audioBufferedEnd(): number {
-  const r = __mseBuffered(1);
-  let end = 0;
-  if (r) {
-    for (let i = 1; i < r.length; i += 2) {
-      if (r[i]! > end) end = r[i]!;
-    }
-  }
-  return end;
-}
-
-function videoHasLeftover(): boolean {
-  const r = __mseBuffered(0);
-  if (!r) return false;
-  const ct = __mseCurrentTime();
-  for (let i = 0; i + 1 < r.length; i += 2) {
-    if (r[i + 1]! > ct) return true;
-  }
-  return false;
-}
 
 export function isLiveDuration(): boolean {
   if (isYmLive()) return true;
@@ -68,53 +35,6 @@ export function isLiveDuration(): boolean {
   return !!(ms && Number(ms["duration"]) === Infinity);
 }
 
-function bindDummySb(): void {
-  const ms = activeMedia && activeMedia._ms;
-  if (!ms) return;
-  const bufs = ms["sourceBuffers"];
-  for (let i = 0; i < bufs.length; i++) {
-    if (audioFlag(bufs[i]!["mimeType"]) === 0) {
-      dummySb = bufs[i]!;
-      return;
-    }
-  }
-}
-
-function coverDummyVideo(): void {
-  if (!isAudioOnly()) {
-    /* Keep the dummy window until C has real video, or media.buffered
-       (intersection) goes empty and YouTube stalls. */
-    if (videoHasLeftover()) {
-      dummyCoverStart = 0;
-      dummyCoverEnd = 0;
-    }
-    return;
-  }
-  if (!dummySb) bindDummySb();
-  let ct = activeMedia ? __mseCurrentTime() : 0;
-  const aEnd = audioBufferedEnd();
-  /* Format-switch seek-to-0 (DVR start) must not collapse the dummy window. */
-  if (ct < 1 && dummyCoverStart > 10) ct = dummyCoverStart + 1;
-  /* Live head: pin dummy to C audio so a seek past leftover is not a
-     fake 15s window. VOD hole-seek (log25: 675→1491) must cover t or
-     video je=0 and BZY never appends the SABR audio already in flight. */
-  if (isLiveDuration() && aEnd > 1 && ct > aEnd + 0.5) ct = aEnd;
-  const start = Math.max(0, ct - 1);
-  const head = Math.max(ct, aEnd);
-  /* Audio-only dummy must be >0 (empty video HS/je → xpp skips drain) but
-     not a 15s NRP lie: that made YouTube skip appendBuffer of SABR audio
-     (log23 je=16s d=0/a=0; log10 je≈3s then audio appends). */
-  const target = Math.max(start + 1, head + 2.5);
-  if (dummyCoverStart <= start + 0.05 && dummyCoverEnd >= target - 0.05) return;
-  const jump = Math.abs(start - dummyCoverStart) >= 1 || Math.abs(target - dummyCoverEnd) >= 1;
-  dummyCoverStart = start;
-  dummyCoverEnd = target;
-  if (jump) mseLog("mse dummy SB cover " + dummyCoverStart + ".." + dummyCoverEnd);
-  /* Do not pulse SourceBuffer.updating. base.js caches buffered by object
-     reference (HS(!0)) and treats updating as "don't append / don't refresh".
-     The getter is live, so sliding the numbers is enough. */
-}
-
 function asU8(data: ArrayBuffer | ArrayBufferView): Uint8Array {
   if (data instanceof Uint8Array) return data;
   if (ArrayBuffer.isView(data)) {
@@ -123,25 +43,15 @@ function asU8(data: ArrayBuffer | ArrayBufferView): Uint8Array {
   return new Uint8Array(data);
 }
 
-const drainCalls = { dummy: 0, audio: 0, video: 0, throw: 0, abort: 0, remove: 0, lisErr: 0 };
+const drainCalls = { audio: 0, video: 0, throw: 0, abort: 0, remove: 0, lisErr: 0 };
 
 export function resetDrainCounts(): void {
-  drainCalls.dummy = 0;
   drainCalls.audio = 0;
   drainCalls.video = 0;
   drainCalls.throw = 0;
   drainCalls.abort = 0;
   drainCalls.remove = 0;
   drainCalls.lisErr = 0;
-}
-
-let dummyStackOnce = "";
-
-function shortStack(): string {
-  if (dummyStackOnce) return dummyStackOnce;
-  const s = new Error("d").stack || "";
-  dummyStackOnce = s.replace(/\s+/g, " ").slice(0, 280);
-  return dummyStackOnce;
 }
 
 function nativeRanges(audio: number): {
@@ -271,7 +181,7 @@ class SourceBuffer {
   _ms: MediaSource | null;
   _listeners: Record<string, Listener[]>;
   /* One TimeRanges object for the life of the SB. base.js HS(!0) caches
-     this by reference; start/end must read current leftover/dummy. */
+     this by reference; start/end must read current leftover. */
   _liveBuffered: { length: number; start(i: number): number; end(i: number): number } | null;
 
   constructor(mime: string, ms: MediaSource | null) {
@@ -309,19 +219,6 @@ class SourceBuffer {
   }
 
   _bufferedPairs(): Array<[number, number]> {
-    /* Audio-only: short dummy so video je>0 (xpp still drains) but SABR
-       still appends audio. Leave-audio: a sliver so video readahead fails
-       and googlevideo sends video now. */
-    if (
-      audioFlag(this["mimeType"]) === 0 &&
-      dummyCoverEnd > dummyCoverStart &&
-      (isAudioOnly() || !videoHasLeftover())
-    ) {
-      if (isAudioOnly()) return [[dummyCoverStart, dummyCoverEnd]];
-      const ct = __mseCurrentTime();
-      const start = Math.max(0, ct - 0.05);
-      return [[start, start + 0.35]];
-    }
     const r = __mseBuffered(audioFlag(this["mimeType"]));
     const ranges: Array<[number, number]> = [];
     if (r) {
@@ -349,8 +246,6 @@ class SourceBuffer {
       fire(parent, "webkitsourceopen");
     }
     const prev = String(this["mimeType"] || "");
-    const wasDummy = isDummyVideoMime(prev);
-    const nowDummy = isDummyVideoMime(next);
     const audio = audioFlag(next);
     if (MSE_DEBUG) {
       try {
@@ -376,109 +271,69 @@ class SourceBuffer {
       }
     }
     this["mimeType"] = next;
-    if (!wasDummy && nowDummy) {
-      dummySb = this;
-      coverDummyVideo();
-    } else if (wasDummy && !nowDummy) {
-      if (dummySb === this) dummySb = null;
-      dummyCoverStart = 0;
-      dummyCoverEnd = 0;
-      __mseChangeType(audio);
-    } else if (!nowDummy) {
-      __mseChangeType(audio);
-    }
+    __mseChangeType(audio);
   }
 
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
-    const dummy = isDummyVideoMime(this["mimeType"]);
     const audio = audioFlag(this["mimeType"]);
     if (this["updating"]) {
       drainCalls.throw++;
-      if (MSE_DEBUG)
-        mseLog("mse append throw updating dummy=" + (dummy ? "1" : "0") + " a=" + audio);
+      if (MSE_DEBUG) mseLog("mse append throw updating a=" + audio);
       throw invalidState("SourceBuffer.appendBuffer: updating");
     }
     this["updating"] = true;
     fire(this, "updatestart");
     const self = this;
     try {
-      if (dummy) {
-        drainCalls.dummy++;
-        dummySb = self;
-        coverDummyVideo();
-        if (MSE_DEBUG)
+      const u8 = asU8(data);
+      const tsOff = self["timestampOffset"];
+      const winStart = self["appendWindowStart"];
+      const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
+      __mseAppend(audio, u8, tsOff, winStart, winEnd);
+      /* Live join: first media is at DVR head (e.g. 7406s) while
+         currentTime is still 0. C starve-ahead until YouTube seeks
+         (log6: 20k starve lines). Snap clock to that island. */
+      if (__mseCurrentTime() < 1) {
+        const br = __mseBuffered(audio);
+        if (br && br.length >= 2 && br[0]! > 60) {
+          mseLog("mse live-join clock " + br[0]);
+          __mseSetCurrentTime(br[0]!);
+        }
+      }
+      if (audio) drainCalls.audio++;
+      else drainCalls.video++;
+      if (MSE_DEBUG) {
+        try {
+          const ct = __mseCurrentTime();
+          const ranges = nativeRanges(audio);
           mseLog(
-            "mse append dummy v mime=" +
+            "mse append a=" +
+              audio +
+              " bytes=" +
+              u8.length +
+              " mime=" +
               self["mimeType"] +
-              " ue=" +
-              lisN(self, "updateend") +
-              " " +
-              shortStack(),
+              " tsOff=" +
+              tsOff +
+              " win=" +
+              winStart +
+              ".." +
+              winEnd +
+              " leftover=" +
+              leftoverMs(ranges, ct) +
+              " br=[" +
+              fmtBr(ranges) +
+              "]",
           );
-      } else {
-        const u8 = asU8(data);
-        const tsOff = self["timestampOffset"];
-        const winStart = self["appendWindowStart"];
-        const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
-        __mseAppend(audio, u8, tsOff, winStart, winEnd);
-        /* Live join: first media is at DVR head (e.g. 7406s) while
-           currentTime is still 0. C starve-ahead until YouTube seeks
-           (log6: 20k starve lines). Snap clock to that island. */
-        if (__mseCurrentTime() < 1) {
-          const br = __mseBuffered(audio);
-          if (br && br.length >= 2 && br[0]! > 60) {
-            mseLog("mse live-join clock " + br[0]);
-            __mseSetCurrentTime(br[0]!);
-          }
-        }
-        if (audio) {
-          drainCalls.audio++;
-          coverDummyVideo();
-        } else {
-          drainCalls.video++;
-        }
-        if (MSE_DEBUG) {
-          try {
-            const ct = __mseCurrentTime();
-            const ranges = nativeRanges(audio);
-            mseLog(
-              "mse append a=" +
-                audio +
-                " bytes=" +
-                u8.length +
-                " mime=" +
-                self["mimeType"] +
-                " tsOff=" +
-                tsOff +
-                " win=" +
-                winStart +
-                ".." +
-                winEnd +
-                " leftover=" +
-                leftoverMs(ranges, ct) +
-                " br=[" +
-                fmtBr(ranges) +
-                "]",
-            );
-          } catch (_e) {
-            mseLog("mse append a=" + audio + " bytes=" + u8.length);
-          }
+        } catch (_e) {
+          mseLog("mse append a=" + audio + " bytes=" + u8.length);
         }
       }
     } catch (e) {
       drainCalls.throw++;
       self["updating"] = false;
       const err = e instanceof Error ? e : new Error(String(e));
-      mseLog(
-        "mse append throw " +
-          err.name +
-          " dummy=" +
-          (dummy ? "1" : "0") +
-          " a=" +
-          audio +
-          " " +
-          err.message,
-      );
+      mseLog("mse append throw " + err.name + " a=" + audio + " " + err.message);
       throw e;
     }
     completeUpdate(self);
@@ -491,18 +346,14 @@ class SourceBuffer {
     const self = this;
     try {
       const audio = audioFlag(this["mimeType"]);
-      const dummy = isDummyVideoMime(this["mimeType"]);
-      if (!dummy) {
-        __mseRemove(audio, start, end);
-      }
+      __mseRemove(audio, start, end);
       drainCalls.remove++;
-      mseLog("mse remove dummy=" + (dummy ? "1" : "0") + " a=" + audio + " " + start + ".." + end);
+      mseLog("mse remove a=" + audio + " " + start + ".." + end);
     } catch (e) {
       self["updating"] = false;
       throw e;
     }
     Promise.resolve().then(function () {
-      if (isDummyVideoMime(self["mimeType"]) && isAudioOnly()) coverDummyVideo();
       self["updating"] = false;
       fire(self, "update");
       fire(self, "updateend");
@@ -510,31 +361,14 @@ class SourceBuffer {
   }
 
   ["abort"](): void {
-    const dummy = isDummyVideoMime(this["mimeType"]);
     const audio = audioFlag(this["mimeType"]);
     const wasUpdating = this["updating"];
     drainCalls.abort++;
-    mseLog(
-      "mse abort dummy=" +
-        (dummy ? "1" : "0") +
-        " a=" +
-        audio +
-        " upd=" +
-        (wasUpdating ? "1" : "0"),
-    );
-    if (dummy) {
-      this["updating"] = false;
-      /* MSE: abort/updateend only if an update was in progress. Firing updateend while
-       * already in updateend (updating=false) re-enters YouTube's listener until the stack blows. */
-      if (wasUpdating) {
-        fire(this, "abort");
-        fire(this, "updateend");
-      }
-      if (isAudioOnly()) coverDummyVideo();
-      return;
-    }
+    mseLog("mse abort a=" + audio + " upd=" + (wasUpdating ? "1" : "0"));
     __mseAbort(audio);
     this["updating"] = false;
+    /* MSE: abort/updateend only if an update was in progress. Firing updateend while
+     * already in updateend (updating=false) re-enters YouTube's listener until the stack blows. */
     if (wasUpdating) {
       fire(this, "abort");
       fire(this, "updateend");
@@ -621,7 +455,6 @@ class MediaSource {
        currentTime (log23: clock stuck at 17253 after sourceopen). */
     if (v === Infinity || !isFinite(v) || v <= 0) __mseSetDuration(0);
     else __mseSetDuration(v);
-    coverDummyVideo();
   }
 
   static ["isTypeSupported"](mime: string): boolean {
@@ -639,7 +472,6 @@ class MediaSource {
       }
     }
     return (
-      m.indexOf("fakesb") === 0 ||
       m.indexOf("audio/webm") === 0 ||
       m.indexOf("video/webm") === 0 ||
       m.indexOf("audio/mp4") === 0 ||
@@ -657,18 +489,8 @@ class MediaSource {
     }
     mseLog("mse addSourceBuffer " + mime);
     sbGen++;
-    if (isDummyVideoMime(mime)) mseLog("mse dummy SB " + mime);
     const sb = new SourceBuffer(mime, this);
     this["sourceBuffers"].push(sb);
-    if (isDummyVideoMime(mime)) {
-      dummySb = sb;
-      /* Keep the live dummy window across YouTube's vp9→avc1 SourceBuffer swap. */
-      if (!isAudioOnly() || dummyCoverEnd <= dummyCoverStart) {
-        dummyCoverStart = 0;
-        dummyCoverEnd = 0;
-      }
-      coverDummyVideo();
-    }
     return sb;
   }
 
@@ -678,7 +500,6 @@ class MediaSource {
     if (sb["updating"]) sb["abort"]();
     this["sourceBuffers"].splice(i, 1);
     sb._ms = null;
-    if (dummySb === sb) dummySb = null;
   }
 
   ["endOfStream"](): void {
@@ -763,7 +584,6 @@ function stopMediaTick(): void {
 function startMediaTick(el: HTMLMediaElement): void {
   stopMediaTick();
   mediaTick = setInterval(function () {
-    coverDummyVideo();
     if (!el["paused"]) fire(el, "timeupdate");
   }, 250);
 }
@@ -837,7 +657,6 @@ class HTMLMediaElement {
 
   ["canPlayType"](t: string): string {
     t = String(t || "").toLowerCase();
-    if (t.indexOf("fakesb") === 0) return "probably";
     if (
       (t.indexOf("av01") >= 0 || t.indexOf("av1.") >= 0) &&
       typeof __mseAv1Ok === "function" &&
@@ -863,9 +682,6 @@ class HTMLMediaElement {
     stopMediaTick();
     __msePause();
     if (this._ms) detachMediaSource(this._ms);
-    dummySb = null;
-    dummyCoverStart = 0;
-    dummyCoverEnd = 0;
     resetPipeline();
     this._ms = null;
     this._src = "";
@@ -891,7 +707,6 @@ class HTMLMediaElement {
     const self = this;
     stopMediaTick();
     __msePause();
-    coverDummyVideo();
     Promise.resolve().then(function () {
       fire(self, "pause");
     });
@@ -910,9 +725,6 @@ class HTMLMediaElement {
          (readyState closed, sourceBuffers removed) and the pipeline demuxer
          is a new empty ChunkDemuxer. */
       if (prev) detachMediaSource(prev);
-      dummySb = null;
-      dummyCoverStart = 0;
-      dummyCoverEnd = 0;
       resetPipeline();
       this._ms = ms;
       if (ms && ms["readyState"] === "closed") notifySourceOpen(ms);
@@ -948,15 +760,6 @@ class HTMLMediaElement {
   }
 
   get ["buffered"](): { length: number; start(i: number): number; end(i: number): number } {
-    /* Spec is intersection of SourceBuffers. Audio leftover ends at the
-       playhead, so je()=DI(buffered, currentTime) is ~0, YouTube sets
-       buffering (Ys) and BZY skips SABR already in the append queue.
-       Long dummy keeps je() large until C has real video leftover — including
-       after leave-audio, when the video SB getter reports only a sliver. */
-    /* Dummy leftover with no video SB: YouTube je()>0 and never addSourceBuffer. */
-    if (dummySb && dummyCoverEnd > dummyCoverStart && (isAudioOnly() || !videoHasLeftover())) {
-      return makeTimeRanges([[dummyCoverStart, dummyCoverEnd]]);
-    }
     const ms = this._ms;
     if (!ms) return makeTimeRanges([]);
     const bufs = ms["sourceBuffers"];
@@ -1003,52 +806,18 @@ class HTMLMediaElement {
     const d = this["duration"];
     if (isFinite(d) && t > d) t = d;
     const prev = __mseCurrentTime();
-    /* Live format-switch seeks 0 (DVR start). Ignore while dummy still
-       owns video — including leave-audio, after __ymAudioOnly is already
-       false. Feeding that seek into C starts VP9/AV1 on a P-frame (SIGILL). */
-    if (t < 1 && prev > 10 && (isAudioOnly() || !videoHasLeftover())) {
-      mseLog("mse ignore seek-0 audio-only from " + prev);
-      return;
-    }
-    const aEnd = audioBufferedEnd();
-    /* Live head only. VOD hole-seek must keep currentTime at t so SABR
-       fetches that playhead (log3: clamp 166→110 left the clock behind
-       YouTube's playerTimeMs). */
-    if (isAudioOnly() && isLiveDuration() && aEnd > 1 && t > aEnd + 0.75) {
-      mseLog("mse clamp seek " + t + " to audioEnd " + aEnd);
-      t = aEnd;
-    }
     this["seeking"] = true;
     this["ended"] = false;
     const self = this;
     fire(self, "seeking");
     mseLog("mse currentTime set t=" + t + " prev=" + prev);
     __mseSetCurrentTime(t);
-    coverDummyVideo();
     const t0 = Date.now();
     function finishSeek(): void {
       self["seeking"] = false;
       fire(self, "seeked");
     }
     function waitSeeked(): void {
-      /* Dummy TimeRanges are a lockstep lie. Audio-only seeked waits on
-         C audio leftover covering t, or SABR never has to fill the hole. */
-      if (isAudioOnly()) {
-        const aEnd = audioBufferedEnd();
-        if (aEnd >= t - 0.35 || Date.now() - t0 > 8000) {
-          finishSeek();
-          return;
-        }
-        /* log14: load 2nd live while audio-only. YouTube seeks DVR head
-           before C has audio. Holding seeking blocks that append. */
-        if (t > 60 && aEnd < 1) {
-          mseLog("mse seeked live-empty t=" + t);
-          finishSeek();
-          return;
-        }
-        setTimeout(waitSeeked, 50);
-        return;
-      }
       const br = self["buffered"];
       let ok = false;
       const n = br ? br["length"] : 0;
@@ -1229,7 +998,7 @@ export function activeHtmlMedia(): HTMLMediaElement | null {
 /** MSE-only drain line. Do not walk base.js internals. */
 export function dumpDrain(why: string): void {
   if (!MSE_DEBUG) return;
-  if (!isAudioOnly() && why.indexOf("setQuality") < 0) return;
+  if (!isLiveVideoRest() && why.indexOf("setQuality") < 0) return;
   try {
     mseLog("mse drain " + why + " " + dumpMseDrain());
   } catch (e) {
@@ -1238,14 +1007,10 @@ export function dumpDrain(why: string): void {
   }
 }
 
-/** Protocol drain snapshot: dummy vs audio append, updating, je, listeners. */
+/** Protocol drain snapshot: audio/video append, updating, je, listeners. */
 export function dumpMseDrain(): string {
   const el = activeMedia;
   const ct = el ? __mseCurrentTime() : 0;
-  const dummy =
-    dummyCoverEnd > dummyCoverStart
-      ? dummyCoverStart.toFixed(2) + ".." + dummyCoverEnd.toFixed(2)
-      : "-";
   let mediaBuf = "";
   let mediaJe = "-";
   let paused = "-";
@@ -1268,7 +1033,6 @@ export function dumpMseDrain(): string {
     "paused=" + paused,
     "rs=" + rs,
     "seek=" + seeking,
-    "dummy=" + dummy,
     "media.buf=[" + mediaBuf + "]",
     "media.je=" + mediaJe,
   ];
@@ -1277,7 +1041,6 @@ export function dumpMseDrain(): string {
   for (let i = 0; i < bufs.length; i++) {
     const sb = bufs[i]!;
     const audio = audioFlag(sb["mimeType"]);
-    const isDummy = isDummyVideoMime(sb["mimeType"]);
     let buf = "";
     let je = "-";
     try {
@@ -1288,7 +1051,7 @@ export function dumpMseDrain(): string {
       buf = "err";
     }
     parts.push(
-      (audio ? "a" : isDummy ? "dv" : "v") +
+      (audio ? "a" : "v") +
         "{upd=" +
         (sb["updating"] ? "1" : "0") +
         " mime=" +
@@ -1303,9 +1066,7 @@ export function dumpMseDrain(): string {
     );
   }
   parts.push(
-    "calls d=" +
-      drainCalls.dummy +
-      "/a=" +
+    "calls a=" +
       drainCalls.audio +
       "/v=" +
       drainCalls.video +
@@ -1321,18 +1082,6 @@ export function dumpMseDrain(): string {
   return parts.join(" ");
 }
 
-/** Dummy video.buffered for YouTube drain. Do not wipe C leftover — rest
- *  the decoder instead so audio is not interrupted on zero↔video. */
-export function dropVideoTrack(): void {
-  if (isAudioOnly()) {
-    bindDummySb();
-    coverDummyVideo();
-    __mseRestVideo(1);
-    return;
-  }
-  coverDummyVideo();
-}
-
 /** Drop the current MediaSource attachment and native decoder so the next video can start clean. */
 export async function resetMse(): Promise<void> {
   const v = activeMedia;
@@ -1346,9 +1095,6 @@ export async function resetMse(): Promise<void> {
     v["seeking"] = false;
     v["ended"] = false;
   }
-  dummySb = null;
-  dummyCoverStart = 0;
-  dummyCoverEnd = 0;
   resetPipeline();
 }
 

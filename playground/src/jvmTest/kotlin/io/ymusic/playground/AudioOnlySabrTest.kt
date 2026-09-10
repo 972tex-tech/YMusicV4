@@ -35,7 +35,7 @@ class AudioOnlySabrTest {
                 if (next > pos + 200) lastMoveAt = System.currentTimeMillis()
                 pos = next
                 val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
-                if (pos >= 8_000 && proof.contains("audioOnly=1") && proof.contains("mse append a=1")) break
+                if (pos >= 8_000 && proof.contains("mse append a=1")) break
                 if (pos in 500 until 8_000 && System.currentTimeMillis() - lastMoveAt > 5_000) {
                     throw AssertionError("clock frozen at ${pos}ms")
                 }
@@ -45,23 +45,21 @@ class AudioOnlySabrTest {
             val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             val abr = proof.lineSequence().filter { it.contains("sabr sabr=") }.toList()
-            val dummy = proof.lineSequence().filter { it.contains("mse dummy SB") }.toList()
             println("audio-only pos $pos -> $later frames=${frames.get()}")
             for (l in abr.takeLast(8)) println("  $l")
-            for (l in dummy) println("  $l")
             assertTrue(later >= 8_000 || pos >= 8_000, "audio playhead stuck $pos -> $later")
             assertTrue(abr.isNotEmpty(), "no sabr request logs. proof=\n$proof")
             assertTrue(
-                abr.any { it.contains("audioOnly=1") && it.contains("40=1") },
-                "SABR missing audio-only flag 40=1. abr=$abr",
+                abr.none { it.contains("40=1") },
+                "SABR field 40=1 (dummy audio-only). abr=$abr",
             )
             assertTrue(
-                proof.contains("mse dummy SB"),
-                "no dummy video SourceBuffer. proof=\n$proof",
+                !proof.contains("mse dummy SB"),
+                "dummy video SourceBuffer still in use. proof=\n$proof",
             )
             assertTrue(
                 proof.contains("mse append a=1"),
-                "audio never appended (player still waiting on video). proof=\n$proof",
+                "audio never appended. proof=\n$proof",
             )
             println(
                 "aud/vid: " +
@@ -161,8 +159,8 @@ class AudioOnlySabrTest {
                 "DAC stalled after second load-as-zero samples=$samplesAt->$samples",
             )
             assertTrue(
-                abr.any { it.contains("audioOnly=1") && it.contains("40=1") },
-                "second load not audio-only. abr=$abr",
+                abr.none { it.contains("40=1") },
+                "second load SABR field 40=1. abr=$abr",
             )
             assertTrue(
                 surface.presentedFrames() - framesAt <= 2,

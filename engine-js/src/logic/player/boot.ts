@@ -6,7 +6,6 @@ import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import {
   activeHtmlMedia,
-  dropVideoTrack,
   installMseGlobals,
   isLiveDuration,
   mseCreateObjectURL,
@@ -24,7 +23,6 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import {
-  isAudioOnly,
   isLiveVideoRest,
   isProductZero,
   setAudioOnly,
@@ -32,7 +30,6 @@ import {
   setYmQuality,
   ymQuality,
 } from "./audio_only";
-import { isKnownVod, isYmLive } from "./live";
 import {
   captionIngestTick,
   installCaptionMinter,
@@ -740,14 +737,12 @@ class Player {
       dumpDrain("setQuality-zero");
       return;
     }
-    const wasDummy = isAudioOnly();
     setAudioOnly(false);
-    if (isLiveVideoRest() || wasDummy) {
+    if (isLiveVideoRest()) {
       setLiveVideoRest(false);
       __mseRestVideo(0);
     }
     setYmQuality(q);
-    if (wasDummy) dropVideoTrack();
     const host = moviePlayer() || (player as unknown as Record<string, unknown>);
     const range = host["setPlaybackQualityRange"];
     const one = host["setPlaybackQuality"];
@@ -774,22 +769,12 @@ class Player {
     else if (typeof one === "function") (one as (q: string) => void).call(host, "tiny");
   }
 
-  /** VOD: dummy SB + SABR 40=1. Live: real 144p, decoder rest, black. */
+  /** Pin 144p and rest the C decoder. MSE stays a normal A/V pipeline. */
   private applyZero(): void {
-    if (isYmLive()) {
-      setAudioOnly(false);
-      setLiveVideoRest(true);
-      this.pinTiny();
-      __mseRestVideo(1);
-      return;
-    }
-    if (!isKnownVod()) return;
-    setLiveVideoRest(false);
-    setAudioOnly(true);
-    dropVideoTrack();
-    /* pinTiny mid-play is a forced quality switch (~0.5s A/V stall).
-       Load-as-zero (clock ~0) still pins so ABR binds a ladder itag. */
-    if (__mseCurrentTime() < 1) this.pinTiny();
+    setAudioOnly(false);
+    setLiveVideoRest(true);
+    this.pinTiny();
+    __mseRestVideo(1);
   }
 
   private ytHost(): Record<string, unknown> {
@@ -833,9 +818,6 @@ class Player {
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     if (q !== "zero") this.setQuality(q);
     else {
-      /* loadVideoById often opens a new MediaSource. 40=1 before addSourceBuffer
-         leaves an empty MSE. Keep 40=0 so YouTube adds SBs (SABR may send
-         video), but rest the decoder: black hole, no decode, until dummy. */
       setAudioOnly(false);
       setLiveVideoRest(true);
       __mseRestVideo(1);
