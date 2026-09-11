@@ -12,6 +12,10 @@ import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.FloatControl
@@ -19,16 +23,17 @@ import javax.sound.sampled.SourceDataLine
 import kotlin.math.log10
 
 /**
- * JVM desktop local player: in-process libav (`FileAvNative` / `file_av.c`) shares the packed
- * libav DSOs with MSE leftover, but is a file host — PTS vs a monotonic clock, not two ffmpeg
- * pipes. Java Sound is the DAC; frames land on [LocalVideoSurface] as BGRA→RGB. 4K is downscaled
- * (max edge 1920, or the selected quality ladder). Captions are listed, not burned in.
+ * JVM desktop local player. The [LocalPlayer] methods stay main-thread (engine contract); every
+ * libav JNI call is posted to a single worker so 4K open/decode/seek never blocks AWT.
  */
 internal class JvmLocalPlayer(
     private val videoSurface: LocalVideoSurface?,
 ) : LocalPlayer,
     FileAvSink {
     private val handle = FileAvNative.create()
+    private val av = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "file-av").apply { isDaemon = true }
+    }
 
     private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -73,6 +78,10 @@ internal class JvmLocalPlayer(
 
     @Volatile private var streams: List<AvStreamRow> = emptyList()
 
+    private val pendingSeekMs = AtomicLong(-1)
+    private val seekQueued = AtomicBoolean(false)
+    private val loadGen = AtomicLong(0)
+
     val surface: LocalVideoSurface? get() = videoSurface
 
     init {
@@ -81,7 +90,18 @@ internal class JvmLocalPlayer(
                 it.copy(state = PlaybackState.Error(PlayerError("E60020", "libav file player failed to start")))
             }
         } else {
-            FileAvNative.setSink(handle, this)
+            postAv { FileAvNative.setSink(handle, this) }
+        }
+    }
+
+    private fun postAv(block: () -> Unit) {
+        if (released) return
+        try {
+            av.execute {
+                if (released) return@execute
+                block()
+            }
+        } catch (_: RejectedExecutionException) {
         }
     }
 
@@ -95,10 +115,8 @@ internal class JvmLocalPlayer(
         appliedConfig = config
         applyConfigFlags(config)
         val path = parseLocalUri(source.uri).toFilePath()
-        FileAvNative.setAudioIndex(handle, -1)
-        FileAvNative.setVideoEnabled(handle, !audioOnly)
-        FileAvNative.setBlitMax(handle, blitMaxFor(config))
-        FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
+        val gen = loadGen.incrementAndGet()
+        pendingSeekMs.set(-1)
         _status.update {
             it.copy(
                 state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
@@ -109,30 +127,42 @@ internal class JvmLocalPlayer(
         }
         _progress.value = Progress(positionMs = startPositionMs.coerceAtLeast(0L))
         showSurface(true)
-        if (FileAvNative.open(handle, path) != 0) {
-            fail("E60021", FileAvNative.lastError(handle).ifBlank { "open failed" })
-            return
+        postAv {
+            if (gen != loadGen.get()) return@postAv
+            FileAvNative.setAudioIndex(handle, -1)
+            FileAvNative.setVideoEnabled(handle, !audioOnly)
+            FileAvNative.setBlitMax(handle, blitMaxFor(config))
+            FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
+            if (FileAvNative.open(handle, path) != 0) {
+                val err = FileAvNative.lastError(handle).ifBlank { "open failed" }
+                fail(err)
+                return@postAv
+            }
+            if (gen != loadGen.get()) return@postAv
+            loadedPath = path
+            streams = FileAvNative.streams(handle).mapNotNull(::parseAvStream)
+            val dur = FileAvNative.duration(handle)
+            durationMs = if (dur > 0) (dur * 1000.0).toLong() else Progress.DURATION_UNKNOWN
+            publishTracks(config)
+            val srcVideo = streams.firstOrNull { it.kind == KIND_VIDEO }
+            FileAvNative.seek(handle, startPositionMs.coerceAtLeast(0L) / 1000.0)
+            if (playWhenReady) FileAvNative.play(handle) else FileAvNative.pause(handle)
+            _status.update {
+                val s = it.state as? PlaybackState.Prepared
+                it.copy(
+                    state = s?.copy(buffering = false) ?: PlaybackState.Prepared(playWhenReady, false, false),
+                    videoSize = if (srcVideo != null && !audioOnly && srcVideo.width > 0 && srcVideo.height > 0) {
+                        VideoSize(srcVideo.width, srcVideo.height)
+                    } else {
+                        null
+                    },
+                )
+            }
         }
-        loadedPath = path
-        streams = FileAvNative.streams(handle).mapNotNull(::parseAvStream)
-        val dur = FileAvNative.duration(handle)
-        durationMs = if (dur > 0) (dur * 1000.0).toLong() else Progress.DURATION_UNKNOWN
-        publishTracks(config)
-        val srcVideo = streams.firstOrNull { it.kind == KIND_VIDEO }
-        if (srcVideo != null && !audioOnly && srcVideo.width > 0 && srcVideo.height > 0) {
-            _status.update { it.copy(videoSize = VideoSize(srcVideo.width, srcVideo.height)) }
-        }
-        FileAvNative.seek(handle, startPositionMs.coerceAtLeast(0L) / 1000.0)
-        _status.update {
-            val s = it.state as? PlaybackState.Prepared
-            it.copy(state = s?.copy(buffering = false) ?: PlaybackState.Prepared(playWhenReady, false, false))
-        }
-        if (playWhenReady) FileAvNative.play(handle) else FileAvNative.pause(handle)
     }
 
     override fun play() {
         if (released || handle == 0L || loadedPath == null) return
-        FileAvNative.play(handle)
         line?.takeIf { !it.isRunning }?.start()
         _status.update {
             val s = it.state
@@ -144,34 +174,49 @@ internal class JvmLocalPlayer(
                 },
             )
         }
+        postAv { FileAvNative.play(handle) }
     }
 
     override fun pause() {
         if (released || handle == 0L) return
-        FileAvNative.pause(handle)
         line?.takeIf { it.isRunning }?.stop()
         _status.update {
             val s = it.state as? PlaybackState.Prepared ?: return
             it.copy(state = s.copy(playWhenReady = false))
         }
+        postAv { FileAvNative.pause(handle) }
     }
 
     override fun seekTo(positionMs: Long) {
         if (released || handle == 0L || loadedPath == null) return
-        FileAvNative.seek(handle, positionMs.coerceAtLeast(0L) / 1000.0)
-        _progress.update { it.copy(positionMs = positionMs.coerceAtLeast(0L), durationMs = durationMs) }
+        val ms = positionMs.coerceAtLeast(0L)
+        pendingSeekMs.set(ms)
+        _progress.update { it.copy(positionMs = ms, durationMs = durationMs) }
+        if (!seekQueued.compareAndSet(false, true)) return
+        postAv {
+            seekQueued.set(false)
+            while (!released) {
+                val s = pendingSeekMs.getAndSet(-1)
+                if (s < 0) break
+                FileAvNative.seek(handle, s / 1000.0)
+            }
+        }
     }
 
     override fun stop() {
         if (released || handle == 0L) return
-        FileAvNative.pause(handle)
-        FileAvNative.close(handle)
+        loadGen.incrementAndGet()
+        pendingSeekMs.set(-1)
         loadedPath = null
         streams = emptyList()
         closeLine()
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
         showSurface(false)
+        postAv {
+            FileAvNative.pause(handle)
+            FileAvNative.close(handle)
+        }
     }
 
     override fun setConfig(config: PlaybackConfig) {
@@ -185,19 +230,21 @@ internal class JvmLocalPlayer(
             _status.update { it.copy(volume = volume) }
         }
         if (config.speed != prev.speed) {
-            FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
             _status.update { it.copy(speed = config.speed) }
+            postAv { FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble()) }
         }
         val quality = config.preferVideoQuality.first
         if (quality != prev.preferVideoQuality.first) {
             preferVideoQuality = quality
             audioOnly = config.audioOnly
-            FileAvNative.setVideoEnabled(handle, !audioOnly)
-            FileAvNative.setBlitMax(handle, blitMaxFor(config))
             if (audioOnly) videoSurface?.clearFrame()
             _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
             publishVideoQuality()
             if (_status.value.state is PlaybackState.Prepared) showSurface(true)
+            postAv {
+                FileAvNative.setVideoEnabled(handle, !audioOnly)
+                FileAvNative.setBlitMax(handle, blitMaxFor(config))
+            }
         }
         if (config.preferCaptionLanguage != prev.preferCaptionLanguage ||
             config.captionVisible != prev.captionVisible
@@ -209,23 +256,32 @@ internal class JvmLocalPlayer(
     override fun selectAudioTrack(id: String) {
         if (released || handle == 0L) return
         val index = id.toIntOrNull() ?: return
-        FileAvNative.setAudioIndex(handle, index)
         _audioTracks.update { it.copy(selectedId = id) }
         val path = loadedPath ?: return
-        val pos = FileAvNative.position(handle)
         val playing = (_status.value.state as? PlaybackState.Prepared)?.playWhenReady == true
-        FileAvNative.open(handle, path)
-        FileAvNative.seek(handle, pos)
-        if (playing) FileAvNative.play(handle)
+        postAv {
+            FileAvNative.setAudioIndex(handle, index)
+            val pos = FileAvNative.position(handle)
+            FileAvNative.open(handle, path)
+            FileAvNative.seek(handle, pos)
+            if (playing) FileAvNative.play(handle)
+        }
     }
 
     override fun release() {
         if (released) return
         released = true
+        loadGen.incrementAndGet()
         closeLine()
-        if (handle != 0L) FileAvNative.destroy(handle)
         videoSurface?.setVisible(false)
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
+        try {
+            av.execute {
+                if (handle != 0L) FileAvNative.destroy(handle)
+            }
+        } catch (_: RejectedExecutionException) {
+        }
+        av.shutdown()
     }
 
     override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
@@ -257,6 +313,7 @@ internal class JvmLocalPlayer(
 
     override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) {
         if (released) return
+        if (pendingSeekMs.get() >= 0) return
         val pos = (positionSec * 1000.0).toLong().coerceAtLeast(0L)
         if (durationSec > 0) durationMs = (durationSec * 1000.0).toLong()
         _progress.update {
@@ -273,13 +330,15 @@ internal class JvmLocalPlayer(
     override fun onEvent(ended: Boolean, error: String?) {
         if (released) return
         if (error != null && error.isNotEmpty()) {
-            fail("E60021", error)
+            fail(error)
             return
         }
         if (!ended) return
         if (loop && loadedPath != null) {
-            FileAvNative.seek(handle, 0.0)
-            FileAvNative.play(handle)
+            postAv {
+                FileAvNative.seek(handle, 0.0)
+                FileAvNative.play(handle)
+            }
             return
         }
         line?.takeIf { it.isRunning }?.stop()
@@ -348,10 +407,10 @@ internal class JvmLocalPlayer(
         }
     }
 
-    private fun fail(code: String, message: String) {
-        FileAvNative.pause(handle)
+    private fun fail(message: String) {
         closeLine()
-        _status.update { it.copy(state = PlaybackState.Error(PlayerError(code, message))) }
+        _status.update { it.copy(state = PlaybackState.Error(PlayerError("E60021", message))) }
+        postAv { FileAvNative.pause(handle) }
     }
 
     private fun showSurface(visible: Boolean) {
