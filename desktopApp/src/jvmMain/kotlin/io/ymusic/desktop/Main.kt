@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
@@ -600,6 +601,7 @@ private fun DesktopPlayerSurface(
 ) {
     val localVisible by localSurface.visible.collectAsState()
     val localFrame by localSurface.frame.collectAsState()
+    val localFps by localSurface.fps.collectAsState()
     var size by remember { mutableStateOf(IntSize.Zero) }
     val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
     val msePanel = remember { MseVideoPanel() }
@@ -629,6 +631,18 @@ private fun DesktopPlayerSurface(
                     contentScale = ContentScale.Fit,
                     filterQuality = FilterQuality.High,
                     modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (localFps > 0) {
+                Text(
+                    "$localFps fps",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
         } else {

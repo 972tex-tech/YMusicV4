@@ -22,6 +22,12 @@ class LocalVideoSurface {
     private val _visible = MutableStateFlow(false)
     val visible: StateFlow<Boolean> = _visible.asStateFlow()
 
+    private val _fps = MutableStateFlow(0)
+    val fps: StateFlow<Int> = _fps.asStateFlow()
+
+    private var framesInWindow = 0
+    private var windowStartNs = 0L
+
     /** Player thread: scale the decode blit to this Compose surface (px). */
     @Volatile
     internal var onViewSize: ((Int, Int) -> Unit)? = null
@@ -32,15 +38,34 @@ class LocalVideoSurface {
 
     internal fun publish(frame: BufferedImage) {
         _frame.value = frame
+        val now = System.nanoTime()
+        if (windowStartNs == 0L) windowStartNs = now
+        framesInWindow++
+        val dt = now - windowStartNs
+        if (dt >= 1_000_000_000L) {
+            _fps.value = (framesInWindow * 1_000_000_000.0 / dt).toInt()
+            framesInWindow = 0
+            windowStartNs = now
+        }
     }
 
     internal fun setVisible(visible: Boolean) {
         _visible.value = visible
-        if (!visible) _frame.value = null
+        if (!visible) {
+            _frame.value = null
+            resetFps()
+        }
     }
 
     /** Drop the last picture without hiding the surface (audio-only: no frames, but the box stays). */
     internal fun clearFrame() {
         _frame.value = null
+        resetFps()
+    }
+
+    private fun resetFps() {
+        framesInWindow = 0
+        windowStartNs = 0L
+        _fps.value = 0
     }
 }
