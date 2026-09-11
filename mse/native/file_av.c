@@ -23,6 +23,8 @@
 
 #ifdef __APPLE__
 #include <mach/mach_time.h>
+#include <CoreVideo/CoreVideo.h>
+#include <VideoToolbox/VideoToolbox.h>
 #endif
 
 #define OUT_RATE 48000
@@ -90,6 +92,11 @@ struct FileAv {
 
     enum AVColorSpace col_space;
     enum AVColorRange col_range;
+#ifdef __APPLE__
+    VTPixelTransferSessionRef vt_xfer;
+    CVPixelBufferRef vt_dst;
+    int vt_dw, vt_dh;
+#endif
 };
 
 static double now_ns(void)
@@ -260,6 +267,18 @@ static void free_codecs(FileAv *p)
     pq_clear(&p->vq);
     av_frame_free(&p->vhold);
     av_frame_free(&p->vsw);
+#ifdef __APPLE__
+    if (p->vt_xfer) {
+        VTPixelTransferSessionInvalidate(p->vt_xfer);
+        CFRelease(p->vt_xfer);
+        p->vt_xfer = NULL;
+    }
+    if (p->vt_dst) {
+        CVPixelBufferRelease(p->vt_dst);
+        p->vt_dst = NULL;
+    }
+    p->vt_dw = p->vt_dh = 0;
+#endif
 }
 
 static void collect_streams(FileAv *p)
@@ -546,6 +565,82 @@ static void sws_apply_color(struct SwsContext *sws, const FileAv *p, const AVFra
     sws_setColorspaceDetails(sws, coeff, src_range, coeff, 1, 0, 1 << 16, 1 << 16);
 }
 
+#ifdef __APPLE__
+/* Apple's 709→sRGB convert (same family as QuickTime). ffmpeg data[3] is the CVPixelBuffer. */
+static int present_vt(FileAv *p, AVFrame *fr)
+{
+    CVPixelBufferRef src, dst;
+    uint8_t *base, *out;
+    size_t stride;
+    int w, h, y, n;
+    if (!fr->data[3])
+        return -1;
+    src = (CVPixelBufferRef)fr->data[3];
+    w = (int)CVPixelBufferGetWidth(src);
+    h = (int)CVPixelBufferGetHeight(src);
+    if (w <= 0 || h <= 0)
+        return -1;
+    CVBufferSetAttachment(src, kCVImageBufferYCbCrMatrixKey,
+                          kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(src, kCVImageBufferColorPrimariesKey,
+                          kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(src, kCVImageBufferTransferFunctionKey,
+                          kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    if (!p->vt_xfer) {
+        if (VTPixelTransferSessionCreate(NULL, &p->vt_xfer) != noErr)
+            return -1;
+        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationColorPrimaries,
+                             kCVImageBufferColorPrimaries_ITU_R_709_2);
+        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationTransferFunction,
+                             kCVImageBufferTransferFunction_sRGB);
+        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationYCbCrMatrix,
+                             kCVImageBufferYCbCrMatrix_ITU_R_709_2);
+    }
+    if (!p->vt_dst || p->vt_dw != w || p->vt_dh != h) {
+        if (p->vt_dst)
+            CVPixelBufferRelease(p->vt_dst);
+        p->vt_dst = NULL;
+        if (CVPixelBufferCreate(kCFAllocatorDefault, (size_t)w, (size_t)h,
+                                kCVPixelFormatType_32BGRA, NULL, &p->vt_dst) != kCVReturnSuccess)
+            return -1;
+        p->vt_dw = w;
+        p->vt_dh = h;
+        CVBufferSetAttachment(p->vt_dst, kCVImageBufferColorPrimariesKey,
+                              kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+        CVBufferSetAttachment(p->vt_dst, kCVImageBufferTransferFunctionKey,
+                              kCVImageBufferTransferFunction_sRGB, kCVAttachmentMode_ShouldPropagate);
+        CVBufferSetAttachment(p->vt_dst, kCVImageBufferYCbCrMatrixKey,
+                              kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    }
+    dst = p->vt_dst;
+    if (VTPixelTransferSessionTransferImage(p->vt_xfer, src, dst) != noErr)
+        return -1;
+    if (CVPixelBufferLockBaseAddress(dst, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
+        return -1;
+    base = CVPixelBufferGetBaseAddress(dst);
+    stride = CVPixelBufferGetBytesPerRow(dst);
+    n = w * h * 4;
+    if (n > p->bgra_n) {
+        uint8_t *b = av_realloc(p->bgra, (size_t)n);
+        if (!b) {
+            CVPixelBufferUnlockBaseAddress(dst, kCVPixelBufferLock_ReadOnly);
+            return -1;
+        }
+        p->bgra = b;
+        p->bgra_n = n;
+    }
+    out = p->bgra;
+    for (y = 0; y < h; y++)
+        memcpy(out + (size_t)y * (size_t)w * 4, base + (size_t)y * stride, (size_t)w * 4);
+    CVPixelBufferUnlockBaseAddress(dst, kCVPixelBufferLock_ReadOnly);
+    p->vw = w;
+    p->vh = h;
+    if (p->on_frame)
+        p->on_frame(p->user, w, h, p->bgra);
+    return 0;
+}
+#endif
+
 static int present_video(FileAv *p, AVFrame *fr)
 {
     uint8_t *dst[4] = {0};
@@ -554,6 +649,10 @@ static int present_video(FileAv *p, AVFrame *fr)
     const AVPixFmtDescriptor *d;
     if (!p->want_video)
         return 0;
+#ifdef __APPLE__
+    if (fr->hw_frames_ctx && present_vt(p, fr) == 0)
+        return 0;
+#endif
     fr = sw_video_frame(p, fr);
     if (!fr || fr->width <= 0 || fr->height <= 0 || !fr->data[0])
         return -1;
