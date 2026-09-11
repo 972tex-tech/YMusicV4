@@ -6,6 +6,8 @@
 import { open, onAccept, utf8Decode } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
+import { taggedJsonText } from "../../logic/yt/xhr";
+import { installPlayerAdStrip } from "../../logic/player/skip_ads";
 
 type Scenario = (args: Record<string, unknown>) => Promise<string>;
 
@@ -380,6 +382,50 @@ const scenarios: Record<string, Scenario> = {
     } catch (err) {
       return (err as Error).name + " " + (err as Error).message;
     }
+  },
+
+  "tagged-json-parse": async () => {
+    const rec: Record<string, unknown> = { "k": 1 };
+    const e = taggedJsonText(rec);
+    const parsed = JSON.parse(e.replace(")]}'", "")) as Record<string, unknown>;
+    const empty = JSON.parse("{}") as Record<string, unknown>;
+    const real = JSON.parse('{"k":2}') as Record<string, unknown>;
+    return (
+      String(parsed === rec) +
+      "|" +
+      String(parsed["k"]) +
+      "|" +
+      typeof e +
+      "|" +
+      String(e) +
+      "|" +
+      String(empty["k"] == null) +
+      "|" +
+      String(real["k"])
+    );
+  },
+
+  "player-fetch-json-tag": async () => {
+    installPlayerAdStrip();
+    const res = await fetch("https://example.com/youtubei/v1/player", {
+      "headers": { "Authorization": "x" },
+    });
+    const copy = res["clone"]();
+    const viaJson = (await copy["json"]()) as Record<string, unknown>;
+    const e = await res["text"]();
+    const viaParse = JSON.parse(e.replace(")]}'", "")) as Record<string, unknown>;
+    const vd = viaParse["videoDetails"] as Record<string, unknown>;
+    return (
+      String(typeof e === "object") +
+      "|" +
+      String(viaJson === viaParse) +
+      "|" +
+      String(viaParse["adPlacements"] == null) +
+      "|" +
+      String(vd["videoId"]) +
+      "|" +
+      String((JSON.parse("{}") as Record<string, unknown>)["x"] == null)
+    );
   },
 
   "xhr-get-text": async () => {
