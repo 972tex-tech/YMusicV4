@@ -19,7 +19,7 @@ import { logSabrRequest, logSabrResponse } from "./sabr_log";
 import { appendFakeUmp, hasPendingFake, prepareSabrBody } from "./sabr_abr";
 import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
-import { applyRequestRewrite, applyResponseRewrite, wantsJsonRewrite } from "./xhr";
+import { applyRequestRewrite, applyResponseRewrite, taggedJsonText, wantsJsonRewrite } from "./xhr";
 
 /* Keep both bindings live when SABR_DEBUG is compile-time false (Closure). */
 void logSabrResponse;
@@ -465,7 +465,7 @@ async function collect(res: FetchResponseJs): Promise<Uint8Array> {
 ResponseImpl.prototype["text"] = function (this: FetchResponseJs): Promise<string> {
   if (this._json != null) {
     takeBody(this);
-    return Promise.resolve(JSON.stringify(this._json));
+    return Promise.resolve(taggedJsonText(this._json));
   }
   return collect(this).then(function (u8) {
     return utf8Decode(u8);

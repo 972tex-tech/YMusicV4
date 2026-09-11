@@ -68,6 +68,37 @@ export function applyResponseRewrite(
   return responseRewrite ? responseRewrite(url, rec) : rec;
 }
 
+/**
+ * InnerTube does `text()` then `JSON.parse(e.replace(")]}'",""))`. A primitive cannot hold a
+ * property, so this is a String object: `replace` keeps the box, `JSON.parse` reads `_jsonParsed`.
+ */
+export function taggedJsonText(rec: unknown): string {
+  const s = new String("{}") as unknown as Record<string, unknown>;
+  s["_jsonParsed"] = rec;
+  s["replace"] = function () {
+    return s;
+  };
+  return s as unknown as string;
+}
+
+function installJsonParseHook(): void {
+  const json = JSON as unknown as Record<string, unknown>;
+  const orig = json["parse"] as (
+    text: string,
+    reviver?: (key: string, value: unknown) => unknown,
+  ) => unknown;
+  json["parse"] = native(
+    "JSON.parse",
+    function (text: unknown, reviver?: (key: string, value: unknown) => unknown) {
+      if (text != null && typeof text === "object") {
+        const rec = (text as Record<string, unknown>)["_jsonParsed"];
+        if (rec !== undefined) return rec;
+      }
+      return orig.call(JSON, text as string, reviver);
+    },
+  );
+}
+
 /** Full-body JSON rewrite is only for /player, never streaming SABR. */
 export function wantsJsonRewrite(url: string): boolean {
   if (!requestRewrite && !responseRewrite) return false;
@@ -321,7 +352,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
           self["response"] = copy.buffer;
           self["responseText"] = "";
         } else {
-          const s = JSON.stringify(rec);
+          const s = taggedJsonText(rec);
           self["responseText"] = s;
           self["response"] = s;
         }
@@ -351,6 +382,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
 };
 
 export function installXhr(): void {
+  installJsonParseHook();
   const g = globalThis as unknown as Record<string, unknown>;
   const Ctor = native("XMLHttpRequest", XhrImpl);
   (Ctor as { prototype: unknown }).prototype = XhrImpl.prototype;
