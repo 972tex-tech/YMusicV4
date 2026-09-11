@@ -693,57 +693,75 @@ static void present_held(FileAv *p, AVFrame **held)
 
 static int pump_video(FileAv *p, double clock)
 {
-    AVPacket *pkt;
-    int got;
-    double pts;
-    AVFrame *fr;
+    AVStream *st = (p->fmt && p->v_st >= 0) ? p->fmt->streams[p->v_st] : NULL;
+    int spins;
     if (!p->vdec)
         return 0;
 
-    /* One send or one present per call so we drop mu and the EDT can run. */
-    if (p->vhold) {
-        pts = frame_pts(p->fmt && p->v_st >= 0 ? p->fmt->streams[p->v_st] : NULL, p->vhold, clock);
-        if (pts > clock + 0.04)
-            return 0;
-        present_held(p, &p->vhold);
-        return 0;
-    }
+    /* Drop late frames without blitting so a slow 4K convert cannot turn 1x into slow-mo. */
+    for (spins = 0; spins < 24; spins++) {
+        AVPacket *pkt;
+        int got;
+        double pts;
+        AVFrame *fr;
+        clock = media_time_locked(p);
 
-    pthread_mutex_unlock(&p->mu);
-    got = avcodec_receive_frame(p->vdec, p->vfr);
-    pthread_mutex_lock(&p->mu);
-    if (!p->opened || !p->vdec)
-        return 0;
-
-    if (got == AVERROR(EAGAIN)) {
-        pkt = pq_pop(&p->vq);
-        if (!pkt)
-            return 0;
-        pthread_mutex_unlock(&p->mu);
-        avcodec_send_packet(p->vdec, pkt);
-        av_packet_free(&pkt);
-        pthread_mutex_lock(&p->mu);
-        return 0;
-    }
-    if (got < 0)
-        return 0;
-
-    fr = p->vfr;
-    pts = frame_pts(p->fmt && p->v_st >= 0 ? p->fmt->streams[p->v_st] : NULL, fr, clock);
-    if (pts > clock + 0.04) {
-        if (!p->vhold)
-            p->vhold = av_frame_alloc();
         if (p->vhold) {
-            av_frame_unref(p->vhold);
-            av_frame_ref(p->vhold, fr);
+            pts = frame_pts(st, p->vhold, clock);
+            if (pts > clock + 0.04)
+                return 0;
+            if (pts + 0.05 < clock) {
+                av_frame_unref(p->vhold);
+                av_frame_free(&p->vhold);
+                continue;
+            }
+            present_held(p, &p->vhold);
+            return 0;
         }
+
+        pthread_mutex_unlock(&p->mu);
+        got = avcodec_receive_frame(p->vdec, p->vfr);
+        pthread_mutex_lock(&p->mu);
+        if (!p->opened || !p->vdec)
+            return 0;
+
+        if (got == AVERROR(EAGAIN)) {
+            if (p->vq.rd >= p->vq.n)
+                fill_packets(p);
+            pkt = pq_pop(&p->vq);
+            if (!pkt)
+                return 0;
+            pthread_mutex_unlock(&p->mu);
+            avcodec_send_packet(p->vdec, pkt);
+            av_packet_free(&pkt);
+            pthread_mutex_lock(&p->mu);
+            continue;
+        }
+        if (got < 0)
+            return 0;
+
+        fr = p->vfr;
+        pts = frame_pts(st, fr, clock);
+        if (pts > clock + 0.04) {
+            if (!p->vhold)
+                p->vhold = av_frame_alloc();
+            if (p->vhold) {
+                av_frame_unref(p->vhold);
+                av_frame_ref(p->vhold, fr);
+            }
+            av_frame_unref(fr);
+            return 0;
+        }
+        if (pts + 0.05 < clock) {
+            av_frame_unref(fr);
+            continue;
+        }
+        pthread_mutex_unlock(&p->mu);
+        present_video(p, fr);
+        pthread_mutex_lock(&p->mu);
         av_frame_unref(fr);
         return 0;
     }
-    pthread_mutex_unlock(&p->mu);
-    present_video(p, fr);
-    pthread_mutex_lock(&p->mu);
-    av_frame_unref(fr);
     return 0;
 }
 

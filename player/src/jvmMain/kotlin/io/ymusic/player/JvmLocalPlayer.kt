@@ -148,8 +148,10 @@ internal class JvmLocalPlayer(
                     cmd = cmds.poll(50, TimeUnit.MILLISECONDS)
                     cmd?.invoke()
                 } else if (pumping && handle != 0L) {
+                    val t0 = System.nanoTime()
                     FileAvNative.step(handle)
-                    Thread.sleep(4)
+                    val ms = (System.nanoTime() - t0) / 1_000_000L
+                    if (ms < 4) Thread.sleep(4 - ms)
                 } else {
                     cmd = cmds.poll(50, TimeUnit.MILLISECONDS)
                     cmd?.invoke()
