@@ -309,7 +309,6 @@ internal class JvmLocalPlayer(
         }
         val quality = config.preferVideoQuality.first
         if (quality != prev.preferVideoQuality.first) {
-            val turningVideoOn = prev.audioOnly && !config.audioOnly
             preferVideoQuality = quality
             audioOnly = config.audioOnly
             if (audioOnly) videoSurface?.clearFrame()
@@ -322,8 +321,6 @@ internal class JvmLocalPlayer(
                 if (handle == 0L) return@dispatch
                 FileAvNative.setVideoEnabled(handle, !audioOnly)
                 FileAvNative.setBlitMax(handle, blitMaxFor(config))
-                // Audio-only open never creates vdec; flipping want_video is not enough.
-                if (turningVideoOn) reopenAtPlayhead(pumping)
             }
         }
         if (config.preferCaptionLanguage != prev.preferCaptionLanguage ||
@@ -471,9 +468,8 @@ internal class JvmLocalPlayer(
     }
 
     private fun blitMaxFor(config: PlaybackConfig): Int {
-        if (config.audioOnly) return 2
-        val h = VideoQualityState.heightForQuality(config.preferVideoQuality.first)
-        return h ?: 1920
+        if (config.audioOnly) return 0
+        return VideoQualityState.heightForQuality(config.preferVideoQuality.first) ?: 0
     }
 
     /** Player thread. `open` rebuilds decoders from current want_video / audio_index. */

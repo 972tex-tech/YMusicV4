@@ -27,7 +27,6 @@
 
 #define OUT_RATE 48000
 #define OUT_CH 2
-#define DEFAULT_BLIT 1920
 
 
 enum { ST_AUDIO = 0, ST_VIDEO = 1, ST_TEXT = 2 };
@@ -312,14 +311,24 @@ static int pick_audio(FileAv *p)
 
 static int pick_video(FileAv *p)
 {
-    int i;
-    if (!p->want_video)
-        return -1;
+    int i, best = -1, best_area = -1;
     for (i = 0; i < p->nstreams; i++) {
-        if (p->streams[i].kind == ST_VIDEO)
-            return p->streams[i].index;
+        int area;
+        if (p->streams[i].kind != ST_VIDEO)
+            continue;
+        area = p->streams[i].w * p->streams[i].h;
+        if (area > best_area) {
+            best_area = area;
+            best = p->streams[i].index;
+        }
     }
-    return -1;
+    return best;
+}
+
+/* Decode video when the user wants picture, or when it is the only clock (no audio). */
+static int need_video(FileAv *p)
+{
+    return p->vdec && (p->want_video || !p->adec);
 }
 
 static int setup_decoders(FileAv *p)
@@ -366,7 +375,7 @@ static int fill_packets(FileAv *p)
         if (pkt->stream_index == p->a_st) {
             if (pq_push(&p->aq, pkt) < 0)
                 av_packet_free(&pkt);
-        } else if (pkt->stream_index == p->v_st && p->want_video) {
+        } else if (pkt->stream_index == p->v_st && need_video(p)) {
             if (pq_push(&p->vq, pkt) < 0)
                 av_packet_free(&pkt);
         } else {
@@ -428,19 +437,13 @@ static int ensure_speed_swr(FileAv *p, double speed)
 
 static void blit_size(FileAv *p, int src_w, int src_h, int *dw, int *dh)
 {
-    int max = p->blit_max > 0 ? p->blit_max : DEFAULT_BLIT;
-    int long_edge = src_w > src_h ? src_w : src_h;
+    int max_h = p->blit_max;
     *dw = src_w;
     *dh = src_h;
-    if (long_edge <= max || src_w <= 0 || src_h <= 0)
+    if (max_h <= 0 || src_w <= 0 || src_h <= 0 || src_h <= max_h)
         return;
-    if (src_w >= src_h) {
-        *dw = max;
-        *dh = src_h * max / src_w;
-    } else {
-        *dh = max;
-        *dw = src_w * max / src_h;
-    }
+    *dh = max_h;
+    *dw = src_w * max_h / src_h;
     if (*dw < 2)
         *dw = 2;
     if (*dh < 2)
@@ -475,6 +478,8 @@ static int present_video(FileAv *p, AVFrame *fr)
     int dst_ls[4] = {0};
     int dw, dh, n;
     const AVPixFmtDescriptor *d;
+    if (!p->want_video)
+        return 0;
     fr = sw_video_frame(p, fr);
     if (!fr || fr->width <= 0 || fr->height <= 0 || !fr->data[0])
         return -1;
@@ -483,10 +488,11 @@ static int present_video(FileAv *p, AVFrame *fr)
         return -1;
     blit_size(p, fr->width, fr->height, &dw, &dh);
     if (!p->sws || p->sws_dw != dw || p->sws_dh != dh) {
+        int flags = (dw == fr->width && dh == fr->height) ? SWS_BILINEAR : SWS_LANCZOS;
         if (p->sws)
             sws_freeContext(p->sws);
         p->sws = sws_getContext(fr->width, fr->height, (enum AVPixelFormat)fr->format,
-                                dw, dh, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+                                dw, dh, AV_PIX_FMT_BGRA, flags, NULL, NULL, NULL);
         p->sws_dw = dw;
         p->sws_dh = dh;
     }
@@ -675,7 +681,7 @@ int file_av_step(FileAv *p)
     clock = media_time_locked(p);
     if (p->adec)
         pump_audio(p, clock);
-    if (p->vdec && p->want_video)
+    if (need_video(p))
         pump_video(p, media_time_locked(p));
     clock = media_time_locked(p);
     if (p->on_prog && now_ns() - p->last_prog_ns > 1e8) {
@@ -689,8 +695,8 @@ int file_av_step(FileAv *p)
         pthread_mutex_lock(&p->mu);
     }
     a_empty = !p->adec || (p->aq.rd >= p->aq.n);
-    v_empty = !p->vdec || !p->want_video || (p->vq.rd >= p->vq.n);
-    if (eof && a_empty && v_empty && !p->ended) {
+    v_empty = !need_video(p) || (p->vq.rd >= p->vq.n);
+    if (eof && a_empty && v_empty && !p->ended && (p->adec || need_video(p))) {
         p->ended = 1;
         p->playing = 0;
         p->hold = p->duration > 0 ? p->duration : clock;
@@ -713,7 +719,7 @@ FileAv *file_av_create(void)
     p->speed = 1.0;
     p->want_video = 1;
     p->audio_index = -1;
-    p->blit_max = DEFAULT_BLIT;
+    p->blit_max = 0;
     p->a_st = p->v_st = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
@@ -885,19 +891,44 @@ void file_av_set_audio_index(FileAv *p, int stream_index)
 
 void file_av_set_video_enabled(FileAv *p, int on)
 {
+    int want = on ? 1 : 0;
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
-    p->want_video = on ? 1 : 0;
+    if (p->want_video == want) {
+        pthread_mutex_unlock(&p->mu);
+        return;
+    }
+    p->want_video = want;
+    if (want && p->opened && p->fmt) {
+        double sec = media_time_locked(p);
+        int64_t ts = (int64_t)(sec * AV_TIME_BASE);
+        if (sec < 0)
+            sec = 0;
+        av_seek_frame(p->fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
+        if (p->adec)
+            avcodec_flush_buffers(p->adec);
+        if (p->vdec)
+            avcodec_flush_buffers(p->vdec);
+        pq_clear(&p->aq);
+        pq_clear(&p->vq);
+        av_frame_unref(p->afr);
+        av_frame_unref(p->vfr);
+        av_frame_free(&p->vhold);
+        p->hold = sec;
+        p->ended = 0;
+        if (p->playing)
+            p->origin_ns = now_ns();
+    }
     pthread_mutex_unlock(&p->mu);
 }
 
-void file_av_set_blit_max(FileAv *p, int max_edge)
+void file_av_set_blit_max(FileAv *p, int max_height)
 {
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
-    p->blit_max = max_edge > 0 ? max_edge : DEFAULT_BLIT;
+    p->blit_max = max_height;
     pthread_mutex_unlock(&p->mu);
 }
 

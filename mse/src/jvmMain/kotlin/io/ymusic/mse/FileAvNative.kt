@@ -44,7 +44,8 @@ object FileAvNative {
 
     @JvmStatic external fun setVideoEnabled(handle: Long, on: Boolean)
 
-    @JvmStatic external fun setBlitMax(handle: Long, maxEdge: Int)
+    /** Cap presented height in pixels. 0 = native. */
+    @JvmStatic external fun setBlitMax(handle: Long, maxHeight: Int)
 
     @JvmStatic external fun duration(handle: Long): Double
 

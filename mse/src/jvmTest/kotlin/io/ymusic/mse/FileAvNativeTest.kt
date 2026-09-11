@@ -87,6 +87,53 @@ class FileAvNativeTest {
         }
     }
 
+    @Test
+    fun audioOnlyOpenThenEnableVideoDoesNotEndDji() {
+        val path = DJI_4K
+        assertTrue(java.io.File(path).isFile, "missing $path")
+        val h = FileAvNative.create()
+        assertTrue(h != 0L, "file_av_create")
+        val frames = AtomicInteger(0)
+        val endCount = AtomicInteger(0)
+        val err = AtomicReference<String?>(null)
+        FileAvNative.setSink(
+            h,
+            object : FileAvSink {
+                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
+                    frames.incrementAndGet()
+                }
+
+                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
+
+                override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
+
+                override fun onEvent(ended: Boolean, error: String?) {
+                    if (error != null && error.isNotEmpty()) err.set(error)
+                    if (ended) endCount.incrementAndGet()
+                }
+            },
+        )
+        try {
+            FileAvNative.setVideoEnabled(h, false)
+            assertTrue(FileAvNative.open(h, path) == 0, FileAvNative.lastError(h))
+            FileAvNative.play(h)
+            pump(h, 800)
+            assertTrue(err.get() == null, "error ${err.get()}")
+            assertTrue(endCount.get() == 0, "audio-only ended the video-only file")
+            assertTrue(frames.get() == 0, "presented while audio-only")
+
+            FileAvNative.setVideoEnabled(h, true)
+            FileAvNative.setBlitMax(h, 0)
+            FileAvNative.play(h)
+            pump(h, 1500)
+            assertTrue(err.get() == null, "error after enable ${err.get()}")
+            assertTrue(endCount.get() == 0, "enable-video ended the track")
+            assertTrue(frames.get() > 1, "no frames after enable (${frames.get()})")
+        } finally {
+            FileAvNative.destroy(h)
+        }
+    }
+
     private fun pump(handle: Long, ms: Long) {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {

@@ -229,11 +229,11 @@ Java_io_ymusic_mse_FileAvNative_setVideoEnabled(JNIEnv *env, jclass cls, jlong h
 }
 
 JNIEXPORT void JNICALL
-Java_io_ymusic_mse_FileAvNative_setBlitMax(JNIEnv *env, jclass cls, jlong handle, jint maxEdge)
+Java_io_ymusic_mse_FileAvNative_setBlitMax(JNIEnv *env, jclass cls, jlong handle, jint maxHeight)
 {
     (void)env;
     (void)cls;
-    file_av_set_blit_max((FileAv *)(intptr_t)handle, maxEdge);
+    file_av_set_blit_max((FileAv *)(intptr_t)handle, maxHeight);
 }
 
 JNIEXPORT jdouble JNICALL

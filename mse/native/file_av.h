@@ -31,8 +31,8 @@ int file_av_step(FileAv *p);
 void file_av_set_speed(FileAv *p, double speed);
 void file_av_set_audio_index(FileAv *p, int stream_index);
 void file_av_set_video_enabled(FileAv *p, int on);
-/* Downscale so max(w,h) <= max_edge. 0 = 1920. Never upscales. */
-void file_av_set_blit_max(FileAv *p, int max_edge);
+/* Cap output height. 0 = native. Never upscales. */
+void file_av_set_blit_max(FileAv *p, int max_height);
 
 double file_av_duration(FileAv *p);
 double file_av_position(FileAv *p);
