@@ -24,6 +24,7 @@
 #ifdef __APPLE__
 #include <mach/mach_time.h>
 #include <CoreVideo/CoreVideo.h>
+#include <CoreMedia/CoreMedia.h>
 #include <VideoToolbox/VideoToolbox.h>
 #endif
 
@@ -566,35 +567,40 @@ static void sws_apply_color(struct SwsContext *sws, const FileAv *p, const AVFra
 }
 
 #ifdef __APPLE__
-/* Apple's 709→sRGB convert (same family as QuickTime). ffmpeg data[3] is the CVPixelBuffer. */
+/* Apple 709 TV-range → BGRA. Keep 709 transfer (not sRGB) so shadows stay as deep as QuickTime.
+ * Scale into blit_w×blit_h here so we do not memcpy a 4K frame then scale again in Swing. */
 static int present_vt(FileAv *p, AVFrame *fr)
 {
     CVPixelBufferRef src, dst;
     uint8_t *base, *out;
     size_t stride;
-    int w, h, y, n;
+    int src_w, src_h, w, h, y, n;
     if (!fr->data[3])
         return -1;
     src = (CVPixelBufferRef)fr->data[3];
-    w = (int)CVPixelBufferGetWidth(src);
-    h = (int)CVPixelBufferGetHeight(src);
-    if (w <= 0 || h <= 0)
+    src_w = (int)CVPixelBufferGetWidth(src);
+    src_h = (int)CVPixelBufferGetHeight(src);
+    if (src_w <= 0 || src_h <= 0)
         return -1;
+    blit_size(p, src_w, src_h, &w, &h);
     CVBufferSetAttachment(src, kCVImageBufferYCbCrMatrixKey,
                           kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(src, kCVImageBufferColorPrimariesKey,
                           kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(src, kCVImageBufferTransferFunctionKey,
                           kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(src, kCMFormatDescriptionExtension_FullRangeVideo,
+                          kCFBooleanFalse, kCVAttachmentMode_ShouldPropagate);
     if (!p->vt_xfer) {
         if (VTPixelTransferSessionCreate(NULL, &p->vt_xfer) != noErr)
             return -1;
         VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationColorPrimaries,
                              kCVImageBufferColorPrimaries_ITU_R_709_2);
         VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationTransferFunction,
-                             kCVImageBufferTransferFunction_sRGB);
+                             kCVImageBufferTransferFunction_ITU_R_709_2);
         VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationYCbCrMatrix,
                              kCVImageBufferYCbCrMatrix_ITU_R_709_2);
+        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_RealTime, kCFBooleanTrue);
     }
     if (!p->vt_dst || p->vt_dw != w || p->vt_dh != h) {
         if (p->vt_dst)
@@ -608,7 +614,7 @@ static int present_vt(FileAv *p, AVFrame *fr)
         CVBufferSetAttachment(p->vt_dst, kCVImageBufferColorPrimariesKey,
                               kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(p->vt_dst, kCVImageBufferTransferFunctionKey,
-                              kCVImageBufferTransferFunction_sRGB, kCVAttachmentMode_ShouldPropagate);
+                              kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(p->vt_dst, kCVImageBufferYCbCrMatrixKey,
                               kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     }

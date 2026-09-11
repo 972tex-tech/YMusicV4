@@ -101,6 +101,10 @@ internal class JvmLocalPlayer(
 
     @Volatile private var pendingVh: Int = 0
 
+    @Volatile private var viewW: Int = 0
+
+    @Volatile private var viewH: Int = 0
+
     val surface: LocalVideoSurface? get() = videoSurface
 
     private val playerThread = Thread({ playerLoop() }, "player").apply {
@@ -120,6 +124,11 @@ internal class JvmLocalPlayer(
             } else {
                 FileAvNative.setSink(handle, this)
             }
+        }
+        videoSurface?.onViewSize = { w, h ->
+            viewW = w
+            viewH = h
+            dispatch { applyBlit() }
         }
     }
 
@@ -366,6 +375,7 @@ internal class JvmLocalPlayer(
             } catch (_: InterruptedException) {
             }
         }
+        videoSurface?.onViewSize = null
         videoSurface?.setVisible(false)
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
@@ -469,10 +479,10 @@ internal class JvmLocalPlayer(
         loop = config.loop
     }
 
-    /** Native pixels only. swscale converts color; the UI scales for the window. */
+    /** VT scales into the window; 0×0 means native. */
     private fun applyBlit() {
         if (handle == 0L) return
-        FileAvNative.setBlitSize(handle, 0, 0)
+        FileAvNative.setBlitSize(handle, viewW, viewH)
     }
 
     /** Player thread. `open` rebuilds decoders from current want_video / audio_index. */
