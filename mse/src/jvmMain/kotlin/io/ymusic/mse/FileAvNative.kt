@@ -36,6 +36,8 @@ object FileAvNative {
 
     @JvmStatic external fun seek(handle: Long, seconds: Double)
 
+    @JvmStatic external fun step(handle: Long): Int
+
     @JvmStatic external fun setSpeed(handle: Long, speed: Double)
 
     @JvmStatic external fun setAudioIndex(handle: Long, index: Int)

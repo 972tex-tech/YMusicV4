@@ -63,7 +63,7 @@ class FileAvNativeTest {
             assertTrue(streams.any { it.startsWith("1|") }, "no video stream $streams")
 
             FileAvNative.play(h)
-            Thread.sleep(2000)
+            pump(h, 2000)
             val f1 = frames.get()
             val p1 = lastPos.get()
             println("after 2s frames=$f1 pos=$p1 err=${err.get()}")
@@ -76,7 +76,7 @@ class FileAvNativeTest {
             val seekMs = (System.nanoTime() - tSeek) / 1_000_000
             println("seek 10s took ${seekMs}ms")
             assertTrue(seekMs < 3000, "seek blocked ${seekMs}ms")
-            Thread.sleep(1500)
+            pump(h, 1500)
             val f2 = frames.get()
             val p2 = lastPos.get()
             println("after seek frames=$f2 pos=$p2")
@@ -84,6 +84,14 @@ class FileAvNativeTest {
             assertTrue(p2 > 5.0, "position after seek $p2")
         } finally {
             FileAvNative.destroy(h)
+        }
+    }
+
+    private fun pump(handle: Long, ms: Long) {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) {
+            FileAvNative.step(handle)
+            Thread.sleep(4)
         }
     }
 

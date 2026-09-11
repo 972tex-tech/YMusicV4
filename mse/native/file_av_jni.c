@@ -196,6 +196,14 @@ Java_io_ymusic_mse_FileAvNative_seek(JNIEnv *env, jclass cls, jlong handle, jdou
     file_av_seek((FileAv *)(intptr_t)handle, seconds);
 }
 
+JNIEXPORT jint JNICALL
+Java_io_ymusic_mse_FileAvNative_step(JNIEnv *env, jclass cls, jlong handle)
+{
+    (void)env;
+    (void)cls;
+    return file_av_step((FileAv *)(intptr_t)handle);
+}
+
 JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setSpeed(JNIEnv *env, jclass cls, jlong handle, jdouble speed)
 {
