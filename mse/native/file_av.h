@@ -33,6 +33,8 @@ void file_av_set_audio_index(FileAv *p, int stream_index);
 void file_av_set_video_enabled(FileAv *p, int on);
 /* Cap output height. 0 = native. Never upscales. */
 void file_av_set_blit_max(FileAv *p, int max_height);
+/* Fit inside w×h, never upscale. 0 on a side means unconstrained. */
+void file_av_set_blit_size(FileAv *p, int w, int h);
 
 double file_av_duration(FileAv *p);
 double file_av_position(FileAv *p);

@@ -121,14 +121,17 @@ class FileAvNativeTest {
             assertTrue(err.get() == null, "error ${err.get()}")
             assertTrue(endCount.get() == 0, "audio-only ended the video-only file")
             assertTrue(frames.get() == 0, "presented while audio-only")
+            val pos = FileAvNative.position(h)
 
             FileAvNative.setVideoEnabled(h, true)
-            FileAvNative.setBlitMax(h, 0)
+            FileAvNative.setBlitSize(h, 1280, 720)
             FileAvNative.play(h)
-            pump(h, 1500)
+            pump(h, 400)
             assertTrue(err.get() == null, "error after enable ${err.get()}")
             assertTrue(endCount.get() == 0, "enable-video ended the track")
             assertTrue(frames.get() > 1, "no frames after enable (${frames.get()})")
+            val pos2 = FileAvNative.position(h)
+            assertTrue(pos2 + 0.15 >= pos, "audio→video jumped back $pos -> $pos2")
         } finally {
             FileAvNative.destroy(h)
         }

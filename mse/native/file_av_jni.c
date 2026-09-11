@@ -236,6 +236,14 @@ Java_io_ymusic_mse_FileAvNative_setBlitMax(JNIEnv *env, jclass cls, jlong handle
     file_av_set_blit_max((FileAv *)(intptr_t)handle, maxHeight);
 }
 
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setBlitSize(JNIEnv *env, jclass cls, jlong handle, jint w, jint h)
+{
+    (void)env;
+    (void)cls;
+    file_av_set_blit_size((FileAv *)(intptr_t)handle, w, h);
+}
+
 JNIEXPORT jdouble JNICALL
 Java_io_ymusic_mse_FileAvNative_duration(JNIEnv *env, jclass cls, jlong handle)
 {

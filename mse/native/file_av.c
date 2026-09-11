@@ -56,7 +56,8 @@ struct FileAv {
     int ended;
     int want_video;
     int audio_index; /* -1 = first audio */
-    int blit_max;
+    int blit_w;
+    int blit_h;
     double speed;
     double hold;
     double origin_ns;
@@ -72,7 +73,7 @@ struct FileAv {
     SwrContext *swr_speed;
     double swr_speed_in;
     struct SwsContext *sws;
-    int sws_dw, sws_dh;
+    int sws_dw, sws_dh, sws_sw, sws_sh, sws_fmt;
     uint8_t *bgra;
     int bgra_n;
     int vw, vh;
@@ -248,7 +249,8 @@ static void free_codecs(FileAv *p)
         sws_freeContext(p->sws);
         p->sws = NULL;
     }
-    p->sws_dw = p->sws_dh = 0;
+    p->sws_dw = p->sws_dh = p->sws_sw = p->sws_sh = 0;
+    p->sws_fmt = -1;
     av_freep(&p->bgra);
     p->bgra_n = 0;
     pq_clear(&p->aq);
@@ -325,10 +327,10 @@ static int pick_video(FileAv *p)
     return best;
 }
 
-/* Decode video when the user wants picture, or when it is the only clock (no audio). */
+/* Keep the video decoder warm so audio→video does not seek back to a keyframe. */
 static int need_video(FileAv *p)
 {
-    return p->vdec && (p->want_video || !p->adec);
+    return p->vdec != NULL;
 }
 
 static int setup_decoders(FileAv *p)
@@ -437,13 +439,32 @@ static int ensure_speed_swr(FileAv *p, double speed)
 
 static void blit_size(FileAv *p, int src_w, int src_h, int *dw, int *dh)
 {
-    int max_h = p->blit_max;
+    int box_w = p->blit_w, box_h = p->blit_h;
     *dw = src_w;
     *dh = src_h;
-    if (max_h <= 0 || src_w <= 0 || src_h <= 0 || src_h <= max_h)
+    if (src_w <= 0 || src_h <= 0)
         return;
-    *dh = max_h;
-    *dw = src_w * max_h / src_h;
+    if (box_w <= 0 && box_h <= 0)
+        return;
+    if (box_w <= 0) {
+        if (src_h <= box_h)
+            return;
+        *dh = box_h;
+        *dw = src_w * box_h / src_h;
+    } else if (box_h <= 0) {
+        if (src_w <= box_w)
+            return;
+        *dw = box_w;
+        *dh = src_h * box_w / src_w;
+    } else if (src_w > box_w || src_h > box_h) {
+        if ((int64_t)src_w * box_h > (int64_t)box_w * src_h) {
+            *dw = box_w;
+            *dh = src_h * box_w / src_w;
+        } else {
+            *dh = box_h;
+            *dw = src_w * box_h / src_h;
+        }
+    }
     if (*dw < 2)
         *dw = 2;
     if (*dh < 2)
@@ -464,12 +485,40 @@ static AVFrame *sw_video_frame(FileAv *p, AVFrame *fr)
     av_frame_unref(p->vsw);
     if (av_hwframe_transfer_data(p->vsw, fr, 0) < 0)
         return NULL;
-    p->vsw->best_effort_timestamp = fr->best_effort_timestamp;
     p->vsw->pts = fr->pts;
+    p->vsw->best_effort_timestamp = fr->best_effort_timestamp;
+    p->vsw->colorspace = fr->colorspace;
+    p->vsw->color_range = fr->color_range;
+    p->vsw->color_primaries = fr->color_primaries;
+    p->vsw->color_trc = fr->color_trc;
     d = av_pix_fmt_desc_get((enum AVPixelFormat)p->vsw->format);
     if (d && (d->flags & AV_PIX_FMT_FLAG_HWACCEL))
         return NULL;
     return p->vsw;
+}
+
+static int sws_cs(const AVFrame *fr)
+{
+    switch (fr->colorspace) {
+    case AVCOL_SPC_BT709:
+        return SWS_CS_ITU709;
+    case AVCOL_SPC_BT2020_NCL:
+    case AVCOL_SPC_BT2020_CL:
+        return SWS_CS_BT2020;
+    case AVCOL_SPC_SMPTE170M:
+    case AVCOL_SPC_BT470BG:
+        return SWS_CS_ITU601;
+    default:
+        return fr->height > 576 ? SWS_CS_ITU709 : SWS_CS_ITU601;
+    }
+}
+
+static void sws_apply_color(struct SwsContext *sws, const AVFrame *fr)
+{
+    int src_range = fr->color_range == AVCOL_RANGE_JPEG ? 1 : 0;
+    const int *src = sws_getCoefficients(sws_cs(fr));
+    const int *dst = sws_getCoefficients(SWS_CS_DEFAULT);
+    sws_setColorspaceDetails(sws, src, src_range, dst, 1, 0, 1 << 16, 1 << 16);
 }
 
 static int present_video(FileAv *p, AVFrame *fr)
@@ -487,14 +536,19 @@ static int present_video(FileAv *p, AVFrame *fr)
     if (d && (d->flags & AV_PIX_FMT_FLAG_HWACCEL))
         return -1;
     blit_size(p, fr->width, fr->height, &dw, &dh);
-    if (!p->sws || p->sws_dw != dw || p->sws_dh != dh) {
-        int flags = (dw == fr->width && dh == fr->height) ? SWS_BILINEAR : SWS_LANCZOS;
+    if (!p->sws || p->sws_dw != dw || p->sws_dh != dh ||
+        p->sws_sw != fr->width || p->sws_sh != fr->height || p->sws_fmt != fr->format) {
         if (p->sws)
             sws_freeContext(p->sws);
         p->sws = sws_getContext(fr->width, fr->height, (enum AVPixelFormat)fr->format,
-                                dw, dh, AV_PIX_FMT_BGRA, flags, NULL, NULL, NULL);
+                                dw, dh, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
         p->sws_dw = dw;
         p->sws_dh = dh;
+        p->sws_sw = fr->width;
+        p->sws_sh = fr->height;
+        p->sws_fmt = fr->format;
+        if (p->sws)
+            sws_apply_color(p->sws, fr);
     }
     if (!p->sws)
         return -1;
@@ -719,7 +773,8 @@ FileAv *file_av_create(void)
     p->speed = 1.0;
     p->want_video = 1;
     p->audio_index = -1;
-    p->blit_max = 0;
+    p->blit_w = 0;
+    p->blit_h = 0;
     p->a_st = p->v_st = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
@@ -891,44 +946,25 @@ void file_av_set_audio_index(FileAv *p, int stream_index)
 
 void file_av_set_video_enabled(FileAv *p, int on)
 {
-    int want = on ? 1 : 0;
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
-    if (p->want_video == want) {
-        pthread_mutex_unlock(&p->mu);
-        return;
-    }
-    p->want_video = want;
-    if (want && p->opened && p->fmt) {
-        double sec = media_time_locked(p);
-        int64_t ts = (int64_t)(sec * AV_TIME_BASE);
-        if (sec < 0)
-            sec = 0;
-        av_seek_frame(p->fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
-        if (p->adec)
-            avcodec_flush_buffers(p->adec);
-        if (p->vdec)
-            avcodec_flush_buffers(p->vdec);
-        pq_clear(&p->aq);
-        pq_clear(&p->vq);
-        av_frame_unref(p->afr);
-        av_frame_unref(p->vfr);
-        av_frame_free(&p->vhold);
-        p->hold = sec;
-        p->ended = 0;
-        if (p->playing)
-            p->origin_ns = now_ns();
-    }
+    p->want_video = on ? 1 : 0;
     pthread_mutex_unlock(&p->mu);
 }
 
 void file_av_set_blit_max(FileAv *p, int max_height)
 {
+    file_av_set_blit_size(p, 0, max_height);
+}
+
+void file_av_set_blit_size(FileAv *p, int w, int h)
+{
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
-    p->blit_max = max_height;
+    p->blit_w = w > 0 ? w : 0;
+    p->blit_h = h > 0 ? h : 0;
     pthread_mutex_unlock(&p->mu);
 }
 

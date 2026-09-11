@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -616,6 +617,7 @@ private fun DesktopPlayerSurface(
             size = it
             if (it.width > 0 && it.height > 0) {
                 mseSurface.setBlitSize(it.width, it.height)
+                localSurface.setBlitSize(it.width, it.height)
             }
         },
     ) {
@@ -626,6 +628,7 @@ private fun DesktopPlayerSurface(
                     bitmap = localBitmap,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
+                    filterQuality = FilterQuality.High,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

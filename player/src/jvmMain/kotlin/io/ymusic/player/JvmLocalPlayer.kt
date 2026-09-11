@@ -101,6 +101,10 @@ internal class JvmLocalPlayer(
 
     @Volatile private var pendingVh: Int = 0
 
+    @Volatile private var viewW: Int = 0
+
+    @Volatile private var viewH: Int = 0
+
     val surface: LocalVideoSurface? get() = videoSurface
 
     private val playerThread = Thread({ playerLoop() }, "player").apply {
@@ -120,6 +124,11 @@ internal class JvmLocalPlayer(
             } else {
                 FileAvNative.setSink(handle, this)
             }
+        }
+        videoSurface?.onViewSize = { w, h ->
+            viewW = w
+            viewH = h
+            dispatch { applyBlit(appliedConfig) }
         }
     }
 
@@ -188,7 +197,7 @@ internal class JvmLocalPlayer(
             applyVolume(line, volume)
             FileAvNative.setAudioIndex(handle, -1)
             FileAvNative.setVideoEnabled(handle, !audioOnly)
-            FileAvNative.setBlitMax(handle, blitMaxFor(config))
+            applyBlit(config)
             FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
             if (FileAvNative.open(handle, path) != 0) {
                 val err = FileAvNative.lastError(handle).ifBlank { "open failed" }
@@ -320,7 +329,7 @@ internal class JvmLocalPlayer(
             dispatch {
                 if (handle == 0L) return@dispatch
                 FileAvNative.setVideoEnabled(handle, !audioOnly)
-                FileAvNative.setBlitMax(handle, blitMaxFor(config))
+                applyBlit(config)
             }
         }
         if (config.preferCaptionLanguage != prev.preferCaptionLanguage ||
@@ -364,6 +373,7 @@ internal class JvmLocalPlayer(
             } catch (_: InterruptedException) {
             }
         }
+        videoSurface?.onViewSize = null
         videoSurface?.setVisible(false)
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
@@ -467,9 +477,19 @@ internal class JvmLocalPlayer(
         loop = config.loop
     }
 
-    private fun blitMaxFor(config: PlaybackConfig): Int {
-        if (config.audioOnly) return 0
-        return VideoQualityState.heightForQuality(config.preferVideoQuality.first) ?: 0
+    private fun applyBlit(config: PlaybackConfig) {
+        if (handle == 0L) return
+        if (config.audioOnly) {
+            FileAvNative.setBlitSize(handle, 0, 0)
+            return
+        }
+        val qualityH = VideoQualityState.heightForQuality(config.preferVideoQuality.first)
+        val h = when {
+            qualityH != null && viewH > 0 -> minOf(qualityH, viewH)
+            qualityH != null -> qualityH
+            else -> viewH
+        }
+        FileAvNative.setBlitSize(handle, viewW, h)
     }
 
     /** Player thread. `open` rebuilds decoders from current want_video / audio_index. */

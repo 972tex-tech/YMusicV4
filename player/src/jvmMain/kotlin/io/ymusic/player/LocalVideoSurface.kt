@@ -22,6 +22,14 @@ class LocalVideoSurface {
     private val _visible = MutableStateFlow(false)
     val visible: StateFlow<Boolean> = _visible.asStateFlow()
 
+    /** Player thread: scale the decode blit to this Compose surface (px). */
+    @Volatile
+    internal var onViewSize: ((Int, Int) -> Unit)? = null
+
+    fun setBlitSize(width: Int, height: Int) {
+        if (width > 0 && height > 0) onViewSize?.invoke(width, height)
+    }
+
     internal fun publish(frame: BufferedImage) {
         _frame.value = frame
     }
