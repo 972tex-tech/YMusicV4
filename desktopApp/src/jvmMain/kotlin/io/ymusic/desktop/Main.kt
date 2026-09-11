@@ -617,7 +617,6 @@ private fun DesktopPlayerSurface(
             size = it
             if (it.width > 0 && it.height > 0) {
                 mseSurface.setBlitSize(it.width, it.height)
-                localSurface.setBlitSize(it.width, it.height)
             }
         },
     ) {
