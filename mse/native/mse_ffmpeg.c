@@ -1330,7 +1330,9 @@ static int mc_try_open(MseAv *a)
 }
 #endif
 
-/* sw_only: skip VideoToolbox-hosted `av1` (simulator / vt_fail). Never native `vp9`. */
+/* sw_only: skip VideoToolbox-hosted `av1` (simulator / vt_fail).
+   Prefer libvpx-vp9. Native `vp9` is software-only fallback when the pack
+   omitted libvpx (do not attach VT hwaccel: that path SIGILL). */
 static const AVCodec *find_video_codec(enum AVCodecID id, int sw_only)
 {
     const AVCodec *c;
@@ -1338,7 +1340,7 @@ static const AVCodec *find_video_codec(enum AVCodecID id, int sw_only)
         c = avcodec_find_decoder_by_name("libvpx-vp9");
         if (c)
             return c;
-        return NULL;
+        return avcodec_find_decoder_by_name("vp9");
     }
     if (id == AV_CODEC_ID_VP8) {
         c = avcodec_find_decoder_by_name("libvpx");

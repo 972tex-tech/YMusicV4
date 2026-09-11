@@ -162,7 +162,9 @@ static const AVCodec *find_vdec(enum AVCodecID id)
     const AVCodec *c;
     if (id == AV_CODEC_ID_VP9) {
         c = avcodec_find_decoder_by_name("libvpx-vp9");
-        return c;
+        if (c)
+            return c;
+        return avcodec_find_decoder_by_name("vp9");
     }
     if (id == AV_CODEC_ID_VP8)
         return avcodec_find_decoder_by_name("libvpx");
