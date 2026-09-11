@@ -113,7 +113,9 @@ static void set_err(FileAv *p, const char *msg)
 static void pq_clear(Pq *q)
 {
     int i;
-    for (i = 0; i < q->n; i++)
+    /* Popped slots (0..rd-1) were already av_packet_free'd. Freeing them
+       again is the seek SIGSEGV in av_freep. */
+    for (i = q->rd; i < q->n; i++)
         av_packet_free(&q->p[i]);
     free(q->p);
     q->p = NULL;
@@ -139,10 +141,11 @@ static AVPacket *pq_pop(Pq *q)
     AVPacket *pkt;
     if (q->rd >= q->n)
         return NULL;
-    pkt = q->p[q->rd++];
-    if (q->rd == q->n) {
+    pkt = q->p[q->rd];
+    q->p[q->rd] = NULL;
+    q->rd++;
+    if (q->rd == q->n)
         q->rd = q->n = 0;
-    }
     return pkt;
 }
 
@@ -191,6 +194,7 @@ static AVCodecContext *open_codec(AVStream *st, int video)
         return NULL;
     }
     ctx->pkt_timebase = st->time_base;
+    ctx->thread_count = 1;
     if (video)
         ctx->get_format = get_sw_format;
     if (avcodec_open2(ctx, c, NULL) < 0) {
