@@ -29,11 +29,6 @@
 -keep class * implements com.sun.jna.Callback { *; }
 -keepclassmembers class * extends com.sun.jna.Structure { *; }
 
-# vlcj: only its JNA-facing layer needs pinning — libvlc_* structures and the direct-mapped
-# binding surface live in binding.**; the high-level API above it is statically reachable and
-# free to shrink. (Callbacks/Structures are additionally covered by the JNA rules above.)
--keep class uk.co.caprica.vlcj.binding.** { *; }
-
 # sqlite-jdbc: the JDBC driver is found by name (META-INF/services/java.sql.Driver +
 # DriverManager), and the native library resolves a fixed set of classes AND methods by name AT
 # LIBRARY-LOAD TIME — across org.sqlite.core (NativeDB, DB$ProgressObserver.progress, …) and the

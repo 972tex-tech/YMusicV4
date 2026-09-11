@@ -30,12 +30,11 @@ sealed interface ComponentState {
 }
 
 /**
- * The first-run checklist as a value: ffmpeg the app fetches itself, VLC it can only point at, and
- * the music folder the user may choose once tags can be read.
+ * The first-run checklist as a value: ffmpeg the app fetches itself, and the music folder the user
+ * may choose once tags can be read.
  */
 data class SetupState(
     val mediaTools: ComponentState = ComponentState.Pending,
-    val vlc: ComponentState = ComponentState.Pending,
     val musicFolder: String? = null,
 ) {
     /**
@@ -56,7 +55,7 @@ data class SetupState(
 
 /**
  * Drives the first run: the ffmpeg download starts and reports into [state]; everything else is a
- * user action ([retryMediaTools], [recheckVlc], [chooseMusicFolder]).
+ * user action ([retryMediaTools], [chooseMusicFolder]).
  *
  * Each component is independent — one failing never stops another, and a retry re-runs only its own
  * step, which is why they are separate jobs rather than one sequence.
@@ -77,10 +76,9 @@ class SetupCoordinator(
 
     private var toolsJob: Job? = null
 
-    /** Kick the ffmpeg download off and probe for VLC. Safe to call once per window. */
+    /** Kick the ffmpeg download off. Safe to call once per window. */
     fun start() {
         retryMediaTools()
-        recheckVlc()
     }
 
     fun retryMediaTools() {
@@ -99,15 +97,6 @@ class SetupCoordinator(
                     }
                 }
             }
-        }
-    }
-
-    /** Re-probes libVLC — the user may have installed it in another window while this one waited. */
-    fun recheckVlc() {
-        scope.launch {
-            _state.update { it.copy(vlc = ComponentState.Working(null)) }
-            val present = VlcProbe.isPresent()
-            _state.update { it.copy(vlc = if (present) ComponentState.Ready else ComponentState.Absent) }
         }
     }
 

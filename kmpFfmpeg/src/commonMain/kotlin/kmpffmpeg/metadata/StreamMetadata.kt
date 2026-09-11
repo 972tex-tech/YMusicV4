@@ -30,6 +30,8 @@ sealed class StreamMetadata {
         val duration: Long?,
         val width: Int?,
         val height: Int?,
+        /** Frames per second when ffmpeg printed `N fps`; null for stills / attached pics. */
+        val fps: Double? = null,
         override val metadataMap: MetadataMap,
         override val disposition: Set<String>
     ) : StreamMetadata()

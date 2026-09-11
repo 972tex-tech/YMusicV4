@@ -23,7 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,14 +38,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
@@ -66,8 +63,8 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * The first-run screen: two steps, no way past the first until the app can actually do anything.
  *
- * Step one is a gate on ffmpeg the app downloads for itself; VLC and the music folder sit
- * below a line because they can genuinely wait. Step two asks the one question owed to the user
+ * Step one is a gate on ffmpeg the app downloads for itself; the music folder sits
+ * below a line because it can genuinely wait. Step two asks the one question owed to the user
  * before anything leaves their machine. See design/onboarding (published mockup) — the copy and the
  * row shapes here are that design.
  */
@@ -79,7 +76,6 @@ fun OnboardingScreen(
     stats: Boolean,
     onStatsChange: (Boolean) -> Unit,
     onRetryMediaTools: () -> Unit,
-    onRecheckVlc: () -> Unit,
     onChooseFolder: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onFinish: () -> Unit,
@@ -98,7 +94,7 @@ fun OnboardingScreen(
         if (step == 1) {
             SetupStep(
                 state, dark, onDarkChange, onRetryMediaTools,
-                onRecheckVlc, onChooseFolder, onOpenUrl,
+                onChooseFolder, onOpenUrl,
             ) { step = 2 }
         } else {
             ConsentStep(crashReports, onCrashReportsChange, stats, onStatsChange, dark, onDarkChange, onOpenUrl, onFinish)
@@ -112,7 +108,6 @@ private fun SetupStep(
     dark: Boolean,
     onDarkChange: (Boolean) -> Unit,
     onRetryMediaTools: () -> Unit,
-    onRecheckVlc: () -> Unit,
     onChooseFolder: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onNext: () -> Unit,
@@ -143,7 +138,6 @@ private fun SetupStep(
                 fontWeight = FontWeight.Bold,
             )
 
-            VlcRow(state.vlc, onRecheckVlc, onOpenUrl)
             MusicFolderRow(state, onChooseFolder)
         }
         Footer(
@@ -317,65 +311,6 @@ private fun stateSuffix(state: ComponentState): String = when {
 }
 
 private fun megabytes(bytes: Long): String = "${bytes / 1024 / 1024} MB"
-
-@Composable
-private fun VlcRow(state: ComponentState, onRecheck: () -> Unit, onOpenUrl: (String) -> Unit) {
-    val hint = remember { VlcProbe.installHint() }
-    val clipboard = LocalClipboardManager.current
-    Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-        // The cone stands in for the mark while VLC is missing; once it is found the row falls back
-        // to the same tick every other satisfied row uses.
-        StatusGlyph(state)
-        Column(Modifier.weight(1f)) {
-            // The title and its reason share a band with the cone and the row's action, all centred
-            // across the pair of lines. Only the gap before the button flexes: giving the text a
-            // weight as well made the two split the row evenly and wrapped the sentence in half.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    RowName("Local file playback")
-                    if (state is ComponentState.Ready) {
-                        RowMeta("VLC is installed")
-                    } else {
-                        RowMeta("Needs VLC — we can't install it for you")
-                    }
-                }
-                // The cone stays whichever way the check went — it says which product this row is
-                // about, not how it turned out; the tick in the glyph column reports that. Where it
-                // sits does change: with nothing else in the band it takes the trailing edge, the
-                // same place Recheck holds while VLC is still missing.
-                if (state is ComponentState.Ready) {
-                    Spacer(Modifier.weight(1f))
-                    // Centred on the ring's column, so the trailing edge reads as one line down the
-                    // screen rather than each row placing its own thing wherever it happens to end.
-                    Box(Modifier.width(SetupTheme.RingSize), contentAlignment = Alignment.Center) {
-                        VlcIcon(size = SetupTheme.BrandMarkSize)
-                    }
-                } else {
-                    Spacer(Modifier.width(DesignSpacing.Space16))
-                    VlcIcon(size = SetupTheme.BrandMarkSize)
-                    Spacer(Modifier.weight(1f))
-                    LinkButton("Recheck", onClick = onRecheck)
-                }
-            }
-            if (state !is ComponentState.Ready) {
-                Spacer(Modifier.height(SetupTheme.RowInnerGap))
-                if (hint.preferSite) {
-                    // Windows: almost nobody has used winget, so the download page leads and the
-                    // command is the alternative underneath.
-                    LinkButton("Download from videolan.org", strong = true) { onOpenUrl(hint.site) }
-                    Spacer(Modifier.height(SetupTheme.RowInnerGap))
-                    RowMeta("or, with the Windows Package Manager:")
-                    Spacer(Modifier.height(DesignSpacing.Space4))
-                    hint.command?.let { CommandChip(it) { clipboard.setText(AnnotatedString(it)) } }
-                } else {
-                    hint.command?.let { CommandChip(it) { clipboard.setText(AnnotatedString(it)) } }
-                    Spacer(Modifier.height(DesignSpacing.Space4))
-                    LinkText("or download from videolan.org") { onOpenUrl(hint.site) }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun MusicFolderRow(state: SetupState, onChoose: () -> Unit) {
@@ -588,36 +523,6 @@ private fun RowMeta(text: String) =
     Text(text, color = SetupTheme.inkSecondary, fontSize = 12.sp)
 
 @Composable
-private fun CommandChip(command: String, onCopy: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-        SelectionContainer {
-            Text(
-                command,
-                color = DesignColors.InkMuted,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(SetupTheme.raised)
-                    .border(1.dp, DesignColors.Divider, RoundedCornerShape(5.dp))
-                    .padding(horizontal = DesignSpacing.Space8, vertical = 3.dp),
-            )
-        }
-        LinkButton("Copy", tiny = true, onClick = onCopy)
-    }
-}
-
-@Composable
-private fun LinkText(label: String, onClick: () -> Unit) =
-    Text(
-        label,
-        color = SetupTheme.accent,
-        fontSize = 12.sp,
-        textDecoration = TextDecoration.Underline,
-        modifier = Modifier.clickableRow(onClick),
-    )
-
-@Composable
 private fun LinkButton(
     label: String,
     strong: Boolean = false,
@@ -714,10 +619,6 @@ private object SetupTheme {
      */
     val inkSecondary: Color @Composable get() = DesignColors.InkSoft
 
-    /** A chip or pill lifted off [ground] — the command box. */
-    val raised: Color @Composable get() =
-        if (DesignColors.isDark) DesignColors.SurfaceElevated else DesignColors.Surface
-
     /**
      * The brand green: the step label, links, and the primary button's fill.
      *
@@ -752,10 +653,6 @@ private object SetupTheme {
      * the letters themselves — the eye aligns to the text's cap-height centre, not the box's.
      */
     val GlyphOpticalDrop = 1.dp
-
-    /** A third-party product mark shown beside a row's text. Deliberately larger than any glyph on
-     *  the screen: it is the only thing here doing brand recognition rather than status. */
-    val BrandMarkSize = 24.dp
 
     /** Between the header block and the first row. Wider than the gap between rows, so the header
      *  reads as a heading over a list rather than as the list's first entry. */

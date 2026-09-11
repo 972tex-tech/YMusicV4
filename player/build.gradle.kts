@@ -54,7 +54,7 @@ kotlin {
          * play a SINGLE local file (load / play / pause / seek / stop). No queue, no gapless.
          * ├── appleMain   → AVPlayer          (iOS + macOS)   [reference]
          * ├── androidMain → Media3 ExoPlayer                  [reference]
-         * └── jvmMain     → VLCJ (libVLC)                     [best effort; needs libVLC at runtime]
+         * └── jvmMain     → ffmpeg CLI + Java Sound            [needs the provisioned ffmpeg binary]
          */
         val commonMain by getting {
             dependencies {
@@ -88,9 +88,9 @@ kotlin {
         }
 
         jvmMain.dependencies {
-            implementation(Libs.Vlcj.core)
-            // Provides Dispatchers.Main on JVM desktop (Swing EDT) — MSE blit and VLCJ callbacks
-            // marshal to the UI thread. Android/iOS supply Main natively.
+            implementation(project(":kmpFfmpeg"))
+            // Provides Dispatchers.Main on JVM desktop (Swing EDT) — MSE blit marshals to the UI
+            // thread. Android/iOS supply Main natively.
             implementation(Libs.Kotlinx.coroutinesSwing)
         }
 

@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.awt.image.BufferedImage
 
 /**
- * Compose-facing frame/visibility endpoint for the JVM local (VLCJ) player, rendered **off-screen**.
- * No AWT component is hosted, so libVLC's picture reaches the UI as a plain Compose `Image`
+ * Compose-facing frame/visibility endpoint for the JVM local (ffmpeg) player, rendered **off-screen**.
+ * No AWT component is hosted, so decoded frames reach the UI as a plain Compose `Image`
  * (`toComposeImageBitmap`) instead of a `SwingPanel`. That removes the AWT interop hole — Compose
  * popups/menus drawn over the video receive mouse input again.
  *

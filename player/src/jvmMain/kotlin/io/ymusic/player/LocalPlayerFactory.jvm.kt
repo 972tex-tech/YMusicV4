@@ -1,22 +1,21 @@
 package io.ymusic.player
 
-/**
- * [videoSurface] is the off-screen frame endpoint the shell renders as a Compose `Image`: the VLCJ
- * engine copies each decoded frame into it and owns its visibility. When omitted, the factory creates
- * one anyway so the picture is always reachable via [LocalPlayer.localVideoSurface] (the playground
- * drives its own surface that way).
- */
-actual class LocalPlayerContext(val videoSurface: LocalVideoSurface? = null)
-
-actual fun createLocalPlayer(context: LocalPlayerContext): LocalPlayer =
-    JvmLocalPlayer(context.videoSurface ?: LocalVideoSurface())
+import kmpcommon.error.TechnicalException
+import java.io.File
 
 /**
- * Whether libVLC can be found on this machine — the same search [createLocalPlayer] performs, so a
- * positive answer means a local file really will play rather than throwing `E60020`.
- *
- * Exposed here so the shell can *ask* without constructing a player: vlcj is this module's
- * dependency, and a first-run check has no business linking it a second time.
+ * [videoSurface] is the off-screen frame endpoint the shell renders as a Compose `Image`: ffmpeg
+ * decodes each frame into it and the engine owns its visibility. [ffmpegPath] is the provisioned
+ * `ffmpeg` binary. When omitted, the factory creates a surface so the picture is always reachable
+ * via [LocalPlayer.localVideoSurface].
  */
-fun isLibVlcAvailable(): Boolean =
-    runCatching { uk.co.caprica.vlcj.factory.discovery.NativeDiscovery().discover() }.getOrDefault(false)
+actual class LocalPlayerContext(
+    val videoSurface: LocalVideoSurface? = null,
+    val ffmpegPath: String? = null,
+)
+
+actual fun createLocalPlayer(context: LocalPlayerContext): LocalPlayer {
+    val ffmpeg = context.ffmpegPath?.takeIf { File(it).canExecute() }
+        ?: throw TechnicalException("E60020", "ffmpeg not found — install it or complete first-run setup")
+    return JvmLocalPlayer(context.videoSurface ?: LocalVideoSurface(), ffmpeg)
+}

@@ -7,7 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
@@ -17,7 +16,6 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.PathParser
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
@@ -25,12 +23,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * The two third-party marks the first run names: VLC and GitHub.
- *
- * Both are drawn from the SVG path data of the design mockup rather than redrawn by hand, so the
- * shapes are the ones that were approved. They are tinted with `currentColor` in the design and
- * take a [color] here for the same reason — the VLC cone has to read as a warning next to a red
- * failure and as nothing much once VLC is found.
+ * Third-party marks the first run names (GitHub). Drawn from the SVG path data of the design
+ * mockup rather than redrawn by hand, tinted with `currentColor` in the design.
  */
 private object IconPaths {
     /** 24×24, drawn as a stroke: the two segments of a tick, centred in the viewport. */
@@ -61,43 +55,6 @@ private fun DrawScope.drawIconPath(pathData: String, color: Color, alpha: Float 
         drawPath(PathParser().parsePathString(pathData).toPath(), color, alpha = alpha, style = Fill)
     }
 }
-
-/**
- * The cone that stands in for VLC, in VideoLAN's orange with white stripes.
- *
- * Bootstrap Icons' `cone-striped` rather than a shape of my own: my drawn version read as a generic
- * lump at this size, and this is a real icon set's cone. It is NOT VideoLAN's mark — their logo is
- * their trademark and not ours to ship — but a striped orange cone is recognisable enough beside a
- * row that says "VLC" in words.
- *
- * The icon draws the cone as three separate pieces, so its stripes are GAPS — on a dark window they
- * showed the background through and the cone read as orange fragments floating in a line. A white
- * silhouette goes down first and the orange pieces sit on top of it, which is what makes the gaps
- * stripes. It runs the full height of the cone; anything that overshoots at the bottom is covered by
- * the base bar, which is wider than the cone there.
- */
-@Composable
-fun VlcIcon(size: Dp = VLC_SIZE) {
-    val cone = rememberVectorPainter(BootstrapConeStriped)
-    Canvas(Modifier.size(size)) {
-        val factor = this.size.minDimension / CONE_VIEWPORT
-        scale(factor, factor, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-            drawPath(PathParser().parsePathString(CONE_SILHOUETTE).toPath(), VlcStripe, style = Fill)
-        }
-        with(cone) { draw(this@Canvas.size, colorFilter = ColorFilter.tint(VlcOrange)) }
-    }
-}
-
-/** The cone's outline in Bootstrap's 16-unit viewport: the taper is linear at a quarter unit of
- *  half-width per unit of height, measured off the icon's own edges. */
-private const val CONE_SILHOUETTE = "M7.03 0.88L8.97 0.88L12.0 13.0L4.0 13.0Z"
-private const val CONE_VIEWPORT = 16f
-
-/** The bands between the cone's orange pieces. */
-private val VlcStripe = Color.White
-
-/** VideoLAN's cone orange. */
-val VlcOrange = Color(0xFFE85E00)
 
 @Composable
 fun GitHubIcon(color: Color, size: Dp = ICON_SIZE) {
@@ -214,9 +171,6 @@ fun StarIcon(color: Color, size: Dp = BUTTON_ICON_SIZE) {
 }
 
 private const val ICON_VIEWPORT = 24f
-
-/** The drawn height of the cone itself. */
-private val VLC_SIZE = 24.dp
 
 /** Sized to sit in the rows' glyph column beside 13sp text glyphs. */
 private val ICON_SIZE = 15.dp

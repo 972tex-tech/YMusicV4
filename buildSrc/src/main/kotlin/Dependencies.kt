@@ -24,7 +24,6 @@ object Versions {
 
     // :player local-file backends (per platform; Apple uses AVFoundation cinterop, no dep)
     const val media3 = "1.11.0"   // Android ExoPlayer
-    const val vlcj = "4.8.3"     // JVM desktop libVLC binding
     const val jna = "5.17.0"     // JVM desktop native interop (macOS Now Playing bridge)
 
     // AndroidX
@@ -126,10 +125,6 @@ object Libs {
         const val common = "androidx.media3:media3-common:${Versions.media3}"
         const val ui = "androidx.media3:media3-ui:${Versions.media3}"
         const val session = "androidx.media3:media3-session:${Versions.media3}"
-    }
-
-    object Vlcj {
-        const val core = "uk.co.caprica:vlcj:${Versions.vlcj}"
     }
 
     object Jna {

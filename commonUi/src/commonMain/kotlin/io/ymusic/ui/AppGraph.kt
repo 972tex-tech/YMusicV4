@@ -26,7 +26,7 @@ typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
  * running engine manager, the player facade, and the platform video surface. [playerSurface] hosts
  * the **one** shared video container the shell handed to the engines (a Swing panel on desktop, a
- * `FrameLayout` on Android) — each engine attaches its own surface (WebView / SurfaceView / VLCJ)
+ * `FrameLayout` on Android) — each engine attaches its own surface (WebView / SurfaceView / ffmpeg)
  * into it and owns that surface's visibility, so the UI never needs to know which engine is active.
  *
  * [mediaStore] backs the Library screen; a shell without one (no local library yet) leaves it null.
@@ -70,7 +70,7 @@ class AppGraph(
     /** App settings (UI language, theme, …); the in-memory default works but doesn't persist. */
     val settings: SettingsStore = InMemorySettingsStore(),
     /**
-     * True when [playerSurface] may be shown at any size (desktop MSE blit / VLCJ frames scale) —
+     * True when [playerSurface] may be shown at any size (desktop MSE blit / ffmpeg frames scale) —
      * the mini player then hosts it as its 36dp art tile. False for a windowed WebView (iOS): the
      * page sizes its streams to the real viewport, so a thumbnail-sized surface kills playback and
      * the UI must keep a real-size docked preview instead.

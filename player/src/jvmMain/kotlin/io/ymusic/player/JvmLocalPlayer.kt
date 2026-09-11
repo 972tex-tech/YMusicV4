@@ -1,8 +1,18 @@
 package io.ymusic.player
 
-import kmpcommon.error.TechnicalException
+import kmpcommon.uri.Uri
+import kmpcommon.uri.UriBuilder
+import kmpffmpeg.KmpProcess
+import kmpffmpeg.KmpProcessBuilder
+import kmpffmpeg.metadata.FfmpegInfoParseException
+import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kmpffmpeg.metadata.MediaFileMetadata
+import kmpffmpeg.metadata.StreamMetadata
+import kmpffmpeg.metadata.isAttachedThumbnail
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -12,63 +22,36 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import uk.co.caprica.vlcj.player.base.MediaPlayer
-import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
-import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
-import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormat
-import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCallback
-import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
-import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
+import okio.EOFException
+import okio.buffer
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicInteger
+import javax.sound.sampled.AudioFormat
+import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.FloatControl
+import javax.sound.sampled.SourceDataLine
+import kotlin.math.log10
+import kotlin.math.roundToLong
 
 /**
- * libVLC backend via VLCJ, for JVM desktop. Per the `LocalPlayer` contract the caller drives it on
- * the main (UI) thread; libVLC/VLCJ is itself thread-safe, so the position ticker runs on a
- * background dispatcher. Requires libVLC to be discoverable at runtime (a VLC install or bundled
- * libVLC) — [createLocalPlayer] throws a `E60020` [TechnicalException] when it is not. `setSpeed`
- * shifts pitch here (libVLC has no pitch-preserving tempo without a filter) — see the module docs.
+ * JVM desktop local player: the provisioned `ffmpeg` binary decodes, Java Sound plays PCM, and
+ * video frames land on [LocalVideoSurface] as BGRA→RGB images (same Compose `Image` path as before).
  *
- * Video renders **off-screen**: a `CallbackMediaPlayerComponent` decodes into a native buffer that
- * our [RenderCallback] copies into a [BufferedImage] published on a [LocalVideoSurface]. No AWT
- * component is hosted, so the shell paints the picture as a plain Compose `Image` and popups over
- * the video receive mouse input — unlike a `SwingPanel`, whose interop region swallows the clicks.
- * The engine owns the surface's visibility: shown whenever this is the active engine (including
- * audio-only, which disables the video track and shows a black box) and hidden when idle/stopped so
- * a co-hosted engine (MSE) shows through. libVLC renders selected captions into the decoded picture.
+ * Pause stops consuming the pipes so ffmpeg blocks on a full OS buffer; seek/speed/track changes
+ * restart the child at the new position. `setSpeed` shifts pitch (`asetrate`), matching the old
+ * libVLC rate behaviour. Captions are burned in with ffmpeg's `subtitles` filter when visible.
  */
-internal class JvmLocalPlayer(private val videoSurface: LocalVideoSurface? = null) : LocalPlayer {
-    /** Copies each RV32 frame into a fresh RGB image and publishes it. */
-    private val renderCallback = RenderCallback { _, buffers, format ->
-        val surface = videoSurface ?: return@RenderCallback
-        val w = format.width
-        val h = format.height
-        if (w <= 0 || h <= 0) return@RenderCallback
-        val image = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-        val pixels = (image.raster.dataBuffer as DataBufferInt).data
-        // RV32 is little-endian BGRA; read as ints it lands as 0xAARRGGBB, matching TYPE_INT_RGB.
-        buffers[0].order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(pixels, 0, minOf(pixels.size, w * h))
-        surface.publish(image)
-    }
-
-    private val bufferFormatCallback = object : BufferFormatCallback {
-        override fun getBufferFormat(sourceWidth: Int, sourceHeight: Int): BufferFormat =
-            RV32BufferFormat(sourceWidth, sourceHeight)
-
-        override fun allocatedBuffers(buffers: Array<ByteBuffer>) = Unit
-    }
-
-    private val component: CallbackMediaPlayerComponent = try {
-        // imagePainter/videoSurfaceComponent = null: we never host or paint the AWT component; the
-        // render callback is the only sink. lockedBuffers = true so the buffer is stable while copied.
-        CallbackMediaPlayerComponent(null, null, null, true, null, renderCallback, bufferFormatCallback, null)
-    } catch (t: Throwable) {
-        throw TechnicalException("E60020", "libVLC not found — install VLC or bundle libVLC", cause = t)
-    }
-    private val vlc: MediaPlayer get() = component.mediaPlayer()
+internal class JvmLocalPlayer(
+    private val videoSurface: LocalVideoSurface?,
+    private val ffmpegPath: String,
+) : LocalPlayer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val getter = FfmpegMetadataGetter(ffmpegPath)
+    private val gen = AtomicInteger(0)
 
     private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -85,100 +68,121 @@ internal class JvmLocalPlayer(private val videoSurface: LocalVideoSurface? = nul
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
 
-    @Volatile private var desiredSpeed: Float = 1f
-
-    @Volatile private var audioOnly = false
-
     @Volatile private var released = false
 
-    /** The last-applied config; [setConfig] diffs against it so only changed fields touch libVLC. */
     @Volatile private var appliedConfig = PlaybackConfig()
 
-    @Volatile private var preferVideoQuality = VideoQualityState.AUTO
+    @Volatile private var playing = false
 
-    @Volatile private var lastSpuId = -1
+    @Volatile private var audioOnly = true
 
-    /** The off-screen frame/visibility endpoint the shell renders as a Compose `Image` (a no-op without one). */
+    @Volatile private var preferVideoQuality = VideoQualityState.AUDIO_ONLY
+
+    @Volatile private var selectedAudioIndex: Int? = null
+
+    @Volatile private var lastCaptionIndex: Int? = null
+
+    @Volatile private var pcmBytes: Long = 0
+
+    @Volatile private var originMs: Long = 0
+
+    @Volatile private var durationMs: Long = Progress.DURATION_UNKNOWN
+
+    @Volatile private var speed: Float = 1f
+
+    @Volatile private var volume: Float = 1f
+
+    @Volatile private var loop = false
+
+    @Volatile private var line: SourceDataLine? = null
+
+    @Volatile private var audioProc: KmpProcess? = null
+
+    @Volatile private var videoProc: KmpProcess? = null
+
+    @Volatile private var loadedUri: Uri? = null
+
+    @Volatile private var loadedMeta: MediaFileMetadata? = null
+    private var loadJob: Job? = null
+
     val surface: LocalVideoSurface? get() = videoSurface
 
-    /** Mark this engine's surface shown/hidden so the shell knows which co-hosted picture to display. */
     private fun showSurface(visible: Boolean) {
         videoSurface?.setVisible(visible)
     }
 
-    init {
-        vlc.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
-            override fun playing(mp: MediaPlayer) {
-                // Re-assert per-load settings once libVLC is actually playing (idempotent).
-                vlc.controls().setRate(desiredSpeed)
-                applyAudioOnly()
-                _status.update { it.copy(state = PlaybackState.Prepared(true, buffering = false, ended = false)) }
-            }
-
-            override fun paused(mp: MediaPlayer) =
-                _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = false)) }
-
-            override fun finished(mp: MediaPlayer) =
-                _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
-
-            override fun error(mp: MediaPlayer) =
-                _status.update {
-                    it.copy(
-                        state = PlaybackState.Error(PlayerError("E60021", "libVLC playback error")),
-                    )
-                }
-
-            override fun lengthChanged(mp: MediaPlayer, newLength: Long) =
-                _progress.update { it.copy(durationMs = if (newLength > 0L) newLength else Progress.DURATION_UNKNOWN) }
-        })
-        scope.launch { tick() }
-    }
-
-    override fun load(source: PlayableItem.LocalMedia, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
+    override fun load(
+        source: PlayableItem.LocalMedia,
+        startPositionMs: Long,
+        playWhenReady: Boolean,
+        config: PlaybackConfig,
+    ) {
         if (released) return
-        val uri = source.uri
-        // The `playing` event re-asserts rate + audio-only; set them (and volume) now so they hold.
         appliedConfig = config
-        desiredSpeed = config.speed.coerceAtLeast(0.01f)
+        speed = config.speed.coerceAtLeast(0.01f)
+        volume = config.volume.coerceIn(0f, 1f)
         audioOnly = config.audioOnly
         preferVideoQuality = config.preferVideoQuality.first
-        vlc.audio().setVolume((config.volume.coerceIn(0f, 1f) * 100f).toInt())
+        loop = config.loop
+        selectedAudioIndex = null
+        playing = playWhenReady
+        originMs = startPositionMs.coerceAtLeast(0L)
+        pcmBytes = 0
         _status.update {
             it.copy(
-                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false), videoSize = null,
-                volume = config.volume, speed = config.speed,
+                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
+                videoSize = null,
+                volume = volume,
+                speed = speed,
             )
         }
-        _progress.value = Progress(positionMs = startPositionMs)
-        // Non-blocking: play() returns immediately; the `playing`/`error` events drive the status. The
-        // start position is a media option so it applies before the first frame (no post-play seek).
-        val options = if (startPositionMs > 0L) arrayOf(":start-time=${startPositionMs / 1000.0}") else emptyArray()
-        vlc.media().play(uri, *options)
-        if (!playWhenReady) vlc.controls().setPause(true)
+        _progress.value = Progress(positionMs = originMs)
         showSurface(true)
+        val uri = parseLocalUri(source.uri)
+        startSession(uri, originMs, playWhenReady, probe = true)
     }
 
     override fun play() {
         if (released) return
-        vlc.controls().setPause(false)
-        vlc.controls().setRate(desiredSpeed)
+        playing = true
+        line?.takeIf { !it.isRunning }?.start()
+        _status.update {
+            val s = it.state
+            it.copy(
+                state = if (s is PlaybackState.Prepared) {
+                    s.copy(playWhenReady = true, ended = false)
+                } else {
+                    PlaybackState.Prepared(true, buffering = false, ended = false)
+                },
+            )
+        }
     }
 
     override fun pause() {
         if (released) return
-        vlc.controls().setPause(true)
+        playing = false
+        line?.takeIf { it.isRunning }?.stop()
+        _status.update {
+            val s = it.state as? PlaybackState.Prepared ?: return
+            it.copy(state = s.copy(playWhenReady = false))
+        }
     }
 
     override fun seekTo(positionMs: Long) {
         if (released) return
-        val clamped = positionMs.coerceAtLeast(0L)
-        vlc.controls().setTime(clamped)
-        _progress.update { it.copy(positionMs = clamped) }
+        val uri = loadedUri ?: return
+        originMs = positionMs.coerceAtLeast(0L)
+        pcmBytes = 0
+        _progress.update { it.copy(positionMs = originMs) }
+        startSession(uri, originMs, playing, probe = false)
     }
 
     override fun stop() {
         if (released) return
-        vlc.controls().stop()
+        playing = false
+        tearDown(gen.incrementAndGet())
+        loadedUri = null
+        loadedMeta = null
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
         showSurface(false)
@@ -188,134 +192,430 @@ internal class JvmLocalPlayer(private val videoSurface: LocalVideoSurface? = nul
         if (released) return
         val prev = appliedConfig
         appliedConfig = config
-
+        loop = config.loop
         if (config.volume != prev.volume) {
-            val v = config.volume.coerceIn(0f, 1f)
-            vlc.audio().setVolume((v * 100f).toInt())
-            _status.update { it.copy(volume = v) }
-        }
-        if (config.speed != prev.speed) {
-            desiredSpeed = config.speed.coerceAtLeast(0.01f)
-            vlc.controls().setRate(desiredSpeed)
-            _status.update { it.copy(speed = desiredSpeed) }
+            volume = config.volume.coerceIn(0f, 1f)
+            applyVolume(line, volume)
+            _status.update { it.copy(volume = volume) }
         }
         val quality = config.preferVideoQuality.first
-        if (quality != prev.preferVideoQuality.first) {
-            // libVLC has no per-resolution track selection for local files; audio-only is the honored axis.
+        val speedChanged = config.speed != prev.speed
+        val videoChanged = quality != prev.preferVideoQuality.first
+        val captionChanged = config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
+            config.captionVisible != prev.captionVisible
+        if (speedChanged) {
+            speed = config.speed.coerceAtLeast(0.01f)
+            _status.update { it.copy(speed = speed) }
+        }
+        if (videoChanged) {
             preferVideoQuality = quality
             audioOnly = config.audioOnly
-            applyAudioOnly()
+            if (audioOnly) videoSurface?.clearFrame()
             _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
-            _videoQuality.update {
-                it.copy(
-                    preferredQuality = quality,
-                    actualQuality = when {
-                        audioOnly -> VideoQualityState.AUDIO_ONLY
-                        it.actualQuality == VideoQualityState.AUDIO_ONLY -> VideoQualityState.AUTO
-                        else -> it.actualQuality
-                    },
-                )
-            }
+            publishVideoQuality(loadedMeta)
             if (_status.value.state is PlaybackState.Prepared) showSurface(true)
         }
-        if (config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
-            config.captionVisible != prev.captionVisible
-        ) {
-            applyCaption(config)
+        if (captionChanged) publishCaptions(loadedMeta, config)
+        if ((speedChanged || videoChanged || captionChanged) && loadedUri != null) {
+            startSession(loadedUri!!, mediaPositionMs(), playing, probe = false)
         }
-    }
-
-    /** Map [PlaybackConfig] caption fields onto libVLC's SPU track (`-1` = off). */
-    private fun applyCaption(config: PlaybackConfig) {
-        val lang = config.preferCaptionLanguage.first
-        val id = if (lang == PlaybackConfig.UNDETERMINED_LANGUAGE) -1 else lang.toIntOrNull() ?: -1
-        if (id != -1) lastSpuId = id
-        vlc.subpictures().setTrack(if (config.captionVisible) (if (id != -1) id else lastSpuId) else -1)
-        _captions.update { it.copy(selectedLanguage = id.takeIf { it != -1 }?.toString()) }
     }
 
     override fun selectAudioTrack(id: String) {
         if (released) return
-        val trackId = id.toIntOrNull() ?: return
-        vlc.audio().setTrack(trackId)
+        val index = id.toIntOrNull() ?: return
+        selectedAudioIndex = index
         _audioTracks.update { it.copy(selectedId = id) }
+        val uri = loadedUri ?: return
+        startSession(uri, mediaPositionMs(), playing, probe = false)
     }
 
-    /** Rebuild the capability states from libVLC's current track descriptions (called from the ticker). */
-    private fun populateTracks() {
-        val dim = vlc.video().videoDimension()
-        _videoQuality.value = if (dim == null || dim.height <= 0) {
+    override fun release() {
+        if (released) return
+        released = true
+        playing = false
+        tearDown(gen.incrementAndGet())
+        scope.cancel()
+        videoSurface?.setVisible(false)
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
+    }
+
+    private fun startSession(uri: Uri, startMs: Long, playWhenReady: Boolean, probe: Boolean) {
+        val session = gen.incrementAndGet()
+        tearDown(session)
+        loadJob?.cancel()
+        originMs = startMs.coerceAtLeast(0L)
+        pcmBytes = 0
+        loadJob = scope.launch {
+            try {
+                val meta = if (probe || loadedMeta == null || loadedUri != uri) {
+                    getter.getMetadata(uri)
+                } else {
+                    loadedMeta!!
+                }
+                if (session != gen.get()) return@launch
+                loadedUri = uri
+                loadedMeta = meta
+                durationMs = meta.container.duration ?: Progress.DURATION_UNKNOWN
+                publishTracks(meta, appliedConfig)
+                _progress.update {
+                    it.copy(positionMs = originMs, durationMs = durationMs, bufferedPositionMs = durationMs)
+                }
+                val spec = uri.toFileSpec()
+                val audio = pickAudio(meta)
+                val video = pickVideo(meta)
+                val caption = pickCaption(meta, appliedConfig)
+                if (audio == null && video == null) {
+                    fail("E60021", "no audio or video stream")
+                    return@launch
+                }
+                if (audio != null) {
+                    val proc = startFfmpeg(audioArgs(spec, audio.index, originMs, speed))
+                    if (session != gen.get()) {
+                        proc.close()
+                        return@launch
+                    }
+                    audioProc = proc
+                    launch { pumpAudio(session, proc, playWhenReady) }
+                }
+                if (video != null) {
+                    val proc = startFfmpeg(
+                        videoArgs(spec, video, originMs, caption, appliedConfig.captionVisible),
+                    )
+                    if (session != gen.get()) {
+                        proc.close()
+                        return@launch
+                    }
+                    videoProc = proc
+                    val size = VideoSize(video.width ?: 0, video.height ?: 0)
+                    if (size.width > 0 && size.height > 0) {
+                        _status.update { it.copy(videoSize = size) }
+                    }
+                    launch { pumpVideo(session, proc, video) }
+                }
+                _status.update {
+                    it.copy(
+                        state = PlaybackState.Prepared(playWhenReady, buffering = false, ended = false),
+                    )
+                }
+            } catch (c: CancellationException) {
+                throw c
+            } catch (t: Throwable) {
+                if (session != gen.get()) return@launch
+                val msg = (t as? FfmpegInfoParseException)?.stderrTail ?: t.message
+                fail("E60021", msg ?: "ffmpeg playback error")
+            }
+        }
+    }
+
+    private suspend fun pumpAudio(session: Int, proc: KmpProcess, startPlaying: Boolean) {
+        val format = AudioFormat(SAMPLE_RATE, 16, CHANNELS, true, false)
+        val out = try {
+            AudioSystem.getSourceDataLine(format).also {
+                it.open(format, LINE_BUFFER)
+                applyVolume(it, volume)
+                if (startPlaying) it.start()
+            }
+        } catch (t: Throwable) {
+            if (session == gen.get()) fail("E60021", t.message ?: "audio output failed")
+            return
+        }
+        line = out
+        val pcm = ByteArray(PCM_CHUNK)
+        val src = proc.stdout.buffer()
+        try {
+            while (scope.isActive && session == gen.get()) {
+                if (!playing) {
+                    delay(20)
+                    continue
+                }
+                if (!out.isRunning) out.start()
+                val n = try {
+                    src.read(pcm)
+                } catch (_: IOException) {
+                    break
+                }
+                if (n < 0) {
+                    onEnded(session)
+                    return
+                }
+                if (n == 0) continue
+                var off = 0
+                while (off < n && session == gen.get()) {
+                    val w = out.write(pcm, off, n - off)
+                    if (w <= 0) break
+                    off += w
+                }
+                pcmBytes += n.toLong()
+                if (session == gen.get()) {
+                    _progress.update {
+                        it.copy(positionMs = mediaPositionMs(), durationMs = durationMs)
+                    }
+                }
+            }
+        } finally {
+            runCatching { src.close() }
+            if (line === out) line = null
+            runCatching { out.stop() }
+            runCatching { out.close() }
+        }
+    }
+
+    private suspend fun pumpVideo(session: Int, proc: KmpProcess, video: StreamMetadata.Video) {
+        val w = video.width ?: return
+        val h = video.height ?: return
+        if (w <= 0 || h <= 0) return
+        val frameBytes = w * h * 4
+        val fps = video.fps?.takeIf { it > 0.0 } ?: 25.0
+        val frame = ByteArray(frameBytes)
+        val src = proc.stdout.buffer()
+        var index = 0L
+        try {
+            while (scope.isActive && session == gen.get()) {
+                if (!playing || audioOnly) {
+                    delay(20)
+                    continue
+                }
+                try {
+                    src.readFully(frame)
+                } catch (_: EOFException) {
+                    return
+                } catch (_: IOException) {
+                    return
+                }
+                val mediaMs = originMs + (index * 1000.0 / fps).roundToLong()
+                index++
+                while (scope.isActive && session == gen.get() && playing && !audioOnly) {
+                    val ahead = mediaMs - mediaPositionMs()
+                    if (ahead <= 25) break
+                    delay(ahead.coerceAtMost(40))
+                }
+                if (mediaMs + 80 < mediaPositionMs()) continue // late: drop
+                if (session != gen.get() || audioOnly) continue
+                val image = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+                val pixels = (image.raster.dataBuffer as DataBufferInt).data
+                ByteBuffer.wrap(frame).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
+                    .get(pixels, 0, minOf(pixels.size, w * h))
+                videoSurface?.publish(image)
+            }
+        } finally {
+            runCatching { src.close() }
+        }
+    }
+
+    private fun onEnded(session: Int) {
+        if (session != gen.get()) return
+        if (loop && loadedUri != null) {
+            originMs = 0
+            pcmBytes = 0
+            startSession(loadedUri!!, 0, playWhenReady = true, probe = false)
+            return
+        }
+        playing = false
+        line?.takeIf { it.isRunning }?.stop()
+        _progress.update {
+            it.copy(positionMs = if (durationMs > 0) durationMs else mediaPositionMs())
+        }
+        _status.update {
+            it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true))
+        }
+    }
+
+    private fun fail(code: String, message: String) {
+        playing = false
+        tearDown(gen.incrementAndGet())
+        _status.update {
+            it.copy(state = PlaybackState.Error(PlayerError(code, message)))
+        }
+    }
+
+    private fun tearDown(keepGen: Int) {
+        // keepGen is the session that should survive; close anything older by dropping refs.
+        val a = audioProc
+        val v = videoProc
+        audioProc = null
+        videoProc = null
+        a?.close()
+        v?.close()
+        val l = line
+        line = null
+        runCatching { l?.stop() }
+        runCatching { l?.close() }
+        if (keepGen != gen.get()) return
+    }
+
+    private fun startFfmpeg(args: List<String>): KmpProcess {
+        val proc = KmpProcessBuilder(ffmpegPath).appendArgs(args).start()
+        proc.scope.launch { runCatching { proc.stderr.buffer().readUtf8() } }
+        return proc
+    }
+
+    private fun audioArgs(spec: String, streamIndex: Int, startMs: Long, rate: Float): List<String> {
+        val tempo = rate.coerceAtLeast(0.01f)
+        val asetrate = (SAMPLE_RATE * tempo).toInt().coerceAtLeast(1)
+        return listOf(
+            "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-ss", formatSeconds(startMs),
+            "-i", spec,
+            "-vn", "-map", "0:$streamIndex",
+            "-af", "aresample=$SAMPLE_RATE,asetrate=$asetrate,aresample=$SAMPLE_RATE," +
+                "aformat=sample_fmts=s16:channel_layouts=stereo",
+            "-f", "s16le", "pipe:1",
+        )
+    }
+
+    private fun videoArgs(
+        spec: String,
+        video: StreamMetadata.Video,
+        startMs: Long,
+        caption: StreamMetadata.Text?,
+        captionOn: Boolean,
+    ): List<String> {
+        val vf = buildString {
+            if (captionOn && caption != null) {
+                val si = loadedMeta?.streams?.filterIsInstance<StreamMetadata.Text>().orEmpty()
+                    .indexOfFirst { it.index == caption.index }
+                    .coerceAtLeast(0)
+                append("subtitles=")
+                append(escapeFilterPath(filePathOf(spec)))
+                append(":si=")
+                append(si)
+                append(",")
+            }
+            append("format=bgra")
+        }
+        return listOf(
+            "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-ss", formatSeconds(startMs),
+            "-i", spec,
+            "-an", "-map", "0:${video.index}",
+            "-vf", vf,
+            "-f", "rawvideo", "pipe:1",
+        )
+    }
+
+    private fun pickAudio(meta: MediaFileMetadata): StreamMetadata.Audio? {
+        val all = meta.streams.filterIsInstance<StreamMetadata.Audio>()
+        if (all.isEmpty()) return null
+        val want = selectedAudioIndex
+        return all.firstOrNull { it.index == want } ?: all.first()
+    }
+
+    private fun pickVideo(meta: MediaFileMetadata): StreamMetadata.Video? {
+        if (audioOnly) return null
+        return meta.streams.filterIsInstance<StreamMetadata.Video>().firstOrNull { !it.isAttachedThumbnail() }
+    }
+
+    private fun pickCaption(meta: MediaFileMetadata, config: PlaybackConfig): StreamMetadata.Text? {
+        val all = meta.streams.filterIsInstance<StreamMetadata.Text>()
+        if (all.isEmpty()) return null
+        val lang = config.preferCaptionLanguage.first
+        val byId = lang.toIntOrNull()?.let { id -> all.firstOrNull { it.index == id } }
+        val byLang = all.firstOrNull { it.metadataMap.language.equals(lang, ignoreCase = true) }
+        val chosen = when {
+            lang != PlaybackConfig.UNDETERMINED_LANGUAGE -> byId ?: byLang
+            else -> lastCaptionIndex?.let { id -> all.firstOrNull { it.index == id } }
+        } ?: all.first()
+        lastCaptionIndex = chosen.index
+        return chosen
+    }
+
+    private fun publishTracks(meta: MediaFileMetadata, config: PlaybackConfig) {
+        publishVideoQuality(meta)
+        publishCaptions(meta, config)
+        val auds = meta.streams.filterIsInstance<StreamMetadata.Audio>()
+        _audioTracks.value = if (auds.size <= 1) {
+            AudioTrackState.DEFAULT
+        } else {
+            val sel = pickAudio(meta)?.index
+            selectedAudioIndex = sel
+            AudioTrackState(
+                auds.map { AudioTrack(it.index.toString(), it.metadataMap.language ?: "Audio ${it.index}") },
+                sel?.toString(),
+            )
+        }
+    }
+
+    private fun publishVideoQuality(meta: MediaFileMetadata?) {
+        val video = meta?.streams?.filterIsInstance<StreamMetadata.Video>()
+            ?.firstOrNull { !it.isAttachedThumbnail() }
+        val h = video?.let { minOf(it.width ?: 0, it.height ?: 0) } ?: 0
+        _videoQuality.value = if (h <= 0) {
             VideoQualityState(
                 options = VideoQualityState.LOCAL_BASE_OPTIONS,
                 actualQuality = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO,
                 preferredQuality = preferVideoQuality,
             )
         } else {
-            val opt = VideoQualityState.optionForHeight(minOf(dim.width, dim.height))
-            val actual = if (audioOnly) VideoQualityState.AUDIO_ONLY else opt.quality
-            VideoQualityState(listOf(opt) + VideoQualityState.LOCAL_BASE_OPTIONS, actual, preferVideoQuality)
+            val opt = VideoQualityState.optionForHeight(h)
+            VideoQualityState(
+                listOf(opt) + VideoQualityState.LOCAL_BASE_OPTIONS,
+                if (audioOnly) VideoQualityState.AUDIO_ONLY else opt.quality,
+                preferVideoQuality,
+            )
         }
+    }
 
-        val subs = vlc.subpictures().trackDescriptions().filter { it.id() != -1 }
-        val curSpu = vlc.subpictures().track()
+    private fun publishCaptions(meta: MediaFileMetadata?, config: PlaybackConfig) {
+        val subs = meta?.streams?.filterIsInstance<StreamMetadata.Text>().orEmpty()
         _captions.value = if (subs.isEmpty()) {
             CaptionState.DEFAULT
         } else {
-            CaptionState(subs.map { CaptionTrack(it.id().toString(), it.description()) }, curSpu.takeIf { it != -1 }?.toString())
-        }
-
-        val auds = vlc.audio().trackDescriptions().filter { it.id() != -1 }
-        val curAud = vlc.audio().track()
-        _audioTracks.value = if (auds.size <= 1) {
-            AudioTrackState.DEFAULT
-        } else {
-            AudioTrackState(auds.map { AudioTrack(it.id().toString(), it.description()) }, curAud.takeIf { it != -1 }?.toString())
+            val chosen = pickCaption(meta!!, config)
+            CaptionState(
+                subs.map {
+                    CaptionTrack(it.index.toString(), it.metadataMap.language ?: it.codec)
+                },
+                if (config.captionVisible) chosen?.index?.toString() else null,
+            )
         }
     }
 
-    /** Disable/enable the libVLC video track so audio-only stops decoding video. */
-    private fun applyAudioOnly() {
-        val video = vlc.video()
-        if (audioOnly) {
-            video.setTrack(-1)
-            // No more render callbacks arrive; drop the stale last frame so the surface goes black.
-            videoSurface?.clearFrame()
-        } else {
-            video.trackDescriptions().firstOrNull { it.id() != -1 }?.let { video.setTrack(it.id()) }
-        }
+    private fun mediaPositionMs(): Long {
+        val pcmMs = pcmBytes * 1000L / BYTES_PER_SECOND
+        return originMs + (pcmMs * speed).toLong()
     }
 
-    override fun release() {
-        if (released) return
-        released = true
-        scope.cancel()
-        component.release()
-        videoSurface?.setVisible(false)
-        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
-    }
-
-    private suspend fun tick() {
-        while (scope.isActive) {
-            if (!released && _status.value.state is PlaybackState.Prepared) {
-                val pos = vlc.status().time().coerceAtLeast(0L)
-                val len = vlc.status().length()
-                _progress.update { it.copy(positionMs = pos, durationMs = if (len > 0L) len else it.durationMs) }
-
-                val dim = if (audioOnly) null else vlc.video().videoDimension()
-                val vs = if (dim != null && dim.width > 0 && dim.height > 0) VideoSize(dim.width, dim.height) else null
-                if (vs != null && vs != _status.value.videoSize) _status.update { it.copy(videoSize = vs) }
-
-                populateTracks()
-            }
-            delay(TICK_MS)
-        }
-    }
-
-    private companion object {
-        const val TICK_MS = 200L
+    companion object {
+        const val SAMPLE_RATE = 48_000f
+        const val CHANNELS = 2
+        const val BYTES_PER_SECOND = 48_000L * 2 * 2
+        const val PCM_CHUNK = 4096
+        const val LINE_BUFFER = 48_000 * 2 * 2 / 10 // ~100 ms
     }
 }
 
-/** The off-screen video surface of a JVM `LocalPlayer`, or null for a non-JVM/non-VLCJ player (or one
- *  created without a surface). The shell renders its [LocalVideoSurface.frame] as a Compose `Image`. */
+/** The off-screen video surface of a JVM `LocalPlayer`, or null when the engine has none. */
 fun LocalPlayer.localVideoSurface(): LocalVideoSurface? = (this as? JvmLocalPlayer)?.surface
+
+private fun parseLocalUri(raw: String): Uri {
+    val t = raw.trim()
+    return if (t.contains("://") || t.startsWith("file:")) {
+        Uri.parse(t)
+    } else {
+        UriBuilder().scheme("file").authority("").path(t).build()
+    }
+}
+
+/** ffmpeg's file protocol wants the decoded path, not a percent-encoded URI. */
+private fun Uri.toFileSpec(): String =
+    if (scheme?.toString().equals("file", ignoreCase = true)) "file:$path" else toString()
+
+private fun filePathOf(spec: String): String =
+    if (spec.startsWith("file:")) spec.removePrefix("file:") else spec
+
+private fun formatSeconds(ms: Long): String = (ms.coerceAtLeast(0L) / 1000.0).toString()
+
+private fun escapeFilterPath(path: String): String =
+    path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+private fun applyVolume(line: SourceDataLine?, volume: Float) {
+    val v = volume.coerceIn(0f, 1f)
+    val control = try {
+        line?.getControl(FloatControl.Type.MASTER_GAIN) as? FloatControl
+    } catch (_: Throwable) {
+        null
+    } ?: return
+    val db = if (v <= 0.0001f) control.minimum else (20f * log10(v)).coerceIn(control.minimum, control.maximum)
+    control.value = db
+}

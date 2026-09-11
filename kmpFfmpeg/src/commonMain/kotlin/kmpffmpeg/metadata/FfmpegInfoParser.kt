@@ -30,6 +30,7 @@ object FfmpegInfoParser {
     private val HZ = Regex("""(\d+)\s*Hz""")
     private val KBPS = Regex("""(\d+)\s*kb/s""")
     private val DIMENSIONS = Regex("""^(\d+)x(\d+)""")          // anchored: skips hex tags like 0x6134706D
+    private val FPS = Regex("""([\d.]+)\s*fps""")
     private val CHANNELS_N = Regex("""^(\d+)\s+channels""")
     private val PAREN = Regex("""\(([^)]+)\)""")
 
@@ -169,6 +170,7 @@ object FfmpegInfoParser {
                     duration = null,
                     width = dims?.groupValues?.get(1)?.toInt(),
                     height = dims?.groupValues?.get(2)?.toInt(),
+                    fps = params.firstNotNullOfOrNull { FPS.find(it)?.groupValues?.get(1)?.toDoubleOrNull() },
                     metadataMap = MetadataMap(meta),
                     disposition = disposition,
                 )

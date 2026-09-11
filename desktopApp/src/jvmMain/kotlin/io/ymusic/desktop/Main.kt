@@ -136,7 +136,7 @@ import kotlin.math.min
 import java.awt.Color as AwtColor
 
 /**
- * The desktop shell: boots the scraping engine, assembles the [AppGraph] (player facade over VLCJ
+ * The desktop shell: boots the scraping engine, assembles the [AppGraph] (player facade over ffmpeg
  * local + MSE YouTube playback), and runs the shared [App].
  */
 // Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
@@ -184,7 +184,7 @@ fun main() {
         }
     }
     // MSE video is a SwingPanel (same blit as the playground). Blending must be set before the first
-    // ComposeWindow so Compose chrome over the hole still composites. Local VLCJ stays a Compose Image.
+    // ComposeWindow so Compose chrome over the hole still composites. Local ffmpeg stays a Compose Image.
     System.setProperty("compose.interop.blending", "true")
     application {
         // The macOS Dock ignores Window(icon=) and, outside a bundle (a dev run), shows the JVM's
@@ -476,7 +476,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
     val player = withContext(Dispatchers.Main) {
         createPlayer(
             PlayerEngines(
-                local = { createLocalPlayer(LocalPlayerContext(localSurface)) },
+                local = { createLocalPlayer(LocalPlayerContext(localSurface, resolveFfmpeg())) },
                 webView = {
                     io.ymusic.player.mse.MsePlayer.create(
                         client = http.engine,
@@ -623,7 +623,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
         settings = settings,
-        // MSE blit and VLCJ frames scale; safe to display at art-tile size.
+        // MSE blit and ffmpeg frames scale; safe to display at art-tile size.
         surfaceScalesDown = true,
         loginBrowser = null,
         downloads = downloadService,

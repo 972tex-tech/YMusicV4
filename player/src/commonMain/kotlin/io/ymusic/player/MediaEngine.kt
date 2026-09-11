@@ -77,7 +77,7 @@ sealed interface PlayableItem {
  * never as degenerate methods every engine must stub, which was the legacy `BasicMediaPlayer` smell.
  *
  * **Main-thread only.** Create the engine and call every method on the **main thread**. Each
- * backend's underlying native player (ExoPlayer / AVPlayer / libVLC / a WebView) does its own
+ * backend's underlying native player (ExoPlayer / AVPlayer / ffmpeg / a WebView) does its own
  * decoding/playback on its own threads; only this control surface is main-thread-bound, and no call
  * is marshaled — that is the caller's responsibility. The [status] / [progress] flows may be
  * collected from any thread.

@@ -5,7 +5,7 @@ package io.ymusic.player
  * natively — load, then play / pause / resume / seek / stop, reporting position and state. No queue,
  * no gapless, no playlist; those belong to a higher layer that drives one engine per item.
  *
- * Backends: Android Media3 ExoPlayer, Apple AVPlayer (iOS + macOS), JVM libVLC (VLCJ). Built via
+ * Backends: Android Media3 ExoPlayer, Apple AVPlayer (iOS + macOS), JVM ffmpeg + Java Sound. Built via
  * [createLocalPlayer]. Main-thread only — see [MediaEngine] for the full contract.
  *
  * (Local-only capabilities — an equalizer/`audioSessionId` handle, embedded-caption and audio-track

@@ -34,8 +34,8 @@ The cross-platform playback layer.
   per item).
 
 - **Threading** — **main-thread-only by contract** (mirrors the legacy player): create and drive every method on the
-  main thread; the underlying native player (ExoPlayer/AVPlayer/libVLC) does its own decoding on its own threads.
-  - Impls do NOT marshal — ExoPlayer hard-enforces main, AVPlayer/libVLC are thread-safe and merely expect it
+  main thread; the underlying native player (ExoPlayer/AVPlayer/ffmpeg) does its own decoding on its own threads.
+  - Impls do NOT marshal — ExoPlayer hard-enforces main, AVPlayer/ffmpeg are thread-safe and merely expect it
     (their internal poll/tickers run off-main).
   - Flows collect from anywhere.
 
@@ -53,7 +53,7 @@ The cross-platform playback layer.
     (visible while that engine is the active one, hidden when idle/stopped or another engine takes over) so only
     the playing engine's picture shows.
   - Android local = a `SurfaceView` in a `FrameLayout` (holder wires `ExoPlayer.setVideoSurface`); JVM local =
-    off-screen VLCJ frames as a Compose `Image`; desktop YouTube = MSE blit into a SwingPanel; iOS YouTube =
+    off-screen ffmpeg frames as a Compose `Image`; desktop YouTube = MSE blit into a SwingPanel; iOS YouTube =
     its WKWebView, toggled via `WebViewBridge.setVideoVisible`.
 
 - **WebView realization** — **a windowed WKWebView only creates its native browser once its component is
@@ -87,9 +87,9 @@ The cross-platform playback layer.
     main run loop; audio-only disables the video `AVPlayerItemTrack`s).
   - **Android** `androidMain` = Media3 ExoPlayer, bound to the main looper (caller must drive from main; no
     internal marshaling), `Player.Listener`-driven state (audio-only via `setTrackTypeDisabled(TRACK_TYPE_VIDEO)`).
-  - **JVM desktop** `jvmMain` = VLCJ/libVLC via a `CallbackMediaPlayerComponent` so video renders into a Swing
-    component a Compose `SwingPanel` hosts (best-effort — needs libVLC at runtime; `setSpeed` shifts pitch there;
-    audio-only via `video().setTrack(-1)`).
+  - **JVM desktop** `jvmMain` = ffmpeg CLI decode + Java Sound PCM; video frames published on
+    `LocalVideoSurface` as a Compose `Image` (`setSpeed` shifts pitch via `asetrate`; audio-only skips the
+    video process). Needs the provisioned ffmpeg binary.
 
 - **Targets** — jvm/android/ios/macos (`withIosTargets()`+`withMacosTargets()`).
 

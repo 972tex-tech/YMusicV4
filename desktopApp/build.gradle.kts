@@ -161,7 +161,7 @@ kotlin {
             implementation(compose.components.resources)
         }
 
-        /** The desktop (JVM) product shell: builds the AppGraph (MSE + VLCJ, engines) and boots
+        /** The desktop (JVM) product shell: builds the AppGraph (MSE + ffmpeg, engines) and boots
          *  the shared :commonUi App. `./gradlew :desktopApp:run`. */
         val jvmMain by getting {
             kotlin.srcDir(generateBuildConfig)
@@ -388,7 +388,7 @@ compose.desktop {
                 }
             }
             // jlink modules the default set misses but the runtime graph uses: java.sql
-            // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/vlcj/coroutines/okio),
+            // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/coroutines/okio),
             // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec
             // (TLS for first-run ffmpeg download + update checks).
             modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec")

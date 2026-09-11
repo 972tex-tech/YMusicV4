@@ -7,7 +7,7 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **Boot sequence** — boots:
   - `DynamicEngineManager` (QuickJS + engine-js)
   - a file-backed `:media-store` + `:media-scanner` "Scan folder…" (ffmpeg via `YMUSIC_FFMPEG`/PATH)
-  - assembles the facade over VLCJ local + MSE YouTube, injects the SwingPanel MSE surface.
+  - assembles the facade over ffmpeg local + MSE YouTube, injects the SwingPanel MSE surface.
 
 - **Cookies** — `PersistentCookieJar` JSON file under `~/.ymusic/api-cookies.json`. No Chromium. Desktop login (QR from phone, or paste from Chrome) is later.
 

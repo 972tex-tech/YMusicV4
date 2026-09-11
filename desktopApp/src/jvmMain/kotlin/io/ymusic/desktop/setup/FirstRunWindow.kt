@@ -102,7 +102,6 @@ fun ApplicationScope.FirstRunWindow(
                 stats = stats.value,
                 onStatsChange = { stats.value = it },
                 onRetryMediaTools = coordinator::retryMediaTools,
-                onRecheckVlc = coordinator::recheckVlc,
                 onChooseFolder = coordinator::chooseMusicFolder,
                 onOpenUrl = onOpenUrl,
                 dark = dark.value,

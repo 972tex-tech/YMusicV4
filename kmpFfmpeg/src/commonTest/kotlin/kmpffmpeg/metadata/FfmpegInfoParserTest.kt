@@ -192,6 +192,7 @@ class FfmpegInfoParserTest {
         assertEquals("mpeg4", video.codec)
         assertEquals(320, video.width)  // not fooled by the 0x7634706D hex tag
         assertEquals(240, video.height)
+        assertEquals(10.0, video.fps)
         assertTrue(meta.hasVideo())
     }
 

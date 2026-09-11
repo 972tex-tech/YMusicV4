@@ -23,7 +23,6 @@ class OnboardingSnapshotTest {
                     stats = true,
                     onStatsChange = {},
                     onRetryMediaTools = {},
-                    onRecheckVlc = {},
                     onChooseFolder = {},
                     onOpenUrl = {},
                     onFinish = {},
@@ -42,11 +41,9 @@ class OnboardingSnapshotTest {
     fun renderFirstRunStates() {
         val downloading = SetupState(
             mediaTools = ComponentState.Working(0.35f),
-            vlc = ComponentState.Absent,
         )
         val done = SetupState(
             mediaTools = ComponentState.Ready,
-            vlc = ComponentState.Absent,
         )
         // Both, again: the screen carries its own light/dark switch.
         listOf(true, false).forEach { dark ->
@@ -58,7 +55,6 @@ class OnboardingSnapshotTest {
                 downloading.copy(mediaTools = ComponentState.Failed("Couldn't reach the download server")),
             )
             render("folder-chosen", dark, done.copy(musicFolder = "/Users/you/Music/Library"))
-            render("vlc-present", dark, done.copy(vlc = ComponentState.Ready))
             render("consent", dark, done, step2 = true)
         }
     }
