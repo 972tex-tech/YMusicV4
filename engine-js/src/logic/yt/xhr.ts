@@ -74,10 +74,13 @@ export function applyResponseRewrite(
  */
 export function taggedJsonText(rec: unknown): string {
   const s = new String("{}") as unknown as Record<string, unknown>;
-  s["_jsonParsed"] = rec;
-  s["replace"] = function () {
-    return s;
-  };
+  Object.defineProperty(s, "_jsonParsed", { value: rec, configurable: true });
+  Object.defineProperty(s, "replace", {
+    value: function () {
+      return s;
+    },
+    configurable: true,
+  });
   return s as unknown as string;
 }
 
@@ -266,7 +269,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   const url = self._url;
   noteSabrPlaybackUrl(url);
   if (!allowEngineJsUrl(url)) {
-    console.log("js deny " + url);
+    console.warn("js deny " + url);
     Promise.resolve().then(function () {
       if (self._aborted) return;
       self["status"] = 404;

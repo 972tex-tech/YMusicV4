@@ -140,7 +140,7 @@ export function ingestPlayerCaptions(rec: Record<string, unknown>): void {
     if (!ok) selectedVss = null;
   }
   cues = [];
-  console.log("caption ingest tracks=" + out.length + " vid=" + videoId);
+  console.info("caption ingest tracks=" + out.length + " vid=" + videoId);
   noteIngest();
   if (sessionSink) void reloadCues();
 }
@@ -251,7 +251,7 @@ function parseJson3(raw: string): Cue[] {
   try {
     rec = JSON.parse(stripXssi(raw)) as Record<string, unknown>;
   } catch (_e) {
-    console.log("caption timedtext not json head=" + raw.slice(0, 80).replace(/\n/g, " "));
+    console.warn("caption timedtext not json head=" + raw.slice(0, 80).replace(/\n/g, " "));
     return [];
   }
   const events = rec["events"];
@@ -379,7 +379,7 @@ async function emitWindow(): Promise<void> {
   if (p) await p;
   const f = sink.flush();
   if (f) await f;
-  console.log("caption emit n=" + rows.length);
+  if (MSE_DEBUG) console.log("caption emit n=" + rows.length);
 }
 
 function mediaPaused(): boolean {
@@ -393,10 +393,13 @@ function armTimer(): void {
   const n = nowMs();
   const next = nextTickMs(n);
   if (next == null) return;
-  tickTimer = setTimeout(function () {
-    tickTimer = null;
-    void emitWindow().then(armTimer);
-  }, Math.max(16, next - n));
+  tickTimer = setTimeout(
+    function () {
+      tickTimer = null;
+      void emitWindow().then(armTimer);
+    },
+    Math.max(16, next - n),
+  );
 }
 
 function onCaptionPlay(): void {
@@ -439,7 +442,7 @@ async function reloadCues(): Promise<void> {
     : "https://www.youtube.com/";
   const cver = ytcfgStr("INNERTUBE_CLIENT_VERSION");
   const visitor = ytcfgStr("VISITOR_DATA");
-  console.log("caption timedtext GET " + queryFlags(url));
+  if (MSE_DEBUG) console.log("caption timedtext GET " + queryFlags(url));
   try {
     const req = HttpRequest.get(url)
       .setHeader("User-Agent", DESKTOP_UA)
@@ -458,7 +461,7 @@ async function reloadCues(): Promise<void> {
       return;
     }
     if (!res.ok) {
-      console.log("caption timedtext HTTP " + res.status);
+      console.warn("caption timedtext HTTP " + res.status);
       res.ignoreResult();
       await emitWindow();
       return;
@@ -467,21 +470,22 @@ async function reloadCues(): Promise<void> {
     if (g !== fetchGen) return;
     cues = parseJson3(body);
     const ctype = res.headers.get("content-type") || "";
-    console.log(
-      "caption timedtext ok status=" +
-        res.status +
-        " bytes=" +
-        body.length +
-        " cues=" +
-        cues.length +
-        " ctype=" +
-        ctype +
-        " head=" +
-        body.slice(0, 80).replace(/\n/g, " "),
-    );
+    if (MSE_DEBUG)
+      console.log(
+        "caption timedtext ok status=" +
+          res.status +
+          " bytes=" +
+          body.length +
+          " cues=" +
+          cues.length +
+          " ctype=" +
+          ctype +
+          " head=" +
+          body.slice(0, 80).replace(/\n/g, " "),
+      );
   } catch (e) {
     if (g !== fetchGen) return;
-    console.log("caption timedtext failed: " + (e instanceof Error ? e.message : String(e)));
+    console.warn("caption timedtext failed: " + (e instanceof Error ? e.message : String(e)));
     await emitWindow();
     return;
   }
@@ -531,4 +535,3 @@ export async function runCaptionSession(pipe: Pipe): Promise<void> {
     lastLinesJson = "";
   }
 }
-

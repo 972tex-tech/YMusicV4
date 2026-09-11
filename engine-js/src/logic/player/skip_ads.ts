@@ -29,7 +29,7 @@ function jsonRec(body: unknown): Record<string, unknown> | null {
   try {
     return asRec(JSON.parse(s));
   } catch (e) {
-    console.log("player ads: JSON parse failed: " + (e instanceof Error ? e.message : String(e)));
+    console.warn("player ads: JSON parse failed: " + (e instanceof Error ? e.message : String(e)));
     return null;
   }
 }
@@ -108,10 +108,10 @@ function injectFakeMp4Format(rec: Record<string, unknown>): void {
   const vid = vd ? String(vd["videoId"] || "") : "";
   recordFake144(vid, rows);
   if (itags.length)
-    console.log(
+    console.info(
       "mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + (rows[0] ? rows[0].lmt : "-"),
     );
-  else console.log("mse fake-fmt skip: no 144p video");
+  else console.info("mse fake-fmt skip: no 144p video");
 }
 
 export function transformPlayerResponse(rec: Record<string, unknown>): Record<string, unknown> {
@@ -136,7 +136,7 @@ function rewriteRequest(url: string, body: unknown): unknown {
   try {
     transformPlayerRequest(rec);
   } catch (e) {
-    console.log("player ads: transformPlayerRequest failed: " + errText(e));
+    console.warn("player ads: transformPlayerRequest failed: " + errText(e));
     return body;
   }
   const s = JSON.stringify(rec);
@@ -149,7 +149,7 @@ function rewriteResponse(url: string, rec: Record<string, unknown>): Record<stri
   try {
     transformPlayerResponse(rec);
   } catch (e) {
-    console.log("player ads: transformPlayerResponse failed: " + errText(e));
+    console.warn("player ads: transformPlayerResponse failed: " + errText(e));
   }
   return rec;
 }

@@ -616,7 +616,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   if (!p.url) throw new TypeError("fetch: invalid URL");
   noteSabrPlaybackUrl(p.url);
   if (!allowEngineJsUrl(p.url)) {
-    console.log("js deny " + p.url);
+    console.warn("js deny " + p.url);
     return deniedJsResponse(p.url);
   }
   const signal = p.signal;

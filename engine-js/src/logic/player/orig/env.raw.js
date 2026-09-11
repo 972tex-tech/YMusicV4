@@ -63,7 +63,7 @@
           try {
             (0, eval)(body + "\n//# sourceURL=" + src);
           } catch (e) {
-            console.log("script eval failed " + src + " " + (e && e.message ? e.message : e));
+            console.warn("script eval failed " + src + " " + (e && e.message ? e.message : e));
             fireScript(el, "error");
             return;
           }
@@ -71,7 +71,7 @@
           fireScript(el, "load");
         })
         .catch(function (e) {
-          console.log("script fetch failed " + src + " " + (e && e.message ? e.message : e));
+          console.warn("script fetch failed " + src + " " + (e && e.message ? e.message : e));
           fireScript(el, "error");
         });
       return;
@@ -83,7 +83,7 @@
       (0, eval)(String(code));
       fireScript(el, "load");
     } catch (e) {
-      console.log("script eval failed inline " + (e && e.message ? e.message : e));
+      console.warn("script eval failed inline " + (e && e.message ? e.message : e));
       fireScript(el, "error");
     }
   }

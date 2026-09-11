@@ -63,7 +63,7 @@ async function hydrate(): Promise<void> {
     }
   } catch (e) {
     store = null;
-    console.log(
+    console.warn(
       "player localStorage cache unavailable: " + (e instanceof Error ? e.message : String(e)),
     );
   }
@@ -74,16 +74,18 @@ async function hydrate(): Promise<void> {
     ls["setItem"] = function (k: string, v: string): void {
       origSet(k, v);
       persist.setText(String(k), String(v)).then(undefined, function (err: unknown) {
-        console.log(
-          "player localStorage persist failed: " + (err instanceof Error ? err.message : String(err)),
+        console.warn(
+          "player localStorage persist failed: " +
+            (err instanceof Error ? err.message : String(err)),
         );
       });
     };
     ls["removeItem"] = function (k: string): void {
       origRemove(k);
       persist.delete(String(k)).then(undefined, function (err: unknown) {
-        console.log(
-          "player localStorage delete failed: " + (err instanceof Error ? err.message : String(err)),
+        console.warn(
+          "player localStorage delete failed: " +
+            (err instanceof Error ? err.message : String(err)),
         );
       });
     };

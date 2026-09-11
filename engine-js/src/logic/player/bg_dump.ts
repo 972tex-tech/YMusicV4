@@ -82,7 +82,7 @@ function persistHeld(): void {
       .then(
         function () {},
         function (e: unknown) {
-          console.log(
+          console.warn(
             "bg session cache write skipped: " + (e instanceof Error ? e.message : String(e)),
           );
         },
@@ -109,7 +109,9 @@ function reportPoReject(sps: number): void {
     }).then(
       function () {},
       function (e: unknown) {
-        console.log("bg po-reject report skipped: " + (e instanceof Error ? e.message : String(e)));
+        console.warn(
+          "bg po-reject report skipped: " + (e instanceof Error ? e.message : String(e)),
+        );
       },
     );
   });

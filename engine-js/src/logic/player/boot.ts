@@ -1110,16 +1110,17 @@ class Player {
     const extra = rows.length - 2;
     if (extra !== lastQualityExtra) {
       lastQualityExtra = extra;
-      console.log(
-        "mse getAvailableQualityData labels=" +
-          dataLabs +
-          " n=" +
-          dataN +
-          " levels=" +
-          levelList +
-          " extra=" +
-          extra,
-      );
+      if (MSE_DEBUG)
+        console.log(
+          "mse getAvailableQualityData labels=" +
+            dataLabs +
+            " n=" +
+            dataN +
+            " levels=" +
+            levelList +
+            " extra=" +
+            extra,
+        );
     }
     return rows;
   }

@@ -242,7 +242,7 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
   const e = entry(vid);
   e.rec = rec;
   e.expires = now() + CACHE_MS;
-  console.log(
+  console.info(
     "mse player-res /player vid=" +
       vid +
       " stream=" +
@@ -266,8 +266,9 @@ export function noteSabrPlaybackUrl(url: string): void {
   if (e.sabrUrls.length && e.sabrUrls[e.sabrUrls.length - 1] === url) return;
   e.sabrUrls.push(url);
   e.expires = now() + CACHE_MS;
-  console.log(
-    "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length,
-  );
+  if (SABR_DEBUG)
+    console.log(
+      "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length,
+    );
   if (complete(e)) flush(e, true);
 }

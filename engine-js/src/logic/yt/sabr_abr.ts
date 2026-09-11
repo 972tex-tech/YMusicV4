@@ -451,30 +451,31 @@ function buildFakeUmp(
   parts.push(mediaEndUmp(mediaHid));
   if (needInit) appendRestCover(init);
   appendRestCover(media);
-  console.log(
-    "mse sabr fake-ump itag=" +
-      row.itag +
-      " lmt=" +
-      row.lmt +
-      " mime=" +
-      row.mime +
-      " init=" +
-      (needInit ? "1" : "0") +
-      " hid=" +
-      initHid +
-      "," +
-      mediaHid +
-      " seq=1 start=0 dur=" +
-      dur +
-      " range=" +
-      init.length +
-      " clen=" +
-      media.length +
-      " audBr=" +
-      (audBr || "-") +
-      " fakeBr=" +
-      (fakeBr || "-"),
-  );
+  if (MSE_DEBUG)
+    console.log(
+      "mse sabr fake-ump itag=" +
+        row.itag +
+        " lmt=" +
+        row.lmt +
+        " mime=" +
+        row.mime +
+        " init=" +
+        (needInit ? "1" : "0") +
+        " hid=" +
+        initHid +
+        "," +
+        mediaHid +
+        " seq=1 start=0 dur=" +
+        dur +
+        " range=" +
+        init.length +
+        " clen=" +
+        media.length +
+        " audBr=" +
+        (audBr || "-") +
+        " fakeBr=" +
+        (fakeBr || "-"),
+    );
   return concatU8(parts);
 }
 
@@ -513,7 +514,7 @@ function rewriteAbr(u: Uint8Array): Uint8Array {
     }
     out.push(f);
   }
-  if (dropped.length) console.log("mse sabr drop 144 itags=" + dropped.join(","));
+  if (MSE_DEBUG && dropped.length) console.log("mse sabr drop 144 itags=" + dropped.join(","));
   pendingCover = null;
   if (isProductZero()) {
     const fake = pickFake144(selItags);

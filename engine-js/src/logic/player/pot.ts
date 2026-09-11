@@ -199,7 +199,7 @@ export async function minterFromConfig(
   out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
   out["snapshotPrefix"] =
     typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
-  console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
+  if (BG_DUMP) console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
   out["webPo0"] = typeof webPo[0];
   out["webPoLen"] = webPo.length;
   out["ytGets"] = ytWindowGets();
@@ -224,7 +224,7 @@ export async function minterFromConfig(
   out["integrityTokenLen"] = typeof integrityToken === "string" ? integrityToken.length : 0;
   const itBytes = typeof integrityToken === "string" ? b64ToU8(integrityToken).length : 0;
   out["integrityTokenBytes"] = itBytes;
-  console.log(
+  console.info(
     "minter GenerateIT status=" +
       git["status"] +
       " ITstr=" +
