@@ -166,17 +166,23 @@ static const AVCodec *find_vdec(enum AVCodecID id)
     return avcodec_find_decoder(id);
 }
 
-/* File player blits with swscale. Reject VideoToolbox/MediaCodec pixfmts. */
-static enum AVPixelFormat get_sw_format(AVCodecContext *s, const enum AVPixelFormat *fmt)
+/* Prefer VideoToolbox/etc so 4K HEVC can keep up; blit still goes through swscale
+ * after av_hwframe_transfer_data. Fall back to the first software pixfmt. */
+static enum AVPixelFormat get_format_prefer_hw(AVCodecContext *s, const enum AVPixelFormat *fmt)
 {
     const enum AVPixelFormat *p;
+    enum AVPixelFormat sw = AV_PIX_FMT_NONE;
     (void)s;
     for (p = fmt; *p != AV_PIX_FMT_NONE; p++) {
         const AVPixFmtDescriptor *d = av_pix_fmt_desc_get(*p);
-        if (d && !(d->flags & AV_PIX_FMT_FLAG_HWACCEL))
+        if (!d)
+            continue;
+        if (d->flags & AV_PIX_FMT_FLAG_HWACCEL)
             return *p;
+        if (sw == AV_PIX_FMT_NONE)
+            sw = *p;
     }
-    return AV_PIX_FMT_NONE;
+    return sw;
 }
 
 static AVCodecContext *open_codec(AVStream *st, int video)
@@ -194,9 +200,14 @@ static AVCodecContext *open_codec(AVStream *st, int video)
         return NULL;
     }
     ctx->pkt_timebase = st->time_base;
-    ctx->thread_count = 1;
-    if (video)
-        ctx->get_format = get_sw_format;
+    if (video) {
+        AVBufferRef *hw = NULL;
+        ctx->get_format = get_format_prefer_hw;
+        if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) == 0)
+            ctx->hw_device_ctx = hw;
+        else
+            ctx->thread_count = 0;
+    }
     if (avcodec_open2(ctx, c, NULL) < 0) {
         avcodec_free_context(&ctx);
         return NULL;
@@ -602,8 +613,20 @@ static int pump_video(FileAv *p, double clock)
             got = avcodec_receive_frame(p->vdec, p->vfr);
             if (got == AVERROR(EAGAIN)) {
                 pkt = pq_pop(&p->vq);
-                if (!pkt)
+                if (!pkt) {
+                    /* Behind realtime (4K software / no audio clock): still
+                       paint the last decoded frame so we do not freeze on frame 1. */
+                    if (p->vhold) {
+                        AVFrame *h = p->vhold;
+                        p->vhold = NULL;
+                        pthread_mutex_unlock(&p->mu);
+                        present_video(p, h);
+                        pthread_mutex_lock(&p->mu);
+                        av_frame_unref(h);
+                        av_frame_free(&h);
+                    }
                     return 0;
+                }
                 if (avcodec_send_packet(p->vdec, pkt) < 0) {
                     av_packet_free(&pkt);
                     return 0;
@@ -617,9 +640,15 @@ static int pump_video(FileAv *p, double clock)
         }
         pts = frame_pts(p->fmt->streams[p->v_st], fr, clock);
         if (pts + LATE < clock) {
-            av_frame_unref(fr);
-            if (fr == p->vhold)
-                p->vhold = NULL;
+            if (fr != p->vhold) {
+                if (!p->vhold)
+                    p->vhold = av_frame_alloc();
+                if (p->vhold) {
+                    av_frame_unref(p->vhold);
+                    av_frame_ref(p->vhold, fr);
+                }
+                av_frame_unref(fr);
+            }
             continue;
         }
         if (pts > clock + 0.04) {
