@@ -5,7 +5,9 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 #include <libavutil/samplefmt.h>
@@ -75,7 +77,7 @@ struct FileAv {
     int bgra_n;
     int vw, vh;
     Pq aq, vq;
-    AVFrame *afr, *vfr, *vhold;
+    AVFrame *afr, *vfr, *vhold, *vsw;
     StreamInfo *streams;
     int nstreams;
 
@@ -161,6 +163,19 @@ static const AVCodec *find_vdec(enum AVCodecID id)
     return avcodec_find_decoder(id);
 }
 
+/* File player blits with swscale. Reject VideoToolbox/MediaCodec pixfmts. */
+static enum AVPixelFormat get_sw_format(AVCodecContext *s, const enum AVPixelFormat *fmt)
+{
+    const enum AVPixelFormat *p;
+    (void)s;
+    for (p = fmt; *p != AV_PIX_FMT_NONE; p++) {
+        const AVPixFmtDescriptor *d = av_pix_fmt_desc_get(*p);
+        if (d && !(d->flags & AV_PIX_FMT_FLAG_HWACCEL))
+            return *p;
+    }
+    return AV_PIX_FMT_NONE;
+}
+
 static AVCodecContext *open_codec(AVStream *st, int video)
 {
     const AVCodec *c = video ? find_vdec(st->codecpar->codec_id)
@@ -176,6 +191,8 @@ static AVCodecContext *open_codec(AVStream *st, int video)
         return NULL;
     }
     ctx->pkt_timebase = st->time_base;
+    if (video)
+        ctx->get_format = get_sw_format;
     if (avcodec_open2(ctx, c, NULL) < 0) {
         avcodec_free_context(&ctx);
         return NULL;
@@ -222,6 +239,7 @@ static void free_codecs(FileAv *p)
     pq_clear(&p->aq);
     pq_clear(&p->vq);
     av_frame_free(&p->vhold);
+    av_frame_free(&p->vsw);
 }
 
 static void collect_streams(FileAv *p)
@@ -413,11 +431,40 @@ static void blit_size(FileAv *p, int src_w, int src_h, int *dw, int *dh)
         *dh = 2;
 }
 
+static AVFrame *sw_video_frame(FileAv *p, AVFrame *fr)
+{
+    const AVPixFmtDescriptor *d;
+    if (!fr)
+        return NULL;
+    if (!fr->hw_frames_ctx)
+        return fr;
+    if (!p->vsw)
+        p->vsw = av_frame_alloc();
+    if (!p->vsw)
+        return NULL;
+    av_frame_unref(p->vsw);
+    if (av_hwframe_transfer_data(p->vsw, fr, 0) < 0)
+        return NULL;
+    p->vsw->best_effort_timestamp = fr->best_effort_timestamp;
+    p->vsw->pts = fr->pts;
+    d = av_pix_fmt_desc_get((enum AVPixelFormat)p->vsw->format);
+    if (d && (d->flags & AV_PIX_FMT_FLAG_HWACCEL))
+        return NULL;
+    return p->vsw;
+}
+
 static int present_video(FileAv *p, AVFrame *fr)
 {
     uint8_t *dst[4] = {0};
     int dst_ls[4] = {0};
     int dw, dh, n;
+    const AVPixFmtDescriptor *d;
+    fr = sw_video_frame(p, fr);
+    if (!fr || fr->width <= 0 || fr->height <= 0 || !fr->data[0])
+        return -1;
+    d = av_pix_fmt_desc_get((enum AVPixelFormat)fr->format);
+    if (d && (d->flags & AV_PIX_FMT_FLAG_HWACCEL))
+        return -1;
     blit_size(p, fr->width, fr->height, &dw, &dh);
     if (!p->sws || p->sws_dw != dw || p->sws_dh != dh) {
         if (p->sws)
@@ -677,6 +724,7 @@ void file_av_destroy(FileAv *p)
     av_frame_free(&p->afr);
     av_frame_free(&p->vfr);
     av_frame_free(&p->vhold);
+    av_frame_free(&p->vsw);
     pthread_cond_destroy(&p->cv);
     pthread_mutex_destroy(&p->mu);
     free(p);

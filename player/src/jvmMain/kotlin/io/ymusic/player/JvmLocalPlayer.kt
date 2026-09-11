@@ -69,6 +69,8 @@ internal class JvmLocalPlayer(
 
     private val frameBufs = arrayOfNulls<BufferedImage>(3)
 
+    @Volatile private var lastPub: BufferedImage? = null
+
     @Volatile private var streams: List<AvStreamRow> = emptyList()
 
     val surface: LocalVideoSurface? get() = videoSurface
@@ -235,6 +237,7 @@ internal class JvmLocalPlayer(
         bgra.position(0)
         bgra.limit((n * 4).coerceAtMost(bgra.capacity()))
         bgra.asIntBuffer().get(pixels, 0, n)
+        lastPub = img
         videoSurface?.publish(img)
     }
 
@@ -356,14 +359,14 @@ internal class JvmLocalPlayer(
     }
 
     private fun grab(w: Int, h: Int): BufferedImage {
+        val shown = lastPub
         for (i in 0..2) {
             val cur = frameBufs[i]
+            if (cur != null && cur === shown) continue
             if (cur != null && cur.width == w && cur.height == h) return cur
-            if (cur == null || cur.width != w || cur.height != h) {
-                val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-                frameBufs[i] = img
-                return img
-            }
+            val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+            frameBufs[i] = img
+            return img
         }
         val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
         frameBufs[0] = img
