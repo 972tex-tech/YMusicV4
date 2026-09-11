@@ -14,6 +14,8 @@ type Entry = {
 };
 
 const cache: Record<string, Entry> = {};
+/** googlevideo `id=o-…` → videoId. SABR URLs have no `v=`. */
+const streamToVid: Record<string, string> = {};
 let lastPlayerVid = "";
 
 function asRec(v: unknown): Record<string, unknown> | null {
@@ -165,6 +167,20 @@ export function downloadWaitMs(): number {
   return WAIT_MS;
 }
 
+function queryParam(url: string, key: string): string {
+  const m = new RegExp("[?&]" + key + "=([^&]*)").exec(url);
+  if (!m) return "";
+  try {
+    return decodeURIComponent(m[1]!.replace(/\+/g, " "));
+  } catch (_e) {
+    return m[1]!;
+  }
+}
+
+function streamIdOf(url: string): string {
+  return queryParam(url, "id");
+}
+
 export function notePlayerResponse(rec: Record<string, unknown>): void {
   const vd = asRec(rec["videoDetails"]);
   const vid = vd && typeof vd["videoId"] === "string" ? (vd["videoId"] as string) : "";
@@ -173,12 +189,19 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
   const ok = !st || st["status"] === "OK" || st["status"] == null;
   if (!ok) return;
   lastPlayerVid = vid;
+  const sd = asRec(rec["streamingData"]);
+  const listed =
+    sd && typeof sd["serverAbrStreamingUrl"] === "string" ? sd["serverAbrStreamingUrl"] : "";
+  const sid = listed ? streamIdOf(listed as string) : "";
+  if (sid) streamToVid[sid] = vid;
   const e = entry(vid);
   e.rec = rec;
   e.expires = now() + CACHE_MS;
   console.log(
     "mse player-res /player vid=" +
       vid +
+      " stream=" +
+      (sid || "-") +
       " sabr=" +
       e.sabrUrls.length +
       " wait=" +
@@ -187,20 +210,19 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
   if (complete(e)) flush(e, true);
 }
 
-function videoIdFromUrl(url: string): string {
-  const m = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(url);
-  return m ? m[1]! : "";
-}
-
 export function noteSabrPlaybackUrl(url: string): void {
   if (url.indexOf("/videoplayback") < 0) return;
   if (url.indexOf("sabr=") < 0) return;
-  const vid = videoIdFromUrl(url) || lastPlayerVid;
+  const sid = streamIdOf(url);
+  const vid = (sid && streamToVid[sid]) || lastPlayerVid;
   if (!vid) return;
+  if (sid && !streamToVid[sid]) streamToVid[sid] = vid;
   const e = entry(vid);
   if (e.sabrUrls.length && e.sabrUrls[e.sabrUrls.length - 1] === url) return;
   e.sabrUrls.push(url);
   e.expires = now() + CACHE_MS;
-  console.log("mse player-res sabr vid=" + vid + " n=" + e.sabrUrls.length);
+  console.log(
+    "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length,
+  );
   if (complete(e)) flush(e, true);
 }
