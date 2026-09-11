@@ -87,6 +87,9 @@ struct FileAv {
     FileAvProgressFn on_prog;
     FileAvEventFn on_event;
     void *user;
+
+    enum AVColorSpace col_space;
+    enum AVColorRange col_range;
 };
 
 static double now_ns(void)
@@ -352,6 +355,8 @@ static int setup_decoders(FileAv *p)
         }
         p->vw = p->fmt->streams[p->v_st]->codecpar->width;
         p->vh = p->fmt->streams[p->v_st]->codecpar->height;
+        p->col_space = p->fmt->streams[p->v_st]->codecpar->color_space;
+        p->col_range = p->fmt->streams[p->v_st]->codecpar->color_range;
     }
     if (p->a_st < 0 && p->v_st < 0) {
         set_err(p, "no audio or video stream");
@@ -497,9 +502,28 @@ static AVFrame *sw_video_frame(FileAv *p, AVFrame *fr)
     return p->vsw;
 }
 
-static int sws_cs(const AVFrame *fr)
+static enum AVColorSpace frame_cs(const FileAv *p, const AVFrame *fr)
 {
-    switch (fr->colorspace) {
+    if (fr->colorspace != AVCOL_SPC_UNSPECIFIED)
+        return fr->colorspace;
+    if (p->col_space != AVCOL_SPC_UNSPECIFIED)
+        return p->col_space;
+    return fr->height > 576 ? AVCOL_SPC_BT709 : AVCOL_SPC_SMPTE170M;
+}
+
+static enum AVColorRange frame_range(const FileAv *p, const AVFrame *fr)
+{
+    /* Codec/container tags win: VideoToolbox often reports full-range NV12 for tv-range HEVC. */
+    if (p->col_range == AVCOL_RANGE_MPEG || p->col_range == AVCOL_RANGE_JPEG)
+        return p->col_range;
+    if (fr->color_range != AVCOL_RANGE_UNSPECIFIED)
+        return fr->color_range;
+    return AVCOL_RANGE_MPEG;
+}
+
+static int sws_cs(enum AVColorSpace spc, int height)
+{
+    switch (spc) {
     case AVCOL_SPC_BT709:
         return SWS_CS_ITU709;
     case AVCOL_SPC_BT2020_NCL:
@@ -509,16 +533,17 @@ static int sws_cs(const AVFrame *fr)
     case AVCOL_SPC_BT470BG:
         return SWS_CS_ITU601;
     default:
-        return fr->height > 576 ? SWS_CS_ITU709 : SWS_CS_ITU601;
+        return height > 576 ? SWS_CS_ITU709 : SWS_CS_ITU601;
     }
 }
 
-static void sws_apply_color(struct SwsContext *sws, const AVFrame *fr)
+static void sws_apply_color(struct SwsContext *sws, const FileAv *p, const AVFrame *fr)
 {
-    int src_range = fr->color_range == AVCOL_RANGE_JPEG ? 1 : 0;
-    const int *src = sws_getCoefficients(sws_cs(fr));
-    const int *dst = sws_getCoefficients(SWS_CS_DEFAULT);
-    sws_setColorspaceDetails(sws, src, src_range, dst, 1, 0, 1 << 16, 1 << 16);
+    int cs = sws_cs(frame_cs(p, fr), fr->height);
+    int src_range = frame_range(p, fr) == AVCOL_RANGE_JPEG ? 1 : 0;
+    const int *coeff = sws_getCoefficients(cs);
+    /* Same matrix both sides; dst_range=1 expands tv (16-235) to full RGB like QuickTime. */
+    sws_setColorspaceDetails(sws, coeff, src_range, coeff, 1, 0, 1 << 16, 1 << 16);
 }
 
 static int present_video(FileAv *p, AVFrame *fr)
@@ -538,17 +563,19 @@ static int present_video(FileAv *p, AVFrame *fr)
     blit_size(p, fr->width, fr->height, &dw, &dh);
     if (!p->sws || p->sws_dw != dw || p->sws_dh != dh ||
         p->sws_sw != fr->width || p->sws_sh != fr->height || p->sws_fmt != fr->format) {
+        int flags = SWS_ACCURATE_RND | SWS_FULL_CHR_H_INT | SWS_FULL_CHR_H_INP;
+        flags |= (dw != fr->width || dh != fr->height) ? SWS_LANCZOS : SWS_BILINEAR;
         if (p->sws)
             sws_freeContext(p->sws);
         p->sws = sws_getContext(fr->width, fr->height, (enum AVPixelFormat)fr->format,
-                                dw, dh, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+                                dw, dh, AV_PIX_FMT_BGRA, flags, NULL, NULL, NULL);
         p->sws_dw = dw;
         p->sws_dh = dh;
         p->sws_sw = fr->width;
         p->sws_sh = fr->height;
         p->sws_fmt = fr->format;
         if (p->sws)
-            sws_apply_color(p->sws, fr);
+            sws_apply_color(p->sws, p, fr);
     }
     if (!p->sws)
         return -1;
@@ -775,6 +802,8 @@ FileAv *file_av_create(void)
     p->audio_index = -1;
     p->blit_w = 0;
     p->blit_h = 0;
+    p->col_space = AVCOL_SPC_UNSPECIFIED;
+    p->col_range = AVCOL_RANGE_UNSPECIFIED;
     p->a_st = p->v_st = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
