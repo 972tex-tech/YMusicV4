@@ -56,7 +56,7 @@ elseif(UNIX)
 endif()
 
 if(APPLE)
-  target_sources(mseffmpegjni PRIVATE mse_vt_present.m mse_vt_layer.m mse_vt_dec.m)
+  target_sources(mseffmpegjni PRIVATE mse_vt_present.m mse_vt_layer.m mse_vt_dec.m mse_vt_blit.c)
   set_source_files_properties(mse_vt_present.m mse_vt_dec.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   find_library(JAWT_LIB jawt HINTS "$ENV{JAVA_HOME}/lib" "$ENV{JAVA_HOME}/lib/jli")
   target_link_libraries(mseffmpegjni PRIVATE

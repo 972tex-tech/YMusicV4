@@ -22,6 +22,7 @@
 #include <libavutil/pixdesc.h>
 #include <CoreVideo/CoreVideo.h>
 #include "mse_vt_present.h"
+#include "mse_vt_blit.h"
 #endif
 
 #include <pthread.h>
@@ -115,6 +116,7 @@ struct MseAv {
 #ifdef __APPLE__
     void *vt_layer;
     void *vt_dec;
+    MseVtBlit vt_blit;
     /* Decoded pictures waiting in PTS (display) order. H.264 B-frames are
        sent in DTS order; showing them as they decode is the broken picture. */
     void *vt_q_pb[8];
@@ -1789,6 +1791,9 @@ void mse_av_destroy(MseAv *a)
         sws_freeContext(a->sws);
     free(a->sws_pad);
     av_frame_free(&a->hw_sw);
+#ifdef __APPLE__
+    mse_vt_blit_free(&a->vt_blit);
+#endif
     free(a->bgra_buf[0]);
     free(a->bgra_buf[1]);
     free(a->ainit);
@@ -2923,7 +2928,22 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
     double t0, xfer_ms = 0, scale_ms;
 #endif
 #ifdef __APPLE__
-    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3]) {
+        int tw, th;
+        uint8_t *tdst;
+        if (mse_vt_blit_size(frame->data[3], a->blit_w, a->blit_h, &tw, &th) == 0 &&
+            (tdst = bgra_pool(a, tw, th)) &&
+            mse_vt_blit_copy(&a->vt_blit, frame->data[3], tdst, tw, th) == 0) {
+            if (tw != a->blit_log_dw || th != a->blit_log_dh) {
+                a->blit_log_dw = tw;
+                a->blit_log_dh = th;
+                vlog("blit vt %dx%d hole=%dx%d", tw, th, a->blit_w, a->blit_h);
+            }
+            *w = tw;
+            *h = th;
+            *bgra = tdst;
+            return 0;
+        }
         if (!a->hw_sw)
             a->hw_sw = av_frame_alloc();
         if (!a->hw_sw)
@@ -3110,6 +3130,18 @@ static int present_cvpb(MseAv *a, void *pb, uint8_t **bgra, int *w, int *h)
         *w = src_w;
         *h = src_h;
         return 0;
+    }
+    {
+        int tw, th;
+        uint8_t *tdst;
+        if (mse_vt_blit_size(pb, a->blit_w, a->blit_h, &tw, &th) == 0 &&
+            (tdst = bgra_pool(a, tw, th)) &&
+            mse_vt_blit_copy(&a->vt_blit, pb, tdst, tw, th) == 0) {
+            *bgra = tdst;
+            *w = tw;
+            *h = th;
+            return 0;
+        }
     }
     fmt = CVPixelBufferGetPixelFormatType(cv);
     if (CVPixelBufferLockBaseAddress(cv, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)

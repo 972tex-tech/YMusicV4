@@ -23,9 +23,7 @@
 
 #ifdef __APPLE__
 #include <mach/mach_time.h>
-#include <CoreVideo/CoreVideo.h>
-#include <CoreMedia/CoreMedia.h>
-#include <VideoToolbox/VideoToolbox.h>
+#include "mse_vt_blit.h"
 #endif
 
 #define OUT_RATE 48000
@@ -94,9 +92,7 @@ struct FileAv {
     enum AVColorSpace col_space;
     enum AVColorRange col_range;
 #ifdef __APPLE__
-    VTPixelTransferSessionRef vt_xfer;
-    CVPixelBufferRef vt_dst;
-    int vt_dw, vt_dh;
+    MseVtBlit vt_blit;
 #endif
 };
 
@@ -269,16 +265,7 @@ static void free_codecs(FileAv *p)
     av_frame_free(&p->vhold);
     av_frame_free(&p->vsw);
 #ifdef __APPLE__
-    if (p->vt_xfer) {
-        VTPixelTransferSessionInvalidate(p->vt_xfer);
-        CFRelease(p->vt_xfer);
-        p->vt_xfer = NULL;
-    }
-    if (p->vt_dst) {
-        CVPixelBufferRelease(p->vt_dst);
-        p->vt_dst = NULL;
-    }
-    p->vt_dw = p->vt_dh = 0;
+    mse_vt_blit_free(&p->vt_blit);
 #endif
 }
 
@@ -567,78 +554,23 @@ static void sws_apply_color(struct SwsContext *sws, const FileAv *p, const AVFra
 }
 
 #ifdef __APPLE__
-/* Apple 709 TV-range → BGRA. Keep 709 transfer (not sRGB) so shadows stay as deep as QuickTime.
- * Scale into blit_w×blit_h here so we do not memcpy a 4K frame then scale again in Swing. */
 static int present_vt(FileAv *p, AVFrame *fr)
 {
-    CVPixelBufferRef src, dst;
-    uint8_t *base, *out;
-    size_t stride;
-    int src_w, src_h, w, h, y, n;
+    int w, h, n;
     if (!fr->data[3])
         return -1;
-    src = (CVPixelBufferRef)fr->data[3];
-    src_w = (int)CVPixelBufferGetWidth(src);
-    src_h = (int)CVPixelBufferGetHeight(src);
-    if (src_w <= 0 || src_h <= 0)
+    if (mse_vt_blit_size(fr->data[3], p->blit_w, p->blit_h, &w, &h) != 0)
         return -1;
-    blit_size(p, src_w, src_h, &w, &h);
-    CVBufferSetAttachment(src, kCVImageBufferYCbCrMatrixKey,
-                          kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-    CVBufferSetAttachment(src, kCVImageBufferColorPrimariesKey,
-                          kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-    CVBufferSetAttachment(src, kCVImageBufferTransferFunctionKey,
-                          kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-    CVBufferSetAttachment(src, kCMFormatDescriptionExtension_FullRangeVideo,
-                          kCFBooleanFalse, kCVAttachmentMode_ShouldPropagate);
-    if (!p->vt_xfer) {
-        if (VTPixelTransferSessionCreate(NULL, &p->vt_xfer) != noErr)
-            return -1;
-        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationColorPrimaries,
-                             kCVImageBufferColorPrimaries_ITU_R_709_2);
-        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationTransferFunction,
-                             kCVImageBufferTransferFunction_ITU_R_709_2);
-        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_DestinationYCbCrMatrix,
-                             kCVImageBufferYCbCrMatrix_ITU_R_709_2);
-        VTSessionSetProperty(p->vt_xfer, kVTPixelTransferPropertyKey_RealTime, kCFBooleanTrue);
-    }
-    if (!p->vt_dst || p->vt_dw != w || p->vt_dh != h) {
-        if (p->vt_dst)
-            CVPixelBufferRelease(p->vt_dst);
-        p->vt_dst = NULL;
-        if (CVPixelBufferCreate(kCFAllocatorDefault, (size_t)w, (size_t)h,
-                                kCVPixelFormatType_32BGRA, NULL, &p->vt_dst) != kCVReturnSuccess)
-            return -1;
-        p->vt_dw = w;
-        p->vt_dh = h;
-        CVBufferSetAttachment(p->vt_dst, kCVImageBufferColorPrimariesKey,
-                              kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(p->vt_dst, kCVImageBufferTransferFunctionKey,
-                              kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(p->vt_dst, kCVImageBufferYCbCrMatrixKey,
-                              kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-    }
-    dst = p->vt_dst;
-    if (VTPixelTransferSessionTransferImage(p->vt_xfer, src, dst) != noErr)
-        return -1;
-    if (CVPixelBufferLockBaseAddress(dst, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
-        return -1;
-    base = CVPixelBufferGetBaseAddress(dst);
-    stride = CVPixelBufferGetBytesPerRow(dst);
     n = w * h * 4;
     if (n > p->bgra_n) {
         uint8_t *b = av_realloc(p->bgra, (size_t)n);
-        if (!b) {
-            CVPixelBufferUnlockBaseAddress(dst, kCVPixelBufferLock_ReadOnly);
+        if (!b)
             return -1;
-        }
         p->bgra = b;
         p->bgra_n = n;
     }
-    out = p->bgra;
-    for (y = 0; y < h; y++)
-        memcpy(out + (size_t)y * (size_t)w * 4, base + (size_t)y * stride, (size_t)w * 4);
-    CVPixelBufferUnlockBaseAddress(dst, kCVPixelBufferLock_ReadOnly);
+    if (mse_vt_blit_copy(&p->vt_blit, fr->data[3], p->bgra, w, h) != 0)
+        return -1;
     p->vw = w;
     p->vh = h;
     if (p->on_frame)
