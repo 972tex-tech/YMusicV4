@@ -1,57 +1,34 @@
 package io.ymusic.player
 
+import io.ymusic.mse.FileAvNative
+import io.ymusic.mse.FileAvSink
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
-import kmpffmpeg.KmpProcess
-import kmpffmpeg.KmpProcessBuilder
-import kmpffmpeg.metadata.FfmpegInfoParseException
-import kmpffmpeg.metadata.FfmpegMetadataGetter
-import kmpffmpeg.metadata.MediaFileMetadata
-import kmpffmpeg.metadata.StreamMetadata
-import kmpffmpeg.metadata.isAttachedThumbnail
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import okio.EOFException
-import okio.buffer
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.atomic.AtomicInteger
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.FloatControl
 import javax.sound.sampled.SourceDataLine
 import kotlin.math.log10
-import kotlin.math.roundToLong
 
 /**
- * JVM desktop local player: the provisioned `ffmpeg` binary decodes, Java Sound plays PCM, and
- * video frames land on [LocalVideoSurface] as BGRA→RGB images (same Compose `Image` path as before).
- *
- * Pause stops consuming the pipes so ffmpeg blocks on a full OS buffer; seek/speed/track changes
- * restart the child at the new position. `setSpeed` shifts pitch (`asetrate`), matching the old
- * libVLC rate behaviour. Captions are burned in with ffmpeg's `subtitles` filter when visible.
+ * JVM desktop local player: in-process libav (`FileAvNative` / `file_av.c`) shares the packed
+ * libav DSOs with MSE leftover, but is a file host — PTS vs a monotonic clock, not two ffmpeg
+ * pipes. Java Sound is the DAC; frames land on [LocalVideoSurface] as BGRA→RGB. 4K is downscaled
+ * (max edge 1920, or the selected quality ladder). Captions are listed, not burned in.
  */
 internal class JvmLocalPlayer(
     private val videoSurface: LocalVideoSurface?,
-    private val ffmpegPath: String,
-) : LocalPlayer {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val getter = FfmpegMetadataGetter(ffmpegPath)
-    private val gen = AtomicInteger(0)
+) : LocalPlayer,
+    FileAvSink {
+    private val handle = FileAvNative.create()
 
     private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -72,23 +49,13 @@ internal class JvmLocalPlayer(
 
     @Volatile private var appliedConfig = PlaybackConfig()
 
-    @Volatile private var playing = false
+    @Volatile private var durationMs: Long = Progress.DURATION_UNKNOWN
+
+    @Volatile private var loadedPath: String? = null
 
     @Volatile private var audioOnly = true
 
     @Volatile private var preferVideoQuality = VideoQualityState.AUDIO_ONLY
-
-    @Volatile private var selectedAudioIndex: Int? = null
-
-    @Volatile private var lastCaptionIndex: Int? = null
-
-    @Volatile private var pcmBytes: Long = 0
-
-    @Volatile private var originMs: Long = 0
-
-    @Volatile private var durationMs: Long = Progress.DURATION_UNKNOWN
-
-    @Volatile private var speed: Float = 1f
 
     @Volatile private var volume: Float = 1f
 
@@ -96,19 +63,24 @@ internal class JvmLocalPlayer(
 
     @Volatile private var line: SourceDataLine? = null
 
-    @Volatile private var audioProc: KmpProcess? = null
+    @Volatile private var lineRate: Int = 0
 
-    @Volatile private var videoProc: KmpProcess? = null
+    @Volatile private var lineCh: Int = 0
 
-    @Volatile private var loadedUri: Uri? = null
+    private val frameBufs = arrayOfNulls<BufferedImage>(3)
 
-    @Volatile private var loadedMeta: MediaFileMetadata? = null
-    private var loadJob: Job? = null
+    @Volatile private var streams: List<AvStreamRow> = emptyList()
 
     val surface: LocalVideoSurface? get() = videoSurface
 
-    private fun showSurface(visible: Boolean) {
-        videoSurface?.setVisible(visible)
+    init {
+        if (handle == 0L) {
+            _status.update {
+                it.copy(state = PlaybackState.Error(PlayerError("E60020", "libav file player failed to start")))
+            }
+        } else {
+            FileAvNative.setSink(handle, this)
+        }
     }
 
     override fun load(
@@ -117,34 +89,48 @@ internal class JvmLocalPlayer(
         playWhenReady: Boolean,
         config: PlaybackConfig,
     ) {
-        if (released) return
+        if (released || handle == 0L) return
         appliedConfig = config
-        speed = config.speed.coerceAtLeast(0.01f)
-        volume = config.volume.coerceIn(0f, 1f)
-        audioOnly = config.audioOnly
-        preferVideoQuality = config.preferVideoQuality.first
-        loop = config.loop
-        selectedAudioIndex = null
-        playing = playWhenReady
-        originMs = startPositionMs.coerceAtLeast(0L)
-        pcmBytes = 0
+        applyConfigFlags(config)
+        val path = parseLocalUri(source.uri).toFilePath()
+        FileAvNative.setAudioIndex(handle, -1)
+        FileAvNative.setVideoEnabled(handle, !audioOnly)
+        FileAvNative.setBlitMax(handle, blitMaxFor(config))
+        FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
         _status.update {
             it.copy(
                 state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
                 videoSize = null,
                 volume = volume,
-                speed = speed,
+                speed = config.speed,
             )
         }
-        _progress.value = Progress(positionMs = originMs)
+        _progress.value = Progress(positionMs = startPositionMs.coerceAtLeast(0L))
         showSurface(true)
-        val uri = parseLocalUri(source.uri)
-        startSession(uri, originMs, playWhenReady, probe = true)
+        if (FileAvNative.open(handle, path) != 0) {
+            fail("E60021", FileAvNative.lastError(handle).ifBlank { "open failed" })
+            return
+        }
+        loadedPath = path
+        streams = FileAvNative.streams(handle).mapNotNull(::parseAvStream)
+        val dur = FileAvNative.duration(handle)
+        durationMs = if (dur > 0) (dur * 1000.0).toLong() else Progress.DURATION_UNKNOWN
+        publishTracks(config)
+        val srcVideo = streams.firstOrNull { it.kind == KIND_VIDEO }
+        if (srcVideo != null && !audioOnly && srcVideo.width > 0 && srcVideo.height > 0) {
+            _status.update { it.copy(videoSize = VideoSize(srcVideo.width, srcVideo.height)) }
+        }
+        FileAvNative.seek(handle, startPositionMs.coerceAtLeast(0L) / 1000.0)
+        _status.update {
+            val s = it.state as? PlaybackState.Prepared
+            it.copy(state = s?.copy(buffering = false) ?: PlaybackState.Prepared(playWhenReady, false, false))
+        }
+        if (playWhenReady) FileAvNative.play(handle) else FileAvNative.pause(handle)
     }
 
     override fun play() {
-        if (released) return
-        playing = true
+        if (released || handle == 0L || loadedPath == null) return
+        FileAvNative.play(handle)
         line?.takeIf { !it.isRunning }?.start()
         _status.update {
             val s = it.state
@@ -159,8 +145,8 @@ internal class JvmLocalPlayer(
     }
 
     override fun pause() {
-        if (released) return
-        playing = false
+        if (released || handle == 0L) return
+        FileAvNative.pause(handle)
         line?.takeIf { it.isRunning }?.stop()
         _status.update {
             val s = it.state as? PlaybackState.Prepared ?: return
@@ -169,27 +155,25 @@ internal class JvmLocalPlayer(
     }
 
     override fun seekTo(positionMs: Long) {
-        if (released) return
-        val uri = loadedUri ?: return
-        originMs = positionMs.coerceAtLeast(0L)
-        pcmBytes = 0
-        _progress.update { it.copy(positionMs = originMs) }
-        startSession(uri, originMs, playing, probe = false)
+        if (released || handle == 0L || loadedPath == null) return
+        FileAvNative.seek(handle, positionMs.coerceAtLeast(0L) / 1000.0)
+        _progress.update { it.copy(positionMs = positionMs.coerceAtLeast(0L), durationMs = durationMs) }
     }
 
     override fun stop() {
-        if (released) return
-        playing = false
-        tearDown(gen.incrementAndGet())
-        loadedUri = null
-        loadedMeta = null
+        if (released || handle == 0L) return
+        FileAvNative.pause(handle)
+        FileAvNative.close(handle)
+        loadedPath = null
+        streams = emptyList()
+        closeLine()
         _progress.value = Progress()
         _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
         showSurface(false)
     }
 
     override fun setConfig(config: PlaybackConfig) {
-        if (released) return
+        if (released || handle == 0L) return
         val prev = appliedConfig
         appliedConfig = config
         loop = config.loop
@@ -198,348 +182,137 @@ internal class JvmLocalPlayer(
             applyVolume(line, volume)
             _status.update { it.copy(volume = volume) }
         }
-        val quality = config.preferVideoQuality.first
-        val speedChanged = config.speed != prev.speed
-        val videoChanged = quality != prev.preferVideoQuality.first
-        val captionChanged = config.preferCaptionLanguage.first != prev.preferCaptionLanguage.first ||
-            config.captionVisible != prev.captionVisible
-        if (speedChanged) {
-            speed = config.speed.coerceAtLeast(0.01f)
-            _status.update { it.copy(speed = speed) }
+        if (config.speed != prev.speed) {
+            FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
+            _status.update { it.copy(speed = config.speed) }
         }
-        if (videoChanged) {
+        val quality = config.preferVideoQuality.first
+        if (quality != prev.preferVideoQuality.first) {
             preferVideoQuality = quality
             audioOnly = config.audioOnly
+            FileAvNative.setVideoEnabled(handle, !audioOnly)
+            FileAvNative.setBlitMax(handle, blitMaxFor(config))
             if (audioOnly) videoSurface?.clearFrame()
             _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
-            publishVideoQuality(loadedMeta)
+            publishVideoQuality()
             if (_status.value.state is PlaybackState.Prepared) showSurface(true)
         }
-        if (captionChanged) publishCaptions(loadedMeta, config)
-        if ((speedChanged || videoChanged || captionChanged) && loadedUri != null) {
-            startSession(loadedUri!!, mediaPositionMs(), playing, probe = false)
+        if (config.preferCaptionLanguage != prev.preferCaptionLanguage ||
+            config.captionVisible != prev.captionVisible
+        ) {
+            publishCaptions(config)
         }
     }
 
     override fun selectAudioTrack(id: String) {
-        if (released) return
+        if (released || handle == 0L) return
         val index = id.toIntOrNull() ?: return
-        selectedAudioIndex = index
+        FileAvNative.setAudioIndex(handle, index)
         _audioTracks.update { it.copy(selectedId = id) }
-        val uri = loadedUri ?: return
-        startSession(uri, mediaPositionMs(), playing, probe = false)
+        val path = loadedPath ?: return
+        val pos = FileAvNative.position(handle)
+        val playing = (_status.value.state as? PlaybackState.Prepared)?.playWhenReady == true
+        FileAvNative.open(handle, path)
+        FileAvNative.seek(handle, pos)
+        if (playing) FileAvNative.play(handle)
     }
 
     override fun release() {
         if (released) return
         released = true
-        playing = false
-        tearDown(gen.incrementAndGet())
-        scope.cancel()
+        closeLine()
+        if (handle != 0L) FileAvNative.destroy(handle)
         videoSurface?.setVisible(false)
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
-    private fun startSession(uri: Uri, startMs: Long, playWhenReady: Boolean, probe: Boolean) {
-        val session = gen.incrementAndGet()
-        tearDown(session)
-        loadJob?.cancel()
-        originMs = startMs.coerceAtLeast(0L)
-        pcmBytes = 0
-        loadJob = scope.launch {
-            try {
-                val meta = if (probe || loadedMeta == null || loadedUri != uri) {
-                    getter.getMetadata(uri)
-                } else {
-                    loadedMeta!!
-                }
-                if (session != gen.get()) return@launch
-                loadedUri = uri
-                loadedMeta = meta
-                durationMs = meta.container.duration ?: Progress.DURATION_UNKNOWN
-                publishTracks(meta, appliedConfig)
-                _progress.update {
-                    it.copy(positionMs = originMs, durationMs = durationMs, bufferedPositionMs = durationMs)
-                }
-                val spec = uri.toFileSpec()
-                val audio = pickAudio(meta)
-                val video = pickVideo(meta)
-                val caption = pickCaption(meta, appliedConfig)
-                if (audio == null && video == null) {
-                    fail("E60021", "no audio or video stream")
-                    return@launch
-                }
-                if (audio != null) {
-                    val proc = startFfmpeg(audioArgs(spec, audio.index, originMs, speed))
-                    if (session != gen.get()) {
-                        proc.close()
-                        return@launch
-                    }
-                    audioProc = proc
-                    launch { pumpAudio(session, proc, playWhenReady) }
-                }
-                if (video != null) {
-                    val proc = startFfmpeg(
-                        videoArgs(spec, video, originMs, caption, appliedConfig.captionVisible),
-                    )
-                    if (session != gen.get()) {
-                        proc.close()
-                        return@launch
-                    }
-                    videoProc = proc
-                    val size = VideoSize(video.width ?: 0, video.height ?: 0)
-                    if (size.width > 0 && size.height > 0) {
-                        _status.update { it.copy(videoSize = size) }
-                    }
-                    launch { pumpVideo(session, proc, video) }
-                }
-                _status.update {
-                    it.copy(
-                        state = PlaybackState.Prepared(playWhenReady, buffering = false, ended = false),
-                    )
-                }
-            } catch (c: CancellationException) {
-                throw c
-            } catch (t: Throwable) {
-                if (session != gen.get()) return@launch
-                val msg = (t as? FfmpegInfoParseException)?.stderrTail ?: t.message
-                fail("E60021", msg ?: "ffmpeg playback error")
-            }
+    override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
+        if (released || audioOnly) return
+        val img = grab(width, height)
+        val pixels = (img.raster.dataBuffer as DataBufferInt).data
+        val n = minOf(pixels.size, width * height)
+        bgra.order(ByteOrder.LITTLE_ENDIAN)
+        bgra.position(0)
+        bgra.limit((n * 4).coerceAtMost(bgra.capacity()))
+        bgra.asIntBuffer().get(pixels, 0, n)
+        videoSurface?.publish(img)
+    }
+
+    override fun onPcm(rate: Int, channels: Int, s16: ByteArray) {
+        if (released) return
+        val out = lineFor(rate, channels) ?: return
+        if (!out.isRunning && (_status.value.state as? PlaybackState.Prepared)?.playWhenReady == true) {
+            out.start()
+        }
+        var off = 0
+        while (off < s16.size) {
+            val w = out.write(s16, off, s16.size - off)
+            if (w <= 0) break
+            off += w
         }
     }
 
-    private suspend fun pumpAudio(session: Int, proc: KmpProcess, startPlaying: Boolean) {
-        val format = AudioFormat(SAMPLE_RATE, 16, CHANNELS, true, false)
-        val out = try {
-            AudioSystem.getSourceDataLine(format).also {
-                it.open(format, LINE_BUFFER)
-                applyVolume(it, volume)
-                if (startPlaying) it.start()
-            }
-        } catch (t: Throwable) {
-            if (session == gen.get()) fail("E60021", t.message ?: "audio output failed")
-            return
-        }
-        line = out
-        val pcm = ByteArray(PCM_CHUNK)
-        val src = proc.stdout.buffer()
-        try {
-            while (scope.isActive && session == gen.get()) {
-                if (!playing) {
-                    delay(20)
-                    continue
-                }
-                if (!out.isRunning) out.start()
-                val n = try {
-                    src.read(pcm)
-                } catch (_: IOException) {
-                    break
-                }
-                if (n < 0) {
-                    onEnded(session)
-                    return
-                }
-                if (n == 0) continue
-                var off = 0
-                while (off < n && session == gen.get()) {
-                    val w = out.write(pcm, off, n - off)
-                    if (w <= 0) break
-                    off += w
-                }
-                pcmBytes += n.toLong()
-                if (session == gen.get()) {
-                    _progress.update {
-                        it.copy(positionMs = mediaPositionMs(), durationMs = durationMs)
-                    }
-                }
-            }
-        } finally {
-            runCatching { src.close() }
-            if (line === out) line = null
-            runCatching { out.stop() }
-            runCatching { out.close() }
-        }
-    }
-
-    private suspend fun pumpVideo(session: Int, proc: KmpProcess, video: StreamMetadata.Video) {
-        val w = video.width ?: return
-        val h = video.height ?: return
-        if (w <= 0 || h <= 0) return
-        val frameBytes = w * h * 4
-        val fps = video.fps?.takeIf { it > 0.0 } ?: 25.0
-        val frame = ByteArray(frameBytes)
-        val src = proc.stdout.buffer()
-        var index = 0L
-        try {
-            while (scope.isActive && session == gen.get()) {
-                if (!playing || audioOnly) {
-                    delay(20)
-                    continue
-                }
-                try {
-                    src.readFully(frame)
-                } catch (_: EOFException) {
-                    return
-                } catch (_: IOException) {
-                    return
-                }
-                val mediaMs = originMs + (index * 1000.0 / fps).roundToLong()
-                index++
-                while (scope.isActive && session == gen.get() && playing && !audioOnly) {
-                    val ahead = mediaMs - mediaPositionMs()
-                    if (ahead <= 25) break
-                    delay(ahead.coerceAtMost(40))
-                }
-                if (mediaMs + 80 < mediaPositionMs()) continue // late: drop
-                if (session != gen.get() || audioOnly) continue
-                val image = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-                val pixels = (image.raster.dataBuffer as DataBufferInt).data
-                ByteBuffer.wrap(frame).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
-                    .get(pixels, 0, minOf(pixels.size, w * h))
-                videoSurface?.publish(image)
-            }
-        } finally {
-            runCatching { src.close() }
-        }
-    }
-
-    private fun onEnded(session: Int) {
-        if (session != gen.get()) return
-        if (loop && loadedUri != null) {
-            originMs = 0
-            pcmBytes = 0
-            startSession(loadedUri!!, 0, playWhenReady = true, probe = false)
-            return
-        }
-        playing = false
-        line?.takeIf { it.isRunning }?.stop()
+    override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) {
+        if (released) return
+        val pos = (positionSec * 1000.0).toLong().coerceAtLeast(0L)
+        if (durationSec > 0) durationMs = (durationSec * 1000.0).toLong()
         _progress.update {
-            it.copy(positionMs = if (durationMs > 0) durationMs else mediaPositionMs())
+            it.copy(positionMs = pos, durationMs = durationMs, bufferedPositionMs = durationMs)
         }
+        if (width > 0 && height > 0 && !audioOnly) {
+            val cur = _status.value.videoSize
+            if (cur == null || cur.width != width || cur.height != height) {
+                _status.update { it.copy(videoSize = VideoSize(width, height)) }
+            }
+        }
+    }
+
+    override fun onEvent(ended: Boolean, error: String?) {
+        if (released) return
+        if (error != null && error.isNotEmpty()) {
+            fail("E60021", error)
+            return
+        }
+        if (!ended) return
+        if (loop && loadedPath != null) {
+            FileAvNative.seek(handle, 0.0)
+            FileAvNative.play(handle)
+            return
+        }
+        line?.takeIf { it.isRunning }?.stop()
+        _progress.update { it.copy(positionMs = if (durationMs > 0) durationMs else it.positionMs) }
         _status.update {
             it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true))
         }
     }
 
-    private fun fail(code: String, message: String) {
-        playing = false
-        tearDown(gen.incrementAndGet())
-        _status.update {
-            it.copy(state = PlaybackState.Error(PlayerError(code, message)))
-        }
+    private fun applyConfigFlags(config: PlaybackConfig) {
+        volume = config.volume.coerceIn(0f, 1f)
+        audioOnly = config.audioOnly
+        preferVideoQuality = config.preferVideoQuality.first
+        loop = config.loop
+        applyVolume(line, volume)
     }
 
-    private fun tearDown(keepGen: Int) {
-        // keepGen is the session that should survive; close anything older by dropping refs.
-        val a = audioProc
-        val v = videoProc
-        audioProc = null
-        videoProc = null
-        a?.close()
-        v?.close()
-        val l = line
-        line = null
-        runCatching { l?.stop() }
-        runCatching { l?.close() }
-        if (keepGen != gen.get()) return
+    private fun blitMaxFor(config: PlaybackConfig): Int {
+        if (config.audioOnly) return 2
+        val h = VideoQualityState.heightForQuality(config.preferVideoQuality.first)
+        return h ?: 1920
     }
 
-    private fun startFfmpeg(args: List<String>): KmpProcess {
-        val proc = KmpProcessBuilder(ffmpegPath).appendArgs(args).start()
-        proc.scope.launch { runCatching { proc.stderr.buffer().readUtf8() } }
-        return proc
-    }
-
-    private fun audioArgs(spec: String, streamIndex: Int, startMs: Long, rate: Float): List<String> {
-        val tempo = rate.coerceAtLeast(0.01f)
-        val asetrate = (SAMPLE_RATE * tempo).toInt().coerceAtLeast(1)
-        return listOf(
-            "-hide_banner", "-nostdin", "-loglevel", "error",
-            "-ss", formatSeconds(startMs),
-            "-i", spec,
-            "-vn", "-map", "0:$streamIndex",
-            "-af", "aresample=$SAMPLE_RATE,asetrate=$asetrate,aresample=$SAMPLE_RATE," +
-                "aformat=sample_fmts=s16:channel_layouts=stereo",
-            "-f", "s16le", "pipe:1",
+    private fun publishTracks(config: PlaybackConfig) {
+        val auds = streams.filter { it.kind == KIND_AUDIO }
+        _audioTracks.value = AudioTrackState(
+            auds.map { AudioTrack(it.index.toString(), it.lang.ifBlank { "Audio ${it.index}" }) },
+            auds.firstOrNull()?.index?.toString(),
         )
+        publishVideoQuality()
+        publishCaptions(config)
     }
 
-    private fun videoArgs(
-        spec: String,
-        video: StreamMetadata.Video,
-        startMs: Long,
-        caption: StreamMetadata.Text?,
-        captionOn: Boolean,
-    ): List<String> {
-        val vf = buildString {
-            if (captionOn && caption != null) {
-                val si = loadedMeta?.streams?.filterIsInstance<StreamMetadata.Text>().orEmpty()
-                    .indexOfFirst { it.index == caption.index }
-                    .coerceAtLeast(0)
-                append("subtitles=")
-                append(escapeFilterPath(filePathOf(spec)))
-                append(":si=")
-                append(si)
-                append(",")
-            }
-            append("format=bgra")
-        }
-        return listOf(
-            "-hide_banner", "-nostdin", "-loglevel", "error",
-            "-ss", formatSeconds(startMs),
-            "-i", spec,
-            "-an", "-map", "0:${video.index}",
-            "-vf", vf,
-            "-f", "rawvideo", "pipe:1",
-        )
-    }
-
-    private fun pickAudio(meta: MediaFileMetadata): StreamMetadata.Audio? {
-        val all = meta.streams.filterIsInstance<StreamMetadata.Audio>()
-        if (all.isEmpty()) return null
-        val want = selectedAudioIndex
-        return all.firstOrNull { it.index == want } ?: all.first()
-    }
-
-    private fun pickVideo(meta: MediaFileMetadata): StreamMetadata.Video? {
-        if (audioOnly) return null
-        return meta.streams.filterIsInstance<StreamMetadata.Video>().firstOrNull { !it.isAttachedThumbnail() }
-    }
-
-    private fun pickCaption(meta: MediaFileMetadata, config: PlaybackConfig): StreamMetadata.Text? {
-        val all = meta.streams.filterIsInstance<StreamMetadata.Text>()
-        if (all.isEmpty()) return null
-        val lang = config.preferCaptionLanguage.first
-        val byId = lang.toIntOrNull()?.let { id -> all.firstOrNull { it.index == id } }
-        val byLang = all.firstOrNull { it.metadataMap.language.equals(lang, ignoreCase = true) }
-        val chosen = when {
-            lang != PlaybackConfig.UNDETERMINED_LANGUAGE -> byId ?: byLang
-            else -> lastCaptionIndex?.let { id -> all.firstOrNull { it.index == id } }
-        } ?: all.first()
-        lastCaptionIndex = chosen.index
-        return chosen
-    }
-
-    private fun publishTracks(meta: MediaFileMetadata, config: PlaybackConfig) {
-        publishVideoQuality(meta)
-        publishCaptions(meta, config)
-        val auds = meta.streams.filterIsInstance<StreamMetadata.Audio>()
-        _audioTracks.value = if (auds.size <= 1) {
-            AudioTrackState.DEFAULT
-        } else {
-            val sel = pickAudio(meta)?.index
-            selectedAudioIndex = sel
-            AudioTrackState(
-                auds.map { AudioTrack(it.index.toString(), it.metadataMap.language ?: "Audio ${it.index}") },
-                sel?.toString(),
-            )
-        }
-    }
-
-    private fun publishVideoQuality(meta: MediaFileMetadata?) {
-        val video = meta?.streams?.filterIsInstance<StreamMetadata.Video>()
-            ?.firstOrNull { !it.isAttachedThumbnail() }
-        val h = video?.let { minOf(it.width ?: 0, it.height ?: 0) } ?: 0
+    private fun publishVideoQuality() {
+        val video = streams.firstOrNull { it.kind == KIND_VIDEO }
+        val h = video?.let { minOf(it.width, it.height) } ?: 0
         _videoQuality.value = if (h <= 0) {
             VideoQualityState(
                 options = VideoQualityState.LOCAL_BASE_OPTIONS,
@@ -556,36 +329,86 @@ internal class JvmLocalPlayer(
         }
     }
 
-    private fun publishCaptions(meta: MediaFileMetadata?, config: PlaybackConfig) {
-        val subs = meta?.streams?.filterIsInstance<StreamMetadata.Text>().orEmpty()
+    private fun publishCaptions(config: PlaybackConfig) {
+        val subs = streams.filter { it.kind == KIND_TEXT }
         _captions.value = if (subs.isEmpty()) {
             CaptionState.DEFAULT
         } else {
-            val chosen = pickCaption(meta!!, config)
+            val lang = config.preferCaptionLanguage.first
+            val chosen = subs.firstOrNull { it.lang.equals(lang, ignoreCase = true) }
+                ?: subs.firstOrNull { it.index.toString() == lang }
+                ?: subs.first()
             CaptionState(
-                subs.map {
-                    CaptionTrack(it.index.toString(), it.metadataMap.language ?: it.codec)
-                },
-                if (config.captionVisible) chosen?.index?.toString() else null,
+                subs.map { CaptionTrack(it.lang.ifBlank { it.index.toString() }, it.codec) },
+                if (config.captionVisible) chosen.lang.ifBlank { chosen.index.toString() } else null,
             )
         }
     }
 
-    private fun mediaPositionMs(): Long {
-        val pcmMs = pcmBytes * 1000L / BYTES_PER_SECOND
-        return originMs + (pcmMs * speed).toLong()
+    private fun fail(code: String, message: String) {
+        FileAvNative.pause(handle)
+        closeLine()
+        _status.update { it.copy(state = PlaybackState.Error(PlayerError(code, message))) }
     }
 
-    companion object {
-        const val SAMPLE_RATE = 48_000f
-        const val CHANNELS = 2
-        const val BYTES_PER_SECOND = 48_000L * 2 * 2
-        const val PCM_CHUNK = 4096
-        const val LINE_BUFFER = 48_000 * 2 * 2 / 10 // ~100 ms
+    private fun showSurface(visible: Boolean) {
+        videoSurface?.setVisible(visible)
+    }
+
+    private fun grab(w: Int, h: Int): BufferedImage {
+        for (i in 0..2) {
+            val cur = frameBufs[i]
+            if (cur != null && cur.width == w && cur.height == h) return cur
+            if (cur == null || cur.width != w || cur.height != h) {
+                val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+                frameBufs[i] = img
+                return img
+            }
+        }
+        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        frameBufs[0] = img
+        return img
+    }
+
+    private fun lineFor(rate: Int, channels: Int): SourceDataLine? {
+        val cur = line
+        if (cur != null && lineRate == rate && lineCh == channels) return cur
+        closeLine()
+        val format = AudioFormat(rate.toFloat(), 16, channels, true, false)
+        return try {
+            AudioSystem.getSourceDataLine(format).also {
+                it.open(format, rate * channels * 2 / 10)
+                applyVolume(it, volume)
+                line = it
+                lineRate = rate
+                lineCh = channels
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun closeLine() {
+        val l = line
+        line = null
+        runCatching { l?.stop() }
+        runCatching { l?.close() }
     }
 }
 
-/** The off-screen video surface of a JVM `LocalPlayer`, or null when the engine has none. */
+private const val KIND_AUDIO = 0
+private const val KIND_VIDEO = 1
+private const val KIND_TEXT = 2
+
+private data class AvStreamRow(
+    val kind: Int,
+    val index: Int,
+    val width: Int,
+    val height: Int,
+    val lang: String,
+    val codec: String,
+)
+
 fun LocalPlayer.localVideoSurface(): LocalVideoSurface? = (this as? JvmLocalPlayer)?.surface
 
 private fun parseLocalUri(raw: String): Uri {
@@ -597,17 +420,21 @@ private fun parseLocalUri(raw: String): Uri {
     }
 }
 
-/** ffmpeg's file protocol wants the decoded path, not a percent-encoded URI. */
-private fun Uri.toFileSpec(): String =
-    if (scheme?.toString().equals("file", ignoreCase = true)) "file:$path" else toString()
+private fun Uri.toFilePath(): String =
+    if (scheme?.toString().equals("file", ignoreCase = true)) path.toString() else toString()
 
-private fun filePathOf(spec: String): String =
-    if (spec.startsWith("file:")) spec.removePrefix("file:") else spec
-
-private fun formatSeconds(ms: Long): String = (ms.coerceAtLeast(0L) / 1000.0).toString()
-
-private fun escapeFilterPath(path: String): String =
-    path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+private fun parseAvStream(line: String): AvStreamRow? {
+    val p = line.split('|')
+    if (p.size < 6) return null
+    return AvStreamRow(
+        kind = p[0].toIntOrNull() ?: return null,
+        index = p[1].toIntOrNull() ?: return null,
+        width = p[2].toIntOrNull() ?: 0,
+        height = p[3].toIntOrNull() ?: 0,
+        lang = p[4],
+        codec = p[5],
+    )
+}
 
 private fun applyVolume(line: SourceDataLine?, volume: Float) {
     val v = volume.coerceIn(0f, 1f)

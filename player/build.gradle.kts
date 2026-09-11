@@ -54,7 +54,7 @@ kotlin {
          * play a SINGLE local file (load / play / pause / seek / stop). No queue, no gapless.
          * ├── appleMain   → AVPlayer          (iOS + macOS)   [reference]
          * ├── androidMain → Media3 ExoPlayer                  [reference]
-         * └── jvmMain     → ffmpeg CLI + Java Sound            [needs the packed ffmpeg binary]
+         * └── jvmMain     → in-process libav + Java Sound      [same packed libav as MSE]
          */
         val commonMain by getting {
             dependencies {

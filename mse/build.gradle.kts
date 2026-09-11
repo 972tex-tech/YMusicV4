@@ -168,6 +168,9 @@ kotlin {
         jvmMain.dependencies {
             implementation(Libs.Kotlinx.coroutinesSwing)
         }
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 

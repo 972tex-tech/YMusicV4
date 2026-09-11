@@ -1,13 +1,11 @@
 package io.ymusic.player
 
 import kmpcommon.error.TechnicalException
-import java.io.File
 
 /**
- * [videoSurface] is the off-screen frame endpoint the shell renders as a Compose `Image`: ffmpeg
- * decodes each frame into it and the engine owns its visibility. [ffmpegPath] is the packed
- * `ffmpeg` binary. When omitted, the factory creates a surface so the picture is always reachable
- * via [LocalPlayer.localVideoSurface].
+ * [videoSurface] is the off-screen frame endpoint the shell renders as a Compose `Image`: libav
+ * decodes each frame into it. [ffmpegPath] is unused (in-process libav); kept so the shell can
+ * still pass the packed CLI for metadata/mux.
  */
 actual class LocalPlayerContext(
     val videoSurface: LocalVideoSurface? = null,
@@ -15,7 +13,9 @@ actual class LocalPlayerContext(
 )
 
 actual fun createLocalPlayer(context: LocalPlayerContext): LocalPlayer {
-    val ffmpeg = context.ffmpegPath?.takeIf { File(it).canExecute() }
-        ?: throw TechnicalException("E60020", "ffmpeg not found")
-    return JvmLocalPlayer(context.videoSurface ?: LocalVideoSurface(), ffmpeg)
+    return try {
+        JvmLocalPlayer(context.videoSurface ?: LocalVideoSurface())
+    } catch (t: Throwable) {
+        throw TechnicalException("E60020", t.message ?: "libav local player failed")
+    }
 }
