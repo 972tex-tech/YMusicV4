@@ -222,6 +222,14 @@ static double media_time_locked(FileAv *p)
     return t;
 }
 
+/* Caller holds mu. Decode thread drops mu around JNI; wait until it is not
+ * in that section before touching codecs/queues/frames. */
+static void wait_idle_locked(FileAv *p)
+{
+    while (p->in_pump)
+        pthread_cond_wait(&p->cv, &p->mu);
+}
+
 static void free_codecs(FileAv *p)
 {
     avcodec_free_context(&p->adec);
@@ -781,10 +789,7 @@ void file_av_close(FileAv *p)
     p->opened = 0;
     p->playing = 0;
     pthread_cond_broadcast(&p->cv);
-    /* Decode thread drops the mutex around PCM/frame JNI. Do not free
-       codecs/buffers until it has left that section (in_pump == 0). */
-    while (p->in_pump)
-        pthread_cond_wait(&p->cv, &p->mu);
+    wait_idle_locked(p);
     free_codecs(p);
     if (p->fmt)
         avformat_close_input(&p->fmt);
@@ -833,6 +838,11 @@ void file_av_seek(FileAv *p, double seconds)
         pthread_mutex_unlock(&p->mu);
         return;
     }
+    wait_idle_locked(p);
+    if (!p->fmt) {
+        pthread_mutex_unlock(&p->mu);
+        return;
+    }
     if (seconds < 0)
         seconds = 0;
     if (p->duration > 0 && seconds > p->duration)
@@ -845,7 +855,8 @@ void file_av_seek(FileAv *p, double seconds)
         avcodec_flush_buffers(p->vdec);
     pq_clear(&p->aq);
     pq_clear(&p->vq);
-    av_frame_unref(p->vhold);
+    av_frame_unref(p->afr);
+    av_frame_unref(p->vfr);
     av_frame_free(&p->vhold);
     p->hold = seconds;
     p->ended = 0;
