@@ -141,7 +141,7 @@ function fmtProto(buf: Uint8Array): string {
       if (field === 13) parts.push("13{" + fmtFormatId(inner) + "}");
       else if (field === 15) parts.push("tr{" + fmtProto(inner) + "}");
       else if (looksAscii(inner) && inner.length < 80)
-        parts.push(field + "=\"" + asciiOf(inner) + "\"");
+        parts.push(field + '="' + asciiOf(inner) + '"');
       else parts.push(field + ":len=" + len);
     } else if (wire === 1) {
       i += 8;
@@ -311,68 +311,86 @@ function spsLabel(v: number): string {
   return "?";
 }
 
-/** MEDIA_HEADER sequence_number = field 9. Skip init (field 8) and seq 0. */
-function maxMhSeq(body: Uint8Array): number | null {
-  let i = 0;
-  let m: number | null = null;
-  while (i < body.length) {
-    const id = readUmpVarint(body, i);
-    if (!id) break;
-    const sz = readUmpVarint(body, id.i);
-    if (!sz) break;
-    const start = sz.i;
-    const end = start + sz.v;
-    if (end > body.length) break;
-    if (id.v === 20) {
-      const p = body.subarray(start, end);
-      if (protoVarint(p, 8) !== 1) {
-        const seq = protoVarint(p, 9);
-        if (seq != null && seq > 0 && (m == null || seq > m)) m = seq;
-      }
-    }
-    i = end;
-  }
-  return m;
+function catU8(a: Uint8Array, b: Uint8Array): Uint8Array {
+  if (!a.length) return b;
+  if (!b.length) return a;
+  const o = new Uint8Array(a.length + b.length);
+  o.set(a, 0);
+  o.set(b, a.length);
+  return o;
 }
 
-export function logSabrResponse(url: string, status: number, body: Uint8Array): void {
-  if (url.indexOf("/videoplayback") < 0) return;
-  const audioOnly = isAudioOnly();
-  const parts: string[] = [];
-  let i = 0;
+function joinU8(parts: Uint8Array[], n: number): Uint8Array {
+  if (parts.length === 1) return parts[0]!;
+  const o = new Uint8Array(n);
+  let off = 0;
+  for (let i = 0; i < parts.length; i++) {
+    o.set(parts[i]!, off);
+    off += parts[i]!.length;
+  }
+  return o;
+}
+
+/**
+ * Like Kotlin SabrCacheTee: parse UMP off a copy of each player-read chunk.
+ * Pass-through is the same bytes; scan holds at most a straddling header plus one
+ * small control payload (MEDIA_DATA is skipped, never buffered).
+ */
+export interface SabrTee {
+  push(chunk: Uint8Array): void;
+  maxHid(): number;
+  finish(url: string, status: number): void;
+}
+
+export function createSabrTee(): SabrTee {
+  let leftover = new Uint8Array(0);
+  let inPayload = false;
+  let partId = 0;
+  let partRemain = 0;
+  let partSize = 0;
+  let needPayload = false;
+  let pay: Uint8Array[] = [];
+  let payN = 0;
+  let maxHid = -1;
   let sps = -1;
-  let err = "";
   let media = 0;
-  while (i < body.length) {
-    const id = readUmpVarint(body, i);
-    if (!id) break;
-    const sz = readUmpVarint(body, id.i);
-    if (!sz) break;
-    const start = sz.i;
-    const end = start + sz.v;
-    if (end > body.length) {
-      parts.push((UMP_NAME[id.v] || String(id.v)) + ":trunc");
-      break;
+  let bodyN = 0;
+  let err = "";
+  let mhSeq: number | null = null;
+  const parts: string[] = [];
+
+  function endPart(): void {
+    const payload = needPayload && payN ? joinU8(pay, payN) : null;
+    pay = [];
+    payN = 0;
+    if (partId === 20 && payload) {
+      const hid = protoVarint(payload, 1);
+      if (hid != null && hid > maxHid) maxHid = hid;
+      if (protoVarint(payload, 8) !== 1) {
+        const seq = protoVarint(payload, 9);
+        if (seq != null && seq > 0 && (mhSeq == null || seq > mhSeq)) mhSeq = seq;
+      }
     }
-    const name = UMP_NAME[id.v] || String(id.v);
-    const payload = body.subarray(start, end);
-    if (id.v === 21) media += sz.v;
-    if (id.v === 58) {
+    if (partId === 58 && payload) {
       const v = protoVarint(payload, 1);
       sps = v != null ? v : -1;
+    }
+    if (!SABR_DEBUG) return;
+    const name = UMP_NAME[partId] || String(partId);
+    if (partId === 58) {
       parts.push("SPS=" + sps + "(" + spsLabel(sps) + ")");
-    } else if (id.v === 44) {
+    } else if (partId === 44) {
       err = "err";
       parts.push("SABR_ERROR");
-    } else if (id.v === 43) {
+    } else if (partId === 43) {
       parts.push("REDIRECT");
-    } else if (id.v === 42) {
+    } else if (partId === 42 && payload) {
       const fi = fmtFormatInit(payload);
       const fid = protoBytes(payload, 2);
       const itag = fid ? protoVarint(fid, 1) : protoVarint(payload, 3);
       parts.push("FORMAT_INIT:itag=" + (itag != null ? itag : "-"));
-      if (SABR_DEBUG) console.log("sabr " + fi);
-    } else if (id.v === 20) {
+      console.log("sabr " + fi);
+    } else if (partId === 20 && payload) {
       const mh = fmtMediaHeader(payload);
       const itag = protoVarint(payload, 3);
       const init = protoVarint(payload, 8) === 1 ? 1 : 0;
@@ -386,47 +404,100 @@ export function logSabrResponse(url: string, status: number, body: Uint8Array): 
           (seq != null ? ":seq=" + seq : "") +
           (t != null ? ":t=" + t : ""),
       );
-      if (SABR_DEBUG) console.log("sabr " + mh);
+      console.log("sabr " + mh);
     } else {
-      parts.push(name + ":" + sz.v);
-    }
-    i = end;
-  }
-  const seq = maxMhSeq(body);
-  if (SABR_DEBUG) {
-    let line =
-      "sabr HTTP " +
-      status +
-      " body=" +
-      body.length +
-      " ump=[" +
-      parts.join(",") +
-      "]" +
-      " media=" +
-      media +
-      " sps=" +
-      sps;
-    if (seq != null) line += " mhSeq=" + seq;
-    if (sps === 2 || sps === 3) line += " PO_REJECTED";
-    if (err) line += " SABR_ERROR";
-    if (body.length > 0 && body.length <= 256) {
-      let hx = "";
-      for (let hi = 0; hi < body.length; hi++)
-        hx += (body[hi]! < 16 ? "0" : "") + body[hi]!.toString(16);
-      line += " hex=" + hx;
-    }
-    console.log(line);
-  }
-  dumpFirstSps(sps);
-  if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
-  if (MSE_DEBUG && audioOnly) {
-    dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
-    if (media > 0) {
-      setTimeout(function () {
-        dumpDrain("sabr-media+0");
-      }, 0);
+      parts.push(name + ":" + partSize);
     }
   }
+
+  function push(chunk: Uint8Array): void {
+    if (!chunk.length) return;
+    bodyN += chunk.length;
+    const buf = leftover.length ? catU8(leftover, chunk) : chunk;
+    leftover = new Uint8Array(0);
+    let i = 0;
+    while (i < buf.length) {
+      if (!inPayload) {
+        const id = readUmpVarint(buf, i);
+        if (!id) {
+          leftover = buf.slice(i);
+          return;
+        }
+        const sz = readUmpVarint(buf, id.i);
+        if (!sz) {
+          leftover = buf.slice(i);
+          return;
+        }
+        inPayload = true;
+        partId = id.v;
+        partSize = sz.v;
+        partRemain = sz.v;
+        i = sz.i;
+        needPayload = partId === 20 || partId === 58 || (SABR_DEBUG && partId !== 21);
+        pay = [];
+        payN = 0;
+      }
+      const take = Math.min(partRemain, buf.length - i);
+      if (needPayload && take > 0) {
+        pay.push(buf.subarray(i, i + take));
+        payN += take;
+      }
+      if (partId === 21) media += take;
+      i += take;
+      partRemain -= take;
+      if (partRemain === 0) {
+        inPayload = false;
+        endPart();
+      }
+    }
+  }
+
+  function finish(_url: string, status: number): void {
+    if (SABR_DEBUG) {
+      if (inPayload || leftover.length) parts.push((UMP_NAME[partId] || String(partId)) + ":trunc");
+      let line =
+        "sabr HTTP " +
+        status +
+        " body=" +
+        bodyN +
+        " ump=[" +
+        parts.join(",") +
+        "]" +
+        " media=" +
+        media +
+        " sps=" +
+        sps;
+      if (mhSeq != null) line += " mhSeq=" + mhSeq;
+      if (sps === 2 || sps === 3) line += " PO_REJECTED";
+      if (err) line += " SABR_ERROR";
+      console.log(line);
+    }
+    dumpFirstSps(sps);
+    if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
+    if (MSE_DEBUG && isAudioOnly()) {
+      dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
+      if (media > 0) {
+        setTimeout(function () {
+          dumpDrain("sabr-media+0");
+        }, 0);
+      }
+    }
+  }
+
+  return {
+    push: push,
+    maxHid: function () {
+      return maxHid;
+    },
+    finish: finish,
+  };
+}
+
+export function logSabrResponse(url: string, status: number, body: Uint8Array): void {
+  if (url.indexOf("/videoplayback") < 0) return;
+  const t = createSabrTee();
+  t.push(body);
+  t.finish(url, status);
 }
 
 function itagsOf(msgs: Uint8Array[]): string {

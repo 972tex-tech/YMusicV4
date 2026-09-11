@@ -15,14 +15,11 @@ import {
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
-import { logSabrRequest, logSabrResponse } from "./sabr_log";
-import { appendFakeUmp, hasPendingFake, prepareSabrBody } from "./sabr_abr";
+import { createSabrTee, logSabrRequest } from "./sabr_log";
+import { fakeUmpAfter, prepareSabrBody } from "./sabr_abr";
 import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 import { applyRequestRewrite, applyResponseRewrite, taggedJsonText, wantsJsonRewrite } from "./xhr";
-
-/* Keep both bindings live when SABR_DEBUG is compile-time false (Closure). */
-void logSabrResponse;
 
 function native(name: string, impl: Function): Function {
   if (typeof __nativeFn === "function") return __nativeFn(name, impl);
@@ -708,30 +705,21 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   const inner = httpPull(httpRes, detach);
   let pull = inner;
   const isSabr = p.url.indexOf("/videoplayback") >= 0;
-  const wantFake = isSabr && hasPendingFake();
-  if (isSabr && (SABR_DEBUG || wantFake)) {
-    const sabrChunks: Uint8Array[] = [];
-    let sabrN = 0;
+  if (isSabr) {
+    const tee = createSabrTee();
     let fakeSent = false;
     pull = async function () {
       const c = await inner();
       if (c) {
-        sabrChunks.push(c);
-        sabrN += c.length;
+        tee.push(c);
         return c;
       }
-      if (wantFake && !fakeSent) {
+      if (!fakeSent) {
         fakeSent = true;
-        const body = concatBytes(sabrChunks, sabrN);
-        const all = appendFakeUmp(body);
-        if (all.length > body.length) {
-          const extra = all.subarray(body.length);
-          sabrChunks.push(extra);
-          sabrN = all.length;
-          return extra;
-        }
+        const extra = fakeUmpAfter(tee.maxHid());
+        if (extra) return extra;
       }
-      if (SABR_DEBUG) logSabrResponse(p.url, httpRes.status, concatBytes(sabrChunks, sabrN));
+      tee.finish(p.url, httpRes.status);
       return c;
     };
   }

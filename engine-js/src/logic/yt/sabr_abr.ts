@@ -548,10 +548,15 @@ function emitPending(initHid: number, mediaHid: number): Uint8Array | null {
   return buildFakeUmp(p.needInit, p.itag, p.audBr, p.fakeBr, initHid, mediaHid);
 }
 
+/** Fake 144p UMP only — caller already streamed the SABR body. */
+export function fakeUmpAfter(maxHid: number): Uint8Array | null {
+  if (!pendingCover) return null;
+  const fake = emitPending((maxHid + 1) & 255, (maxHid + 2) & 255);
+  return fake && fake.length ? fake : null;
+}
+
 export function appendFakeUmp(body: Uint8Array): Uint8Array {
-  if (!pendingCover) return body;
-  const max = maxMediaHid(body);
-  const fake = emitPending((max + 1) & 255, (max + 2) & 255);
-  if (!fake || !fake.length) return body;
-  return concatU8([body, fake]);
+  const extra = fakeUmpAfter(maxMediaHid(body));
+  if (!extra) return body;
+  return concatU8([body, extra]);
 }
