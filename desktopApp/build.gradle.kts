@@ -149,38 +149,6 @@ val stageEngineJs by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("engineJsResources"))
 }
 
-// webview-js is not a Gradle module; `npm ci` once from the lockfile so :run does not require a
-// prior manual install (esbuild is a local import, not npx).
-val npmCiWebViewJs by tasks.registering(Exec::class) {
-    workingDir = rootProject.file("webview-js")
-    inputs.files(
-        rootProject.file("webview-js/package.json"),
-        rootProject.file("webview-js/package-lock.json"),
-    )
-    outputs.dir(rootProject.file("webview-js/node_modules"))
-    commandLine("npm", "ci")
-}
-
-// The injected WebView player script, prod build, staged as a jar resource. Writes into our build
-// dir so the dev dist/ stays untouched.
-val stageWebViewJs by tasks.registering(Exec::class) {
-    dependsOn(npmCiWebViewJs)
-    val outFile = layout.buildDirectory.file("webviewJsResources/webview_ymusic.js")
-    workingDir = rootProject.file("webview-js")
-    inputs.dir(rootProject.file("webview-js/src"))
-    inputs.files(rootProject.file("webview-js/build.mjs"), rootProject.file("webview-js/package.json"))
-    outputs.file(outFile)
-    commandLine("node", "build.mjs", "--prod", "--out", outFile.get().asFile.absolutePath)
-}
-
-// Our OSR browser paints AWT images, so JCEF's GL canvas path is never instantiated and
-// jogl+gluegen are dead weight. Excluded at configuration level: jcefmaven arrives through two
-// declarations (:player's and ours) and jcef-api re-declares jogl itself.
-configurations.all {
-    exclude(group = "me.friwi", module = "jogl-all")
-    exclude(group = "me.friwi", module = "gluegen-rt")
-}
-
 kotlin {
     jvm {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -193,7 +161,7 @@ kotlin {
             implementation(compose.components.resources)
         }
 
-        /** The desktop (JVM) product shell: builds the AppGraph (JCEF, engines, player) and boots
+        /** The desktop (JVM) product shell: builds the AppGraph (MSE + VLCJ, engines) and boots
          *  the shared :commonUi App. `./gradlew :desktopApp:run`. */
         val jvmMain by getting {
             kotlin.srcDir(generateBuildConfig)
@@ -204,7 +172,6 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
-                implementation(Libs.Jcef.maven)
                 implementation(Libs.Jna.core)
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
@@ -219,69 +186,6 @@ kotlin {
             implementation(kotlin("test"))
         }
     }
-}
-
-// Headless diagnostic for the WebView engine (see WebViewProbe.kt):
-//   ./gradlew :desktopApp:webviewProbe -PprobeArgs="realized"   (or "headless")
-// Manual check of the macOS Now Playing bridge (see NowPlayingProbe.kt):
-//   ./gradlew :desktopApp:nowPlayingProbe   — then press media keys / use Control Center.
-tasks.register<JavaExec>("nowPlayingProbe") {
-    group = "verification"
-    description = "Publish a Now Playing state and print every media command the OS delivers."
-    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
-    dependsOn(jvmMainCompilation.compileTaskProvider)
-    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("io.ymusic.desktop.NowPlayingProbeKt")
-    args((providers.gradleProperty("npArgs").orNull ?: "").split(" ").filter { it.isNotBlank() })
-}
-
-tasks.register<JavaExec>("webviewProbe") {
-    group = "verification"
-    description = "Drive the JVM WebView YouTube engine headlessly and report whether playback advances."
-    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
-    dependsOn(jvmMainCompilation.compileTaskProvider)
-    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("io.ymusic.desktop.WebViewProbeKt")
-    jvmArgs(
-        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
-        "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
-        "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
-    )
-    args((providers.gradleProperty("probeArgs").orNull ?: "realized").split(" "))
-}
-
-// End-to-end SABR download probe (see SabrDownloadProbe.kt):
-//   ./gradlew :desktopApp:sabrDownload -PsabrArgs="<videoId>"
-tasks.register<JavaExec>("sabrDownload") {
-    group = "verification"
-    description = "Play a video, extract its decoded player response + PO token, and SABR-download the audio."
-    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
-    dependsOn(jvmMainCompilation.compileTaskProvider)
-    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("io.ymusic.desktop.SabrDownloadProbeKt")
-    jvmArgs(
-        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
-        "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
-        "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
-    )
-    args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
-}
-
-// End-to-end Download Manager probe (see DownloadManagerProbe.kt):
-//   ./gradlew :desktopApp:downloadManager -PsabrArgs="<videoId>"
-tasks.register<JavaExec>("downloadManager") {
-    group = "verification"
-    description = "Enqueue MP3 + M4A downloads through the real DownloadService and verify the output files."
-    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
-    dependsOn(jvmMainCompilation.compileTaskProvider)
-    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("io.ymusic.desktop.DownloadManagerProbeKt")
-    jvmArgs(
-        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
-        "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
-        "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
-    )
-    args((providers.gradleProperty("sabrArgs").orNull ?: "dQw4w9WgXcQ").split(" "))
 }
 
 // Producer side of the update flow (client side: io.ymusic.desktop.update):
@@ -419,7 +323,7 @@ tasks.register<JavaExec>("mockUpdateServer") {
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
 tasks.register<JavaExec>("catalogue") {
     group = "application"
-    description = "Open the UI-component catalogue window (no engines/CEF — fast design loop)."
+    description = "Open the UI-component catalogue window (no engines — fast design loop)."
     val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
     dependsOn(jvmMainCompilation.compileTaskProvider)
     classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
@@ -433,7 +337,7 @@ compose.desktop {
         // platform classes — without them it can't even resolve java.lang.Object). The Gradle
         // daemon often runs on a JBR that has neither, so find one; -Pymusic.jdkHome overrides.
         fullJdkHome?.let { javaHome = it }
-        // JCEF (the WebView YouTube host) needs AWT internals opened on the JBR/JDK.
+        // Compose SwingPanel (MSE blit) needs AWT internals opened on the JBR/JDK.
         // Dev only: -Pymusic.setup.forceDownload makes the first run ignore an ffmpeg already on
         // this machine, so the download path can be exercised on a box that has one anyway.
         if (providers.gradleProperty("ymusic.setup.forceDownload").isPresent) {
@@ -470,7 +374,7 @@ compose.desktop {
                     sign.set(signingIdentity.isNotBlank())
                     if (signingIdentity.isNotBlank()) identity.set(signingIdentity)
                 }
-                // The JVM and Chromium need executable memory a hardened runtime withholds; see
+                // The JVM needs executable memory a hardened runtime withholds; see
                 // entitlements.plist for why each is there.
                 entitlementsFile.set(project.file("entitlements.plist"))
                 runtimeEntitlementsFile.set(project.file("entitlements.plist"))
@@ -484,9 +388,9 @@ compose.desktop {
                 }
             }
             // jlink modules the default set misses but the runtime graph uses: java.sql
-            // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/vlcj/JOGL/coroutines/okio),
+            // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/vlcj/coroutines/okio),
             // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec
-            // (TLS for jcefmaven's first-run CEF download).
+            // (TLS for first-run ffmpeg download + update checks).
             modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec")
         }
     }
@@ -567,4 +471,3 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
 }
 
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("engineJsResources")).builtBy(stageEngineJs))
-kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("webviewJsResources")).builtBy(stageWebViewJs))

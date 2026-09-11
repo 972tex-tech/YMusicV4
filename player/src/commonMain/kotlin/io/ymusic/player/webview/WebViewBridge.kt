@@ -15,8 +15,7 @@ internal interface WebViewBridge {
     /**
      * JS the engine evaluates (at document-start, ahead of the globals + bundle) to install the
      * page → host transport the bundle's `postMsg` expects. Empty on platforms that provide it
-     * natively (Android's `ymixChannelAndroid` interface, Apple's `webkit.messageHandlers`); the JVM
-     * bridge uses it to shim `window.ymixChannelAndroid` onto JCEF's `cefQuery`.
+     * natively (Android's `ymixChannelAndroid` interface, Apple's `webkit.messageHandlers`).
      */
     val bootPrelude: String get() = ""
 
@@ -24,8 +23,8 @@ internal interface WebViewBridge {
 
     /**
      * True when this bridge has a player cache wired and intercepts the bundle's `/ymusicForward`
-     * requests natively (desktop `CefResourceHandler`, Android `shouldInterceptRequest`). Drives the
-     * bundle's `window.enablePlayerCache`: only then does webview-js rewrite `/videoplayback` to the
+     * requests natively (Android `shouldInterceptRequest`). Drives the bundle's
+     * `window.enablePlayerCache`: only then does webview-js rewrite `/videoplayback` to the
      * `/ymusicForward` shape this bridge serves. Default false — no cache, no interception, no rewrite.
      */
     val playerCacheEnabled: Boolean get() = false

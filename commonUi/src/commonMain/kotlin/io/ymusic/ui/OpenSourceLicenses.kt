@@ -37,8 +37,6 @@ internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("Media3 / ExoPlayer", "Apache-2.0", scope = "Android"),
     OssComponent("sqlite-jdbc (Xerial)", "Apache-2.0", scope = "Desktop"),
     OssComponent("Skiko / Skia", "Apache-2.0 / BSD-3-Clause", scope = "Desktop"),
-    OssComponent("JCEF / CEF / Chromium", "BSD-3-Clause", scope = "Desktop"),
-    OssComponent("jcefmaven", "Apache-2.0", scope = "Desktop"),
     OssComponent("Java Native Access (JNA)", "Apache-2.0", scope = "Desktop"),
     OssComponent("vlcj", "GPL-3.0", scope = "Desktop"),
     // One icon (cone-striped), vendored as an ImageVector on the first-run screen. MIT requires the

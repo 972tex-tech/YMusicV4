@@ -13,8 +13,7 @@ import io.ymusic.ui.LoginWebViewState
 
 /**
  * The Android sign-in WebView (the shell's [io.ymusic.ui.AppGraph.loginBrowser]). Cookies land in
- * the WebView [CookieManager] first; the shell copies them into the persistent jar on each page
- * (see [harvestWebViewCookiesInto]) so the engine's login gate can see them.
+ * the WebView [CookieManager], which [WebViewCookieJar] wraps for engine HTTP.
  * Reports title / URL / progress into [state]; a mobile default User-Agent is correct for the
  * m.youtube.com sign-in (matching the legacy WebViewLoginFragment).
  */

@@ -31,8 +31,6 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
@@ -40,7 +38,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
@@ -125,7 +122,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import org.cef.browser.JcefOsrSurface
 import org.jetbrains.compose.resources.painterResource
 import java.awt.FileDialog
 import java.awt.Frame
@@ -140,9 +136,8 @@ import kotlin.math.min
 import java.awt.Color as AwtColor
 
 /**
- * The desktop shell: boots JCEF + the scraping engine, assembles the [AppGraph] (player facade over
- * VLCJ local + MSE YouTube playback, a hidden JCEF WebView for download cooking), and runs the
- * shared [App].
+ * The desktop shell: boots the scraping engine, assembles the [AppGraph] (player facade over VLCJ
+ * local + MSE YouTube playback), and runs the shared [App].
  */
 // Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
 private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
@@ -191,8 +186,6 @@ fun main() {
     // MSE video is a SwingPanel (same blit as the playground). Blending must be set before the first
     // ComposeWindow so Compose chrome over the hole still composites. Local VLCJ stays a Compose Image.
     System.setProperty("compose.interop.blending", "true")
-    // Stop-signal and shutdown resilience against CEF live in CefManager.installShutdownGuards
-    // (installed with the first createClient — shared with the probes).
     application {
         // The macOS Dock ignores Window(icon=) and, outside a bundle (a dev run), shows the JVM's
         // coffee cup. One 1024px rasterization of the tile vector goes to the Taskbar API — and
@@ -224,7 +217,6 @@ fun main() {
                 logger = rootLogger,
                 toolsManifestUrl = TOOLS_MANIFEST_URL,
                 publicKey = UPDATE_PUBLIC_KEY,
-                cefInstallDir = CefManager.installDir(ymusicDataDir()),
                 existingFfmpeg = {
                     // -Dio.ymusic.setup.forceDownload hides a locally-present ffmpeg so the
                     // provisioning path can be exercised (see -Pymusic.setup.forceDownload).
@@ -237,7 +229,6 @@ fun main() {
             )
             return@application
         }
-        val cefManager = remember { CefManager() }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
         // Hoisted out of the window: whether the window may show at all depends on it.
         var bootError by remember { mutableStateOf<String?>(null) }
@@ -250,7 +241,6 @@ fun main() {
             if (windowState.placement == WindowPlacement.Floating) {
                 saveWindowPrefs(windowState.size, windowState.position)
             }
-            cefManager.dispose()
             exitApplication()
         }
         // Persist the size/position the user settles on (debounced past the live drag/resize
@@ -272,8 +262,7 @@ fun main() {
             visible = windowVisible && (graph != null || bootError != null),
             onCloseRequest = {
                 // A non-empty queue → the close button minimizes to the system tray and playback
-                // carries on (the OSR browser renders to its own fixed viewport, not the window);
-                // an empty queue → quit.
+                // carries on; an empty queue → quit.
                 if (graph?.player?.queue?.value?.items?.isNotEmpty() == true) windowVisible = false else quit()
             },
             title = "YMusic",
@@ -288,20 +277,9 @@ fun main() {
         ) {
             paintWindowGround(groundColorFor(darkChrome))
 
-            if (DEBUG_BUILD) {
-                MenuBar {
-                    Menu("Debug") {
-                        // Enabled once CEF is up (the graph builds right after createClient).
-                        Item("Cookie inspector (shared CEF profile)", enabled = graph != null) {
-                            openCookieInspector(cefManager)
-                        }
-                    }
-                }
-            }
-
             LaunchedEffect(Unit) {
                 try {
-                    graph = buildGraph(cefManager, settings)
+                    graph = buildGraph(settings)
                 } catch (c: kotlinx.coroutines.CancellationException) {
                     throw c // the effect was disposed — not a boot failure
                 } catch (t: Throwable) {
@@ -360,12 +338,11 @@ fun main() {
     }
 }
 
-private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsStore): AppGraph {
+private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
-    // One file-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
-    // Not CEF: the Chromium cookie manager can fail to init (locked profile) and must not block boot.
+    // File-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
+    // Desktop has no WebView cookie store; login-by-QR/paste comes later.
     val cookies = PersistentCookieJar(File(dataDir, "api-cookies.json").absolutePath.toPath(), FileSystem.SYSTEM)
-    val cefClient = cefManager.createClient()
     // One client stack, one disk cache. The engine HTTP client stays jar-less — JS cooks Cookie
     // headers against [cookies] — while the API client / media proxy use the jar directly.
     val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath(), logger = rootLogger)
@@ -440,23 +417,6 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
     }
     engines.start()
 
-    // The injected player script through the same seam. Never swapped in a RUNNING player: the
-    // cached remote copy wins at player build; else the dev dist re-read keeps "Reload player"
-    // picking up a fresh npm build. The embed is version 0, so any revision the service publishes
-    // supersedes it.
-    val webViewSource = DefaultJsSourceProvider(
-        client = http.engine,
-        config = { remoteConfig?.getConfig()?.wvJs?.let { it.url to it.version } },
-        embedVersion = 0L,
-        embedSource = { readWebViewJs() },
-        fileSystem = FileSystem.SYSTEM,
-        directory = File(dataDir, "webview-js").absolutePath.toPath(),
-        now = { System.currentTimeMillis() },
-        logger = rootLogger,
-        ioDispatcher = Dispatchers.IO,
-    )
-    val cachedWebViewJs = webViewSource.getCached()?.first
-
     val mediaStore = withContext(Dispatchers.IO) {
         BetterMediaStore.create(mediaStoreJdbcDriver(File(dataDir, "media-store.db").absolutePath))
     }
@@ -481,13 +441,9 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
     )
 
     val localSurface = LocalVideoSurface()
-    val webViewSurface = JcefOsrSurface()
     val mseSurface = io.ymusic.mse.MseVideoSurface()
 
-    // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
-    // /videoplayback) and serves it from this router — cache hit → synthesized bytes, miss → forwarded
-    // and teed to disk so re-plays/downloads reuse it. Its client carries the same persistent jar + the
-    // Chrome UA CefManager forces on the WebView.
+    // Player cache: SABR miss is forwarded and teed to disk so re-plays/downloads reuse it.
     // The player cache; shared read-only with the download stack so a download reuses segments already
     // cached from playback (never writing into it).
     val playerCache = withContext(Dispatchers.IO) {
@@ -507,7 +463,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         }
         LocalMediaProxy(
             playerCache, client,
-            userAgent = CefManager.CHROME_USER_AGENT,
+            userAgent = DESKTOP_CHROME_UA,
             logger = rootLogger,
             // Chatty per-part/decision logs; -Dio.ymusic.player.verbose overrides the build default.
             verbose = System.getProperty("io.ymusic.player.verbose")?.toBoolean() ?: DEBUG_BUILD,
@@ -588,7 +544,7 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
             now = { System.currentTimeMillis() },
             resolver = resolver,
             client = sabrClient,
-            userAgent = CefManager.CHROME_USER_AGENT,
+            userAgent = DESKTOP_CHROME_UA,
             ffmpeg = ffmpeg,
             storage = io.ymusic.download.DefaultDownloadStorage(
                 FileSystem.SYSTEM,
@@ -667,37 +623,28 @@ private suspend fun buildGraph(cefManager: CefManager, settings: FileSettingsSto
         appVersion = "dev · jvm",
         imageLoader = imageLoader,
         settings = settings,
-        // The OSR browser renders a fixed logical viewport — safe to display at art-tile size.
+        // MSE blit and VLCJ frames scale; safe to display at art-tile size.
         surfaceScalesDown = true,
-        loginBrowser = { url, state, onPageChanged, modifier ->
-            DesktopLoginBrowser(url, state, {
-                harvestCefCookiesInto(cookies)
-                onPageChanged()
-            }, modifier)
-        },
+        loginBrowser = null,
         downloads = downloadService,
         updates = desktopUpdates,
         stats = stats,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
     ) { modifier ->
-        DesktopPlayerSurface(localSurface, webViewSurface, mseSurface, modifier)
+        DesktopPlayerSurface(localSurface, mseSurface, modifier)
     }
 }
 
 @Composable
 private fun DesktopPlayerSurface(
     localSurface: LocalVideoSurface,
-    webViewSurface: JcefOsrSurface,
     mseSurface: io.ymusic.mse.MseVideoSurface,
     modifier: Modifier,
 ) {
-    val webVisible by webViewSurface.visible.collectAsState()
     val localVisible by localSurface.visible.collectAsState()
-    val webFrame by webViewSurface.frame.collectAsState()
     val localFrame by localSurface.frame.collectAsState()
     var size by remember { mutableStateOf(IntSize.Zero) }
-    val webBitmap = remember(webFrame) { webFrame?.toComposeImageBitmap() }
     val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
     val msePanel = remember { MseVideoPanel() }
     DisposableEffect(mseSurface, msePanel) {
@@ -734,48 +681,6 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { msePanel },
                 modifier = Modifier.fillMaxSize(),
-            )
-        }
-        if (webVisible && webBitmap != null) {
-            Image(
-                bitmap = webBitmap,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().pointerInput(webViewSurface, size) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: continue
-                            val point = mapToLogical(change.position.x, change.position.y, size, webViewSurface) ?: continue
-                            when (event.type) {
-                                PointerEventType.Press -> webViewSurface.mouse(
-                                    java.awt.event.MouseEvent.MOUSE_PRESSED,
-                                    point.first,
-                                    point.second,
-                                    java.awt.event.MouseEvent.BUTTON1,
-                                    clickCount = 1,
-                                )
-                                PointerEventType.Release -> webViewSurface.mouse(
-                                    java.awt.event.MouseEvent.MOUSE_RELEASED,
-                                    point.first,
-                                    point.second,
-                                    java.awt.event.MouseEvent.BUTTON1,
-                                    clickCount = 1,
-                                )
-                                PointerEventType.Scroll -> webViewSurface.wheel(
-                                    point.first,
-                                    point.second,
-                                    change.scrollDelta.y.toInt().coerceIn(-1, 1),
-                                )
-                                else -> webViewSurface.mouse(
-                                    java.awt.event.MouseEvent.MOUSE_MOVED,
-                                    point.first,
-                                    point.second,
-                                )
-                            }
-                        }
-                    }
-                },
             )
         }
     }
@@ -830,16 +735,6 @@ private class MseVideoPanel : JPanel() {
             g2.drawImage(image, x, y, dw, dh, null)
         }
     }
-}
-
-private fun mapToLogical(x: Float, y: Float, size: IntSize, surface: JcefOsrSurface): Pair<Int, Int>? {
-    if (size.width <= 0 || size.height <= 0) return null
-    val logical = surface.logicalSize
-    val scale = minOf(size.width.toDouble() / logical.width, size.height.toDouble() / logical.height)
-    val left = (size.width - logical.width * scale) / 2.0
-    val top = (size.height - logical.height * scale) / 2.0
-    if (x < left || x >= left + logical.width * scale || y < top || y >= top + logical.height * scale) return null
-    return ((x - left) / scale).toInt() to ((y - top) / scale).toInt()
 }
 
 /** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
@@ -900,10 +795,10 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
 // window.
 /**
  * Everything the app persists lives here: engine + image caches, the media store, downloads,
- * Chromium's profile, window geometry. `$YMUSIC_DATA_DIR` relocates the lot — a packaged build's
- * launcher passes neither JVM args nor JAVA_TOOL_OPTIONS through, so an env var is the only way to
- * run a second copy (testing a release build while the dev one is open: Chromium's profile is
- * single-instance) or to keep state on an external disk.
+ * cookies, window geometry. `$YMUSIC_DATA_DIR` relocates the lot — a packaged build's launcher
+ * passes neither JVM args nor JAVA_TOOL_OPTIONS through, so an env var is the only way to run a
+ * second copy (testing a release build while the dev one is open) or to keep state on an external
+ * disk.
  */
 internal fun ymusicDataDir(): File =
     System.getenv("YMUSIC_DATA_DIR")?.takeIf { it.isNotBlank() }?.let(::File)
@@ -1093,19 +988,14 @@ internal fun openInBrowser(url: String) {
         .onFailure { rootLogger.fork("browser").log(Logger.Level.WARN, "could not open $url", it) }
 }
 
+private const val DESKTOP_CHROME_UA =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+
 /** A file packed into the app jar (the staged engine bundle + version — see stageEngineJs). */
 private fun readAppResource(name: String): String =
     checkNotNull(object {}.javaClass.getResourceAsStream("/" + name)) { name + " missing from app resources" }
         .readBytes().decodeToString()
-
-/** The built webview-js bundle — the injected YouTube player script. The dev dist file wins when
- *  running from a checkout ("Reload player" picks up a fresh `npm run build`); the packaged app
- *  has no checkout and falls back to the prod copy staged into the jar (stageWebViewJs). */
-private fun readWebViewJs(): String {
-    val candidates = listOf("webview-js/dist/webview_ymusic.js", "../webview-js/dist/webview_ymusic.js")
-    candidates.map(::File).firstOrNull { it.exists() }?.let { return it.readText() }
-    return readAppResource("webview_ymusic.js")
-}
 
 @Composable
 private fun Booting(content: @Composable () -> Unit) {

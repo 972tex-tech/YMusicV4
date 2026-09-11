@@ -7,10 +7,10 @@ import okhttp3.HttpUrl
 
 /**
  * A [CookieJar] backed by the Android WebView [CookieManager] — the single cookie store shared by
- * the scraping engine's HTTP and the WebView YouTube player, exactly as legacy YMusic did. So the
- * anonymous visitor identity (VISITOR_INFO1_LIVE / YSC / PREF / CONSENT / SOCS) the player earns
- * while playing is the same one the InnerTube calls send, and vice versa — and it persists across
- * launches for free (the WebView store is on disk).
+ * the scraping engine's HTTP, the MSE YouTube player, and the login WebView. So the anonymous
+ * visitor identity (VISITOR_INFO1_LIVE / YSC / PREF / CONSENT / SOCS) the player earns while playing
+ * is the same one the InnerTube calls send, and vice versa — and it persists across launches for
+ * free (the WebView store is on disk).
  *
  * On Android `kmphttp.CookieJar` *is* `okhttp3.CookieJar` and `kmphttp.Cookie` *is* `okhttp3.Cookie`,
  * so this plugs straight into `KmpHttpClient.create { cookieJar = … }` and the engine's shared jar.

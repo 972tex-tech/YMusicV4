@@ -42,7 +42,6 @@ fun ApplicationScope.FirstRunWindow(
     logger: Logger,
     toolsManifestUrl: String,
     publicKey: String,
-    cefInstallDir: File,
     /** An ffmpeg already on this machine — checked before anything is downloaded. */
     existingFfmpeg: () -> File?,
     /** Opens the OS folder chooser; null when the user backed out. */
@@ -54,7 +53,6 @@ fun ApplicationScope.FirstRunWindow(
     val coordinator = remember {
         SetupCoordinator(
             scope = scope,
-            cef = CefProvisioner(cefInstallDir),
             ffmpeg = FfmpegProvisioner(
                 client = KmpHttpClient.create {
                     this.logger = logger.fork("kmphttp")
@@ -103,7 +101,6 @@ fun ApplicationScope.FirstRunWindow(
                 onCrashReportsChange = { crashReports.value = it },
                 stats = stats.value,
                 onStatsChange = { stats.value = it },
-                onRetryEngine = coordinator::retryEngine,
                 onRetryMediaTools = coordinator::retryMediaTools,
                 onRecheckVlc = coordinator::recheckVlc,
                 onChooseFolder = coordinator::chooseMusicFolder,

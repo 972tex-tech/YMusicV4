@@ -22,7 +22,6 @@ class OnboardingSnapshotTest {
                     onCrashReportsChange = {},
                     stats = true,
                     onStatsChange = {},
-                    onRetryEngine = {},
                     onRetryMediaTools = {},
                     onRecheckVlc = {},
                     onChooseFolder = {},
@@ -42,12 +41,10 @@ class OnboardingSnapshotTest {
     @Test
     fun renderFirstRunStates() {
         val downloading = SetupState(
-            engine = ComponentState.Working(0.58f),
             mediaTools = ComponentState.Working(0.35f),
             vlc = ComponentState.Absent,
         )
         val done = SetupState(
-            engine = ComponentState.Ready,
             mediaTools = ComponentState.Ready,
             vlc = ComponentState.Absent,
         )
@@ -58,7 +55,7 @@ class OnboardingSnapshotTest {
             render(
                 "failed",
                 dark,
-                downloading.copy(engine = ComponentState.Failed("Couldn't reach the download server")),
+                downloading.copy(mediaTools = ComponentState.Failed("Couldn't reach the download server")),
             )
             render("folder-chosen", dark, done.copy(musicFolder = "/Users/you/Music/Library"))
             render("vlc-present", dark, done.copy(vlc = ComponentState.Ready))

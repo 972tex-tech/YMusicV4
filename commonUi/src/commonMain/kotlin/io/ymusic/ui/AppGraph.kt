@@ -70,10 +70,10 @@ class AppGraph(
     /** App settings (UI language, theme, …); the in-memory default works but doesn't persist. */
     val settings: SettingsStore = InMemorySettingsStore(),
     /**
-     * True when [playerSurface] may be shown at any size (desktop's OSR browser renders a fixed
-     * logical viewport) — the mini player then hosts it as its 36dp art tile. False for a windowed
-     * WebView (Android): the page sizes its streams to the real viewport, so a thumbnail-sized
-     * surface kills playback and the UI must keep a real-size docked preview instead.
+     * True when [playerSurface] may be shown at any size (desktop MSE blit / VLCJ frames scale) —
+     * the mini player then hosts it as its 36dp art tile. False for a windowed WebView (iOS): the
+     * page sizes its streams to the real viewport, so a thumbnail-sized surface kills playback and
+     * the UI must keep a real-size docked preview instead.
      */
     val surfaceScalesDown: Boolean = false,
     /**

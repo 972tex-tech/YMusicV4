@@ -52,17 +52,16 @@ The cross-platform playback layer.
   - **Each engine owns its own surface inside it** — attaches it, and shows/hides it from its own lifecycle
     (visible while that engine is the active one, hidden when idle/stopped or another engine takes over) so only
     the playing engine's picture shows.
-  - Android = a `SurfaceView` in a `FrameLayout` (holder wires `ExoPlayer.setVideoSurface`); JVM = the VLCJ Swing
-    component in an `OverlayLayout` panel; WebView = its `WebView`/JCEF browser, toggled via
-    `WebViewBridge.setVideoVisible`.
+  - Android local = a `SurfaceView` in a `FrameLayout` (holder wires `ExoPlayer.setVideoSurface`); JVM local =
+    off-screen VLCJ frames as a Compose `Image`; desktop YouTube = MSE blit into a SwingPanel; iOS YouTube =
+    its WKWebView, toggled via `WebViewBridge.setVideoVisible`.
 
-- **WebView realization** — **a windowed WebView (desktop JCEF, and WKWebView) only creates its native browser once
-  its component is *realized* on a showing window — a hidden or zero-size one never initializes and won't play at
-  all, not even audio.**
+- **WebView realization** — **a windowed WKWebView only creates its native browser once its component is
+  *realized* on a showing window — a hidden or zero-size one never initializes and won't play at all, not
+  even audio.**
   - So the WebView engine keeps its surface realized+visible whenever it is the active engine, **including
-    audio-only** (audio-only disables the video *track* via the engine JS, not the surface; the JVM bridge also
-    queues `loadURL` until the `onAfterCreated` lifecycle callback so a load that races realization isn't dropped).
-  - Only engine-switching (stop/release) hides it.
+    audio-only** (audio-only disables the video *track* via the engine JS, not the surface).
+  - Only engine-switching (stop/release) hides it. Desktop YouTube is MSE, not a WebView.
 
 - **Surface hosting** — the UI never observes which engine is active — the facade exposes **no** `currentEngine`.
   - `AppGraph.playerSurface(modifier)` hosts the one container, and the shell keeps it hosted **persistently while

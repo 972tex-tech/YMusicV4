@@ -5,13 +5,10 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **Run** — the JVM desktop product shell: `./gradlew :desktopApp:run`.
 
 - **Boot sequence** — boots:
-  - JCEF (`CefManager`, bundle under `~/.ymusic/`)
-  - `DynamicEngineManager`
+  - `DynamicEngineManager` (QuickJS + engine-js)
   - a file-backed `:media-store` + `:media-scanner` "Scan folder…" (ffmpeg via `YMUSIC_FFMPEG`/PATH)
-  - assembles the facade over VLCJ + JCEF WebView engines, injects the SwingPanel surface.
+  - assembles the facade over VLCJ local + MSE YouTube, injects the SwingPanel MSE surface.
 
-- **Assets** — needs the built `webview-js` bundle on disk.
+- **Cookies** — `PersistentCookieJar` JSON file under `~/.ymusic/api-cookies.json`. No Chromium. Desktop login (QR from phone, or paste from Chrome) is later.
 
-- **`:desktopApp:webviewProbe`** (`-PprobeArgs="realized|headless|tiny|small|audioonly|reparent"`)
-  - a headless diagnostic that drives the WebView engine and reports whether playback advances
-  - the regression guard for the "windowed WebView must be realized to play" fix.
+- **Assets** — needs the built `engine-js` bundle in the jar.

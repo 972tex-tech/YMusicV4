@@ -66,7 +66,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * The first-run screen: two steps, no way past the first until the app can actually do anything.
  *
- * Step one is a gate on the two engines the app downloads for itself; VLC and the music folder sit
+ * Step one is a gate on ffmpeg the app downloads for itself; VLC and the music folder sit
  * below a line because they can genuinely wait. Step two asks the one question owed to the user
  * before anything leaves their machine. See design/onboarding (published mockup) — the copy and the
  * row shapes here are that design.
@@ -78,7 +78,6 @@ fun OnboardingScreen(
     onCrashReportsChange: (Boolean) -> Unit,
     stats: Boolean,
     onStatsChange: (Boolean) -> Unit,
-    onRetryEngine: () -> Unit,
     onRetryMediaTools: () -> Unit,
     onRecheckVlc: () -> Unit,
     onChooseFolder: () -> Unit,
@@ -98,7 +97,7 @@ fun OnboardingScreen(
     ) {
         if (step == 1) {
             SetupStep(
-                state, dark, onDarkChange, onRetryEngine, onRetryMediaTools,
+                state, dark, onDarkChange, onRetryMediaTools,
                 onRecheckVlc, onChooseFolder, onOpenUrl,
             ) { step = 2 }
         } else {
@@ -112,7 +111,6 @@ private fun SetupStep(
     state: SetupState,
     dark: Boolean,
     onDarkChange: (Boolean) -> Unit,
-    onRetryEngine: () -> Unit,
     onRetryMediaTools: () -> Unit,
     onRecheckVlc: () -> Unit,
     onChooseFolder: () -> Unit,
@@ -126,12 +124,6 @@ private fun SetupStep(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         ) {
-            GatedRow(
-                name = "YouTube playback",
-                detail = "Chromium engine",
-                state = state.engine,
-                onRetry = onRetryEngine,
-            )
             GatedRow(
                 name = "Media tools",
                 detail = "ffmpeg",
@@ -164,16 +156,14 @@ private fun SetupStep(
 }
 
 /**
- * The footer's running summary. It totals only the rows that actually report bytes — the Chromium
- * bundle reports a percentage and nothing else, so a combined figure would be part measurement and
- * part invention.
+ * The footer's running summary. It totals only the rows that actually report bytes.
  */
 private fun gateNote(state: SetupState): String {
     if (state.canContinue) return "Ready"
-    if (state.engine is ComponentState.Failed || state.mediaTools is ComponentState.Failed) {
+    if (state.mediaTools is ComponentState.Failed) {
         return "A download needs another try"
     }
-    val counted = listOf(state.engine, state.mediaTools).filterIsInstance<ComponentState.Working>()
+    val counted = listOf(state.mediaTools).filterIsInstance<ComponentState.Working>()
         .filter { it.total > 0 }
     if (counted.isEmpty()) return "Downloading…"
     return "Downloading ${megabytes(counted.sumOf { it.done })} of ${megabytes(counted.sumOf { it.total })}"

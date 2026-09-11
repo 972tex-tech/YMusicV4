@@ -7,9 +7,9 @@ import java.awt.image.BufferedImage
 
 /**
  * Compose-facing frame/visibility endpoint for the JVM local (VLCJ) player, rendered **off-screen**.
- * The twin of `JcefOsrSurface`: no AWT component is hosted, so libVLC's picture reaches the UI as a
- * plain Compose `Image` (`toComposeImageBitmap`) instead of a `SwingPanel`. That removes the AWT
- * interop hole — Compose popups/menus drawn over the video receive mouse input again.
+ * No AWT component is hosted, so libVLC's picture reaches the UI as a plain Compose `Image`
+ * (`toComposeImageBitmap`) instead of a `SwingPanel`. That removes the AWT interop hole — Compose
+ * popups/menus drawn over the video receive mouse input again.
  *
  * [visible] is true while the local engine owns the shared surface (including audio-only, which shows
  * a black box because no frames arrive); [frame] is the latest decoded picture, or null when there is

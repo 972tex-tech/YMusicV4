@@ -55,7 +55,7 @@ class DesktopAppUpdates(
     }
 
     override fun installAndRestart() {
-        // install() relaunches; this process must go, or two copies fight over the CEF profile.
+        // install() relaunches; this process must go, or two copies fight over the data dir.
         if (service.install()) exitProcess(0)
     }
 

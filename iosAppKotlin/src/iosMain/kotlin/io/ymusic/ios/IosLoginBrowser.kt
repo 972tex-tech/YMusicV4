@@ -7,13 +7,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import io.ymusic.ui.LoginWebViewState
-import kmphttp.CookieJar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
@@ -25,14 +20,13 @@ import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
 /**
  * The iOS sign-in WebView (the shell's [AppGraph.loginBrowser]). Cookies land in the default
- * [WKWebsiteDataStore] first; each navigation copies them into [cookies] so the engine gate sees them.
+ * [WKWebsiteDataStore], which [IosWebViewCookieJar] wraps for engine HTTP.
  */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 @Composable
 internal fun IosLoginBrowser(
     url: String,
     state: LoginWebViewState,
-    cookies: CookieJar,
     onPageChanged: () -> Unit,
     modifier: Modifier,
 ) {
@@ -41,7 +35,7 @@ internal fun IosLoginBrowser(
             websiteDataStore = WKWebsiteDataStore.defaultDataStore()
         }
         val webView = WKWebView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), configuration = config)
-        val delegate = LoginNavDelegate(state, cookies, onPageChanged)
+        val delegate = LoginNavDelegate(state, onPageChanged)
         webView.navigationDelegate = delegate // strong ref kept in the holder below
         state.back = { if (webView.canGoBack) webView.goBack() }
         NSURL.URLWithString(url)?.let { webView.loadRequest(NSURLRequest(it)) }
@@ -62,9 +56,7 @@ private class LoginWebViewHolder(val webView: WKWebView, val delegate: NSObject)
 @OptIn(ExperimentalForeignApi::class)
 private class LoginNavDelegate(
     private val state: LoginWebViewState,
-    private val cookies: CookieJar,
     private val onPageChanged: () -> Unit,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) : NSObject(), WKNavigationDelegateProtocol {
     // The delegate methods share one ObjC selector family ("webView:…:") — Kotlin sees them as
     // conflicting overloads; the annotation allows the inherited-ObjC collision.
@@ -73,10 +65,7 @@ private class LoginNavDelegate(
         state.currentUrl = webView.URL?.absoluteString
         state.canGoBack = webView.canGoBack
         state.progress = 0.15f
-        scope.launch {
-            harvestWkCookiesInto(cookies)
-            onPageChanged()
-        }
+        onPageChanged()
     }
 
     @ObjCSignatureOverride
@@ -85,9 +74,6 @@ private class LoginNavDelegate(
         state.title = webView.title
         state.canGoBack = webView.canGoBack
         state.progress = 1f
-        scope.launch {
-            harvestWkCookiesInto(cookies)
-            onPageChanged()
-        }
+        onPageChanged()
     }
 }

@@ -87,7 +87,7 @@ internal class AppleWebViewBridge(
 
     init {
         // Block any *.js the content-script hook didn't route through the transform pipeline (which
-        // appends _doNotBlock=42) — the un-transformed player must not run (matches Android + JCEF).
+        // appends _doNotBlock=42) — the un-transformed player must not run (matches Android).
         // WKContentRuleList compiles async; it's applied well before the first load().
         WKContentRuleListStore.defaultStore()?.compileContentRuleListForIdentifier(
             "ymixBlockUntransformedJs",

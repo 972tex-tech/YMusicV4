@@ -43,7 +43,6 @@ import io.ymusic.player.createPlayer
 import io.ymusic.player.isPlaying
 import io.ymusic.player.mse.MsePlayer
 import io.ymusic.remoteconfig.HttpApiService
-import io.ymusic.remoteconfig.PersistentCookieJar
 import io.ymusic.remoteconfig.RemoteConfig
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
@@ -154,9 +153,9 @@ class YMusicApplication : Application() {
         builtGraph ?: appScope.async { buildGraph() }.also { builtGraph = it }
 
     private suspend fun buildServices(): SharedServices {
-        // One file-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
-        // Not WebView CookieManager — that store is only a harvest source during sign-in.
-        val cookies = PersistentCookieJar(File(filesDir, "api-cookies.json").toOkioPath(), FileSystem.SYSTEM)
+        // YouTube + API cookies live in the WebView CookieManager (the login WebView writes
+        // there; this jar is a wrapper so HTTP sees the same store).
+        val cookies = WebViewCookieJar()
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
         val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath(), logger = rootLogger)
         val settings = PrefsSettingsStore.open(this)
@@ -526,10 +525,7 @@ class YMusicApplication : Application() {
             imageLoader = shared.imageLoader,
             settings = shared.settings,
             loginBrowser = { url, state, onPageChanged, modifier ->
-                AndroidLoginBrowser(url, state, {
-                    harvestWebViewCookiesInto(shared.cookies)
-                    onPageChanged()
-                }, modifier)
+                AndroidLoginBrowser(url, state, onPageChanged, modifier)
             },
             downloads = downloadService,
             sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },

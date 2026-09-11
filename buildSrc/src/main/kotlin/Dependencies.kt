@@ -25,7 +25,6 @@ object Versions {
     // :player local-file backends (per platform; Apple uses AVFoundation cinterop, no dep)
     const val media3 = "1.11.0"   // Android ExoPlayer
     const val vlcj = "4.8.3"     // JVM desktop libVLC binding
-    const val jcef = "146.0.10"  // JVM desktop Chromium (WebView YouTube host)
     const val jna = "5.17.0"     // JVM desktop native interop (macOS Now Playing bridge)
 
     // AndroidX
@@ -131,10 +130,6 @@ object Libs {
 
     object Vlcj {
         const val core = "uk.co.caprica:vlcj:${Versions.vlcj}"
-    }
-
-    object Jcef {
-        const val maven = "me.friwi:jcefmaven:${Versions.jcef}"
     }
 
     object Jna {

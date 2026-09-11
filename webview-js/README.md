@@ -49,7 +49,7 @@ to move the floor; add `core-js` polyfills if you ever need to run below Chrome 
 
 The engine is just a content script driving YouTube's own player through
 `window.ymusicAction(...)`. You can exercise the whole thing — including intermittent failures like
-the ~43 s SABR stop seen on-device — in **desktop Chrome, with no Android/iOS/JCEF host**, by
+the ~43 s SABR stop seen on-device — in **desktop Chrome, with no Android/iOS/desktop host**, by
 serving the embed page through a local proxy that reproduces the two things the native host
 normally does: inject the built bundle **at document-start** (first `<script>` in `<head>`) and
 **strip CSP** so the injected script and its script-evals are allowed to run.

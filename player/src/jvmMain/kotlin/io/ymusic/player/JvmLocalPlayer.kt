@@ -32,16 +32,15 @@ import java.nio.ByteOrder
  * shifts pitch here (libVLC has no pitch-preserving tempo without a filter) — see the module docs.
  *
  * Video renders **off-screen**: a `CallbackMediaPlayerComponent` decodes into a native buffer that
- * our [RenderCallback] copies into a [BufferedImage] published on a [LocalVideoSurface] (the twin of
- * the WebView's `JcefOsrSurface`). No AWT component is hosted, so the shell paints the picture as a
- * plain Compose `Image` and popups over the video receive mouse input — unlike a `SwingPanel`, whose
- * interop region swallows the clicks. The engine owns the surface's visibility: shown whenever this is
- * the active engine (including audio-only, which disables the video track and shows a black box) and
- * hidden when idle/stopped so a co-hosted engine (the WebView) shows through. libVLC renders selected
- * captions into the decoded picture.
+ * our [RenderCallback] copies into a [BufferedImage] published on a [LocalVideoSurface]. No AWT
+ * component is hosted, so the shell paints the picture as a plain Compose `Image` and popups over
+ * the video receive mouse input — unlike a `SwingPanel`, whose interop region swallows the clicks.
+ * The engine owns the surface's visibility: shown whenever this is the active engine (including
+ * audio-only, which disables the video track and shows a black box) and hidden when idle/stopped so
+ * a co-hosted engine (MSE) shows through. libVLC renders selected captions into the decoded picture.
  */
 internal class JvmLocalPlayer(private val videoSurface: LocalVideoSurface? = null) : LocalPlayer {
-    /** Copies each RV32 frame into a fresh RGB image and publishes it (mirrors JCEF's `onPaint`). */
+    /** Copies each RV32 frame into a fresh RGB image and publishes it. */
     private val renderCallback = RenderCallback { _, buffers, format ->
         val surface = videoSurface ?: return@RenderCallback
         val w = format.width

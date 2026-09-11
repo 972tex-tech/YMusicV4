@@ -90,8 +90,8 @@ object AppSettings {
     val theme = StringSetting("app.theme", "dark")
 
     /**
-     * Whether the first-run setup has been completed. Desktop only: it gates on downloads (the
-     * Chromium engine, ffmpeg) that the mobile stores ship inside the package.
+     * Whether the first-run setup has been completed. Desktop only: it gates on downloads (ffmpeg)
+     * that the mobile stores ship inside the package.
      */
     val setupCompleted = BoolSetting("setup.completed", false)
 

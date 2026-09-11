@@ -68,9 +68,9 @@ kotlin {
                 // the Apple Player.framework.
                 api(project(":kmpHttp:core"))
                 // The player-cache router the WebView interception adapters serve from
-                // (CefResourceHandler on desktop, shouldInterceptRequest on Android, the message
-                // channel on Apple). `api`: LocalMediaProxy is a public param of WebViewPlayerContext,
-                // so consumers (the app shells) must see the type to build one.
+                // (shouldInterceptRequest on Android, the message channel on Apple). `api`:
+                // LocalMediaProxy is a public param of WebViewPlayerContext, so consumers (the app
+                // shells) must see the type to build one.
                 api(project(":yt-media"))
                 api(project(":dynamic-engine"))
                 api(project(":mse"))
@@ -89,11 +89,8 @@ kotlin {
 
         jvmMain.dependencies {
             implementation(Libs.Vlcj.core)
-            // JCEF (Chromium) for the desktop WebView YouTube host. The app owns CefApp
-            // init/download; :player only drives a CefClient/CefBrowser it is handed.
-            implementation(Libs.Jcef.maven)
-            // Provides Dispatchers.Main on JVM desktop (Swing EDT) — the WebView engine marshals
-            // the fetched HTML load back to the UI thread. Android/iOS supply Main natively.
+            // Provides Dispatchers.Main on JVM desktop (Swing EDT) — MSE blit and VLCJ callbacks
+            // marshal to the UI thread. Android/iOS supply Main natively.
             implementation(Libs.Kotlinx.coroutinesSwing)
         }
 

@@ -57,7 +57,7 @@ import io.ymusic.dynamicengine.yt.YtThumb
  * Development-only component catalogue (a Storybook, not a product screen): every shared UI
  * component rendered on mock data, for design iteration and feedback. Reached from the drawer
  * ("UI catalogue") or standalone via `./gradlew :desktopApp:catalogue` — the standalone window
- * skips the whole engine/CEF boot, so the design loop is seconds. Compiled out when
+ * skips the whole engine boot, so the design loop is seconds. Compiled out when
  * [DEBUG_BUILD] is false (`-Pymusic.debugLogs=false`).
  */
 @Composable

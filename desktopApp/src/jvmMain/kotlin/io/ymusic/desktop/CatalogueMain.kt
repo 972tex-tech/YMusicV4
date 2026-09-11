@@ -18,7 +18,7 @@ import kmphttp.create
 
 /**
  * Standalone UI-component catalogue — `./gradlew :desktopApp:catalogue`. Boots NOTHING but a
- * window and a bare image loader (no CEF, no engines, no media store), so the design-feedback
+ * window and a bare image loader (no engines, no media store), so the design-feedback
  * loop is seconds. Same screen is also inside the app (drawer → "UI catalogue").
  */
 fun main() = application {

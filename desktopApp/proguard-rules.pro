@@ -17,13 +17,6 @@
 -keep class io.ymusic.quickjs.QuickJsNative { *; }
 -keep class io.ymusic.quickjs.QuickJsException { <init>(java.lang.String); }
 
-# JCEF: two-way by-name JNI with no official shrink ruleset anywhere (JetBrains ship jcef in the
-# JBR unshrunk) — native CEF FindClass-es and constructs org.cef callback classes (*_N) that no
-# Java code references, and invokes handler methods directly. Deliberately kept whole: the entire
-# jcef-api class payload is ~1MB pre-compression; not worth the breakage surface.
-# (jcefmaven itself is plain statically-reachable Java — no keep.)
--keep class org.cef.** { *; }
-
 # JNA core (the artifact's own packages, per JNA's documented rule): Structure fields, Library
 # interface methods, and Callback discovery are all resolved reflectively by the native dispatcher.
 # Deliberately NOT com.sun.jna.** — that would also pin com.sun.jna.platform.** (jna-platform),
@@ -64,14 +57,7 @@
 -keepattributes SourceFile,LineNumberTable
 
 # Library-internal references to optional/absent classes — not on our classpath, never hit:
-# jogl's SWT/JavaFX/OpenAL canvases, commons-compress's zstd/xz/pack200 codecs (jcefmaven's
-# extractor uses none of them for the CEF tarball), sqlite's slf4j hook, okhttp's GraalVM shims.
--dontwarn com.jogamp.**
--dontwarn jogamp.**
-# jogl/gluegen are excluded from the classpath entirely (build.gradle.kts) — the kept-but-never-
-# instantiated CefBrowserOsr/CefGLCanvas still reference them.
--dontwarn org.cef.browser.**
--dontwarn org.apache.commons.compress.**
+# sqlite's slf4j hook, okhttp's GraalVM shims.
 -dontwarn org.sqlite.util.**
 -dontwarn okhttp3.internal.platform.**
 -dontwarn okhttp3.internal.graal.**

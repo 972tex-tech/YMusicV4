@@ -15,8 +15,8 @@ sealed interface ComponentState {
 
     /**
      * [fraction] is 0..1, or null while there is no measurable progress yet. [done]/[total] are
-     * bytes when the source reports them — jcefmaven only ever gives a percentage, so a row without
-     * byte counts shows none rather than inventing a size to divide by.
+     * bytes when the source reports them, so a row without byte counts shows none rather than
+     * inventing a size to divide by.
      */
     data class Working(val fraction: Float?, val done: Long = 0, val total: Long = 0) : ComponentState
 
@@ -30,11 +30,10 @@ sealed interface ComponentState {
 }
 
 /**
- * The first-run checklist as a value: two components the app fetches itself, one it can only point
- * at, and the music folder the user may choose once tags can be read.
+ * The first-run checklist as a value: ffmpeg the app fetches itself, VLC it can only point at, and
+ * the music folder the user may choose once tags can be read.
  */
 data class SetupState(
-    val engine: ComponentState = ComponentState.Pending,
     val mediaTools: ComponentState = ComponentState.Pending,
     val vlc: ComponentState = ComponentState.Pending,
     val musicFolder: String? = null,
@@ -46,7 +45,7 @@ data class SetupState(
      * finished is worse than one that starts with a feature missing.
      */
     val canContinue: Boolean
-        get() = engine.settled && mediaTools.settled
+        get() = mediaTools.settled
 
     private val ComponentState.settled: Boolean
         get() = this is ComponentState.Ready || this is ComponentState.Absent
@@ -56,15 +55,14 @@ data class SetupState(
 }
 
 /**
- * Drives the first run: both downloads start at once and report into [state]; everything else is a
- * user action ([retryEngine], [retryMediaTools], [recheckVlc], [chooseMusicFolder]).
+ * Drives the first run: the ffmpeg download starts and reports into [state]; everything else is a
+ * user action ([retryMediaTools], [recheckVlc], [chooseMusicFolder]).
  *
  * Each component is independent — one failing never stops another, and a retry re-runs only its own
  * step, which is why they are separate jobs rather than one sequence.
  */
 class SetupCoordinator(
     private val scope: CoroutineScope,
-    private val cef: CefProvisioner,
     private val ffmpeg: FfmpegProvisioner,
     /** An ffmpeg already on this machine (dev checkout, `brew install ffmpeg`) — no download then. */
     private val existingFfmpeg: () -> File?,
@@ -77,26 +75,12 @@ class SetupCoordinator(
 
     private val log get() = logger?.fork("setup")
 
-    private var engineJob: Job? = null
     private var toolsJob: Job? = null
 
-    /** Kick both downloads off and probe for VLC. Safe to call once per window. */
+    /** Kick the ffmpeg download off and probe for VLC. Safe to call once per window. */
     fun start() {
-        retryEngine()
         retryMediaTools()
         recheckVlc()
-    }
-
-    fun retryEngine() {
-        if (engineJob?.isActive == true) return
-        engineJob = scope.launch {
-            runComponent({ _state.update { s -> s.copy(engine = it) } }) {
-                if (!cef.isInstalled()) {
-                    cef.install { fraction -> _state.update { it.copy(engine = ComponentState.Working(fraction)) } }
-                }
-                ComponentState.Ready
-            }
-        }
     }
 
     fun retryMediaTools() {
