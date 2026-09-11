@@ -1360,7 +1360,9 @@ static const AVCodec *find_video_codec(enum AVCodecID id, int sw_only)
         return NULL;
 #endif
 #ifdef __APPLE__
-        c = avcodec_find_decoder(id);
+        /* find_decoder(AV1) returns libdav1d once it is linked. Native `av1`
+           is the VideoToolbox wrapper — 4K stays on the GPU. */
+        c = avcodec_find_decoder_by_name("av1");
         if (c)
             return c;
 #endif
@@ -1405,7 +1407,11 @@ static int apple_vt_codec(const AVCodecParameters *par)
     if (par->codec_id == AV_CODEC_ID_H264)
         return par->extradata && par->extradata_size >= 7;
     if (par->codec_id == AV_CODEC_ID_VP9)
+#if defined(__x86_64__)
+        return 0; /* Intel: no VT VP9 (-12906). */
+#else
         return par->width > 0 && par->height > 0;
+#endif
     return 0;
 }
 
@@ -2918,6 +2924,44 @@ static int blit_fit(int src_w, int src_h, int hole_w, int hole_h, int *dw, int *
     return 0;
 }
 
+#ifdef __APPLE__
+static unsigned sw_cv_fmt(enum AVPixelFormat f)
+{
+    if (f == AV_PIX_FMT_YUV420P || f == AV_PIX_FMT_YUVJ420P)
+        return MSE_VT_BLIT_YUV420;
+    if (f == AV_PIX_FMT_NV12)
+        return MSE_VT_BLIT_NV12;
+    return 0;
+}
+
+static int scale_bgra_vt_sw(MseAv *a, AVFrame *sw, uint8_t **bgra, int *w, int *h)
+{
+    unsigned fmt = sw_cv_fmt((enum AVPixelFormat)sw->format);
+    int tw, th;
+    uint8_t *tdst;
+    if (!fmt)
+        return -1;
+    if (mse_vt_blit_fit(sw->width, sw->height, a->blit_w, a->blit_h, &tw, &th) != 0)
+        return -1;
+    tdst = bgra_pool(a, tw, th);
+    if (!tdst)
+        return -1;
+    if (mse_vt_blit_sw(&a->vt_blit, fmt, (const uint8_t *const *)sw->data, sw->linesize,
+                       sw->width, sw->height, tdst, tw, th) != 0)
+        return -1;
+    if (tw != a->blit_log_dw || th != a->blit_log_dh) {
+        a->blit_log_dw = tw;
+        a->blit_log_dh = th;
+        vlog("blit vt-sw %dx%d -> %dx%d hole=%dx%d", sw->width, sw->height, tw, th,
+             a->blit_w, a->blit_h);
+    }
+    *w = tw;
+    *h = th;
+    *bgra = tdst;
+    return 0;
+}
+#endif
+
 static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 {
     AVFrame *sw = frame;
@@ -2961,6 +3005,8 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 #endif
         sw = a->hw_sw;
     }
+    if (scale_bgra_vt_sw(a, sw, bgra, w, h) == 0)
+        return 0;
 #endif
     vis_w = sw->width;
     vis_h = sw->height;

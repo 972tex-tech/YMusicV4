@@ -579,6 +579,41 @@ static int present_vt(FileAv *p, AVFrame *fr)
         p->on_frame(p->user, w, h, p->bgra);
     return 0;
 }
+
+static unsigned sw_cv_fmt(enum AVPixelFormat f)
+{
+    if (f == AV_PIX_FMT_YUV420P || f == AV_PIX_FMT_YUVJ420P)
+        return MSE_VT_BLIT_YUV420;
+    if (f == AV_PIX_FMT_NV12)
+        return MSE_VT_BLIT_NV12;
+    return 0;
+}
+
+static int present_sw_vt(FileAv *p, AVFrame *fr)
+{
+    unsigned fmt = sw_cv_fmt((enum AVPixelFormat)fr->format);
+    int w, h, n;
+    if (!fmt)
+        return -1;
+    if (mse_vt_blit_fit(fr->width, fr->height, p->blit_w, p->blit_h, &w, &h) != 0)
+        return -1;
+    n = w * h * 4;
+    if (n > p->bgra_n) {
+        uint8_t *b = av_realloc(p->bgra, (size_t)n);
+        if (!b)
+            return -1;
+        p->bgra = b;
+        p->bgra_n = n;
+    }
+    if (mse_vt_blit_sw(&p->vt_blit, fmt, (const uint8_t *const *)fr->data, fr->linesize,
+                       fr->width, fr->height, p->bgra, w, h) != 0)
+        return -1;
+    p->vw = w;
+    p->vh = h;
+    if (p->on_frame)
+        p->on_frame(p->user, w, h, p->bgra);
+    return 0;
+}
 #endif
 
 static int present_video(FileAv *p, AVFrame *fr)
@@ -596,6 +631,10 @@ static int present_video(FileAv *p, AVFrame *fr)
     fr = sw_video_frame(p, fr);
     if (!fr || fr->width <= 0 || fr->height <= 0 || !fr->data[0])
         return -1;
+#ifdef __APPLE__
+    if (present_sw_vt(p, fr) == 0)
+        return 0;
+#endif
     fr->colorspace = frame_cs(p, fr);
     fr->color_range = frame_range(p, fr);
     d = av_pix_fmt_desc_get((enum AVPixelFormat)fr->format);

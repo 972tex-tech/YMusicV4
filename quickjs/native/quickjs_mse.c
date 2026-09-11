@@ -312,6 +312,10 @@ static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     (void)argv;
 #if TARGET_OS_IPHONE
     return JS_NewInt32(ctx, 0);
+#elif defined(__x86_64__)
+    /* Intel has no VT VP9 decoder. Advertising vp09 makes YouTube pick
+       4K VP9; libvpx + sws is ~15 fps. AV1/H.264 stay on VideoToolbox. */
+    return JS_NewInt32(ctx, 0);
 #else
     return JS_NewInt32(ctx, 1);
 #endif

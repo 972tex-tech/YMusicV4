@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 
-static int blit_fit(int src_w, int src_h, int hole_w, int hole_h, int *dw, int *dh)
+int mse_vt_blit_fit(int src_w, int src_h, int hole_w, int hole_h, int *dw, int *dh)
 {
     if (src_w <= 0 || src_h <= 0)
         return -1;
@@ -56,7 +56,57 @@ int mse_vt_blit_size(void *cv_pixel_buffer, int hole_w, int hole_h, int *w, int 
     src = (CVPixelBufferRef)cv_pixel_buffer;
     src_w = (int)CVPixelBufferGetWidth(src);
     src_h = (int)CVPixelBufferGetHeight(src);
-    return blit_fit(src_w, src_h, hole_w, hole_h, w, h);
+    return mse_vt_blit_fit(src_w, src_h, hole_w, hole_h, w, h);
+}
+
+int mse_vt_blit_sw(MseVtBlit *s, unsigned cv_pix_fmt,
+                   const uint8_t *const *data, const int *linesize,
+                   int src_w, int src_h, uint8_t *out, int w, int h)
+{
+    CVPixelBufferRef src = NULL;
+    void *addrs[3];
+    size_t widths[3], heights[3], strides[3];
+    size_t nplane;
+    int i, r;
+    if (!s || !data || !linesize || !out || src_w <= 0 || src_h <= 0)
+        return -1;
+    if (cv_pix_fmt == MSE_VT_BLIT_NV12) {
+        nplane = 2;
+        addrs[0] = (void *)data[0];
+        addrs[1] = (void *)data[1];
+        widths[0] = (size_t)src_w;
+        widths[1] = (size_t)(src_w + 1) / 2;
+        heights[0] = (size_t)src_h;
+        heights[1] = (size_t)(src_h + 1) / 2;
+        strides[0] = (size_t)linesize[0];
+        strides[1] = (size_t)linesize[1];
+    } else if (cv_pix_fmt == MSE_VT_BLIT_YUV420) {
+        nplane = 3;
+        addrs[0] = (void *)data[0];
+        addrs[1] = (void *)data[1];
+        addrs[2] = (void *)data[2];
+        widths[0] = (size_t)src_w;
+        widths[1] = widths[2] = (size_t)(src_w + 1) / 2;
+        heights[0] = (size_t)src_h;
+        heights[1] = heights[2] = (size_t)(src_h + 1) / 2;
+        strides[0] = (size_t)linesize[0];
+        strides[1] = (size_t)linesize[1];
+        strides[2] = (size_t)linesize[2];
+    } else {
+        return -1;
+    }
+    for (i = 0; i < (int)nplane; i++) {
+        if (!addrs[i] || strides[i] == 0)
+            return -1;
+    }
+    if (CVPixelBufferCreateWithPlanarBytes(kCFAllocatorDefault, (size_t)src_w, (size_t)src_h,
+                                           (OSType)cv_pix_fmt, NULL, 0, nplane, addrs, widths,
+                                           heights, strides, NULL, NULL, NULL, &src) != kCVReturnSuccess ||
+        !src)
+        return -1;
+    r = mse_vt_blit_copy(s, src, out, w, h);
+    CVPixelBufferRelease(src);
+    return r;
 }
 
 int mse_vt_blit_copy(MseVtBlit *s, void *cv_pixel_buffer, uint8_t *out, int w, int h)
