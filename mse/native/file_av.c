@@ -51,6 +51,7 @@ struct FileAv {
     int stop;
     int opened;
     int playing;
+    int in_pump;
     int ended;
     int want_video;
     int audio_index; /* -1 = first audio */
@@ -521,6 +522,8 @@ static int pump_audio(FileAv *p, double clock)
         pthread_mutex_lock(&p->mu);
         free(tmp);
         (void)clock;
+        if (!p->opened || !p->adec)
+            return 0;
         return 0;
     }
 }
@@ -592,29 +595,36 @@ static void *thread_main(void *arg)
         while (!p->stop && (!p->opened || !p->playing))
             pthread_cond_wait(&p->cv, &p->mu);
         if (p->stop) {
+            p->in_pump = 0;
+            pthread_cond_broadcast(&p->cv);
             pthread_mutex_unlock(&p->mu);
             return NULL;
         }
+        p->in_pump = 1;
         eof = fill_packets(p);
         clock = media_time_locked(p);
-        if (p->adec)
+        if (p->opened && p->adec)
             pump_audio(p, clock);
-        if (p->vdec && p->want_video)
+        if (p->opened && p->vdec && p->want_video)
             pump_video(p, media_time_locked(p));
         clock = media_time_locked(p);
-        if (p->on_prog)
+        if (p->opened && p->on_prog)
             p->on_prog(p->user, clock, p->duration, p->vw, p->vh);
         a_empty = !p->adec || (p->aq.rd >= p->aq.n);
         v_empty = !p->vdec || !p->want_video || (p->vq.rd >= p->vq.n);
-        if (eof && a_empty && v_empty && !p->ended) {
+        if (p->opened && eof && a_empty && v_empty && !p->ended) {
             p->ended = 1;
             p->playing = 0;
             p->hold = p->duration > 0 ? p->duration : clock;
+            p->in_pump = 0;
+            pthread_cond_broadcast(&p->cv);
             pthread_mutex_unlock(&p->mu);
             if (p->on_event)
                 p->on_event(p->user, 1, NULL);
             continue;
         }
+        p->in_pump = 0;
+        pthread_cond_broadcast(&p->cv);
         pthread_mutex_unlock(&p->mu);
         if (!eof) {
             struct timespec ts;
@@ -722,6 +732,11 @@ void file_av_close(FileAv *p)
     pthread_mutex_lock(&p->mu);
     p->opened = 0;
     p->playing = 0;
+    pthread_cond_broadcast(&p->cv);
+    /* Decode thread drops the mutex around PCM/frame JNI. Do not free
+       codecs/buffers until it has left that section (in_pump == 0). */
+    while (p->in_pump)
+        pthread_cond_wait(&p->cv, &p->mu);
     free_codecs(p);
     if (p->fmt)
         avformat_close_input(&p->fmt);
@@ -730,7 +745,6 @@ void file_av_close(FileAv *p)
     p->nstreams = 0;
     p->a_st = p->v_st = -1;
     p->vw = p->vh = 0;
-    pthread_cond_broadcast(&p->cv);
     pthread_mutex_unlock(&p->mu);
 }
 
