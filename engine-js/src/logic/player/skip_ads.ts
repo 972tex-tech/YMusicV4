@@ -123,12 +123,8 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   const pc = asRec(rec["playerConfig"]);
   const dai = pc ? asRec(pc["daiConfig"]) : null;
   if (dai) dai["sendSsdaiMissingAdBreakReasons"] = false;
-  try {
-    notePlayerResponse(JSON.parse(JSON.stringify(rec)) as Record<string, unknown>);
-  } catch (e) {
-    console.log("mse player-res clone failed: " + errText(e));
-  }
   injectFakeMp4Format(rec);
+  notePlayerResponse(rec);
   ingestPlayerCaptions(rec);
   return rec;
 }

@@ -108,12 +108,57 @@ function ustreamerConfig(rec: Record<string, unknown>): string {
   return typeof v === "string" ? v : "";
 }
 
+const BACKUP: Record<string, string> = {
+  "_lastModified": "lastModified",
+  "_mimeType": "mimeType",
+  "_xtags": "xtags",
+  "_xtag": "xtag",
+  "_initRange": "initRange",
+  "_indexRange": "indexRange",
+  "_contentLength": "contentLength",
+};
+
+function restoreFormat(fmt: Record<string, unknown>): Record<string, unknown> {
+  let touched = false;
+  for (const b in BACKUP) {
+    if (fmt[b] !== undefined) {
+      touched = true;
+      break;
+    }
+  }
+  if (!touched) return fmt;
+  const out: Record<string, unknown> = {};
+  for (const k in fmt) {
+    if (k.charAt(0) === "_") continue;
+    out[k] = fmt[k];
+  }
+  for (const b in BACKUP) {
+    if (fmt[b] !== undefined) out[BACKUP[b]!] = fmt[b];
+  }
+  return out;
+}
+
+function streamingForHost(sd: Record<string, unknown>, sabrUrl: string): Record<string, unknown> {
+  const streaming: Record<string, unknown> = {};
+  for (const k in sd) streaming[k] = sd[k];
+  const fmts = sd["adaptiveFormats"];
+  if (Array.isArray(fmts)) {
+    const restored: unknown[] = [];
+    for (let i = 0; i < fmts.length; i++) {
+      const f = asRec(fmts[i]);
+      restored.push(f ? restoreFormat(f) : fmts[i]);
+    }
+    streaming["adaptiveFormats"] = restored;
+  }
+  if (sabrUrl) streaming["serverAbrStreamingUrl"] = sabrUrl;
+  return streaming;
+}
+
 function buildDownloadJson(e: Entry): Record<string, unknown> {
   const rec = e.rec!;
   const sd = asRec(rec["streamingData"]) || {};
-  const streaming: Record<string, unknown> = {};
-  for (const k in sd) streaming[k] = sd[k];
-  if (e.sabrUrls.length) streaming["serverAbrStreamingUrl"] = e.sabrUrls[e.sabrUrls.length - 1];
+  const sabr = e.sabrUrls.length ? e.sabrUrls[e.sabrUrls.length - 1]! : "";
+  const streaming = streamingForHost(sd, sabr);
   const cver = ytcfgStr("INNERTUBE_CLIENT_VERSION");
   const js = ytcfgStr("PLAYER_JS_URL");
   return {
