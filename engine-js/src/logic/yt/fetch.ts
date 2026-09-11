@@ -686,12 +686,9 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   }
   await storeSetCookies(httpRes.url.length > 0 ? httpRes.url : p.url, httpRes);
   if (wantsJsonRewrite(p.url)) {
-    const text = await httpRes.text();
-    detach();
-    const out = applyResponseRewrite(p.url, text);
-    const rewritten = Object.create(ResponseImpl.prototype) as FetchResponseJs;
-    const rec = asRec(out);
-    if (rec) {
+    try {
+      const rec = applyResponseRewrite(p.url, await httpRes.jsonObject());
+      const rewritten = Object.create(ResponseImpl.prototype) as FetchResponseJs;
       fillResponse(
         rewritten,
         httpRes.status,
@@ -704,20 +701,9 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
       rewritten._bytes = null;
       rewritten._json = rec;
       return rewritten;
+    } finally {
+      detach();
     }
-    const bytes = utf8Encode(typeof out === "string" ? out : text);
-    fillResponse(
-      rewritten,
-      httpRes.status,
-      httpRes.statusText,
-      httpRes.url,
-      makeHeaders(httpRes.headers.entries),
-      makeStream(memoryPull(bytes)),
-      httpRes.url !== p.url,
-    );
-    rewritten._bytes = bytes;
-    rewritten._json = null;
-    return rewritten;
   }
   const inner = httpPull(httpRes, detach);
   let pull = inner;

@@ -144,15 +144,12 @@ function rewriteRequest(url: string, body: unknown): unknown {
   return s;
 }
 
-function rewriteResponse(url: string, text: string): unknown {
-  if (!isPlayerUrl(url)) return text;
-  const rec = jsonRec(text);
-  if (!rec) return text;
+function rewriteResponse(url: string, rec: Record<string, unknown>): Record<string, unknown> {
+  if (!isPlayerUrl(url)) return rec;
   try {
     transformPlayerResponse(rec);
   } catch (e) {
     console.log("player ads: transformPlayerResponse failed: " + errText(e));
-    return text;
   }
   return rec;
 }

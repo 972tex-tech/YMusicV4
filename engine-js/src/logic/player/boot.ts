@@ -403,8 +403,8 @@ function enableSharedOwlFlag(): void {
   const flags = asRec(get("EXPERIMENT_FLAGS")) || {};
   flags["html5_use_shared_owl_instance"] = true;
   flags["html5_webpo_idle_priority_job"] = false;
-  // Player fetch gzips /youtubei/v1/player when this is on; skip_ads JSON.parse then
-  // sees gzip magic (0x1f) — "JSON parse failed: unexpected token".
+  // Player fetch gzips /youtubei/v1/player when this is on; jsonObject() then
+  // sees gzip magic (0x1f) instead of `{`.
   flags["wug_networking_gzip_request"] = false;
   set({ "EXPERIMENT_FLAGS": flags });
 }

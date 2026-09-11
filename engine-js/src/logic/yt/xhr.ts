@@ -2,7 +2,7 @@
 // builder via cookieHeaderFor. Player ads strip (skip_ads.ts) rewrites /player JSON via
 // setXhrJsonRewrite. Quoted names so Closure ADVANCED leaves the browser-shaped API intact.
 
-import { utf8Decode, utf8Encode } from "../../transport";
+import { utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import { resolveUrl } from "../../protocol/http/headers";
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
@@ -44,8 +44,7 @@ function native(name: string, impl: Function): Function {
 }
 
 type XhrRequestRewrite = (url: string, body: unknown) => unknown;
-/** `/player` rewrite returns the parsed rec; other URLs return the original text. */
-type XhrResponseRewrite = (url: string, text: string) => unknown;
+type XhrResponseRewrite = (url: string, rec: Record<string, unknown>) => Record<string, unknown>;
 
 let requestRewrite: XhrRequestRewrite | undefined;
 let responseRewrite: XhrResponseRewrite | undefined;
@@ -62,8 +61,11 @@ export function applyRequestRewrite(url: string, body: unknown): unknown {
   return requestRewrite ? requestRewrite(url, body) : body;
 }
 
-export function applyResponseRewrite(url: string, text: string): unknown {
-  return responseRewrite ? responseRewrite(url, text) : text;
+export function applyResponseRewrite(
+  url: string,
+  rec: Record<string, unknown>,
+): Record<string, unknown> {
+  return responseRewrite ? responseRewrite(url, rec) : rec;
 }
 
 /** Full-body JSON rewrite is only for /player, never streaming SABR. */
@@ -307,12 +309,24 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       logSabrRequest(url, body, res.status);
       self._respHeaders = res.headers.entries.slice();
       setReady(self, 2);
-      if (self["responseType"] === "arraybuffer") {
-        let u8 = await drainBytes(res);
-        if (responseRewrite) {
-          const out = responseRewrite(url, utf8Decode(u8));
-          u8 = typeof out === "string" ? utf8Encode(out) : utf8Encode(JSON.stringify(out));
+      if (wantsJsonRewrite(url)) {
+        const rec = applyResponseRewrite(url, await res.jsonObject());
+        if (self["responseType"] === "json") {
+          self["response"] = rec;
+          self["responseText"] = "";
+        } else if (self["responseType"] === "arraybuffer") {
+          const u8 = utf8Encode(JSON.stringify(rec));
+          const copy = new Uint8Array(u8.byteLength);
+          copy.set(u8);
+          self["response"] = copy.buffer;
+          self["responseText"] = "";
+        } else {
+          const s = JSON.stringify(rec);
+          self["responseText"] = s;
+          self["response"] = s;
         }
+      } else if (self["responseType"] === "arraybuffer") {
+        let u8 = await drainBytes(res);
         u8 = appendFakeUmp(u8);
         logSabrResponse(url, res.status, u8);
         const copy = new Uint8Array(u8.byteLength);
@@ -321,21 +335,8 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
         self["responseText"] = "";
       } else {
         const text = await res.text();
-        const out = responseRewrite ? responseRewrite(url, text) : text;
-        if (out != null && typeof out === "object") {
-          if (self["responseType"] === "json") {
-            self["response"] = out;
-            self["responseText"] = "";
-          } else {
-            const s = JSON.stringify(out);
-            self["responseText"] = s;
-            self["response"] = s;
-          }
-        } else {
-          const s = typeof out === "string" ? out : text;
-          self["responseText"] = s;
-          self["response"] = s;
-        }
+        self["responseText"] = text;
+        self["response"] = text;
       }
       if (self._aborted) return;
       setReady(self, 3);
