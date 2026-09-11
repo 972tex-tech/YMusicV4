@@ -44,7 +44,8 @@ function native(name: string, impl: Function): Function {
 }
 
 type XhrRequestRewrite = (url: string, body: unknown) => unknown;
-type XhrResponseRewrite = (url: string, text: string) => string;
+/** `/player` rewrite returns the parsed rec; other URLs return the original text. */
+type XhrResponseRewrite = (url: string, text: string) => unknown;
 
 let requestRewrite: XhrRequestRewrite | undefined;
 let responseRewrite: XhrResponseRewrite | undefined;
@@ -61,7 +62,7 @@ export function applyRequestRewrite(url: string, body: unknown): unknown {
   return requestRewrite ? requestRewrite(url, body) : body;
 }
 
-export function applyResponseRewrite(url: string, text: string): string {
+export function applyResponseRewrite(url: string, text: string): unknown {
   return responseRewrite ? responseRewrite(url, text) : text;
 }
 
@@ -309,8 +310,8 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       if (self["responseType"] === "arraybuffer") {
         let u8 = await drainBytes(res);
         if (responseRewrite) {
-          const text = responseRewrite(url, utf8Decode(u8));
-          u8 = utf8Encode(text);
+          const out = responseRewrite(url, utf8Decode(u8));
+          u8 = typeof out === "string" ? utf8Encode(out) : utf8Encode(JSON.stringify(out));
         }
         u8 = appendFakeUmp(u8);
         logSabrResponse(url, res.status, u8);
@@ -319,10 +320,22 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
         self["response"] = copy.buffer;
         self["responseText"] = "";
       } else {
-        let text = await res.text();
-        if (responseRewrite) text = responseRewrite(url, text);
-        self["responseText"] = text;
-        self["response"] = text;
+        const text = await res.text();
+        const out = responseRewrite ? responseRewrite(url, text) : text;
+        if (out != null && typeof out === "object") {
+          if (self["responseType"] === "json") {
+            self["response"] = out;
+            self["responseText"] = "";
+          } else {
+            const s = JSON.stringify(out);
+            self["responseText"] = s;
+            self["response"] = s;
+          }
+        } else {
+          const s = typeof out === "string" ? out : text;
+          self["responseText"] = s;
+          self["response"] = s;
+        }
       }
       if (self._aborted) return;
       setReady(self, 3);

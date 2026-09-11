@@ -144,7 +144,7 @@ function rewriteRequest(url: string, body: unknown): unknown {
   return s;
 }
 
-function rewriteResponse(url: string, text: string): string {
+function rewriteResponse(url: string, text: string): unknown {
   if (!isPlayerUrl(url)) return text;
   const rec = jsonRec(text);
   if (!rec) return text;
@@ -154,7 +154,7 @@ function rewriteResponse(url: string, text: string): string {
     console.log("player ads: transformPlayerResponse failed: " + errText(e));
     return text;
   }
-  return JSON.stringify(rec);
+  return rec;
 }
 
 let installed = false;

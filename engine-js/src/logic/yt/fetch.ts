@@ -248,6 +248,17 @@ function memoryPull(bytes: Uint8Array): PullChunk {
   };
 }
 
+/** Stringify only if someone reads the body stream (json()/text() lock first). */
+function jsonPull(rec: unknown): PullChunk {
+  let done = false;
+  return function () {
+    if (done) return Promise.resolve(null);
+    done = true;
+    const bytes = utf8Encode(JSON.stringify(rec));
+    return Promise.resolve(bytes.length === 0 ? null : bytes);
+  };
+}
+
 function httpPull(httpRes: HttpResponse, onDone: () => void): PullChunk {
   const stream = httpRes.stream();
   const buf = new Uint8Array(8192);
@@ -390,6 +401,7 @@ interface FetchResponseJs {
   redirected: boolean;
   type: string;
   _bytes: Uint8Array | null;
+  _json: unknown;
   text(): Promise<string>;
   json(): Promise<unknown>;
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -426,12 +438,18 @@ function ResponseImpl(this: FetchResponseJs, body?: unknown, init?: unknown) {
     raw === undefined ? new Uint8Array(0) : typeof raw === "string" ? utf8Encode(raw) : raw;
   fillResponse(this, status, statusText, "", headers, makeStream(memoryPull(bytes)), false);
   this._bytes = bytes;
+  this._json = null;
 }
 
-async function collect(res: FetchResponseJs): Promise<Uint8Array> {
+function takeBody(res: FetchResponseJs): void {
   if (res["bodyUsed"] || res["body"]._locked) throw new TypeError("body already used");
   res["bodyUsed"] = true;
   res["body"]._locked = true;
+}
+
+async function collect(res: FetchResponseJs): Promise<Uint8Array> {
+  takeBody(res);
+  if (res._json != null) return utf8Encode(JSON.stringify(res._json));
   if (res._bytes != null) return res._bytes;
   const parts: Uint8Array[] = [];
   let total = 0;
@@ -445,12 +463,20 @@ async function collect(res: FetchResponseJs): Promise<Uint8Array> {
 }
 
 ResponseImpl.prototype["text"] = function (this: FetchResponseJs): Promise<string> {
+  if (this._json != null) {
+    takeBody(this);
+    return Promise.resolve(JSON.stringify(this._json));
+  }
   return collect(this).then(function (u8) {
     return utf8Decode(u8);
   });
 };
 
 ResponseImpl.prototype["json"] = function (this: FetchResponseJs): Promise<unknown> {
+  if (this._json != null) {
+    takeBody(this);
+    return Promise.resolve(this._json);
+  }
   return collect(this).then(function (u8) {
     return __parseJson(u8);
   });
@@ -467,6 +493,20 @@ ResponseImpl.prototype["arrayBuffer"] = function (this: FetchResponseJs): Promis
 ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchResponseJs {
   if (this["bodyUsed"] || this["body"]._locked) throw new TypeError("body already used");
   const copy = Object.create(ResponseImpl.prototype) as FetchResponseJs;
+  if (this._json != null) {
+    fillResponse(
+      copy,
+      this["status"],
+      this["statusText"],
+      this["url"],
+      cloneHeaders(this["headers"]),
+      makeStream(jsonPull(this._json)),
+      this["redirected"],
+    );
+    copy._bytes = null;
+    copy._json = this._json;
+    return copy;
+  }
   if (this._bytes != null) {
     const bytes = this._bytes.slice();
     fillResponse(
@@ -479,6 +519,7 @@ ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchRespons
       this["redirected"],
     );
     copy._bytes = bytes;
+    copy._json = null;
     return copy;
   }
   const body = this["body"];
@@ -502,6 +543,7 @@ ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchRespons
     this["redirected"],
   );
   copy._bytes = null;
+  copy._json = null;
   return copy;
 };
 
@@ -565,6 +607,7 @@ function deniedJsResponse(url: string): FetchResponseJs {
   const bytes = utf8Encode("");
   fillResponse(out, 404, "Not Found", url, makeHeaders(), makeStream(memoryPull(bytes)), false);
   out._bytes = bytes;
+  out._json = null;
   return out;
 }
 
@@ -643,11 +686,26 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   }
   await storeSetCookies(httpRes.url.length > 0 ? httpRes.url : p.url, httpRes);
   if (wantsJsonRewrite(p.url)) {
-    let text = await httpRes.text();
+    const text = await httpRes.text();
     detach();
-    text = applyResponseRewrite(p.url, text);
-    const bytes = utf8Encode(text);
+    const out = applyResponseRewrite(p.url, text);
     const rewritten = Object.create(ResponseImpl.prototype) as FetchResponseJs;
+    const rec = asRec(out);
+    if (rec) {
+      fillResponse(
+        rewritten,
+        httpRes.status,
+        httpRes.statusText,
+        httpRes.url,
+        makeHeaders(httpRes.headers.entries),
+        makeStream(jsonPull(rec)),
+        httpRes.url !== p.url,
+      );
+      rewritten._bytes = null;
+      rewritten._json = rec;
+      return rewritten;
+    }
+    const bytes = utf8Encode(typeof out === "string" ? out : text);
     fillResponse(
       rewritten,
       httpRes.status,
@@ -658,6 +716,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
       httpRes.url !== p.url,
     );
     rewritten._bytes = bytes;
+    rewritten._json = null;
     return rewritten;
   }
   const inner = httpPull(httpRes, detach);
@@ -705,6 +764,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     httpRes.url !== p.url,
   );
   out._bytes = null;
+  out._json = null;
   return out;
 }
 
