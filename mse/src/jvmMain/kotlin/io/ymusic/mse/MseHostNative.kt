@@ -72,15 +72,23 @@ actual object MseHostNative {
             return
         } catch (_: UnsatisfiedLinkError) {
         }
-        val resource = "jni/${hostJniFolder()}/$libFileName"
-        val stream = MseHostNative::class.java.classLoader?.getResourceAsStream(resource)
-            ?: throw UnsatisfiedLinkError("No bundled $name at $resource")
-        stream.use { inp ->
-            val suffix = "." + libFileName.substringAfterLast('.', "dylib")
-            val tmp = Files.createTempFile("mseffmpegjni", suffix).also { it.toFile().deleteOnExit() }
-            Files.copy(inp, tmp, StandardCopyOption.REPLACE_EXISTING)
-            System.load(tmp.toAbsolutePath().toString())
+        // Unpack JNI + sibling libav into one temp dir so @loader_path / $ORIGIN resolves.
+        val folder = "jni/${hostJniFolder()}"
+        val cl = MseHostNative::class.java.classLoader
+            ?: throw UnsatisfiedLinkError("No classloader for $name")
+        val names = cl.getResourceAsStream("$folder/natives.txt")?.bufferedReader()?.use { it.readLines() }
+            ?.map { it.trim() }?.filter { it.isNotEmpty() }
+            ?: listOf(libFileName)
+        val tmpDir = Files.createTempDirectory("mseffmpegjni").toFile().also { it.deleteOnExit() }
+        for (n in names) {
+            val stream = cl.getResourceAsStream("$folder/$n")
+                ?: throw UnsatisfiedLinkError("No bundled $name at $folder/$n")
+            stream.use { inp ->
+                val dest = File(tmpDir, n).also { it.deleteOnExit() }
+                Files.copy(inp, dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
         }
+        System.load(File(tmpDir, libFileName).absolutePath)
     }
 
     private fun hostJniFolder(): String {

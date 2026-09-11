@@ -73,15 +73,15 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-        // The prebuilt ffmpeg ships as lib/<abi>/libffmpeg.so; legacy packaging extracts it to
-        // nativeLibraryDir as a real on-disk file the media scanner can exec() (mmap'd libs can't be run).
+        // The prebuilt ffmpeg pack ships as lib/<abi>/{libffmpeg.so,libav*.so}; legacy packaging
+        // extracts them to nativeLibraryDir so the scanner can exec() the CLI (mmap'd libs can't)
+        // and the CLI/MSE find libav via $ORIGIN.
         jniLibs { useLegacyPackaging = true }
     }
 
-    // Stage the prebuilt ffmpeg into a jniLibs source dir (build output, gitignored) so it packs as a
-    // per-ABI native lib. The metadata scanner execs it from nativeLibraryDir; see MainActivity.scanUris.
-    // stageFfmpeg (below) fills the dir; the merge task depends on it explicitly (the source-set API
-    // can't carry a Provider's task dependency, so a plain File + explicit dependsOn is required).
+    // Stage the prebuilt ffmpeg pack into a jniLibs source dir (build output, gitignored) so it packs
+    // as per-ABI native libs. The metadata scanner execs libffmpeg.so from nativeLibraryDir; MSE
+    // loads the same libav*.so. stageFfmpeg fills the dir; the merge task depends on it explicitly.
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
 }
 
@@ -89,7 +89,10 @@ val stageFfmpeg by tasks.registering(Copy::class) {
     dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
     into(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
     FfmpegRelease.ANDROID_ABIS.forEach { abi ->
-        from(FfmpegRelease.androidBinary(project, abi)) { into(abi); rename { "libffmpeg.so" } }
+        from(FfmpegRelease.androidPackDir(project, abi)) {
+            into(abi)
+            exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
+        }
     }
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {

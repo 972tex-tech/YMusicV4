@@ -31,7 +31,8 @@ internal fun parseFfmpegProgressUs(line: String): Long? {
  */
 class Ffmpeg(
     private val binaryPath: String,
-    /** The child inherits NO parent env (the process backend clears it); Linux needs LD_LIBRARY_PATH here. */
+    /** The child inherits NO parent env (the process backend clears it). Packed ffmpeg finds libav
+     *  via rpath; leave this empty. */
     private val env: Map<String, String> = emptyMap(),
 ) {
 

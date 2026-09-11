@@ -881,8 +881,8 @@ private fun desktopOsKey(): String {
  * app, then the PATH.
  *
  * A dev run takes the first rung: `:desktopApp:run` and the tests are given -Dio.ymusic.ffmpeg
- * pointing at the prebuilt from the latest ffmpeg-build release. A packaged build has no such
- * property and uses the binary next to the compose resources.
+ * pointing at the staged host pack's CLI (libav sits next to it; rpath, not LD_LIBRARY_PATH).
+ * A packaged build has no such property and uses the CLI next to the compose resources.
  */
 internal fun resolveFfmpeg(): String? {
     System.getProperty("io.ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.canExecute() }?.absolutePath }

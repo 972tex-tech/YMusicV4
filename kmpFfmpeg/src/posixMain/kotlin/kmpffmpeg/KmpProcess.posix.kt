@@ -92,8 +92,8 @@ private fun spawn(builder: KmpProcessBuilder): KmpProcess = memScoped {
     val childErr = errPipe?.get(1) ?: devNull
 
     // Build argv / envp as C arrays before fork (the child must not allocate). The child runs with
-    // exactly `environment` set — no parent-env inheritance (ffmpeg launched by absolute path needs
-    // none; callers pass e.g. LD_LIBRARY_PATH on Linux explicitly).
+    // exactly `environment` set — no parent-env inheritance (ffmpeg launched by absolute path finds
+    // libav via rpath; do not pass LD_LIBRARY_PATH).
     val args = builder.arguments
     val argv = allocArray<CPointerVar<ByteVar>>(args.size + 2)
     argv[0] = builder.binaryPath.cstr.getPointer(this)

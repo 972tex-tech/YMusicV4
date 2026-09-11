@@ -184,26 +184,51 @@ val javaHomeForJni: String = run {
     }
     candidates.firstOrNull { File(it, "include/jni.h").exists() } ?: ""
 }
+val ffmpegDesktopPrefix: File? = FfmpegRelease.hostPrefix(project)
 val mseCmakeConfigure by tasks.registering(Exec::class) {
-    onlyIf { javaHomeForJni.isNotEmpty() && mseNativeSrc.resolve("CMakeLists.txt").exists() }
+    onlyIf {
+        javaHomeForJni.isNotEmpty() &&
+            mseNativeSrc.resolve("CMakeLists.txt").exists() &&
+            ffmpegDesktopPrefix != null
+    }
     val out = mseJniDir.get().asFile
     doFirst { out.mkdirs() }
     inputs.dir(mseNativeSrc)
     inputs.property("javaHome", javaHomeForJni)
     inputs.property("mseDebug", mseNativeDebug)
+    inputs.property("ffmpegRoot", ffmpegDesktopPrefix?.absolutePath ?: "")
     outputs.file(File(out, "CMakeCache.txt"))
     environment("JAVA_HOME", javaHomeForJni)
     commandLine(
         "cmake", "-S", mseNativeSrc.absolutePath, "-B", out.absolutePath,
         "-DCMAKE_BUILD_TYPE=Release", "-DMSE_DEBUG=$mseDebugCmake",
+        "-DFFMPEG_ROOT=${ffmpegDesktopPrefix?.absolutePath ?: ""}",
     )
 }
 val mseCmakeBuild by tasks.registering(Exec::class) {
     dependsOn(mseCmakeConfigure)
-    onlyIf { javaHomeForJni.isNotEmpty() && mseNativeSrc.resolve("CMakeLists.txt").exists() }
+    onlyIf {
+        javaHomeForJni.isNotEmpty() &&
+            mseNativeSrc.resolve("CMakeLists.txt").exists() &&
+            ffmpegDesktopPrefix != null
+    }
     inputs.dir(mseNativeSrc)
     outputs.dir(mseJniDir)
     commandLine("cmake", "--build", mseJniDir.get().asFile.absolutePath, "-j", "4")
+    doLast {
+        // Siblings of libmseffmpegjni so @loader_path / $ORIGIN resolves in tests (mse.native.dir).
+        val prefix = ffmpegDesktopPrefix ?: return@doLast
+        val lib = File(prefix, "lib")
+        lib.listFiles()?.forEach { f ->
+            val n = f.name
+            if (n.endsWith(".a") || n.endsWith(".pc") || n.endsWith(".la")) return@forEach
+            val sharedAv = n.startsWith("libav") || n.startsWith("libsw")
+            val winDll = (n.startsWith("av") || n.startsWith("sw")) && n.endsWith(".dll")
+            if (sharedAv || winDll) {
+                f.copyTo(File(mseJniDir.get().asFile, n), overwrite = true)
+            }
+        }
+    }
 }
 tasks.withType<Test>().configureEach {
     dependsOn(mseCmakeBuild)
@@ -228,8 +253,17 @@ val mseHostJniFolder: String = run {
 val mseJniResourcesDir = layout.buildDirectory.dir("generated/mseJniResources")
 val bundleMseJniLib by tasks.registering(Copy::class) {
     dependsOn(mseCmakeBuild)
-    from(mseJniDir) { include(System.mapLibraryName("mseffmpegjni")) }
+    from(mseJniDir) {
+        include(System.mapLibraryName("mseffmpegjni"))
+        include("libav*", "libsw*", "av*.dll", "sw*.dll")
+        exclude("*.a", "*.pc", "*.la")
+    }
     into(mseJniResourcesDir.map { it.dir("jni/$mseHostJniFolder") })
+    doLast {
+        val dir = mseJniResourcesDir.get().asFile.resolve("jni/$mseHostJniFolder")
+        val names = dir.listFiles()?.filter { it.isFile }?.map { it.name }?.sorted().orEmpty()
+        dir.resolve("natives.txt").writeText(names.joinToString("\n"))
+    }
 }
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(mseJniResourcesDir).builtBy(bundleMseJniLib))
 
@@ -247,7 +281,7 @@ val stageAndroidJni by tasks.registering {
     inputs.dir(mseNativeSrc)
     outputs.dir(jniLibsDir)
     onlyIf {
-        ffmpegBuildDir != null && mseAndroidAbis.any { File(ffmpegBuildDir, "out/android-$it/lib/libavformat.a").isFile }
+        ffmpegBuildDir != null && mseAndroidAbis.any { File(ffmpegBuildDir, "out/android-$it/lib/libavformat.so").isFile }
     }
     doLast {
         val ndk = ndkDir ?: error("Android NDK not found (set ANDROID_HOME with an installed NDK)")
@@ -260,7 +294,7 @@ val stageAndroidJni by tasks.registering {
         }
         mseAndroidAbis.forEach { abi ->
             val prefix = File(root, "out/android-$abi")
-            if (!File(prefix, "lib/libavformat.a").isFile) return@forEach
+            if (!File(prefix, "lib/libavformat.so").isFile) return@forEach
             val buildDir = layout.buildDirectory.dir("mse-android/$abi").get().asFile
             buildDir.mkdirs()
             sh(
@@ -273,15 +307,24 @@ val stageAndroidJni by tasks.registering {
             )
             sh("cmake", "--build", buildDir.absolutePath, "-j", "4")
             val so = File(buildDir, "libmseffmpegjni.so")
-            val dest = File(jniLibsDir, "$abi/libmseffmpegjni.so")
-            dest.parentFile.mkdirs()
-            so.copyTo(dest, overwrite = true)
+            val destDir = File(jniLibsDir, abi)
+            destDir.mkdirs()
+            so.copyTo(File(destDir, "libmseffmpegjni.so"), overwrite = true)
+            File(prefix, "lib").listFiles()?.forEach { f ->
+                if (f.name.endsWith(".so") && (f.name.startsWith("libav") || f.name.startsWith("libsw"))) {
+                    f.copyTo(File(destDir, f.name), overwrite = true)
+                }
+            }
             val hostTag = when {
                 System.getProperty("os.name").lowercase().contains("mac") -> "darwin-x86_64"
                 else -> "linux-x86_64"
             }
             val strip = File(ndk, "toolchains/llvm/prebuilt/$hostTag/bin/llvm-strip")
-            if (strip.isFile) sh(strip.absolutePath, "--strip-unneeded", dest.absolutePath)
+            if (strip.isFile) {
+                destDir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { lib ->
+                    sh(strip.absolutePath, "--strip-unneeded", lib.absolutePath)
+                }
+            }
         }
     }
 }

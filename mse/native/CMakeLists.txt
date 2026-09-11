@@ -12,50 +12,53 @@ if(MSE_DEBUG)
   add_compile_definitions(MSE_DEBUG=1)
 endif()
 
+if(NOT DEFINED FFMPEG_ROOT)
+  message(FATAL_ERROR "FFMPEG_ROOT must be ffmpeg-build out/<slug> (include/ + shared lib/)")
+endif()
+
+set(MSE_SOURCES mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c)
+add_library(mseffmpegjni SHARED ${MSE_SOURCES})
+target_include_directories(mseffmpegjni PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../quickjs/native
+  ${FFMPEG_ROOT}/include)
+target_link_directories(mseffmpegjni PRIVATE ${FFMPEG_ROOT}/lib)
+# Same shared libav the packed ffmpeg CLI loads. LAME/shine/dav1d/vpx are inside libavcodec.
+target_link_libraries(mseffmpegjni PRIVATE avformat avcodec swscale swresample avutil)
+target_compile_options(mseffmpegjni PRIVATE -O2 -Wall -Wextra)
+
 if(ANDROID)
-  add_library(mseffmpegjni SHARED mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c)
-  target_include_directories(mseffmpegjni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../quickjs/native)
-  if(NOT DEFINED FFMPEG_ROOT)
-    message(FATAL_ERROR "FFMPEG_ROOT must be ffmpeg-build out/android-\${ABI} (include/ + lib/)")
-  endif()
-  target_include_directories(mseffmpegjni PRIVATE ${FFMPEG_ROOT}/include)
-  target_link_directories(mseffmpegjni PRIVATE ${FFMPEG_ROOT}/lib)
   find_library(log-lib log)
-  # Static libav from ffmpeg-build; lame/shine are copied next to libav*.a.
-  # start-group: libav archives have circular refs (avcodec↔avutil, lame after avcodec).
-  target_link_libraries(mseffmpegjni PRIVATE
-    android ${log-lib} mediandk OpenSLES
-    -Wl,--start-group
-    avformat avcodec swscale swresample avutil
-    mp3lame shine
-    -Wl,--end-group
-    m z atomic)
+  target_link_libraries(mseffmpegjni PRIVATE android ${log-lib} mediandk OpenSLES m z atomic)
   # -Bsymbolic: ffmpeg aarch64 asm uses ADRP against globals; lld only accepts that
   # in a DSO when those symbols cannot bind externally (ffmpeg SHFLAGS does the same).
   target_link_options(mseffmpegjni PRIVATE
     "-Wl,-Bsymbolic"
-    "-Wl,-z,max-page-size=16384")
-  target_compile_options(mseffmpegjni PRIVATE -O2 -Wall -Wextra)
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-rpath,\$ORIGIN")
   return()
 endif()
-
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(AV REQUIRED libavformat libavcodec libavutil libswscale libswresample)
 
 if(APPLE)
     enable_language(OBJC)
 endif()
 
-add_library(mseffmpegjni SHARED mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c)
-target_include_directories(mseffmpegjni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../quickjs/native)
-target_include_directories(mseffmpegjni PRIVATE ${AV_INCLUDE_DIRS})
-target_link_directories(mseffmpegjni PRIVATE ${AV_LIBRARY_DIRS})
-target_link_libraries(mseffmpegjni PRIVATE ${AV_LIBRARIES})
+# @loader_path / $ORIGIN for a packed tree (CLI + JNI + libav in one dir). The prefix lib/
+# rpath is for tests running out of the cmake build dir before the copy.
+if(APPLE)
+  target_link_options(mseffmpegjni PRIVATE
+    "-Wl,-rpath,@loader_path"
+    "-Wl,-rpath,${FFMPEG_ROOT}/lib"
+    "-Wl,-headerpad_max_install_names")
+elseif(UNIX)
+  target_link_options(mseffmpegjni PRIVATE
+    "-Wl,-rpath,\$ORIGIN"
+    "-Wl,-rpath,${FFMPEG_ROOT}/lib")
+endif()
+
 if(APPLE)
   target_sources(mseffmpegjni PRIVATE mse_vt_present.m mse_vt_layer.m mse_vt_dec.m)
   set_source_files_properties(mse_vt_present.m mse_vt_dec.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   find_library(JAWT_LIB jawt HINTS "$ENV{JAVA_HOME}/lib" "$ENV{JAVA_HOME}/lib/jli")
-  target_link_options(mseffmpegjni PRIVATE "-Wl,-rpath,${AV_LIBRARY_DIRS}")
   target_link_libraries(mseffmpegjni PRIVATE
     "-framework AudioToolbox"
     "-framework CoreAudio"
@@ -80,4 +83,3 @@ target_include_directories(mseffmpegjni PRIVATE
   $ENV{JAVA_HOME}/include/linux
   $ENV{JAVA_HOME}/include/win32
 )
-target_compile_options(mseffmpegjni PRIVATE -O2 -Wall -Wextra)

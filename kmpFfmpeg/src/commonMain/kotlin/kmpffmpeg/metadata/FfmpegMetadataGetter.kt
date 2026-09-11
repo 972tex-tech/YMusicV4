@@ -28,7 +28,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * @param inputResolver maps the requested [Uri] to the actual ffmpeg input. Defaults to
  *                      [FfInputResolver.Passthrough] (`file:`/`http:`/`pipe:`/`ymix:`); supply an
  *                      Android resolver to proxy `content://` (see [FfInputResolver]).
- * @param environment   extra env vars for the child (e.g. `LD_LIBRARY_PATH` on Linux/Android).
+ * @param environment   extra env vars for the child. The packed ffmpeg finds libav via rpath
+ *                      (`$ORIGIN` / `@loader_path`); do not pass `LD_LIBRARY_PATH`.
  */
 open class FfmpegMetadataGetter(
     private val ffmpegBinary: String,

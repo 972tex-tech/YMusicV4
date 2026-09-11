@@ -13,12 +13,16 @@ import java.net.URI
 import java.security.MessageDigest
 
 /**
- * Where the prebuilt ffmpeg binaries come from: assets of the latest github release in
- * ymusic-io/ffmpeg-build.
+ * Where the prebuilt ffmpeg **pack** comes from: a sibling `ffmpeg-build/out/<slug>/pack` if one
+ * exists, else the latest GitHub release tarball in ymusic-io/ffmpeg-build.
  *
- * Consumers that exec a binary pack one: the Android apk (per ABI as `libffmpeg.so`) and the
- * desktop app (the host-runnable build, inside the package). Dev `:desktopApp:run` / tests point at
- * the same staged host binary via `-Dio.ymusic.ffmpeg`.
+ * A pack is a flat directory: the CLI (`ffmpeg` / `ffmpeg.exe` / Android `libffmpeg.so`) plus the
+ * same `libav*` / `libsw*` DSOs MSE loads. Rpath is baked (`@loader_path` / `$ORIGIN`); do not
+ * paste `LD_LIBRARY_PATH` when exec-ing the CLI.
+ *
+ * Consumers that exec the CLI pack the whole directory: the Android apk (per ABI under
+ * `lib/<abi>/`) and the desktop app (compose app-resources). Dev `:desktopApp:run` / tests point at
+ * the staged host CLI via `-Dio.ymusic.ffmpeg`.
  */
 object FfmpegRelease {
     const val REPO = "ymusic-io/ffmpeg-build"
@@ -27,25 +31,30 @@ object FfmpegRelease {
     val ANDROID_ABIS = listOf("arm64-v8a", "x86", "x86_64")
 
     /**
-     * A directory of release-named files to use instead of downloading, via `-Pymusic.ffmpegDir=`.
-     * Hashes are not checked against it: the point is to try a locally built ffmpeg before it is
-     * released, which by definition matches no published hash.
+     * A directory of release-named `ffmpeg-*.tar.gz` files to use instead of downloading, via
+     * `-Pymusic.ffmpegDir=`. Hashes are not checked: the point is to try a locally packed tarball
+     * before it is released.
      */
     fun localDir(project: Project): String? = project.providers.gradleProperty("ymusic.ffmpegDir").orNull
 
-    /** The release asset runnable on the machine doing the build, or null where none is published. */
-    fun hostAsset(): String? {
+    /** ffmpeg-build out/ slug for this machine (`macos-x86_64`, `linux-arm64`, …), or null. */
+    fun hostSlug(): String? {
         val os = System.getProperty("os.name").lowercase()
         val arm = System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")
         return when {
-            os.contains("mac") -> if (arm) "ffmpeg-macos-arm64" else "ffmpeg-macos-x86_64"
-            os.contains("linux") -> if (arm) "ffmpeg-linux-arm64" else "ffmpeg-linux-x86_64"
-            os.contains("win") -> if (arm) "ffmpeg-windows-arm64.exe" else "ffmpeg-windows-x86_64.exe"
+            os.contains("mac") -> if (arm) "macos-arm64" else "macos-x86_64"
+            os.contains("linux") -> if (arm) "linux-arm64" else "linux-x86_64"
+            os.contains("win") -> if (arm) "windows-arm64" else "windows-x86_64"
             else -> null
         }
     }
 
-    fun androidAsset(abi: String): String = "ffmpeg-android-$abi.so"
+    /** Release tarball for this host, or null where none is published. */
+    fun hostAsset(): String? = hostSlug()?.let { "ffmpeg-$it.tar.gz" }
+
+    fun androidAsset(abi: String): String = "ffmpeg-android-$abi.tar.gz"
+
+    fun androidSlug(abi: String): String = "android-$abi"
 
     /** Staged per consumer, so the two sync tasks never write to the same directory. */
     fun hostDir(project: Project): File = File(project.rootProject.layout.buildDirectory.get().asFile, "ffmpeg/host")
@@ -53,24 +62,49 @@ object FfmpegRelease {
     fun androidDir(project: Project): File =
         File(project.rootProject.layout.buildDirectory.get().asFile, "ffmpeg/android")
 
-    /** The host binary's path after a sync, or null when this host has no published build. */
-    fun hostBinary(project: Project): File? = hostAsset()?.let { File(hostDir(project), it) }
+    fun androidPackDir(project: Project, abi: String): File = File(androidDir(project), abi)
 
-    fun androidBinary(project: Project, abi: String): File = File(androidDir(project), androidAsset(abi))
+    fun hostCliName(): String =
+        if (System.getProperty("os.name").lowercase().contains("win")) "ffmpeg.exe" else "ffmpeg"
+
+    /** The host CLI after a sync, or null when this host has no build. */
+    fun hostBinary(project: Project): File? = hostAsset()?.let { File(hostDir(project), hostCliName()) }
+
+    fun androidCli(project: Project, abi: String): File = File(androidPackDir(project, abi), "libffmpeg.so")
+
+    /**
+     * Sibling `ffmpeg-build/out/<slug>/pack` if a local build already produced one. Preferred over
+     * GitHub so a developer can iterate on ffmpeg-build without publishing a release.
+     */
+    fun localBuildPack(project: Project, slug: String): File? {
+        val pack = project.rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$slug/pack")
+        if (!pack.isDirectory) return null
+        val hasCli = File(pack, "ffmpeg").isFile ||
+            File(pack, "ffmpeg.exe").isFile ||
+            File(pack, "libffmpeg.so").isFile
+        return pack.takeIf { hasCli }
+    }
+
+    /** ffmpeg-build prefix (`include/` + `lib/`) MSE CMake links against, if present. */
+    fun localBuildPrefix(project: Project, slug: String): File? {
+        val prefix = project.rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$slug")
+        return prefix.takeIf { File(it, "include").isDirectory && File(it, "lib").isDirectory }
+    }
+
+    fun hostPrefix(project: Project): File? = hostSlug()?.let { localBuildPrefix(project, it) }
 }
 
 /**
- * Stages the release assets, fetching only what is not already there.
+ * Stages an unpacked pack directory, fetching only what is not already there.
  *
- * An ordinary build never reaches the network once the binaries are staged: they are an output
- * directory Gradle tracks, so a complete one leaves the task up to date, and deleting one brings it
- * back. Moving to a newer ffmpeg is therefore something you ask for — `-Pymusic.ffmpegUpdate` or
- * `--rerun-tasks` re-reads the latest release and replaces every asset whose hash has changed.
+ * Preference: `-Pymusic.ffmpegDir` tarballs, then a sibling `ffmpeg-build/out/<slug>/pack`, then
+ * the latest GitHub release `ffmpeg-$name.tar.gz`. An ordinary build never reaches the network
+ * once the pack is staged. `-Pymusic.ffmpegUpdate` / `--rerun-tasks` re-reads GitHub when no
+ * local pack is present.
  *
- * Those hashes come from the same release as the binaries, so they catch a truncated or corrupted
- * transfer rather than attesting where the bytes came from — GitHub is the trust boundary here (on
- * macOS the Developer ID signature is a second, independent one). `--offline` skips all of it and
- * uses what is already staged.
+ * GitHub hashes catch a truncated transfer rather than attesting provenance — GitHub is the trust
+ * boundary (on macOS the Developer ID signature is a second, independent one). `--offline` uses
+ * what is already staged.
  */
 abstract class SyncFfmpeg : DefaultTask() {
     @get:Input abstract val repo: Property<String>
@@ -87,7 +121,6 @@ abstract class SyncFfmpeg : DefaultTask() {
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
     init {
-        // Being asked to update means re-checking, and an up-to-date verdict would skip the check.
         outputs.upToDateWhen { !force.get() }
     }
 
@@ -101,28 +134,35 @@ abstract class SyncFfmpeg : DefaultTask() {
             for (asset in wanted) {
                 val src = File(local, asset)
                 require(src.isFile) { "-Pymusic.ffmpegDir=$dir has no $asset" }
-                val dest = File(out, asset)
-                if (!dest.isFile || sha256(dest) != sha256(src)) {
-                    src.copyTo(dest, overwrite = true)
-                    logger.lifecycle("ffmpeg: $asset <- $dir (local override, hash not checked)")
-                }
-                dest.setExecutable(true)
+                val dest = unpackDest(out, asset)
+                extractTarGz(src, dest)
+                logger.lifecycle("ffmpeg: $asset <- $dir (local override, hash not checked)")
             }
+            markCliExecutable(out, wanted)
             return
         }
 
-        val missing = wanted.filterNot { File(out, it).isFile }
-        // The whole point of the flag: with everything staged and no request to update, a build
-        // does not go looking for a newer release.
+        val fromLocalBuild = wanted.mapNotNull { asset ->
+            val slug = slugOf(asset)
+            FfmpegRelease.localBuildPack(project, slug)?.let { asset to it }
+        }
+        if (fromLocalBuild.size == wanted.size) {
+            for ((asset, pack) in fromLocalBuild) {
+                val dest = unpackDest(out, asset)
+                copyPack(pack, dest)
+                logger.lifecycle("ffmpeg: $asset <- ${pack.absolutePath}")
+            }
+            markCliExecutable(out, wanted)
+            return
+        }
+
+        val missing = wanted.filterNot { packLooksPresent(unpackDest(out, it)) }
         if (missing.isEmpty() && !force.get()) return
         if (offline.get()) {
             require(missing.isEmpty()) { "--offline, and ${missing.joinToString()} has never been fetched" }
             return
         }
 
-        // A release that cannot be reached is only fatal when something is actually missing: an
-        // already-staged binary was verified when it was fetched, so a flaky network need not stop
-        // a build that has everything it needs.
         val release = runCatching { resolve() }.getOrElse { e ->
             require(missing.isEmpty()) { "cannot reach ${repo.get()} releases and ${missing.joinToString()} is missing: $e" }
             logger.lifecycle("ffmpeg: ${repo.get()} unreachable ($e) — keeping the staged binaries")
@@ -130,15 +170,15 @@ abstract class SyncFfmpeg : DefaultTask() {
         }
 
         for (asset in wanted) {
-            val dest = File(out, asset)
+            val dest = unpackDest(out, asset)
             val want = release.sums[asset] ?: error("${release.tag} publishes no $asset")
-            if (dest.isFile && sha256(dest) == want) {
-                dest.setExecutable(true)
+            val tarDir = File(out, ".tars").apply { mkdirs() }
+            val tar = File(tarDir, asset)
+            if (tar.isFile && sha256(tar) == want && packLooksPresent(dest) && !force.get()) {
                 continue
             }
             logger.lifecycle("ffmpeg: downloading $asset from ${release.tag}")
-            // Staged under a temp name so an interrupted download cannot be mistaken for a good file.
-            val tmp = File(out, "$asset.part")
+            val tmp = File(tarDir, "$asset.part")
             URI("https://github.com/${repo.get()}/releases/download/${release.tag}/$asset").toURL()
                 .openStream().use { input -> tmp.outputStream().use(input::copyTo) }
             val got = sha256(tmp)
@@ -146,9 +186,10 @@ abstract class SyncFfmpeg : DefaultTask() {
                 tmp.delete()
                 error("$asset does not match the SHA256SUMS of ${release.tag}\n  expected $want\n  got      $got")
             }
-            tmp.renameTo(dest)
-            dest.setExecutable(true)
+            tmp.renameTo(tar)
+            extractTarGz(tar, dest)
         }
+        markCliExecutable(out, wanted)
     }
 
     private class Release(val tag: String, val sums: Map<String, String>)
@@ -156,7 +197,6 @@ abstract class SyncFfmpeg : DefaultTask() {
     private fun resolve(): Release {
         val tag = latestTag()
         val text = URI("https://github.com/${repo.get()}/releases/download/$tag/SHA256SUMS").toURL().readText()
-        // `shasum -a 256 *` format: "<hex>  <name>".
         val sums = text.lines().mapNotNull { line ->
             val parts = line.trim().split(Regex("\\s+"), limit = 2)
             if (parts.size == 2 && parts[0].length == 64) parts[1].removePrefix("*") to parts[0] else null
@@ -191,5 +231,64 @@ abstract class SyncFfmpeg : DefaultTask() {
             }
         }
         return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /** `ffmpeg-android-arm64-v8a.tar.gz` → `android-arm64-v8a`; `ffmpeg-macos-x86_64.tar.gz` → `macos-x86_64`. */
+    private fun slugOf(asset: String): String =
+        asset.removePrefix("ffmpeg-").removeSuffix(".tar.gz")
+
+    /**
+     * Host packs unpack at the output root; Android packs unpack into `<abi>/` so one sync task
+     * can stage every ABI.
+     */
+    private fun unpackDest(out: File, asset: String): File {
+        val slug = slugOf(asset)
+        return if (slug.startsWith("android-")) File(out, slug.removePrefix("android-")) else out
+    }
+
+    private fun packLooksPresent(dir: File): Boolean =
+        File(dir, "ffmpeg").isFile || File(dir, "ffmpeg.exe").isFile || File(dir, "libffmpeg.so").isFile
+
+    private fun extractTarGz(tar: File, dest: File) {
+        dest.mkdirs()
+        dest.listFiles()?.forEach { child ->
+            if (child.name == ".tars" || child.name.endsWith(".tar.gz") || child.name.endsWith(".part")) {
+                return@forEach
+            }
+            child.deleteRecursively()
+        }
+        val p = ProcessBuilder("tar", "-xzf", tar.absolutePath, "-C", dest.absolutePath)
+            .redirectErrorStream(true).start()
+        val text = p.inputStream.bufferedReader().readText()
+        check(p.waitFor() == 0) { "tar -xzf ${tar.name} failed: $text" }
+        check(packLooksPresent(dest)) { "${tar.name} unpacked into $dest but has no ffmpeg CLI" }
+    }
+
+    private fun copyPack(src: File, dest: File) {
+        if (dest.canonicalFile != src.canonicalFile) {
+            dest.mkdirs()
+            dest.listFiles()?.forEach { child ->
+                if (child.name == ".tars" || child.name.endsWith(".tar.gz") || child.name.endsWith(".part")) {
+                    return@forEach
+                }
+                child.deleteRecursively()
+            }
+            // Preserve Mach-O symlinks (libavcodec.63.dylib -> libavcodec.63.2.100.dylib).
+            // Java copyRecursively dereferences them and would triple the packed size.
+            val p = ProcessBuilder("cp", "-a", "${src.absolutePath}/.", dest.absolutePath)
+                .redirectErrorStream(true).start()
+            val text = p.inputStream.bufferedReader().readText()
+            check(p.waitFor() == 0) { "cp -a $src -> $dest failed: $text" }
+        }
+        check(packLooksPresent(dest)) { "$src has no ffmpeg CLI" }
+    }
+
+    private fun markCliExecutable(out: File, wanted: List<String>) {
+        for (asset in wanted) {
+            val dir = unpackDest(out, asset)
+            listOf("ffmpeg", "ffmpeg.exe", "libffmpeg.so").forEach { name ->
+                File(dir, name).takeIf { it.isFile }?.setExecutable(true)
+            }
+        }
     }
 }

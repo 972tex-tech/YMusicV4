@@ -36,7 +36,7 @@ spotless {
 // ---- prebuilt ffmpeg (see buildSrc/FfmpegRelease.kt) --------------------------------------------
 // Registered here rather than per module so the two staging directories have exactly one producer
 // each. Consumers depend on the one they need: :androidApp and :kmpFfmpeg's device tests on the
-// android ABIs, :desktopApp's run and tests on the host binary.
+// android ABI packs, :desktopApp's run and tests on the host pack (CLI + the same libav DSOs).
 fun Project.registerFfmpegSync(name: String, wanted: Set<String>, dir: File, what: String) =
     tasks.register<SyncFfmpeg>(name) {
         group = "build setup"
@@ -57,14 +57,14 @@ registerFfmpegSync(
     "syncFfmpegHost",
     setOfNotNull(FfmpegRelease.hostAsset()),
     FfmpegRelease.hostDir(project),
-    "the host-runnable ffmpeg the desktop app packs and the tests exec",
+    "the host ffmpeg pack (CLI + libav) the desktop app ships and the tests exec",
 )
 
 registerFfmpegSync(
     "syncFfmpegAndroid",
     FfmpegRelease.ANDROID_ABIS.map(FfmpegRelease::androidAsset).toSet(),
     FfmpegRelease.androidDir(project),
-    "the per-ABI ffmpeg the apk packs as lib/<abi>/libffmpeg.so",
+    "the per-ABI ffmpeg pack the apk ships as lib/<abi>/{libffmpeg.so,libav*.so}",
 )
 
 tasks.register("syncFfmpeg") {

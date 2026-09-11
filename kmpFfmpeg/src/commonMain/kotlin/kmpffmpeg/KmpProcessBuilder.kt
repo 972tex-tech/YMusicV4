@@ -20,8 +20,9 @@ class KmpProcessBuilder(
     /** Process arguments in order; the program name is prepended automatically at launch. */
     val arguments: MutableList<String> = mutableListOf()
 
-    /** Extra environment variables for the child (e.g. `LD_LIBRARY_PATH` on Linux). The child runs
-     *  with exactly these — there is no inheritance of the parent environment. */
+    /** Extra environment variables for the child. The child runs with exactly these — there is no
+     *  inheritance of the parent environment. Packed ffmpeg finds libav via rpath, not
+     *  `LD_LIBRARY_PATH`. */
     val environment: MutableMap<String, String> = mutableMapOf()
 
     /** Whether stdout is sent to `/dev/null` instead of a pipe. Set via [discardStdout]. */

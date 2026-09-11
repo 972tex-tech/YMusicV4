@@ -58,18 +58,21 @@ val generateFfmpegTestConfig = tasks.register("generateFfmpegTestConfig") {
 }
 
 // ---- Android instrumented tests: real ffmpeg binary + media fixture ----
-// The device tests exec the REAL prebuilt android ffmpeg (shipped as lib/<abi>/libffmpeg.so) and
-// round-trip a media fixture through the ymix proxy. The new AGP KMP plugin has no jniLibs.srcDir
-// API, so we stage the per-ABI binaries into the jniLibs *convention* dir (src/androidDeviceTest/
+// The device tests exec the REAL prebuilt android ffmpeg pack (lib/<abi>/libffmpeg.so + libav*.so)
+// and round-trip a media fixture through the ymix proxy. The new AGP KMP plugin has no jniLibs.srcDir
+// API, so we stage the per-ABI pack into the jniLibs *convention* dir (src/androidDeviceTest/
 // jniLibs, gitignored); and since the plugin doesn't pick up an assets dir either, we embed the
 // fixture as base64 in a generated test source. ABIs cover the emulators we run on: arm64-v8a on
 // Apple Silicon hosts, x86_64 on x86_64 CI, and x86 for the aosp API 24 image (32-bit-only).
 val stageFfmpegDeviceTestJni = tasks.register<Copy>("stageFfmpegDeviceTestJni") {
     dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
-    description = "Stage prebuilt android ffmpeg into the androidDeviceTest jniLibs convention dir."
+    description = "Stage prebuilt android ffmpeg pack into the androidDeviceTest jniLibs convention dir."
     into(layout.projectDirectory.dir("src/androidDeviceTest/jniLibs"))
     FfmpegRelease.ANDROID_ABIS.forEach { abi ->
-        from(FfmpegRelease.androidBinary(project, abi)) { into(abi); rename { "libffmpeg.so" } }
+        from(FfmpegRelease.androidPackDir(project, abi)) {
+            into(abi)
+            exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
+        }
     }
 }
 

@@ -77,16 +77,15 @@ if (ffmpegForDev != null) {
         }
 }
 
-// Host ffmpeg, renamed to `ffmpeg`/`ffmpeg.exe`, packed into the app via compose app-resources.
-val ffmpegPackedName = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "ffmpeg.exe" else "ffmpeg"
+// Host ffmpeg pack (CLI + libav DSOs) into compose app-resources. Rpath finds the siblings;
+// do not set LD_LIBRARY_PATH.
+val ffmpegPackedName = FfmpegRelease.hostCliName()
 val ffmpegAppResources = layout.buildDirectory.dir("ffmpegAppResources")
 val stagePackedFfmpeg by tasks.registering(Copy::class) {
     dependsOn(rootProject.tasks.named("syncFfmpegHost"))
-    val asset = FfmpegRelease.hostAsset()
-    if (asset != null) {
+    if (FfmpegRelease.hostAsset() != null) {
         from(FfmpegRelease.hostDir(project)) {
-            include(asset)
-            rename { ffmpegPackedName }
+            exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
         }
         into(ffmpegAppResources.map { it.dir("common") })
         doLast {
