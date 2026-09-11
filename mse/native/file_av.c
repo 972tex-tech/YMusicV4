@@ -28,7 +28,7 @@
 #define OUT_RATE 48000
 #define OUT_CH 2
 #define DEFAULT_BLIT 1920
-#define LATE 0.08
+
 
 enum { ST_AUDIO = 0, ST_VIDEO = 1, ST_TEXT = 2 };
 
@@ -62,6 +62,7 @@ struct FileAv {
     double hold;
     double origin_ns;
     double duration;
+    double last_prog_ns;
     char err[256];
 
     AVFormatContext *fmt;
@@ -598,6 +599,19 @@ static int pump_audio(FileAv *p, double clock)
     }
 }
 
+static void present_held(FileAv *p, AVFrame **held)
+{
+    AVFrame *h = *held;
+    if (!h)
+        return;
+    *held = NULL;
+    pthread_mutex_unlock(&p->mu);
+    present_video(p, h);
+    pthread_mutex_lock(&p->mu);
+    av_frame_unref(h);
+    av_frame_free(&h);
+}
+
 static int pump_video(FileAv *p, double clock)
 {
     AVPacket *pkt;
@@ -606,71 +620,52 @@ static int pump_video(FileAv *p, double clock)
     AVFrame *fr;
     if (!p->vdec)
         return 0;
-    for (;;) {
-        if (p->vhold) {
-            fr = p->vhold;
-        } else {
-            got = avcodec_receive_frame(p->vdec, p->vfr);
-            if (got == AVERROR(EAGAIN)) {
-                pkt = pq_pop(&p->vq);
-                if (!pkt) {
-                    /* Behind realtime (4K software / no audio clock): still
-                       paint the last decoded frame so we do not freeze on frame 1. */
-                    if (p->vhold) {
-                        AVFrame *h = p->vhold;
-                        p->vhold = NULL;
-                        pthread_mutex_unlock(&p->mu);
-                        present_video(p, h);
-                        pthread_mutex_lock(&p->mu);
-                        av_frame_unref(h);
-                        av_frame_free(&h);
-                    }
-                    return 0;
-                }
-                if (avcodec_send_packet(p->vdec, pkt) < 0) {
-                    av_packet_free(&pkt);
-                    return 0;
-                }
-                av_packet_free(&pkt);
-                continue;
-            }
-            if (got < 0)
-                return 0;
-            fr = p->vfr;
-        }
-        pts = frame_pts(p->fmt->streams[p->v_st], fr, clock);
-        if (pts + LATE < clock) {
-            if (fr != p->vhold) {
-                if (!p->vhold)
-                    p->vhold = av_frame_alloc();
-                if (p->vhold) {
-                    av_frame_unref(p->vhold);
-                    av_frame_ref(p->vhold, fr);
-                }
-                av_frame_unref(fr);
-            }
-            continue;
-        }
-        if (pts > clock + 0.04) {
-            if (fr != p->vhold) {
-                if (!p->vhold)
-                    p->vhold = av_frame_alloc();
-                if (p->vhold) {
-                    av_frame_unref(p->vhold);
-                    av_frame_ref(p->vhold, fr);
-                }
-                av_frame_unref(fr);
-            }
+
+    /* One send or one present per call so we drop mu and the EDT can run. */
+    if (p->vhold) {
+        pts = frame_pts(p->fmt && p->v_st >= 0 ? p->fmt->streams[p->v_st] : NULL, p->vhold, clock);
+        if (pts > clock + 0.04)
             return 0;
-        }
-        pthread_mutex_unlock(&p->mu);
-        present_video(p, fr);
-        pthread_mutex_lock(&p->mu);
-        av_frame_unref(fr);
-        if (fr == p->vhold)
-            p->vhold = NULL;
+        present_held(p, &p->vhold);
         return 0;
     }
+
+    pthread_mutex_unlock(&p->mu);
+    got = avcodec_receive_frame(p->vdec, p->vfr);
+    pthread_mutex_lock(&p->mu);
+    if (!p->opened || !p->vdec)
+        return 0;
+
+    if (got == AVERROR(EAGAIN)) {
+        pkt = pq_pop(&p->vq);
+        if (!pkt)
+            return 0;
+        pthread_mutex_unlock(&p->mu);
+        avcodec_send_packet(p->vdec, pkt);
+        av_packet_free(&pkt);
+        pthread_mutex_lock(&p->mu);
+        return 0;
+    }
+    if (got < 0)
+        return 0;
+
+    fr = p->vfr;
+    pts = frame_pts(p->fmt && p->v_st >= 0 ? p->fmt->streams[p->v_st] : NULL, fr, clock);
+    if (pts > clock + 0.04) {
+        if (!p->vhold)
+            p->vhold = av_frame_alloc();
+        if (p->vhold) {
+            av_frame_unref(p->vhold);
+            av_frame_ref(p->vhold, fr);
+        }
+        av_frame_unref(fr);
+        return 0;
+    }
+    pthread_mutex_unlock(&p->mu);
+    present_video(p, fr);
+    pthread_mutex_lock(&p->mu);
+    av_frame_unref(fr);
+    return 0;
 }
 
 static void *thread_main(void *arg)
@@ -696,8 +691,16 @@ static void *thread_main(void *arg)
         if (p->opened && p->vdec && p->want_video)
             pump_video(p, media_time_locked(p));
         clock = media_time_locked(p);
-        if (p->opened && p->on_prog)
-            p->on_prog(p->user, clock, p->duration, p->vw, p->vh);
+        if (p->opened && p->on_prog && now_ns() - p->last_prog_ns > 1e8) {
+            FileAvProgressFn prog = p->on_prog;
+            void *user = p->user;
+            double dur = p->duration;
+            int vw = p->vw, vh = p->vh;
+            p->last_prog_ns = now_ns();
+            pthread_mutex_unlock(&p->mu);
+            prog(user, clock, dur, vw, vh);
+            pthread_mutex_lock(&p->mu);
+        }
         a_empty = !p->adec || (p->aq.rd >= p->aq.n);
         v_empty = !p->vdec || !p->want_video || (p->vq.rd >= p->vq.n);
         if (p->opened && eof && a_empty && v_empty && !p->ended) {
