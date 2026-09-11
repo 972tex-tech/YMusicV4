@@ -562,7 +562,7 @@ internal class JvmLocalPlayer(
     }
 
     private fun grab(w: Int, h: Int): BufferedImage {
-        val shown = lastPub
+        val shown = videoSurface?.swingShown ?: lastPub
         for (i in 0..2) {
             val cur = frameBufs[i]
             if (cur != null && cur === shown) continue

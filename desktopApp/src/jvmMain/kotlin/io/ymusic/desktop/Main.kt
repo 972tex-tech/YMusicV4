@@ -1,6 +1,5 @@
 package io.ymusic.desktop
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,17 +21,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
@@ -600,11 +596,10 @@ private fun DesktopPlayerSurface(
     modifier: Modifier,
 ) {
     val localVisible by localSurface.visible.collectAsState()
-    val localFrame by localSurface.frame.collectAsState()
     val localFps by localSurface.fps.collectAsState()
     var size by remember { mutableStateOf(IntSize.Zero) }
-    val localBitmap = remember(localFrame) { localFrame?.toComposeImageBitmap() }
     val msePanel = remember { MseVideoPanel() }
+    val localPanel = remember { MseVideoPanel() }
     DisposableEffect(mseSurface, msePanel) {
         msePanel.onPainted = { mseSurface.swingShown = it }
         val blit: (java.awt.image.BufferedImage?) -> Unit = { msePanel.setImage(it) }
@@ -612,6 +607,15 @@ private fun DesktopPlayerSurface(
         onDispose {
             msePanel.onPainted = null
             if (mseSurface.swingBlit === blit) mseSurface.swingBlit = null
+        }
+    }
+    DisposableEffect(localSurface, localPanel) {
+        localPanel.onPainted = { localSurface.swingShown = it }
+        val blit: (java.awt.image.BufferedImage?) -> Unit = { localPanel.setImage(it) }
+        localSurface.swingBlit = blit
+        onDispose {
+            localPanel.onPainted = null
+            if (localSurface.swingBlit === blit) localSurface.swingBlit = null
         }
     }
     Box(
@@ -623,16 +627,11 @@ private fun DesktopPlayerSurface(
         },
     ) {
         if (localVisible) {
-            Box(Modifier.fillMaxSize().background(Color.Black))
-            if (localBitmap != null) {
-                Image(
-                    bitmap = localBitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    filterQuality = FilterQuality.High,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            SwingPanel(
+                background = Color.Black,
+                factory = { localPanel },
+                modifier = Modifier.fillMaxSize(),
+            )
             if (localFps > 0) {
                 Text(
                     "$localFps fps",

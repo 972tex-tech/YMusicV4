@@ -557,6 +557,8 @@ static int present_video(FileAv *p, AVFrame *fr)
     fr = sw_video_frame(p, fr);
     if (!fr || fr->width <= 0 || fr->height <= 0 || !fr->data[0])
         return -1;
+    fr->colorspace = frame_cs(p, fr);
+    fr->color_range = frame_range(p, fr);
     d = av_pix_fmt_desc_get((enum AVPixelFormat)fr->format);
     if (d && (d->flags & AV_PIX_FMT_FLAG_HWACCEL))
         return -1;

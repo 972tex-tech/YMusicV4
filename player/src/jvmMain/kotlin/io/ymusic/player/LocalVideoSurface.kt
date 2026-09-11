@@ -6,14 +6,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.awt.image.BufferedImage
 
 /**
- * Compose-facing frame/visibility endpoint for the JVM local (ffmpeg) player, rendered **off-screen**.
- * No AWT component is hosted, so decoded frames reach the UI as a plain Compose `Image`
- * (`toComposeImageBitmap`) instead of a `SwingPanel`. That removes the AWT interop hole — Compose
- * popups/menus drawn over the video receive mouse input again.
+ * Frame/visibility endpoint for the JVM local player. Desktop paints via a Swing hole
+ * (ColorSync, same as MSE) so BT.709 matches QuickTime better than Skia `Image`.
  *
  * [visible] is true while the local engine owns the shared surface (including audio-only, which shows
- * a black box because no frames arrive); [frame] is the latest decoded picture, or null when there is
- * nothing to show (idle, or audio-only with the video track disabled).
+ * a black box because no frames arrive).
  */
 class LocalVideoSurface {
     private val _frame = MutableStateFlow<BufferedImage?>(null)
@@ -28,6 +25,14 @@ class LocalVideoSurface {
     private var framesInWindow = 0
     private var windowStartNs = 0L
 
+    /** Swing hole. Invoked off the decode thread; must not recompose Compose. */
+    @Volatile
+    var swingBlit: ((BufferedImage?) -> Unit)? = null
+
+    /** Buffer the panel is painting. Decode must not write this image. */
+    @Volatile
+    var swingShown: BufferedImage? = null
+
     /** Player thread: scale the decode blit to this Compose surface (px). */
     @Volatile
     internal var onViewSize: ((Int, Int) -> Unit)? = null
@@ -37,7 +42,30 @@ class LocalVideoSurface {
     }
 
     internal fun publish(frame: BufferedImage) {
-        _frame.value = frame
+        tickFps()
+        val hole = swingBlit
+        if (hole != null) hole(frame) else _frame.value = frame
+    }
+
+    internal fun setVisible(visible: Boolean) {
+        _visible.value = visible
+        if (!visible) {
+            swingBlit?.invoke(null)
+            swingShown = null
+            _frame.value = null
+            resetFps()
+        }
+    }
+
+    /** Drop the last picture without hiding the surface (audio-only: no frames, but the box stays). */
+    internal fun clearFrame() {
+        swingBlit?.invoke(null)
+        swingShown = null
+        _frame.value = null
+        resetFps()
+    }
+
+    private fun tickFps() {
         val now = System.nanoTime()
         if (windowStartNs == 0L) windowStartNs = now
         framesInWindow++
@@ -47,20 +75,6 @@ class LocalVideoSurface {
             framesInWindow = 0
             windowStartNs = now
         }
-    }
-
-    internal fun setVisible(visible: Boolean) {
-        _visible.value = visible
-        if (!visible) {
-            _frame.value = null
-            resetFps()
-        }
-    }
-
-    /** Drop the last picture without hiding the surface (audio-only: no frames, but the box stays). */
-    internal fun clearFrame() {
-        _frame.value = null
-        resetFps()
     }
 
     private fun resetFps() {
