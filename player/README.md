@@ -89,7 +89,7 @@ The cross-platform playback layer.
     internal marshaling), `Player.Listener`-driven state (audio-only via `setTrackTypeDisabled(TRACK_TYPE_VIDEO)`).
   - **JVM desktop** `jvmMain` = ffmpeg CLI decode + Java Sound PCM; video frames published on
     `LocalVideoSurface` as a Compose `Image` (`setSpeed` shifts pitch via `asetrate`; audio-only skips the
-    video process). Needs the provisioned ffmpeg binary.
+    video process). Needs the packed ffmpeg binary.
 
 - **Targets** — jvm/android/ios/macos (`withIosTargets()`+`withMacosTargets()`).
 

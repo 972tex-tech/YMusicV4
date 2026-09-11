@@ -10,8 +10,7 @@ import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 
 /**
- * The envelope every manifest the app trusts arrives in — releases ([UpdateManifest]) and the
- * downloadable tools the first run fetches (`ToolsManifest`).
+ * The envelope every manifest the app trusts arrives in — releases ([UpdateManifest]).
  *
  * The transport is never the trust boundary: whatever these manifests name ends up being executed,
  * so each is signed with an Ed25519 key whose public half is compiled into the app, and the

@@ -90,14 +90,8 @@ object AppSettings {
     val theme = StringSetting("app.theme", "dark")
 
     /**
-     * Whether the first-run setup has been completed. Desktop only: it gates on downloads (ffmpeg)
-     * that the mobile stores ship inside the package.
-     */
-    val setupCompleted = BoolSetting("setup.completed", false)
-
-    /**
-     * Whether anonymous crash reports may be sent. Default OFF and only ever turned on by the
-     * user's own answer during setup — reporting must never start before it has been asked for.
+     * Whether anonymous crash reports may be sent. Default OFF — reporting must never start before
+     * the user said yes in Settings.
      */
     val crashReports = BoolSetting("telemetry.crashReports", false)
 
@@ -106,9 +100,6 @@ object AppSettings {
      * contract as [crashReports]: nothing is ever sent before the user said yes.
      */
     val stats = BoolSetting("telemetry.stats", false)
-
-    /** A music folder picked during setup, scanned once the app itself is up; empty when none. */
-    val pendingLibraryFolder = StringSetting("library.pendingScan", "")
 
     /**
      * Where finished downloads are written — a media-store bucket uri (the folder is also a Library

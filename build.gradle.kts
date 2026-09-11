@@ -57,7 +57,7 @@ registerFfmpegSync(
     "syncFfmpegHost",
     setOfNotNull(FfmpegRelease.hostAsset()),
     FfmpegRelease.hostDir(project),
-    "the host-runnable ffmpeg for the desktop dev run and the tests",
+    "the host-runnable ffmpeg the desktop app packs and the tests exec",
 )
 
 registerFfmpegSync(

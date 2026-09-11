@@ -54,22 +54,14 @@ val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orN
 val updatePublicKeyValue: String = providers.gradleProperty("ymusic.updatePublicKey").orNull
     ?: updatePublicKey()
 
-// The helper binaries the first run downloads (ffmpeg), signed with the SAME key as releases —
-// they get executed, so an unauthenticated fetch is not an option. Empty leaves the first run
-// asking the user to install ffmpeg instead of fetching it.
-val toolsUrl: String = providers.gradleProperty("ymusic.toolsManifestUrl").orNull
-    ?: toolsManifestUrl()
-
 // Base url of the remote config service. Empty leaves the app on its compiled-in defaults.
 val remoteConfigBaseUrl: String = providers.gradleProperty("ymusic.remoteConfigUrl").orNull
     ?: remoteConfigUrl()
 
-// Dev and test runs exec the prebuilt ffmpeg from the latest ffmpeg-build release instead of
-// provisioning one, through the same -Dio.ymusic.ffmpeg override a developer would pass by hand.
-// A SHIPPED build never sees this: it downloads ffmpeg on first run against the signed manifest
-// above, which is the path that has to keep working and so is what packaging exercises.
-// Set on the run and test TASKS, never on compose.desktop.application.jvmArgs — those are baked
-// into the packaged launcher, and a build-machine path in a shipped app would point at nothing.
+// Dev and test runs exec the prebuilt ffmpeg from the latest ffmpeg-build release through
+// -Dio.ymusic.ffmpeg. A packaged build never sees this property: it uses the copy packed next to
+// the compose resources (see stagePackedFfmpeg). Set on the run and test TASKS, never on
+// compose.desktop.application.jvmArgs — those are baked into the packaged launcher.
 val ffmpegForDev: File? = FfmpegRelease.hostBinary(project)
 if (ffmpegForDev != null) {
     val syncFfmpegHost = rootProject.tasks.named("syncFfmpegHost")
@@ -78,14 +70,29 @@ if (ffmpegForDev != null) {
         dependsOn(syncFfmpegHost)
         systemProperty("io.ymusic.ffmpeg", ffmpegPath)
     }
-    // `run` and the probes, but NOT runDistributable/runRelease*: those exist to try the packaged
-    // experience, whose first run is supposed to provision ffmpeg itself. Handing them one would
-    // mask the very path they are there to exercise.
     tasks.withType<JavaExec>().matching { !it.name.contains("Distributable") && !it.name.contains("Release") }
         .configureEach {
             dependsOn(syncFfmpegHost)
             systemProperty("io.ymusic.ffmpeg", ffmpegPath)
         }
+}
+
+// Host ffmpeg, renamed to `ffmpeg`/`ffmpeg.exe`, packed into the app via compose app-resources.
+val ffmpegPackedName = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "ffmpeg.exe" else "ffmpeg"
+val ffmpegAppResources = layout.buildDirectory.dir("ffmpegAppResources")
+val stagePackedFfmpeg by tasks.registering(Copy::class) {
+    dependsOn(rootProject.tasks.named("syncFfmpegHost"))
+    val asset = FfmpegRelease.hostAsset()
+    if (asset != null) {
+        from(FfmpegRelease.hostDir(project)) {
+            include(asset)
+            rename { ffmpegPackedName }
+        }
+        into(ffmpegAppResources.map { it.dir("common") })
+        doLast {
+            ffmpegAppResources.get().asFile.resolve("common/$ffmpegPackedName").setExecutable(true)
+        }
+    }
 }
 
 val generateBuildConfig by tasks.registering {
@@ -98,7 +105,6 @@ val generateBuildConfig by tasks.registering {
     inputs.property("versionCode", desktopVersionCode)
     inputs.property("updateUrl", updateUrl)
     inputs.property("updatePublicKey", updatePublicKeyValue)
-    inputs.property("toolsUrl", toolsUrl)
     inputs.property("remoteConfigBaseUrl", remoteConfigBaseUrl)
     outputs.dir(outDir)
     doLast {
@@ -123,9 +129,6 @@ val generateBuildConfig by tasks.registering {
             // than not checking.
             internal const val UPDATE_MANIFEST_URL = "$updateUrl"
             internal const val UPDATE_PUBLIC_KEY = "$updatePublicKeyValue"
-
-            // Where the first run fetches ffmpeg from; verified against UPDATE_PUBLIC_KEY.
-            internal const val TOOLS_MANIFEST_URL = "$toolsUrl"
 
             // Base url of the remote config service. Empty = no request, compiled-in defaults.
             internal const val REMOTE_CONFIG_URL = "$remoteConfigBaseUrl"
@@ -338,11 +341,6 @@ compose.desktop {
         // daemon often runs on a JBR that has neither, so find one; -Pymusic.jdkHome overrides.
         fullJdkHome?.let { javaHome = it }
         // Compose SwingPanel (MSE blit) needs AWT internals opened on the JBR/JDK.
-        // Dev only: -Pymusic.setup.forceDownload makes the first run ignore an ffmpeg already on
-        // this machine, so the download path can be exercised on a box that has one anyway.
-        if (providers.gradleProperty("ymusic.setup.forceDownload").isPresent) {
-            jvmArgs("-Dio.ymusic.setup.forceDownload=true")
-        }
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
@@ -390,10 +388,18 @@ compose.desktop {
             // jlink modules the default set misses but the runtime graph uses: java.sql
             // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/coroutines/okio),
             // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec
-            // (TLS for first-run ffmpeg download + update checks).
+            // (TLS for update checks).
             modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec")
+            // Host ffmpeg next to compose resources (`compose.application.resources.dir` at runtime).
+            appResourcesRootDir.set(ffmpegAppResources)
         }
     }
+}
+
+tasks.matching {
+    it.name.contains("AppResources") || it.name.startsWith("package") || it.name.contains("Distributable")
+}.configureEach {
+    dependsOn(stagePackedFfmpeg)
 }
 
 // NOTE (byte-measured, 2026-08-14): jlink's --compress=2 (settable only reflectively — the

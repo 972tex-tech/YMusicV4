@@ -47,7 +47,6 @@ import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.desktop.media.MacDock
 import io.ymusic.desktop.media.connectMediaSession
 import io.ymusic.desktop.resources.ymusic_logo_dock
-import io.ymusic.desktop.setup.FirstRunWindow
 import io.ymusic.desktop.update.DesktopAppUpdates
 import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
@@ -77,7 +76,6 @@ import io.ymusic.settings.AppSettings
 import io.ymusic.settings.FileSettingsStore
 import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
-import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
@@ -115,7 +113,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -146,13 +143,11 @@ private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
 @Volatile private var autoDownloadUpdates: Boolean = false
 
 fun main() {
-    // Opened before anything else: the first run has not happened yet at this point, and both the
-    // crash-reporting consent and whether to show the setup window are answers held in here.
+    // Opened before anything else: crash-reporting consent lives here.
     val settings = kotlinx.coroutines.runBlocking {
         val dir = ymusicDataDir().apply { mkdirs() }
         FileSettingsStore.open(File(dir, "settings.properties").absolutePath.toPath()).also {
-            // First launch decides the app language (device if supported, else English) and
-            // persists it — the setup window needs it as much as the app does.
+            // First launch decides the app language (device if supported, else English) and persists it.
             ensureAppLanguage(it)
         }
     }
@@ -161,17 +156,12 @@ fun main() {
     val darkChrome = settings.flow(AppSettings.theme).value != "light"
     applyWindowChrome(darkChrome)
     // Crash reporting is consent-gated and LIVE: init runs once (crash handlers install and
-    // stay), but nothing leaves the process unless the user's answer — asked during setup,
-    // changeable in Settings — says yes. An un-completed setup is silent by construction, and
-    // saying yes during setup takes effect in the same session, no restart.
+    // stay), but nothing leaves the process unless the Settings toggle says yes (default off).
     if (SENTRY_DSN.isNotEmpty()) {
         val telemetryDeviceId = kotlinx.coroutines.runBlocking { settings.anonymousDeviceId() }
         bindCrashReporting(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            consent = combine(
-                settings.flow(AppSettings.crashReports),
-                settings.flow(AppSettings.setupCompleted),
-            ) { consent, setupDone -> consent && setupDone },
+            consent = settings.flow(AppSettings.crashReports),
         ) {
             Sentry.init {
                 it.applyYMusicTelemetry()
@@ -206,28 +196,6 @@ fun main() {
                     }
                 }
             }
-        }
-        var setupDone by remember { mutableStateOf(settings.flow(AppSettings.setupCompleted).value) }
-        if (!setupDone) {
-            // Nothing plays until the engines are on disk, so the app's own window does not open
-            // until the checklist passes — building the graph first would just fail slowly.
-            FirstRunWindow(
-                settings = settings,
-                dataDir = ymusicDataDir(),
-                logger = rootLogger,
-                toolsManifestUrl = TOOLS_MANIFEST_URL,
-                publicKey = UPDATE_PUBLIC_KEY,
-                existingFfmpeg = {
-                    // -Dio.ymusic.setup.forceDownload hides a locally-present ffmpeg so the
-                    // provisioning path can be exercised (see -Pymusic.setup.forceDownload).
-                    if (System.getProperty("io.ymusic.setup.forceDownload").toBoolean()) null
-                    else resolveFfmpeg()?.let(::File)
-                },
-                pickFolder = { pickFolder()?.absolutePath },
-                onOpenUrl = ::openInBrowser,
-                onFinished = { setupDone = true },
-            )
-            return@application
         }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
         // Hoisted out of the window: whether the window may show at all depends on it.
@@ -292,10 +260,8 @@ fun main() {
                 bootError != null -> Booting {
                     Text("Startup failed: $bootError", color = MaterialTheme.colorScheme.error)
                 }
-                // No spinner while the graph builds: the engines are already on disk by the time
-                // this runs (the setup window is what waits for them), so the build is short and a
-                // progress screen after a checklist that just said "Ready" reads as a second wait.
-                // The window paints the app's own ground until the first frame has something in it.
+                // No spinner while the graph builds: the window paints the app's own ground until
+                // the first frame has something in it.
                 graph == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 else -> App(graph!!)
             }
@@ -587,17 +553,6 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         null
     }
 
-    // A folder picked during the first run is scanned here rather than in the setup window: the
-    // scan is long, and the Library screen is where its progress and result belong.
-    settings.flow(AppSettings.pendingLibraryFolder).value.takeIf { it.isNotBlank() }?.let { path ->
-        CoroutineScope(Dispatchers.Default).launch {
-            val uri = UriBuilder().scheme("file").authority("").path(path).build()
-            runCatching { scanUris(mediaStore, listOf(uri)) {} }
-                .onFailure { rootLogger.fork("library-scan").log(Logger.Level.WARN, "first-run scan of $path failed", it) }
-            settings.put(AppSettings.pendingLibraryFolder, "")
-        }
-    }
-
     return AppGraph(
         engines,
         player,
@@ -764,7 +719,7 @@ private suspend fun rescanKnownRoots(store: BetterMediaStore, onProgress: (Int) 
  *  returning one combined summary line. */
 private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String? {
     val ffmpeg = resolveFfmpeg()
-        ?: return "ffmpeg not found — install it (e.g. brew install ffmpeg) to scan metadata"
+        ?: return "ffmpeg not found"
     val scanner = MediaScanner.create(
         store,
         FileSystemDocumentsProvider(FileSystem.SYSTEM),
@@ -921,18 +876,18 @@ private fun desktopOsKey(): String {
 /**
  * The ffmpeg this run should use, or null when the host has none.
  *
- * One ladder for every caller (tag reading, artwork, download muxing) so they can never disagree
- * about which binary is in play: an explicit override, then the copy the first run downloaded
- * ([io.ymusic.desktop.setup.FfmpegProvisioner]), then the PATH.
+ * One ladder for every caller (tag reading, artwork, download muxing, local playback) so they can
+ * never disagree about which binary is in play: an explicit override, then the copy packed into the
+ * app, then the PATH.
  *
  * A dev run takes the first rung: `:desktopApp:run` and the tests are given -Dio.ymusic.ffmpeg
- * pointing at the prebuilt from the latest ffmpeg-build release, so they never wait on the
- * first-run download. A shipped build has no such property and provisions one.
+ * pointing at the prebuilt from the latest ffmpeg-build release. A packaged build has no such
+ * property and uses the binary next to the compose resources.
  */
 internal fun resolveFfmpeg(): String? {
     System.getProperty("io.ymusic.ffmpeg")?.let { return File(it).takeIf { f -> f.canExecute() }?.absolutePath }
     System.getenv("YMUSIC_FFMPEG")?.let { if (File(it).canExecute()) return it }
-    provisionedFfmpeg()?.let { return it.absolutePath }
+    packedFfmpeg()?.let { return it.absolutePath }
     val os = System.getProperty("os.name").lowercase()
     val name = if (os.contains("win")) "ffmpeg.exe" else "ffmpeg"
     val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator) +
@@ -940,14 +895,11 @@ internal fun resolveFfmpeg(): String? {
     return dirs.asSequence().map { File(it, name) }.firstOrNull { it.canExecute() }?.absolutePath
 }
 
-/** Newest provisioned version first — an upgrade wins without the old copy having to be deleted. */
-private fun provisionedFfmpeg(): File? {
+/** The ffmpeg shipped inside a packaged build (`compose.application.resources.dir`). */
+private fun packedFfmpeg(): File? {
+    val dir = System.getProperty("compose.application.resources.dir") ?: return null
     val name = if (System.getProperty("os.name").lowercase().contains("win")) "ffmpeg.exe" else "ffmpeg"
-    return File(ymusicDataDir(), "tools/ffmpeg").listFiles().orEmpty()
-        .filter { it.isDirectory }
-        .sortedByDescending { it.name }
-        .map { File(it, name) }
-        .firstOrNull { it.canExecute() }
+    return File(dir, name).takeIf { it.canExecute() }
 }
 
 /**
@@ -980,12 +932,6 @@ private fun applyWindowChrome(dark: Boolean) {
         "apple.awt.application.appearance",
         if (dark) "NSAppearanceNameDarkAqua" else "NSAppearanceNameAqua",
     )
-}
-
-/** Opens a link in the user's browser — the first run's VLC, GitHub and policy links. */
-internal fun openInBrowser(url: String) {
-    runCatching { java.awt.Desktop.getDesktop().browse(java.net.URI(url)) }
-        .onFailure { rootLogger.fork("browser").log(Logger.Level.WARN, "could not open $url", it) }
 }
 
 private const val DESKTOP_CHROME_UA =

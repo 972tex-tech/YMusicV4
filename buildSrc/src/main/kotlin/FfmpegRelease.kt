@@ -16,10 +16,9 @@ import java.security.MessageDigest
  * Where the prebuilt ffmpeg binaries come from: assets of the latest github release in
  * ymusic-io/ffmpeg-build.
  *
- * Only the builds that need one on disk use this — the Android apk, which packs a binary per ABI,
- * and the desktop dev run and tests, which need something to exec. The SHIPPED desktop app does not:
- * it downloads ffmpeg on first run against a signed manifest (see FfmpegProvisioner), so nothing
- * here ends up in a release artifact.
+ * Consumers that exec a binary pack one: the Android apk (per ABI as `libffmpeg.so`) and the
+ * desktop app (the host-runnable build, inside the package). Dev `:desktopApp:run` / tests point at
+ * the same staged host binary via `-Dio.ymusic.ffmpeg`.
  */
 object FfmpegRelease {
     const val REPO = "ymusic-io/ffmpeg-build"

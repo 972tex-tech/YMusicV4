@@ -53,11 +53,6 @@ fun Project.macTeamId(): String =
 fun Project.updateManifestUrl(): String =
     System.getenv("YMUSIC_UPDATE_MANIFEST_URL") ?: localProp("update.manifest.url") ?: ""
 
-/** Where the first run fetches its helper binaries — ffmpeg (`tools.manifest.url`). Signed with the
- *  same key as releases; empty means the first run asks the user to install ffmpeg instead. */
-fun Project.toolsManifestUrl(): String =
-    System.getenv("YMUSIC_TOOLS_MANIFEST_URL") ?: localProp("tools.manifest.url") ?: ""
-
 /** Base url of the remote config service (`remote.config.url`), e.g. https://cfg.ymusic.io. Empty
  *  leaves the app on its compiled-in defaults and makes no request. */
 fun Project.remoteConfigUrl(): String =
