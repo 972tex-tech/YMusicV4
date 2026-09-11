@@ -310,8 +310,11 @@ static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     (void)this_val;
     (void)argc;
     (void)argv;
-    /* TEMP: advertise no VP9 so YouTube base.js picks AV1 (VT window blit). */
+#if TARGET_OS_IPHONE
     return JS_NewInt32(ctx, 0);
+#else
+    return JS_NewInt32(ctx, 1);
+#endif
 }
 
 void qjs_mse_install(JSContext *ctx)
