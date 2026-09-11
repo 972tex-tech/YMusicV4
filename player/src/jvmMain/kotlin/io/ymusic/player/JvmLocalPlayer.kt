@@ -309,16 +309,21 @@ internal class JvmLocalPlayer(
         }
         val quality = config.preferVideoQuality.first
         if (quality != prev.preferVideoQuality.first) {
+            val turningVideoOn = prev.audioOnly && !config.audioOnly
             preferVideoQuality = quality
             audioOnly = config.audioOnly
             if (audioOnly) videoSurface?.clearFrame()
-            _status.update { it.copy(videoSize = if (audioOnly) null else it.videoSize) }
+            _status.update {
+                it.copy(videoSize = if (audioOnly) null else videoSizeFromStreams() ?: it.videoSize)
+            }
             publishVideoQuality()
             if (_status.value.state is PlaybackState.Prepared) showSurface(true)
             dispatch {
                 if (handle == 0L) return@dispatch
                 FileAvNative.setVideoEnabled(handle, !audioOnly)
                 FileAvNative.setBlitMax(handle, blitMaxFor(config))
+                // Audio-only open never creates vdec; flipping want_video is not enough.
+                if (turningVideoOn) reopenAtPlayhead(pumping)
             }
         }
         if (config.preferCaptionLanguage != prev.preferCaptionLanguage ||
@@ -337,11 +342,7 @@ internal class JvmLocalPlayer(
         dispatch {
             if (handle == 0L) return@dispatch
             FileAvNative.setAudioIndex(handle, index)
-            val pos = FileAvNative.position(handle)
-            FileAvNative.open(handle, path)
-            FileAvNative.seek(handle, pos)
-            if (playing) FileAvNative.play(handle)
-            pumping = playing
+            reopenAtPlayhead(playing, path)
         }
     }
 
@@ -473,6 +474,34 @@ internal class JvmLocalPlayer(
         if (config.audioOnly) return 2
         val h = VideoQualityState.heightForQuality(config.preferVideoQuality.first)
         return h ?: 1920
+    }
+
+    /** Player thread. `open` rebuilds decoders from current want_video / audio_index. */
+    private fun reopenAtPlayhead(play: Boolean, path: String? = loadedPath) {
+        val file = path ?: return
+        if (handle == 0L) return
+        val pos = FileAvNative.position(handle)
+        if (FileAvNative.open(handle, file) != 0) {
+            fail(FileAvNative.lastError(handle).ifBlank { "open failed" })
+            return
+        }
+        loadedPath = file
+        streams = FileAvNative.streams(handle).mapNotNull(::parseAvStream)
+        FileAvNative.seek(handle, pos)
+        if (play) FileAvNative.play(handle)
+        pumping = play
+        val size = videoSizeFromStreams()
+        onApp {
+            publishTracks(appliedConfig)
+            _status.update { it.copy(videoSize = size) }
+        }
+    }
+
+    private fun videoSizeFromStreams(): VideoSize? {
+        if (audioOnly) return null
+        val v = streams.firstOrNull { it.kind == KIND_VIDEO } ?: return null
+        if (v.width <= 0 || v.height <= 0) return null
+        return VideoSize(v.width, v.height)
     }
 
     private fun publishTracks(config: PlaybackConfig) {
