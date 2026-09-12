@@ -36,9 +36,18 @@ class LocalVideoSurface {
     /** Player thread: scale the decode blit to this Compose surface (px). */
     @Volatile
     internal var onViewSize: ((Int, Int) -> Unit)? = null
+        set(value) {
+            field = value
+            if (value != null && blitW > 0 && blitH > 0) value(blitW, blitH)
+        }
+
+    private var blitW = 0
+    private var blitH = 0
 
     fun setBlitSize(width: Int, height: Int) {
-        if (width > 0 && height > 0) onViewSize?.invoke(width, height)
+        blitW = width.coerceAtLeast(0)
+        blitH = height.coerceAtLeast(0)
+        if (blitW > 0 && blitH > 0) onViewSize?.invoke(blitW, blitH)
     }
 
     internal fun publish(frame: BufferedImage) {

@@ -25,6 +25,7 @@
 #include <mach/mach_time.h>
 #include "mse_vt_blit.h"
 #endif
+#include "mse_ffmpeg.h"
 
 #define OUT_RATE 48000
 #define OUT_CH 2
@@ -625,7 +626,8 @@ static int present_video(FileAv *p, AVFrame *fr)
     if (!p->want_video)
         return 0;
 #ifdef __APPLE__
-    if (fr->hw_frames_ctx && present_vt(p, fr) == 0)
+    if ((fr->format == AV_PIX_FMT_VIDEOTOOLBOX || fr->hw_frames_ctx || fr->data[3]) &&
+        present_vt(p, fr) == 0)
         return 0;
 #endif
     fr = sw_video_frame(p, fr);
@@ -1092,7 +1094,10 @@ void file_av_set_blit_size(FileAv *p, int w, int h)
     pthread_mutex_lock(&p->mu);
     p->blit_w = w > 0 ? w : 0;
     p->blit_h = h > 0 ? h : 0;
+    w = p->blit_w;
+    h = p->blit_h;
     pthread_mutex_unlock(&p->mu);
+    mse_logf("file-av blit-size %dx%d\n", w, h);
 }
 
 double file_av_duration(FileAv *p)
