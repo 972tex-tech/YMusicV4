@@ -1004,10 +1004,12 @@ int file_av_step(FileAv *p)
         p->fmt_eof = 1;
     pthread_cond_broadcast(&p->cv);
     clock = media_time_locked(p);
-    if (p->adec)
-        pump_audio(p, clock);
+    /* Video first: AAC write used to run on this thread and cap step at ~1 AAC
+       frame (21ms → ~30fps on the 4K H.264+AAC file). HEVC DJI has no audio. */
     if (need_video(p))
-        pump_video(p, media_time_locked(p));
+        pump_video(p, clock);
+    if (p->adec)
+        pump_audio(p, media_time_locked(p));
     clock = media_time_locked(p);
     if (p->on_prog && now_ns() - p->last_prog_ns > 1e8) {
         FileAvProgressFn prog = p->on_prog;

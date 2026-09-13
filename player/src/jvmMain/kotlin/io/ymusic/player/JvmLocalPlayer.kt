@@ -25,8 +25,9 @@ import kotlin.math.log10
 /**
  * JVM desktop local player, ExoPlayer-shaped:
  * - Public API is main/AWT only: enqueue and return (except [release], which waits).
- * - One `player` thread copies BGRA, writes PCM, and calls [FileAvNative.step] (present).
- * - Native decode runs on a FileAv helper thread; this thread only blits the due frame.
+ * - One `player` thread calls [FileAvNative.step] (present). PCM is handed to a writer
+ *   thread so SourceDataLine.write cannot cap 60fps present (H.264+AAC was ~30fps).
+ * - Native decode runs on a FileAv helper thread; this thread only presents the due frame.
  * - BGRA goes to the Swing hole here (same as [io.ymusic.mse.NativeMseSink]);
  *   progress and engine state hop to AWT via [SwingUtilities.invokeLater].
  */
@@ -105,6 +106,32 @@ internal class JvmLocalPlayer(
     val surface: LocalVideoSurface? get() = videoSurface
 
     private val playerThread = Thread({ playerLoop() }, "player").apply {
+        isDaemon = true
+        start()
+    }
+
+    /** DAC write blocks; keep it off the present thread. */
+    private val pcmQ = LinkedBlockingQueue<ByteArray>(16)
+
+    private val audioThread = Thread({
+        while (!stopped) {
+            val buf = try {
+                pcmQ.poll(50, TimeUnit.MILLISECONDS) ?: continue
+            } catch (_: InterruptedException) {
+                continue
+            }
+            val out = line ?: continue
+            if (!out.isRunning && pumping) {
+                runCatching { out.start() }
+            }
+            var off = 0
+            while (off < buf.size && !stopped) {
+                val w = out.write(buf, off, buf.size - off)
+                if (w <= 0) break
+                off += w
+            }
+        }
+    }, "player-audio").apply {
         isDaemon = true
         start()
     }
@@ -384,6 +411,7 @@ internal class JvmLocalPlayer(
         loadGen.incrementAndGet()
         uiEpoch.incrementAndGet()
         playerThread.interrupt()
+        audioThread.interrupt()
         if (Thread.currentThread() !== playerThread) {
             try {
                 playerThread.join(5_000)
@@ -411,13 +439,10 @@ internal class JvmLocalPlayer(
 
     override fun onPcm(rate: Int, channels: Int, s16: ByteArray) {
         if (released) return
-        val out = lineFor(rate, channels) ?: return
-        if (!out.isRunning && pumping) out.start()
-        var off = 0
-        while (off < s16.size) {
-            val w = out.write(s16, off, s16.size - off)
-            if (w <= 0) break
-            off += w
+        lineFor(rate, channels) ?: return
+        if (!pcmQ.offer(s16.copyOf())) {
+            pcmQ.poll()
+            pcmQ.offer(s16.copyOf())
         }
     }
 
@@ -615,6 +640,7 @@ internal class JvmLocalPlayer(
     }
 
     private fun closeLine() {
+        pcmQ.clear()
         val l = line
         line = null
         runCatching { l?.stop() }
