@@ -9,7 +9,6 @@
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
 #import <objc/runtime.h>
-#import <math.h>
 #import <string.h>
 
 void *mse_vt_jawt_layer;
@@ -36,32 +35,82 @@ static int mse_is_compose_view(NSView *v)
            strstr(n, "Hardware") || strstr(n, "Compose");
 }
 
-static void mse_click_through(NSView *v)
+static NSView *mse_find_skia(NSView *parent)
 {
-    Class orig, sub;
-    char buf[160];
-    Method m;
-    if (!v || mse_is_compose_view(v))
-        return;
-    orig = object_getClass(v);
-    if (class_getInstanceMethod(orig, @selector(mse_vt_pass)))
-        return;
-    snprintf(buf, sizeof(buf), "%s_MsePass", class_getName(orig));
-    sub = objc_getClass(buf);
-    if (!sub) {
-        sub = objc_allocateClassPair(orig, buf, 0);
-        if (!sub)
-            return;
-        m = class_getInstanceMethod([MseVtHostView class], @selector(hitTest:));
-        class_addMethod(sub, @selector(hitTest:), method_getImplementation(m),
-                        method_getTypeEncoding(m));
-        class_addMethod(sub, @selector(mse_vt_pass), method_getImplementation(m),
-                        method_getTypeEncoding(m));
-        objc_registerClassPair(sub);
+    NSView *best = nil;
+    CGFloat best_a = 0;
+    NSView *v, *n;
+    if (!parent)
+        return nil;
+    for (v in parent.subviews) {
+        CGFloat a;
+        if ([v isKindOfClass:[MseVtHostView class]] || v == mse_vt_jawt_view)
+            continue;
+        if (mse_is_compose_view(v))
+            return v;
+        n = mse_find_skia(v);
+        if (n && mse_is_compose_view(n))
+            return n;
+        a = v.frame.size.width * v.frame.size.height;
+        if (a > best_a) {
+            best_a = a;
+            best = v;
+        }
     }
-    object_setClass(v, sub);
-    mse_logf("mse-v click-through %s %.0fx%.0f\n", class_getName(orig),
-             v.frame.size.width, v.frame.size.height);
+    return best;
+}
+
+static IMP mse_awt_hit_orig;
+
+static NSView *mse_awt_hitTest(id self, SEL sel, NSPoint p)
+{
+    NSView *host = mse_vt_jawt_view;
+    NSPoint in_self;
+    if (host && host.superview == self) {
+        in_self = [self convertPoint:p fromView:[self superview]];
+        if (NSPointInRect(in_self, host.frame)) {
+            NSView *skia = mse_find_skia(self);
+            if (skia) {
+                NSPoint ps = [skia.superview convertPoint:in_self fromView:self];
+                NSView *hit = [skia hitTest:ps];
+                return hit ? hit : skia;
+            }
+            return self;
+        }
+    }
+    if (mse_awt_hit_orig)
+        return ((NSView *(*)(id, SEL, NSPoint))mse_awt_hit_orig)(self, sel, p);
+    return nil;
+}
+
+static void mse_swizzle_awt_hit(NSView *parent)
+{
+    Method m;
+    Class c;
+    if (!parent || mse_awt_hit_orig)
+        return;
+    c = object_getClass(parent);
+    m = class_getInstanceMethod(c, @selector(hitTest:));
+    if (!m)
+        return;
+    mse_awt_hit_orig = method_setImplementation(m, (IMP)mse_awt_hitTest);
+    mse_logf("mse-v swizzle hitTest %s\n", class_getName(c));
+}
+
+static void mse_log_views(NSView *v, int depth)
+{
+    char pad[8];
+    NSView *c;
+    if (!v || depth > 5)
+        return;
+    memset(pad, ' ', (size_t)depth);
+    pad[depth] = 0;
+    mse_logf("mse-v %s%s %.0fx%.0f @ %.0f,%.0f\n", pad,
+             v.className.UTF8String ?: "?",
+             v.frame.size.width, v.frame.size.height,
+             v.frame.origin.x, v.frame.origin.y);
+    for (c in v.subviews)
+        mse_log_views(c, depth + 1);
 }
 
 static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h);
@@ -266,24 +315,11 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         host = [[MseVtHostView alloc] initWithFrame:frame];
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
-        if (canvas_layer && [canvas_layer.delegate isKindOfClass:[NSView class]])
-            mse_click_through((NSView *)canvas_layer.delegate);
         [parent addSubview:host];
         mse_vt_jawt_view = host;
-        {
-            NSView *v;
-            for (v in parent.subviews) {
-                if (v == host)
-                    continue;
-                mse_logf("mse-v sibling %s %.0fx%.0f @ %.0f,%.0f\n",
-                         v.className.UTF8String ?: "?",
-                         v.frame.size.width, v.frame.size.height,
-                         v.frame.origin.x, v.frame.origin.y);
-                if (fabs(v.frame.size.width - frame.size.width) < 2.0 &&
-                    fabs(v.frame.size.height - frame.size.height) < 2.0)
-                    mse_click_through(v);
-            }
-        }
+        (void)canvas_layer;
+        mse_swizzle_awt_hit(parent);
+        mse_log_views(parent, 0);
         mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
                  frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
                  parent.className.UTF8String ?: "?");
