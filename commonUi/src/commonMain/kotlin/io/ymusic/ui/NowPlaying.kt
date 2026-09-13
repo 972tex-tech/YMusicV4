@@ -81,6 +81,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -426,12 +427,25 @@ private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable Bo
     // The tap catcher sits under the controls: taps on a control hit the control; taps on the bare
     // video (or anywhere while hidden) land here and toggle.
     Box(
-        Modifier.matchParentSize().pointerInput(Unit) {
-            detectTapGestures {
-                visible = !visible
-                interaction++
+        Modifier
+            .matchParentSize()
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    visible = !visible
+                    interaction++
+                }
             }
-        },
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val e = awaitPointerEvent()
+                        if (e.type == PointerEventType.Move || e.type == PointerEventType.Enter) {
+                            visible = true
+                            interaction++
+                        }
+                    }
+                }
+            },
     )
     // Pausing brings the controls back (a transition, not a hold — a tap can still hide them).
     LaunchedEffect(playing) {

@@ -148,6 +148,8 @@ static void mse_java_mouse(NSEvent *e)
 @implementation MseVtHostView
 - (NSView *)hitTest:(NSPoint)point
 {
+    /* Under AWTView we should not be hit. If z-order is wrong, still take the
+       event so JNI can copy it to Compose rather than dropping it. */
     return NSPointInRect(point, self.frame) ? self : nil;
 }
 - (void)updateTrackingAreas
@@ -368,26 +370,35 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         mse_vt_detach(mse_vt_jawt_layer);
     mse_vt_jawt_layer = retained;
     mse_on_main(^{
-        NSView *parent = mse_content_view(wl);
+        NSView *awt = mse_content_view(wl);
+        NSView *parent;
         NSView *host;
         NSRect frame;
         if (mse_vt_jawt_layer != retained)
             return;
-        if (!parent) {
+        if (!awt) {
             mse_logf("mse-v jawt no content view\n");
             return;
         }
+        /* Sibling under AWTView so Skia (play/pause chrome) draws on top of the
+           video. A child of AWTView sits above layer contents and hides Compose. */
+        parent = awt.superview ? awt.superview : awt;
         frame = mse_screen_to_view(parent, x, y, w, h);
         host = [[MseVtHostView alloc] initWithFrame:frame];
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
-        [parent addSubview:host];
+        if (awt.layer)
+            awt.layer.opaque = NO;
+        if (parent != awt)
+            [parent addSubview:host positioned:NSWindowBelow relativeTo:awt];
+        else
+            [parent addSubview:host];
         host.window.acceptsMouseMovedEvents = YES;
         mse_vt_jawt_view = host;
         (void)canvas_layer;
-        mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
+        mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s below=%s\n",
                  frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
-                 parent.className.UTF8String ?: "?");
+                 parent.className.UTF8String ?: "?", awt.className.UTF8String ?: "?");
     });
     return retained;
 }
