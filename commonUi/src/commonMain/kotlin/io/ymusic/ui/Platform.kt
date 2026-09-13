@@ -7,6 +7,11 @@ import androidx.compose.runtime.Composable
  *  gesture would steal any click whose press wanders a pixel. */
 internal expect val platformUsesTouch: Boolean
 
+/** True when the platform video surface is a native view that sits on top of Compose
+ *  (desktop JAWT overlay). Overlay chrome on the picture is not visible; put controls
+ *  beside/below the surface instead. */
+internal expect val playerSurfaceCoversCompose: Boolean
+
 /** The system back gesture/button (Android's BackHandler): while [enabled], [onBack] intercepts
  *  it instead of finishing the app. No-op on platforms without a system back concept. */
 @Composable
