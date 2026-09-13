@@ -1,7 +1,8 @@
-// Hold the last homepage miller so a later harness run can: (1) reload the
-// program, (2) mint a content PO, (3) POST the captured SABR body and read SPS.
-// Always persisted under cache scope yt.bg.session (one key per mill). Console
-// chunks are BG_DUMP-only. SPS≠1 → log/capture with that cache blob on Sentry.
+// Hold the last homepage miller so a later harness run can remill exactly:
+// program, snapshot, IT, pot, SABR body, entropy, timeOrigin.
+// Reproduce params go through cache/put (pipe → blob file), never console —
+// host log splits on newlines and truncated entropy. Short status lines stay
+// logs. SPS≠1 → log/capture attaches that cache blob.
 
 import { callHost } from "../../protocol/command";
 import { keepCount, scopedCache } from "../../protocol/cache";
@@ -13,8 +14,6 @@ const held: Record<string, unknown> = {};
 let sessionKey = "";
 let persistChain: Promise<void> = Promise.resolve();
 let dumpedSps = 0;
-let dumpedPot = false;
-let dumpedSabr = false;
 let dumpedFirstSps = 0;
 let reportedReject = false;
 let storeP: Promise<Awaited<ReturnType<typeof scopedCache>>> | null = null;
@@ -56,6 +55,7 @@ function persistHeld(): void {
     "clientVersion",
     "globalName",
     "interpUrl",
+    "interpJs",
     "program",
     "snapshot",
     "integrityToken",
@@ -68,6 +68,8 @@ function persistHeld(): void {
     "pot",
     "sabrUrl",
     "sabrBody",
+    "entropy",
+    "timeOrigin",
   ];
   for (let i = 0; i < names.length; i++) {
     const k = names[i]!;
@@ -139,11 +141,20 @@ export function recordBgChallenge(p: Record<string, unknown>): void {
   }
   held["ua"] = DESKTOP_UA;
   dumpedSps = 0;
-  dumpedPot = false;
-  dumpedSabr = false;
   dumpedFirstSps = 0;
   reportedReject = false;
   sessionKey = utcStamp();
+  persistHeld();
+}
+
+/** Snapshot-window Date.now / performance.now / Math.random — cache/put, not log. */
+export function recordBgEntropy(): void {
+  if (typeof __bgEntropyDump === "function") {
+    const ent = __bgEntropyDump();
+    if (typeof ent === "string" && ent.length) held["entropy"] = ent;
+  }
+  const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
+  if (perf && typeof perf.timeOrigin === "number") held["timeOrigin"] = perf.timeOrigin;
   persistHeld();
 }
 
@@ -154,12 +165,6 @@ export function recordBgMint(id: Uint8Array, token: unknown): void {
   else held["pot"] = "";
   dumpedSps = 0;
   persistHeld();
-  if (!BG_DUMP) return;
-  if (!dumpedPot && held["pot"]) {
-    dumpedPot = true;
-    console.log("bg dump mintId " + held["mintId"]);
-    logBig("bg dump pot", String(held["pot"]));
-  }
 }
 
 /** Last /videoplayback POST — replay this body with a new PO to read SPS. */
@@ -167,44 +172,9 @@ export function recordSabrForDump(url: string, body: Uint8Array | null): void {
   held["sabrUrl"] = url;
   held["sabrBody"] = body && body.length ? u8ToB64url(body) : "";
   persistHeld();
-  if (!BG_DUMP) return;
-  if (dumpedSabr) return;
-  dumpedSabr = true;
-  dumpSabrCapture();
 }
 
-/** console.log caps at 8192; terminals often drop ~4k+ lines — stay under 3k. */
-const DUMP_CHUNK = 3000;
-
-function logBig(tag: string, s: string): void {
-  if (!s.length) {
-    console.log(tag + " 0/1 ");
-    return;
-  }
-  const parts = Math.ceil(s.length / DUMP_CHUNK);
-  for (let i = 0; i < parts; i++) {
-    console.log(
-      tag + " " + i + "/" + parts + " " + s.slice(i * DUMP_CHUNK, i * DUMP_CHUNK + DUMP_CHUNK),
-    );
-  }
-}
-
-function dumpSabrCapture(): void {
-  const url = String(held["sabrUrl"] || "");
-  const body = String(held["sabrBody"] || "");
-  console.log(
-    "bg dump sabr meta " +
-      JSON.stringify({
-        "urlLen": url.length,
-        "bodyLen": body.length,
-        "mintId": held["mintId"] || "",
-        "potLen": String(held["pot"] || "").length,
-      }),
-  );
-  logBig("bg dump sabrUrl", url);
-  logBig("bg dump sabrBody", body);
-}
-
+/** Lengths + sessionKey only. Payloads live in the cache blob. */
 export function dumpBgParams(why: string): void {
   if (!BG_DUMP) return;
   const rec: Record<string, unknown> = {
@@ -222,18 +192,17 @@ export function dumpBgParams(why: string): void {
     "mintId": held["mintId"] || "",
     "potLen": String(held["pot"] || "").length,
     "sabrUrlLen": String(held["sabrUrl"] || "").length,
+    "entropyLen": String(held["entropy"] || "").length,
     "sessionKey": sessionKey || utcStamp(),
+    "scope": SCOPE,
   };
   if (why.indexOf("sps=") === 0) rec["sps"] = Number(why.slice(4));
-  const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
-  if (perf && typeof perf.timeOrigin === "number") rec["timeOrigin"] = perf.timeOrigin;
+  if (held["timeOrigin"] !== undefined) rec["timeOrigin"] = held["timeOrigin"];
+  else {
+    const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
+    if (perf && typeof perf.timeOrigin === "number") rec["timeOrigin"] = perf.timeOrigin;
+  }
   console.log("bg dump meta " + JSON.stringify(rec));
-  logBig("bg dump visitorData", String(held["visitorData"] || ""));
-  logBig("bg dump program", String(held["program"] || ""));
-  logBig("bg dump snapshot", String(held["snapshot"] || ""));
-  logBig("bg dump integrityToken", String(held["integrityToken"] || ""));
-  if (held["interpJs"]) logBig("bg dump interpJs", String(held["interpJs"]));
-  if (held["pot"]) logBig("bg dump pot", String(held["pot"]));
 }
 
 export function dumpFirstSps(sps: number): void {
@@ -244,19 +213,14 @@ export function dumpFirstSps(sps: number): void {
   console.log("bg dump sps " + sps);
 }
 
-/** First SPS≠1 for this mint — persist + Sentry. Console dump is BG_DUMP-only. */
+/** First SPS≠1 for this mint — persist cache blob, then Sentry attach. */
 export function dumpBgOnSps(sps: number): void {
   dumpFirstSps(sps);
   if (sps === 1 || sps <= 0) return;
-  persistHeld();
+  recordBgEntropy();
   reportPoReject(sps);
   if (!BG_DUMP) return;
   if (dumpedSps === sps) return;
   dumpedSps = sps;
   dumpBgParams("sps=" + sps);
-  if (held["sabrUrl"]) dumpSabrCapture();
-  if (typeof __bgEntropyDump === "function") {
-    const ent = __bgEntropyDump();
-    if (ent) logBig("bg dump entropy", ent);
-  }
 }

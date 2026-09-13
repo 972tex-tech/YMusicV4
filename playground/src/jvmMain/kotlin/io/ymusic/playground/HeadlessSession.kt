@@ -108,12 +108,23 @@ internal class BgCapture(private val parentDir: File) {
                 val slot = if (arr.size == n) arr else arrayOfNulls<String>(n).also { parts[kind] = it }
                 slot[i] = data
                 if (slot.all { it != null }) {
-                    val joined = slot.joinToString("") { it!! }
+                    val joined = decodeDump(slot.joinToString("") { it!! })
                     writeKind(kind, joined)
                     maybeMillerReady()
                     maybeSabrReady()
                 }
             }
+        }
+    }
+
+    private fun decodeDump(value: String): String {
+        if (!value.startsWith("b64:")) return value
+        val raw = value.substring(4)
+        val decoder = java.util.Base64.getUrlDecoder()
+        return try {
+            String(decoder.decode(raw), Charsets.UTF_8)
+        } catch (_: Exception) {
+            value
         }
     }
 
@@ -371,6 +382,7 @@ internal class HeadlessSession(
             val proofFile = File.createTempFile("po-proof-", ".log").also { it.writeText("") }
             val dumpRoot = File(File(System.getProperty("user.dir"), "build"), "bg-dump")
             dumpRoot.mkdirs()
+            val dumpDir = dumpRoot.absolutePath.toPath()
             val log = StdoutLog(proofFile, dumpRoot, jar)
             val cacheDir = File(System.getProperty("java.io.tmpdir"), "ymusic-playground-engine-cache")
             cacheDir.deleteRecursively()
@@ -405,6 +417,8 @@ internal class HeadlessSession(
                 cacheStore = cache,
                 cookieJar = jar,
                 settings = settings,
+                dumpFs = FileSystem.SYSTEM,
+                dumpDir = dumpDir,
             )
             // Main engine JS lives on its own QuickJS thread (DynamicEngineManager.start).
             main.start()
@@ -421,6 +435,8 @@ internal class HeadlessSession(
                     settings = settings,
                     videoSurface = surface,
                     main = main,
+                    dumpFs = FileSystem.SYSTEM,
+                    dumpDir = dumpDir,
                 )
             }
             return HeadlessSession(main, player, dispatcher, log, proofFile, client, cache, jar, settings)

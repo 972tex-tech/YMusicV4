@@ -8,10 +8,11 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 
 - **Desktop JVM** — `./gradlew :playground:run`
 
-BotGuard capture (no cookies) lands in `build/bg-dump/<yyyyMMdd-HHmmss-SSS>/`
-(UTC stamp = session key; `build/bg-dump/latest` points at the newest). Scalars
-live in `meta.json`; only large payloads are separate files. `BG_DUMP` defaults
-on unless `-Pproduction=true`. Watch for:
+BotGuard reproduce params (program, snapshot, IT, pot, SABR, entropy) go through
+`cache/put` — never the logger (newlines truncated console dumps). On SPS≠1 the
+host explodes that blob into `build/bg-dump/<yyyyMMdd-HHmmss-SSS>/` (`latest`
+points at the newest). Short `bg dump meta {sessionKey, entropyLen, …}` lines
+stay logs. `BG_DUMP` defaults on unless `-Pproduction=true`. Watch for:
 
 ```
 bg capture miller dir=… program=N snap=N it=N

@@ -48,6 +48,8 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
+import okio.FileSystem
+import okio.Path
 
 /**
  * YouTube [YtEngine] over engine-js + C MSE. Main-thread control surface; JS work hops to
@@ -401,6 +403,8 @@ class MsePlayer internal constructor(
             videoSurface: MseVideoSurface,
             main: DynamicEngineManager,
             mediaProxy: LocalMediaProxy? = null,
+            dumpFs: FileSystem? = null,
+            dumpDir: Path? = null,
         ): MsePlayer {
             val engineClient = if (mediaProxy != null) SabrProxyHttpClient(client, mediaProxy) else client
             return MsePlayer(dispatcher, videoSurface, logger) {
@@ -411,6 +415,8 @@ class MsePlayer internal constructor(
                     settings = settings,
                     videoSurface = videoSurface,
                     main = main,
+                    dumpFs = dumpFs,
+                    dumpDir = dumpDir,
                 )
             }
         }

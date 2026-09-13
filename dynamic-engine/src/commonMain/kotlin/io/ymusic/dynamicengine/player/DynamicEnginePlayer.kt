@@ -27,6 +27,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
+import okio.FileSystem
+import okio.Path
 
 /**
  * YouTube playback via JS player commands. MSE is JS + native C (sync getters). The app supplies
@@ -247,10 +249,14 @@ class DynamicEnginePlayer private constructor(
             settings: SettingsStore? = null,
             videoSurface: MseVideoSurface? = null,
             main: DynamicEngineManager? = null,
+            dumpFs: FileSystem? = null,
+            dumpDir: Path? = null,
         ): DynamicEnginePlayer {
             var nativeMse: NativeMseHost? = null
             val engine = DynamicEngine.createEngine(
                 client, appVersion, dispatcher, logger, engineJs, cacheStore, cookieJar, settings,
+                dumpFs = dumpFs,
+                dumpDir = dumpDir,
             ) { parked ->
                 if (videoSurface != null) nativeMse = bindNativeMse(this, videoSurface)
                 installMainProxy(parked) { cmd ->

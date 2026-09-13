@@ -19,6 +19,8 @@ import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path
 
 /**
  * A [QuickJsRuntime] pre-wired with the host capabilities a downloadable scraping engine needs. The
@@ -138,8 +140,11 @@ class DynamicEngine internal constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
+            dumpFs: FileSystem? = null,
+            dumpDir: Path? = null,
         ): DynamicEngine = createEngine(
             client, appVersion, dispatcher, logger, engineJs, cacheStore, cookieJar, settings,
+            dumpFs, dumpDir,
         )
 
         /** Create from [compile]d bytecode of a bundle — `versions.app` is only known here, so it
@@ -154,8 +159,12 @@ class DynamicEngine internal constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
+            dumpFs: FileSystem? = null,
+            dumpDir: Path? = null,
         ): DynamicEngine = createEngineFromBytecode(
             client, appVersion, engineBytecode, dispatcher, logger, cacheStore, cookieJar, settings,
+            dumpFs = dumpFs,
+            dumpDir = dumpDir,
         )
 
         internal fun createEngineFromBytecode(
@@ -167,8 +176,10 @@ class DynamicEngine internal constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
+            dumpFs: FileSystem? = null,
+            dumpDir: Path? = null,
             extraInstall: QuickJsRuntime.(ParkedLoggers) -> Unit = {},
-        ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
+        ): DynamicEngine = boot(logger, ParkedLoggers(logger, dumpFs, dumpDir)) { parked ->
             QuickJsRuntime.create(engineBytecode, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
                 installHost(it, client, parked, cacheStore, cookieJar, settings)
                 it.extraInstall(parked)
@@ -184,8 +195,10 @@ class DynamicEngine internal constructor(
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,
+            dumpFs: FileSystem? = null,
+            dumpDir: Path? = null,
             extraInstall: QuickJsRuntime.(ParkedLoggers) -> Unit = {},
-        ): DynamicEngine = boot(logger, ParkedLoggers(logger)) { parked ->
+        ): DynamicEngine = boot(logger, ParkedLoggers(logger, dumpFs, dumpDir)) { parked ->
             QuickJsRuntime.create(engineJs, appVersion, dispatcher, onLog = logger?.let(::jsLog)) {
                 installHost(it, client, parked, cacheStore, cookieJar, settings)
                 it.extraInstall(parked)

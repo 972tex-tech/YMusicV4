@@ -1,6 +1,8 @@
 package io.ymusic.dynamicengine.internal
 
 import kmpcommon.log.Logger
+import okio.FileSystem
+import okio.Path
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.incrementAndFetch
@@ -17,7 +19,11 @@ import kotlin.concurrent.atomics.incrementAndFetch
  * [root]. No suspension anywhere, so unpark in a cancelled coroutine's finally always runs.
  */
 @OptIn(ExperimentalAtomicApi::class)
-internal class ParkedLoggers(val root: Logger?) {
+internal class ParkedLoggers(
+    val root: Logger?,
+    val dumpFs: FileSystem? = null,
+    val dumpDir: Path? = null,
+) {
     private val parked = HashMap<Int, Logger>()
     private val next = AtomicInt(0)
 

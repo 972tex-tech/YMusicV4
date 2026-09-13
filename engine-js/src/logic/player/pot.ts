@@ -6,7 +6,7 @@ import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
-import { dumpBgParams, recordBgChallenge, recordBgMint } from "./bg_dump";
+import { dumpBgParams, recordBgChallenge, recordBgEntropy, recordBgMint } from "./bg_dump";
 
 const REQUEST_KEY = "O43z0dpjhgX20SCx4KAo";
 const API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw";
@@ -70,7 +70,7 @@ export async function minterFromConfig(
   cfg: Record<string, unknown>,
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {
-  if (BG_DUMP) __bgEntropyStart();
+  __bgEntropyStart();
   const ytcfgData = asRec(cfg["ytcfg"]) || {};
   const eventId = typeof cfg["eventId"] === "string" ? (cfg["eventId"] as string) : "";
   if (eventId && ytcfgData["EVENT_ID"] === undefined) ytcfgData["EVENT_ID"] = eventId;
@@ -178,7 +178,7 @@ export async function minterFromConfig(
 
   out["step"] = "snapshot";
   const webPo: unknown[] = [];
-  if (BG_DUMP) __bgEntropyBegin();
+  __bgEntropyBegin();
   let botguardResponse: unknown;
   try {
     botguardResponse = await new Promise(function (resolve, reject) {
@@ -194,7 +194,7 @@ export async function minterFromConfig(
       }
     });
   } finally {
-    if (BG_DUMP) __bgEntropyEnd();
+    __bgEntropyEnd();
   }
   out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
   out["snapshotPrefix"] =
@@ -256,6 +256,7 @@ export async function minterFromConfig(
     const js = unwrapTru(bg["interpreterJavascript"]);
     if (js) recordBgChallenge({ "interpJs": js });
   }
+  recordBgEntropy();
   dumpBgParams("mint");
 
   out["step"] = "mint";
