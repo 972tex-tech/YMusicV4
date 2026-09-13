@@ -9,18 +9,23 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 - **Desktop JVM** — `./gradlew :playground:run`
 
 BotGuard reproduce params (program, snapshot, IT, pot, SABR, entropy) go through
-`cache/put` — never the logger (newlines truncated console dumps). On SPS≠1 the
-host explodes that blob into `build/bg-dump/<yyyyMMdd-HHmmss-SSS>/` (`latest`
-points at the newest). Short `bg dump meta {sessionKey, entropyLen, …}` lines
-stay logs. `BG_DUMP` defaults on unless `-Pproduction=true`. Watch for:
+`cache/put` into scope `yt.bg.session` (the engine cache store). Never the logger —
+newlines truncated console dumps. SPS≠1 attaches that blob on `log/capture`.
+Short `bg dump meta {sessionKey, entropyLen, …}` lines stay logs. Remill from
+the cache JSON: `python3 harness/extract_bg_dump.py bg-session.json`. `BG_DUMP`
+defaults on unless `-Pproduction=true`. Watch for:
 
 ```
-bg capture miller dir=… program=N snap=N it=N
-bg capture sabr dir=… body=N
-bg capture sps N
+bg dump meta {"why":"sps=3","sessionKey":"…","entropyLen":N,…}
 ```
 
-Then in js-black-box-discover: `python3 harness/po_replay.py mill DIR` and `python3 harness/po_replay.py sps DIR`.
+Sentry `log/capture` attaches `bg-session.json`. Then:
+
+```
+python3 harness/extract_bg_dump.py bg-session.json
+python3 harness/po_replay.py mill DIR
+python3 harness/po_replay.py sps DIR
+```
 - **iOS** — `MainViewController()` in `iosMain` (framework `MsePlayground`); host app is local, not in git
 - **Android** — `./gradlew :playground-android:installDebug` (needs an emulator/device and
   `ffmpeg-build/out/android-<abi>`)

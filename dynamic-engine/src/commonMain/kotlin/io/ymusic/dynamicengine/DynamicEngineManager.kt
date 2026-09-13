@@ -23,8 +23,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import okio.Buffer
-import okio.FileSystem
-import okio.Path
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -73,8 +71,6 @@ class DynamicEngineManager(
      *  and every successful [swap]) — the shells stamp it onto the Sentry scope. */
     private val onBackendVersion: ((Int) -> Unit)? = null,
     private val updateCheckIntervalMs: Long = 6 * 60 * 60 * 1000L,
-    private val dumpFs: FileSystem? = null,
-    private val dumpDir: Path? = null,
 ) {
 
     private val stintLog = logger?.fork("engine-stint")
@@ -170,10 +166,7 @@ class DynamicEngineManager(
         val thread = EngineThread()
         try {
             return withContext(thread.dispatcher) {
-                val engine = DynamicEngine.create(
-                    client, appVersion, thread.dispatcher, logger, js, cacheStore, cookieJar, settings,
-                    dumpFs, dumpDir,
-                )
+                val engine = DynamicEngine.create(client, appVersion, thread.dispatcher, logger, js, cacheStore, cookieJar, settings)
                 try {
                     engine.healthCheck()
                 } catch (t: Throwable) {

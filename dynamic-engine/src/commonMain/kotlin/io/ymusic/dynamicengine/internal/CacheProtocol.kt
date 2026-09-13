@@ -16,7 +16,6 @@ import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.io.readAll
 import kmpcommon.log.Logger
-import kmpcommon.log.debug
 import kmphttp.json.JsonReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -65,15 +64,7 @@ internal fun QuickJsRuntime.installCapture(store: CacheStore?, parked: ParkedLog
             val bytes = if (store != null && !scopeName.isNullOrEmpty() && !key.isNullOrEmpty()) {
                 withContext(Dispatchers.IO) {
                     val entry = store.get(scopeName, key) ?: return@withContext null
-                    val raw = BufferedAsyncSource(entry.open()).use { it.readFully().readByteArray() }
-                    val fs = parked.dumpFs
-                    val dir = parked.dumpDir
-                    if (fs != null && dir != null) {
-                        runCatching { writeBgSessionDump(fs, dir, raw.decodeToString(), key) }
-                            .onSuccess { written -> parked.root?.debug { "bg dump dir=$written" } }
-                            .onFailure { e -> parked.root?.debug { "bg dump write skipped: ${e.message}" } }
-                    }
-                    raw
+                    BufferedAsyncSource(entry.open()).use { it.readFully().readByteArray() }
                 }
             } else {
                 null

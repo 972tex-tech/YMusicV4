@@ -233,7 +233,6 @@ class YMusicApplication : Application() {
             ioDispatcher = Dispatchers.IO,
         )
         val cacheStore = androidEngineCacheStore(this, logger = rootLogger)
-        val bgDumpDir = File(filesDir, "bg-dump").toOkioPath()
         val engines = DynamicEngineManager(
             http.engine,
             appVersion = 1,
@@ -246,8 +245,6 @@ class YMusicApplication : Application() {
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
             onBackendVersion = ::installSentryEngineVersion,
             jsSource = engineSource,
-            dumpFs = FileSystem.SYSTEM,
-            dumpDir = bgDumpDir,
         )
         engines.start()
 
@@ -434,8 +431,6 @@ class YMusicApplication : Application() {
                         videoSurface = MseVideoSurface(),
                         main = shared.engines,
                         mediaProxy = mediaProxy,
-                        dumpFs = FileSystem.SYSTEM,
-                        dumpDir = File(filesDir, "bg-dump").toOkioPath(),
                     ).also {
                         ytEngine = it
                         mseBridge.attach(it)

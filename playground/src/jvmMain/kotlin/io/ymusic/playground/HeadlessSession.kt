@@ -382,7 +382,6 @@ internal class HeadlessSession(
             val proofFile = File.createTempFile("po-proof-", ".log").also { it.writeText("") }
             val dumpRoot = File(File(System.getProperty("user.dir"), "build"), "bg-dump")
             dumpRoot.mkdirs()
-            val dumpDir = dumpRoot.absolutePath.toPath()
             val log = StdoutLog(proofFile, dumpRoot, jar)
             val cacheDir = File(System.getProperty("java.io.tmpdir"), "ymusic-playground-engine-cache")
             cacheDir.deleteRecursively()
@@ -417,8 +416,6 @@ internal class HeadlessSession(
                 cacheStore = cache,
                 cookieJar = jar,
                 settings = settings,
-                dumpFs = FileSystem.SYSTEM,
-                dumpDir = dumpDir,
             )
             // Main engine JS lives on its own QuickJS thread (DynamicEngineManager.start).
             main.start()
@@ -435,8 +432,6 @@ internal class HeadlessSession(
                     settings = settings,
                     videoSurface = surface,
                     main = main,
-                    dumpFs = FileSystem.SYSTEM,
-                    dumpDir = dumpDir,
                 )
             }
             return HeadlessSession(main, player, dispatcher, log, proofFile, client, cache, jar, settings)

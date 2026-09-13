@@ -377,7 +377,6 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         ioDispatcher = Dispatchers.IO,
     )
     val engineCache = desktopEngineCacheStore(File(dataDir, "engine-cache"), rootLogger)
-    val bgDumpDir = File(dataDir, "bg-dump").absolutePath.toPath()
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             http.engine,
@@ -390,8 +389,6 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
             // Every Sentry event names the engine-js bundle that was live (start + each swap).
             onBackendVersion = ::installSentryEngineVersion,
             jsSource = engineSource,
-            dumpFs = FileSystem.SYSTEM,
-            dumpDir = bgDumpDir,
         )
     }
     engines.start()
@@ -467,8 +464,6 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
                         videoSurface = mseSurface,
                         main = engines,
                         mediaProxy = mediaProxy,
-                        dumpFs = FileSystem.SYSTEM,
-                        dumpDir = bgDumpDir,
                     ).also { ytEngine = it }
                 },
             ),
