@@ -613,6 +613,7 @@ private fun DesktopPlayerSurface(
     val localPanel = remember { MseVideoPanel() }
     DisposableEffect(msePanel, localPanel) {
         FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, x, y, mods, button, clicks, wheel ->
+            if (io.ymusic.ui.VideoChromeHit.dispatch(id, x, y, mods, button, clicks, wheel)) return@OverlayMouse
             val panel = if (localPanel.isShowing) localPanel else msePanel
             panel.dispatchOverlayMouse(id, x, y, mods, button, clicks, wheel)
         }

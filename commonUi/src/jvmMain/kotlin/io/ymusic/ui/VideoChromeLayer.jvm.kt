@@ -24,13 +24,20 @@ import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import kotlinx.coroutines.delay
+import java.awt.Container
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
+import java.awt.Point
 import java.awt.Window
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.awt.event.MouseEvent
+import java.awt.event.MouseWheelEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import javax.swing.JDialog
+import javax.swing.JFrame
+import javax.swing.SwingUtilities
 
 private class ChromeHolder {
     var content by mutableStateOf<@Composable BoxScope.() -> Unit>({})
@@ -40,6 +47,60 @@ private data class ChromeBounds(val x: Int = 0, val y: Int = 0, val w: Int = 0, 
 
 /** Keep the owner's frame edge free for live resize. */
 private const val EDGE_PAD = 8
+
+/**
+ * Native video NSView eats clicks when the chrome dialog is unfocusable or behind.
+ * The desktop shell forwards those events here.
+ */
+object VideoChromeHit {
+    @Volatile
+    internal var window: Window? = null
+
+    fun dispatch(
+        id: Int,
+        xOnScreen: Int,
+        yOnScreen: Int,
+        modifiers: Int,
+        button: Int,
+        clickCount: Int,
+        wheel: Int,
+    ): Boolean {
+        val w = window ?: return false
+        if (!w.isShowing) return false
+        val target = composeRoot(w)
+        val p = Point(xOnScreen, yOnScreen)
+        SwingUtilities.convertPointFromScreen(p, target)
+        val event: MouseEvent = if (id == MouseEvent.MOUSE_WHEEL) {
+            MouseWheelEvent(
+                target, id, System.currentTimeMillis(), modifiers, p.x, p.y,
+                clickCount, false, MouseWheelEvent.WHEEL_UNIT_SCROLL, 1, wheel,
+            )
+        } else {
+            MouseEvent(
+                target, id, System.currentTimeMillis(), modifiers, p.x, p.y,
+                xOnScreen, yOnScreen, clickCount, false, button,
+            )
+        }
+        val fire = { target.dispatchEvent(event) }
+        if (SwingUtilities.isEventDispatchThread()) fire() else SwingUtilities.invokeLater(fire)
+        return true
+    }
+}
+
+private fun composeRoot(w: Window): java.awt.Component {
+    val pane = when (w) {
+        is JDialog -> w.contentPane
+        is JFrame -> w.contentPane
+        else -> w
+    }
+    fun search(c: java.awt.Component): java.awt.Component? {
+        val n = c.javaClass.name
+        if (n.contains("Skia") || n.contains("Compose")) return c
+        if (c is Container) for (ch in c.components) search(ch)?.let { return it }
+        return null
+    }
+    return (pane as? Container)?.let { search(it) } ?: pane
+}
 
 /**
  * Captions + transport in a transparent Compose window above the JAWT video view.
@@ -137,10 +198,30 @@ internal actual fun VideoChromeLayer(
         decoration = WindowDecoration.Undecorated(),
         transparent = true,
         resizable = false,
-        focusable = false,
+        focusable = true,
         alwaysOnTop = false,
         modalityType = DialogModalityType.Modeless,
     ) {
+        DisposableEffect(window) {
+            VideoChromeHit.window = window
+            val owner = window.owner
+            fun syncTop() {
+                window.isAlwaysOnTop = owner == null || owner.isActive || owner.isFocused || window.isActive
+            }
+            syncTop()
+            val listener = object : WindowAdapter() {
+                override fun windowActivated(e: WindowEvent) = syncTop()
+                override fun windowDeactivated(e: WindowEvent) {
+                    SwingUtilities.invokeLater { syncTop() }
+                }
+            }
+            owner?.addWindowListener(listener)
+            onDispose {
+                owner?.removeWindowListener(listener)
+                if (VideoChromeHit.window === window) VideoChromeHit.window = null
+                window.isAlwaysOnTop = false
+            }
+        }
         Box(Modifier.fillMaxSize(), content = holder.content)
     }
 }
