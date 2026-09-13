@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -19,9 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.delay
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
 import java.awt.Window
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 
@@ -48,6 +52,38 @@ internal actual fun VideoChromeLayer(
     }
     val density = LocalDensity.current
     var bounds by remember { mutableStateOf(ChromeBounds()) }
+    var parked by remember { mutableStateOf(false) }
+    var parkGen by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(Unit) {
+        val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
+        fun park() {
+            parked = true
+            parkGen++
+        }
+        val components = object : ComponentAdapter() {
+            override fun componentMoved(e: ComponentEvent) = park()
+            override fun componentResized(e: ComponentEvent) = park()
+        }
+        val windows = object : WindowAdapter() {
+            override fun windowStateChanged(e: WindowEvent) = park()
+            override fun windowIconified(e: WindowEvent) = park()
+        }
+        owner.addComponentListener(components)
+        owner.addWindowStateListener(windows)
+        owner.addWindowListener(windows)
+        onDispose {
+            owner.removeComponentListener(components)
+            owner.removeWindowStateListener(windows)
+            owner.removeWindowListener(windows)
+        }
+    }
+
+    LaunchedEffect(parkGen) {
+        if (!parked) return@LaunchedEffect
+        delay(180)
+        parked = false
+    }
 
     Box(
         modifier.onGloballyPositioned { coords ->
@@ -87,6 +123,7 @@ internal actual fun VideoChromeLayer(
     Window(
         onCloseRequest = {},
         state = state,
+        visible = !parked,
         undecorated = true,
         transparent = true,
         resizable = false,
