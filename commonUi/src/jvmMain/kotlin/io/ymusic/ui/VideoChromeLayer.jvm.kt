@@ -17,9 +17,9 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.rememberDialogState
 import kotlinx.coroutines.delay
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
@@ -114,7 +114,7 @@ internal actual fun VideoChromeLayer(
 
     if (bounds.w <= 0 || bounds.h <= 0) return
 
-    val state = rememberWindowState(
+    val state = rememberDialogState(
         position = WindowPosition(bounds.x.dp, bounds.y.dp),
         size = DpSize(bounds.w.dp, bounds.h.dp),
     )
@@ -123,7 +123,9 @@ internal actual fun VideoChromeLayer(
         state.size = DpSize(bounds.w.dp, bounds.h.dp)
     }
 
-    Window(
+    /* Owned dialog stays above the player window without toFront() on activate,
+       which was flashing the overlay when clicking the queue. */
+    DialogWindow(
         onCloseRequest = {},
         state = state,
         visible = !parked,
@@ -131,21 +133,8 @@ internal actual fun VideoChromeLayer(
         transparent = true,
         resizable = false,
         focusable = true,
-        alwaysOnTop = false,
         title = "YMusic video chrome",
     ) {
-        DisposableEffect(Unit) {
-            window.focusableWindowState = true
-            val owner = chromeOwner()
-            val listener = object : WindowAdapter() {
-                override fun windowActivated(e: WindowEvent) {
-                    if (window.isDisplayable) window.toFront()
-                }
-            }
-            owner?.addWindowListener(listener)
-            window.toFront()
-            onDispose { owner?.removeWindowListener(listener) }
-        }
         Box(Modifier.fillMaxSize(), content = holder.content)
     }
 }
