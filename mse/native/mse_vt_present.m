@@ -9,7 +9,6 @@
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
 #import <math.h>
-#import <objc/runtime.h>
 #import <string.h>
 
 void *mse_vt_jawt_layer;
@@ -124,7 +123,7 @@ static void mse_java_mouse(NSEvent *e)
     JNIEnv *env = NULL;
     NSPoint scr;
     CGFloat top;
-    jint x, y, wheel;
+    jint x, y, wheel, clicks;
 
     if (!e || !e.window || !mse_jvm || !mse_native_cls || !mse_mouse_mid)
         return;
@@ -137,9 +136,22 @@ static void mse_java_mouse(NSEvent *e)
     x = (jint)llround(scr.x);
     y = (jint)llround(top - scr.y);
     wheel = (e.type == NSEventTypeScrollWheel) ? (jint)llround(-e.scrollingDeltaY) : 0;
+    switch (e.type) {
+    case NSEventTypeLeftMouseDown:
+    case NSEventTypeLeftMouseUp:
+    case NSEventTypeRightMouseDown:
+    case NSEventTypeRightMouseUp:
+    case NSEventTypeOtherMouseDown:
+    case NSEventTypeOtherMouseUp:
+        clicks = (jint)e.clickCount;
+        break;
+    default:
+        clicks = 0;
+        break;
+    }
     (*env)->CallStaticVoidMethod(env, mse_native_cls, mse_mouse_mid,
                                  mse_awt_id(e.type), x, y, mse_awt_mods(e),
-                                 mse_awt_button(e.type), (jint)e.clickCount, wheel);
+                                 mse_awt_button(e.type), clicks, wheel);
     if ((*env)->ExceptionCheck(env))
         (*env)->ExceptionClear(env);
 }
@@ -247,30 +259,6 @@ void mse_vt_jawt_unhost(void)
     mse_on_main(^{
         [v removeFromSuperview];
     });
-}
-
-static int mse_opaque_swizzled;
-
-static BOOL mse_isOpaque_no(id self, SEL sel)
-{
-    (void)self;
-    (void)sel;
-    return NO;
-}
-
-static void mse_swizzle_isOpaque(NSView *v)
-{
-    Class c;
-    Method m;
-    const char *types;
-    if (mse_opaque_swizzled || !v)
-        return;
-    c = object_getClass(v);
-    m = class_getInstanceMethod(c, @selector(isOpaque));
-    types = m ? method_getTypeEncoding(m) : "B@:";
-    class_replaceMethod(c, @selector(isOpaque), (IMP)mse_isOpaque_no, types);
-    mse_opaque_swizzled = 1;
-    mse_logf("mse-v swizzle isOpaque %s\n", class_getName(c));
 }
 
 static NSView *mse_content_view(CALayer *wl)
@@ -395,38 +383,29 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         mse_vt_detach(mse_vt_jawt_layer);
     mse_vt_jawt_layer = retained;
     mse_on_main(^{
-        NSView *awt = mse_content_view(wl);
-        NSView *parent;
+        NSView *parent = mse_content_view(wl);
         NSView *host;
         NSRect frame;
         if (mse_vt_jawt_layer != retained)
             return;
-        if (!awt) {
+        if (!parent) {
             mse_logf("mse-v jawt no content view\n");
             return;
         }
-        /* Sibling under AWTView so Skia (play/pause chrome) draws on top of the
-           video. A child of AWTView sits above layer contents and hides Compose. */
-        parent = awt.superview ? awt.superview : awt;
+        /* Child of AWTView: the picture is visible. A sibling under AWTView is a
+           black hole (Metal does not composite through, and NSThemeFrame rejects
+           unknown subviews). Compose chrome over the hole is copied via JNI. */
         frame = mse_screen_to_view(parent, x, y, w, h);
         host = [[MseVtHostView alloc] initWithFrame:frame];
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
-        /* Sibling-under-AWTView is black unless AWTView composites as
-           transparent: isOpaque is readonly, so swizzle the class. */
-        mse_swizzle_isOpaque(awt);
-        if (awt.layer)
-            awt.layer.opaque = NO;
-        if (parent != awt)
-            [parent addSubview:host positioned:NSWindowBelow relativeTo:awt];
-        else
-            [parent addSubview:host];
+        [parent addSubview:host];
         host.window.acceptsMouseMovedEvents = YES;
         mse_vt_jawt_view = host;
         (void)canvas_layer;
-        mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s below=%s\n",
+        mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
                  frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
-                 parent.className.UTF8String ?: "?", awt.className.UTF8String ?: "?");
+                 parent.className.UTF8String ?: "?");
     });
     return retained;
 }
