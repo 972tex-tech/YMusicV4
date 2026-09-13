@@ -220,6 +220,19 @@ Java_io_ymusic_mse_FileAvNative_setSpeed(JNIEnv *env, jclass cls, jlong handle, 
 }
 
 JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setVolume(JNIEnv *env, jclass cls, jlong handle, jdouble vol)
+{
+    (void)env;
+    (void)cls;
+#ifdef __APPLE__
+    file_av_set_volume((FileAv *)(intptr_t)handle, vol);
+#else
+    (void)handle;
+    (void)vol;
+#endif
+}
+
+JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setAudioIndex(JNIEnv *env, jclass cls, jlong handle, jint index)
 {
     (void)env;

@@ -22,6 +22,7 @@
 #include <time.h>
 
 #ifdef __APPLE__
+#include <AudioToolbox/AudioToolbox.h>
 #include <mach/mach_time.h>
 #include "mse_vt_blit.h"
 #include "mse_vt_present.h"
@@ -57,6 +58,11 @@ struct FileAv {
     pthread_cond_t cv;
     pthread_t th;
     int th_on;
+#ifdef __APPLE__
+    pthread_t ath;
+    int ath_on;
+    int a_busy;
+#endif
     int stop;
     int dec_busy;
     int dec_epoch;
@@ -109,6 +115,15 @@ struct FileAv {
 #ifdef __APPLE__
     MseVtBlit vt_blit;
     void *vt_layer;
+    /* AudioQueue DAC. samples_played is the gold clock (same as leftover MSE). */
+    AudioQueueRef dac;
+    uint8_t *ring;
+    int ring_cap, ring_r, ring_w, ring_n;
+    int dac_started, dac_buf_bytes, flushing;
+    int out_rate, out_ch;
+    int64_t samples_played;
+    double seek_base;
+    float volume;
 #endif
 };
 
@@ -300,7 +315,18 @@ static double frame_pts(AVStream *st, AVFrame *fr, double fallback)
 
 static double media_time_locked(FileAv *p)
 {
-    double t = p->hold;
+    double t = p->hold < 0 ? 0 : p->hold;
+#ifdef __APPLE__
+    /* Gold: samples the AudioQueue has taken, not wall time. */
+    if (p->playing && p->dac_started && p->out_rate > 0 && p->samples_played > 0) {
+        t = p->seek_base + (double)p->samples_played / (double)p->out_rate * p->speed;
+        if (t < 0)
+            t = 0;
+        if (p->duration > 0 && t > p->duration)
+            t = p->duration;
+        return t;
+    }
+#endif
     if (p->playing && p->origin_ns > 0)
         t += (now_ns() - p->origin_ns) / 1e9 * p->speed;
     if (t < 0)
@@ -750,6 +776,318 @@ static int present_video(FileAv *p, AVFrame *fr)
     return 0;
 }
 
+#ifdef __APPLE__
+static int ring_fb(const FileAv *p)
+{
+    return p->out_ch > 0 ? p->out_ch * 2 : OUT_CH * 2;
+}
+
+static int ring_ms(const FileAv *p)
+{
+    int rate = p->out_rate > 0 ? p->out_rate : OUT_RATE;
+    int fb = ring_fb(p);
+    if (!p->ring || rate <= 0 || fb <= 0)
+        return 0;
+    return (int)((int64_t)p->ring_n * 1000 / ((int64_t)rate * fb));
+}
+
+static void ring_write(FileAv *p, const uint8_t *src, int n)
+{
+    while (n > 0) {
+        int space, chunk;
+        if (p->ring_n >= p->ring_cap || p->flushing || !p->playing || !p->ring)
+            return;
+        space = p->ring_cap - p->ring_n;
+        chunk = n < space ? n : space;
+        if (p->ring_w + chunk > p->ring_cap) {
+            int first = p->ring_cap - p->ring_w;
+            memcpy(p->ring + p->ring_w, src, (size_t)first);
+            memcpy(p->ring, src + first, (size_t)(chunk - first));
+            p->ring_w = chunk - first;
+        } else {
+            memcpy(p->ring + p->ring_w, src, (size_t)chunk);
+            p->ring_w += chunk;
+        }
+        p->ring_n += chunk;
+        src += chunk;
+        n -= chunk;
+        pthread_cond_broadcast(&p->cv);
+    }
+}
+
+static int ring_read(FileAv *p, uint8_t *dst, int n)
+{
+    int got = 0;
+    int fb = ring_fb(p);
+    if (fb > 1)
+        n -= n % fb;
+    while (got < n && p->ring_n > 0) {
+        int chunk = n - got;
+        if (chunk > p->ring_n)
+            chunk = p->ring_n;
+        if (p->ring_r + chunk > p->ring_cap) {
+            int first = p->ring_cap - p->ring_r;
+            memcpy(dst + got, p->ring + p->ring_r, (size_t)first);
+            memcpy(dst + got + first, p->ring, (size_t)(chunk - first));
+            p->ring_r = chunk - first;
+        } else {
+            memcpy(dst + got, p->ring + p->ring_r, (size_t)chunk);
+            p->ring_r += chunk;
+        }
+        p->ring_n -= chunk;
+        got += chunk;
+    }
+    return got;
+}
+
+static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
+{
+    FileAv *p = user;
+    int n = 0;
+    int cap;
+    pthread_mutex_lock(&p->mu);
+    cap = p->dac_buf_bytes > 0 ? p->dac_buf_bytes : (int)buf->mAudioDataBytesCapacity;
+    if (cap > (int)buf->mAudioDataBytesCapacity)
+        cap = (int)buf->mAudioDataBytesCapacity;
+    if (!p->stop && !p->flushing && p->playing && p->ring)
+        n = ring_read(p, (uint8_t *)buf->mAudioData, cap);
+    if (n > 0 && p->out_rate > 0)
+        p->samples_played += n / ring_fb(p);
+    pthread_cond_broadcast(&p->cv);
+    pthread_mutex_unlock(&p->mu);
+    if (n <= 0) {
+        memset(buf->mAudioData, 0, (size_t)cap);
+        n = cap;
+    }
+    buf->mAudioDataByteSize = (UInt32)n;
+    AudioQueueEnqueueBuffer(q, buf, 0, NULL);
+}
+
+static int start_aq(FileAv *p)
+{
+    AudioStreamBasicDescription fmt;
+    AudioQueueRef aq = NULL;
+    uint8_t *ring = NULL;
+    int i, buf_bytes, cap, rate = OUT_RATE, ch = OUT_CH;
+    if (p->dac)
+        return 0;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.mSampleRate = rate;
+    fmt.mFormatID = kAudioFormatLinearPCM;
+    fmt.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked |
+                       kAudioFormatFlagsNativeEndian;
+    fmt.mBytesPerPacket = (UInt32)(ch * 2);
+    fmt.mFramesPerPacket = 1;
+    fmt.mBytesPerFrame = (UInt32)(ch * 2);
+    fmt.mChannelsPerFrame = (UInt32)ch;
+    fmt.mBitsPerChannel = 16;
+    cap = rate * ch * 2;
+    buf_bytes = 2048 * ch * 2;
+    pthread_mutex_unlock(&p->mu);
+    if (AudioQueueNewOutput(&fmt, aq_callback, p, NULL, kCFRunLoopCommonModes, 0, &aq) != 0) {
+        pthread_mutex_lock(&p->mu);
+        return -1;
+    }
+    ring = calloc(1, (size_t)cap);
+    if (!ring) {
+        AudioQueueDispose(aq, true);
+        pthread_mutex_lock(&p->mu);
+        return -1;
+    }
+    pthread_mutex_lock(&p->mu);
+    if (p->dac || p->stop) {
+        pthread_mutex_unlock(&p->mu);
+        free(ring);
+        AudioQueueDispose(aq, true);
+        pthread_mutex_lock(&p->mu);
+        return 0;
+    }
+    p->dac = aq;
+    p->out_rate = rate;
+    p->out_ch = ch;
+    p->ring = ring;
+    p->ring_cap = cap;
+    p->ring_r = p->ring_w = p->ring_n = 0;
+    p->dac_buf_bytes = buf_bytes;
+    AudioQueueSetParameter(aq, kAudioQueueParam_Volume, p->volume);
+    pthread_mutex_unlock(&p->mu);
+    for (i = 0; i < 4; i++) {
+        AudioQueueBufferRef buf;
+        if (AudioQueueAllocateBuffer(aq, (UInt32)buf_bytes, &buf) != 0)
+            break;
+        memset(buf->mAudioData, 0, buf->mAudioDataBytesCapacity);
+        buf->mAudioDataByteSize = (UInt32)buf_bytes;
+        AudioQueueEnqueueBuffer(aq, buf, 0, NULL);
+    }
+    pthread_mutex_lock(&p->mu);
+    return 0;
+}
+
+static void aq_pause_flush(FileAv *p)
+{
+    AudioQueueRef aq;
+    pthread_mutex_lock(&p->mu);
+    p->flushing = 1;
+    p->dac_started = 0;
+    p->ring_r = p->ring_w = p->ring_n = 0;
+    aq = p->dac;
+    pthread_cond_broadcast(&p->cv);
+    pthread_mutex_unlock(&p->mu);
+    if (aq) {
+        AudioQueuePause(aq);
+        AudioQueueFlush(aq);
+    }
+    pthread_mutex_lock(&p->mu);
+    p->flushing = 0;
+    pthread_mutex_unlock(&p->mu);
+}
+
+static void stop_aq(FileAv *p)
+{
+    AudioQueueRef aq;
+    uint8_t *ring;
+    pthread_mutex_lock(&p->mu);
+    aq = p->dac;
+    ring = p->ring;
+    p->dac = NULL;
+    p->ring = NULL;
+    p->dac_started = 0;
+    p->ring_cap = p->ring_r = p->ring_w = p->ring_n = 0;
+    pthread_mutex_unlock(&p->mu);
+    if (aq) {
+        AudioQueueStop(aq, true);
+        AudioQueueDispose(aq, true);
+    }
+    free(ring);
+}
+
+/* Decode one AAC frame to 48k s16. mu held on entry/exit. 1 = *out set. */
+static int decode_pcm(FileAv *p, uint8_t **out, int *nbytes)
+{
+    AVPacket *pkt;
+    int got, max_out;
+    uint8_t *tmp = NULL, *sped = NULL;
+    uint8_t *dsts[1];
+    *out = NULL;
+    *nbytes = 0;
+    for (;;) {
+        got = avcodec_receive_frame(p->adec, p->afr);
+        if (got == AVERROR(EAGAIN)) {
+            pkt = pq_pop(&p->aq);
+            if (!pkt)
+                return 0;
+            if (avcodec_send_packet(p->adec, pkt) < 0) {
+                av_packet_free(&pkt);
+                return 0;
+            }
+            av_packet_free(&pkt);
+            continue;
+        }
+        if (got < 0)
+            return 0;
+        if (ensure_swr(p, p->afr) < 0) {
+            av_frame_unref(p->afr);
+            return -1;
+        }
+        max_out = (int)swr_get_out_samples(p->swr, p->afr->nb_samples) + 256;
+        if (max_out < 1)
+            max_out = p->afr->nb_samples + 256;
+        tmp = malloc((size_t)max_out * OUT_CH * 2);
+        if (!tmp) {
+            av_frame_unref(p->afr);
+            return -1;
+        }
+        dsts[0] = tmp;
+        got = swr_convert(p->swr, dsts, max_out,
+                          (const uint8_t **)p->afr->extended_data, p->afr->nb_samples);
+        av_frame_unref(p->afr);
+        if (got <= 0) {
+            free(tmp);
+            return 0;
+        }
+        if (ensure_speed_swr(p, p->speed) < 0) {
+            free(tmp);
+            return -1;
+        }
+        if (p->swr_speed) {
+            int mout = (int)swr_get_out_samples(p->swr_speed, got) + 256;
+            uint8_t *ins[1] = {tmp};
+            if (mout < 1)
+                mout = got + 256;
+            sped = malloc((size_t)mout * OUT_CH * 2);
+            if (!sped) {
+                free(tmp);
+                return -1;
+            }
+            dsts[0] = sped;
+            got = swr_convert(p->swr_speed, dsts, mout, (const uint8_t **)ins, got);
+            free(tmp);
+            tmp = sped;
+            if (got <= 0) {
+                free(tmp);
+                return 0;
+            }
+        }
+        *nbytes = got * OUT_CH * 2;
+        *out = tmp;
+        return 1;
+    }
+}
+
+static void *a_loop(void *arg)
+{
+    FileAv *p = arg;
+    for (;;) {
+        uint8_t *pcm = NULL;
+        int nbytes = 0, filled = 0;
+        AudioQueueRef start_q = NULL;
+        pthread_mutex_lock(&p->mu);
+        p->a_busy = 0;
+        pthread_cond_broadcast(&p->cv);
+        while (!p->stop && !(p->opened && p->playing && p->adec))
+            pthread_cond_wait(&p->cv, &p->mu);
+        if (p->stop) {
+            pthread_mutex_unlock(&p->mu);
+            return NULL;
+        }
+        p->a_busy = 1;
+        while (filled < 8 && ring_ms(p) < 400) {
+            int r;
+            if (!p->opened || !p->playing || !p->adec || p->flushing)
+                break;
+            r = decode_pcm(p, &pcm, &nbytes);
+            if (r <= 0 || !pcm)
+                break;
+            if (!p->dac && start_aq(p) != 0) {
+                free(pcm);
+                pcm = NULL;
+                if (p->origin_ns == 0)
+                    p->origin_ns = now_ns();
+                break;
+            }
+            if (!p->flushing)
+                ring_write(p, pcm, nbytes);
+            free(pcm);
+            pcm = NULL;
+            filled++;
+            if (p->dac && !p->dac_started && ring_ms(p) >= 160) {
+                p->dac_started = 1;
+                p->samples_played = 0;
+                start_q = p->dac;
+            }
+        }
+        p->a_busy = 0;
+        pthread_cond_broadcast(&p->cv);
+        pthread_mutex_unlock(&p->mu);
+        if (start_q)
+            AudioQueueStart(start_q, NULL);
+        if (filled == 0) {
+            struct timespec sl = {0, 4 * 1000 * 1000};
+            nanosleep(&sl, NULL);
+        }
+    }
+}
+#else
 static int pump_audio(FileAv *p, double clock)
 {
     AVPacket *pkt;
@@ -829,6 +1167,7 @@ static int pump_audio(FileAv *p, double clock)
         return 0;
     }
 }
+#endif
 
 static void set_idle(FileAv *p, double sec)
 {
@@ -1004,12 +1343,12 @@ int file_av_step(FileAv *p)
         p->fmt_eof = 1;
     pthread_cond_broadcast(&p->cv);
     clock = media_time_locked(p);
-    /* Video first: AAC write used to run on this thread and cap step at ~1 AAC
-       frame (21ms → ~30fps on the 4K H.264+AAC file). HEVC DJI has no audio. */
     if (need_video(p))
         pump_video(p, clock);
+#ifndef __APPLE__
     if (p->adec)
         pump_audio(p, media_time_locked(p));
+#endif
     clock = media_time_locked(p);
     if (p->on_prog && now_ns() - p->last_prog_ns > 1e8) {
         FileAvProgressFn prog = p->on_prog;
@@ -1021,7 +1360,11 @@ int file_av_step(FileAv *p)
         prog(user, clock, dur, vw, vh);
         pthread_mutex_lock(&p->mu);
     }
+#ifdef __APPLE__
+    a_empty = !p->adec || ((p->aq.rd >= p->aq.n) && p->ring_n == 0 && !p->a_busy);
+#else
     a_empty = !p->adec || (p->aq.rd >= p->aq.n);
+#endif
     v_empty = !need_video(p) || ((p->vq.rd >= p->vq.n) && p->vout_n == 0 && !p->dec_busy);
     if (eof && a_empty && v_empty && !p->ended && (p->adec || need_video(p))) {
         p->ended = 1;
@@ -1059,6 +1402,11 @@ FileAv *file_av_create(void)
     p->a_st = p->v_st = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
+#ifdef __APPLE__
+    p->volume = 1.f;
+    p->out_rate = OUT_RATE;
+    p->out_ch = OUT_CH;
+#endif
     if (!p->afr || !p->vfr) {
         file_av_destroy(p);
         return NULL;
@@ -1068,6 +1416,13 @@ FileAv *file_av_create(void)
         return NULL;
     }
     p->th_on = 1;
+#ifdef __APPLE__
+    if (pthread_create(&p->ath, NULL, a_loop, p) != 0) {
+        file_av_destroy(p);
+        return NULL;
+    }
+    p->ath_on = 1;
+#endif
     return p;
 }
 
@@ -1086,6 +1441,13 @@ void file_av_destroy(FileAv *p)
         pthread_join(p->th, NULL);
         p->th_on = 0;
     }
+#ifdef __APPLE__
+    if (p->ath_on) {
+        pthread_join(p->ath, NULL);
+        p->ath_on = 0;
+    }
+    stop_aq(p);
+#endif
     file_av_close(p);
 #ifdef __APPLE__
     if (p->vt_layer) {
@@ -1114,6 +1476,11 @@ int file_av_open(FileAv *p, const char *path)
     p->ended = 0;
     p->hold = 0;
     p->origin_ns = 0;
+#ifdef __APPLE__
+    p->seek_base = 0;
+    p->samples_played = 0;
+    p->dac_started = 0;
+#endif
     p->last_vpts = -1;
     p->logged_drop = 0;
     p->fmt_eof = 0;
@@ -1160,6 +1527,15 @@ void file_av_close(FileAv *p)
     pthread_cond_broadcast(&p->cv);
     while (p->dec_busy)
         pthread_cond_wait(&p->cv, &p->mu);
+#ifdef __APPLE__
+    while (p->a_busy)
+        pthread_cond_wait(&p->cv, &p->mu);
+    pthread_mutex_unlock(&p->mu);
+    stop_aq(p);
+    pthread_mutex_lock(&p->mu);
+    p->samples_played = 0;
+    p->seek_base = 0;
+#endif
     p->fmt_eof = 0;
     p->dec_drain = 0;
     free_codecs(p);
@@ -1175,21 +1551,38 @@ void file_av_close(FileAv *p)
 
 void file_av_play(FileAv *p)
 {
+#ifdef __APPLE__
+    AudioQueueRef aq = NULL;
+    int started = 0;
+#endif
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
     if (p->opened && !p->playing) {
         p->playing = 1;
         p->ended = 0;
-        /* Audio files run the clock now. Video-only waits for the first present. */
-        p->origin_ns = p->adec ? now_ns() : 0;
+        /* Video-only: clock starts on first present. Audio: AudioQueue samples_played. */
+        p->origin_ns = 0;
+#ifdef __APPLE__
+        if (!p->dac_started)
+            p->seek_base = p->hold;
+        aq = p->dac;
+        started = p->dac_started;
+#endif
         pthread_cond_broadcast(&p->cv);
     }
     pthread_mutex_unlock(&p->mu);
+#ifdef __APPLE__
+    if (aq && started)
+        AudioQueueStart(aq, NULL);
+#endif
 }
 
 void file_av_pause(FileAv *p)
 {
+#ifdef __APPLE__
+    AudioQueueRef aq = NULL;
+#endif
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
@@ -1197,9 +1590,16 @@ void file_av_pause(FileAv *p)
         p->hold = media_time_locked(p);
         p->playing = 0;
         p->origin_ns = 0;
+#ifdef __APPLE__
+        aq = p->dac;
+#endif
         pthread_cond_broadcast(&p->cv);
     }
     pthread_mutex_unlock(&p->mu);
+#ifdef __APPLE__
+    if (aq)
+        AudioQueuePause(aq);
+#endif
 }
 
 void file_av_seek(FileAv *p, double seconds)
@@ -1207,6 +1607,9 @@ void file_av_seek(FileAv *p, double seconds)
     int64_t ts;
     if (!p)
         return;
+#ifdef __APPLE__
+    aq_pause_flush(p);
+#endif
     pthread_mutex_lock(&p->mu);
     if (!p->fmt) {
         pthread_mutex_unlock(&p->mu);
@@ -1223,6 +1626,10 @@ void file_av_seek(FileAv *p, double seconds)
     pthread_cond_broadcast(&p->cv);
     while (p->dec_busy)
         pthread_cond_wait(&p->cv, &p->mu);
+#ifdef __APPLE__
+    while (p->a_busy)
+        pthread_cond_wait(&p->cv, &p->mu);
+#endif
     av_seek_frame(p->fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
     if (p->adec)
         avcodec_flush_buffers(p->adec);
@@ -1236,8 +1643,13 @@ void file_av_seek(FileAv *p, double seconds)
     p->hold = seconds;
     p->ended = 0;
     p->last_vpts = -1;
-    if (p->playing)
-        p->origin_ns = p->adec ? now_ns() : 0;
+    p->origin_ns = 0;
+#ifdef __APPLE__
+    p->seek_base = seconds;
+    p->samples_played = 0;
+    p->dac_started = 0;
+    p->ring_r = p->ring_w = p->ring_n = 0;
+#endif
     pthread_cond_broadcast(&p->cv);
     pthread_mutex_unlock(&p->mu);
 }
@@ -1250,8 +1662,15 @@ void file_av_set_speed(FileAv *p, double speed)
     if (p->playing)
         p->hold = media_time_locked(p);
     p->speed = speed > 0.05 ? speed : 0.05;
+#ifdef __APPLE__
+    p->seek_base = p->hold;
+    p->samples_played = 0;
+    p->origin_ns = 0;
+    p->ring_r = p->ring_w = p->ring_n = 0;
+#else
     if (p->playing)
         p->origin_ns = now_ns();
+#endif
     swr_free(&p->swr_speed);
     p->swr_speed_in = 0;
     pthread_mutex_unlock(&p->mu);
@@ -1307,6 +1726,23 @@ void file_av_set_video_layer(FileAv *p, void *layer)
     pthread_mutex_unlock(&p->mu);
     if (old && old != layer)
         mse_vt_detach(old);
+}
+
+void file_av_set_volume(FileAv *p, double vol)
+{
+    AudioQueueRef aq;
+    if (!p)
+        return;
+    if (vol < 0)
+        vol = 0;
+    if (vol > 1)
+        vol = 1;
+    pthread_mutex_lock(&p->mu);
+    p->volume = (float)vol;
+    aq = p->dac;
+    pthread_mutex_unlock(&p->mu);
+    if (aq)
+        AudioQueueSetParameter(aq, kAudioQueueParam_Volume, (Float32)vol);
 }
 #endif
 

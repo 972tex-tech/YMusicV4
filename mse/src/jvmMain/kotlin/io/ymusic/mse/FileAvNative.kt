@@ -40,6 +40,8 @@ object FileAvNative {
 
     @JvmStatic external fun setSpeed(handle: Long, speed: Double)
 
+    @JvmStatic external fun setVolume(handle: Long, volume: Double)
+
     @JvmStatic external fun setAudioIndex(handle: Long, index: Int)
 
     @JvmStatic external fun setVideoEnabled(handle: Long, on: Boolean)

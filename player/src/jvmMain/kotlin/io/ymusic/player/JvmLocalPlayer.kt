@@ -15,19 +15,14 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import javax.sound.sampled.AudioFormat
-import javax.sound.sampled.AudioSystem
-import javax.sound.sampled.FloatControl
-import javax.sound.sampled.SourceDataLine
 import javax.swing.SwingUtilities
-import kotlin.math.log10
 
 /**
  * JVM desktop local player, ExoPlayer-shaped:
  * - Public API is main/AWT only: enqueue and return (except [release], which waits).
- * - One `player` thread calls [FileAvNative.step] (present). PCM is handed to a writer
- *   thread so SourceDataLine.write cannot cap 60fps present (H.264+AAC was ~30fps).
- * - Native decode runs on a FileAv helper thread; this thread only presents the due frame.
+ * - One `player` thread calls [FileAvNative.step] (present).
+ * - Video decode is a FileAv helper thread; audio decode+AudioQueue is another, like MSE.
+ *   The DAC `samples_played` clock is gold; video follows it.
  * - BGRA goes to the Swing hole here (same as [io.ymusic.mse.NativeMseSink]);
  *   progress and engine state hop to AWT via [SwingUtilities.invokeLater].
  */
@@ -73,12 +68,6 @@ internal class JvmLocalPlayer(
 
     @Volatile private var loop = false
 
-    @Volatile private var line: SourceDataLine? = null
-
-    @Volatile private var lineRate: Int = 0
-
-    @Volatile private var lineCh: Int = 0
-
     private val frameBufs = arrayOfNulls<BufferedImage>(3)
 
     @Volatile private var lastPub: BufferedImage? = null
@@ -106,32 +95,6 @@ internal class JvmLocalPlayer(
     val surface: LocalVideoSurface? get() = videoSurface
 
     private val playerThread = Thread({ playerLoop() }, "player").apply {
-        isDaemon = true
-        start()
-    }
-
-    /** DAC write blocks; keep it off the present thread. */
-    private val pcmQ = LinkedBlockingQueue<ByteArray>(16)
-
-    private val audioThread = Thread({
-        while (!stopped) {
-            val buf = try {
-                pcmQ.poll(50, TimeUnit.MILLISECONDS) ?: continue
-            } catch (_: InterruptedException) {
-                continue
-            }
-            val out = line ?: continue
-            if (!out.isRunning && pumping) {
-                runCatching { out.start() }
-            }
-            var off = 0
-            while (off < buf.size && !stopped) {
-                val w = out.write(buf, off, buf.size - off)
-                if (w <= 0) break
-                off += w
-            }
-        }
-    }, "player-audio").apply {
         isDaemon = true
         start()
     }
@@ -238,7 +201,7 @@ internal class JvmLocalPlayer(
         showSurface(true)
         dispatch {
             if (handle == 0L || gen != loadGen.get()) return@dispatch
-            applyVolume(line, volume)
+            FileAvNative.setVolume(handle, volume.toDouble())
             FileAvNative.setAudioIndex(handle, -1)
             FileAvNative.setVideoEnabled(handle, !audioOnly)
             applyBlit()
@@ -291,7 +254,6 @@ internal class JvmLocalPlayer(
         dispatch {
             if (handle != 0L) FileAvNative.play(handle)
             pumping = true
-            line?.takeIf { !it.isRunning }?.start()
         }
     }
 
@@ -303,7 +265,6 @@ internal class JvmLocalPlayer(
         }
         dispatch {
             pumping = false
-            line?.takeIf { it.isRunning }?.stop()
             if (handle != 0L) FileAvNative.pause(handle)
         }
     }
@@ -342,7 +303,6 @@ internal class JvmLocalPlayer(
                 FileAvNative.pause(handle)
                 FileAvNative.close(handle)
             }
-            closeLine()
         }
     }
 
@@ -354,7 +314,7 @@ internal class JvmLocalPlayer(
         if (config.volume != prev.volume) {
             volume = config.volume.coerceIn(0f, 1f)
             _status.update { it.copy(volume = volume) }
-            dispatch { applyVolume(line, volume) }
+            dispatch { if (handle != 0L) FileAvNative.setVolume(handle, volume.toDouble()) }
         }
         if (config.speed != prev.speed) {
             _status.update { it.copy(speed = config.speed) }
@@ -404,14 +364,12 @@ internal class JvmLocalPlayer(
                 FileAvNative.destroy(handle)
                 handle = 0
             }
-            closeLine()
             stopped = true
         }
         released = true
         loadGen.incrementAndGet()
         uiEpoch.incrementAndGet()
         playerThread.interrupt()
-        audioThread.interrupt()
         if (Thread.currentThread() !== playerThread) {
             try {
                 playerThread.join(5_000)
@@ -437,14 +395,7 @@ internal class JvmLocalPlayer(
         videoSurface?.publish(img)
     }
 
-    override fun onPcm(rate: Int, channels: Int, s16: ByteArray) {
-        if (released) return
-        lineFor(rate, channels) ?: return
-        if (!pcmQ.offer(s16.copyOf())) {
-            pcmQ.poll()
-            pcmQ.offer(s16.copyOf())
-        }
-    }
+    override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
 
     override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) {
         if (released) return
@@ -494,7 +445,6 @@ internal class JvmLocalPlayer(
             return
         }
         pumping = false
-        line?.takeIf { it.isRunning }?.stop()
         val endPos = durationMs
         val gen = loadGen.get()
         onApp {
@@ -594,7 +544,6 @@ internal class JvmLocalPlayer(
 
     private fun fail(message: String) {
         pumping = false
-        closeLine()
         onApp {
             _status.update { it.copy(state = PlaybackState.Error(PlayerError("E60021", message))) }
         }
@@ -619,32 +568,6 @@ internal class JvmLocalPlayer(
         val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
         frameBufs[0] = img
         return img
-    }
-
-    private fun lineFor(rate: Int, channels: Int): SourceDataLine? {
-        val cur = line
-        if (cur != null && lineRate == rate && lineCh == channels) return cur
-        closeLine()
-        val format = AudioFormat(rate.toFloat(), 16, channels, true, false)
-        return try {
-            AudioSystem.getSourceDataLine(format).also {
-                it.open(format, rate * channels * 2 / 10)
-                applyVolume(it, volume)
-                line = it
-                lineRate = rate
-                lineCh = channels
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun closeLine() {
-        pcmQ.clear()
-        val l = line
-        line = null
-        runCatching { l?.stop() }
-        runCatching { l?.close() }
     }
 }
 
@@ -686,15 +609,4 @@ private fun parseAvStream(line: String): AvStreamRow? {
         lang = p[4],
         codec = p[5],
     )
-}
-
-private fun applyVolume(line: SourceDataLine?, volume: Float) {
-    val v = volume.coerceIn(0f, 1f)
-    val control = try {
-        line?.getControl(FloatControl.Type.MASTER_GAIN) as? FloatControl
-    } catch (_: Throwable) {
-        null
-    } ?: return
-    val db = if (v <= 0.0001f) control.minimum else (20f * log10(v)).coerceIn(control.minimum, control.maximum)
-    control.value = db
 }

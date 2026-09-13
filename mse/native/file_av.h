@@ -38,6 +38,7 @@ void file_av_set_blit_size(FileAv *p, int w, int h);
 #ifdef __APPLE__
 /* Borrowed AVSampleBufferDisplayLayer from JAWT Canvas. NULL = CPU blit. */
 void file_av_set_video_layer(FileAv *p, void *layer);
+void file_av_set_volume(FileAv *p, double vol);
 #endif
 
 double file_av_duration(FileAv *p);
