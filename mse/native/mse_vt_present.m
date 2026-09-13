@@ -8,6 +8,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
+#import <objc/runtime.h>
+#import <math.h>
 #import <string.h>
 
 void *mse_vt_jawt_layer;
@@ -26,6 +28,41 @@ static int mse_px, mse_py, mse_pw, mse_ph;
     return nil;
 }
 @end
+
+static int mse_is_compose_view(NSView *v)
+{
+    const char *n = v.className.UTF8String ?: "";
+    return strstr(n, "Skia") || strstr(n, "Skiko") || strstr(n, "Metal") ||
+           strstr(n, "Hardware") || strstr(n, "Compose");
+}
+
+static void mse_click_through(NSView *v)
+{
+    Class orig, sub;
+    char buf[160];
+    Method m;
+    if (!v || mse_is_compose_view(v))
+        return;
+    orig = object_getClass(v);
+    if (class_getInstanceMethod(orig, @selector(mse_vt_pass)))
+        return;
+    snprintf(buf, sizeof(buf), "%s_MsePass", class_getName(orig));
+    sub = objc_getClass(buf);
+    if (!sub) {
+        sub = objc_allocateClassPair(orig, buf, 0);
+        if (!sub)
+            return;
+        m = class_getInstanceMethod([MseVtHostView class], @selector(hitTest:));
+        class_addMethod(sub, @selector(hitTest:), method_getImplementation(m),
+                        method_getTypeEncoding(m));
+        class_addMethod(sub, @selector(mse_vt_pass), method_getImplementation(m),
+                        method_getTypeEncoding(m));
+        objc_registerClassPair(sub);
+    }
+    object_setClass(v, sub);
+    mse_logf("mse-v click-through %s %.0fx%.0f\n", class_getName(orig),
+             v.frame.size.width, v.frame.size.height);
+}
 
 static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h);
 
@@ -203,7 +240,7 @@ void mse_vt_layout_screen(int x, int y, int w, int h)
     });
 }
 
-static void *mse_vt_host_new(CALayer *wl, jint x, jint y, jint w, jint h)
+static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y, jint w, jint h)
 {
     AVSampleBufferDisplayLayer *layer;
     void *retained;
@@ -229,8 +266,24 @@ static void *mse_vt_host_new(CALayer *wl, jint x, jint y, jint w, jint h)
         host = [[MseVtHostView alloc] initWithFrame:frame];
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
+        if (canvas_layer && [canvas_layer.delegate isKindOfClass:[NSView class]])
+            mse_click_through((NSView *)canvas_layer.delegate);
         [parent addSubview:host];
         mse_vt_jawt_view = host;
+        {
+            NSView *v;
+            for (v in parent.subviews) {
+                if (v == host)
+                    continue;
+                mse_logf("mse-v sibling %s %.0fx%.0f @ %.0f,%.0f\n",
+                         v.className.UTF8String ?: "?",
+                         v.frame.size.width, v.frame.size.height,
+                         v.frame.origin.x, v.frame.origin.y);
+                if (fabs(v.frame.size.width - frame.size.width) < 2.0 &&
+                    fabs(v.frame.size.height - frame.size.height) < 2.0)
+                    mse_click_through(v);
+            }
+        }
         mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
                  frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
                  parent.className.UTF8String ?: "?");
@@ -300,10 +353,14 @@ void *mse_vt_attach_component(void *envp, void *component)
         return NULL;
     }
     wl = sl.windowLayer;
-    ds->FreeDrawingSurfaceInfo(dsi);
-    ds->Unlock(ds);
-    awt.FreeDrawingSurface(ds);
-    retained = mse_vt_host_new(wl, jx, jy, jw, jh);
+    {
+        CALayer *cl = sl.layer;
+        ds->FreeDrawingSurfaceInfo(dsi);
+        ds->Unlock(ds);
+        awt.FreeDrawingSurface(ds);
+        retained = mse_vt_host_new(wl, cl, jx, jy, jw, jh);
+        return retained;
+    }
     return retained;
 }
 #endif

@@ -739,6 +739,8 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         isEnabled = false
         isRequestFocusEnabled = false
         canvas.background = AwtColor.BLACK
+        canvas.isEnabled = false
+        canvas.isFocusable = false
         canvas.addComponentListener(
             object : ComponentAdapter() {
                 override fun componentResized(e: ComponentEvent) {
