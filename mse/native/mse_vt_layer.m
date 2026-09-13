@@ -1,5 +1,6 @@
 #ifdef __APPLE__
 #import "mse_vt_present.h"
+#import "mse_ffmpeg.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
@@ -15,6 +16,7 @@ void mse_vt_detach(void *p)
     [layer flushAndRemoveImage];
     if (p == mse_vt_jawt_layer) {
         mse_vt_jawt_layer = NULL;
+        mse_vt_jawt_unhost();
         CFRelease(p);
     }
 }
@@ -28,8 +30,6 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     CMSampleTimingInfo timing = kCMTimingInfoInvalid;
     OSStatus st;
     CFArrayRef atts;
-    (void)w;
-    (void)h;
     if (!p || !pb)
         return -1;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
@@ -52,8 +52,19 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
         CFMutableDictionaryRef d = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(atts, 0);
         CFDictionarySetValue(d, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
     }
-    [layer enqueueSampleBuffer:sbuf];
+    if (@available(macOS 14.0, *))
+        [layer.sampleBufferRenderer enqueueSampleBuffer:sbuf];
+    else
+        [layer enqueueSampleBuffer:sbuf];
     CFRelease(sbuf);
+    {
+        static int shown;
+        if (shown < 3) {
+            shown++;
+            mse_logf("mse-v vt-show %dx%d layer=%.0fx%.0f status=%d\n",
+                     w, h, layer.bounds.size.width, layer.bounds.size.height, (int)layer.status);
+        }
+    }
     return 0;
 }
 

@@ -13,6 +13,7 @@ extern "C" {
 void *mse_vt_attach_component(void *env, void *component);
 /* Last JAWT-retained layer; detach CFReleases if it matches. */
 extern void *mse_vt_jawt_layer;
+void mse_vt_jawt_unhost(void);
 
 /* Borrowed AVSampleBufferDisplayLayer. Caller owns the layer. */
 void mse_vt_detach(void *layer);

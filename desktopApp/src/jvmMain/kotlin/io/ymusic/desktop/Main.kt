@@ -125,6 +125,8 @@ import java.awt.Frame
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.swing.JPanel
@@ -690,7 +692,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         object : Canvas() {
             override fun addNotify() {
                 super.addNotify()
-                onPeer?.invoke(this)
+                if (width > 0 && height > 0) onPeer?.invoke(this)
             }
 
             override fun removeNotify() {
@@ -702,11 +704,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
             override fun paint(g: Graphics) {
                 val image = img
-                if (image == null || hardware) {
-                    g.color = AwtColor.BLACK
-                    g.fillRect(0, 0, width, height)
-                    return
-                }
+                if (image == null || hardware) return
                 onPainted?.invoke(image)
                 val g2 = g as Graphics2D
                 g2.color = AwtColor.BLACK
@@ -734,6 +732,13 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         isEnabled = false
         isRequestFocusEnabled = false
         canvas.background = AwtColor.BLACK
+        canvas.addComponentListener(
+            object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent) {
+                    if (canvas.width > 0 && canvas.height > 0) onPeer?.invoke(canvas)
+                }
+            },
+        )
         add(canvas, BorderLayout.CENTER)
     }
 
