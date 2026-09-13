@@ -5,30 +5,29 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
-import java.awt.AWTEvent
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.delay
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
-import java.awt.Toolkit
 import java.awt.Window
-import java.awt.event.AWTEventListener
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
-import java.awt.event.MouseEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import javax.swing.SwingUtilities
-import javax.swing.WindowConstants
 
 private class ChromeHolder {
     var content by mutableStateOf<@Composable BoxScope.() -> Unit>({})
@@ -36,61 +35,20 @@ private class ChromeHolder {
 
 private data class ChromeBounds(val x: Int = 0, val y: Int = 0, val w: Int = 0, val h: Int = 0)
 
-/** Leave the owner's frame edge free so the window can be resized/dragged. */
+/** Keep the owner's frame edge free for live resize. */
 private const val EDGE_PAD = 8
 
 /**
- * One overlay [ComposeWindow] for captions + transport. Hidden (not disposed) on drag/resize
- * and when the layer leaves composition — disposing during fullscreen exit deadlocks AWT.
- */
-@OptIn(ExperimentalComposeUiApi::class)
-private object ChromeOverlay {
-    val holder = ChromeHolder()
-    private var window: ComposeWindow? = null
-
-    fun ensure(): ComposeWindow {
-        window?.let { if (it.isDisplayable) return it else window = null }
-        val w = ComposeWindow()
-        w.isUndecorated = true
-        w.isResizable = false
-        w.isTransparent = true
-        w.defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
-        w.setContent {
-            Box(Modifier.fillMaxSize(), content = holder.content)
-        }
-        window = w
-        return w
-    }
-
-    fun apply(bounds: ChromeBounds, visible: Boolean) {
-        SwingUtilities.invokeLater {
-            val w = ensure()
-            if (visible && bounds.w > 0 && bounds.h > 0) {
-                w.setBounds(bounds.x, bounds.y, bounds.w, bounds.h)
-                if (!w.isVisible) w.isVisible = true
-            } else if (w.isVisible) {
-                w.isVisible = false
-            }
-        }
-    }
-
-    fun hide() {
-        val w = window ?: return
-        SwingUtilities.invokeLater {
-            if (w.isDisplayable && w.isVisible) w.isVisible = false
-        }
-    }
-}
-
-/**
- * Captions + transport above the JAWT video view. Headless: in-place Box (UI tests).
+ * Captions + transport in a transparent Compose window above the JAWT video view.
+ * Headless: in-place Box (UI tests).
  */
 @Composable
 internal actual fun VideoChromeLayer(
     modifier: Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    ChromeOverlay.holder.content = content
+    val holder = remember { ChromeHolder() }
+    holder.content = content
     if (GraphicsEnvironment.isHeadless()) {
         Box(modifier, content = content)
         return
@@ -98,40 +56,36 @@ internal actual fun VideoChromeLayer(
     val density = LocalDensity.current
     var bounds by remember { mutableStateOf(ChromeBounds()) }
     var parked by remember { mutableStateOf(false) }
+    var parkGen by remember { mutableIntStateOf(0) }
 
     DisposableEffect(Unit) {
-        val owner = chromeOwner() ?: return@DisposableEffect onDispose { ChromeOverlay.hide() }
+        val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
+        fun park() {
+            parked = true
+            parkGen++
+        }
         val components = object : ComponentAdapter() {
-            override fun componentMoved(e: ComponentEvent) {
-                parked = true
-            }
-            override fun componentResized(e: ComponentEvent) {
-                parked = true
-            }
+            override fun componentMoved(e: ComponentEvent) = park()
+            override fun componentResized(e: ComponentEvent) = park()
         }
         val windows = object : WindowAdapter() {
-            override fun windowStateChanged(e: WindowEvent) {
-                parked = true
-            }
-            override fun windowIconified(e: WindowEvent) {
-                parked = true
-            }
+            override fun windowStateChanged(e: WindowEvent) = park()
+            override fun windowIconified(e: WindowEvent) = park()
         }
         owner.addComponentListener(components)
         owner.addWindowStateListener(windows)
         owner.addWindowListener(windows)
-        val mouseUp = AWTEventListener { ev ->
-            if (ev is MouseEvent && ev.id == MouseEvent.MOUSE_RELEASED) parked = false
-        }
-        Toolkit.getDefaultToolkit().addAWTEventListener(mouseUp, AWTEvent.MOUSE_EVENT_MASK)
         onDispose {
-            parked = true
-            ChromeOverlay.hide()
             owner.removeComponentListener(components)
             owner.removeWindowStateListener(windows)
             owner.removeWindowListener(windows)
-            Toolkit.getDefaultToolkit().removeAWTEventListener(mouseUp)
         }
+    }
+
+    LaunchedEffect(parkGen) {
+        if (!parked) return@LaunchedEffect
+        delay(180)
+        parked = false
     }
 
     Box(
@@ -145,6 +99,7 @@ internal actual fun VideoChromeLayer(
             val p = coords.positionInWindow()
             val size = coords.size
             val insets = owner.insets
+            /* AWT screen coords are points; Compose layout is px. */
             val next = with(density) {
                 ChromeBounds(
                     x = loc.x + insets.left + p.x.toDp().value.toInt(),
@@ -153,15 +108,45 @@ internal actual fun VideoChromeLayer(
                     h = size.height.toDp().value.toInt(),
                 ).insetFromOwner(owner)
             }
-            if (next != bounds) {
-                bounds = next
-                parked = false
-            }
+            if (next != bounds) bounds = next
         },
     )
 
-    SideEffect {
-        ChromeOverlay.apply(bounds, visible = !parked && bounds.w > 0 && bounds.h > 0)
+    if (bounds.w <= 0 || bounds.h <= 0) return
+
+    val state = rememberWindowState(
+        position = WindowPosition(bounds.x.dp, bounds.y.dp),
+        size = DpSize(bounds.w.dp, bounds.h.dp),
+    )
+    LaunchedEffect(bounds) {
+        state.position = WindowPosition(bounds.x.dp, bounds.y.dp)
+        state.size = DpSize(bounds.w.dp, bounds.h.dp)
+    }
+
+    Window(
+        onCloseRequest = {},
+        state = state,
+        visible = !parked,
+        undecorated = true,
+        transparent = true,
+        resizable = false,
+        focusable = true,
+        alwaysOnTop = false,
+        title = "YMusic video chrome",
+    ) {
+        DisposableEffect(Unit) {
+            window.focusableWindowState = true
+            val owner = chromeOwner()
+            val listener = object : WindowAdapter() {
+                override fun windowActivated(e: WindowEvent) {
+                    if (window.isDisplayable) window.toFront()
+                }
+            }
+            owner?.addWindowListener(listener)
+            window.toFront()
+            onDispose { owner?.removeWindowListener(listener) }
+        }
+        Box(Modifier.fillMaxSize(), content = holder.content)
     }
 }
 
