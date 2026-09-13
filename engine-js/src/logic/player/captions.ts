@@ -184,13 +184,19 @@ function hasQuery(url: string, key: string): boolean {
 }
 
 function withFmtJson3(url: string): string {
-  if (hasQuery(url, "fmt")) return url.replace(/([?&])fmt=[^&]*/, "$1fmt=json3");
-  return url + (url.indexOf("?") >= 0 ? "&" : "?") + "fmt=json3";
+  return setQuery(url, "fmt", "json3");
+}
+
+function setQuery(url: string, key: string, val: string): string {
+  const k = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const enc = encodeURIComponent(val);
+  if (hasQuery(url, key)) return url.replace(new RegExp("([?&])" + k + "=[^&]*"), "$1" + key + "=" + enc);
+  return url + (url.indexOf("?") >= 0 ? "&" : "?") + key + "=" + enc;
 }
 
 function withQuery(url: string, key: string, val: string): string {
   if (hasQuery(url, key)) return url;
-  return url + (url.indexOf("?") >= 0 ? "&" : "?") + key + "=" + encodeURIComponent(val);
+  return setQuery(url, key, val);
 }
 
 function ytcfgStr(key: string): string {
@@ -206,13 +212,17 @@ function ytcfgStr(key: string): string {
   return typeof v === "string" ? v : "";
 }
 
-/** Chrome timedtext adds potc/c/cver; without them YouTube returns HTTP 200 and an empty body. */
+/** Chrome json3 timedtext: fmt + xorb/xobt/xovt/xosf + potc/c/cver. Skip any of these and YouTube returns HTTP 200 empty text/html. */
 function withCaptionClient(url: string): string {
-  url = withQuery(url, "potc", "1");
-  url = withQuery(url, "c", "WEB");
-  url = withQuery(url, "cplayer", "UNIPLAYER");
+  url = setQuery(url, "potc", "1");
+  url = setQuery(url, "c", "WEB");
+  url = setQuery(url, "cplayer", "UNIPLAYER");
+  url = setQuery(url, "xorb", "2");
+  url = setQuery(url, "xobt", "3");
+  url = setQuery(url, "xovt", "3");
+  url = setQuery(url, "xosf", "1");
   const cver = ytcfgStr("INNERTUBE_CLIENT_VERSION");
-  if (cver) url = withQuery(url, "cver", cver);
+  if (cver) url = setQuery(url, "cver", cver);
   return url;
 }
 
@@ -231,7 +241,11 @@ function queryFlags(url: string): string {
     " sig=" +
     (hasQuery(url, "signature") ? "1" : "0") +
     " c=" +
-    (hasQuery(url, "c") ? "1" : "0")
+    (hasQuery(url, "c") ? "1" : "0") +
+    " xorb=" +
+    (hasQuery(url, "xorb") ? "1" : "0") +
+    " xosf=" +
+    (hasQuery(url, "xosf") ? "1" : "0")
   );
 }
 
@@ -430,13 +444,15 @@ async function reloadCues(): Promise<void> {
   }
   const g = ++fetchGen;
   let url = withFmtJson3(tr.baseUrl);
-  if (tr.tlang) url = withQuery(url, "tlang", tr.tlang);
+  if (tr.tlang) url = setQuery(url, "tlang", tr.tlang);
   if (mintPo && videoId) {
     try {
       const pot = await mintPo(videoId);
       if (g !== fetchGen) return;
-      if (pot) url = withQuery(url, "pot", pot);
-    } catch (_e) {}
+      if (pot) url = setQuery(url, "pot", pot);
+    } catch (e) {
+      console.warn("caption pot mint failed: " + (e instanceof Error ? e.message : String(e)));
+    }
   }
   url = withCaptionClient(url);
   const referer = videoId
@@ -444,7 +460,7 @@ async function reloadCues(): Promise<void> {
     : "https://www.youtube.com/";
   const cver = ytcfgStr("INNERTUBE_CLIENT_VERSION");
   const visitor = ytcfgStr("VISITOR_DATA");
-  if (MSE_DEBUG) console.log("caption timedtext GET " + queryFlags(url));
+  console.info("caption timedtext GET " + queryFlags(url));
   try {
     const req = HttpRequest.get(url)
       .setHeader("User-Agent", DESKTOP_UA)
@@ -472,19 +488,19 @@ async function reloadCues(): Promise<void> {
     if (g !== fetchGen) return;
     cues = parseJson3(body);
     const ctype = res.headers.get("content-type") || "";
-    if (MSE_DEBUG)
-      console.log(
-        "caption timedtext ok status=" +
-          res.status +
-          " bytes=" +
-          body.length +
-          " cues=" +
-          cues.length +
-          " ctype=" +
-          ctype +
-          " head=" +
-          body.slice(0, 80).replace(/\n/g, " "),
-      );
+    const line =
+      "caption timedtext ok status=" +
+      res.status +
+      " bytes=" +
+      body.length +
+      " cues=" +
+      cues.length +
+      " ctype=" +
+      ctype +
+      " head=" +
+      body.slice(0, 80).replace(/\n/g, " ");
+    if (cues.length) console.info(line);
+    else console.warn(line);
   } catch (e) {
     if (g !== fetchGen) return;
     console.warn("caption timedtext failed: " + (e instanceof Error ? e.message : String(e)));

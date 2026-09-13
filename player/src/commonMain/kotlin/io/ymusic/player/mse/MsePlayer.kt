@@ -267,10 +267,12 @@ class MsePlayer internal constructor(
         val want = config.captionVisible
         val key = config.preferCaptionLanguage.first
             .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }
-        val vss = key?.let { k ->
-            _captions.value.tracks.firstOrNull { it.id == k || it.vssId == k || it.languageCode == k }?.id ?: k
-        }
-        engine().setCaption(if (want) vss else null, log)
+        val tracks = _captions.value.tracks
+        val picked = key?.let { k ->
+            tracks.firstOrNull { it.id == k || it.vssId == k || it.languageCode == k }
+        } ?: tracks.firstOrNull { it.kind == "asr" } ?: tracks.firstOrNull()
+        val vss = if (want) picked?.id ?: key else null
+        engine().setCaption(vss, log)
         syncCaptionSession(want)
     }
 
