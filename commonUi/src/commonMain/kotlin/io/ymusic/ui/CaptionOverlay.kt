@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -88,14 +90,13 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     }
 
     Box(
-        modifier = modifier.height(lineH * 2).padding(horizontal = 12.dp).clipToBounds(),
-        contentAlignment = Alignment.TopStart,
+        modifier = modifier.height(lineH * 2).fillMaxWidth().padding(horizontal = 12.dp).clipToBounds(),
+        contentAlignment = Alignment.TopCenter,
     ) {
         val pad = (2 - columnIds.size).coerceAtLeast(0)
         Column(
-            Modifier
-                .fillMaxWidth()
-                .graphicsLayer { translationY = offset.value },
+            Modifier.graphicsLayer { translationY = offset.value },
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             repeat(pad) { Spacer(Modifier.height(lineH)) }
             val wrap = columnIds.count { it >= 0 } <= 1
@@ -111,19 +112,22 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
 
 @Composable
 private fun CaptionLineRow(text: String, lineH: Dp, maxLines: Int) {
-    Text(
-        text = text,
-        color = Color.White,
-        style = MaterialTheme.typography.bodyLarge,
-        maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(lineH * maxLines)
-            .then(
-                if (text.isNotEmpty()) Modifier.background(Color.Black.copy(alpha = 0.55f))
-                else Modifier,
+    Box(
+        Modifier.height(lineH * maxLines),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (text.isNotEmpty()) {
+            Text(
+                text = text,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
             )
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    )
+        }
+    }
 }

@@ -254,10 +254,11 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
-            PlayerCaptionOverlay(graph.player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 24.dp))
-            AutoHidingOverlay(playing = status.playWhenReady) {
+            var overlayOn by remember { mutableStateOf(true) }
+            AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }
+            PlayerCaptionOverlay(graph.player, overlayOn)
         }
     }
 }
@@ -292,12 +293,12 @@ private fun PortraitNowPlaying(
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
-                PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
+                var overlayOn by remember { mutableStateOf(true) }
                 // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
                 // the top-level overload and cannot be called from Box scope.
                 androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
                     Box(Modifier.fillMaxSize()) {
-                        AutoHidingOverlay(playing = status.playWhenReady) {
+                        AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
                             VideoOverlayControls(
                                 coordinator, status, progress, current,
                                 compact = true, onToggleFullscreen = onFullscreen,
@@ -305,6 +306,7 @@ private fun PortraitNowPlaying(
                         }
                     }
                 }
+                PlayerCaptionOverlay(player, overlayVisible = controlsOnVideo && overlayOn)
                 // The bare video's corner controls (mockup .vctrl: CC + full screen); the overlay carries
                 // its own copies for the scrolled state.
                 if (!controlsOnVideo) {
@@ -397,10 +399,11 @@ private fun LandscapeNowPlaying(
         Box(Modifier.weight(1f).fillMaxHeight().background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
-                PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
-                AutoHidingOverlay(playing = status.playWhenReady) {
+                var overlayOn by remember { mutableStateOf(true) }
+                AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
+                PlayerCaptionOverlay(player, overlayOn)
             }
         }
         VerticalDivider(color = DesignColors.Divider)
@@ -428,11 +431,18 @@ private fun LandscapeNowPlaying(
  * auto-hides; pausing brings the controls back.
  */
 @Composable
-private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable BoxScope.() -> Unit) {
+private fun BoxScope.AutoHidingOverlay(
+    playing: Boolean,
+    onVisibleChange: (Boolean) -> Unit = {},
+    content: @Composable BoxScope.() -> Unit,
+) {
     var visible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
     val nativePokes = VideoOverlayNative.pokes
-    SideEffect { VideoOverlayNative.shown = visible }
+    SideEffect {
+        VideoOverlayNative.shown = visible
+        onVisibleChange(visible)
+    }
     // The tap catcher sits under the controls: taps on a control hit the control; taps on the bare
     // video (or anywhere while hidden) land here and toggle.
     Box(
@@ -552,10 +562,17 @@ private fun BoxScope.VideoOverlayControls(
 }
 
 @Composable
-private fun PlayerCaptionOverlay(player: io.ymusic.player.Player, modifier: Modifier) {
+private fun BoxScope.PlayerCaptionOverlay(
+    player: io.ymusic.player.Player,
+    overlayVisible: Boolean,
+) {
     val lines by player.captionLines.collectAsState()
     if (lines.isEmpty()) return
-    CaptionOverlay(lines, modifier)
+    val bottom by animateDpAsState(if (overlayVisible) 72.dp else 12.dp)
+    CaptionOverlay(
+        lines,
+        Modifier.align(Alignment.BottomCenter).padding(bottom = bottom),
+    )
 }
 
 /**
