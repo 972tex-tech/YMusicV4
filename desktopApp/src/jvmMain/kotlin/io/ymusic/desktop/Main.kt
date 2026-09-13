@@ -740,9 +740,17 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         canvas.background = AwtColor.BLACK
         canvas.addComponentListener(
             object : ComponentAdapter() {
-                override fun componentResized(e: ComponentEvent) = layoutOverlay()
+                override fun componentResized(e: ComponentEvent) {
+                    if (canvas.width <= 0 || canvas.height <= 0) return
+                    /* Compose addNotify is often 0×0. 8f510cba attached here; layout-only
+                       skipped that and stayed on the CPU blit (~300%). */
+                    if (!hardware) onPeer?.invoke(canvas)
+                    else layoutOverlay()
+                }
 
-                override fun componentMoved(e: ComponentEvent) = layoutOverlay()
+                override fun componentMoved(e: ComponentEvent) {
+                    if (hardware) layoutOverlay()
+                }
             },
         )
         add(canvas, BorderLayout.CENTER)
