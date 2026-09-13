@@ -1,8 +1,17 @@
 package io.ymusic.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 
 internal actual val platformUsesTouch: Boolean = true
+
+@Composable
+internal actual fun VideoChromeLayer(
+    modifier: Modifier,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+) {
+    androidx.compose.foundation.layout.Box(modifier, content = content)
+}
 
 internal actual val playerSurfaceCoversCompose: Boolean = false
 

@@ -250,17 +250,9 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     val queue by player.queue.collectAsState()
     val current = queue.currentItem
 
-    if (playerSurfaceCoversCompose) {
-        Column(Modifier.fillMaxSize().background(Color.Black)) {
-            Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
-                graph.playerSurface(Modifier.fillMaxSize())
-                PlayerCaptionOverlay(graph.player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
-            }
-            SurfaceCoveredTransport(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
-        }
-    } else {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
-            graph.playerSurface(Modifier.fillMaxSize())
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        graph.playerSurface(Modifier.fillMaxSize())
+        VideoChromeLayer(Modifier.fillMaxSize()) {
             PlayerCaptionOverlay(graph.player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 24.dp))
             AutoHidingOverlay(playing = status.playWhenReady) {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
@@ -298,10 +290,10 @@ private fun PortraitNowPlaying(
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
-            PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
-            // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
-            // the top-level overload and cannot be called from Box scope.
-            if (!playerSurfaceCoversCompose) {
+            VideoChromeLayer(Modifier.fillMaxSize()) {
+                PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
+                // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
+                // the top-level overload and cannot be called from Box scope.
                 androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
                     Box(Modifier.fillMaxSize()) {
                         AutoHidingOverlay(playing = status.playWhenReady) {
@@ -312,21 +304,21 @@ private fun PortraitNowPlaying(
                         }
                     }
                 }
-            }
-            // The bare video's corner controls (mockup .vctrl: CC + full screen); the overlay carries
-            // its own copies for the scrolled state.
-            if (!controlsOnVideo) {
-                Row(
-                    Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    CaptionToggle(player, offTint = Color(0xFFDCDCDC))
-                    ActionIcon(
-                        Icons.Default.Fullscreen,
-                        stringResource(Res.string.cd_fullscreen),
-                        tint = Color(0xFFDCDCDC),
-                        onClick = onFullscreen,
-                    )
+                // The bare video's corner controls (mockup .vctrl: CC + full screen); the overlay carries
+                // its own copies for the scrolled state.
+                if (!controlsOnVideo) {
+                    Row(
+                        Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        CaptionToggle(player, offTint = Color(0xFFDCDCDC))
+                        ActionIcon(
+                            Icons.Default.Fullscreen,
+                            stringResource(Res.string.cd_fullscreen),
+                            tint = Color(0xFFDCDCDC),
+                            onClick = onFullscreen,
+                        )
+                    }
                 }
             }
         }
@@ -403,8 +395,8 @@ private fun LandscapeNowPlaying(
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
         Box(Modifier.weight(1f).fillMaxHeight().background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
-            PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
-            if (!playerSurfaceCoversCompose) {
+            VideoChromeLayer(Modifier.fillMaxSize()) {
+                PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
                 AutoHidingOverlay(playing = status.playWhenReady) {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
@@ -416,10 +408,6 @@ private fun LandscapeNowPlaying(
             status.error?.let {
                 Box(Modifier.padding(horizontal = 16.dp)) { PlaybackErrorRow(player, it) }
             }
-            if (playerSurfaceCoversCompose) {
-                SurfaceCoveredTransport(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
-                HorizontalDivider(color = DesignColors.Divider)
-            }
             QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
             HorizontalDivider(color = DesignColors.Divider)
             val queueListState = rememberLazyListState()
@@ -429,55 +417,6 @@ private fun LandscapeNowPlaying(
                     QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState)
                 }
             }
-        }
-    }
-}
-
-/** Play/pause/prev/next beside or below the picture when the native surface covers Compose. */
-@Composable
-private fun SurfaceCoveredTransport(
-    coordinator: PlaybackCoordinator,
-    status: PlaybackStatus,
-    progress: io.ymusic.player.Progress,
-    current: PlayableItem?,
-    isFullscreen: Boolean = false,
-    onToggleFullscreen: () -> Unit,
-) {
-    val player = coordinator.player
-    val light = isFullscreen
-    Column(
-        Modifier.fillMaxWidth().background(if (light) Color.Black else DesignColors.Surface),
-    ) {
-        if (light) {
-            Text(
-                current?.displayTitle.orEmpty(),
-                style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
-            )
-        }
-        TransportRow(
-            coordinator,
-            status.playWhenReady,
-            (status.state as? PlaybackState.Prepared)?.buffering == true,
-            iconTint = if (light) Color.White else DesignColors.InkStrong,
-            playBackground = if (light) Color.White.copy(alpha = 0.22f) else DesignColors.InkStrong,
-            playForeground = if (light) Color.White else DesignColors.OnInk,
-            playSize = 58.dp,
-        )
-        SeekBar(player, progress.positionMs, progress.durationMs)
-        Row(
-            Modifier.fillMaxWidth().padding(end = 6.dp, bottom = 6.dp),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            CaptionToggle(player, offTint = if (light) Color(0xFFEEEEEE) else DesignColors.InkSecondary)
-            ActionIcon(
-                if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
-                tint = if (light) Color(0xFFEEEEEE) else DesignColors.InkStrong,
-                onClick = onToggleFullscreen,
-            )
         }
     }
 }
