@@ -20,4 +20,7 @@ interface YtEngine :
     fun warmUp()
     suspend fun requestPlayerResponse(videoId: String): String
     suspend fun requestPoToken(videoId: String): String
+
+    /** Timedtext for [videoId] (local YouTube downloads). Empty if the engine cannot fetch. */
+    suspend fun fetchCaptionTracks(videoId: String): List<InjectedCaptionTrack> = emptyList()
 }

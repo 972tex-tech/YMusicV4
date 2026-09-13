@@ -325,6 +325,19 @@ internal class PlayerImpl(
                 val engine = localEngine ?: engines.local().also { localEngine = it }
                 bind(engine)
                 engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                val ytId = youtubeIdFromLocalUri(item.uri)
+                if (ytId != null) {
+                    val gen = loadGeneration
+                    val local = engine
+                    scope.launch {
+                        val factory = engines.webView ?: return@launch
+                        val yt = webViewEngine ?: factory().also { webViewEngine = it }
+                        yt.warmUp()
+                        val tracks = runCatching { yt.fetchCaptionTracks(ytId) }.getOrDefault(emptyList())
+                        if (gen != loadGeneration || tracks.isEmpty()) return@launch
+                        local.injectCaptionTracks(tracks)
+                    }
+                }
             }
             is PlayableItem.YtMedia -> {
                 val factory = engines.webView

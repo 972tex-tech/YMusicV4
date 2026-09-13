@@ -239,6 +239,9 @@ class FileAvNativeTest {
             val streams = FileAvNative.streams(h).toList()
             val text = streams.first { it.startsWith("2|") }
             val idx = text.split('|')[1].toInt()
+            val dumped = FileAvNative.dumpCaptions(h, idx)
+            println("dumped=$dumped")
+            assertTrue(dumped.any { it.contains("Hello") }, "dump missed Hello $dumped")
             FileAvNative.setSubtitleIndex(h, idx)
             FileAvNative.play(h)
             pump(h, 1500)

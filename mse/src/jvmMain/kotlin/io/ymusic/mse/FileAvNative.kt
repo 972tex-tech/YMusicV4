@@ -49,6 +49,9 @@ object FileAvNative {
     /** -1 turns captions off. [index] is the file stream index (`streams()` kind=2). */
     @JvmStatic external fun setSubtitleIndex(handle: Long, index: Int)
 
+    /** Every text cue on [index] as `startSec|endSec|text`. Empty if the track has no samples. */
+    @JvmStatic external fun dumpCaptions(handle: Long, index: Int): Array<String>
+
     @JvmStatic external fun setVideoEnabled(handle: Long, on: Boolean)
 
     /** Cap presented height in pixels. 0 = native. */

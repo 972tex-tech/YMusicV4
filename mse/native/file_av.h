@@ -58,6 +58,9 @@ int file_av_stream_at(FileAv *p, int i, int *kind, int *index, int *w, int *h,
 void file_av_set_sinks(FileAv *p, FileAvFrameFn on_frame, FileAvPcmFn on_pcm,
                        FileAvProgressFn on_prog, FileAvEventFn on_event,
                        FileAvCaptionFn on_caption, void *user);
+
+/* Read every text sample on [stream_index] (MP4 index, other streams discarded). */
+int file_av_dump_captions(FileAv *p, int stream_index, FileAvCaptionFn on_cue, void *user);
 void *file_av_user(FileAv *p);
 
 #ifdef __cplusplus

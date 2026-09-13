@@ -77,6 +77,16 @@ data class CaptionTrack(
 
 data class CaptionLine(val id: Int, val text: String)
 
+/** Timed cues injected into a local file player (YouTube ASR for a downloaded mp4, sidecar, …). */
+data class InjectedCaptionCue(val startSec: Double, val endSec: Double, val text: String)
+
+data class InjectedCaptionTrack(
+    val id: String,
+    val languageCode: String,
+    val displayName: String,
+    val cues: List<InjectedCaptionCue>,
+)
+
 /** [selectedLanguage] is null when captions are off. */
 data class CaptionState(
     val tracks: List<CaptionTrack>,

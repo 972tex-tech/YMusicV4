@@ -268,6 +268,55 @@ Java_io_ymusic_mse_FileAvNative_setSubtitleIndex(JNIEnv *env, jclass cls, jlong 
     file_av_set_subtitle_index((FileAv *)(intptr_t)handle, index);
 }
 
+typedef struct {
+    char **lines;
+    int n, cap;
+} DumpAcc;
+
+static void dump_cue(void *user, int id, double start, double end, const char *text)
+{
+    DumpAcc *a = user;
+    char line[1400];
+    char *copy;
+    (void)id;
+    if (!a || !text)
+        return;
+    snprintf(line, sizeof(line), "%.3f|%.3f|%s", start, end, text);
+    if (a->n >= a->cap) {
+        int cap = a->cap ? a->cap * 2 : 32;
+        char **nlines = realloc(a->lines, (size_t)cap * sizeof(*nlines));
+        if (!nlines)
+            return;
+        a->lines = nlines;
+        a->cap = cap;
+    }
+    copy = strdup(line);
+    if (!copy)
+        return;
+    a->lines[a->n++] = copy;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_io_ymusic_mse_FileAvNative_dumpCaptions(JNIEnv *env, jclass cls, jlong handle, jint index)
+{
+    DumpAcc acc = {0};
+    jobjectArray arr;
+    jclass strCls;
+    int i;
+    (void)cls;
+    file_av_dump_captions((FileAv *)(intptr_t)handle, index, dump_cue, &acc);
+    strCls = (*env)->FindClass(env, "java/lang/String");
+    arr = (*env)->NewObjectArray(env, acc.n, strCls, NULL);
+    for (i = 0; i < acc.n; i++) {
+        jstring js = (*env)->NewStringUTF(env, acc.lines[i] ? acc.lines[i] : "");
+        (*env)->SetObjectArrayElement(env, arr, i, js);
+        (*env)->DeleteLocalRef(env, js);
+        free(acc.lines[i]);
+    }
+    free(acc.lines);
+    return arr;
+}
+
 JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setVideoEnabled(JNIEnv *env, jclass cls, jlong handle, jboolean on)
 {

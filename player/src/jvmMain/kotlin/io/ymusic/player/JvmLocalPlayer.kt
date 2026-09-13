@@ -55,6 +55,7 @@ internal class JvmLocalPlayer(
     private var sidecarTracks: List<SidecarTrack> = emptyList()
     private var sidecarCues: List<LocalCue> = emptyList()
     private var usingSidecar = false
+    private var dumpedCues: Map<Int, List<LocalCue>> = emptyMap()
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
@@ -224,6 +225,7 @@ internal class JvmLocalPlayer(
             loadedPath = path
             streams = FileAvNative.streams(handle).mapNotNull(::parseAvStream)
             sidecarTracks = LocalSidecarCaptions.find(path)
+            dumpedCues = dumpEmbeddedCaptions()
             synchronized(nativeCues) { nativeCues.clear() }
             applyNativeCaption(config)
             val dur = FileAvNative.duration(handle)
@@ -362,11 +364,13 @@ internal class JvmLocalPlayer(
             dispatch {
                 if (handle == 0L) return@dispatch
                 applyNativeCaption(config)
-                if (config.captionVisible) {
+                val live = config.captionVisible && !usingSidecar
+                if (live) {
                     synchronized(nativeCues) { nativeCues.clear() }
                     val pos = FileAvNative.position(handle)
                     if (pos >= 0) FileAvNative.seek(handle, pos)
                 }
+                onApp { emitCaptionLines(pendingPosMs / 1000.0) }
             }
         }
     }
@@ -576,11 +580,8 @@ internal class JvmLocalPlayer(
         }
         val sides = sidecarTracks.map { CaptionTrack(it.id, it.label) }
         val tracks = LinkedHashMap<String, CaptionTrack>()
-        for (t in embedded) tracks[t.languageCode.lowercase()] = t
-        for (t in sides) {
-            val k = t.languageCode.removePrefix("file:").lowercase()
-            tracks[k] = t
-        }
+        for (t in embedded) tracks[captionLangKey(t.languageCode)] = t
+        for (t in sides) tracks[captionLangKey(t.id)] = t
         val list = tracks.values.toList()
         _captions.value = if (list.isEmpty()) {
             CaptionState.DEFAULT
@@ -592,6 +593,39 @@ internal class JvmLocalPlayer(
         }
     }
 
+    override fun injectCaptionTracks(tracks: List<InjectedCaptionTrack>) {
+        if (tracks.isEmpty()) return
+        val extra = tracks.map { t ->
+            SidecarTrack(
+                id = t.id,
+                lang = t.languageCode,
+                label = t.displayName,
+                cues = t.cues.mapIndexed { i, c -> LocalCue(i + 1, c.startSec, c.endSec, c.text) },
+            )
+        }
+        sidecarTracks = (sidecarTracks + extra).distinctBy { it.id }
+        onApp {
+            publishCaptions(appliedConfig)
+            if (appliedConfig.captionVisible) {
+                dispatch {
+                    applyNativeCaption(appliedConfig)
+                    onApp { emitCaptionLines(pendingPosMs / 1000.0) }
+                }
+            }
+        }
+    }
+
+    private fun dumpEmbeddedCaptions(): Map<Int, List<LocalCue>> {
+        if (handle == 0L) return emptyMap()
+        val out = LinkedHashMap<Int, List<LocalCue>>()
+        for (s in streams.filter { it.kind == KIND_TEXT }) {
+            val rows = FileAvNative.dumpCaptions(handle, s.index)
+            val cues = rows.mapIndexedNotNull { i, line -> parseDumpedCue(i + 1, line) }
+            if (cues.isNotEmpty()) out[s.index] = cues
+        }
+        return out
+    }
+
     private fun applyNativeCaption(config: PlaybackConfig) {
         if (handle == 0L) return
         if (!config.captionVisible) {
@@ -601,8 +635,9 @@ internal class JvmLocalPlayer(
             return
         }
         val key = config.preferCaptionLanguage.first
+        val keyNorm = captionLangKey(key)
         val side = sidecarTracks.firstOrNull {
-            it.id == key || it.lang.equals(key, true) || "file:${it.lang}" == key
+            captionLangKey(it.id) == keyNorm || captionLangKey(it.lang) == keyNorm
         }
         if (side != null) {
             usingSidecar = true
@@ -610,11 +645,18 @@ internal class JvmLocalPlayer(
             FileAvNative.setSubtitleIndex(handle, -1)
             return
         }
-        usingSidecar = false
-        sidecarCues = emptyList()
         val subs = streams.filter { it.kind == KIND_TEXT }
         val chosen = subs.firstOrNull { it.lang.equals(key, true) || it.index.toString() == key }
             ?: subs.firstOrNull()
+        val dumped = chosen?.let { dumpedCues[it.index] }.orEmpty()
+        if (dumped.isNotEmpty()) {
+            usingSidecar = true
+            sidecarCues = dumped
+            FileAvNative.setSubtitleIndex(handle, -1)
+            return
+        }
+        usingSidecar = false
+        sidecarCues = emptyList()
         FileAvNative.setSubtitleIndex(handle, chosen?.index ?: -1)
     }
 
@@ -665,6 +707,30 @@ internal class JvmLocalPlayer(
 private const val KIND_AUDIO = 0
 private const val KIND_VIDEO = 1
 private const val KIND_TEXT = 2
+
+private fun parseDumpedCue(id: Int, line: String): LocalCue? {
+    val a = line.indexOf('|')
+    val b = if (a >= 0) line.indexOf('|', a + 1) else -1
+    if (a < 0 || b < 0) return null
+    val start = line.substring(0, a).toDoubleOrNull() ?: return null
+    val end = line.substring(a + 1, b).toDoubleOrNull() ?: return null
+    val text = line.substring(b + 1).trim()
+    if (text.isEmpty()) return null
+    return LocalCue(id, start, end, text)
+}
+
+private fun captionLangKey(code: String): String {
+    val c = code.removePrefix("file:").removePrefix("yt:").lowercase()
+    return when (c) {
+        "vie" -> "vi"
+        "eng" -> "en"
+        "spa" -> "es"
+        "jpn" -> "ja"
+        "ger", "deu" -> "de"
+        "fre", "fra" -> "fr"
+        else -> c
+    }
+}
 
 private fun captionLabel(lang: String, index: Int): String {
     val code = lang.trim()

@@ -15,4 +15,7 @@ interface LocalPlayer :
     MediaEngine<PlayableItem.LocalMedia>,
     VideoQualitySelectable,
     CaptionSelectable,
-    AudioTrackSelectable
+    AudioTrackSelectable {
+    /** Extra caption tracks (YouTube timedtext for a downloaded file, etc.). Default ignores. */
+    fun injectCaptionTracks(tracks: List<InjectedCaptionTrack>) {}
+}

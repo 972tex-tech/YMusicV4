@@ -2048,6 +2048,79 @@ void file_av_set_subtitle_index(FileAv *p, int stream_index)
     pthread_mutex_unlock(&p->mu);
 }
 
+int file_av_dump_captions(FileAv *p, int stream_index, FileAvCaptionFn on_cue, void *user)
+{
+    AVFormatContext *fmt = NULL;
+    AVPacket *pkt;
+    AVStream *st;
+    const char *url;
+    unsigned i;
+    int n = 0;
+
+    if (!p || !on_cue || stream_index < 0)
+        return 0;
+    pthread_mutex_lock(&p->mu);
+    url = (p->fmt && p->fmt->url) ? p->fmt->url : NULL;
+    pthread_mutex_unlock(&p->mu);
+    if (!url || avformat_open_input(&fmt, url, NULL, NULL) < 0)
+        return 0;
+    if (avformat_find_stream_info(fmt, NULL) < 0) {
+        avformat_close_input(&fmt);
+        return 0;
+    }
+    if ((unsigned)stream_index >= fmt->nb_streams) {
+        avformat_close_input(&fmt);
+        return 0;
+    }
+    st = fmt->streams[stream_index];
+    if (st->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE) {
+        avformat_close_input(&fmt);
+        return 0;
+    }
+    for (i = 0; i < fmt->nb_streams; i++)
+        fmt->streams[i]->discard = i == (unsigned)stream_index ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
+    av_seek_frame(fmt, stream_index, 0, AVSEEK_FLAG_BACKWARD);
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        avformat_close_input(&fmt);
+        return 0;
+    }
+    while (av_read_frame(fmt, pkt) >= 0) {
+        char text[1024];
+        double pts, dur, start, end;
+        if (pkt->stream_index != stream_index) {
+            av_packet_unref(pkt);
+            continue;
+        }
+        text[0] = 0;
+        if (st->codecpar->codec_id == AV_CODEC_ID_MOV_TEXT)
+            parse_mov_text(pkt->data, pkt->size, text, (int)sizeof(text));
+        else if (st->codecpar->codec_id == AV_CODEC_ID_SUBRIP ||
+                 st->codecpar->codec_id == AV_CODEC_ID_SRT ||
+                 st->codecpar->codec_id == AV_CODEC_ID_WEBVTT ||
+                 st->codecpar->codec_id == AV_CODEC_ID_TEXT)
+            copy_text(pkt->data, pkt->size, text, (int)sizeof(text));
+        else if (st->codecpar->codec_id == AV_CODEC_ID_ASS ||
+                 st->codecpar->codec_id == AV_CODEC_ID_SSA)
+            ass_body((const char *)pkt->data, text, (int)sizeof(text));
+        if (text[0]) {
+            int64_t t = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+            pts = t != AV_NOPTS_VALUE ? t * av_q2d(st->time_base) : 0;
+            dur = pkt->duration > 0 ? pkt->duration * av_q2d(st->time_base) : 5.0;
+            start = pts;
+            end = pts + (dur > 0 ? dur : 5.0);
+            on_cue(user, n + 1, start, end, text);
+            n++;
+        }
+        av_packet_unref(pkt);
+        if (n >= 8000)
+            break;
+    }
+    av_packet_free(&pkt);
+    avformat_close_input(&fmt);
+    return n;
+}
+
 void file_av_set_video_enabled(FileAv *p, int on)
 {
     int want = on ? 1 : 0;
