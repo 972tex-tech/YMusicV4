@@ -12,6 +12,34 @@
 
 void *mse_vt_jawt_layer;
 static NSView *mse_vt_jawt_view;
+static id mse_end_live_obs;
+static NSWindow *mse_live_win;
+static int mse_pending_layout;
+static int mse_px, mse_py, mse_pw, mse_ph;
+
+static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h);
+
+static void mse_clear_live_obs(void)
+{
+    if (!mse_end_live_obs)
+        return;
+    [NSNotificationCenter.defaultCenter removeObserver:mse_end_live_obs];
+    mse_end_live_obs = nil;
+    mse_live_win = nil;
+}
+
+static void mse_apply_host_frame(int x, int y, int w, int h)
+{
+    NSView *host = mse_vt_jawt_view;
+    NSView *parent = host.superview;
+    NSRect frame;
+    if (!host || !parent)
+        return;
+    frame = mse_screen_to_view(parent, x, y, w, h);
+    if (NSEqualRects(host.frame, frame))
+        return;
+    host.frame = frame;
+}
 
 static jboolean (*mse_jawt_get_awt)(JNIEnv *, JAWT *);
 
@@ -47,6 +75,8 @@ void mse_vt_jawt_unhost(void)
 {
     NSView *v = mse_vt_jawt_view;
     mse_vt_jawt_view = nil;
+    mse_pending_layout = 0;
+    mse_clear_live_obs();
     if (!v)
         return;
     mse_on_main(^{
@@ -125,17 +155,41 @@ void mse_vt_layout_screen(int x, int y, int w, int h)
     if (w <= 0 || h <= 0)
         return;
     /* Always async: inlining on main from AWT doLayout set the NSView frame,
-       which re-entered AWT layout (~300% CPU). */
+       which re-entered AWT layout (~300% CPU). Skip while the user is dragging
+       the window edge — apply once on NSWindowDidEndLiveResize. */
     dispatch_async(dispatch_get_main_queue(), ^{
         NSView *host = mse_vt_jawt_view;
-        NSView *parent = host.superview;
-        NSRect frame;
-        if (!host || !parent)
+        NSWindow *win;
+        if (!host)
             return;
-        frame = mse_screen_to_view(parent, x, y, w, h);
-        if (NSEqualRects(host.frame, frame))
+        win = host.window;
+        if (win && win.inLiveResize) {
+            mse_px = x;
+            mse_py = y;
+            mse_pw = w;
+            mse_ph = h;
+            mse_pending_layout = 1;
+            if (mse_end_live_obs && mse_live_win != win) {
+                mse_clear_live_obs();
+            }
+            if (!mse_end_live_obs) {
+                mse_live_win = win;
+                mse_end_live_obs = [NSNotificationCenter.defaultCenter
+                    addObserverForName:NSWindowDidEndLiveResizeNotification
+                                object:win
+                                 queue:nil
+                            usingBlock:^(NSNotification *note) {
+                                (void)note;
+                                if (!mse_pending_layout)
+                                    return;
+                                mse_pending_layout = 0;
+                                mse_apply_host_frame(mse_px, mse_py, mse_pw, mse_ph);
+                            }];
+            }
             return;
-        host.frame = frame;
+        }
+        mse_pending_layout = 0;
+        mse_apply_host_frame(x, y, w, h);
     });
 }
 
