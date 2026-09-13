@@ -16,6 +16,7 @@ typedef void (*FileAvFrameFn)(void *user, int w, int h, const uint8_t *bgra);
 typedef void (*FileAvPcmFn)(void *user, int rate, int ch, const int16_t *s16, int nbytes);
 typedef void (*FileAvProgressFn)(void *user, double pos, double dur, int w, int h);
 typedef void (*FileAvEventFn)(void *user, int ended, const char *err);
+typedef void (*FileAvCaptionFn)(void *user, int id, double start, double end, const char *text);
 
 FileAv *file_av_create(void);
 void file_av_destroy(FileAv *p);
@@ -30,6 +31,8 @@ void file_av_seek(FileAv *p, double seconds);
 int file_av_step(FileAv *p);
 void file_av_set_speed(FileAv *p, double speed);
 void file_av_set_audio_index(FileAv *p, int stream_index);
+/* -1 = captions off. Text subtitle stream index from file_av_stream_at. */
+void file_av_set_subtitle_index(FileAv *p, int stream_index);
 void file_av_set_video_enabled(FileAv *p, int on);
 /* Cap output height. 0 = native. Never upscales. */
 void file_av_set_blit_max(FileAv *p, int max_height);
@@ -53,7 +56,8 @@ int file_av_stream_at(FileAv *p, int i, int *kind, int *index, int *w, int *h,
                       char *lang, int lang_n, char *codec, int codec_n);
 
 void file_av_set_sinks(FileAv *p, FileAvFrameFn on_frame, FileAvPcmFn on_pcm,
-                       FileAvProgressFn on_prog, FileAvEventFn on_event, void *user);
+                       FileAvProgressFn on_prog, FileAvEventFn on_event,
+                       FileAvCaptionFn on_caption, void *user);
 void *file_av_user(FileAv *p);
 
 #ifdef __cplusplus

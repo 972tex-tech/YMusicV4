@@ -17,6 +17,7 @@ typedef struct {
     jmethodID onPcm;
     jmethodID onProgress;
     jmethodID onEvent;
+    jmethodID onCaption;
     jobject direct;
     const uint8_t *direct_ptr;
     int direct_n;
@@ -121,6 +122,25 @@ static void on_event(void *user, int ended, const char *err)
         (*env)->DeleteLocalRef(env, js);
 }
 
+static void on_caption(void *user, int id, double start, double end, const char *text)
+{
+    JniSink *s = user;
+    JNIEnv *env;
+    jstring js;
+    if (!s || !s->onCaption || !text)
+        return;
+    env = sink_env(s);
+    if (!env)
+        return;
+    js = (*env)->NewStringUTF(env, text);
+    if (!js)
+        return;
+    (*env)->CallVoidMethod(env, s->sink, s->onCaption, (jint)id, start, end, js);
+    (*env)->DeleteLocalRef(env, js);
+    if ((*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+}
+
 static void drop_sink(JNIEnv *env, JniSink *s)
 {
     if (!s)
@@ -149,7 +169,7 @@ Java_io_ymusic_mse_FileAvNative_destroy(JNIEnv *env, jclass cls, jlong handle)
     if (!p)
         return;
     s = (JniSink *)file_av_user(p);
-    file_av_set_sinks(p, NULL, NULL, NULL, NULL, NULL);
+    file_av_set_sinks(p, NULL, NULL, NULL, NULL, NULL, NULL);
     file_av_destroy(p);
     drop_sink(env, s);
 }
@@ -238,6 +258,14 @@ Java_io_ymusic_mse_FileAvNative_setAudioIndex(JNIEnv *env, jclass cls, jlong han
     (void)env;
     (void)cls;
     file_av_set_audio_index((FileAv *)(intptr_t)handle, index);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setSubtitleIndex(JNIEnv *env, jclass cls, jlong handle, jint index)
+{
+    (void)env;
+    (void)cls;
+    file_av_set_subtitle_index((FileAv *)(intptr_t)handle, index);
 }
 
 JNIEXPORT void JNICALL
@@ -395,7 +423,7 @@ Java_io_ymusic_mse_FileAvNative_setSink(JNIEnv *env, jclass cls, jlong handle, j
     if (!p)
         return;
     s = (JniSink *)file_av_user(p);
-    file_av_set_sinks(p, NULL, NULL, NULL, NULL, NULL);
+    file_av_set_sinks(p, NULL, NULL, NULL, NULL, NULL, NULL);
     drop_sink(env, s);
     if (!sink)
         return;
@@ -409,5 +437,17 @@ Java_io_ymusic_mse_FileAvNative_setSink(JNIEnv *env, jclass cls, jlong handle, j
     s->onPcm = (*env)->GetMethodID(env, sc, "onPcm", "(II[B)V");
     s->onProgress = (*env)->GetMethodID(env, sc, "onProgress", "(DDII)V");
     s->onEvent = (*env)->GetMethodID(env, sc, "onEvent", "(ZLjava/lang/String;)V");
-    file_av_set_sinks(p, on_frame, on_pcm, on_prog, on_event, s);
+    s->onCaption = (*env)->GetMethodID(env, sc, "onCaption", "(IDDLjava/lang/String;)V");
+    if (!s->onCaption && (*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+    if (!s->onCaption) {
+        jclass iface = (*env)->FindClass(env, "io/ymusic/mse/FileAvSink");
+        if (iface) {
+            s->onCaption = (*env)->GetMethodID(env, iface, "onCaption", "(IDDLjava/lang/String;)V");
+            (*env)->DeleteLocalRef(env, iface);
+        }
+        if ((*env)->ExceptionCheck(env))
+            (*env)->ExceptionClear(env);
+    }
+    file_av_set_sinks(p, on_frame, on_pcm, on_prog, on_event, on_caption, s);
 }

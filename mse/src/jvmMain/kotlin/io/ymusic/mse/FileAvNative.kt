@@ -11,6 +11,8 @@ interface FileAvSink {
     fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
 
     fun onEvent(ended: Boolean, error: String?)
+
+    fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {}
 }
 
 /**
@@ -43,6 +45,9 @@ object FileAvNative {
     @JvmStatic external fun setVolume(handle: Long, volume: Double)
 
     @JvmStatic external fun setAudioIndex(handle: Long, index: Int)
+
+    /** -1 turns captions off. [index] is the file stream index (`streams()` kind=2). */
+    @JvmStatic external fun setSubtitleIndex(handle: Long, index: Int)
 
     @JvmStatic external fun setVideoEnabled(handle: Long, on: Boolean)
 

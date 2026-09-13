@@ -52,6 +52,8 @@ class FileAvNativeTest {
                 override fun onEvent(ended: Boolean, error: String?) {
                     if (error != null && error.isNotEmpty()) err.set(error)
                 }
+
+                override fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) = Unit
             },
         )
         try {
@@ -198,6 +200,77 @@ class FileAvNativeTest {
         }
     }
 
+    @Test
+    fun listsJackSubtitleStream() {
+        val path = jackPath() ?: return
+        val h = FileAvNative.create()
+        assertTrue(h != 0L, "file_av_create")
+        try {
+            assertTrue(FileAvNative.open(h, path) == 0, FileAvNative.lastError(h))
+            val streams = FileAvNative.streams(h).toList()
+            println("jack streams=$streams")
+            assertTrue(streams.any { it.startsWith("2|") && it.contains("mov_text") }, "no text stream $streams")
+        } finally {
+            FileAvNative.destroy(h)
+        }
+    }
+
+    @Test
+    fun decodesMovTextCaptions() {
+        val path = generateCaptionMp4() ?: return
+        val h = FileAvNative.create()
+        assertTrue(h != 0L, "file_av_create")
+        val lines = java.util.concurrent.CopyOnWriteArrayList<String>()
+        FileAvNative.setSink(
+            h,
+            object : FileAvSink {
+                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) = Unit
+                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
+                override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
+                override fun onEvent(ended: Boolean, error: String?) = Unit
+                override fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {
+                    lines.add(text)
+                }
+            },
+        )
+        try {
+            FileAvNative.setVideoEnabled(h, true)
+            assertTrue(FileAvNative.open(h, path) == 0, FileAvNative.lastError(h))
+            val streams = FileAvNative.streams(h).toList()
+            val text = streams.first { it.startsWith("2|") }
+            val idx = text.split('|')[1].toInt()
+            FileAvNative.setSubtitleIndex(h, idx)
+            FileAvNative.play(h)
+            pump(h, 1500)
+            println("caption lines=$lines")
+            assertTrue(lines.any { it.contains("Hello") }, "no Hello in $lines")
+        } finally {
+            FileAvNative.destroy(h)
+            java.io.File(path).delete()
+        }
+    }
+
+    private fun generateCaptionMp4(): String? {
+        val dir = java.io.File(System.getProperty("java.io.tmpdir"))
+        val srt = java.io.File(dir, "fileav_cap.srt")
+        val mp4 = java.io.File(dir, "fileav_cap.mp4")
+        srt.writeText("1\n00:00:00,000 --> 00:00:02,500\nHello JACK\n")
+        val pb = ProcessBuilder(
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc=duration=3:size=320x240:rate=15",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+            "-i", srt.absolutePath,
+            "-map", "0:v", "-map", "1:a", "-map", "2:s",
+            "-c:v", "libx264", "-c:a", "aac", "-c:s", "mov_text",
+            "-metadata:s:s:0", "language=eng",
+            mp4.absolutePath,
+        )
+        val r = runCatching { pb.start().waitFor() }.getOrDefault(1)
+        srt.delete()
+        if (r != 0 || !mp4.isFile) return null
+        return mp4.absolutePath
+    }
+
     private fun pump(handle: Long, ms: Long) {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
@@ -217,4 +290,9 @@ class FileAvNativeTest {
         const val DJI_4K = "/path/to/4kvideo/hevc_4k60P_main_dji_mavic3.mov"
         const val H264_4K = "/path/to/4kvideo/4K_UHD_60_FPS_1.mp4"
     }
+
+    private fun jackPath(): String? =
+        java.io.File("/path/to/4kvideo").listFiles()
+            ?.firstOrNull { it.name.contains("boKJ5XDs_mY") }
+            ?.absolutePath
 }

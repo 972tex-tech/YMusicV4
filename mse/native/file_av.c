@@ -89,7 +89,9 @@ struct FileAv {
     AVFormatContext *fmt;
     AVCodecContext *adec;
     AVCodecContext *vdec;
-    int a_st, v_st;
+    AVCodecContext *sdec;
+    int a_st, v_st, s_st;
+    int subtitle_index; /* -1 off; kept across close so reopen restores */
     SwrContext *swr;
     SwrContext *swr_speed;
     double swr_speed_in;
@@ -109,7 +111,14 @@ struct FileAv {
     FileAvPcmFn on_pcm;
     FileAvProgressFn on_prog;
     FileAvEventFn on_event;
+    FileAvCaptionFn on_caption;
     void *user;
+    int cap_id, cap_n;
+    struct {
+        int id;
+        double start, end;
+        char text[1024];
+    } cap_q[8];
 
     enum AVColorSpace col_space;
     enum AVColorRange col_range;
@@ -417,6 +426,9 @@ static int start_video_locked(FileAv *p)
 static void free_codecs(FileAv *p)
 {
     avcodec_free_context(&p->adec);
+    avcodec_free_context(&p->sdec);
+    p->s_st = -1;
+    p->cap_n = 0;
     drop_video_state_locked(p);
     swr_free(&p->swr);
     swr_free(&p->swr_speed);
@@ -436,6 +448,211 @@ static double pkt_pts_sec(const FileAv *p, const AVPacket *pkt)
     if (t == AV_NOPTS_VALUE || !st)
         return -1;
     return t * av_q2d(st->time_base);
+}
+
+static double stream_pkt_pts(const FileAv *p, const AVPacket *pkt)
+{
+    AVStream *st;
+    int64_t t;
+    if (!p->fmt || !pkt || pkt->stream_index < 0 ||
+        (unsigned)pkt->stream_index >= p->fmt->nb_streams)
+        return -1;
+    st = p->fmt->streams[pkt->stream_index];
+    t = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+    if (t == AV_NOPTS_VALUE)
+        return -1;
+    return t * av_q2d(st->time_base);
+}
+
+static void strip_ass_codes(const char *in, char *out, int n)
+{
+    int o = 0, skip = 0;
+    for (; in && *in && o < n - 1; in++) {
+        if (*in == '{') {
+            skip = 1;
+            continue;
+        }
+        if (skip) {
+            if (*in == '}')
+                skip = 0;
+            continue;
+        }
+        if (in[0] == '\\' && (in[1] == 'N' || in[1] == 'n')) {
+            out[o++] = '\n';
+            in++;
+            continue;
+        }
+        out[o++] = *in;
+    }
+    out[o] = 0;
+}
+
+static void ass_body(const char *ass, char *out, int n)
+{
+    const char *p = ass;
+    int commas = 0;
+    out[0] = 0;
+    if (!p)
+        return;
+    if (!strncmp(p, "Dialogue:", 9)) {
+        p += 9;
+        while (*p && commas < 9) {
+            if (*p++ == ',')
+                commas++;
+        }
+    }
+    strip_ass_codes(p, out, n);
+}
+
+static void cap_push(FileAv *p, double start, double end, const char *text)
+{
+    int i;
+    if (!text || !text[0])
+        return;
+    if (end <= start)
+        end = start + 5.0;
+    if (p->cap_n >= 8) {
+        memmove(&p->cap_q[0], &p->cap_q[1], sizeof(p->cap_q[0]) * 7);
+        p->cap_n = 7;
+    }
+    i = p->cap_n++;
+    p->cap_q[i].id = ++p->cap_id;
+    p->cap_q[i].start = start;
+    p->cap_q[i].end = end;
+    snprintf(p->cap_q[i].text, sizeof(p->cap_q[i].text), "%s", text);
+}
+
+static int copy_text(const uint8_t *data, int len, char *out, int n)
+{
+    if (!data || len <= 0 || n <= 1)
+        return -1;
+    if (len >= n)
+        len = n - 1;
+    memcpy(out, data, (size_t)len);
+    out[len] = 0;
+    return 0;
+}
+
+/* Bundled libav often has no subtitle decoder. 3GPP timed text is length+UTF-8. */
+static int parse_mov_text(const uint8_t *data, int size, char *out, int n)
+{
+    int len;
+    if (size < 2)
+        return -1;
+    len = (data[0] << 8) | data[1];
+    if (len <= 0)
+        return -1;
+    if (len > size - 2)
+        len = size - 2;
+    return copy_text(data + 2, len, out, n);
+}
+
+static void decode_sub_pkt(FileAv *p, AVPacket *pkt)
+{
+    AVStream *st;
+    enum AVCodecID id;
+    double pts, dur, start, end;
+    char text[1024];
+
+    if (!p->fmt || p->s_st < 0 || !pkt || !pkt->data)
+        return;
+    st = p->fmt->streams[p->s_st];
+    id = st->codecpar->codec_id;
+    pts = stream_pkt_pts(p, pkt);
+    if (pts < 0)
+        pts = 0;
+    dur = 0;
+    if (pkt->duration > 0)
+        dur = pkt->duration * av_q2d(st->time_base);
+    start = pts;
+    end = dur > 0 ? pts + dur : pts;
+    text[0] = 0;
+    if (p->sdec) {
+        AVSubtitle sub;
+        int got = 0;
+        unsigned i;
+        size_t n = 0;
+        memset(&sub, 0, sizeof(sub));
+        if (avcodec_decode_subtitle2(p->sdec, &sub, &got, pkt) >= 0 && got) {
+            if (sub.pts != AV_NOPTS_VALUE)
+                pts = sub.pts / (double)AV_TIME_BASE;
+            start = pts + sub.start_display_time / 1000.0;
+            end = pts + sub.end_display_time / 1000.0;
+            for (i = 0; i < sub.num_rects; i++) {
+                AVSubtitleRect *r = sub.rects[i];
+                char piece[1024];
+                piece[0] = 0;
+                if (!r)
+                    continue;
+                if (r->type == SUBTITLE_ASS && r->ass)
+                    ass_body(r->ass, piece, (int)sizeof(piece));
+                else if (r->text && r->text[0])
+                    snprintf(piece, sizeof(piece), "%s", r->text);
+                else if (r->ass && r->ass[0])
+                    ass_body(r->ass, piece, (int)sizeof(piece));
+                if (!piece[0])
+                    continue;
+                if (n && n < sizeof(text) - 2) {
+                    text[n++] = '\n';
+                    text[n] = 0;
+                }
+                snprintf(text + n, sizeof(text) - n, "%s", piece);
+                n = strlen(text);
+            }
+            avsubtitle_free(&sub);
+        }
+    }
+    if (!text[0]) {
+        if (id == AV_CODEC_ID_MOV_TEXT)
+            parse_mov_text(pkt->data, pkt->size, text, (int)sizeof(text));
+        else if (id == AV_CODEC_ID_SUBRIP || id == AV_CODEC_ID_SRT ||
+                 id == AV_CODEC_ID_WEBVTT || id == AV_CODEC_ID_TEXT)
+            copy_text(pkt->data, pkt->size, text, (int)sizeof(text));
+        else if (id == AV_CODEC_ID_ASS || id == AV_CODEC_ID_SSA)
+            ass_body((const char *)pkt->data, text, (int)sizeof(text));
+    }
+    cap_push(p, start, end, text);
+}
+
+static void open_sdec_locked(FileAv *p)
+{
+    AVStream *st;
+    avcodec_free_context(&p->sdec);
+    p->s_st = -1;
+    p->cap_n = 0;
+    if (p->subtitle_index < 0 || !p->fmt)
+        return;
+    if ((unsigned)p->subtitle_index >= p->fmt->nb_streams)
+        return;
+    st = p->fmt->streams[p->subtitle_index];
+    if (!st || st->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE)
+        return;
+    p->sdec = open_codec(st, 0);
+    /* Decoder is optional: bundled libav often ships without mov_text. */
+    p->s_st = p->subtitle_index;
+}
+
+static void emit_captions(FileAv *p)
+{
+    struct {
+        int id;
+        double start, end;
+        char text[1024];
+    } tmp[8];
+    int n, i;
+    FileAvCaptionFn cap;
+    void *user;
+    if (p->cap_n <= 0 || !p->on_caption)
+        return;
+    n = p->cap_n;
+    memcpy(tmp, p->cap_q, (size_t)n * sizeof(tmp[0]));
+    p->cap_n = 0;
+    cap = p->on_caption;
+    user = p->user;
+    pthread_mutex_unlock(&p->mu);
+    for (i = 0; i < n; i++)
+        cap(user, tmp[i].id, tmp[i].start, tmp[i].end, tmp[i].text);
+    pthread_mutex_lock(&p->mu);
 }
 
 static void collect_streams(FileAv *p)
@@ -535,6 +752,7 @@ static int setup_decoders(FileAv *p)
         set_err(p, "no audio or video stream");
         return -1;
     }
+    open_sdec_locked(p);
     return 0;
 }
 
@@ -569,6 +787,9 @@ static int fill_packets(FileAv *p)
             }
             if (pq_push(&p->vq, pkt) < 0)
                 av_packet_free(&pkt);
+        } else if (pkt->stream_index == p->s_st) {
+            decode_sub_pkt(p, pkt);
+            av_packet_free(&pkt);
         } else {
             av_packet_free(&pkt);
         }
@@ -1475,6 +1696,7 @@ int file_av_step(FileAv *p)
         prog(user, clock, dur, vw, vh);
         pthread_mutex_lock(&p->mu);
     }
+    emit_captions(p);
 #ifdef __APPLE__
     a_empty = !p->adec || ((p->aq.rd >= p->aq.n) && p->ring_n == 0 && !p->a_busy);
 #else
@@ -1515,7 +1737,8 @@ FileAv *file_av_create(void)
     p->blit_h = 0;
     p->col_space = AVCOL_SPC_UNSPECIFIED;
     p->col_range = AVCOL_RANGE_UNSPECIFIED;
-    p->a_st = p->v_st = -1;
+    p->a_st = p->v_st = p->s_st = -1;
+    p->subtitle_index = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
 #ifdef __APPLE__
@@ -1661,7 +1884,7 @@ void file_av_close(FileAv *p)
     free(p->streams);
     p->streams = NULL;
     p->nstreams = 0;
-    p->a_st = p->v_st = -1;
+    p->a_st = p->v_st = p->s_st = -1;
     p->vw = p->vh = 0;
 #ifdef __APPLE__
     if (p->vt_layer)
@@ -1759,6 +1982,9 @@ void file_av_seek(FileAv *p, double seconds)
         avcodec_flush_buffers(p->adec);
     if (p->vdec)
         avcodec_flush_buffers(p->vdec);
+    if (p->sdec)
+        avcodec_flush_buffers(p->sdec);
+    p->cap_n = 0;
     pq_clear(&p->aq);
     pq_clear(&p->vq);
     av_frame_unref(p->afr);
@@ -1808,6 +2034,17 @@ void file_av_set_audio_index(FileAv *p, int stream_index)
         return;
     pthread_mutex_lock(&p->mu);
     p->audio_index = stream_index;
+    pthread_mutex_unlock(&p->mu);
+}
+
+void file_av_set_subtitle_index(FileAv *p, int stream_index)
+{
+    if (!p)
+        return;
+    pthread_mutex_lock(&p->mu);
+    p->subtitle_index = stream_index;
+    if (p->opened)
+        open_sdec_locked(p);
     pthread_mutex_unlock(&p->mu);
 }
 
@@ -1972,7 +2209,8 @@ int file_av_stream_at(FileAv *p, int i, int *kind, int *index, int *w, int *h,
 }
 
 void file_av_set_sinks(FileAv *p, FileAvFrameFn on_frame, FileAvPcmFn on_pcm,
-                       FileAvProgressFn on_prog, FileAvEventFn on_event, void *user)
+                       FileAvProgressFn on_prog, FileAvEventFn on_event,
+                       FileAvCaptionFn on_caption, void *user)
 {
     if (!p)
         return;
@@ -1981,6 +2219,7 @@ void file_av_set_sinks(FileAv *p, FileAvFrameFn on_frame, FileAvPcmFn on_pcm,
     p->on_pcm = on_pcm;
     p->on_prog = on_prog;
     p->on_event = on_event;
+    p->on_caption = on_caption;
     p->user = user;
     pthread_mutex_unlock(&p->mu);
 }
