@@ -61,6 +61,7 @@ actual object MseHostNative {
 
     private fun loadLibrary() {
         if (!loaded.compareAndSet(false, true)) return
+        runCatching { System.loadLibrary("jawt") }
         val name = "mseffmpegjni"
         val libFileName = System.mapLibraryName(name)
         System.getProperty("mse.native.dir")?.let { dir ->

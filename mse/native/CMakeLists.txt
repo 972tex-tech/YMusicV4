@@ -57,8 +57,9 @@ endif()
 
 if(APPLE)
   target_sources(mseffmpegjni PRIVATE mse_vt_present.m mse_vt_layer.m mse_vt_dec.m mse_vt_blit.c)
-  set_source_files_properties(mse_vt_present.m mse_vt_dec.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-  find_library(JAWT_LIB jawt HINTS "$ENV{JAVA_HOME}/lib" "$ENV{JAVA_HOME}/lib/jli")
+  set_source_files_properties(mse_vt_present.m mse_vt_layer.m mse_vt_dec.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  # JAWT is dlopen'd at runtime (System.loadLibrary("jawt")). Do not link libjawt:
+  # its install name is @rpath/libjawt.dylib and the JVM, not this DSO, owns that rpath.
   target_link_libraries(mseffmpegjni PRIVATE
     "-framework AudioToolbox"
     "-framework CoreAudio"
@@ -69,9 +70,6 @@ if(APPLE)
     "-framework AVFoundation"
     "-framework QuartzCore"
   )
-  if(JAWT_LIB)
-    target_link_libraries(mseffmpegjni PRIVATE ${JAWT_LIB})
-  endif()
 endif()
 
 if(NOT DEFINED ENV{JAVA_HOME})

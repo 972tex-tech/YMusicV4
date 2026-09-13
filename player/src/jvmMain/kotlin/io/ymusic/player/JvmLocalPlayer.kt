@@ -120,6 +120,7 @@ internal class JvmLocalPlayer(
                 }
             } else {
                 FileAvNative.setSink(handle, this)
+                bindVideoComponent(handle, videoSurface?.nativePeer)
             }
         }
         videoSurface?.onViewSize = { w, h ->
@@ -127,11 +128,33 @@ internal class JvmLocalPlayer(
             viewH = h
             dispatch { applyBlit() }
         }
+        videoSurface?.onNativePeer = { c ->
+            dispatch {
+                bindVideoComponent(handle, c)
+            }
+        }
     }
 
     private fun dispatch(block: () -> Unit) {
         if (released) return
         cmds.offer(block)
+    }
+
+    /** JAWT GetDrawingSurface must run on the AWT thread after [java.awt.Canvas.addNotify]. */
+    private fun bindVideoComponent(h: Long, c: java.awt.Component?) {
+        if (h == 0L) return
+        fun bind() {
+            val ok = FileAvNative.setVideoComponent(h, c)
+            videoSurface?.setNativePresent(ok)
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            bind()
+        } else {
+            try {
+                SwingUtilities.invokeAndWait { bind() }
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /** Listener/UI hop. Always posts so player-thread work never runs re-entrantly on AWT. */
@@ -374,8 +397,12 @@ internal class JvmLocalPlayer(
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
-    override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
+    override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) {
         if (released || audioOnly) return
+        if (bgra == null) {
+            videoSurface?.presented()
+            return
+        }
         val img = grab(width, height)
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
         val n = minOf(pixels.size, width * height)

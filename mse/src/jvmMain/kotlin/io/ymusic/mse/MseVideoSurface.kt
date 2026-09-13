@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.awt.image.BufferedImage
+import javax.swing.SwingUtilities
 
 actual class MseVideoSurface {
     private val _frame = MutableStateFlow<BufferedImage?>(null)
@@ -16,6 +17,7 @@ actual class MseVideoSurface {
             if (value != 0L && blitW > 0 && blitH > 0) {
                 MseHostNative.setBlitSize(value, blitW, blitH)
             }
+            if (value != 0L && nativePeer != null) attach(nativePeer)
         }
 
     private var blitW = 0
@@ -36,8 +38,14 @@ actual class MseVideoSurface {
     fun samplesPlayed(): Long = if (host == 0L) 0L else MseHostNative.samplesPlayed(host)
 
     @Volatile
+    var nativePeer: java.awt.Component? = null
+
+    @Volatile
     var nativePresent: Boolean = false
         private set
+
+    @Volatile
+    var onNativePresent: ((Boolean) -> Unit)? = null
 
     /** Swing hole. Invoked off the decode thread; must not recompose Compose. */
     @Volatile
@@ -59,13 +67,24 @@ actual class MseVideoSurface {
         _frame.value = null
     }
 
-    /** Overlay HW video on [component] when the platform can. Call from Swing after the peer exists. */
+    /** Overlay HW video on [component] when the platform can. JAWT must run on the AWT thread. */
     fun attach(component: java.awt.Component?): Boolean {
         if (host == 0L) {
             nativePresent = false
+            onNativePresent?.invoke(false)
             return false
         }
-        nativePresent = MseHostNative.setVideoComponent(host, component)
-        return nativePresent
+        fun bind(): Boolean {
+            nativePresent = MseHostNative.setVideoComponent(host, component)
+            onNativePresent?.invoke(nativePresent)
+            return nativePresent
+        }
+        if (SwingUtilities.isEventDispatchThread()) return bind()
+        var ok = false
+        try {
+            SwingUtilities.invokeAndWait { ok = bind() }
+        } catch (_: Exception) {
+        }
+        return ok
     }
 }

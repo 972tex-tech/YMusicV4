@@ -33,6 +33,25 @@ class LocalVideoSurface {
     @Volatile
     var swingShown: BufferedImage? = null
 
+    /** Heavyweight Canvas for VideoToolbox. Set from AWT addNotify. */
+    @Volatile
+    var nativePeer: java.awt.Component? = null
+        set(value) {
+            field = value
+            onNativePeer?.invoke(value)
+        }
+
+    @Volatile
+    internal var onNativePeer: ((java.awt.Component?) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(nativePeer)
+        }
+
+    /** Swing hole: skip CPU paint when the Canvas hosts AVSampleBufferDisplayLayer. */
+    @Volatile
+    var onNativePresent: ((Boolean) -> Unit)? = null
+
     /** Player thread: scale the decode blit to this Compose surface (px). */
     @Volatile
     internal var onViewSize: ((Int, Int) -> Unit)? = null
@@ -54,6 +73,20 @@ class LocalVideoSurface {
         tickFps()
         val hole = swingBlit
         if (hole != null) hole(frame) else _frame.value = frame
+    }
+
+    /** HW present: no bitmap, only the overlay FPS counter. */
+    internal fun presented() {
+        tickFps()
+    }
+
+    internal fun setNativePresent(on: Boolean) {
+        onNativePresent?.invoke(on)
+        if (on) {
+            swingBlit?.invoke(null)
+            swingShown = null
+            _frame.value = null
+        }
     }
 
     internal fun setVisible(visible: Boolean) {

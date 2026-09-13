@@ -35,6 +35,10 @@ void file_av_set_video_enabled(FileAv *p, int on);
 void file_av_set_blit_max(FileAv *p, int max_height);
 /* Fit inside w×h, never upscale. 0 on a side means unconstrained. */
 void file_av_set_blit_size(FileAv *p, int w, int h);
+#ifdef __APPLE__
+/* Borrowed AVSampleBufferDisplayLayer from JAWT Canvas. NULL = CPU blit. */
+void file_av_set_video_layer(FileAv *p, void *layer);
+#endif
 
 double file_av_duration(FileAv *p);
 double file_av_position(FileAv *p);

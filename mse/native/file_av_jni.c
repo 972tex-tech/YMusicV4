@@ -1,4 +1,7 @@
 #include "file_av.h"
+#ifdef __APPLE__
+#include "mse_vt_present.h"
+#endif
 
 #include <jni.h>
 #include <limits.h>
@@ -56,11 +59,15 @@ static void on_frame(void *user, int w, int h, const uint8_t *bgra)
     JNIEnv *env;
     jobject buf;
     int n;
-    if (!s || !bgra || w <= 0 || h <= 0)
+    if (!s || w <= 0 || h <= 0)
         return;
     env = sink_env(s);
     if (!env)
         return;
+    if (!bgra) {
+        (*env)->CallVoidMethod(env, s->sink, s->onFrame, w, h, NULL);
+        return;
+    }
     if ((uint64_t)w * (uint64_t)h > (uint64_t)(INT_MAX / 4))
         return;
     n = w * h * 4;
@@ -242,6 +249,24 @@ Java_io_ymusic_mse_FileAvNative_setBlitSize(JNIEnv *env, jclass cls, jlong handl
     (void)env;
     (void)cls;
     file_av_set_blit_size((FileAv *)(intptr_t)handle, w, h);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_io_ymusic_mse_FileAvNative_setVideoComponent(JNIEnv *env, jclass cls, jlong handle, jobject component)
+{
+    (void)cls;
+#ifdef __APPLE__
+    void *layer = NULL;
+    if (component)
+        layer = mse_vt_attach_component(env, component);
+    file_av_set_video_layer((FileAv *)(intptr_t)handle, layer);
+    return layer ? JNI_TRUE : JNI_FALSE;
+#else
+    (void)env;
+    (void)handle;
+    (void)component;
+    return JNI_FALSE;
+#endif
 }
 
 /* memcpy BGRA into TYPE_INT_RGB. IntBuffer.get of 4K is several ms. */

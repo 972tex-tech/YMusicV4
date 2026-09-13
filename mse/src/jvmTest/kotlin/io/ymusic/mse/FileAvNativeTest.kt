@@ -1,8 +1,13 @@
 package io.ymusic.mse
 
+import java.awt.Canvas
+import java.awt.Frame
+import java.awt.GraphicsEnvironment
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -34,7 +39,7 @@ class FileAvNativeTest {
         FileAvNative.setSink(
             h,
             object : FileAvSink {
-                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
+                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) {
                     frames.incrementAndGet()
                 }
 
@@ -99,7 +104,7 @@ class FileAvNativeTest {
         FileAvNative.setSink(
             h,
             object : FileAvSink {
-                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
+                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) {
                     frames.incrementAndGet()
                 }
 
@@ -137,6 +142,62 @@ class FileAvNativeTest {
         }
     }
 
+    @Test
+    fun presentsVtOnHeavyweightCanvasWithoutBgra() {
+        val path = H264_4K
+        if (!java.io.File(path).isFile) return
+        if (GraphicsEnvironment.isHeadless()) return
+        val h = FileAvNative.create()
+        assertTrue(h != 0L, "file_av_create")
+        val hw = AtomicInteger(0)
+        val cpu = AtomicInteger(0)
+        val err = AtomicReference<String?>(null)
+        FileAvNative.setSink(
+            h,
+            object : FileAvSink {
+                override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) {
+                    if (bgra == null) hw.incrementAndGet() else cpu.incrementAndGet()
+                }
+
+                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
+
+                override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
+
+                override fun onEvent(ended: Boolean, error: String?) {
+                    if (error != null && error.isNotEmpty()) err.set(error)
+                }
+            },
+        )
+        val frame = AtomicReference<Frame?>(null)
+        val attached = AtomicBoolean(false)
+        try {
+            SwingUtilities.invokeAndWait {
+                val f = Frame("file-av-jawt")
+                val c = Canvas()
+                f.add(c)
+                f.setSize(640, 360)
+                f.isVisible = true
+                attached.set(FileAvNative.setVideoComponent(h, c))
+                frame.set(f)
+            }
+            assertTrue(attached.get(), "JAWT attach")
+            FileAvNative.setVideoEnabled(h, true)
+            FileAvNative.setBlitSize(h, 640, 360)
+            assertTrue(FileAvNative.open(h, path) == 0, FileAvNative.lastError(h))
+            FileAvNative.play(h)
+            pump(h, 800)
+            println("jawt hw=${hw.get()} cpu=${cpu.get()} err=${err.get()}")
+            assertTrue(err.get() == null, "error ${err.get()}")
+            assertTrue(hw.get() > 1, "no layer frames hw=${hw.get()} cpu=${cpu.get()}")
+            assertTrue(cpu.get() == 0, "CPU blit still ran cpu=${cpu.get()}")
+        } finally {
+            FileAvNative.destroy(h)
+            SwingUtilities.invokeAndWait {
+                frame.get()?.dispose()
+            }
+        }
+    }
+
     private fun pump(handle: Long, ms: Long) {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
@@ -154,5 +215,6 @@ class FileAvNativeTest {
 
     companion object {
         const val DJI_4K = "/path/to/4kvideo/hevc_4k60P_main_dji_mavic3.mov"
+        const val H264_4K = "/path/to/4kvideo/4K_UHD_60_FPS_1.mp4"
     }
 }

@@ -13,6 +13,10 @@ void mse_vt_detach(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+    if (p == mse_vt_jawt_layer) {
+        mse_vt_jawt_layer = NULL;
+        CFRelease(p);
+    }
 }
 
 int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)

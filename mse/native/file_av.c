@@ -24,6 +24,7 @@
 #ifdef __APPLE__
 #include <mach/mach_time.h>
 #include "mse_vt_blit.h"
+#include "mse_vt_present.h"
 #endif
 #include "mse_ffmpeg.h"
 
@@ -107,6 +108,7 @@ struct FileAv {
     enum AVColorRange col_range;
 #ifdef __APPLE__
     MseVtBlit vt_blit;
+    void *vt_layer;
 #endif
 };
 
@@ -622,6 +624,14 @@ static int present_vt(FileAv *p, AVFrame *fr)
     int w, h, n;
     if (!fr->data[3])
         return -1;
+    if (p->vt_layer &&
+        mse_vt_show(p->vt_layer, fr->data[3], fr->width, fr->height) == 0) {
+        p->vw = fr->width;
+        p->vh = fr->height;
+        if (p->on_frame)
+            p->on_frame(p->user, fr->width, fr->height, NULL);
+        return 0;
+    }
     if (mse_vt_blit_size(fr->data[3], p->blit_w, p->blit_h, &w, &h) != 0)
         return -1;
     n = w * h * 4;
@@ -833,6 +843,10 @@ static void set_idle(FileAv *p, double sec)
 
 static int hole_ready(const FileAv *p)
 {
+#ifdef __APPLE__
+    if (p->vt_layer)
+        return 1;
+#endif
     return p->blit_w > 0 || p->blit_h > 0;
 }
 
@@ -1071,6 +1085,12 @@ void file_av_destroy(FileAv *p)
         p->th_on = 0;
     }
     file_av_close(p);
+#ifdef __APPLE__
+    if (p->vt_layer) {
+        mse_vt_detach(p->vt_layer);
+        p->vt_layer = NULL;
+    }
+#endif
     av_frame_free(&p->afr);
     av_frame_free(&p->vfr);
     av_frame_free(&p->vsw);
@@ -1272,6 +1292,21 @@ void file_av_set_blit_size(FileAv *p, int w, int h)
     pthread_mutex_unlock(&p->mu);
     mse_logf("file-av blit-size %dx%d\n", nw, nh);
 }
+
+#ifdef __APPLE__
+void file_av_set_video_layer(FileAv *p, void *layer)
+{
+    void *old;
+    if (!p)
+        return;
+    pthread_mutex_lock(&p->mu);
+    old = p->vt_layer;
+    p->vt_layer = layer;
+    pthread_mutex_unlock(&p->mu);
+    if (old && old != layer)
+        mse_vt_detach(old);
+}
+#endif
 
 double file_av_duration(FileAv *p)
 {

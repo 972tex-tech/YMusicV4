@@ -118,6 +118,8 @@ import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.compose.resources.painterResource
+import java.awt.BorderLayout
+import java.awt.Canvas
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Graphics
@@ -604,18 +606,32 @@ private fun DesktopPlayerSurface(
         msePanel.onPainted = { mseSurface.swingShown = it }
         val blit: (java.awt.image.BufferedImage?) -> Unit = { msePanel.setImage(it) }
         mseSurface.swingBlit = blit
+        msePanel.onPeer = { c ->
+            mseSurface.nativePeer = c
+            msePanel.setHardware(mseSurface.attach(c))
+        }
+        mseSurface.onNativePresent = { msePanel.setHardware(it) }
         onDispose {
             msePanel.onPainted = null
+            msePanel.onPeer = null
+            mseSurface.onNativePresent = null
             if (mseSurface.swingBlit === blit) mseSurface.swingBlit = null
+            mseSurface.attach(null)
+            mseSurface.nativePeer = null
         }
     }
     DisposableEffect(localSurface, localPanel) {
         localPanel.onPainted = { localSurface.swingShown = it }
         val blit: (java.awt.image.BufferedImage?) -> Unit = { localPanel.setImage(it) }
         localSurface.swingBlit = blit
+        localPanel.onPeer = { localSurface.nativePeer = it }
+        localSurface.onNativePresent = { localPanel.setHardware(it) }
         onDispose {
             localPanel.onPainted = null
+            localPanel.onPeer = null
+            localSurface.onNativePresent = null
             if (localSurface.swingBlit === blit) localSurface.swingBlit = null
+            localSurface.nativePeer = null
         }
     }
     Box(
@@ -658,14 +674,58 @@ private fun DesktopPlayerSurface(
 }
 
 /**
- * Playground-identical MSE hole: Swing draws the latest BGRA frame. [contains] always misses so
- * Compose's interop filter does not swallow clicks over the video.
+ * Heavyweight [Canvas] for JAWT / AVSampleBufferDisplayLayer. CPU [setImage] is the fallback
+ * when attach fails. [contains] always misses so Compose keeps clicks.
  */
-private class MseVideoPanel : JPanel() {
+private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile private var img: BufferedImage? = null
 
+    @Volatile private var hardware = false
+
     @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
+
+    @Volatile var onPeer: ((Canvas?) -> Unit)? = null
     private val pending = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val canvas =
+        object : Canvas() {
+            override fun addNotify() {
+                super.addNotify()
+                onPeer?.invoke(this)
+            }
+
+            override fun removeNotify() {
+                onPeer?.invoke(null)
+                super.removeNotify()
+            }
+
+            override fun contains(x: Int, y: Int): Boolean = false
+
+            override fun paint(g: Graphics) {
+                val image = img
+                if (image == null || hardware) {
+                    g.color = AwtColor.BLACK
+                    g.fillRect(0, 0, width, height)
+                    return
+                }
+                onPainted?.invoke(image)
+                val g2 = g as Graphics2D
+                g2.color = AwtColor.BLACK
+                g2.fillRect(0, 0, width, height)
+                val scale = min(width / image.width.toDouble(), height / image.height.toDouble())
+                val dw = (image.width * scale).toInt().coerceAtLeast(1)
+                val dh = (image.height * scale).toInt().coerceAtLeast(1)
+                val x = (width - dw) / 2
+                val y = (height - dh) / 2
+                if (dw == image.width && dh == image.height) {
+                    g2.drawImage(image, x, y, null)
+                } else {
+                    g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                    g2.drawImage(image, x, y, dw, dh, null)
+                }
+            }
+
+            override fun update(g: Graphics) = paint(g)
+        }
 
     init {
         isOpaque = true
@@ -673,37 +733,31 @@ private class MseVideoPanel : JPanel() {
         isFocusable = false
         isEnabled = false
         isRequestFocusEnabled = false
+        canvas.background = AwtColor.BLACK
+        add(canvas, BorderLayout.CENTER)
+    }
+
+    override fun doLayout() {
+        canvas.setBounds(0, 0, width, height)
     }
 
     override fun contains(x: Int, y: Int): Boolean = false
 
+    fun setHardware(on: Boolean) {
+        hardware = on
+        canvas.ignoreRepaint = on
+        if (on) img = null
+        canvas.repaint()
+    }
+
     fun setImage(image: BufferedImage?) {
+        if (hardware) return
         img = image
         if (pending.compareAndSet(false, true)) {
             SwingUtilities.invokeLater {
                 pending.set(false)
-                repaint()
+                canvas.repaint()
             }
-        }
-    }
-
-    override fun paintComponent(g: Graphics) {
-        super.paintComponent(g)
-        val g2 = g as Graphics2D
-        g2.color = AwtColor.BLACK
-        g2.fillRect(0, 0, width, height)
-        val image = img ?: return
-        onPainted?.invoke(image)
-        val scale = min(width / image.width.toDouble(), height / image.height.toDouble())
-        val dw = (image.width * scale).toInt().coerceAtLeast(1)
-        val dh = (image.height * scale).toInt().coerceAtLeast(1)
-        val x = (width - dw) / 2
-        val y = (height - dh) / 2
-        if (dw == image.width && dh == image.height) {
-            g2.drawImage(image, x, y, null)
-        } else {
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g2.drawImage(image, x, y, dw, dh, null)
         }
     }
 }

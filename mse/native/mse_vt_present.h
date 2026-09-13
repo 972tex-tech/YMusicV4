@@ -9,8 +9,10 @@
 extern "C" {
 #endif
 
-/* JVM: overlay on an AWT component. iOS unused (Kotlin owns the layer). */
+/* JVM: overlay on an AWT Canvas via JAWT SurfaceLayers. iOS unused. */
 void *mse_vt_attach_component(void *env, void *component);
+/* Last JAWT-retained layer; detach CFReleases if it matches. */
+extern void *mse_vt_jawt_layer;
 
 /* Borrowed AVSampleBufferDisplayLayer. Caller owns the layer. */
 void mse_vt_detach(void *layer);

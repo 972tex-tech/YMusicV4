@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 /** JNI callbacks from the in-process libav file player (`file_av.c`). */
 interface FileAvSink {
-    fun onFrame(width: Int, height: Int, bgra: ByteBuffer)
+    fun onFrame(width: Int, height: Int, bgra: ByteBuffer?)
 
     fun onPcm(rate: Int, channels: Int, s16: ByteArray)
 
@@ -49,6 +49,9 @@ object FileAvNative {
 
     /** Fit the presented frame inside [w]×[h]. 0 on a side means unconstrained. */
     @JvmStatic external fun setBlitSize(handle: Long, w: Int, h: Int)
+
+    /** macOS: overlay VideoToolbox on a heavyweight AWT Canvas. */
+    @JvmStatic external fun setVideoComponent(handle: Long, component: java.awt.Component?): Boolean
 
     /** memcpy [n] BGRA pixels into a `TYPE_INT_RGB` int array. */
     @JvmStatic external fun copyBgra(bgra: ByteBuffer, rgb: IntArray, n: Int)
