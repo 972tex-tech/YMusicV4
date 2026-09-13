@@ -3,10 +3,6 @@ package io.ymusic.mse
 import java.awt.Canvas
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
-import java.awt.Robot
-import java.awt.event.InputEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -199,58 +195,6 @@ class FileAvNativeTest {
             SwingUtilities.invokeAndWait {
                 frame.get()?.dispose()
             }
-        }
-    }
-
-    @Test
-    fun overlayForwardsMousePressToCanvas() {
-        val path = H264_4K
-        if (!java.io.File(path).isFile) return
-        if (GraphicsEnvironment.isHeadless()) return
-        val h = FileAvNative.create()
-        assertTrue(h != 0L, "file_av_create")
-        val clicks = AtomicInteger(0)
-        val frame = AtomicReference<Frame?>(null)
-        val canvas = AtomicReference<Canvas?>(null)
-        try {
-            SwingUtilities.invokeAndWait {
-                val f = Frame("file-av-mouse")
-                val c = Canvas()
-                c.addMouseListener(
-                    object : MouseAdapter() {
-                        override fun mousePressed(e: MouseEvent) {
-                            clicks.incrementAndGet()
-                        }
-                    },
-                )
-                f.add(c)
-                f.setSize(640, 360)
-                f.isVisible = true
-                f.toFront()
-                FileAvNative.setVideoComponent(h, c)
-                frame.set(f)
-                canvas.set(c)
-            }
-            FileAvNative.setVideoEnabled(h, true)
-            FileAvNative.setBlitSize(h, 640, 360)
-            assertTrue(FileAvNative.open(h, path) == 0, FileAvNative.lastError(h))
-            FileAvNative.play(h)
-            pump(h, 400)
-            SwingUtilities.invokeAndWait {
-                val c = canvas.get()!!
-                val loc = c.locationOnScreen
-                val robot = Robot()
-                robot.autoDelay = 40
-                robot.mouseMove(loc.x + c.width / 2, loc.y + c.height / 2)
-                robot.mousePress(InputEvent.BUTTON1_DOWN_MASK)
-                robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
-            }
-            Thread.sleep(300)
-            println("overlay mouse clicks=${clicks.get()}")
-            assertTrue(clicks.get() > 0, "overlay swallowed mouse clicks=${clicks.get()}")
-        } finally {
-            FileAvNative.destroy(h)
-            SwingUtilities.invokeAndWait { frame.get()?.dispose() }
         }
     }
 

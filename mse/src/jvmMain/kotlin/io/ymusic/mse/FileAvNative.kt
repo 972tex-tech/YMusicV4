@@ -58,6 +58,25 @@ object FileAvNative {
     /** macOS: move the overlay to the Canvas screen rect. Safe from AWT during resize. */
     @JvmStatic external fun layoutVideo(x: Int, y: Int, w: Int, h: Int)
 
+    /**
+     * Overlay NSView mouse. [id] is `java.awt.event.MouseEvent` id; x/y are Java screen
+     * (top-left). Set [overlayMouse] from the desktop shell to copy into Compose.
+     */
+    @Volatile @JvmStatic
+    var overlayMouse: OverlayMouse? = null
+
+    @JvmStatic
+    fun onOverlayMouse(id: Int, xOnScreen: Int, yOnScreen: Int, modifiers: Int, button: Int, clickCount: Int, wheel: Int) {
+        if (id == 501 || id == 502) {
+            System.err.println("mse-v overlay-mouse id=$id @$xOnScreen,$yOnScreen sink=${overlayMouse != null}")
+        }
+        overlayMouse?.onMouse(id, xOnScreen, yOnScreen, modifiers, button, clickCount, wheel)
+    }
+
+    fun interface OverlayMouse {
+        fun onMouse(id: Int, xOnScreen: Int, yOnScreen: Int, modifiers: Int, button: Int, clickCount: Int, wheel: Int)
+    }
+
     /** memcpy [n] BGRA pixels into a `TYPE_INT_RGB` int array. */
     @JvmStatic external fun copyBgra(bgra: ByteBuffer, rgb: IntArray, n: Int)
 

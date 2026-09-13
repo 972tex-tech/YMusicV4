@@ -8,6 +8,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
+#import <math.h>
 #import <string.h>
 
 void *mse_vt_jawt_layer;
@@ -17,15 +18,136 @@ static NSWindow *mse_live_win;
 static int mse_pending_layout;
 static int mse_px, mse_py, mse_pw, mse_ph;
 
-/* Video sits on AWTView (log: AWTView's only subview). Returning nil from
-   hitTest lets AWT map the point to Canvas; Skia is not a sibling. Capture
-   and forward every mouse event to AWTView so Compose sees it. */
+/* Overlay sits on AWTView and takes the hit. Copy each NSEvent to Java
+   (FileAvNative.onOverlayMouse) so Compose's SwingPanel/Skia can dispatch it. */
+static JavaVM *mse_jvm;
+static jclass mse_native_cls;
+static jmethodID mse_mouse_mid;
+
+static void mse_bind_mouse_jni(JNIEnv *env)
+{
+    jclass local;
+    if (mse_jvm && mse_native_cls && mse_mouse_mid)
+        return;
+    if (!env)
+        return;
+    (*env)->GetJavaVM(env, &mse_jvm);
+    local = (*env)->FindClass(env, "io/ymusic/mse/FileAvNative");
+    if (!local) {
+        if ((*env)->ExceptionCheck(env))
+            (*env)->ExceptionClear(env);
+        mse_logf("mse-v mouse FindClass FileAvNative failed\n");
+        return;
+    }
+    mse_native_cls = (*env)->NewGlobalRef(env, local);
+    (*env)->DeleteLocalRef(env, local);
+    mse_mouse_mid = (*env)->GetStaticMethodID(env, mse_native_cls, "onOverlayMouse", "(IIIIIII)V");
+    if (!mse_mouse_mid) {
+        if ((*env)->ExceptionCheck(env))
+            (*env)->ExceptionClear(env);
+        mse_logf("mse-v mouse onOverlayMouse mid failed\n");
+    }
+}
+
+static jint mse_awt_mods(NSEvent *e)
+{
+    jint m = 0;
+    NSUInteger b = NSEvent.pressedMouseButtons;
+    if (e.modifierFlags & NSEventModifierFlagShift)
+        m |= 64;
+    if (e.modifierFlags & NSEventModifierFlagControl)
+        m |= 128;
+    if (e.modifierFlags & NSEventModifierFlagCommand)
+        m |= 256;
+    if (e.modifierFlags & NSEventModifierFlagOption)
+        m |= 512;
+    if (b & 1)
+        m |= 1024;
+    if (b & 4)
+        m |= 2048;
+    if (b & 2)
+        m |= 4096;
+    return m;
+}
+
+static jint mse_awt_id(NSEventType t)
+{
+    switch (t) {
+    case NSEventTypeLeftMouseDown:
+    case NSEventTypeRightMouseDown:
+    case NSEventTypeOtherMouseDown:
+        return 501;
+    case NSEventTypeLeftMouseUp:
+    case NSEventTypeRightMouseUp:
+    case NSEventTypeOtherMouseUp:
+        return 502;
+    case NSEventTypeMouseMoved:
+        return 503;
+    case NSEventTypeMouseEntered:
+        return 504;
+    case NSEventTypeMouseExited:
+        return 505;
+    case NSEventTypeLeftMouseDragged:
+    case NSEventTypeRightMouseDragged:
+    case NSEventTypeOtherMouseDragged:
+        return 506;
+    case NSEventTypeScrollWheel:
+        return 507;
+    default:
+        return 503;
+    }
+}
+
+static jint mse_awt_button(NSEventType t)
+{
+    switch (t) {
+    case NSEventTypeLeftMouseDown:
+    case NSEventTypeLeftMouseUp:
+    case NSEventTypeLeftMouseDragged:
+        return 1;
+    case NSEventTypeOtherMouseDown:
+    case NSEventTypeOtherMouseUp:
+    case NSEventTypeOtherMouseDragged:
+        return 2;
+    case NSEventTypeRightMouseDown:
+    case NSEventTypeRightMouseUp:
+    case NSEventTypeRightMouseDragged:
+        return 3;
+    default:
+        return 0;
+    }
+}
+
+static void mse_java_mouse(NSEvent *e)
+{
+    JNIEnv *env = NULL;
+    NSPoint scr;
+    CGFloat top;
+    jint x, y, wheel;
+
+    if (!e || !e.window || !mse_jvm || !mse_native_cls || !mse_mouse_mid)
+        return;
+    if ((*mse_jvm)->GetEnv(mse_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK)
+        (*mse_jvm)->AttachCurrentThread(mse_jvm, (void **)&env, NULL);
+    if (!env)
+        return;
+    scr = [e.window convertPointToScreen:e.locationInWindow];
+    top = e.window.screen ? NSMaxY(e.window.screen.frame) : NSMaxY(NSScreen.mainScreen.frame);
+    x = (jint)llround(scr.x);
+    y = (jint)llround(top - scr.y);
+    wheel = (e.type == NSEventTypeScrollWheel) ? (jint)llround(-e.scrollingDeltaY) : 0;
+    (*env)->CallStaticVoidMethod(env, mse_native_cls, mse_mouse_mid,
+                                 mse_awt_id(e.type), x, y, mse_awt_mods(e),
+                                 mse_awt_button(e.type), (jint)e.clickCount, wheel);
+    if ((*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+}
+
 @interface MseVtHostView : NSView
 @end
 @implementation MseVtHostView
 - (NSView *)hitTest:(NSPoint)point
 {
-    /* point is in superview coords; frame is too. */
     return NSPointInRect(point, self.frame) ? self : nil;
 }
 - (void)updateTrackingAreas
@@ -42,20 +164,19 @@ static int mse_px, mse_py, mse_pw, mse_ph;
             userInfo:nil];
     [self addTrackingArea:a];
 }
-#define MSE_FWD(sel) \
-    - (void)sel:(NSEvent *)e { NSView *n = self.superview; if (n) [n sel:e]; }
-MSE_FWD(mouseDown)
-MSE_FWD(mouseUp)
-MSE_FWD(mouseMoved)
-MSE_FWD(mouseDragged)
-MSE_FWD(mouseEntered)
-MSE_FWD(mouseExited)
-MSE_FWD(rightMouseDown)
-MSE_FWD(rightMouseUp)
-MSE_FWD(otherMouseDown)
-MSE_FWD(otherMouseUp)
-MSE_FWD(scrollWheel)
-#undef MSE_FWD
+#define MSE_JNI_MOUSE(sel) - (void)sel:(NSEvent *)e { mse_java_mouse(e); }
+MSE_JNI_MOUSE(mouseDown)
+MSE_JNI_MOUSE(mouseUp)
+MSE_JNI_MOUSE(mouseMoved)
+MSE_JNI_MOUSE(mouseDragged)
+MSE_JNI_MOUSE(mouseEntered)
+MSE_JNI_MOUSE(mouseExited)
+MSE_JNI_MOUSE(rightMouseDown)
+MSE_JNI_MOUSE(rightMouseUp)
+MSE_JNI_MOUSE(otherMouseDown)
+MSE_JNI_MOUSE(otherMouseUp)
+MSE_JNI_MOUSE(scrollWheel)
+#undef MSE_JNI_MOUSE
 @end
 
 static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h);
@@ -286,6 +407,7 @@ void *mse_vt_attach_component(void *envp, void *component)
 
     if (!env || !obj)
         return NULL;
+    mse_bind_mouse_jni(env);
     if (mse_java_screen_rect(env, obj, &jx, &jy, &jw, &jh) != 0)
         return mse_vt_jawt_layer;
     if (mse_vt_jawt_layer && mse_vt_jawt_view) {
