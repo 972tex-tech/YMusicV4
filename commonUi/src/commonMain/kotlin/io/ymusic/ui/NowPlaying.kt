@@ -576,22 +576,24 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
             tint = if (config.captionVisible) DesignColors.Accent else offTint,
             onClick = { open = true },
         )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            val off = !config.captionVisible
-            DropdownMenuItem(
-                text = { Text(if (off) "✓ ${stringResource(Res.string.captions_off)}" else stringResource(Res.string.captions_off)) },
-                onClick = { player.setCaptionVisible(false); open = false },
-            )
-            captions.tracks.forEach { t ->
-                val on = config.captionVisible && (t.id == captions.selectedLanguage || t.languageCode == captions.selectedLanguage)
+        if (open) {
+            DropdownMenu(expanded = true, onDismissRequest = { open = false }) {
+                val off = !config.captionVisible
                 DropdownMenuItem(
-                    text = { Text(if (on) "✓ ${t.displayName}" else t.displayName) },
-                    onClick = {
-                        player.selectCaption(t.id)
-                        player.setCaptionVisible(true)
-                        open = false
-                    },
+                    text = { Text(if (off) "✓ ${stringResource(Res.string.captions_off)}" else stringResource(Res.string.captions_off)) },
+                    onClick = { player.setCaptionVisible(false); open = false },
                 )
+                captions.tracks.forEach { t ->
+                    val on = config.captionVisible && (t.id == captions.selectedLanguage || t.languageCode == captions.selectedLanguage)
+                    DropdownMenuItem(
+                        text = { Text(if (on) "✓ ${t.displayName}" else t.displayName) },
+                        onClick = {
+                            player.selectCaption(t.id)
+                            player.setCaptionVisible(true)
+                            open = false
+                        },
+                    )
+                }
             }
         }
     }

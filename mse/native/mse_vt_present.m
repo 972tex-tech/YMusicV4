@@ -238,14 +238,12 @@ static int jawt_bind(void)
     return 1;
 }
 
-/* Never dispatch_sync: fullscreen exit runs AppKit on main while AWT holds the
-   resize/removeNotify, and a sync hop deadlocks the EDT. */
+/* Always async. AWT's EDT is AppKit main: inlining during Canvas removeNotify /
+   addNotify (mini player → Now Playing) re-enters AppKit while JAWT still owns
+   the surface and freezes the UI. Never dispatch_sync. */
 static void mse_on_main(void (^block)(void))
 {
-    if ([NSThread isMainThread])
-        block();
-    else
-        dispatch_async(dispatch_get_main_queue(), block);
+    dispatch_async(dispatch_get_main_queue(), block);
 }
 
 void mse_vt_jawt_unhost(void)

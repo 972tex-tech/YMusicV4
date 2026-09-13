@@ -57,6 +57,9 @@ internal actual fun VideoChromeLayer(
     var bounds by remember { mutableStateOf(ChromeBounds()) }
     var parked by remember { mutableStateOf(false) }
     var parkGen by remember { mutableIntStateOf(0) }
+    /* Don't spawn the overlay NSWindow in the same frame as JAWT re-attach
+       (mini → Now Playing). That freeze is EDT + AppKit re-entry. */
+    var chromeReady by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
@@ -88,6 +91,15 @@ internal actual fun VideoChromeLayer(
         parked = false
     }
 
+    LaunchedEffect(bounds.w, bounds.h) {
+        if (bounds.w <= 0 || bounds.h <= 0) {
+            chromeReady = false
+            return@LaunchedEffect
+        }
+        delay(50)
+        chromeReady = true
+    }
+
     Box(
         modifier.onGloballyPositioned { coords ->
             val owner = chromeOwner() ?: return@onGloballyPositioned
@@ -112,7 +124,7 @@ internal actual fun VideoChromeLayer(
         },
     )
 
-    if (bounds.w <= 0 || bounds.h <= 0) return
+    if (!chromeReady || bounds.w <= 0 || bounds.h <= 0) return
 
     val state = rememberWindowState(
         position = WindowPosition(bounds.x.dp, bounds.y.dp),
