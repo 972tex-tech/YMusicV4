@@ -17,6 +17,16 @@ static NSWindow *mse_live_win;
 static int mse_pending_layout;
 static int mse_px, mse_py, mse_pw, mse_ph;
 
+@interface MseVtHostView : NSView
+@end
+@implementation MseVtHostView
+- (NSView *)hitTest:(NSPoint)point
+{
+    (void)point;
+    return nil;
+}
+@end
+
 static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h);
 
 static void mse_clear_live_obs(void)
@@ -216,7 +226,7 @@ static void *mse_vt_host_new(CALayer *wl, jint x, jint y, jint w, jint h)
             return;
         }
         frame = mse_screen_to_view(parent, x, y, w, h);
-        host = [[NSView alloc] initWithFrame:frame];
+        host = [[MseVtHostView alloc] initWithFrame:frame];
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
         [parent addSubview:host];
