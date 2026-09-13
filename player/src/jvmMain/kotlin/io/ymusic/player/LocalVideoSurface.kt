@@ -75,12 +75,18 @@ class LocalVideoSurface {
         if (hole != null) hole(frame) else _frame.value = frame
     }
 
+    @Volatile
+    private var nativePresent = false
+
     /** HW present: no bitmap, only the overlay FPS counter. */
     internal fun presented() {
+        setNativePresent(true)
         tickFps()
     }
 
     internal fun setNativePresent(on: Boolean) {
+        if (nativePresent == on) return
+        nativePresent = on
         onNativePresent?.invoke(on)
         if (on) {
             swingBlit?.invoke(null)

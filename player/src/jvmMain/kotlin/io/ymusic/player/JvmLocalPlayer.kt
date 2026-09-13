@@ -387,6 +387,7 @@ internal class JvmLocalPlayer(
             videoSurface?.presented()
             return
         }
+        videoSurface?.setNativePresent(false)
         val img = grab(width, height)
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
         val n = minOf(pixels.size, width * height)

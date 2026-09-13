@@ -660,6 +660,19 @@ static void sws_apply_color(struct SwsContext *sws, const FileAv *p, const AVFra
 }
 
 #ifdef __APPLE__
+/* Prefer the overlay; CPU bitmap only if the layer cannot take BGRA. */
+static void emit_frame(FileAv *p, int w, int h)
+{
+    if (p->vt_layer && p->bgra &&
+        mse_vt_show_bgra(p->vt_layer, p->bgra, w, h) == 0) {
+        if (p->on_frame)
+            p->on_frame(p->user, w, h, NULL);
+        return;
+    }
+    if (p->on_frame)
+        p->on_frame(p->user, w, h, p->bgra);
+}
+
 static int present_vt(FileAv *p, AVFrame *fr)
 {
     int w, h, n;
@@ -687,8 +700,7 @@ static int present_vt(FileAv *p, AVFrame *fr)
         return -1;
     p->vw = w;
     p->vh = h;
-    if (p->on_frame)
-        p->on_frame(p->user, w, h, p->bgra);
+    emit_frame(p, w, h);
     return 0;
 }
 
@@ -722,8 +734,7 @@ static int present_sw_vt(FileAv *p, AVFrame *fr)
         return -1;
     p->vw = w;
     p->vh = h;
-    if (p->on_frame)
-        p->on_frame(p->user, w, h, p->bgra);
+    emit_frame(p, w, h);
     return 0;
 }
 #endif
@@ -786,8 +797,12 @@ static int present_video(FileAv *p, AVFrame *fr)
         return -1;
     p->vw = dw;
     p->vh = dh;
+#ifdef __APPLE__
+    emit_frame(p, dw, dh);
+#else
     if (p->on_frame)
         p->on_frame(p->user, dw, dh, p->bgra);
+#endif
     return 0;
 }
 
@@ -1565,6 +1580,10 @@ void file_av_close(FileAv *p)
     p->nstreams = 0;
     p->a_st = p->v_st = -1;
     p->vw = p->vh = 0;
+#ifdef __APPLE__
+    if (p->vt_layer)
+        mse_vt_flush(p->vt_layer);
+#endif
     pthread_mutex_unlock(&p->mu);
 }
 
