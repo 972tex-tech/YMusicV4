@@ -269,6 +269,21 @@ Java_io_ymusic_mse_FileAvNative_setVideoComponent(JNIEnv *env, jclass cls, jlong
 #endif
 }
 
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_layoutVideo(JNIEnv *env, jclass cls, jint x, jint y, jint w, jint h)
+{
+    (void)env;
+    (void)cls;
+#ifdef __APPLE__
+    mse_vt_layout_screen(x, y, w, h);
+#else
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+#endif
+}
+
 /* memcpy BGRA into TYPE_INT_RGB. IntBuffer.get of 4K is several ms. */
 JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_copyBgra(JNIEnv *env, jclass cls, jobject buf, jintArray rgb, jint n)

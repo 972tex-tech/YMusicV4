@@ -53,6 +53,9 @@ object FileAvNative {
     /** macOS: overlay VideoToolbox on a heavyweight AWT Canvas. */
     @JvmStatic external fun setVideoComponent(handle: Long, component: java.awt.Component?): Boolean
 
+    /** macOS: move the overlay to the Canvas screen rect. Safe from AWT during resize. */
+    @JvmStatic external fun layoutVideo(x: Int, y: Int, w: Int, h: Int)
+
     /** memcpy [n] BGRA pixels into a `TYPE_INT_RGB` int array. */
     @JvmStatic external fun copyBgra(bgra: ByteBuffer, rgb: IntArray, n: Int)
 

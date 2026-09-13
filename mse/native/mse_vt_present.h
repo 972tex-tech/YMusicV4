@@ -14,6 +14,8 @@ void *mse_vt_attach_component(void *env, void *component);
 /* Last JAWT-retained layer; detach CFReleases if it matches. */
 extern void *mse_vt_jawt_layer;
 void mse_vt_jawt_unhost(void);
+/* Canvas screen rect (AWT y-down). Async; does not hop the AWT thread. */
+void mse_vt_layout_screen(int x, int y, int w, int h);
 
 /* Borrowed AVSampleBufferDisplayLayer. Caller owns the layer. */
 void mse_vt_detach(void *layer);

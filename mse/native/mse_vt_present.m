@@ -33,19 +33,25 @@ static int jawt_bind(void)
     return 1;
 }
 
+/* Never dispatch_sync: fullscreen exit runs AppKit on main while AWT holds the
+   resize/removeNotify, and a sync hop deadlocks the EDT. */
+static void mse_on_main(void (^block)(void))
+{
+    if ([NSThread isMainThread])
+        block();
+    else
+        dispatch_async(dispatch_get_main_queue(), block);
+}
+
 void mse_vt_jawt_unhost(void)
 {
     NSView *v = mse_vt_jawt_view;
     mse_vt_jawt_view = nil;
     if (!v)
         return;
-    void (^rm)(void) = ^{
+    mse_on_main(^{
         [v removeFromSuperview];
-    };
-    if ([NSThread isMainThread])
-        rm();
-    else
-        dispatch_sync(dispatch_get_main_queue(), rm);
+    });
 }
 
 static NSView *mse_content_view(CALayer *wl)
@@ -66,7 +72,6 @@ static NSView *mse_content_view(CALayer *wl)
     if (!v)
         v = [NSApp keyWindow].contentView;
     theme = NSClassFromString(@"NSThemeFrame");
-    /* Theme frame rejects unknown subviews and sits under the title bar. */
     if (theme && [v isKindOfClass:theme])
         v = v.window.contentView;
     if (v.window.contentView)
@@ -105,7 +110,6 @@ static int mse_java_screen_rect(JNIEnv *env, jobject obj, jint *x, jint *y, jint
     return (*w > 0 && *h > 0) ? 0 : -1;
 }
 
-/* AWT locationOnScreen is top-left, y-down. Map into [parent]. */
 static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h)
 {
     NSRect screen, win;
@@ -116,50 +120,51 @@ static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h)
     return [parent convertRect:win fromView:nil];
 }
 
-static void *mse_vt_attach_main(id<JAWT_SurfaceLayers> sl, int have_java,
-                                jint jx, jint jy, jint jw, jint jh)
+void mse_vt_layout_screen(int x, int y, int w, int h)
 {
-    NSView *parent;
-    NSRect frame;
-    NSView *host;
+    if (w <= 0 || h <= 0)
+        return;
+    mse_on_main(^{
+        NSView *host = mse_vt_jawt_view;
+        NSView *parent = host.superview;
+        if (!host || !parent)
+            return;
+        host.frame = mse_screen_to_view(parent, x, y, w, h);
+    });
+}
+
+static void *mse_vt_host_new(CALayer *wl, jint x, jint y, jint w, jint h)
+{
     AVSampleBufferDisplayLayer *layer;
     void *retained;
 
-    if (!have_java) {
-        mse_logf("mse-v jawt no on-screen bounds, wait for layout\n");
-        return NULL;
-    }
-    parent = mse_content_view(sl.windowLayer);
-    if (!parent) {
-        mse_logf("mse-v jawt no content view\n");
-        return NULL;
-    }
-    frame = mse_screen_to_view(parent, jx, jy, jw, jh);
-    if (frame.size.width < 1 || frame.size.height < 1) {
-        mse_logf("mse-v jawt view frame empty\n");
-        return NULL;
-    }
-    if (mse_vt_jawt_view && mse_vt_jawt_layer) {
-        mse_vt_jawt_view.frame = frame;
-        mse_logf("mse-v jawt layer layout %.0fx%.0f @ %.0f,%.0f\n",
-                 frame.size.width, frame.size.height, frame.origin.x, frame.origin.y);
-        return mse_vt_jawt_layer;
-    }
     layer = [AVSampleBufferDisplayLayer layer];
     layer.videoGravity = AVLayerVideoGravityResizeAspect;
     layer.actions = @{ @"contents": [NSNull null], @"bounds": [NSNull null], @"frame": [NSNull null] };
-    host = [[NSView alloc] initWithFrame:frame];
-    host.wantsLayer = YES;
-    host.layer = layer;
-    [parent addSubview:host];
     retained = (void *)CFBridgingRetain(layer);
     if (mse_vt_jawt_layer && mse_vt_jawt_layer != retained)
         mse_vt_detach(mse_vt_jawt_layer);
     mse_vt_jawt_layer = retained;
-    mse_vt_jawt_view = host;
-    mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s flipped=%d\n",
-             frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
-             parent.className.UTF8String ?: "?", parent.flipped ? 1 : 0);
+    mse_on_main(^{
+        NSView *parent = mse_content_view(wl);
+        NSView *host;
+        NSRect frame;
+        if (mse_vt_jawt_layer != retained)
+            return;
+        if (!parent) {
+            mse_logf("mse-v jawt no content view\n");
+            return;
+        }
+        frame = mse_screen_to_view(parent, x, y, w, h);
+        host = [[NSView alloc] initWithFrame:frame];
+        host.wantsLayer = YES;
+        host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
+        [parent addSubview:host];
+        mse_vt_jawt_view = host;
+        mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
+                 frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
+                 parent.className.UTF8String ?: "?");
+    });
     return retained;
 }
 
@@ -172,11 +177,18 @@ void *mse_vt_attach_component(void *envp, void *component)
     JAWT_DrawingSurface *ds;
     JAWT_DrawingSurfaceInfo *dsi;
     id<JAWT_SurfaceLayers> sl;
-    jint lock, jx = 0, jy = 0, jw = 0, jh = 0, have_java = 0;
-    __block void *retained = NULL;
+    CALayer *wl;
+    jint jx = 0, jy = 0, jw = 0, jh = 0;
+    void *retained;
 
     if (!env || !obj)
         return NULL;
+    if (mse_java_screen_rect(env, obj, &jx, &jy, &jw, &jh) != 0)
+        return mse_vt_jawt_layer;
+    if (mse_vt_jawt_layer && mse_vt_jawt_view) {
+        mse_vt_layout_screen(jx, jy, jw, jh);
+        return mse_vt_jawt_layer;
+    }
     if (!jawt_bind())
         return NULL;
     canvas = (*env)->FindClass(env, "java/awt/Canvas");
@@ -197,8 +209,7 @@ void *mse_vt_attach_component(void *envp, void *component)
         mse_logf("mse-v jawt GetDrawingSurface failed\n");
         return NULL;
     }
-    lock = ds->Lock(ds);
-    if ((lock & JAWT_LOCK_ERROR) != 0) {
+    if ((ds->Lock(ds) & JAWT_LOCK_ERROR) != 0) {
         mse_logf("mse-v jawt Lock failed\n");
         awt.FreeDrawingSurface(ds);
         return NULL;
@@ -218,19 +229,11 @@ void *mse_vt_attach_component(void *envp, void *component)
         awt.FreeDrawingSurface(ds);
         return NULL;
     }
-    have_java = mse_java_screen_rect(env, obj, &jx, &jy, &jw, &jh) == 0;
-    {
-        void (^work)(void) = ^{
-            retained = mse_vt_attach_main(sl, have_java, jx, jy, jw, jh);
-        };
-        if ([NSThread isMainThread])
-            work();
-        else
-            dispatch_sync(dispatch_get_main_queue(), work);
-    }
+    wl = sl.windowLayer;
     ds->FreeDrawingSurfaceInfo(dsi);
     ds->Unlock(ds);
     awt.FreeDrawingSurface(ds);
+    retained = mse_vt_host_new(wl, jx, jy, jw, jh);
     return retained;
 }
 #endif

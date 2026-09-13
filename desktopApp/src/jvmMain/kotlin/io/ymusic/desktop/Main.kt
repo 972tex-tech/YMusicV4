@@ -61,6 +61,7 @@ import io.ymusic.mediascanner.MediaScanner
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
+import io.ymusic.mse.FileAvNative
 import io.ymusic.player.LocalPlayerContext
 import io.ymusic.player.LocalVideoSurface
 import io.ymusic.player.PlayerEngines
@@ -734,9 +735,9 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         canvas.background = AwtColor.BLACK
         canvas.addComponentListener(
             object : ComponentAdapter() {
-                override fun componentResized(e: ComponentEvent) {
-                    if (canvas.width > 0 && canvas.height > 0) onPeer?.invoke(canvas)
-                }
+                override fun componentResized(e: ComponentEvent) = layoutOverlay()
+
+                override fun componentMoved(e: ComponentEvent) = layoutOverlay()
             },
         )
         add(canvas, BorderLayout.CENTER)
@@ -744,6 +745,17 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     override fun doLayout() {
         canvas.setBounds(0, 0, width, height)
+        layoutOverlay()
+    }
+
+    private fun layoutOverlay() {
+        if (!canvas.isShowing || canvas.width <= 0 || canvas.height <= 0) return
+        val loc = try {
+            canvas.locationOnScreen
+        } catch (_: Exception) {
+            return
+        }
+        FileAvNative.layoutVideo(loc.x, loc.y, canvas.width, canvas.height)
     }
 
     override fun contains(x: Int, y: Int): Boolean = false

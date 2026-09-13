@@ -80,11 +80,7 @@ actual class MseVideoSurface {
             return nativePresent
         }
         if (SwingUtilities.isEventDispatchThread()) return bind()
-        var ok = false
-        try {
-            SwingUtilities.invokeAndWait { ok = bind() }
-        } catch (_: Exception) {
-        }
-        return ok
+        SwingUtilities.invokeLater { bind() }
+        return nativePresent
     }
 }

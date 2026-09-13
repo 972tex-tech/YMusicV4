@@ -144,16 +144,14 @@ internal class JvmLocalPlayer(
     private fun bindVideoComponent(h: Long, c: java.awt.Component?) {
         if (h == 0L) return
         fun bind() {
+            if (released) return
             val ok = FileAvNative.setVideoComponent(h, c)
             videoSurface?.setNativePresent(ok)
         }
         if (SwingUtilities.isEventDispatchThread()) {
             bind()
         } else {
-            try {
-                SwingUtilities.invokeAndWait { bind() }
-            } catch (_: Exception) {
-            }
+            SwingUtilities.invokeLater { bind() }
         }
     }
 
