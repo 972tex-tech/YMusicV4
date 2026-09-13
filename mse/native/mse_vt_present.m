@@ -8,7 +8,6 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
-#import <objc/runtime.h>
 #import <string.h>
 
 void *mse_vt_jawt_layer;
@@ -18,100 +17,46 @@ static NSWindow *mse_live_win;
 static int mse_pending_layout;
 static int mse_px, mse_py, mse_pw, mse_ph;
 
+/* Video sits on AWTView (log: AWTView's only subview). Returning nil from
+   hitTest lets AWT map the point to Canvas; Skia is not a sibling. Capture
+   and forward every mouse event to AWTView so Compose sees it. */
 @interface MseVtHostView : NSView
 @end
 @implementation MseVtHostView
 - (NSView *)hitTest:(NSPoint)point
 {
-    (void)point;
-    return nil;
+    /* point is in superview coords; frame is too. */
+    return NSPointInRect(point, self.frame) ? self : nil;
 }
+- (void)updateTrackingAreas
+{
+    NSTrackingArea *a;
+    [super updateTrackingAreas];
+    for (a in [self.trackingAreas copy])
+        [self removeTrackingArea:a];
+    a = [[NSTrackingArea alloc]
+        initWithRect:self.bounds
+             options:NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited |
+                     NSTrackingActiveAlways | NSTrackingInVisibleRect
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:a];
+}
+#define MSE_FWD(sel) \
+    - (void)sel:(NSEvent *)e { NSView *n = self.superview; if (n) [n sel:e]; }
+MSE_FWD(mouseDown)
+MSE_FWD(mouseUp)
+MSE_FWD(mouseMoved)
+MSE_FWD(mouseDragged)
+MSE_FWD(mouseEntered)
+MSE_FWD(mouseExited)
+MSE_FWD(rightMouseDown)
+MSE_FWD(rightMouseUp)
+MSE_FWD(otherMouseDown)
+MSE_FWD(otherMouseUp)
+MSE_FWD(scrollWheel)
+#undef MSE_FWD
 @end
-
-static int mse_is_compose_view(NSView *v)
-{
-    const char *n = v.className.UTF8String ?: "";
-    return strstr(n, "Skia") || strstr(n, "Skiko") || strstr(n, "Metal") ||
-           strstr(n, "Hardware") || strstr(n, "Compose");
-}
-
-static NSView *mse_find_skia(NSView *parent)
-{
-    NSView *best = nil;
-    CGFloat best_a = 0;
-    NSView *v, *n;
-    if (!parent)
-        return nil;
-    for (v in parent.subviews) {
-        CGFloat a;
-        if ([v isKindOfClass:[MseVtHostView class]] || v == mse_vt_jawt_view)
-            continue;
-        if (mse_is_compose_view(v))
-            return v;
-        n = mse_find_skia(v);
-        if (n && mse_is_compose_view(n))
-            return n;
-        a = v.frame.size.width * v.frame.size.height;
-        if (a > best_a) {
-            best_a = a;
-            best = v;
-        }
-    }
-    return best;
-}
-
-static IMP mse_awt_hit_orig;
-
-static NSView *mse_awt_hitTest(id self, SEL sel, NSPoint p)
-{
-    NSView *host = mse_vt_jawt_view;
-    NSPoint in_self;
-    if (host && host.superview == self) {
-        in_self = [self convertPoint:p fromView:[self superview]];
-        if (NSPointInRect(in_self, host.frame)) {
-            NSView *skia = mse_find_skia(self);
-            if (skia) {
-                NSPoint ps = [skia.superview convertPoint:in_self fromView:self];
-                NSView *hit = [skia hitTest:ps];
-                return hit ? hit : skia;
-            }
-            return self;
-        }
-    }
-    if (mse_awt_hit_orig)
-        return ((NSView *(*)(id, SEL, NSPoint))mse_awt_hit_orig)(self, sel, p);
-    return nil;
-}
-
-static void mse_swizzle_awt_hit(NSView *parent)
-{
-    Method m;
-    Class c;
-    if (!parent || mse_awt_hit_orig)
-        return;
-    c = object_getClass(parent);
-    m = class_getInstanceMethod(c, @selector(hitTest:));
-    if (!m)
-        return;
-    mse_awt_hit_orig = method_setImplementation(m, (IMP)mse_awt_hitTest);
-    mse_logf("mse-v swizzle hitTest %s\n", class_getName(c));
-}
-
-static void mse_log_views(NSView *v, int depth)
-{
-    char pad[8];
-    NSView *c;
-    if (!v || depth > 5)
-        return;
-    memset(pad, ' ', (size_t)depth);
-    pad[depth] = 0;
-    mse_logf("mse-v %s%s %.0fx%.0f @ %.0f,%.0f\n", pad,
-             v.className.UTF8String ?: "?",
-             v.frame.size.width, v.frame.size.height,
-             v.frame.origin.x, v.frame.origin.y);
-    for (c in v.subviews)
-        mse_log_views(c, depth + 1);
-}
 
 static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h);
 
@@ -316,10 +261,9 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
         [parent addSubview:host];
+        host.window.acceptsMouseMovedEvents = YES;
         mse_vt_jawt_view = host;
         (void)canvas_layer;
-        mse_swizzle_awt_hit(parent);
-        mse_log_views(parent, 0);
         mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
                  frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
                  parent.className.UTF8String ?: "?");
