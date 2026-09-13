@@ -66,6 +66,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -430,6 +431,8 @@ private fun LandscapeNowPlaying(
 private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable BoxScope.() -> Unit) {
     var visible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
+    val nativePokes = VideoOverlayNative.pokes
+    SideEffect { VideoOverlayNative.shown = visible }
     // The tap catcher sits under the controls: taps on a control hit the control; taps on the bare
     // video (or anywhere while hidden) land here and toggle.
     Box(
@@ -453,6 +456,12 @@ private fun BoxScope.AutoHidingOverlay(playing: Boolean, content: @Composable Bo
                 }
             },
     )
+    // Native NSView clicks/moves after the chrome window goes click-through.
+    LaunchedEffect(nativePokes) {
+        if (nativePokes == 0) return@LaunchedEffect
+        visible = true
+        interaction++
+    }
     // Pausing brings the controls back (a transition, not a hold — a tap can still hide them).
     LaunchedEffect(playing) {
         if (!playing) visible = true

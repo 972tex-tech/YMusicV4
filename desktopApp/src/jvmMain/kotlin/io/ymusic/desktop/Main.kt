@@ -84,6 +84,7 @@ import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.WebViewSabrSpecResolver
 import io.ymusic.ui.downloadCaptionPreference
 import io.ymusic.ui.downloadLocationFolder
@@ -613,6 +614,12 @@ private fun DesktopPlayerSurface(
     val localPanel = remember { MseVideoPanel() }
     DisposableEffect(msePanel, localPanel) {
         FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, x, y, mods, button, clicks, wheel ->
+            when (id) {
+                MouseEvent.MOUSE_RELEASED ->
+                    SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
+                MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_ENTERED ->
+                    SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = false) }
+            }
             val panel = if (localPanel.isShowing) localPanel else msePanel
             panel.dispatchOverlayMouse(id, x, y, mods, button, clicks, wheel)
         }

@@ -136,6 +136,14 @@ internal actual fun VideoChromeLayer(
         alwaysOnTop = false,
         title = "YMusic video chrome",
     ) {
+        DisposableEffect(window) {
+            val w = window
+            val raise = { if (w.isDisplayable && w.isShowing) w.toFront() }
+            VideoOverlayNative.raiseWindow = raise
+            onDispose {
+                if (VideoOverlayNative.raiseWindow === raise) VideoOverlayNative.raiseWindow = null
+            }
+        }
         Box(Modifier.fillMaxSize(), content = holder.content)
     }
 }
