@@ -11,13 +11,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogModalityType
 import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import kotlinx.coroutines.delay
@@ -42,6 +45,7 @@ private const val EDGE_PAD = 8
  * Captions + transport in a transparent Compose window above the JAWT video view.
  * Headless: in-place Box (UI tests).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal actual fun VideoChromeLayer(
     modifier: Modifier,
@@ -123,17 +127,19 @@ internal actual fun VideoChromeLayer(
         state.size = DpSize(bounds.w.dp, bounds.h.dp)
     }
 
-    /* Owned dialog stays above the player window without toFront() on activate,
-       which was flashing the overlay when clicking the queue. */
+    /* Modeless: the default DocumentModal dialog flashes when the parent is clicked
+       (queue panel). Owned + modeless stays above without restacking. */
     DialogWindow(
         onCloseRequest = {},
         state = state,
         visible = !parked,
-        undecorated = true,
+        title = "YMusic video chrome",
+        decoration = WindowDecoration.Undecorated(),
         transparent = true,
         resizable = false,
-        focusable = true,
-        title = "YMusic video chrome",
+        focusable = false,
+        alwaysOnTop = false,
+        modalityType = DialogModalityType.Modeless,
     ) {
         Box(Modifier.fillMaxSize(), content = holder.content)
     }
