@@ -123,6 +123,7 @@ struct FileAv {
     int out_rate, out_ch;
     int64_t samples_played;
     double seek_base;
+    double dac_tick_ns;
     float volume;
 #endif
 };
@@ -317,9 +318,23 @@ static double media_time_locked(FileAv *p)
 {
     double t = p->hold < 0 ? 0 : p->hold;
 #ifdef __APPLE__
-    /* Gold: samples the AudioQueue has taken, not wall time. */
-    if (p->playing && p->dac_started && p->out_rate > 0 && p->samples_played > 0) {
+    /* Gold: AudioQueue samples_played, interpolated between callbacks.
+       Counting only at 2048-frame (~42ms) callbacks jumped the clock past
+       V_STALE and dropped every other 60fps picture. */
+    if (p->playing && p->dac_started && p->out_rate > 0) {
         t = p->seek_base + (double)p->samples_played / (double)p->out_rate * p->speed;
+        if (p->dac_tick_ns > 0) {
+            double extra = (now_ns() - p->dac_tick_ns) / 1e9 * p->speed;
+            double one = 0.012;
+            if (p->dac_buf_bytes > 0) {
+                int fb = p->out_ch > 0 ? p->out_ch * 2 : OUT_CH * 2;
+                one = (double)p->dac_buf_bytes / (double)(p->out_rate * fb) * p->speed;
+            }
+            if (extra > one)
+                extra = one;
+            if (extra > 0)
+                t += extra;
+        }
         if (t < 0)
             t = 0;
         if (p->duration > 0 && t > p->duration)
@@ -851,8 +866,10 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         cap = (int)buf->mAudioDataBytesCapacity;
     if (!p->stop && !p->flushing && p->playing && p->ring)
         n = ring_read(p, (uint8_t *)buf->mAudioData, cap);
-    if (n > 0 && p->out_rate > 0)
+    if (n > 0 && p->out_rate > 0) {
         p->samples_played += n / ring_fb(p);
+        p->dac_tick_ns = now_ns();
+    }
     pthread_cond_broadcast(&p->cv);
     pthread_mutex_unlock(&p->mu);
     if (n <= 0) {
@@ -882,7 +899,7 @@ static int start_aq(FileAv *p)
     fmt.mChannelsPerFrame = (UInt32)ch;
     fmt.mBitsPerChannel = 16;
     cap = rate * ch * 2;
-    buf_bytes = 2048 * ch * 2;
+    buf_bytes = 512 * ch * 2;
     pthread_mutex_unlock(&p->mu);
     if (AudioQueueNewOutput(&fmt, aq_callback, p, NULL, kCFRunLoopCommonModes, 0, &aq) != 0) {
         pthread_mutex_lock(&p->mu);
@@ -1073,6 +1090,7 @@ static void *a_loop(void *arg)
             if (p->dac && !p->dac_started && ring_ms(p) >= 160) {
                 p->dac_started = 1;
                 p->samples_played = 0;
+                p->dac_tick_ns = now_ns();
                 start_q = p->dac;
             }
         }
@@ -1480,6 +1498,7 @@ int file_av_open(FileAv *p, const char *path)
     p->seek_base = 0;
     p->samples_played = 0;
     p->dac_started = 0;
+    p->dac_tick_ns = 0;
 #endif
     p->last_vpts = -1;
     p->logged_drop = 0;
@@ -1566,6 +1585,8 @@ void file_av_play(FileAv *p)
 #ifdef __APPLE__
         if (!p->dac_started)
             p->seek_base = p->hold;
+        else
+            p->dac_tick_ns = now_ns();
         aq = p->dac;
         started = p->dac_started;
 #endif
@@ -1591,6 +1612,7 @@ void file_av_pause(FileAv *p)
         p->playing = 0;
         p->origin_ns = 0;
 #ifdef __APPLE__
+        p->dac_tick_ns = 0;
         aq = p->dac;
 #endif
         pthread_cond_broadcast(&p->cv);
@@ -1648,6 +1670,7 @@ void file_av_seek(FileAv *p, double seconds)
     p->seek_base = seconds;
     p->samples_played = 0;
     p->dac_started = 0;
+    p->dac_tick_ns = 0;
     p->ring_r = p->ring_w = p->ring_n = 0;
 #endif
     pthread_cond_broadcast(&p->cv);
@@ -1666,6 +1689,7 @@ void file_av_set_speed(FileAv *p, double speed)
     p->seek_base = p->hold;
     p->samples_played = 0;
     p->origin_ns = 0;
+    p->dac_tick_ns = p->playing ? now_ns() : 0;
     p->ring_r = p->ring_w = p->ring_n = 0;
 #else
     if (p->playing)
