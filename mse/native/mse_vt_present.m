@@ -9,6 +9,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
 #import <math.h>
+#import <objc/runtime.h>
 #import <string.h>
 
 void *mse_vt_jawt_layer;
@@ -248,6 +249,30 @@ void mse_vt_jawt_unhost(void)
     });
 }
 
+static int mse_opaque_swizzled;
+
+static BOOL mse_isOpaque_no(id self, SEL sel)
+{
+    (void)self;
+    (void)sel;
+    return NO;
+}
+
+static void mse_swizzle_isOpaque(NSView *v)
+{
+    Class c;
+    Method m;
+    const char *types;
+    if (mse_opaque_swizzled || !v)
+        return;
+    c = object_getClass(v);
+    m = class_getInstanceMethod(c, @selector(isOpaque));
+    types = m ? method_getTypeEncoding(m) : "B@:";
+    class_replaceMethod(c, @selector(isOpaque), (IMP)mse_isOpaque_no, types);
+    mse_opaque_swizzled = 1;
+    mse_logf("mse-v swizzle isOpaque %s\n", class_getName(c));
+}
+
 static NSView *mse_content_view(CALayer *wl)
 {
     NSView *v = nil;
@@ -387,6 +412,9 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         host = [[MseVtHostView alloc] initWithFrame:frame];
         host.wantsLayer = YES;
         host.layer = (__bridge AVSampleBufferDisplayLayer *)retained;
+        /* Sibling-under-AWTView is black unless AWTView composites as
+           transparent: isOpaque is readonly, so swizzle the class. */
+        mse_swizzle_isOpaque(awt);
         if (awt.layer)
             awt.layer.opaque = NO;
         if (parent != awt)
