@@ -709,12 +709,13 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             override fun contains(x: Int, y: Int): Boolean = false
 
             override fun paint(g: Graphics) {
+                /* HW overlay letterbox is transparent; this fill is the hole, not a VT sample. */
+                g.color = AwtColor.BLACK
+                g.fillRect(0, 0, width, height)
                 val image = img
                 if (image == null || hardware) return
                 onPainted?.invoke(image)
                 val g2 = g as Graphics2D
-                g2.color = AwtColor.BLACK
-                g2.fillRect(0, 0, width, height)
                 val scale = min(width / image.width.toDouble(), height / image.height.toDouble())
                 val dw = (image.width * scale).toInt().coerceAtLeast(1)
                 val dh = (image.height * scale).toInt().coerceAtLeast(1)
@@ -779,7 +780,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     fun setHardware(on: Boolean) {
         hardware = on
-        canvas.ignoreRepaint = on
         if (on) img = null
         canvas.repaint()
     }

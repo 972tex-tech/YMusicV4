@@ -284,7 +284,8 @@ private fun PortraitNowPlaying(
         PlayerTopBar(coordinator, sleepMs, onClose)
 
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF222222))) {
+        // Black: HW overlay letterbox is transparent, so this fill is the bars.
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
             PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
             // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
@@ -386,7 +387,8 @@ private fun LandscapeNowPlaying(
     val current = queue.currentItem
 
     Row(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF222222))) {
+        // Black: HW overlay letterbox is transparent, so this fill is the bars.
+        Box(Modifier.weight(1f).fillMaxHeight().background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
             PlayerCaptionOverlay(player, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 8.dp))
             AutoHidingOverlay(playing = status.playWhenReady) {
