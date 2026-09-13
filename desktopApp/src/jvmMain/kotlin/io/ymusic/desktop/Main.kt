@@ -689,6 +689,10 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     @Volatile var onPeer: ((Canvas?) -> Unit)? = null
     private val pending = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var overlayX = Int.MIN_VALUE
+    private var overlayY = Int.MIN_VALUE
+    private var overlayW = 0
+    private var overlayH = 0
     private val canvas =
         object : Canvas() {
             override fun addNotify() {
@@ -697,6 +701,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             }
 
             override fun removeNotify() {
+                overlayX = Int.MIN_VALUE
                 onPeer?.invoke(null)
                 super.removeNotify()
             }
@@ -745,7 +750,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     override fun doLayout() {
         canvas.setBounds(0, 0, width, height)
-        layoutOverlay()
     }
 
     private fun layoutOverlay() {
@@ -755,6 +759,11 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         } catch (_: Exception) {
             return
         }
+        if (loc.x == overlayX && loc.y == overlayY && canvas.width == overlayW && canvas.height == overlayH) return
+        overlayX = loc.x
+        overlayY = loc.y
+        overlayW = canvas.width
+        overlayH = canvas.height
         FileAvNative.layoutVideo(loc.x, loc.y, canvas.width, canvas.height)
     }
 

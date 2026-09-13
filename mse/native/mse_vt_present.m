@@ -124,12 +124,18 @@ void mse_vt_layout_screen(int x, int y, int w, int h)
 {
     if (w <= 0 || h <= 0)
         return;
-    mse_on_main(^{
+    /* Always async: inlining on main from AWT doLayout set the NSView frame,
+       which re-entered AWT layout (~300% CPU). */
+    dispatch_async(dispatch_get_main_queue(), ^{
         NSView *host = mse_vt_jawt_view;
         NSView *parent = host.superview;
+        NSRect frame;
         if (!host || !parent)
             return;
-        host.frame = mse_screen_to_view(parent, x, y, w, h);
+        frame = mse_screen_to_view(parent, x, y, w, h);
+        if (NSEqualRects(host.frame, frame))
+            return;
+        host.frame = frame;
     });
 }
 
