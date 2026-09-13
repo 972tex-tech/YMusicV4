@@ -571,7 +571,7 @@ private fun BoxScope.PlayerCaptionOverlay(
     val bottom by animateDpAsState(if (overlayVisible) 72.dp else 12.dp)
     CaptionOverlay(
         lines,
-        Modifier.align(Alignment.BottomCenter).padding(bottom = bottom),
+        Modifier.align(Alignment.BottomStart).padding(bottom = bottom),
     )
 }
 

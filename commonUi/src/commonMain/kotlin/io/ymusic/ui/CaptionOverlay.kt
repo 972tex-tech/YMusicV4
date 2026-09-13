@@ -90,13 +90,13 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     }
 
     Box(
-        modifier = modifier.height(lineH * 2).fillMaxWidth().padding(horizontal = 12.dp).clipToBounds(),
-        contentAlignment = Alignment.TopCenter,
+        modifier = modifier.height(lineH * 2).fillMaxWidth().padding(start = 28.dp, end = 12.dp).clipToBounds(),
+        contentAlignment = Alignment.TopStart,
     ) {
         val pad = (2 - columnIds.size).coerceAtLeast(0)
         Column(
             Modifier.graphicsLayer { translationY = offset.value },
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = Alignment.Start,
         ) {
             repeat(pad) { Spacer(Modifier.height(lineH)) }
             val wrap = columnIds.count { it >= 0 } <= 1
@@ -114,7 +114,7 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
 private fun CaptionLineRow(text: String, lineH: Dp, maxLines: Int) {
     Box(
         Modifier.height(lineH * maxLines),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterStart,
     ) {
         if (text.isNotEmpty()) {
             Text(
@@ -123,7 +123,7 @@ private fun CaptionLineRow(text: String, lineH: Dp, maxLines: Int) {
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = maxLines,
                 overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
+                textAlign = TextAlign.Start,
                 modifier = Modifier
                     .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 2.dp),
