@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,13 +90,15 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
         offset.snapTo(0f)
     }
 
-    Box(
-        modifier = modifier.height(lineH * 2).fillMaxWidth().padding(start = 28.dp, end = 12.dp).clipToBounds(),
+    BoxWithConstraints(
+        modifier = modifier.height(lineH * 2).fillMaxWidth().clipToBounds(),
         contentAlignment = Alignment.TopStart,
     ) {
         val pad = (2 - columnIds.size).coerceAtLeast(0)
         Column(
-            Modifier.graphicsLayer { translationY = offset.value },
+            Modifier
+                .padding(start = maxWidth * 0.2f, end = 12.dp)
+                .graphicsLayer { translationY = offset.value },
             horizontalAlignment = Alignment.Start,
         ) {
             repeat(pad) { Spacer(Modifier.height(lineH)) }
