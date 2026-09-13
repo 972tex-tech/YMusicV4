@@ -50,6 +50,9 @@ object FileAvNative {
     /** Fit the presented frame inside [w]×[h]. 0 on a side means unconstrained. */
     @JvmStatic external fun setBlitSize(handle: Long, w: Int, h: Int)
 
+    /** memcpy [n] BGRA pixels into a `TYPE_INT_RGB` int array. */
+    @JvmStatic external fun copyBgra(bgra: ByteBuffer, rgb: IntArray, n: Int)
+
     @JvmStatic external fun duration(handle: Long): Double
 
     @JvmStatic external fun position(handle: Long): Double

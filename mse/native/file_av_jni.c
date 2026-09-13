@@ -244,6 +244,25 @@ Java_io_ymusic_mse_FileAvNative_setBlitSize(JNIEnv *env, jclass cls, jlong handl
     file_av_set_blit_size((FileAv *)(intptr_t)handle, w, h);
 }
 
+/* memcpy BGRA into TYPE_INT_RGB. IntBuffer.get of 4K is several ms. */
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_copyBgra(JNIEnv *env, jclass cls, jobject buf, jintArray rgb, jint n)
+{
+    void *src;
+    jint *dst;
+    (void)cls;
+    if (!buf || !rgb || n <= 0)
+        return;
+    src = (*env)->GetDirectBufferAddress(env, buf);
+    if (!src)
+        return;
+    dst = (*env)->GetPrimitiveArrayCritical(env, rgb, NULL);
+    if (!dst)
+        return;
+    memcpy(dst, src, (size_t)n * 4u);
+    (*env)->ReleasePrimitiveArrayCritical(env, rgb, dst, 0);
+}
+
 JNIEXPORT jdouble JNICALL
 Java_io_ymusic_mse_FileAvNative_duration(JNIEnv *env, jclass cls, jlong handle)
 {

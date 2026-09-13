@@ -141,7 +141,6 @@ class FileAvNativeTest {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
             FileAvNative.step(handle)
-            Thread.sleep(4)
         }
     }
 

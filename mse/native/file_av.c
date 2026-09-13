@@ -29,6 +29,11 @@
 
 #define OUT_RATE 48000
 #define OUT_CH 2
+#define V_EARLY 0.001
+#define V_STALE 0.020
+#define VOUT_N 4
+#define MAX_DROP 2
+#define IDLE_NS_MAX (16 * 1000 * 1000)
 
 
 enum { ST_AUDIO = 0, ST_VIDEO = 1, ST_TEXT = 2 };
@@ -52,9 +57,12 @@ struct FileAv {
     pthread_t th;
     int th_on;
     int stop;
+    int dec_busy;
+    int dec_epoch;
+    int fmt_eof;
+    int dec_drain;
     int opened;
     int playing;
-    int in_pump;
     int ended;
     int want_video;
     int audio_index; /* -1 = first audio */
@@ -65,6 +73,9 @@ struct FileAv {
     double origin_ns;
     double duration;
     double last_prog_ns;
+    double last_vpts;
+    int64_t idle_ns;
+    int logged_drop;
     char err[256];
 
     AVFormatContext *fmt;
@@ -80,7 +91,9 @@ struct FileAv {
     int bgra_n;
     int vw, vh;
     Pq aq, vq;
-    AVFrame *afr, *vfr, *vhold, *vsw;
+    AVFrame *afr, *vfr, *vsw;
+    AVFrame *vout[VOUT_N];
+    int vout_rd, vout_n;
     StreamInfo *streams;
     int nstreams;
 
@@ -158,6 +171,48 @@ static AVPacket *pq_pop(Pq *q)
     return pkt;
 }
 
+static void vout_clear(FileAv *p)
+{
+    while (p->vout_n > 0) {
+        av_frame_unref(p->vout[p->vout_rd]);
+        p->vout_rd = (p->vout_rd + 1) % VOUT_N;
+        p->vout_n--;
+    }
+}
+
+static AVFrame *vout_head(FileAv *p)
+{
+    return p->vout_n > 0 ? p->vout[p->vout_rd] : NULL;
+}
+
+static void vout_pop(FileAv *p)
+{
+    if (p->vout_n <= 0)
+        return;
+    av_frame_unref(p->vout[p->vout_rd]);
+    p->vout_rd = (p->vout_rd + 1) % VOUT_N;
+    p->vout_n--;
+    pthread_cond_broadcast(&p->cv);
+}
+
+static int vout_push(FileAv *p, AVFrame *src)
+{
+    int i;
+    if (p->vout_n >= VOUT_N || !src)
+        return -1;
+    i = (p->vout_rd + p->vout_n) % VOUT_N;
+    if (!p->vout[i]) {
+        p->vout[i] = av_frame_alloc();
+        if (!p->vout[i])
+            return -1;
+    }
+    av_frame_unref(p->vout[i]);
+    if (av_frame_ref(p->vout[i], src) < 0)
+        return -1;
+    p->vout_n++;
+    return 0;
+}
+
 static const AVCodec *find_vdec(enum AVCodecID id)
 {
     const AVCodec *c;
@@ -214,15 +269,20 @@ static AVCodecContext *open_codec(AVStream *st, int video)
     if (video) {
         AVBufferRef *hw = NULL;
         ctx->get_format = get_format_prefer_hw;
-        if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) == 0)
+        if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) == 0) {
             ctx->hw_device_ctx = hw;
-        else
+            ctx->extra_hw_frames = 4;
+        } else {
             ctx->thread_count = 0;
+        }
     }
     if (avcodec_open2(ctx, c, NULL) < 0) {
         avcodec_free_context(&ctx);
         return NULL;
     }
+    if (video)
+        mse_logf("file-av open %s %dx%d vt=%d\n", c->name, ctx->width, ctx->height,
+                 ctx->hw_device_ctx ? 1 : 0);
     return ctx;
 }
 
@@ -265,7 +325,7 @@ static void free_codecs(FileAv *p)
     p->bgra_n = 0;
     pq_clear(&p->aq);
     pq_clear(&p->vq);
-    av_frame_free(&p->vhold);
+    vout_clear(p);
     av_frame_free(&p->vsw);
 #ifdef __APPLE__
     mse_vt_blit_free(&p->vt_blit);
@@ -760,97 +820,163 @@ static int pump_audio(FileAv *p, double clock)
     }
 }
 
-static void present_held(FileAv *p, AVFrame **held)
+static void set_idle(FileAv *p, double sec)
 {
-    AVFrame *h = *held;
-    if (!h)
-        return;
-    *held = NULL;
-    pthread_mutex_unlock(&p->mu);
-    present_video(p, h);
-    pthread_mutex_lock(&p->mu);
-    av_frame_unref(h);
-    av_frame_free(&h);
+    int64_t ns;
+    if (sec < 0)
+        sec = 0;
+    ns = (int64_t)(sec * 1e9);
+    if (ns > IDLE_NS_MAX)
+        ns = IDLE_NS_MAX;
+    p->idle_ns = ns;
 }
 
+static int hole_ready(const FileAv *p)
+{
+    return p->blit_w > 0 || p->blit_h > 0;
+}
+
+static int present_head(FileAv *p)
+{
+    AVFrame *fr = vout_head(p);
+    AVStream *st = (p->fmt && p->v_st >= 0) ? p->fmt->streams[p->v_st] : NULL;
+    double pts;
+    if (!fr)
+        return 0;
+    pts = frame_pts(st, fr, 0);
+    p->idle_ns = 0;
+    p->last_vpts = pts;
+    pthread_mutex_unlock(&p->mu);
+    present_video(p, fr);
+    pthread_mutex_lock(&p->mu);
+    if (p->playing && p->origin_ns == 0)
+        p->origin_ns = now_ns();
+    vout_pop(p);
+    return 0;
+}
+
+/* 1x clock. Show the due head; drop at most two already-stale pictures. */
 static int pump_video(FileAv *p, double clock)
 {
     AVStream *st = (p->fmt && p->v_st >= 0) ? p->fmt->streams[p->v_st] : NULL;
-    int spins;
-    if (!p->vdec)
+    AVFrame *fr;
+    double pts;
+    int drops;
+    if (!p->vdec || !p->want_video)
         return 0;
-
-    /* Drop late frames without blitting so a slow 4K convert cannot turn 1x into slow-mo. */
-    for (spins = 0; spins < 24; spins++) {
-        AVPacket *pkt;
-        int got;
-        double pts;
-        AVFrame *fr;
-        clock = media_time_locked(p);
-
-        if (p->vhold) {
-            pts = frame_pts(st, p->vhold, clock);
-            if (pts > clock + 0.04)
-                return 0;
-            if (pts + 0.05 < clock) {
-                av_frame_unref(p->vhold);
-                av_frame_free(&p->vhold);
-                continue;
-            }
-            present_held(p, &p->vhold);
-            return 0;
+    if (!hole_ready(p)) {
+        set_idle(p, 0.004);
+        return 0;
+    }
+    clock = media_time_locked(p);
+    drops = 0;
+    while (drops < MAX_DROP && p->vout_n >= 2) {
+        pts = frame_pts(st, vout_head(p), clock);
+        if (pts + V_STALE >= clock)
+            break;
+        if (p->logged_drop < 8) {
+            p->logged_drop++;
+            mse_logf("file-av drop-stale pts=%.3f clock=%.3f\n", pts, clock);
         }
+        vout_pop(p);
+        drops++;
+    }
+    fr = vout_head(p);
+    if (!fr) {
+        set_idle(p, 0.004);
+        return 0;
+    }
+    pts = frame_pts(st, fr, clock);
+    if (p->origin_ns == 0)
+        return present_head(p);
+    if (pts > clock + V_EARLY) {
+        set_idle(p, pts - clock - V_EARLY);
+        return 0;
+    }
+    return present_head(p);
+}
 
+static void *dec_loop(void *arg)
+{
+    FileAv *p = arg;
+    for (;;) {
+        AVPacket *pkt;
+        int got, epoch;
+        pthread_mutex_lock(&p->mu);
+        for (;;) {
+            if (p->stop) {
+                pthread_mutex_unlock(&p->mu);
+                return NULL;
+            }
+            if (p->opened && p->playing && p->vdec && p->want_video && p->vout_n < VOUT_N)
+                break;
+            pthread_cond_wait(&p->cv, &p->mu);
+        }
+        epoch = p->dec_epoch;
+        p->dec_busy = 1;
         pthread_mutex_unlock(&p->mu);
+
         got = avcodec_receive_frame(p->vdec, p->vfr);
         pthread_mutex_lock(&p->mu);
-        if (!p->opened || !p->vdec)
-            return 0;
-
+        if (p->stop || !p->opened || !p->vdec || epoch != p->dec_epoch) {
+            av_frame_unref(p->vfr);
+            p->dec_busy = 0;
+            pthread_cond_broadcast(&p->cv);
+            pthread_mutex_unlock(&p->mu);
+            continue;
+        }
         if (got == AVERROR(EAGAIN)) {
-            if (p->vq.rd >= p->vq.n)
-                fill_packets(p);
             pkt = pq_pop(&p->vq);
-            if (!pkt)
-                return 0;
+            if (!pkt && p->fmt_eof && !p->dec_drain) {
+                p->dec_drain = 1;
+                pthread_mutex_unlock(&p->mu);
+                avcodec_send_packet(p->vdec, NULL);
+                pthread_mutex_lock(&p->mu);
+                p->dec_busy = 0;
+                pthread_cond_broadcast(&p->cv);
+                pthread_mutex_unlock(&p->mu);
+                continue;
+            }
+            if (!pkt) {
+                p->dec_busy = 0;
+                pthread_cond_broadcast(&p->cv);
+                pthread_cond_wait(&p->cv, &p->mu);
+                pthread_mutex_unlock(&p->mu);
+                continue;
+            }
             pthread_mutex_unlock(&p->mu);
             avcodec_send_packet(p->vdec, pkt);
             av_packet_free(&pkt);
             pthread_mutex_lock(&p->mu);
+            p->dec_busy = 0;
+            pthread_cond_broadcast(&p->cv);
+            pthread_mutex_unlock(&p->mu);
             continue;
         }
-        if (got < 0)
-            return 0;
-
-        fr = p->vfr;
-        pts = frame_pts(st, fr, clock);
-        if (pts > clock + 0.04) {
-            if (!p->vhold)
-                p->vhold = av_frame_alloc();
-            if (p->vhold) {
-                av_frame_unref(p->vhold);
-                av_frame_ref(p->vhold, fr);
-            }
-            av_frame_unref(fr);
-            return 0;
-        }
-        if (pts + 0.05 < clock) {
-            av_frame_unref(fr);
+        if (got < 0) {
+            av_frame_unref(p->vfr);
+            p->dec_busy = 0;
+            pthread_cond_broadcast(&p->cv);
+            pthread_mutex_unlock(&p->mu);
             continue;
         }
+        p->dec_busy = 0;
+        pthread_cond_broadcast(&p->cv);
+        while (!p->stop && p->opened && epoch == p->dec_epoch && p->vout_n >= VOUT_N)
+            pthread_cond_wait(&p->cv, &p->mu);
+        if (!p->stop && p->opened && epoch == p->dec_epoch)
+            vout_push(p, p->vfr);
+        av_frame_unref(p->vfr);
+        pthread_cond_broadcast(&p->cv);
         pthread_mutex_unlock(&p->mu);
-        present_video(p, fr);
-        pthread_mutex_lock(&p->mu);
-        av_frame_unref(fr);
-        return 0;
     }
-    return 0;
 }
 
 int file_av_step(FileAv *p)
 {
     double clock;
     int eof, a_empty, v_empty;
+    int64_t idle_ns;
     if (!p)
         return 0;
     pthread_mutex_lock(&p->mu);
@@ -858,7 +984,11 @@ int file_av_step(FileAv *p)
         pthread_mutex_unlock(&p->mu);
         return 0;
     }
+    p->idle_ns = 4 * 1000 * 1000;
     eof = fill_packets(p);
+    if (eof == 1)
+        p->fmt_eof = 1;
+    pthread_cond_broadcast(&p->cv);
     clock = media_time_locked(p);
     if (p->adec)
         pump_audio(p, clock);
@@ -876,7 +1006,7 @@ int file_av_step(FileAv *p)
         pthread_mutex_lock(&p->mu);
     }
     a_empty = !p->adec || (p->aq.rd >= p->aq.n);
-    v_empty = !need_video(p) || (p->vq.rd >= p->vq.n);
+    v_empty = !need_video(p) || ((p->vq.rd >= p->vq.n) && p->vout_n == 0 && !p->dec_busy);
     if (eof && a_empty && v_empty && !p->ended && (p->adec || need_video(p))) {
         p->ended = 1;
         p->playing = 0;
@@ -886,7 +1016,12 @@ int file_av_step(FileAv *p)
             p->on_event(p->user, 1, NULL);
         return 0;
     }
+    idle_ns = p->idle_ns;
     pthread_mutex_unlock(&p->mu);
+    if (idle_ns > 0) {
+        struct timespec sl = {0, idle_ns};
+        nanosleep(&sl, NULL);
+    }
     return 1;
 }
 
@@ -900,6 +1035,7 @@ FileAv *file_av_create(void)
     p->speed = 1.0;
     p->want_video = 1;
     p->audio_index = -1;
+    p->last_vpts = -1;
     p->blit_w = 0;
     p->blit_h = 0;
     p->col_space = AVCOL_SPC_UNSPECIFIED;
@@ -907,23 +1043,39 @@ FileAv *file_av_create(void)
     p->a_st = p->v_st = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
-    p->vhold = NULL;
     if (!p->afr || !p->vfr) {
         file_av_destroy(p);
         return NULL;
     }
+    if (pthread_create(&p->th, NULL, dec_loop, p) != 0) {
+        file_av_destroy(p);
+        return NULL;
+    }
+    p->th_on = 1;
     return p;
 }
 
 void file_av_destroy(FileAv *p)
 {
+    int i;
     if (!p)
         return;
+    pthread_mutex_lock(&p->mu);
+    p->stop = 1;
+    p->playing = 0;
+    p->opened = 0;
+    pthread_cond_broadcast(&p->cv);
+    pthread_mutex_unlock(&p->mu);
+    if (p->th_on) {
+        pthread_join(p->th, NULL);
+        p->th_on = 0;
+    }
     file_av_close(p);
     av_frame_free(&p->afr);
     av_frame_free(&p->vfr);
-    av_frame_free(&p->vhold);
     av_frame_free(&p->vsw);
+    for (i = 0; i < VOUT_N; i++)
+        av_frame_free(&p->vout[i]);
     pthread_cond_destroy(&p->cv);
     pthread_mutex_destroy(&p->mu);
     free(p);
@@ -940,6 +1092,10 @@ int file_av_open(FileAv *p, const char *path)
     p->ended = 0;
     p->hold = 0;
     p->origin_ns = 0;
+    p->last_vpts = -1;
+    p->logged_drop = 0;
+    p->fmt_eof = 0;
+    p->dec_drain = 0;
     p->fmt = NULL;
     r = avformat_open_input(&p->fmt, path, NULL, NULL);
     if (r < 0) {
@@ -979,6 +1135,11 @@ void file_av_close(FileAv *p)
     pthread_mutex_lock(&p->mu);
     p->opened = 0;
     p->playing = 0;
+    pthread_cond_broadcast(&p->cv);
+    while (p->dec_busy)
+        pthread_cond_wait(&p->cv, &p->mu);
+    p->fmt_eof = 0;
+    p->dec_drain = 0;
     free_codecs(p);
     if (p->fmt)
         avformat_close_input(&p->fmt);
@@ -998,7 +1159,8 @@ void file_av_play(FileAv *p)
     if (p->opened && !p->playing) {
         p->playing = 1;
         p->ended = 0;
-        p->origin_ns = now_ns();
+        /* Audio files run the clock now. Video-only waits for the first present. */
+        p->origin_ns = p->adec ? now_ns() : 0;
         pthread_cond_broadcast(&p->cv);
     }
     pthread_mutex_unlock(&p->mu);
@@ -1013,6 +1175,7 @@ void file_av_pause(FileAv *p)
         p->hold = media_time_locked(p);
         p->playing = 0;
         p->origin_ns = 0;
+        pthread_cond_broadcast(&p->cv);
     }
     pthread_mutex_unlock(&p->mu);
 }
@@ -1032,6 +1195,12 @@ void file_av_seek(FileAv *p, double seconds)
     if (p->duration > 0 && seconds > p->duration)
         seconds = p->duration;
     ts = (int64_t)(seconds * AV_TIME_BASE);
+    p->fmt_eof = 0;
+    p->dec_drain = 0;
+    p->dec_epoch++;
+    pthread_cond_broadcast(&p->cv);
+    while (p->dec_busy)
+        pthread_cond_wait(&p->cv, &p->mu);
     av_seek_frame(p->fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
     if (p->adec)
         avcodec_flush_buffers(p->adec);
@@ -1041,11 +1210,13 @@ void file_av_seek(FileAv *p, double seconds)
     pq_clear(&p->vq);
     av_frame_unref(p->afr);
     av_frame_unref(p->vfr);
-    av_frame_free(&p->vhold);
+    vout_clear(p);
     p->hold = seconds;
     p->ended = 0;
+    p->last_vpts = -1;
     if (p->playing)
-        p->origin_ns = now_ns();
+        p->origin_ns = p->adec ? now_ns() : 0;
+    pthread_cond_broadcast(&p->cv);
     pthread_mutex_unlock(&p->mu);
 }
 
@@ -1079,6 +1250,7 @@ void file_av_set_video_enabled(FileAv *p, int on)
         return;
     pthread_mutex_lock(&p->mu);
     p->want_video = on ? 1 : 0;
+    pthread_cond_broadcast(&p->cv);
     pthread_mutex_unlock(&p->mu);
 }
 
@@ -1089,15 +1261,16 @@ void file_av_set_blit_max(FileAv *p, int max_height)
 
 void file_av_set_blit_size(FileAv *p, int w, int h)
 {
+    int nw, nh;
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
-    p->blit_w = w > 0 ? w : 0;
-    p->blit_h = h > 0 ? h : 0;
-    w = p->blit_w;
-    h = p->blit_h;
+    nw = w > 0 ? w : 0;
+    nh = h > 0 ? h : 0;
+    p->blit_w = nw;
+    p->blit_h = nh;
     pthread_mutex_unlock(&p->mu);
-    mse_logf("file-av blit-size %dx%d\n", w, h);
+    mse_logf("file-av blit-size %dx%d\n", nw, nh);
 }
 
 double file_av_duration(FileAv *p)

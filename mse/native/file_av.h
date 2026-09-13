@@ -26,7 +26,7 @@ void file_av_close(FileAv *p);
 void file_av_play(FileAv *p);
 void file_av_pause(FileAv *p);
 void file_av_seek(FileAv *p, double seconds);
-/* One decode/present tick. Caller is the single player thread. */
+/* One present tick. Video decode runs on an internal thread. */
 int file_av_step(FileAv *p);
 void file_av_set_speed(FileAv *p, double speed);
 void file_av_set_audio_index(FileAv *p, int stream_index);

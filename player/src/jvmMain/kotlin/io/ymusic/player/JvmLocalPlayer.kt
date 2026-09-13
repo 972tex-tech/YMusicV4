@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.update
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -26,9 +25,10 @@ import kotlin.math.log10
 /**
  * JVM desktop local player, ExoPlayer-shaped:
  * - Public API is main/AWT only: enqueue and return (except [release], which waits).
- * - One `player` thread owns libav, copies BGRA, and writes PCM (the audio renderer).
- * - Frames, progress, and engine state hop back to AWT via [SwingUtilities.invokeLater].
- * No C pump thread; [FileAvNative.step] is one tick on the player thread.
+ * - One `player` thread copies BGRA, writes PCM, and calls [FileAvNative.step] (present).
+ * - Native decode runs on a FileAv helper thread; this thread only blits the due frame.
+ * - BGRA goes to the Swing hole here (same as [io.ymusic.mse.NativeMseSink]);
+ *   progress and engine state hop to AWT via [SwingUtilities.invokeLater].
  */
 internal class JvmLocalPlayer(
     private val videoSurface: LocalVideoSurface?,
@@ -88,10 +88,7 @@ internal class JvmLocalPlayer(
     private val seekQueued = AtomicBoolean(false)
     private val loadGen = AtomicLong(0)
     private val uiEpoch = AtomicLong(0)
-    private val framePosted = AtomicBoolean(false)
     private val progressPosted = AtomicBoolean(false)
-
-    @Volatile private var pendingFrame: BufferedImage? = null
 
     @Volatile private var pendingPosMs: Long = 0
 
@@ -157,10 +154,7 @@ internal class JvmLocalPlayer(
                     cmd = cmds.poll(50, TimeUnit.MILLISECONDS)
                     cmd?.invoke()
                 } else if (pumping && handle != 0L) {
-                    val t0 = System.nanoTime()
                     FileAvNative.step(handle)
-                    val ms = (System.nanoTime() - t0) / 1_000_000L
-                    if (ms < 4) Thread.sleep(4 - ms)
                 } else {
                     cmd = cmds.poll(50, TimeUnit.MILLISECONDS)
                     cmd?.invoke()
@@ -385,19 +379,9 @@ internal class JvmLocalPlayer(
         val img = grab(width, height)
         val pixels = (img.raster.dataBuffer as DataBufferInt).data
         val n = minOf(pixels.size, width * height)
-        bgra.order(ByteOrder.LITTLE_ENDIAN)
-        bgra.position(0)
-        bgra.limit((n * 4).coerceAtMost(bgra.capacity()))
-        bgra.asIntBuffer().get(pixels, 0, n)
+        FileAvNative.copyBgra(bgra, pixels, n)
         lastPub = img
-        pendingFrame = img
-        if (framePosted.compareAndSet(false, true)) {
-            onApp {
-                framePosted.set(false)
-                val f = pendingFrame ?: return@onApp
-                videoSurface?.publish(f)
-            }
-        }
+        videoSurface?.publish(img)
     }
 
     override fun onPcm(rate: Int, channels: Int, s16: ByteArray) {
@@ -572,10 +556,11 @@ internal class JvmLocalPlayer(
     }
 
     private fun grab(w: Int, h: Int): BufferedImage {
-        val shown = videoSurface?.swingShown ?: lastPub
+        val shown = videoSurface?.swingShown
+        val pending = lastPub
         for (i in 0..2) {
             val cur = frameBufs[i]
-            if (cur != null && cur === shown) continue
+            if (cur != null && (cur === shown || cur === pending)) continue
             if (cur != null && cur.width == w && cur.height == h) return cur
             val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             frameBufs[i] = img

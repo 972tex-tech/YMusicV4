@@ -12,17 +12,29 @@ int mse_vt_blit_fit(int src_w, int src_h, int hole_w, int hole_h, int *dw, int *
 {
     if (src_w <= 0 || src_h <= 0)
         return -1;
-    if (hole_w <= 0 || hole_h <= 0 || (src_w <= hole_w && src_h <= hole_h)) {
-        *dw = src_w;
-        *dh = src_h;
+    *dw = src_w;
+    *dh = src_h;
+    /* 0 on a side = unconstrained, not "use native". */
+    if (hole_w <= 0 && hole_h <= 0)
         return 0;
-    }
-    if ((int64_t)src_w * hole_h <= (int64_t)src_h * hole_w) {
-        *dh = hole_h;
-        *dw = (int)((int64_t)src_w * hole_h / src_h);
-    } else {
-        *dw = hole_w;
-        *dh = (int)((int64_t)src_h * hole_w / src_w);
+    if (hole_w <= 0) {
+        if (src_h > hole_h) {
+            *dh = hole_h;
+            *dw = (int)((int64_t)src_w * hole_h / src_h);
+        }
+    } else if (hole_h <= 0) {
+        if (src_w > hole_w) {
+            *dw = hole_w;
+            *dh = (int)((int64_t)src_h * hole_w / src_w);
+        }
+    } else if (src_w > hole_w || src_h > hole_h) {
+        if ((int64_t)src_w * hole_h <= (int64_t)src_h * hole_w) {
+            *dh = hole_h;
+            *dw = (int)((int64_t)src_w * hole_h / src_h);
+        } else {
+            *dw = hole_w;
+            *dh = (int)((int64_t)src_h * hole_w / src_w);
+        }
     }
     if (*dw < 1)
         *dw = 1;
@@ -164,8 +176,11 @@ int mse_vt_blit_copy(MseVtBlit *s, void *cv_pixel_buffer, uint8_t *out, int w, i
         return -1;
     base = CVPixelBufferGetBaseAddress(dst);
     stride = CVPixelBufferGetBytesPerRow(dst);
-    for (y = 0; y < h; y++)
-        memcpy(out + (size_t)y * (size_t)w * 4, base + (size_t)y * stride, (size_t)w * 4);
+    if (stride == (size_t)w * 4)
+        memcpy(out, base, (size_t)w * (size_t)h * 4);
+    else
+        for (y = 0; y < h; y++)
+            memcpy(out + (size_t)y * (size_t)w * 4, base + (size_t)y * stride, (size_t)w * 4);
     CVPixelBufferUnlockBaseAddress(dst, kCVPixelBufferLock_ReadOnly);
     return 0;
 }
