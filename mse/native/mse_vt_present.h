@@ -21,6 +21,10 @@ void mse_vt_layout_screen(int x, int y, int w, int h);
 void mse_vt_detach(void *layer);
 int mse_vt_show(void *layer, void *cv_pixel_buffer, int w, int h);
 int mse_vt_show_bgra(void *layer, const uint8_t *bgra, int w, int h);
+/* Software I420/NV12 → overlay. Layer ResizeAspect; no CPU BGRA. cv_pix_fmt is
+   kCVPixelFormatType_420YpCbCr8Planar or BiPlanarVideoRange. */
+int mse_vt_show_sw(void *layer, unsigned cv_pix_fmt,
+                   const uint8_t *const *data, const int *linesize, int w, int h);
 void mse_vt_flush(void *layer);
 
 /* H.264 / VP9 VTDecompressionSession. Enable HW, do not Require it

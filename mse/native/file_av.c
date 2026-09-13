@@ -286,13 +286,19 @@ static AVCodecContext *open_codec(AVStream *st, int video)
     }
     ctx->pkt_timebase = st->time_base;
     if (video) {
-        AVBufferRef *hw = NULL;
-        ctx->get_format = get_format_prefer_hw;
-        if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) == 0) {
-            ctx->hw_device_ctx = hw;
-            ctx->extra_hw_frames = 4;
-        } else {
-            ctx->thread_count = 0;
+        enum AVCodecID id = st->codecpar->codec_id;
+        int try_vt = (id == AV_CODEC_ID_H264 || id == AV_CODEC_ID_HEVC);
+        if (try_vt) {
+            AVBufferRef *hw = NULL;
+            ctx->get_format = get_format_prefer_hw;
+            if (av_hwdevice_ctx_create(&hw, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) == 0) {
+                ctx->hw_device_ctx = hw;
+                ctx->extra_hw_frames = 4;
+            }
+        }
+        if (id == AV_CODEC_ID_VP9 || id == AV_CODEC_ID_VP8) {
+            ctx->thread_count = 4;
+            ctx->thread_type = FF_THREAD_FRAME;
         }
     }
     if (avcodec_open2(ctx, c, NULL) < 0) {
@@ -784,6 +790,15 @@ static int present_sw_vt(FileAv *p, AVFrame *fr)
     int w, h, n;
     if (!fmt)
         return -1;
+    if (p->vt_layer &&
+        mse_vt_show_sw(p->vt_layer, fmt, (const uint8_t *const *)fr->data, fr->linesize,
+                       fr->width, fr->height) == 0) {
+        p->vw = fr->width;
+        p->vh = fr->height;
+        if (p->on_frame)
+            p->on_frame(p->user, fr->width, fr->height, NULL);
+        return 0;
+    }
     if (mse_vt_blit_fit(fr->width, fr->height, p->blit_w, p->blit_h, &w, &h) != 0)
         return -1;
     n = w * h * 4;

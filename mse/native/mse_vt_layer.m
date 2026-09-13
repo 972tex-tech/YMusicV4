@@ -96,6 +96,60 @@ int mse_vt_show_bgra(void *p, const uint8_t *bgra, int w, int h)
     return r;
 }
 
+int mse_vt_show_sw(void *p, unsigned cv_pix_fmt,
+                   const uint8_t *const *data, const int *linesize, int w, int h)
+{
+    CVPixelBufferRef pb = NULL;
+    size_t nplane, i, y;
+    int r;
+    if (!p || !data || !linesize || w <= 0 || h <= 0)
+        return -1;
+    if (CVPixelBufferCreate(kCFAllocatorDefault, (size_t)w, (size_t)h,
+                            (OSType)cv_pix_fmt, NULL, &pb) != kCVReturnSuccess ||
+        !pb)
+        return -1;
+    CVBufferSetAttachment(pb, kCVImageBufferYCbCrMatrixKey,
+                          kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pb, kCVImageBufferColorPrimariesKey,
+                          kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pb, kCVImageBufferTransferFunctionKey,
+                          kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVPixelBufferLockBaseAddress(pb, 0);
+    nplane = CVPixelBufferGetPlaneCount(pb);
+    if (nplane < 2 || nplane > 3) {
+        CVPixelBufferUnlockBaseAddress(pb, 0);
+        CVPixelBufferRelease(pb);
+        return -1;
+    }
+    for (i = 0; i < nplane; i++) {
+        uint8_t *dst = CVPixelBufferGetBaseAddressOfPlane(pb, i);
+        size_t dst_str = CVPixelBufferGetBytesPerRowOfPlane(pb, i);
+        size_t rows = CVPixelBufferGetHeightOfPlane(pb, i);
+        size_t pw = CVPixelBufferGetWidthOfPlane(pb, i);
+        const uint8_t *src = data[i];
+        int src_str = linesize[i];
+        size_t rowb, bpp;
+        if (!dst || !src || src_str <= 0) {
+            CVPixelBufferUnlockBaseAddress(pb, 0);
+            CVPixelBufferRelease(pb);
+            return -1;
+        }
+        /* NV12 chroma plane is 2 bytes per sample; I420 planes are 1. */
+        bpp = (nplane == 2 && i == 1) ? 2 : 1;
+        rowb = pw * bpp;
+        if (rowb > (size_t)src_str)
+            rowb = (size_t)src_str;
+        if (rowb > dst_str)
+            rowb = dst_str;
+        for (y = 0; y < rows; y++)
+            memcpy(dst + y * dst_str, src + y * (size_t)src_str, rowb);
+    }
+    CVPixelBufferUnlockBaseAddress(pb, 0);
+    r = mse_vt_show(p, pb, w, h);
+    CVPixelBufferRelease(pb);
+    return r;
+}
+
 void mse_vt_flush(void *p)
 {
     AVSampleBufferDisplayLayer *layer;
