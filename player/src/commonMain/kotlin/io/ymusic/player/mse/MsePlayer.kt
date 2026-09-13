@@ -8,7 +8,6 @@ import io.ymusic.player.AudioTrackState
 import io.ymusic.player.CaptionLine
 import io.ymusic.player.CaptionState
 import io.ymusic.player.CaptionTrack
-import io.ymusic.player.InjectedCaptionTrack
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
@@ -19,9 +18,7 @@ import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
 import io.ymusic.player.VideoSize
 import io.ymusic.player.YtEngine
-import io.ymusic.player.parseJson3Captions
 import io.ymusic.player.webview.WebViewEvent
-import io.ymusic.player.withQuery
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
@@ -29,7 +26,6 @@ import io.ymusic.ytmedia.proxy.SabrProxyHttpClient
 import kmpcommon.log.Logger
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
-import kmphttp.RequestBuilder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -61,7 +57,6 @@ class MsePlayer internal constructor(
     private val dispatcher: CoroutineDispatcher,
     val videoSurface: MseVideoSurface,
     private val log: Logger?,
-    private val http: KmpHttpClient?,
     private val buildPlayer: () -> DynamicEnginePlayer,
 ) : YtEngine {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -235,34 +230,6 @@ class MsePlayer internal constructor(
     override suspend fun requestPoToken(videoId: String): String =
         engine().mintContentPoToken(videoId, log)
 
-    override suspend fun fetchCaptionTracks(videoId: String): List<InjectedCaptionTrack> {
-        val p = ensureInit()
-        val rec = p.cachedPlayerResponse(videoId, log)
-        val pot = runCatching { p.mintContentPoToken(videoId, log) }.getOrNull()
-        val client = http ?: return emptyList()
-        val caps = rec["captions"] as? JsonObject ?: return emptyList()
-        val list = caps["playerCaptionsTracklistRenderer"] as? JsonObject ?: return emptyList()
-        val arr = list["captionTracks"] as? JsonArray ?: return emptyList()
-        val out = ArrayList<InjectedCaptionTrack>()
-        for (el in arr) {
-            val t = el as? JsonObject ?: continue
-            val base = t.str("baseUrl") ?: continue
-            val lang = t.str("languageCode") ?: continue
-            val nameObj = t["name"] as? JsonObject
-            val name = nameObj?.str("simpleText") ?: t.str("name") ?: lang
-            var url = withQuery(base, "fmt", "json3")
-            url = withQuery(url, "potc", "1")
-            url = withQuery(url, "c", "WEB")
-            url = withQuery(url, "cplayer", "UNIPLAYER")
-            if (!pot.isNullOrBlank()) url = withQuery(url, "pot", pot)
-            val body = runCatching { getCaptionBody(client, url, videoId) }.getOrNull() ?: continue
-            val cues = parseJson3Captions(body)
-            if (cues.isEmpty()) continue
-            out.add(InjectedCaptionTrack("yt:$lang", lang, name, cues))
-        }
-        return out
-    }
-
     override fun release() {
         if (released) return
         released = true
@@ -435,7 +402,7 @@ class MsePlayer internal constructor(
             mediaProxy: LocalMediaProxy? = null,
         ): MsePlayer {
             val engineClient = if (mediaProxy != null) SabrProxyHttpClient(client, mediaProxy) else client
-            return MsePlayer(dispatcher, videoSurface, logger, engineClient) {
+            return MsePlayer(dispatcher, videoSurface, logger) {
                 DynamicEnginePlayer.create(
                     engineClient, appVersion, dispatcher, logger,
                     cacheStore = cacheStore,
@@ -458,24 +425,6 @@ private fun JsonObject.long(key: String): Long =
 private fun JsonObject.bool(key: String, default: Boolean): Boolean {
     val p = this[key] as? JsonPrimitive ?: return default
     return p.booleanOrNull ?: (p.content == "true")
-}
-
-private suspend fun getCaptionBody(http: KmpHttpClient, url: String, videoId: String): String {
-    val resp = http.execute(
-        RequestBuilder()
-            .url(url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .header("Accept", "*/*")
-            .header("Origin", "https://www.youtube.com")
-            .header("Referer", "https://www.youtube.com/watch?v=$videoId")
-            .get()
-            .build(),
-    )
-    return try {
-        if (!resp.isSuccessful) "" else resp.body.byteString().utf8()
-    } finally {
-        resp.close()
-    }
 }
 
 private fun JsonObject.qualityOptions(): List<VideoQualityOption> {
