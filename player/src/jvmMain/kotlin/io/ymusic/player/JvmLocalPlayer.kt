@@ -470,7 +470,7 @@ internal class JvmLocalPlayer(
         FileAvNative.setBlitSize(handle, viewW, viewH)
     }
 
-    /** Player thread. `open` rebuilds decoders from current want_video / audio_index. */
+    /** Player thread. `open` rebuilds from current audio_index; video decoder follows want_video. */
     private fun reopenAtPlayhead(play: Boolean, path: String? = loadedPath) {
         val file = path ?: return
         if (handle == 0L) return

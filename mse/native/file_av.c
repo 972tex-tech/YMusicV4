@@ -72,6 +72,7 @@ struct FileAv {
     int playing;
     int ended;
     int want_video;
+    int v_need_key; /* after rest: drop until a key at/after the clock */
     int audio_index; /* -1 = first audio */
     int blit_w;
     int blit_h;
@@ -351,13 +352,13 @@ static double media_time_locked(FileAv *p)
     return t;
 }
 
-static void free_codecs(FileAv *p)
+/* vdec idle. Does not wait on dec_loop. */
+static void drop_video_state_locked(FileAv *p)
 {
-    avcodec_free_context(&p->adec);
     avcodec_free_context(&p->vdec);
-    swr_free(&p->swr);
-    swr_free(&p->swr_speed);
-    p->swr_speed_in = 0;
+    pq_clear(&p->vq);
+    vout_clear(p);
+    av_frame_unref(p->vfr);
     if (p->sws) {
         sws_freeContext(p->sws);
         p->sws = NULL;
@@ -366,13 +367,69 @@ static void free_codecs(FileAv *p)
     p->sws_fmt = -1;
     av_freep(&p->bgra);
     p->bgra_n = 0;
-    pq_clear(&p->aq);
-    pq_clear(&p->vq);
-    vout_clear(p);
-    av_frame_free(&p->vsw);
 #ifdef __APPLE__
     mse_vt_blit_free(&p->vt_blit);
+    if (p->vt_layer)
+        mse_vt_flush(p->vt_layer);
 #endif
+    p->dec_drain = 0;
+    p->last_vpts = -1;
+    p->v_need_key = 1;
+}
+
+/* Close the video decoder. Audio clock / demux position stay. */
+static void rest_video_locked(FileAv *p)
+{
+    p->dec_epoch++;
+    pthread_cond_broadcast(&p->cv);
+    while (p->dec_busy)
+        pthread_cond_wait(&p->cv, &p->mu);
+    drop_video_state_locked(p);
+}
+
+static int start_video_locked(FileAv *p)
+{
+    AVStream *st;
+    if (p->v_st < 0 || p->vdec || !p->fmt)
+        return 0;
+    st = p->fmt->streams[p->v_st];
+    p->vdec = open_codec(st, 1);
+    if (!p->vdec) {
+        set_err(p, "video decoder");
+        return -1;
+    }
+    p->vw = st->codecpar->width;
+    p->vh = st->codecpar->height;
+    p->col_space = st->codecpar->color_space;
+    p->col_range = st->codecpar->color_range;
+    p->v_need_key = 1;
+    p->dec_drain = 0;
+    pthread_cond_broadcast(&p->cv);
+    return 0;
+}
+
+static void free_codecs(FileAv *p)
+{
+    avcodec_free_context(&p->adec);
+    drop_video_state_locked(p);
+    swr_free(&p->swr);
+    swr_free(&p->swr_speed);
+    p->swr_speed_in = 0;
+    pq_clear(&p->aq);
+    av_frame_free(&p->vsw);
+}
+
+static double pkt_pts_sec(const FileAv *p, const AVPacket *pkt)
+{
+    AVStream *st;
+    int64_t t;
+    if (!p->fmt || p->v_st < 0 || !pkt)
+        return -1;
+    st = p->fmt->streams[p->v_st];
+    t = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+    if (t == AV_NOPTS_VALUE || !st)
+        return -1;
+    return t * av_q2d(st->time_base);
 }
 
 static void collect_streams(FileAv *p)
@@ -443,10 +500,9 @@ static int pick_video(FileAv *p)
     return best;
 }
 
-/* Keep the video decoder warm so audio→video does not seek back to a keyframe. */
-static int need_video(FileAv *p)
+static int need_video(const FileAv *p)
 {
-    return p->vdec != NULL;
+    return p->want_video && p->vdec != NULL;
 }
 
 static int setup_decoders(FileAv *p)
@@ -461,15 +517,13 @@ static int setup_decoders(FileAv *p)
         }
     }
     if (p->v_st >= 0) {
-        p->vdec = open_codec(p->fmt->streams[p->v_st], 1);
-        if (!p->vdec) {
-            set_err(p, "video decoder");
+        AVStream *st = p->fmt->streams[p->v_st];
+        p->vw = st->codecpar->width;
+        p->vh = st->codecpar->height;
+        p->col_space = st->codecpar->color_space;
+        p->col_range = st->codecpar->color_range;
+        if (p->want_video && start_video_locked(p) != 0)
             return -1;
-        }
-        p->vw = p->fmt->streams[p->v_st]->codecpar->width;
-        p->vh = p->fmt->streams[p->v_st]->codecpar->height;
-        p->col_space = p->fmt->streams[p->v_st]->codecpar->color_space;
-        p->col_range = p->fmt->streams[p->v_st]->codecpar->color_range;
     }
     if (p->a_st < 0 && p->v_st < 0) {
         set_err(p, "no audio or video stream");
@@ -481,9 +535,11 @@ static int setup_decoders(FileAv *p)
 static int fill_packets(FileAv *p)
 {
     int i;
+    if (!p->want_video && p->a_st < 0)
+        return 0; /* video-only rest: do not race the file to EOF */
     for (i = 0; i < 24; i++) {
         AVPacket *pkt;
-        if (p->aq.n - p->aq.rd > 8 && (p->v_st < 0 || p->vq.n - p->vq.rd > 8))
+        if (p->aq.n - p->aq.rd > 8 && (!p->want_video || p->v_st < 0 || p->vq.n - p->vq.rd > 8))
             return 0;
         pkt = av_packet_alloc();
         if (!pkt)
@@ -495,7 +551,16 @@ static int fill_packets(FileAv *p)
         if (pkt->stream_index == p->a_st) {
             if (pq_push(&p->aq, pkt) < 0)
                 av_packet_free(&pkt);
-        } else if (pkt->stream_index == p->v_st && need_video(p)) {
+        } else if (pkt->stream_index == p->v_st && p->want_video && p->vdec) {
+            if (p->v_need_key) {
+                double t = pkt_pts_sec(p, pkt);
+                double clock = media_time_locked(p);
+                if (!(pkt->flags & AV_PKT_FLAG_KEY) || (t >= 0 && t + 0.04 < clock)) {
+                    av_packet_free(&pkt);
+                    continue;
+                }
+                p->v_need_key = 0;
+            }
             if (pq_push(&p->vq, pkt) < 0)
                 av_packet_free(&pkt);
         } else {
@@ -1371,6 +1436,8 @@ int file_av_step(FileAv *p)
         return 0;
     }
     p->idle_ns = 4 * 1000 * 1000;
+    if (p->origin_ns == 0 && !p->adec && !p->want_video)
+        p->origin_ns = now_ns();
     eof = fill_packets(p);
     if (eof == 1)
         p->fmt_eof = 1;
@@ -1426,6 +1493,7 @@ FileAv *file_av_create(void)
     pthread_cond_init(&p->cv, NULL);
     p->speed = 1.0;
     p->want_video = 1;
+    p->v_need_key = 0;
     p->audio_index = -1;
     p->last_vpts = -1;
     p->blit_w = 0;
@@ -1730,10 +1798,19 @@ void file_av_set_audio_index(FileAv *p, int stream_index)
 
 void file_av_set_video_enabled(FileAv *p, int on)
 {
+    int want = on ? 1 : 0;
     if (!p)
         return;
     pthread_mutex_lock(&p->mu);
-    p->want_video = on ? 1 : 0;
+    if (p->want_video == want) {
+        pthread_mutex_unlock(&p->mu);
+        return;
+    }
+    p->want_video = want;
+    if (!want)
+        rest_video_locked(p);
+    else if (p->opened)
+        start_video_locked(p);
     pthread_cond_broadcast(&p->cv);
     pthread_mutex_unlock(&p->mu);
 }
