@@ -297,6 +297,7 @@ class MsePlayer internal constructor(
 
     private suspend fun refreshTracks() {
         val tracks = runCatching { engine().captionTracks(log) }.getOrDefault(emptyList())
+            .filter { it.kind != "asrt" }
         val selected = applied.preferCaptionLanguage.first
             .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE && applied.captionVisible }
         _captions.value = CaptionState(
