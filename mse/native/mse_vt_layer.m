@@ -1,11 +1,51 @@
 #ifdef __APPLE__
 #import "mse_vt_present.h"
+#import "mse_vt_blit.h"
 #import "mse_ffmpeg.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <os/log.h>
+#import <limits.h>
+#import <stdlib.h>
 #import <string.h>
+
+static CVPixelBufferRef mse_still_pb;
+static MseVtBlit mse_still_blit;
+
+static void mse_keep_still(CVPixelBufferRef pb)
+{
+    if (mse_still_pb == pb)
+        return;
+    if (mse_still_pb)
+        CFRelease(mse_still_pb);
+    mse_still_pb = pb;
+    if (pb)
+        CFRetain(pb);
+}
+
+int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
+{
+    int tw = 0, th = 0, n;
+    if (!mse_still_pb)
+        return 0;
+    if (mse_vt_blit_size(mse_still_pb, 0, 0, &tw, &th) != 0 || tw <= 0 || th <= 0)
+        return 0;
+    if ((uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4))
+        return 0;
+    n = tw * th * 4;
+    if (w)
+        *w = tw;
+    if (h)
+        *h = th;
+    if (!dst)
+        return n;
+    if (cap < n)
+        return 0;
+    if (mse_vt_blit_copy(&mse_still_blit, mse_still_pb, dst, tw, th) != 0)
+        return 0;
+    return n;
+}
 
 void mse_vt_detach(void *p)
 {
@@ -57,6 +97,7 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     else
         [layer enqueueSampleBuffer:sbuf];
     CFRelease(sbuf);
+    mse_keep_still(pb);
     {
         static int shown;
         if (shown < 3) {

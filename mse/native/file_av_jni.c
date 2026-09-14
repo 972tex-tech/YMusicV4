@@ -374,6 +374,45 @@ Java_io_ymusic_mse_FileAvNative_layoutVideo(JNIEnv *env, jclass cls, jint x, jin
 #endif
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ymusic_mse_FileAvNative_snapshotOverlay(JNIEnv *env, jclass cls, jintArray wh)
+{
+    int w = 0, h = 0, need;
+    jbyteArray arr;
+    jbyte *dst;
+    jint m[2];
+    (void)cls;
+#ifdef __APPLE__
+    need = mse_vt_copy_last(NULL, 0, &w, &h);
+    if (need <= 0)
+        return NULL;
+    arr = (*env)->NewByteArray(env, need);
+    if (!arr)
+        return NULL;
+    dst = (*env)->GetByteArrayElements(env, arr, NULL);
+    if (!dst) {
+        (*env)->DeleteLocalRef(env, arr);
+        return NULL;
+    }
+    if (mse_vt_copy_last((uint8_t *)dst, need, &w, &h) <= 0) {
+        (*env)->ReleaseByteArrayElements(env, arr, dst, JNI_ABORT);
+        (*env)->DeleteLocalRef(env, arr);
+        return NULL;
+    }
+    (*env)->ReleaseByteArrayElements(env, arr, dst, 0);
+    if (wh && (*env)->GetArrayLength(env, wh) >= 2) {
+        m[0] = w;
+        m[1] = h;
+        (*env)->SetIntArrayRegion(env, wh, 0, 2, m);
+    }
+    return arr;
+#else
+    (void)env;
+    (void)wh;
+    return NULL;
+#endif
+}
+
 /* memcpy BGRA into TYPE_INT_RGB. IntBuffer.get of 4K is several ms. */
 JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_copyBgra(JNIEnv *env, jclass cls, jobject buf, jintArray rgb, jint n)

@@ -66,6 +66,9 @@ object FileAvNative {
     /** macOS: move the overlay to the Canvas screen rect. Safe from AWT during resize. */
     @JvmStatic external fun layoutVideo(x: Int, y: Int, w: Int, h: Int)
 
+    /** Last presented overlay frame as BGRA. Writes width/height into [wh] (length ≥ 2). */
+    @JvmStatic external fun snapshotOverlay(wh: IntArray): ByteArray?
+
     /**
      * Overlay NSView mouse. [id] is `java.awt.event.MouseEvent` id; x/y are Java screen
      * (top-left). Desktop shell toggles chrome on mouse-up; do not copy events into Compose.

@@ -21,6 +21,8 @@ void mse_vt_layout_screen(int x, int y, int w, int h);
 void mse_vt_detach(void *layer);
 int mse_vt_show(void *layer, void *cv_pixel_buffer, int w, int h);
 int mse_vt_show_bgra(void *layer, const uint8_t *bgra, int w, int h);
+/* Last presented overlay frame as packed BGRA. dst=NULL returns the byte count. */
+int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h);
 /* Software I420/NV12 → overlay. Layer ResizeAspect; no CPU BGRA. cv_pix_fmt is
    kCVPixelFormatType_420YpCbCr8Planar or BiPlanarVideoRange. */
 int mse_vt_show_sw(void *layer, unsigned cv_pix_fmt,

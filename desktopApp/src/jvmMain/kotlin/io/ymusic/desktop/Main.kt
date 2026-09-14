@@ -836,6 +836,9 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     fun captureStill(): BufferedImage? {
         img?.let { return copyRgb(it) }
+        val wh = IntArray(2)
+        val bgra = FileAvNative.snapshotOverlay(wh)
+        if (bgra != null && wh[0] > 0 && wh[1] > 0) return bgraToRgb(wh[0], wh[1], bgra)
         return extraSnapshot?.invoke()
     }
 
