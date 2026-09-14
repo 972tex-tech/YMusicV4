@@ -6,14 +6,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -29,6 +33,7 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
+import kotlinx.coroutines.yield
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
 import java.awt.event.WindowAdapter
@@ -68,14 +73,17 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
             },
     )
     if (!expanded) return
-    val wDp = with(density) { menuW.toDp() }.coerceAtLeast(1.dp)
-    val hDp = with(density) { menuH.toDp() }.coerceAtLeast(1.dp)
     val state = rememberDialogState(
-        position = WindowPosition((anchorRight - menuW).coerceAtLeast(0).dp, anchorBottom.dp),
-        size = DpSize(wDp, hDp),
+        position = WindowPosition(anchorRight.dp, anchorBottom.dp),
+        size = DpSize(240.dp, 480.dp),
     )
-    state.position = WindowPosition((anchorRight - menuW).coerceAtLeast(0).dp, anchorBottom.dp)
-    if (menuW > 0 && menuH > 0) state.size = DpSize(wDp, hDp)
+    SideEffect {
+        val widthPx = if (menuW > 0) menuW else with(density) { 240.dp.roundToPx() }
+        state.position = WindowPosition((anchorRight - widthPx).coerceAtLeast(0).dp, anchorBottom.dp)
+        if (menuW > 0 && menuH > 0) {
+            state.size = DpSize(with(density) { menuW.toDp() }, with(density) { menuH.toDp() })
+        }
+    }
     DialogWindow(
         onCloseRequest = onDismiss,
         state = state,
@@ -87,11 +95,18 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         alwaysOnTop = false,
         modalityType = DialogModalityType.Modeless,
     ) {
+        val allowDismiss = remember { mutableStateOf(false) }
+        LaunchedEffect(menuW, menuH) {
+            if (menuW > 0 && menuH > 0) {
+                yield()
+                allowDismiss.value = true
+            }
+        }
         DisposableEffect(window) {
             val w = window
             val listener = object : WindowAdapter() {
                 override fun windowDeactivated(e: WindowEvent) {
-                    onDismiss()
+                    if (allowDismiss.value) onDismiss()
                 }
             }
             w.addWindowListener(listener)
@@ -101,10 +116,12 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
             shape = RoundedCornerShape(8.dp),
             color = DesignColors.SurfaceElevated,
             shadowElevation = 8.dp,
-            modifier = Modifier.onSizeChanged {
-                menuW = it.width
-                menuH = it.height
-            },
+            modifier = Modifier
+                .wrapContentHeight()
+                .onSizeChanged {
+                    menuW = it.width
+                    menuH = it.height
+                },
         ) {
             Column(
                 Modifier
