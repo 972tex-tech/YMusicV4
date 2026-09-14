@@ -1,11 +1,13 @@
 package io.ymusic.desktop
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,12 +25,14 @@ import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
@@ -61,6 +65,7 @@ import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.mse.FileAvNative
+import io.ymusic.mse.MseHostNative
 import io.ymusic.player.LocalPlayerContext
 import io.ymusic.player.LocalVideoSurface
 import io.ymusic.player.PlayerEngines
@@ -131,7 +136,9 @@ import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
+import java.awt.image.DataBufferInt
 import java.io.File
+import java.nio.ByteBuffer
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.min
@@ -623,10 +630,15 @@ private fun DesktopPlayerSurface(
             mseSurface.nativePeer = c
             msePanel.setHardware(mseSurface.attach(c))
         }
+        msePanel.extraSnapshot = {
+            val frame = MseHostNative.copyFrame(mseSurface.host)
+            if (frame == null) null else bgraToRgb(frame.width, frame.height, frame.bgra)
+        }
         mseSurface.onNativePresent = { msePanel.setHardware(it) }
         onDispose {
             msePanel.onPainted = null
             msePanel.onPeer = null
+            msePanel.extraSnapshot = null
             mseSurface.onNativePresent = null
             if (mseSurface.swingBlit === blit) mseSurface.swingBlit = null
             mseSurface.attach(null)
@@ -638,16 +650,24 @@ private fun DesktopPlayerSurface(
         val blit: (java.awt.image.BufferedImage?) -> Unit = { localPanel.setImage(it) }
         localSurface.swingBlit = blit
         localPanel.onPeer = { localSurface.nativePeer = it }
+        localPanel.extraSnapshot = {
+            localSurface.swingShown?.let { copyRgb(it) }
+        }
         localSurface.onNativePresent = { localPanel.setHardware(it) }
         onDispose {
             localPanel.onPainted = null
             localPanel.onPeer = null
+            localPanel.extraSnapshot = null
             localSurface.onNativePresent = null
             if (localSurface.swingBlit === blit) localSurface.swingBlit = null
             localSurface.nativePeer = null
         }
     }
     val coverHole = VideoOverlayNative.coverHole
+    val stillPanel = if (localVisible) localPanel else msePanel
+    val still = remember(coverHole, localVisible) {
+        if (coverHole) stillPanel.captureStill()?.toComposeImageBitmap() else null
+    }
     Box(
         modifier.onSizeChanged {
             if (it.width > 0 && it.height > 0) {
@@ -656,11 +676,24 @@ private fun DesktopPlayerSurface(
             }
         },
     ) {
+        if (coverHole) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                still?.let { bmp ->
+                    Image(
+                        bmp,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+        }
+        val hole = if (coverHole) Modifier.size(0.dp) else Modifier.fillMaxSize()
         if (localVisible) {
             SwingPanel(
                 background = Color.Black,
                 factory = { localPanel },
-                modifier = Modifier.fillMaxSize(),
+                modifier = hole,
                 update = { it.setCovered(coverHole) },
             )
             if (localFps > 0) {
@@ -681,7 +714,7 @@ private fun DesktopPlayerSurface(
             SwingPanel(
                 background = Color.Black,
                 factory = { msePanel },
-                modifier = Modifier.fillMaxSize(),
+                modifier = hole,
                 update = { it.setCovered(coverHole) },
             )
         }
@@ -701,6 +734,8 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
 
     @Volatile var onPeer: ((Canvas?) -> Unit)? = null
+
+    @Volatile var extraSnapshot: (() -> BufferedImage?)? = null
     private val pending = java.util.concurrent.atomic.AtomicBoolean(false)
     private var overlayX = Int.MIN_VALUE
     private var overlayY = Int.MIN_VALUE
@@ -799,6 +834,11 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     override fun contains(x: Int, y: Int): Boolean = false
 
+    fun captureStill(): BufferedImage? {
+        img?.let { return copyRgb(it) }
+        return extraSnapshot?.invoke()
+    }
+
     fun setCovered(covered: Boolean) {
         if (this.covered == covered) return
         this.covered = covered
@@ -831,6 +871,22 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             }
         }
     }
+}
+
+private fun copyRgb(src: BufferedImage): BufferedImage {
+    val dst = BufferedImage(src.width, src.height, BufferedImage.TYPE_INT_RGB)
+    val g = dst.createGraphics()
+    g.drawImage(src, 0, 0, null)
+    g.dispose()
+    return dst
+}
+
+private fun bgraToRgb(width: Int, height: Int, bgra: ByteArray): BufferedImage {
+    val img = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    val pixels = (img.raster.dataBuffer as DataBufferInt).data
+    val n = minOf(pixels.size, width * height)
+    FileAvNative.copyBgra(ByteBuffer.wrap(bgra), pixels, n)
+    return img
 }
 
 /** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
