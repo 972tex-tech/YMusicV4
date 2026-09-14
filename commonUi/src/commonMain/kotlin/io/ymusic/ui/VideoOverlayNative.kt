@@ -24,6 +24,8 @@ object VideoOverlayNative {
     fun poke(raise: Boolean) {
         if (shown && !raise) return
         pokes++
-        if (raise) raiseWindow?.invoke()
+        /* toFront while the VT overlay NSView is handling the click freezes
+           AppKit (AWT EDT is main). Raise only when the chrome was hidden. */
+        if (raise && !shown) raiseWindow?.invoke()
     }
 }

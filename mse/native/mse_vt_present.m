@@ -120,16 +120,11 @@ static jint mse_awt_button(NSEventType t)
 
 static void mse_java_mouse(NSEvent *e)
 {
-    JNIEnv *env = NULL;
     NSPoint scr;
     CGFloat top;
-    jint x, y, wheel, clicks;
+    jint x, y, wheel, clicks, eid, mods, button;
 
     if (!e || !e.window || !mse_jvm || !mse_native_cls || !mse_mouse_mid)
-        return;
-    if ((*mse_jvm)->GetEnv(mse_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK)
-        (*mse_jvm)->AttachCurrentThread(mse_jvm, (void **)&env, NULL);
-    if (!env)
         return;
     scr = [e.window convertPointToScreen:e.locationInWindow];
     top = e.window.screen ? NSMaxY(e.window.screen.frame) : NSMaxY(NSScreen.mainScreen.frame);
@@ -149,11 +144,22 @@ static void mse_java_mouse(NSEvent *e)
         clicks = 0;
         break;
     }
-    (*env)->CallStaticVoidMethod(env, mse_native_cls, mse_mouse_mid,
-                                 mse_awt_id(e.type), x, y, mse_awt_mods(e),
-                                 mse_awt_button(e.type), clicks, wheel);
-    if ((*env)->ExceptionCheck(env))
-        (*env)->ExceptionClear(env);
+    eid = mse_awt_id(e.type);
+    mods = mse_awt_mods(e);
+    button = mse_awt_button(e.type);
+    /* Return from NSView mouseDown before Java. AWT EDT is AppKit main:
+       dispatchEvent/toFront from this stack freezes the UI. */
+    dispatch_async(dispatch_get_main_queue(), ^{
+        JNIEnv *async_env = NULL;
+        if ((*mse_jvm)->GetEnv(mse_jvm, (void **)&async_env, JNI_VERSION_1_6) != JNI_OK)
+            (*mse_jvm)->AttachCurrentThread(mse_jvm, (void **)&async_env, NULL);
+        if (!async_env || !mse_native_cls || !mse_mouse_mid)
+            return;
+        (*async_env)->CallStaticVoidMethod(async_env, mse_native_cls, mse_mouse_mid,
+                                           eid, x, y, mods, button, clicks, wheel);
+        if ((*async_env)->ExceptionCheck(async_env))
+            (*async_env)->ExceptionClear(async_env);
+    });
 }
 
 @interface MseVtHostView : NSView

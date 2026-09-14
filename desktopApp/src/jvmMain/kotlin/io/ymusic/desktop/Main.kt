@@ -127,19 +127,15 @@ import okio.Path.Companion.toPath
 import org.jetbrains.compose.resources.painterResource
 import java.awt.BorderLayout
 import java.awt.Canvas
-import java.awt.Component
-import java.awt.Container
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Graphics
 import java.awt.Graphics2D
-import java.awt.Point
 import java.awt.RenderingHints
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.awt.event.MouseWheelEvent
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.swing.JFrame
@@ -763,14 +759,15 @@ private fun BindVideoPanel(
     panel: MseVideoPanel,
 ) {
     DisposableEffect(panel) {
-        FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, x, y, mods, button, clicks, wheel ->
+        FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, _, _, _, _, _, _ ->
+            /* Do not dispatchEvent into Skia from this JNI click — that is
+               VideoChromeHit and freezes AppKit. Poke only, on a later EDT turn. */
             when (id) {
                 MouseEvent.MOUSE_RELEASED ->
                     SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
                 MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_ENTERED ->
                     SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = false) }
             }
-            panel.dispatchOverlayMouse(id, x, y, mods, button, clicks, wheel)
         }
         onDispose { FileAvNative.overlayMouse = null }
     }
@@ -906,48 +903,25 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         isRequestFocusEnabled = false
         canvas.background = AwtColor.BLACK
         canvas.isFocusable = false
-        /* HW Canvas sits above Skia in the mixing model, so Compose never sees the
-           native hit. Copy whatever we get onto the SwingPanel group Compose already
-           subscribed to (contains()=false keeps chrome from being consumed). */
-        val redispatch = object : MouseAdapter() {
-            private var forwarding = false
-
-            private fun forward(e: MouseEvent) {
-                if (forwarding) return
-                val target = canvas.swingPanelGroup() ?: return
-                if (e.component === target) return
-                val p = SwingUtilities.convertPoint(e.component, e.point, target)
-                val copy = if (e is MouseWheelEvent) {
-                    MouseWheelEvent(
-                        target, e.id, e.`when`, e.modifiersEx, p.x, p.y,
-                        e.clickCount, e.isPopupTrigger, e.scrollType, e.scrollAmount, e.wheelRotation,
-                    )
-                } else {
-                    MouseEvent(
-                        target, e.id, e.`when`, e.modifiersEx, p.x, p.y,
-                        e.xOnScreen, e.yOnScreen, e.clickCount, e.isPopupTrigger, e.button,
-                    )
-                }
-                forwarding = true
-                try {
-                    target.dispatchEvent(copy)
-                } finally {
-                    forwarding = false
+        /* HW Canvas / VT NSView sit above Skia. Do not copy AWT events into
+           Compose — that freeze is AppKit re-entry. Poke the chrome overlay. */
+        val overlayClicks = object : MouseAdapter() {
+            private fun poke(e: MouseEvent) {
+                when (e.id) {
+                    MouseEvent.MOUSE_RELEASED ->
+                        SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
+                    MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_ENTERED ->
+                        SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = false) }
                 }
             }
 
-            override fun mousePressed(e: MouseEvent) = forward(e)
-            override fun mouseReleased(e: MouseEvent) = forward(e)
-            override fun mouseClicked(e: MouseEvent) = forward(e)
-            override fun mouseEntered(e: MouseEvent) = forward(e)
-            override fun mouseExited(e: MouseEvent) = forward(e)
-            override fun mouseMoved(e: MouseEvent) = forward(e)
-            override fun mouseDragged(e: MouseEvent) = forward(e)
-            override fun mouseWheelMoved(e: MouseWheelEvent) = forward(e)
+            override fun mousePressed(e: MouseEvent) = poke(e)
+            override fun mouseReleased(e: MouseEvent) = poke(e)
+            override fun mouseEntered(e: MouseEvent) = poke(e)
+            override fun mouseMoved(e: MouseEvent) = poke(e)
         }
-        canvas.addMouseListener(redispatch)
-        canvas.addMouseMotionListener(redispatch)
-        canvas.addMouseWheelListener(redispatch)
+        canvas.addMouseListener(overlayClicks)
+        canvas.addMouseMotionListener(overlayClicks)
         canvas.addComponentListener(
             object : ComponentAdapter() {
                 override fun componentResized(e: ComponentEvent) {
@@ -996,32 +970,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         canvas.repaint()
     }
 
-    fun dispatchOverlayMouse(id: Int, xOnScreen: Int, yOnScreen: Int, modifiers: Int, button: Int, clickCount: Int, wheel: Int) {
-        val target = composeMouseTarget() ?: return
-        val p = Point(xOnScreen, yOnScreen)
-        SwingUtilities.convertPointFromScreen(p, target)
-        val event: MouseEvent = if (id == MouseEvent.MOUSE_WHEEL) {
-            MouseWheelEvent(
-                target, id, System.currentTimeMillis(), modifiers, p.x, p.y,
-                clickCount, false, MouseWheelEvent.WHEEL_UNIT_SCROLL, 1, wheel,
-            )
-        } else {
-            MouseEvent(
-                target, id, System.currentTimeMillis(), modifiers, p.x, p.y,
-                xOnScreen, yOnScreen, clickCount, false, button,
-            )
-        }
-        val fire = { target.dispatchEvent(event) }
-        if (SwingUtilities.isEventDispatchThread()) fire()
-        else SwingUtilities.invokeLater(fire)
-    }
-
-    private fun composeMouseTarget(): Component? {
-        swingPanelGroup()?.let { return it }
-        val root = SwingUtilities.getRoot(this) as? Container ?: return null
-        return findComposeSkia(root)
-    }
-
     fun setImage(image: BufferedImage?) {
         if (hardware) return
         img = image
@@ -1032,26 +980,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             }
         }
     }
-}
-
-/** Compose's SwingInteropViewGroup — the component it subscribes to for interop mouse. */
-private fun Component.swingPanelGroup(): Component? =
-    generateSequence(this) { it.parent }.firstOrNull {
-        it.name?.startsWith("SwingPanel") == true ||
-            it.javaClass.name.contains("SwingInteropViewGroup")
-    }
-
-private fun findComposeSkia(root: Container): Component? {
-    val n = root.javaClass.name
-    if (n.contains("SkiaSwingLayer") || n.contains("skiko.SkiaLayer") || n.endsWith(".SkiaLayer")) return root
-    for (c in root.components) {
-        if (c is Container) findComposeSkia(c)?.let { return it }
-        else {
-            val cn = c.javaClass.name
-            if (cn.contains("SkiaSwingLayer") || cn.contains("skiko.SkiaLayer")) return c
-        }
-    }
-    return null
 }
 
 /** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
