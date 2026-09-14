@@ -5,6 +5,17 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
+internal data class OverlayMenuItem(
+    val label: String,
+    val selected: Boolean = false,
+    val onClick: () -> Unit,
+)
+
+internal data class OverlayMenu(
+    val title: String,
+    val items: List<OverlayMenuItem>,
+)
+
 /**
  * Overlay chrome state shared by the main window (scroll, pause, auto-hide)
  * and the desktop chrome window (paint). Do not keep show/hide only in the
@@ -23,6 +34,9 @@ object VideoOverlayNative {
     /** Seek-bar drag holds the overlay until release. */
     var scrubbing by mutableStateOf(false)
 
+    /** Top-bar picker hosted in the video chrome (above JAWT). */
+    internal var menu by mutableStateOf<OverlayMenu?>(null)
+
     /** Bumped on every show so the auto-hide timer restarts. */
     var showGen by mutableIntStateOf(0)
         internal set
@@ -35,6 +49,10 @@ object VideoOverlayNative {
     var raiseWindow: (() -> Unit)? = null
 
     fun poke() {
+        if (menu != null) {
+            menu = null
+            return
+        }
         if (!armed) return
         if (visible) {
             visible = false
@@ -48,5 +66,10 @@ object VideoOverlayNative {
         visible = true
         showGen++
         if (raise) raiseWindow?.invoke()
+    }
+
+    internal fun openMenu(menu: OverlayMenu) {
+        this.menu = menu
+        raiseWindow?.invoke()
     }
 }

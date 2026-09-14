@@ -19,14 +19,6 @@ internal actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 }
 
 @Composable
-internal actual fun OverlaySafeDialog(
-    onDismissRequest: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest, content = content)
-}
-
-@Composable
 internal actual fun SyncSystemBars(dark: Boolean) {
     val view = androidx.compose.ui.platform.LocalView.current
     if (view.isInEditMode) return
