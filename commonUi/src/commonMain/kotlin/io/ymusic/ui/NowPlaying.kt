@@ -341,11 +341,13 @@ private fun PortraitNowPlaying(
             val before = "armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible}"
             val becameArmed = p.off && !VideoOverlayNative.armed
             VideoOverlayNative.armed = p.off
-            if (p.off) VideoOverlayNative.show(forceRaise = becameArmed)
+            // Only when play/pause first leaves the viewport — not on later queue scrolls.
+            if (becameArmed) VideoOverlayNative.show(forceRaise = true)
             overlayLog(
                 "scroll off=${p.off} idx=${p.idx} y=${p.y} n=${p.n} item0=${p.item0} " +
-                    "play=${status.playWhenReady} $before -> armed=${VideoOverlayNative.armed} " +
-                    "vis=${VideoOverlayNative.visible} show=${VideoOverlayNative.armed && VideoOverlayNative.visible}",
+                    "play=${status.playWhenReady} becameArmed=$becameArmed $before -> " +
+                    "armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible} " +
+                    "show=${VideoOverlayNative.armed && VideoOverlayNative.visible}",
             )
         }
     }
