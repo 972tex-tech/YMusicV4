@@ -1,5 +1,6 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
@@ -16,6 +17,15 @@ internal actual fun VideoChromeLayer(
 @Composable
 internal actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
     androidx.activity.compose.BackHandler(enabled, onBack)
+}
+
+@Composable
+internal actual fun BoxScope.NowPlayingFloatingMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, content = content)
 }
 
 @Composable

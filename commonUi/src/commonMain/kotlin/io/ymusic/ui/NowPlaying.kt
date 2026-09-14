@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -89,7 +90,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
@@ -686,15 +686,6 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 }
 
 @Composable
-private fun CoverVideoHole(active: Boolean) {
-    DisposableEffect(active) {
-        if (!active) return@DisposableEffect onDispose { }
-        VideoOverlayNative.coverHole = true
-        onDispose { VideoOverlayNative.coverHole = false }
-    }
-}
-
-@Composable
 internal fun QualityChip(
     label: String,
     options: List<Pair<String, String>>,
@@ -702,7 +693,6 @@ internal fun QualityChip(
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    if (coverHole) CoverVideoHole(open)
     Box {
         Text(
             label,
@@ -713,13 +703,17 @@ internal fun QualityChip(
                 .clickable { open = true }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            properties = PopupProperties(focusable = true),
-        ) {
-            options.forEach { (id, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+        if (coverHole) {
+            NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }) {
+                options.forEach { (id, text) ->
+                    DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+                }
+            }
+        } else {
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                options.forEach { (id, text) ->
+                    DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+                }
             }
         }
     }
@@ -732,15 +726,10 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
-    CoverVideoHole(open)
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            properties = PopupProperties(focusable = true),
-        ) {
+        NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }) {
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
@@ -1102,7 +1091,6 @@ private fun QueueRow(
 @Composable
 internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    if (coverHole) CoverVideoHole(open)
     Box {
         ActionIcon(
             Icons.Default.Bedtime,
@@ -1110,11 +1098,7 @@ internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet:
             tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
             onClick = { open = true },
         )
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            properties = PopupProperties(focusable = true),
-        ) {
+        val items: @Composable ColumnScope.() -> Unit = {
             sleepMs?.let {
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },
@@ -1127,6 +1111,11 @@ internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet:
                     onClick = { onSet(minutes * 60_000L); open = false },
                 )
             }
+        }
+        if (coverHole) {
+            NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }, content = items)
+        } else {
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }, content = items)
         }
     }
 }

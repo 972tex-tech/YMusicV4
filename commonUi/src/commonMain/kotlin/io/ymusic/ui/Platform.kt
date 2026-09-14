@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
@@ -28,3 +29,14 @@ internal expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
  *  bar icon appearance to contrast the edge-to-edge app background. No-op elsewhere. */
 @Composable
 internal expect fun SyncSystemBars(dark: Boolean)
+
+/**
+ * Now Playing menus that would sit over the video. Desktop: an undecorated owned window
+ * that closes when it loses focus. Elsewhere: [androidx.compose.material3.DropdownMenu].
+ */
+@Composable
+internal expect fun BoxScope.NowPlayingFloatingMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+)
