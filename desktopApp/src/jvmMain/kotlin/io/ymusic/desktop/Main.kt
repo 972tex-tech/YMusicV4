@@ -662,6 +662,12 @@ private fun DesktopPlayerSurface(
     val liveResize = VideoOverlayNative.liveResize
     DisposableEffect(Unit) {
         FileAvNative.overlayLiveResize = { on ->
+            val apply = {
+                msePanel.setCovered(VideoOverlayNative.coverHole || on)
+                localPanel.setCovered(VideoOverlayNative.coverHole || on)
+            }
+            if (SwingUtilities.isEventDispatchThread()) apply()
+            else SwingUtilities.invokeLater(apply)
             SwingUtilities.invokeLater { VideoOverlayNative.liveResize = on }
         }
         onDispose {
