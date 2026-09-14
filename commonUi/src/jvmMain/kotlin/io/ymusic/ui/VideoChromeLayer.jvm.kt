@@ -79,6 +79,11 @@ internal actual fun VideoChromeLayer(
         val windows = object : WindowAdapter() {
             override fun windowStateChanged(e: WindowEvent) = park()
             override fun windowIconified(e: WindowEvent) = park()
+            override fun windowActivated(e: WindowEvent) {
+                /* Clicking the queue/pause focuses the owner and sends chrome
+                   behind the JAWT video. Raise without alwaysOnTop. */
+                SwingUtilities.invokeLater { VideoOverlayNative.raiseWindow?.invoke() }
+            }
         }
         owner.addComponentListener(components)
         owner.addWindowStateListener(windows)

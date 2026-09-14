@@ -379,19 +379,17 @@ private fun PortraitNowPlaying(
                 }
                 val armed = VideoOverlayNative.armed
                 PlayerCaptionOverlay(player, overlayVisible = armed && overlayOn)
-                if (!armed) {
-                    Row(
-                        Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        CaptionToggle(player, offTint = Color(0xFFDCDCDC))
-                        ActionIcon(
-                            Icons.Default.Fullscreen,
-                            stringResource(Res.string.cd_fullscreen),
-                            tint = Color(0xFFDCDCDC),
-                            onClick = onFullscreen,
-                        )
-                    }
+                Row(
+                    Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    CaptionToggle(player, offTint = Color(0xFFDCDCDC))
+                    ActionIcon(
+                        Icons.Default.Fullscreen,
+                        stringResource(Res.string.cd_fullscreen),
+                        tint = Color(0xFFDCDCDC),
+                        onClick = onFullscreen,
+                    )
                 }
             }
         }
@@ -597,13 +595,15 @@ private fun BoxScope.VideoOverlayControls(
                 style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
             )
             Box(Modifier.weight(1f))
-            CaptionToggle(player, offTint = Color(0xFFEEEEEE))
-            ActionIcon(
-                if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
-                tint = Color(0xFFEEEEEE),
-                onClick = onToggleFullscreen,
-            )
+            if (!compact) {
+                CaptionToggle(player, offTint = Color(0xFFEEEEEE))
+                ActionIcon(
+                    if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
+                    tint = Color(0xFFEEEEEE),
+                    onClick = onToggleFullscreen,
+                )
+            }
         }
         SeekSlider(player, progress.positionMs, progress.durationMs, trackColor = Color.White.copy(alpha = 0.32f))
     }
