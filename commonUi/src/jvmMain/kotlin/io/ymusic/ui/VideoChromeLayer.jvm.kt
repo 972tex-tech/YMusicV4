@@ -201,7 +201,7 @@ private fun ChromeBounds.insetFromOwner(owner: Window, pad: Int = EDGE_PAD): Chr
     return ChromeBounds(x, y, w, h)
 }
 
-private fun chromeOwner(): Window? =
+internal fun chromeOwner(): Window? =
     Window.getWindows()
         .filter { w ->
             w is Frame && w.isShowing && w.isDisplayable && !w.isUndecorated && w.width > 64 && w.height > 64
