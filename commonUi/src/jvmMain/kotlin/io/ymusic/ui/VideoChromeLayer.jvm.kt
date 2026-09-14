@@ -11,15 +11,18 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.DialogModalityType
+import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.rememberDialogState
 import kotlinx.coroutines.delay
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
@@ -43,6 +46,7 @@ private const val EDGE_PAD = 8
  * Captions + transport in a transparent Compose window above the JAWT video view.
  * Headless: in-place Box (UI tests).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal actual fun VideoChromeLayer(
     modifier: Modifier,
@@ -79,11 +83,6 @@ internal actual fun VideoChromeLayer(
         val windows = object : WindowAdapter() {
             override fun windowStateChanged(e: WindowEvent) = park()
             override fun windowIconified(e: WindowEvent) = park()
-            override fun windowActivated(e: WindowEvent) {
-                /* Clicking the queue/pause focuses the owner and sends chrome
-                   behind the JAWT video. Raise without alwaysOnTop. */
-                SwingUtilities.invokeLater { VideoOverlayNative.raiseWindow?.invoke() }
-            }
         }
         owner.addComponentListener(components)
         owner.addWindowStateListener(windows)
@@ -138,7 +137,7 @@ internal actual fun VideoChromeLayer(
 
     if (!chromeReady || bounds.w <= 0 || bounds.h <= 0) return
 
-    val state = rememberWindowState(
+    val state = rememberDialogState(
         position = WindowPosition(bounds.x.dp, bounds.y.dp),
         size = DpSize(bounds.w.dp, bounds.h.dp),
     )
@@ -148,18 +147,20 @@ internal actual fun VideoChromeLayer(
         state.size = DpSize(bounds.w.dp, bounds.h.dp)
     }
 
-    /* Independent Compose Window, not DialogWindow: a modal/modeless owned dialog
-       restacks on parent clicks and alwaysOnTop + click-forward froze the player. */
-    Window(
+    /* Owned modeless dialog stays above the player window when the queue is
+       clicked. Independent Window() went behind JAWT. Do not use alwaysOnTop
+       or click-forward — that froze AppKit. */
+    DialogWindow(
         onCloseRequest = {},
         state = state,
         visible = !parked,
-        undecorated = true,
+        title = "YMusic video chrome",
+        decoration = WindowDecoration.Undecorated(),
         transparent = true,
         resizable = false,
         focusable = true,
         alwaysOnTop = false,
-        title = "YMusic video chrome",
+        modalityType = DialogModalityType.Modeless,
     ) {
         DisposableEffect(window) {
             val w = window
