@@ -66,6 +66,9 @@ object FileAvNative {
     /** macOS: move the overlay to the Canvas screen rect. Safe from AWT during resize. */
     @JvmStatic external fun layoutVideo(x: Int, y: Int, w: Int, h: Int)
 
+    /** Hide the overlay NSView without detaching the layer. */
+    @JvmStatic external fun setOverlayHidden(hidden: Boolean)
+
     /** Last presented overlay frame as BGRA. Writes width/height into [wh] (length ≥ 2). */
     @JvmStatic external fun snapshotOverlay(wh: IntArray): ByteArray?
 

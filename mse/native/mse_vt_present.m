@@ -249,6 +249,19 @@ void mse_vt_jawt_unhost(void)
     });
 }
 
+void mse_vt_set_overlay_hidden(int hid)
+{
+    NSView *v = mse_vt_jawt_view;
+    if (!v)
+        return;
+    if ([NSThread isMainThread])
+        v.hidden = hid ? YES : NO;
+    else
+        mse_on_main(^{
+            v.hidden = hid ? YES : NO;
+        });
+}
+
 static NSView *mse_content_view(CALayer *wl)
 {
     NSView *v = nil;

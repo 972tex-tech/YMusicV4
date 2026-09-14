@@ -724,7 +724,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         object : Canvas() {
             override fun addNotify() {
                 super.addNotify()
-                if (width > 0 && height > 0) onPeer?.invoke(this)
+                if (!covered && width > 0 && height > 0) onPeer?.invoke(this)
             }
 
             override fun removeNotify() {
@@ -837,15 +837,15 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
                 if (snap == null) "mse-v still java=null"
                 else "mse-v still java=${snap.width}x${snap.height}",
             )
-            onPeer?.invoke(null)
+            FileAvNative.setOverlayHidden(true)
             hardware = false
             img = snap
             canvas.repaint()
         } else {
             img = null
-            if (canvas.isDisplayable && canvas.width > 0 && canvas.height > 0) {
-                onPeer?.invoke(canvas)
-            }
+            FileAvNative.setOverlayHidden(false)
+            hardware = true
+            canvas.repaint()
         }
     }
 
