@@ -73,6 +73,22 @@ function moviePlayer(): Record<string, unknown> | null {
   return el as unknown as Record<string, unknown> | null;
 }
 
+function pinPlaybackQuality(host: Record<string, unknown> | null, q: string): boolean {
+  if (!host) return false;
+  const range = host["setPlaybackQualityRange"];
+  const one = host["setPlaybackQuality"];
+  let ok = false;
+  if (typeof range === "function") {
+    range.call(host, q, q);
+    ok = true;
+  }
+  if (typeof one === "function") {
+    (one as (quality: string) => void).call(host, q);
+    ok = true;
+  }
+  return ok;
+}
+
 function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   if (!host || typeof host["getPlaybackQuality"] !== "function") return;
   const orig = host["getPlaybackQuality"] as (...a: unknown[]) => unknown;
@@ -743,12 +759,11 @@ class Player {
       __mseRestVideo(0);
     }
     setYmQuality(q);
-    const host = moviePlayer() || (player as unknown as Record<string, unknown>);
-    const range = host["setPlaybackQualityRange"];
-    const one = host["setPlaybackQuality"];
-    if (typeof range === "function") range.call(host, q, q);
-    else if (typeof one === "function") (one as (q: string) => void).call(host, q);
-    else if (MSE_DEBUG) console.log("mse setQuality no API q=" + q);
+    bindMoviePlayerApi(player);
+    const pinned =
+      pinPlaybackQuality(moviePlayer(), q) ||
+      pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
+    if (!pinned && MSE_DEBUG) console.log("mse setQuality no API q=" + q);
     if (MSE_DEBUG)
       console.log(
         "mse setQuality q=" + q + " clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0),
@@ -763,11 +778,9 @@ class Player {
   private pinAuto(): void {
     const player = this.player;
     if (!player) return;
-    const host = moviePlayer() || (player as unknown as Record<string, unknown>);
-    const range = host["setPlaybackQualityRange"];
-    const one = host["setPlaybackQuality"];
-    if (typeof range === "function") range.call(host, "auto", "auto");
-    else if (typeof one === "function") (one as (q: string) => void).call(host, "auto");
+    bindMoviePlayerApi(player);
+    pinPlaybackQuality(moviePlayer(), "auto") ||
+      pinPlaybackQuality(player as unknown as Record<string, unknown>, "auto");
   }
 
   /** Rest the C decoder and keep Auto. SABR then sends 40=1 + fake 144p UMP. */

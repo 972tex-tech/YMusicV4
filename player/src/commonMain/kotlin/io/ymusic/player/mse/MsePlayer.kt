@@ -213,11 +213,16 @@ class MsePlayer internal constructor(
         player?.setVideoSurface(surface)
     }
 
-    /** Display hole in CSS pixels. YouTube ABR picks formats for this size. Default 640×360. */
+    /** Display hole in CSS pixels. YouTube Auto ABR uses this. Never report a hole shorter than 360. */
     fun setViewport(width: Int, height: Int) {
         if (released) return
-        val w = width.coerceAtLeast(1)
-        val h = height.coerceAtLeast(1)
+        var w = width.coerceAtLeast(1)
+        var h = height.coerceAtLeast(1)
+        if (h < 360) {
+            w = (w * 360.0 / h).toInt().coerceAtLeast(1)
+            h = 360
+        }
+        if (w == viewportW && h == viewportH) return
         viewportW = w
         viewportH = h
         val p = player ?: return

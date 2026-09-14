@@ -638,7 +638,9 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         pickFeedbackFiles = ::pickFeedbackFiles,
         windowResizing = windowResizing,
     ) { modifier ->
-        DesktopPlayerSurface(localSurface, mseSurface, windowResizing, modifier)
+        DesktopPlayerSurface(localSurface, mseSurface, windowResizing, modifier) { w, h ->
+            (ytEngine as? io.ymusic.player.mse.MsePlayer)?.setViewport(w, h)
+        }
     }
 }
 
@@ -648,6 +650,7 @@ private fun DesktopPlayerSurface(
     mseSurface: io.ymusic.mse.MseVideoSurface,
     windowResizing: MutableStateFlow<Boolean>,
     modifier: Modifier,
+    onHoleSize: (Int, Int) -> Unit = { _, _ -> },
 ) {
     val localVisible by localSurface.visible.collectAsState()
     val localFps by localSurface.fps.collectAsState()
@@ -725,6 +728,7 @@ private fun DesktopPlayerSurface(
             if (it.width > 0 && it.height > 0) {
                 mseSurface.setBlitSize(it.width, it.height)
                 localSurface.setBlitSize(it.width, it.height)
+                onHoleSize(it.width, it.height)
             }
         },
     ) {
