@@ -138,16 +138,11 @@ internal fun formatMillis(ms: Long): String {
  * [surface] is the shared video container rendered as the 36dp art tile — only passed on platforms
  * whose surface tolerates thumbnail size ([AppGraph.surfaceScalesDown]); it keeps a WebView source
  * playing while Now Playing is closed.
- *
- * [surfaceFillsTile] is desktop MSE/ffmpeg: the hole is the 36dp tile so a persistent AWT canvas
- * can move with it. WebView still uses the 240×135 layout + draw-time scale (a thumbnail-sized
- * page stalls the stream).
  */
 @Composable
 fun MiniPlayer(
     coordinator: PlaybackCoordinator,
     surface: (@Composable (Modifier) -> Unit)? = null,
-    surfaceFillsTile: Boolean = false,
     onExpand: () -> Unit,
 ) {
     val status by coordinator.player.status.collectAsState()
@@ -176,23 +171,19 @@ fun MiniPlayer(
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
-                    if (surfaceFillsTile) {
+                    // The video surface renders inside the tile on every platform, but it must be
+                    // LAID OUT at real video size and only scale-TRANSFORMED down to fit: a windowed
+                    // WebView (Android) sized to an actual thumbnail breaks the page's stream
+                    // negotiation, and Chromium backgrounds (and stalls) a page whose visible rect
+                    // is clipped away. The draw-time scale changes neither. 240×135 → ×36/135 draws
+                    // a 64×36 cover crop inside the 36dp tile.
+                    val scale = 36f / 135f
+                    Box(
+                        Modifier
+                            .requiredSize(240.dp, 135.dp)
+                            .graphicsLayer(scaleX = scale, scaleY = scale),
+                    ) {
                         surface.invoke(Modifier.fillMaxSize())
-                    } else {
-                        // The video surface renders inside the tile on every platform, but it must be
-                        // LAID OUT at real video size and only scale-TRANSFORMED down to fit: a windowed
-                        // WebView (Android) sized to an actual thumbnail breaks the page's stream
-                        // negotiation, and Chromium backgrounds (and stalls) a page whose visible rect
-                        // is clipped away. The draw-time scale changes neither. 240×135 → ×36/135 draws
-                        // a 64×36 cover crop inside the 36dp tile.
-                        val scale = 36f / 135f
-                        Box(
-                            Modifier
-                                .requiredSize(240.dp, 135.dp)
-                                .graphicsLayer(scaleX = scale, scaleY = scale),
-                        ) {
-                            surface.invoke(Modifier.fillMaxSize())
-                        }
                     }
                     // Taps on the tile expand Now Playing — they must not reach the video page.
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))

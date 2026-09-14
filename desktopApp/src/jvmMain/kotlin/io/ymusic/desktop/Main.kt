@@ -9,18 +9,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
@@ -33,11 +29,10 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,12 +133,9 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.io.File
-import javax.swing.JFrame
-import javax.swing.JLayeredPane
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.min
-import kotlin.math.roundToInt
 import java.awt.Color as AwtColor
 
 /**
@@ -277,16 +269,7 @@ fun main() {
                 // No spinner while the graph builds: the window paints the app's own ground until
                 // the first frame has something in it.
                 graph == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-                else -> {
-                    // One Canvas on the JFrame layered pane. Mini / Now Playing / fullscreen
-                    // only report a hole; setBounds follows the screen rect. Remounting JAWT
-                    // on those hops freezes AppKit (the AWT EDT is main).
-                    val video = remember { DesktopVideoBinder() }
-                    CompositionLocalProvider(LocalDesktopVideo provides video) {
-                        Box(Modifier.fillMaxSize()) { App(graph!!) }
-                        VideoCanvasHost(video, window)
-                    }
-                }
+                else -> App(graph!!)
             }
         }
         // The tray icon lives whenever there is a queue to control — window open or not — and
@@ -614,151 +597,18 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
     }
 }
 
-/**
- * Mini / Now Playing / fullscreen only report a hole. The JAWT [Canvas] is stored on
- * [DesktopVideoBinder] and parented to the JFrame layered pane so those hops
- * setBounds instead of removeNotify/addNotify.
- */
-private class VideoHoleState {
-    var x by mutableIntStateOf(0)
-    var y by mutableIntStateOf(0)
-    var w by mutableIntStateOf(0)
-    var h by mutableIntStateOf(0)
-    var reporters by mutableIntStateOf(0)
-}
-
-private class DesktopVideoBinder {
-    val panel = MseVideoPanel()
-    val hole = VideoHoleState()
-    var local by mutableStateOf<LocalVideoSurface?>(null)
-    var mse by mutableStateOf<io.ymusic.mse.MseVideoSurface?>(null)
-}
-
-private val LocalDesktopVideo = staticCompositionLocalOf<DesktopVideoBinder?> { null }
-
 @Composable
 private fun DesktopPlayerSurface(
     localSurface: LocalVideoSurface,
     mseSurface: io.ymusic.mse.MseVideoSurface,
     modifier: Modifier,
 ) {
-    val binder = LocalDesktopVideo.current
-    if (binder == null) {
-        DesktopInlinePlayerSurface(localSurface, mseSurface, modifier)
-        return
-    }
-    DisposableEffect(binder, localSurface, mseSurface) {
-        binder.local = localSurface
-        binder.mse = mseSurface
-        binder.hole.reporters++
-        onDispose { binder.hole.reporters-- }
-    }
-    Box(
-        modifier
-            .onSizeChanged {
-                if (it.width > 0 && it.height > 0) {
-                    mseSurface.setBlitSize(it.width, it.height)
-                    localSurface.setBlitSize(it.width, it.height)
-                }
-            }
-            .onGloballyPositioned { coords ->
-                val p = coords.positionInWindow()
-                val s = coords.size
-                val x = p.x.roundToInt()
-                val y = p.y.roundToInt()
-                val hole = binder.hole
-                if (x != hole.x || y != hole.y || s.width != hole.w || s.height != hole.h) {
-                    hole.x = x
-                    hole.y = y
-                    hole.w = s.width
-                    hole.h = s.height
-                }
-            },
-    )
-}
-
-/** Parents the singleton Canvas once; hole screen changes only move it. */
-@Composable
-private fun VideoCanvasHost(binder: DesktopVideoBinder, awtWindow: java.awt.Window) {
-    val panel = binder.panel
-    var conceal by remember { mutableStateOf(false) }
-    val hole = binder.hole
-
-    DisposableEffect(awtWindow, panel) {
-        val frame = awtWindow as? JFrame ?: return@DisposableEffect onDispose { }
-        val pane = frame.layeredPane
-        pane.add(panel)
-        pane.setLayer(panel, JLayeredPane.POPUP_LAYER)
-        panel.isVisible = false
-        onDispose { pane.remove(panel) }
-    }
-
-    BindVideoPanel(binder.local, binder.mse, panel)
-
-    LaunchedEffect(hole.reporters) {
-        if (hole.reporters > 0) {
-            conceal = false
-        } else {
-            delay(64)
-            if (binder.hole.reporters == 0) conceal = true
-        }
-    }
-
-    val x = hole.x
-    val y = hole.y
-    val w = hole.w
-    val h = hole.h
-    // Keep the last hole while mini ↔ Now Playing ↔ fullscreen swaps reporters.
-    val show = !conceal && w > 0 && h > 0
-    SideEffect { applyVideoHole(awtWindow, panel, x, y, w, h, show) }
-}
-
-private fun applyVideoHole(
-    window: java.awt.Window,
-    panel: MseVideoPanel,
-    x: Int,
-    y: Int,
-    w: Int,
-    h: Int,
-    show: Boolean,
-) {
-    val run = {
-        if (!show || w <= 0 || h <= 0) {
-            panel.isVisible = false
-        } else {
-            val parent = panel.parent
-            val winLoc = try {
-                window.locationOnScreen
-            } catch (_: Exception) {
-                null
-            }
-            val parentLoc = try {
-                parent?.locationOnScreen
-            } catch (_: Exception) {
-                null
-            }
-            if (parent != null && winLoc != null && parentLoc != null) {
-                val insets = window.insets
-                val px = winLoc.x + insets.left + x - parentLoc.x
-                val py = winLoc.y + insets.top + y - parentLoc.y
-                panel.isVisible = true
-                if (panel.x != px || panel.y != py || panel.width != w || panel.height != h) {
-                    panel.setBounds(px, py, w, h)
-                    panel.doLayout()
-                }
-            }
-        }
-    }
-    if (SwingUtilities.isEventDispatchThread()) run() else SwingUtilities.invokeLater(run)
-}
-
-@Composable
-private fun BindVideoPanel(
-    localSurface: LocalVideoSurface?,
-    mseSurface: io.ymusic.mse.MseVideoSurface?,
-    panel: MseVideoPanel,
-) {
-    DisposableEffect(panel) {
+    val localVisible by localSurface.visible.collectAsState()
+    val localFps by localSurface.fps.collectAsState()
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val msePanel = remember { MseVideoPanel() }
+    val localPanel = remember { MseVideoPanel() }
+    DisposableEffect(msePanel, localPanel) {
         FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, _, _, _, _, _, _ ->
             /* Do not dispatchEvent into Skia from this JNI click — that is
                VideoChromeHit and freezes AppKit. Poke only, on a later EDT turn. */
@@ -771,70 +621,72 @@ private fun BindVideoPanel(
         }
         onDispose { FileAvNative.overlayMouse = null }
     }
-    DisposableEffect(mseSurface, localSurface, panel) {
-        if (mseSurface == null && localSurface == null) return@DisposableEffect onDispose { }
-        panel.onPainted = { img ->
-            mseSurface?.swingShown = img
-            localSurface?.swingShown = img
+    DisposableEffect(mseSurface, msePanel) {
+        msePanel.onPainted = { mseSurface.swingShown = it }
+        val blit: (java.awt.image.BufferedImage?) -> Unit = { msePanel.setImage(it) }
+        mseSurface.swingBlit = blit
+        msePanel.onPeer = { c ->
+            mseSurface.nativePeer = c
+            msePanel.setHardware(mseSurface.attach(c))
         }
-        val blit: (java.awt.image.BufferedImage?) -> Unit = { panel.setImage(it) }
-        mseSurface?.swingBlit = blit
-        localSurface?.swingBlit = blit
-        panel.onPeer = { c ->
-            mseSurface?.nativePeer = c
-            localSurface?.nativePeer = c
-            panel.setHardware(mseSurface?.attach(c) == true)
-        }
-        mseSurface?.onNativePresent = { panel.setHardware(it) }
-        localSurface?.onNativePresent = { panel.setHardware(it) }
-        panel.hostedCanvas()?.let { canvas -> panel.onPeer?.invoke(canvas) }
+        mseSurface.onNativePresent = { msePanel.setHardware(it) }
         onDispose {
-            panel.onPainted = null
-            panel.onPeer = null
-            mseSurface?.onNativePresent = null
-            localSurface?.onNativePresent = null
-            if (mseSurface?.swingBlit === blit) mseSurface.swingBlit = null
-            if (localSurface?.swingBlit === blit) localSurface.swingBlit = null
-            mseSurface?.attach(null)
-            mseSurface?.nativePeer = null
-            localSurface?.nativePeer = null
+            msePanel.onPainted = null
+            msePanel.onPeer = null
+            mseSurface.onNativePresent = null
+            if (mseSurface.swingBlit === blit) mseSurface.swingBlit = null
+            mseSurface.attach(null)
+            mseSurface.nativePeer = null
         }
     }
-}
-
-@Composable
-private fun DesktopInlinePlayerSurface(
-    localSurface: LocalVideoSurface,
-    mseSurface: io.ymusic.mse.MseVideoSurface,
-    modifier: Modifier,
-) {
-    val localVisible by localSurface.visible.collectAsState()
-    val localFps by localSurface.fps.collectAsState()
-    val panel = remember { MseVideoPanel() }
-    BindVideoPanel(localSurface, mseSurface, panel)
+    DisposableEffect(localSurface, localPanel) {
+        localPanel.onPainted = { localSurface.swingShown = it }
+        val blit: (java.awt.image.BufferedImage?) -> Unit = { localPanel.setImage(it) }
+        localSurface.swingBlit = blit
+        localPanel.onPeer = { localSurface.nativePeer = it }
+        localSurface.onNativePresent = { localPanel.setHardware(it) }
+        onDispose {
+            localPanel.onPainted = null
+            localPanel.onPeer = null
+            localSurface.onNativePresent = null
+            if (localSurface.swingBlit === blit) localSurface.swingBlit = null
+            localSurface.nativePeer = null
+        }
+    }
     Box(
         modifier.onSizeChanged {
+            size = it
             if (it.width > 0 && it.height > 0) {
                 mseSurface.setBlitSize(it.width, it.height)
                 localSurface.setBlitSize(it.width, it.height)
             }
         },
     ) {
-        SwingPanel(
-            background = Color.Black,
-            factory = { panel },
-            modifier = Modifier.fillMaxSize(),
-        )
-        if (localVisible && localFps > 0) {
-            Text(
-                "$localFps fps",
-                color = Color.White,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+        if (localVisible) {
+            SwingPanel(
+                background = Color.Black,
+                factory = { localPanel },
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (localFps > 0) {
+                Text(
+                    "$localFps fps",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        } else {
+            // Same blit as playground MseNativeVideo: Swing paints BGRA, Compose does not recompose
+            // each frame. contains()=false leaves caption/menu clicks in Compose.
+            SwingPanel(
+                background = Color.Black,
+                factory = { msePanel },
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }
@@ -939,9 +791,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         )
         add(canvas, BorderLayout.CENTER)
     }
-
-    fun hostedCanvas(): Canvas? =
-        if (canvas.isDisplayable && canvas.width > 0 && canvas.height > 0) canvas else null
 
     override fun doLayout() {
         canvas.setBounds(0, 0, width, height)

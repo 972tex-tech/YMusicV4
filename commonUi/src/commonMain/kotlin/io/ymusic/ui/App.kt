@@ -618,12 +618,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 // While Now Playing is closed, the mini player's art tile hosts the
                                 // video surface (all platforms — the tile lays it out at real size
                                 // and scales the drawing, see MiniPlayer) so a WebView source keeps
-                                // playing across the transition. Desktop does not remount the AWT
-                                // canvas: the shell keeps one JAWT peer and the hole moves.
+                                // playing across the transition.
                                 MiniPlayer(
                                     coordinator,
                                     surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
-                                    surfaceFillsTile = graph.surfaceScalesDown,
                                     onExpand = { nowPlayingOpen = true },
                                 )
                             }
