@@ -69,6 +69,7 @@ import io.ymusic.mse.FileAvNative
 import io.ymusic.mse.MseHostNative
 import io.ymusic.player.LocalPlayerContext
 import io.ymusic.player.LocalVideoSurface
+import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.PlayerEngines
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
@@ -638,7 +639,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         pickFeedbackFiles = ::pickFeedbackFiles,
         windowResizing = windowResizing,
     ) { modifier ->
-        DesktopPlayerSurface(localSurface, mseSurface, windowResizing, modifier)
+        DesktopPlayerSurface(localSurface, mseSurface, windowResizing, player.status, modifier)
     }
 }
 
@@ -647,10 +648,14 @@ private fun DesktopPlayerSurface(
     localSurface: LocalVideoSurface,
     mseSurface: io.ymusic.mse.MseVideoSurface,
     windowResizing: MutableStateFlow<Boolean>,
+    playbackStatus: kotlinx.coroutines.flow.StateFlow<PlaybackStatus>,
     modifier: Modifier,
 ) {
     val localVisible by localSurface.visible.collectAsState()
     val localFps by localSurface.fps.collectAsState()
+    val status by playbackStatus.collectAsState()
+    val pauseHold = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    pauseHold.set(!status.playWhenReady)
     val msePanel = remember { MseVideoPanel() }
     val localPanel = remember { MseVideoPanel() }
     DisposableEffect(msePanel, localPanel) {
@@ -664,11 +669,17 @@ private fun DesktopPlayerSurface(
     }
     DisposableEffect(mseSurface, msePanel) {
         msePanel.onPainted = { mseSurface.swingShown = it }
-        val blit: (java.awt.image.BufferedImage?) -> Unit = { msePanel.setImage(it) }
+        val blit: (java.awt.image.BufferedImage?) -> Unit = {
+            msePanel.setImage(it)
+            if (it != null) mseSurface.lastStill = copyRgb(it)
+        }
         mseSurface.swingBlit = blit
         msePanel.onPeer = { c ->
             mseSurface.nativePeer = c
+            val still = mseSurface.lastStill
+            if (still != null && pauseHold.get()) msePanel.holdLastFrame(still)
             msePanel.setHardware(mseSurface.attach(c))
+            if (msePanel.covered) FileAvNative.setOverlayHidden(true)
         }
         msePanel.extraSnapshot = {
             val frame = MseHostNative.copyFrame(mseSurface.host)
@@ -676,6 +687,7 @@ private fun DesktopPlayerSurface(
         }
         mseSurface.onNativePresent = { msePanel.setHardware(it) }
         onDispose {
+            mseSurface.lastStill = msePanel.captureStill() ?: mseSurface.lastStill
             msePanel.onPainted = null
             msePanel.onPeer = null
             msePanel.extraSnapshot = null
@@ -705,6 +717,12 @@ private fun DesktopPlayerSurface(
     }
     val coverHole = VideoOverlayNative.coverHole
     val windowResizingNow by windowResizing.collectAsState()
+    LaunchedEffect(status.playWhenReady, coverHole, windowResizingNow) {
+        if (status.playWhenReady && !coverHole && !windowResizingNow) {
+            msePanel.setCovered(false)
+            localPanel.setCovered(false)
+        }
+    }
     var parked by remember { mutableStateOf(false) }
     var menuStill by remember { mutableStateOf<ImageBitmap?>(null) }
     val panel = if (localVisible) localPanel else msePanel
@@ -781,7 +799,8 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile private var img: BufferedImage? = null
 
     @Volatile private var hardware = false
-    private var covered = false
+    var covered = false
+        private set
 
     @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
 
@@ -899,6 +918,14 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         } catch (_: Exception) {
             null
         }
+    }
+
+    fun holdLastFrame(snap: BufferedImage) {
+        covered = true
+        hardware = false
+        img = snap
+        FileAvNative.setOverlayHidden(true)
+        canvas.repaint()
     }
 
     fun setCovered(covered: Boolean) {

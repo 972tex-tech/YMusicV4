@@ -55,6 +55,10 @@ actual class MseVideoSurface {
     @Volatile
     var swingShown: BufferedImage? = null
 
+    /** Last decoded/presented still; survives mini → Now Playing remount. */
+    @Volatile
+    var lastStill: BufferedImage? = null
+
     internal fun publish(frame: BufferedImage) {
         val hole = swingBlit
         if (hole != null) hole(frame)
