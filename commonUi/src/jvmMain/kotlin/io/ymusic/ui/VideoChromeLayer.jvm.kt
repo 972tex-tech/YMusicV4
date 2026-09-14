@@ -68,7 +68,11 @@ internal actual fun VideoChromeLayer(
 
     DisposableEffect(Unit) {
         val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
+        var lastW = -1
+        var lastH = -1
         fun park() {
+            lastW = owner.width
+            lastH = owner.height
             // AWT resize callbacks run inside Compose measure on desktop.
             // Writing snapshot state here crashes: layout state is not idle.
             SwingUtilities.invokeLater {
@@ -76,9 +80,21 @@ internal actual fun VideoChromeLayer(
                 parkGen++
             }
         }
+        // Owned dialogs (quality/⋮) fire moved/resized with the same size. Skip
+        // the first event and any later zero-delta so chrome does not blink.
+        fun parkIfSizeChanged() {
+            val w = owner.width
+            val h = owner.height
+            if (w == lastW && h == lastH) return
+            val first = lastW < 0
+            lastW = w
+            lastH = h
+            if (first) return
+            park()
+        }
         val components = object : ComponentAdapter() {
-            override fun componentMoved(e: ComponentEvent) = park()
-            override fun componentResized(e: ComponentEvent) = park()
+            override fun componentMoved(e: ComponentEvent) = parkIfSizeChanged()
+            override fun componentResized(e: ComponentEvent) = parkIfSizeChanged()
         }
         val windows = object : WindowAdapter() {
             override fun windowStateChanged(e: WindowEvent) = park()
