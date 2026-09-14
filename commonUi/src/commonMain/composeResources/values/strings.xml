@@ -147,7 +147,6 @@
 
     <!-- Now Playing -->
     <string name="audio_only">Audio-only</string>
-    <string name="video_quality">Quality</string>
     <string name="video_quality_auto">Auto</string>
     <string name="captions_off">CC off</string>
     <string name="up_next">Up next</string>
