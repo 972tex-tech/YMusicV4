@@ -13,7 +13,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -661,33 +660,14 @@ private fun DesktopPlayerSurface(
     }
     val coverHole = VideoOverlayNative.coverHole
     val liveResize = VideoOverlayNative.liveResize
-    var resizeGen by remember { mutableIntStateOf(0) }
     DisposableEffect(Unit) {
         FileAvNative.overlayLiveResize = { on ->
             SwingUtilities.invokeLater { VideoOverlayNative.liveResize = on }
         }
-        val owner = Frame.getFrames()
-            .filter { it.isDisplayable && it.isShowing && it.width > 64 && it.height > 64 }
-            .maxByOrNull { it.width * it.height }
-        val listener = object : ComponentAdapter() {
-            override fun componentResized(e: ComponentEvent) {
-                SwingUtilities.invokeLater {
-                    VideoOverlayNative.liveResize = true
-                    resizeGen++
-                }
-            }
-        }
-        owner?.addComponentListener(listener)
         onDispose {
             FileAvNative.overlayLiveResize = null
-            owner?.removeComponentListener(listener)
             VideoOverlayNative.liveResize = false
         }
-    }
-    LaunchedEffect(resizeGen) {
-        if (!VideoOverlayNative.liveResize) return@LaunchedEffect
-        delay(180)
-        VideoOverlayNative.liveResize = false
     }
     Box(
         modifier.onSizeChanged {
@@ -867,9 +847,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             img = snap
             canvas.repaint()
         } else {
-            img = null
             FileAvNative.setOverlayHidden(false)
-            hardware = true
             overlayX = Int.MIN_VALUE
             layoutOverlay()
             canvas.repaint()

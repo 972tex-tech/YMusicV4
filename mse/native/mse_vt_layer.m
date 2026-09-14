@@ -213,6 +213,7 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
         [layer enqueueSampleBuffer:sbuf];
     CFRelease(sbuf);
     mse_keep_still(pb);
+    mse_vt_reveal_overlay();
     {
         static int shown;
         if (shown < 3) {

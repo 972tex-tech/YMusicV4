@@ -26,6 +26,7 @@ static jclass mse_native_cls;
 static jmethodID mse_mouse_mid;
 static jmethodID mse_live_mid;
 static int mse_live_notified;
+static int mse_overlay_deferred_show;
 
 static void mse_bind_mouse_jni(JNIEnv *env)
 {
@@ -271,13 +272,38 @@ void mse_vt_jawt_unhost(void)
 void mse_vt_set_overlay_hidden(int hid)
 {
     NSView *v = mse_vt_jawt_view;
+    if (hid) {
+        mse_overlay_deferred_show = 0;
+        if (!v)
+            return;
+        if ([NSThread isMainThread])
+            v.hidden = YES;
+        else
+            mse_on_main(^{
+                v.hidden = YES;
+            });
+        return;
+    }
+    /* Stay hidden until mse_vt_reveal_overlay (next presented frame). */
+    mse_overlay_deferred_show = 1;
+}
+
+void mse_vt_reveal_overlay(void)
+{
+    NSView *v;
+    if (!mse_overlay_deferred_show)
+        return;
+    mse_overlay_deferred_show = 0;
+    v = mse_vt_jawt_view;
     if (!v)
         return;
     if ([NSThread isMainThread])
-        v.hidden = hid ? YES : NO;
+        v.hidden = NO;
     else
         mse_on_main(^{
-            v.hidden = hid ? YES : NO;
+            NSView *host = mse_vt_jawt_view;
+            if (host)
+                host.hidden = NO;
         });
 }
 

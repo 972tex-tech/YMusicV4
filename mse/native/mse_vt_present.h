@@ -16,6 +16,8 @@ extern void *mse_vt_jawt_layer;
 void mse_vt_jawt_unhost(void);
 /* Hide the overlay NSView without flushing the layer (menu still on the canvas). */
 void mse_vt_set_overlay_hidden(int hid);
+/* After [mse_vt_set_overlay_hidden](0), show the view on the next presented frame. */
+void mse_vt_reveal_overlay(void);
 /* Canvas screen rect (AWT y-down). Async; does not hop the AWT thread. */
 void mse_vt_layout_screen(int x, int y, int w, int h);
 
