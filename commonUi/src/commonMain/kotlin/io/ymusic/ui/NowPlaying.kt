@@ -65,6 +65,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -82,7 +83,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -427,8 +427,9 @@ private fun LandscapeNowPlaying(
 
 /**
  * Hosts video-overlay [content] with player-style auto-hide: it fades out after a few seconds of
- * playback, and a tap/click on the video toggles it in either state. While paused nothing
- * auto-hides; pausing brings the controls back.
+ * playback, and a tap/click on the video toggles it in either state. Hover does not show it.
+ * Dragging the seek bar holds it visible. While paused nothing auto-hides; pausing brings the
+ * controls back.
  */
 @Composable
 private fun BoxScope.AutoHidingOverlay(
@@ -438,6 +439,7 @@ private fun BoxScope.AutoHidingOverlay(
 ) {
     var visible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
+    var scrubbing by remember { mutableStateOf(false) }
     val nativePokes = VideoOverlayNative.pokes
     SideEffect {
         VideoOverlayNative.shown = visible
@@ -453,37 +455,34 @@ private fun BoxScope.AutoHidingOverlay(
                     visible = !visible
                     interaction++
                 }
-            }
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val e = awaitPointerEvent()
-                        if (e.type == PointerEventType.Move || e.type == PointerEventType.Enter) {
-                            visible = true
-                            interaction++
-                        }
-                    }
-                }
             },
     )
-    // Native NSView clicks/moves after the chrome window goes click-through.
+    // Native NSView clicks after the chrome window goes click-through.
     LaunchedEffect(nativePokes) {
         if (nativePokes == 0) return@LaunchedEffect
-        visible = true
+        visible = !visible
         interaction++
     }
     // Pausing brings the controls back (a transition, not a hold — a tap can still hide them).
     LaunchedEffect(playing) {
         if (!playing) visible = true
     }
-    LaunchedEffect(playing, visible, interaction) {
-        if (playing && visible) {
+    LaunchedEffect(playing, visible, interaction, scrubbing) {
+        if (playing && visible && !scrubbing) {
             delay(OVERLAY_HIDE_DELAY_MS)
             visible = false
         }
     }
-    androidx.compose.animation.AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
-        Box(Modifier.fillMaxSize()) { content() }
+    CompositionLocalProvider(
+        LocalOverlayScrub provides { on ->
+            scrubbing = on
+            if (on) visible = true
+            interaction++
+        },
+    ) {
+        androidx.compose.animation.AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+            Box(Modifier.fillMaxSize()) { content() }
+        }
     }
 }
 

@@ -609,12 +609,9 @@ private fun DesktopPlayerSurface(
     DisposableEffect(msePanel, localPanel) {
         FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, _, _, _, _, _, _ ->
             /* Do not dispatchEvent into Skia from this JNI click — that is
-               VideoChromeHit and freezes AppKit. Poke only, on a later EDT turn. */
-            when (id) {
-                MouseEvent.MOUSE_RELEASED ->
-                    SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
-                MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_ENTERED ->
-                    SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = false) }
+               VideoChromeHit and freezes AppKit. Click toggles chrome; hover does not. */
+            if (id == MouseEvent.MOUSE_RELEASED) {
+                SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
             }
         }
         onDispose { FileAvNative.overlayMouse = null }
@@ -753,24 +750,13 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         canvas.background = AwtColor.BLACK
         canvas.isFocusable = false
         /* HW Canvas / VT NSView sit above Skia. Do not copy AWT events into
-           Compose — that freeze is AppKit re-entry. Poke the chrome overlay. */
+           Compose — that freeze is AppKit re-entry. Click toggles chrome. */
         val overlayClicks = object : MouseAdapter() {
-            private fun poke(e: MouseEvent) {
-                when (e.id) {
-                    MouseEvent.MOUSE_RELEASED ->
-                        SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
-                    MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_ENTERED ->
-                        SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = false) }
-                }
+            override fun mouseReleased(e: MouseEvent) {
+                SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
             }
-
-            override fun mousePressed(e: MouseEvent) = poke(e)
-            override fun mouseReleased(e: MouseEvent) = poke(e)
-            override fun mouseEntered(e: MouseEvent) = poke(e)
-            override fun mouseMoved(e: MouseEvent) = poke(e)
         }
         canvas.addMouseListener(overlayClicks)
-        canvas.addMouseMotionListener(overlayClicks)
         canvas.addComponentListener(
             object : ComponentAdapter() {
                 override fun componentResized(e: ComponentEvent) {

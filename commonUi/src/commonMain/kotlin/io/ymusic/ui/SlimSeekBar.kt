@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,7 @@ fun SlimSeekBar(
     var widthPx by remember { mutableStateOf(0) }
     var dragging by remember { mutableStateOf<Float?>(null) }
     val shown = (dragging ?: fraction).coerceIn(0f, 1f)
+    val onScrub by rememberUpdatedState(LocalOverlayScrub.current)
     Box(
         modifier
             .height(barHeight)
@@ -66,15 +68,22 @@ fun SlimSeekBar(
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
-                    onDragStart = { offset -> dragging = (offset.x / size.width).coerceIn(0f, 1f) },
+                    onDragStart = { offset ->
+                        dragging = (offset.x / size.width).coerceIn(0f, 1f)
+                        onScrub(true)
+                    },
                     onHorizontalDrag = { change, _ ->
                         dragging = (change.position.x / size.width).coerceIn(0f, 1f)
                     },
                     onDragEnd = {
                         dragging?.let(onSeek)
                         dragging = null
+                        onScrub(false)
                     },
-                    onDragCancel = { dragging = null },
+                    onDragCancel = {
+                        dragging = null
+                        onScrub(false)
+                    },
                 )
             },
         contentAlignment = Alignment.CenterStart,
