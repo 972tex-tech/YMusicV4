@@ -139,6 +139,14 @@ private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
     return item0 == null || item0.offset + item0.size <= 0
 }
 
+private data class OverlayScrollProbe(
+    val off: Boolean,
+    val idx: Int,
+    val y: Int,
+    val n: Int,
+    val item0: String,
+)
+
 /**
  * The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing.
  *
@@ -243,9 +251,14 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
     val scrubbing = VideoOverlayNative.scrubbing
+    LaunchedEffect(playWhenReady) {
+        overlayLog("playWhenReady=$playWhenReady armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible}")
+    }
     LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing) {
+        overlayLog("hide-timer start play=$playWhenReady armed=$armed vis=$overlayVisible scrub=$scrubbing gen=$showGen")
         if (armed && overlayVisible && playWhenReady && !scrubbing) {
             delay(OVERLAY_HIDE_DELAY_MS)
+            overlayLog("hide-timer fire vis=${VideoOverlayNative.visible} -> false")
             VideoOverlayNative.visible = false
         }
     }
@@ -309,11 +322,31 @@ private fun PortraitNowPlaying(
     // Single writer. Pause/play must not be in this path — they only affect auto-hide.
     // Show when the title/seek/transport item has left the list viewport.
     LaunchedEffect(listState) {
-        snapshotFlow { inlineControlsOffscreen(listState) }
-            .collect { offscreen ->
-                VideoOverlayNative.armed = offscreen
-                if (offscreen) VideoOverlayNative.show()
-            }
+        snapshotFlow {
+            val vis = listState.layoutInfo.visibleItemsInfo
+            val item0 = vis.find { it.index == 0 }
+            val off = inlineControlsOffscreen(listState)
+            OverlayScrollProbe(
+                off = off,
+                idx = listState.firstVisibleItemIndex,
+                y = listState.firstVisibleItemScrollOffset,
+                n = vis.size,
+                item0 = if (item0 == null) {
+                    "none"
+                } else {
+                    "y=${item0.offset} h=${item0.size} bot=${item0.offset + item0.size}"
+                },
+            )
+        }.collect { p ->
+            val before = "armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible}"
+            VideoOverlayNative.armed = p.off
+            if (p.off) VideoOverlayNative.show()
+            overlayLog(
+                "scroll off=${p.off} idx=${p.idx} y=${p.y} n=${p.n} item0=${p.item0} " +
+                    "play=${status.playWhenReady} $before -> armed=${VideoOverlayNative.armed} " +
+                    "vis=${VideoOverlayNative.visible} show=${VideoOverlayNative.armed && VideoOverlayNative.visible}",
+            )
+        }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
@@ -468,6 +501,9 @@ private fun BoxScope.AutoHidingOverlay(
     val armed = VideoOverlayNative.armed
     val visible = VideoOverlayNative.visible
     val show = armed && visible
+    LaunchedEffect(show, armed, visible) {
+        overlayLog("paint show=$show armed=$armed vis=$visible")
+    }
     SideEffect {
         VideoOverlayNative.shown = show
         onVisibleChange(show)

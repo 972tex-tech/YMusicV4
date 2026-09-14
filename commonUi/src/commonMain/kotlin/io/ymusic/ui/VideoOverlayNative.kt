@@ -41,6 +41,7 @@ object VideoOverlayNative {
     var raiseWindow: (() -> Unit)? = null
 
     fun poke(raise: Boolean) {
+        overlayLog("poke raise=$raise armed=$armed vis=$visible")
         if (!raise || !armed) return
         if (visible) {
             visible = false
@@ -51,9 +52,14 @@ object VideoOverlayNative {
 
     fun show() {
         val raise = armed && !visible
+        overlayLog("show() armed=$armed vis=$visible -> vis=true raise=$raise gen=$showGen")
         visible = true
         showGen++
         shown = armed
         if (raise) raiseWindow?.invoke()
     }
+}
+
+internal fun overlayLog(msg: String) {
+    println("[overlay] $msg")
 }
