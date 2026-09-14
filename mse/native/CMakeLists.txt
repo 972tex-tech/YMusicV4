@@ -69,6 +69,7 @@ if(APPLE)
     "-framework CoreVideo"
     "-framework AVFoundation"
     "-framework QuartzCore"
+    "-framework CoreImage"
     "-framework AppKit"
   )
 endif()

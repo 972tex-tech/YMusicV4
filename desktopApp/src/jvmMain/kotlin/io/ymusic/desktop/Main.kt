@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -664,9 +663,18 @@ private fun DesktopPlayerSurface(
         }
     }
     val coverHole = VideoOverlayNative.coverHole
-    val stillPanel = if (localVisible) localPanel else msePanel
-    val still = remember(coverHole, localVisible) {
-        if (coverHole) stillPanel.captureStill()?.toComposeImageBitmap() else null
+    var still by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    DisposableEffect(localVisible, msePanel, localPanel) {
+        VideoOverlayNative.prepareCover = {
+            val panel = if (localVisible) localPanel else msePanel
+            still = panel.captureStill()?.toComposeImageBitmap()
+        }
+        onDispose {
+            if (VideoOverlayNative.prepareCover != null) VideoOverlayNative.prepareCover = null
+        }
+    }
+    LaunchedEffect(coverHole) {
+        if (!coverHole) still = null
     }
     Box(
         modifier.onSizeChanged {
@@ -687,14 +695,11 @@ private fun DesktopPlayerSurface(
                     )
                 }
             }
-        }
-        val hole = if (coverHole) Modifier.size(0.dp) else Modifier.fillMaxSize()
-        if (localVisible) {
+        } else if (localVisible) {
             SwingPanel(
                 background = Color.Black,
                 factory = { localPanel },
-                modifier = hole,
-                update = { it.setCovered(coverHole) },
+                modifier = Modifier.fillMaxSize(),
             )
             if (localFps > 0) {
                 Text(
@@ -714,8 +719,7 @@ private fun DesktopPlayerSurface(
             SwingPanel(
                 background = Color.Black,
                 factory = { msePanel },
-                modifier = hole,
-                update = { it.setCovered(coverHole) },
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }
@@ -729,7 +733,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile private var img: BufferedImage? = null
 
     @Volatile private var hardware = false
-    private var covered = false
 
     @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
 
@@ -840,22 +843,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         val bgra = FileAvNative.snapshotOverlay(wh)
         if (bgra != null && wh[0] > 0 && wh[1] > 0) return bgraToRgb(wh[0], wh[1], bgra)
         return extraSnapshot?.invoke()
-    }
-
-    fun setCovered(covered: Boolean) {
-        if (this.covered == covered) return
-        this.covered = covered
-        if (covered) {
-            canvas.isVisible = false
-            isVisible = false
-            onPeer?.invoke(null)
-        } else {
-            isVisible = true
-            canvas.isVisible = true
-            if (canvas.isDisplayable && canvas.width > 0 && canvas.height > 0) {
-                onPeer?.invoke(canvas)
-            }
-        }
     }
 
     fun setHardware(on: Boolean) {

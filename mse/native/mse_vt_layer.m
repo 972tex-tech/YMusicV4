@@ -3,33 +3,98 @@
 #import "mse_vt_blit.h"
 #import "mse_ffmpeg.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <os/log.h>
 #import <limits.h>
+#import <stdint.h>
 #import <stdlib.h>
 #import <string.h>
 
 static CVPixelBufferRef mse_still_pb;
+static uint8_t *mse_still_bgra;
+static int mse_still_w, mse_still_h;
 static MseVtBlit mse_still_blit;
 
 static void mse_keep_still(CVPixelBufferRef pb)
 {
-    if (mse_still_pb == pb)
+    int tw = 0, th = 0, n;
+    uint8_t *buf;
+    if (mse_still_pb != pb) {
+        if (mse_still_pb)
+            CFRelease(mse_still_pb);
+        mse_still_pb = pb;
+        if (pb)
+            CFRetain(pb);
+    }
+    if (!pb)
         return;
-    if (mse_still_pb)
-        CFRelease(mse_still_pb);
-    mse_still_pb = pb;
-    if (pb)
-        CFRetain(pb);
+    /* Read back on the present thread — UI-thread VT transfer often fails. */
+    if (mse_vt_blit_size(pb, 0, 0, &tw, &th) != 0 || tw <= 0 || th <= 0)
+        return;
+    if ((uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4))
+        return;
+    n = tw * th * 4;
+    buf = (uint8_t *)realloc(mse_still_bgra, (size_t)n);
+    if (!buf)
+        return;
+    mse_still_bgra = buf;
+    if (mse_vt_blit_copy(&mse_still_blit, pb, mse_still_bgra, tw, th) == 0) {
+        mse_still_w = tw;
+        mse_still_h = th;
+    }
+}
+
+static int mse_ci_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
+{
+    CIImage *ci;
+    CIContext *ctx;
+    CGColorSpaceRef cs;
+    if (!pb || !dst || w <= 0 || h <= 0)
+        return -1;
+    ci = [CIImage imageWithCVPixelBuffer:pb];
+    if (!ci)
+        return -1;
+    ctx = [CIContext contextWithOptions:nil];
+    if (!ctx)
+        return -1;
+    cs = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
+    if (!cs)
+        cs = CGColorSpaceCreateDeviceRGB();
+    if (!cs)
+        return -1;
+    [ctx render:ci
+       toBitmap:dst
+       rowBytes:(size_t)w * 4
+         bounds:CGRectMake(0, 0, w, h)
+         format:kCIFormatBGRA8
+     colorSpace:cs];
+    CGColorSpaceRelease(cs);
+    return 0;
 }
 
 int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
 {
-    int tw = 0, th = 0, n;
+    int tw, th, n;
+    if (mse_still_bgra && mse_still_w > 0 && mse_still_h > 0) {
+        n = mse_still_w * mse_still_h * 4;
+        if (w)
+            *w = mse_still_w;
+        if (h)
+            *h = mse_still_h;
+        if (!dst)
+            return n;
+        if (cap < n)
+            return 0;
+        memcpy(dst, mse_still_bgra, (size_t)n);
+        return n;
+    }
     if (!mse_still_pb)
         return 0;
-    if (mse_vt_blit_size(mse_still_pb, 0, 0, &tw, &th) != 0 || tw <= 0 || th <= 0)
+    tw = (int)CVPixelBufferGetWidth(mse_still_pb);
+    th = (int)CVPixelBufferGetHeight(mse_still_pb);
+    if (tw <= 0 || th <= 0)
         return 0;
     if ((uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4))
         return 0;
@@ -42,9 +107,11 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
         return n;
     if (cap < n)
         return 0;
-    if (mse_vt_blit_copy(&mse_still_blit, mse_still_pb, dst, tw, th) != 0)
-        return 0;
-    return n;
+    if (mse_ci_copy(mse_still_pb, dst, tw, th) == 0)
+        return n;
+    if (mse_vt_blit_copy(&mse_still_blit, mse_still_pb, dst, tw, th) == 0)
+        return n;
+    return 0;
 }
 
 void mse_vt_detach(void *p)
