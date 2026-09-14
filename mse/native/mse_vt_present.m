@@ -193,8 +193,12 @@ static void mse_java_mouse(NSEvent *e)
 @implementation MseVtHostView
 - (NSView *)hitTest:(NSPoint)point
 {
-    /* Under AWTView we should not be hit. If z-order is wrong, still take the
-       click so JNI can toggle chrome rather than dropping it. */
+    /* Must honor hidden. Default NSView skips hidden views; this override did
+       not, so mouseDown never reached Compose (hover still did — mouseMoved
+       hits the DropdownMenu JDialog). Covering the canvas does not help while
+       this view stays in the hierarchy and eats presses. */
+    if (self.hidden || self.alphaValue < 0.01f)
+        return nil;
     return NSPointInRect(point, self.frame) ? self : nil;
 }
 #define MSE_JNI_MOUSE(sel) - (void)sel:(NSEvent *)e { mse_java_mouse(e); }
