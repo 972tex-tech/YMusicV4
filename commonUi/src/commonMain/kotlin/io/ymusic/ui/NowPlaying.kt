@@ -65,7 +65,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -234,7 +233,17 @@ fun MiniPlayer(
 fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
     var fullscreen by remember { mutableStateOf(false) }
     val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
-    SideEffect { VideoOverlayNative.playing = playWhenReady }
+    VideoOverlayNative.playing = playWhenReady
+    val armed = VideoOverlayNative.armed
+    val overlayVisible = VideoOverlayNative.visible
+    val showGen = VideoOverlayNative.showGen
+    val scrubbing = VideoOverlayNative.scrubbing
+    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing) {
+        if (armed && overlayVisible && playWhenReady && !scrubbing) {
+            delay(OVERLAY_HIDE_DELAY_MS)
+            VideoOverlayNative.visible = false
+        }
+    }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
         BoxWithConstraints {
             when {
@@ -255,7 +264,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     val queue by player.queue.collectAsState()
     val current = queue.currentItem
 
-    SideEffect { VideoOverlayNative.armed = true }
+    VideoOverlayNative.armed = true
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
@@ -298,20 +307,21 @@ private fun PortraitNowPlaying(
             item0 == null || item0.offset + item0.size <= 0
         }
     }
-    SideEffect { VideoOverlayNative.armed = controlsOnVideo }
+    VideoOverlayNative.armed = controlsOnVideo
     DisposableEffect(Unit) {
-        onDispose { VideoOverlayNative.armed = true }
+        onDispose { VideoOverlayNative.armed = false }
+    }
+    LaunchedEffect(controlsOnVideo) {
+        if (controlsOnVideo) VideoOverlayNative.show()
     }
     val overlayMode = rememberUpdatedState(controlsOnVideo)
     LaunchedEffect(listState) {
-        // Mouse wheel often never sets isScrollInProgress. After the sticky header
-        // pins, index/offset freeze too — watch the last visible row instead.
         snapshotFlow {
             val items = listState.layoutInfo.visibleItemsInfo
             val last = items.lastOrNull()
             last?.index to last?.offset
         }.collect {
-            if (overlayMode.value) VideoOverlayNative.reveal()
+            if (overlayMode.value) VideoOverlayNative.show()
         }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
@@ -420,7 +430,7 @@ private fun LandscapeNowPlaying(
     val queue by player.queue.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
-    SideEffect { VideoOverlayNative.armed = true }
+    VideoOverlayNative.armed = true
 
     Row(Modifier.fillMaxSize()) {
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
@@ -464,13 +474,8 @@ private fun BoxScope.AutoHidingOverlay(
     onVisibleChange: (Boolean) -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
-    var visible by remember { mutableStateOf(true) }
-    var interaction by remember { mutableStateOf(0) }
-    var scrubbing by remember { mutableStateOf(false) }
-    val nativePokes = VideoOverlayNative.pokes
-    val reveals = VideoOverlayNative.reveals
-    val playing = VideoOverlayNative.playing
     val armed = VideoOverlayNative.armed
+    val visible = VideoOverlayNative.visible
     val show = armed && visible
     SideEffect {
         VideoOverlayNative.shown = show
@@ -481,54 +486,16 @@ private fun BoxScope.AutoHidingOverlay(
             Modifier
                 .matchParentSize()
                 .pointerInput(Unit) {
-                    detectTapGestures {
-                        visible = !visible
-                        interaction++
-                    }
+                    detectTapGestures { VideoOverlayNative.poke(raise = true) }
                 },
         )
     }
-    LaunchedEffect(nativePokes) {
-        if (nativePokes == 0 || !VideoOverlayNative.armed) return@LaunchedEffect
-        visible = !visible
-        interaction++
-    }
-    LaunchedEffect(playing) {
-        visible = true
-        interaction++
-    }
-    LaunchedEffect(reveals) {
-        if (reveals == 0) return@LaunchedEffect
-        visible = true
-        interaction++
-    }
-    // Inline controls left the viewport: always show, even if a previous auto-hide
-    // left visible=false while this overlay stayed composed.
-    LaunchedEffect(armed) {
-        if (!armed) return@LaunchedEffect
-        visible = true
-        interaction++
-    }
-    LaunchedEffect(playing, visible, interaction, scrubbing, armed) {
-        if (armed && playing && visible && !scrubbing) {
-            delay(OVERLAY_HIDE_DELAY_MS)
-            visible = false
-        }
-    }
-    CompositionLocalProvider(
-        LocalOverlayScrub provides { on ->
-            scrubbing = on
-            if (on) visible = true
-            interaction++
-        },
+    androidx.compose.animation.AnimatedVisibility(
+        show,
+        enter = EnterTransition.None,
+        exit = fadeOut(),
     ) {
-        androidx.compose.animation.AnimatedVisibility(
-            show,
-            enter = EnterTransition.None,
-            exit = fadeOut(),
-        ) {
-            Box(Modifier.fillMaxSize()) { content() }
-        }
+        Box(Modifier.fillMaxSize()) { content() }
     }
 }
 

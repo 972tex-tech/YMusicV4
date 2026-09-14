@@ -1,30 +1,38 @@
 package io.ymusic.ui
 
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
+ * Overlay chrome state lives here so the main window (scroll, pause) and the
+ * chrome Window (paint) share one snapshot. Do not keep show/hide in the chrome
+ * composition — that window often skips parent updates.
+ *
  * Native video NSView gets mouse after the chrome window fades to fully transparent
  * (macOS click-through). Do not copy AWT events into the chrome window — that froze
- * the player. A click [poke] toggles [AutoHidingOverlay]; hover does not.
+ * the player.
  */
 object VideoOverlayNative {
-    var pokes by mutableIntStateOf(0)
-        internal set
-
-    /** Queue-scroll / play-pause: chrome Window reads this, not a parent lambda. */
-    var reveals by mutableIntStateOf(0)
-        internal set
-
     var playing by mutableStateOf(false)
 
     /** Portrait: inline transport has scrolled off. Landscape/fullscreen: always true. */
-    var armed by mutableStateOf(true)
+    var armed by mutableStateOf(false)
 
-    /** Last overlay visibility. */
+    /** User-facing chrome on the video (and/or after auto-hide). */
+    var visible by mutableStateOf(true)
+
+    var scrubbing by mutableStateOf(false)
+
+    /** Bumped on every show so the auto-hide timer restarts. */
+    var showGen by mutableIntStateOf(0)
+        internal set
+
+    val showing: Boolean
+        get() = armed && visible
+
+    /** Last overlay visibility (native click-through). */
     @Volatile
     var shown: Boolean = true
 
@@ -33,17 +41,19 @@ object VideoOverlayNative {
     var raiseWindow: (() -> Unit)? = null
 
     fun poke(raise: Boolean) {
-        if (!raise) return
-        pokes++
-        /* toFront while the VT overlay NSView is handling the click freezes
-           AppKit (AWT EDT is main). Raise only when the chrome was hidden. */
-        if (!shown) raiseWindow?.invoke()
+        if (!raise || !armed) return
+        if (visible) {
+            visible = false
+        } else {
+            show()
+        }
     }
 
-    fun reveal() {
-        reveals++
+    fun show() {
+        val raise = armed && !visible
+        visible = true
+        showGen++
+        shown = armed
+        if (raise) raiseWindow?.invoke()
     }
 }
-
-/** Seek-bar scrub in the video overlay: true while the thumb is down. */
-internal val LocalOverlayScrub = compositionLocalOf<(Boolean) -> Unit> { {} }
