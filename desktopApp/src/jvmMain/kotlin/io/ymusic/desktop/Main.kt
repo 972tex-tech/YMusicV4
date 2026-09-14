@@ -134,7 +134,6 @@ import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import java.io.File
-import java.nio.ByteBuffer
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.min
@@ -879,8 +878,25 @@ private fun copyRgb(src: BufferedImage): BufferedImage {
 private fun bgraToRgb(width: Int, height: Int, bgra: ByteArray): BufferedImage {
     val img = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
     val pixels = (img.raster.dataBuffer as DataBufferInt).data
-    val n = minOf(pixels.size, width * height)
-    FileAvNative.copyBgra(ByteBuffer.wrap(bgra), pixels, n)
+    val n = minOf(pixels.size, width * height, bgra.size / 4)
+    var i = 0
+    var p = 0
+    var sum = 0L
+    while (i < n) {
+        val b = bgra[p].toInt() and 0xff
+        val g = bgra[p + 1].toInt() and 0xff
+        val r = bgra[p + 2].toInt() and 0xff
+        pixels[i] = (r shl 16) or (g shl 8) or b
+        sum += r + g + b
+        i++
+        p += 4
+    }
+    val mean = if (n > 0) (sum / (n * 3L)).toInt() else 0
+    System.err.println("mse-v still rgb mean=$mean")
+    try {
+        javax.imageio.ImageIO.write(img, "png", java.io.File("/tmp/ymusic-still.png"))
+    } catch (_: Exception) {
+    }
     return img
 }
 

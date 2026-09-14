@@ -15,8 +15,6 @@
 #import <string.h>
 
 static CVPixelBufferRef mse_still_pb;
-static uint8_t *mse_still_bgra;
-static int mse_still_w, mse_still_h;
 static MseVtBlit mse_still_blit;
 
 static void mse_keep_still(CVPixelBufferRef pb)
@@ -30,21 +28,16 @@ static void mse_keep_still(CVPixelBufferRef pb)
         CFRetain(pb);
 }
 
-static CVPixelBufferRef mse_displayed_pb(void)
+static int mse_rgb_mean(const uint8_t *p, int n)
 {
-    CVPixelBufferRef pb = NULL;
-    if (@available(macOS 14.0, *)) {
-        if (mse_vt_jawt_layer) {
-            AVSampleBufferDisplayLayer *layer =
-                (__bridge AVSampleBufferDisplayLayer *)mse_vt_jawt_layer;
-            pb = [layer.sampleBufferRenderer copyDisplayedPixelBuffer];
-        }
-    }
-    if (!pb && mse_still_pb) {
-        CFRetain(mse_still_pb);
-        pb = mse_still_pb;
-    }
-    return pb;
+    long long s = 0;
+    int i, pix;
+    pix = n / 4;
+    if (pix <= 0)
+        return 0;
+    for (i = 0; i < pix; i++)
+        s += (int)p[i * 4] + p[i * 4 + 1] + p[i * 4 + 2];
+    return (int)(s / ((long long)pix * 3));
 }
 
 static int mse_cg_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
@@ -99,41 +92,38 @@ static int mse_ci_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
     return 0;
 }
 
-static int mse_nonzero(const uint8_t *p, int n)
+static int mse_copy_try(CVPixelBufferRef pb, uint8_t *dst, int w, int h, const char **how)
 {
-    int i, z = 0;
-    if (!p || n <= 0)
+    OSType fmt;
+    if (!pb || !dst)
+        return -1;
+    fmt = CVPixelBufferGetPixelFormatType(pb);
+    if (mse_vt_blit_copy(&mse_still_blit, pb, dst, w, h) == 0) {
+        *how = "xfer";
         return 0;
-    for (i = 0; i < n; i += 64) {
-        if (p[i])
-            return 1;
     }
-    for (i = 0; i < n && i < 16; i++)
-        z += p[i] != 0;
-    return z > 0;
+    if (mse_ci_copy(pb, dst, w, h) == 0) {
+        *how = "ci";
+        return 0;
+    }
+    if (mse_cg_copy(pb, dst, w, h) == 0) {
+        *how = "cg";
+        return 0;
+    }
+    mse_logf("mse-v still fail fmt=%c%c%c%c %dx%d\n",
+             (char)(fmt >> 24), (char)(fmt >> 16), (char)(fmt >> 8), (char)fmt, w, h);
+    return -1;
 }
 
 int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
 {
     CVPixelBufferRef pb;
-    int tw, th, n;
+    int tw, th, n, mean;
     const char *how = "none";
-    if (mse_still_bgra && mse_still_w > 0 && mse_still_h > 0) {
-        n = mse_still_w * mse_still_h * 4;
-        if (w)
-            *w = mse_still_w;
-        if (h)
-            *h = mse_still_h;
-        if (!dst)
-            return n;
-        if (cap < n)
-            return 0;
-        memcpy(dst, mse_still_bgra, (size_t)n);
-        return n;
-    }
-    pb = mse_displayed_pb();
-    if (!pb)
+    if (!mse_still_pb)
         return 0;
+    pb = mse_still_pb;
+    CFRetain(pb);
     tw = (int)CVPixelBufferGetWidth(pb);
     th = (int)CVPixelBufferGetHeight(pb);
     if (tw <= 0 || th <= 0) {
@@ -157,26 +147,16 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
         CFRelease(pb);
         return 0;
     }
-    if (mse_cg_copy(pb, dst, tw, th) == 0)
-        how = "cg";
-    else if (mse_ci_copy(pb, dst, tw, th) == 0)
-        how = "ci";
-    else if (mse_vt_blit_copy(&mse_still_blit, pb, dst, tw, th) == 0)
-        how = "xfer";
-    else {
-        mse_logf("mse-v still fail %dx%d pb=%p\n", tw, th, pb);
+    if (mse_copy_try(pb, dst, tw, th, &how) != 0) {
         CFRelease(pb);
         return 0;
     }
-    mse_logf("mse-v still %s %dx%d nz=%d\n", how, tw, th, mse_nonzero(dst, n));
-    {
-        uint8_t *buf = (uint8_t *)realloc(mse_still_bgra, (size_t)n);
-        if (buf) {
-            memcpy(buf, dst, (size_t)n);
-            mse_still_bgra = buf;
-            mse_still_w = tw;
-            mse_still_h = th;
-        }
+    mean = mse_rgb_mean(dst, n);
+    mse_logf("mse-v still %s %dx%d mean=%d\n", how, tw, th, mean);
+    if (mean < 8) {
+        mse_logf("mse-v still black, drop\n");
+        CFRelease(pb);
+        return 0;
     }
     CFRelease(pb);
     return n;
