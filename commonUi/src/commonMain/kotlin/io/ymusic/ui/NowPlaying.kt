@@ -72,7 +72,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -233,6 +232,8 @@ fun MiniPlayer(
 @Composable
 fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
     var fullscreen by remember { mutableStateOf(false) }
+    val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
+    SideEffect { VideoOverlayNative.playing = playWhenReady }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
         BoxWithConstraints {
             when {
@@ -257,7 +258,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
             var overlayOn by remember { mutableStateOf(true) }
-            AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
+            AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }
             PlayerCaptionOverlay(graph.player, overlayOn)
@@ -295,15 +296,17 @@ private fun PortraitNowPlaying(
             item0 == null || item0.offset + item0.size <= 0
         }
     }
-    var overlayReveal by remember { mutableIntStateOf(0) }
     val overlayMode = rememberUpdatedState(controlsOnVideo)
     LaunchedEffect(listState) {
-        // After the queue header pins, firstVisibleItemIndex/offset freeze; further
-        // scrolling would never re-show the overlay. isScrollInProgress flips each gesture.
-        snapshotFlow { listState.isScrollInProgress }
-            .collect { scrolling ->
-                if (scrolling && overlayMode.value) overlayReveal++
-            }
+        // Mouse wheel often never sets isScrollInProgress. After the sticky header
+        // pins, index/offset freeze too — watch the last visible row instead.
+        snapshotFlow {
+            val items = listState.layoutInfo.visibleItemsInfo
+            val last = items.lastOrNull()
+            last?.index to last?.offset
+        }.collect {
+            if (overlayMode.value) VideoOverlayNative.reveal()
+        }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
@@ -320,11 +323,7 @@ private fun PortraitNowPlaying(
                 if (controlsOnVideo) {
                     // Not AnimatedVisibility: that kept AutoHidingOverlay composed during
                     // fade-out with visible=false, so a second scroll-up showed nothing.
-                    AutoHidingOverlay(
-                        playing = status.playWhenReady,
-                        revealTick = overlayReveal,
-                        onVisibleChange = { overlayOn = it },
-                    ) {
+                    AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
                         VideoOverlayControls(
                             coordinator, status, progress, current,
                             compact = true, onToggleFullscreen = onFullscreen,
@@ -425,7 +424,7 @@ private fun LandscapeNowPlaying(
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
                 var overlayOn by remember { mutableStateOf(true) }
-                AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
+                AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
                 PlayerCaptionOverlay(player, overlayOn)
@@ -458,8 +457,6 @@ private fun LandscapeNowPlaying(
  */
 @Composable
 private fun BoxScope.AutoHidingOverlay(
-    playing: Boolean,
-    revealTick: Int = 0,
     onVisibleChange: (Boolean) -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -467,6 +464,8 @@ private fun BoxScope.AutoHidingOverlay(
     var interaction by remember { mutableStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
     val nativePokes = VideoOverlayNative.pokes
+    val reveals = VideoOverlayNative.reveals
+    val playing = VideoOverlayNative.playing
     SideEffect {
         VideoOverlayNative.shown = visible
         onVisibleChange(visible)
@@ -494,9 +493,9 @@ private fun BoxScope.AutoHidingOverlay(
         visible = true
         interaction++
     }
-    // Queue scroll while the inline block is off-screen (portrait).
-    LaunchedEffect(revealTick) {
-        if (revealTick == 0) return@LaunchedEffect
+    // Queue scroll. Read from VideoOverlayNative so the chrome Window sees it.
+    LaunchedEffect(reveals) {
+        if (reveals == 0) return@LaunchedEffect
         visible = true
         interaction++
     }
