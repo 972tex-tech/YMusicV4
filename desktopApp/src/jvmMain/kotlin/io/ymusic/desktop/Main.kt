@@ -1,5 +1,6 @@
 package io.ymusic.desktop
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,14 +23,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
@@ -699,6 +704,20 @@ private fun DesktopPlayerSurface(
     }
     val coverHole = VideoOverlayNative.coverHole
     val windowResizingNow by windowResizing.collectAsState()
+    var parked by remember { mutableStateOf(false) }
+    var menuStill by remember { mutableStateOf<ImageBitmap?>(null) }
+    val panel = if (localVisible) localPanel else msePanel
+    SideEffect {
+        if (coverHole && !parked) {
+            menuStill = panel.captureStill()?.toComposeImageBitmap()
+            panel.setCovered(true)
+            parked = true
+        } else if (!coverHole && parked) {
+            parked = false
+            menuStill = null
+            panel.setCovered(windowResizingNow)
+        }
+    }
     Box(
         modifier.onSizeChanged {
             if (it.width > 0 && it.height > 0) {
@@ -707,12 +726,23 @@ private fun DesktopPlayerSurface(
             }
         },
     ) {
-        if (localVisible) {
+        if (parked) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                menuStill?.let { bmp ->
+                    Image(
+                        bmp,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+        } else if (localVisible) {
             SwingPanel(
                 background = Color.Black,
                 factory = { localPanel },
                 modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(coverHole || windowResizingNow) },
+                update = { it.setCovered(windowResizingNow) },
             )
             if (localFps > 0) {
                 Text(
@@ -733,7 +763,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { msePanel },
                 modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(coverHole || windowResizingNow) },
+                update = { it.setCovered(windowResizingNow) },
             )
         }
     }
@@ -768,7 +798,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
             override fun removeNotify() {
                 overlayX = Int.MIN_VALUE
-                onPeer?.invoke(null)
+                if (!covered) onPeer?.invoke(null)
                 super.removeNotify()
             }
 
