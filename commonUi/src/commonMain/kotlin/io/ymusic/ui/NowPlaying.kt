@@ -66,6 +66,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -254,6 +255,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     val queue by player.queue.collectAsState()
     val current = queue.currentItem
 
+    SideEffect { VideoOverlayNative.armed = true }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
@@ -296,6 +298,10 @@ private fun PortraitNowPlaying(
             item0 == null || item0.offset + item0.size <= 0
         }
     }
+    SideEffect { VideoOverlayNative.armed = controlsOnVideo }
+    DisposableEffect(Unit) {
+        onDispose { VideoOverlayNative.armed = true }
+    }
     val overlayMode = rememberUpdatedState(controlsOnVideo)
     LaunchedEffect(listState) {
         // Mouse wheel often never sets isScrollInProgress. After the sticky header
@@ -320,20 +326,17 @@ private fun PortraitNowPlaying(
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
                 var overlayOn by remember { mutableStateOf(true) }
-                if (controlsOnVideo) {
-                    // Not AnimatedVisibility: that kept AutoHidingOverlay composed during
-                    // fade-out with visible=false, so a second scroll-up showed nothing.
-                    AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
-                        VideoOverlayControls(
-                            coordinator, status, progress, current,
-                            compact = true, onToggleFullscreen = onFullscreen,
-                        )
-                    }
+                // Stay composed: remounting after scroll-up missed the next scroll-down
+                // (chrome Window kept a stale content lambda).
+                AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
+                    VideoOverlayControls(
+                        coordinator, status, progress, current,
+                        compact = true, onToggleFullscreen = onFullscreen,
+                    )
                 }
-                PlayerCaptionOverlay(player, overlayVisible = controlsOnVideo && overlayOn)
-                // The bare video's corner controls (mockup .vctrl: CC + full screen); the overlay carries
-                // its own copies for the scrolled state.
-                if (!controlsOnVideo) {
+                val armed = VideoOverlayNative.armed
+                PlayerCaptionOverlay(player, overlayVisible = armed && overlayOn)
+                if (!armed) {
                     Row(
                         Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -417,6 +420,7 @@ private fun LandscapeNowPlaying(
     val queue by player.queue.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
+    SideEffect { VideoOverlayNative.armed = true }
 
     Row(Modifier.fillMaxSize()) {
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
@@ -466,41 +470,47 @@ private fun BoxScope.AutoHidingOverlay(
     val nativePokes = VideoOverlayNative.pokes
     val reveals = VideoOverlayNative.reveals
     val playing = VideoOverlayNative.playing
+    val armed = VideoOverlayNative.armed
+    val show = armed && visible
     SideEffect {
-        VideoOverlayNative.shown = visible
-        onVisibleChange(visible)
+        VideoOverlayNative.shown = show
+        onVisibleChange(show)
     }
-    // The tap catcher sits under the controls: taps on a control hit the control; taps on the bare
-    // video (or anywhere while hidden) land here and toggle.
-    Box(
-        Modifier
-            .matchParentSize()
-            .pointerInput(Unit) {
-                detectTapGestures {
-                    visible = !visible
-                    interaction++
-                }
-            },
-    )
-    // Native NSView clicks after the chrome window goes click-through.
+    if (armed) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        visible = !visible
+                        interaction++
+                    }
+                },
+        )
+    }
     LaunchedEffect(nativePokes) {
-        if (nativePokes == 0) return@LaunchedEffect
+        if (nativePokes == 0 || !VideoOverlayNative.armed) return@LaunchedEffect
         visible = !visible
         interaction++
     }
-    // Pause or resume: show chrome. Playing then auto-hides; paused stays up.
     LaunchedEffect(playing) {
         visible = true
         interaction++
     }
-    // Queue scroll. Read from VideoOverlayNative so the chrome Window sees it.
     LaunchedEffect(reveals) {
         if (reveals == 0) return@LaunchedEffect
         visible = true
         interaction++
     }
-    LaunchedEffect(playing, visible, interaction, scrubbing) {
-        if (playing && visible && !scrubbing) {
+    // Inline controls left the viewport: always show, even if a previous auto-hide
+    // left visible=false while this overlay stayed composed.
+    LaunchedEffect(armed) {
+        if (!armed) return@LaunchedEffect
+        visible = true
+        interaction++
+    }
+    LaunchedEffect(playing, visible, interaction, scrubbing, armed) {
+        if (armed && playing && visible && !scrubbing) {
             delay(OVERLAY_HIDE_DELAY_MS)
             visible = false
         }
@@ -513,7 +523,7 @@ private fun BoxScope.AutoHidingOverlay(
         },
     ) {
         androidx.compose.animation.AnimatedVisibility(
-            visible,
+            show,
             enter = EnterTransition.None,
             exit = fadeOut(),
         ) {

@@ -21,6 +21,9 @@ object VideoOverlayNative {
 
     var playing by mutableStateOf(false)
 
+    /** Portrait: inline transport has scrolled off. Landscape/fullscreen: always true. */
+    var armed by mutableStateOf(true)
+
     /** Last overlay visibility. */
     @Volatile
     var shown: Boolean = true
