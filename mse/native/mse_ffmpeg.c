@@ -1523,11 +1523,20 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         return -1;
     }
-    /* dav1d/ffmpeg workers: one thread (Alder Lake AVX-512 SIGILL).
-       libvpx VP9: Chrome uses ~4 decoder threads (VpxVideoDecoder). */
+    /* libvpx VP9: Chrome uses ~4 decoder threads (VpxVideoDecoder).
+       libdav1d: one thread cannot keep 1080p; Alder Lake AVX-512 SIGILL
+       was workers=1. Use cores (capped) for AV1 software. */
     if (video) {
         if (vp9) {
             (*ctxp)->thread_count = 4;
+            (*ctxp)->thread_type = FF_THREAD_FRAME;
+        } else if (par->codec_id == AV_CODEC_ID_AV1) {
+            int n = av_cpu_count();
+            if (n < 2)
+                n = 2;
+            if (n > 8)
+                n = 8;
+            (*ctxp)->thread_count = n;
             (*ctxp)->thread_type = FF_THREAD_FRAME;
         } else {
             (*ctxp)->thread_count = 1;
