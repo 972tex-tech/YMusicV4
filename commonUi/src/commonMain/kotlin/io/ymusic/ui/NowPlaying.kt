@@ -1,9 +1,7 @@
 package io.ymusic.ui
 
-import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -74,7 +72,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -131,6 +128,15 @@ import org.jetbrains.compose.resources.stringResource
 internal fun formatMillis(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
     return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
+}
+
+/** True when the portrait title/seek/transport block (list item 0) has left the viewport. */
+private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
+    val visible = listState.layoutInfo.visibleItemsInfo
+    if (visible.isEmpty()) return false
+    if (listState.firstVisibleItemIndex >= 1) return true
+    val item0 = visible.find { it.index == 0 }
+    return item0 == null || item0.offset + item0.size <= 0
 }
 
 /**
@@ -233,7 +239,6 @@ fun MiniPlayer(
 fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
     var fullscreen by remember { mutableStateOf(false) }
     val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
-    VideoOverlayNative.playing = playWhenReady
     val armed = VideoOverlayNative.armed
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
@@ -296,33 +301,19 @@ private fun PortraitNowPlaying(
     // scrolls away, those controls re-appear overlaid on the video and the queue header pins.
     val listState = rememberLazyListState()
     val controlsOnVideo by remember {
-        derivedStateOf {
-            val visible = listState.layoutInfo.visibleItemsInfo
-            // Empty info is a layout gap (pause/play recompose), not "item 0 is gone".
-            if (visible.isEmpty()) return@derivedStateOf false
-            val item0 = visible.find { it.index == 0 }
-            // Sticky-header lists can keep item 0 in visibleItemsInfo with a negative offset
-            // after it has left the viewport; firstVisibleItemIndex then stays 0 and the
-            // overlay never appears.
-            item0 == null || item0.offset + item0.size <= 0
-        }
+        derivedStateOf { inlineControlsOffscreen(listState) }
     }
-    VideoOverlayNative.armed = controlsOnVideo
     DisposableEffect(Unit) {
         onDispose { VideoOverlayNative.armed = false }
     }
-    LaunchedEffect(controlsOnVideo) {
-        if (controlsOnVideo) VideoOverlayNative.show()
-    }
-    val overlayMode = rememberUpdatedState(controlsOnVideo)
+    // Single writer. Pause/play must not be in this path — they only affect auto-hide.
+    // Show when the title/seek/transport item has left the list viewport.
     LaunchedEffect(listState) {
-        snapshotFlow {
-            val items = listState.layoutInfo.visibleItemsInfo
-            val last = items.lastOrNull()
-            last?.index to last?.offset
-        }.collect {
-            if (overlayMode.value) VideoOverlayNative.show()
-        }
+        snapshotFlow { inlineControlsOffscreen(listState) }
+            .collect { offscreen ->
+                VideoOverlayNative.armed = offscreen
+                if (offscreen) VideoOverlayNative.show()
+            }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
@@ -490,12 +481,8 @@ private fun BoxScope.AutoHidingOverlay(
                 },
         )
     }
-    androidx.compose.animation.AnimatedVisibility(
-        show,
-        enter = EnterTransition.None,
-        exit = fadeOut(),
-    ) {
-        Box(Modifier.fillMaxSize()) { content() }
+    if (show) {
+        Box(Modifier.fillMaxSize(), content = content)
     }
 }
 
