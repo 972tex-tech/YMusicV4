@@ -50,13 +50,13 @@ object VideoOverlayNative {
         }
     }
 
-    fun show() {
-        val raise = armed && !visible
+    fun show(forceRaise: Boolean = false) {
+        val raise = forceRaise || (armed && !visible)
         overlayLog("show() armed=$armed vis=$visible -> vis=true raise=$raise gen=$showGen")
         visible = true
         showGen++
         shown = armed
-        if (raise) raiseWindow?.invoke()
+        if (raise && armed) raiseWindow?.invoke()
     }
 }
 

@@ -339,8 +339,9 @@ private fun PortraitNowPlaying(
             )
         }.collect { p ->
             val before = "armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible}"
+            val becameArmed = p.off && !VideoOverlayNative.armed
             VideoOverlayNative.armed = p.off
-            if (p.off) VideoOverlayNative.show()
+            if (p.off) VideoOverlayNative.show(forceRaise = becameArmed)
             overlayLog(
                 "scroll off=${p.off} idx=${p.idx} y=${p.y} n=${p.n} item0=${p.item0} " +
                     "play=${status.playWhenReady} $before -> armed=${VideoOverlayNative.armed} " +
