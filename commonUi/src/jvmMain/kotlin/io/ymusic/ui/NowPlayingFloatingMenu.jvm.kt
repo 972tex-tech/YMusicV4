@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +19,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogModalityType
@@ -43,8 +46,11 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, content = content)
         return
     }
-    var x by remember { mutableIntStateOf(0) }
-    var y by remember { mutableIntStateOf(0) }
+    var anchorRight by remember { mutableIntStateOf(0) }
+    var anchorBottom by remember { mutableIntStateOf(0) }
+    var menuW by remember { mutableIntStateOf(0) }
+    var menuH by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     Box(
         Modifier
             .matchParentSize()
@@ -56,16 +62,20 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
                     null
                 }
                 val p = c.positionInWindow()
-                x = (loc?.x ?: 0) + p.x.roundToInt()
-                y = (loc?.y ?: 0) + p.y.roundToInt() + c.size.height
+                val left = (loc?.x ?: 0) + p.x.roundToInt()
+                anchorRight = left + c.size.width
+                anchorBottom = (loc?.y ?: 0) + p.y.roundToInt() + c.size.height
             },
     )
     if (!expanded) return
+    val wDp = with(density) { menuW.toDp() }.coerceAtLeast(1.dp)
+    val hDp = with(density) { menuH.toDp() }.coerceAtLeast(1.dp)
     val state = rememberDialogState(
-        position = WindowPosition(x.dp, y.dp),
-        size = DpSize(240.dp, 320.dp),
+        position = WindowPosition((anchorRight - menuW).coerceAtLeast(0).dp, anchorBottom.dp),
+        size = DpSize(wDp, hDp),
     )
-    state.position = WindowPosition(x.dp, y.dp)
+    state.position = WindowPosition((anchorRight - menuW).coerceAtLeast(0).dp, anchorBottom.dp)
+    if (menuW > 0 && menuH > 0) state.size = DpSize(wDp, hDp)
     DialogWindow(
         onCloseRequest = onDismiss,
         state = state,
@@ -91,10 +101,15 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
             shape = RoundedCornerShape(8.dp),
             color = DesignColors.SurfaceElevated,
             shadowElevation = 8.dp,
+            modifier = Modifier.onSizeChanged {
+                menuW = it.width
+                menuH = it.height
+            },
         ) {
             Column(
                 Modifier
                     .widthIn(min = 180.dp, max = 280.dp)
+                    .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
                 content = content,
             )
