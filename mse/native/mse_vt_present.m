@@ -24,11 +24,13 @@ static int mse_px, mse_py, mse_pw, mse_ph;
 static JavaVM *mse_jvm;
 static jclass mse_native_cls;
 static jmethodID mse_mouse_mid;
+static jmethodID mse_live_mid;
+static int mse_live_notified;
 
 static void mse_bind_mouse_jni(JNIEnv *env)
 {
     jclass local;
-    if (mse_jvm && mse_native_cls && mse_mouse_mid)
+    if (mse_jvm && mse_native_cls && mse_mouse_mid && mse_live_mid)
         return;
     if (!env)
         return;
@@ -48,6 +50,23 @@ static void mse_bind_mouse_jni(JNIEnv *env)
             (*env)->ExceptionClear(env);
         mse_logf("mse-v mouse onOverlayMouse mid failed\n");
     }
+    mse_live_mid = (*env)->GetStaticMethodID(env, mse_native_cls, "onOverlayLiveResize", "(Z)V");
+    if (!mse_live_mid && (*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+}
+
+static void mse_java_live_resize(int on)
+{
+    JNIEnv *env = NULL;
+    if (!mse_jvm || !mse_native_cls || !mse_live_mid)
+        return;
+    if ((*mse_jvm)->GetEnv(mse_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK)
+        (*mse_jvm)->AttachCurrentThread(mse_jvm, (void **)&env, NULL);
+    if (!env)
+        return;
+    (*env)->CallStaticVoidMethod(env, mse_native_cls, mse_live_mid, on ? JNI_TRUE : JNI_FALSE);
+    if ((*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
 }
 
 static jint mse_awt_mods(NSEvent *e)
@@ -342,6 +361,10 @@ void mse_vt_layout_screen(int x, int y, int w, int h)
             return;
         win = host.window;
         if (win && win.inLiveResize) {
+            if (!mse_live_notified) {
+                mse_live_notified = 1;
+                mse_java_live_resize(1);
+            }
             mse_px = x;
             mse_py = y;
             mse_pw = w;
@@ -358,10 +381,14 @@ void mse_vt_layout_screen(int x, int y, int w, int h)
                                  queue:nil
                             usingBlock:^(NSNotification *note) {
                                 (void)note;
-                                if (!mse_pending_layout)
-                                    return;
-                                mse_pending_layout = 0;
-                                mse_apply_host_frame(mse_px, mse_py, mse_pw, mse_ph);
+                                if (mse_pending_layout) {
+                                    mse_pending_layout = 0;
+                                    mse_apply_host_frame(mse_px, mse_py, mse_pw, mse_ph);
+                                }
+                                if (mse_live_notified) {
+                                    mse_live_notified = 0;
+                                    mse_java_live_resize(0);
+                                }
                             }];
             }
             return;

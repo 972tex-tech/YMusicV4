@@ -253,6 +253,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
         onDispose {
             VideoOverlayNative.armed = false
             VideoOverlayNative.coverHole = false
+            VideoOverlayNative.liveResize = false
         }
     }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {

@@ -13,6 +13,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -659,6 +660,35 @@ private fun DesktopPlayerSurface(
         }
     }
     val coverHole = VideoOverlayNative.coverHole
+    val liveResize = VideoOverlayNative.liveResize
+    var resizeGen by remember { mutableIntStateOf(0) }
+    DisposableEffect(Unit) {
+        FileAvNative.overlayLiveResize = { on ->
+            SwingUtilities.invokeLater { VideoOverlayNative.liveResize = on }
+        }
+        val owner = Frame.getFrames()
+            .filter { it.isDisplayable && it.isShowing && it.width > 64 && it.height > 64 }
+            .maxByOrNull { it.width * it.height }
+        val listener = object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) {
+                SwingUtilities.invokeLater {
+                    VideoOverlayNative.liveResize = true
+                    resizeGen++
+                }
+            }
+        }
+        owner?.addComponentListener(listener)
+        onDispose {
+            FileAvNative.overlayLiveResize = null
+            owner?.removeComponentListener(listener)
+            VideoOverlayNative.liveResize = false
+        }
+    }
+    LaunchedEffect(resizeGen) {
+        if (!VideoOverlayNative.liveResize) return@LaunchedEffect
+        delay(180)
+        VideoOverlayNative.liveResize = false
+    }
     Box(
         modifier.onSizeChanged {
             if (it.width > 0 && it.height > 0) {
@@ -672,7 +702,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { localPanel },
                 modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(coverHole) },
+                update = { it.setCovered(coverHole || liveResize) },
             )
             if (localFps > 0) {
                 Text(
@@ -693,7 +723,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { msePanel },
                 modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(coverHole) },
+                update = { it.setCovered(coverHole || liveResize) },
             )
         }
     }
@@ -832,10 +862,6 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         this.covered = covered
         if (covered) {
             val snap = captureStill()
-            System.err.println(
-                if (snap == null) "mse-v still java=null"
-                else "mse-v still java=${snap.width}x${snap.height}",
-            )
             FileAvNative.setOverlayHidden(true)
             hardware = false
             img = snap
@@ -844,6 +870,8 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             img = null
             FileAvNative.setOverlayHidden(false)
             hardware = true
+            overlayX = Int.MIN_VALUE
+            layoutOverlay()
             canvas.repaint()
         }
     }
@@ -881,21 +909,13 @@ private fun bgraToRgb(width: Int, height: Int, bgra: ByteArray): BufferedImage {
     val n = minOf(pixels.size, width * height, bgra.size / 4)
     var i = 0
     var p = 0
-    var sum = 0L
     while (i < n) {
         val b = bgra[p].toInt() and 0xff
         val g = bgra[p + 1].toInt() and 0xff
         val r = bgra[p + 2].toInt() and 0xff
         pixels[i] = (r shl 16) or (g shl 8) or b
-        sum += r + g + b
         i++
         p += 4
-    }
-    val mean = if (n > 0) (sum / (n * 3L)).toInt() else 0
-    System.err.println("mse-v still rgb mean=$mean")
-    try {
-        javax.imageio.ImageIO.write(img, "png", java.io.File("/tmp/ymusic-still.png"))
-    } catch (_: Exception) {
     }
     return img
 }
