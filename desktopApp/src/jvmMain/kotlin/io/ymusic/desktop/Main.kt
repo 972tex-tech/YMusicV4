@@ -1,6 +1,5 @@
 package io.ymusic.desktop
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,14 +23,12 @@ import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
@@ -663,19 +660,6 @@ private fun DesktopPlayerSurface(
         }
     }
     val coverHole = VideoOverlayNative.coverHole
-    var still by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    DisposableEffect(localVisible, msePanel, localPanel) {
-        VideoOverlayNative.prepareCover = {
-            val panel = if (localVisible) localPanel else msePanel
-            still = panel.captureStill()?.toComposeImageBitmap()
-        }
-        onDispose {
-            if (VideoOverlayNative.prepareCover != null) VideoOverlayNative.prepareCover = null
-        }
-    }
-    LaunchedEffect(coverHole) {
-        if (!coverHole) still = null
-    }
     Box(
         modifier.onSizeChanged {
             if (it.width > 0 && it.height > 0) {
@@ -684,22 +668,12 @@ private fun DesktopPlayerSurface(
             }
         },
     ) {
-        if (coverHole) {
-            Box(Modifier.fillMaxSize().background(Color.Black)) {
-                still?.let { bmp ->
-                    Image(
-                        bmp,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-            }
-        } else if (localVisible) {
+        if (localVisible) {
             SwingPanel(
                 background = Color.Black,
                 factory = { localPanel },
                 modifier = Modifier.fillMaxSize(),
+                update = { it.setCovered(coverHole) },
             )
             if (localFps > 0) {
                 Text(
@@ -720,6 +694,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { msePanel },
                 modifier = Modifier.fillMaxSize(),
+                update = { it.setCovered(coverHole) },
             )
         }
     }
@@ -733,6 +708,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile private var img: BufferedImage? = null
 
     @Volatile private var hardware = false
+    private var covered = false
 
     @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
 
@@ -842,17 +818,42 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         val wh = IntArray(2)
         val bgra = FileAvNative.snapshotOverlay(wh)
         if (bgra != null && wh[0] > 0 && wh[1] > 0) return bgraToRgb(wh[0], wh[1], bgra)
-        return extraSnapshot?.invoke()
+        extraSnapshot?.invoke()?.let { return it }
+        if (!canvas.isShowing || canvas.width <= 0 || canvas.height <= 0) return null
+        return try {
+            val loc = canvas.locationOnScreen
+            java.awt.Robot().createScreenCapture(java.awt.Rectangle(loc.x, loc.y, canvas.width, canvas.height))
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun setCovered(covered: Boolean) {
+        if (this.covered == covered) return
+        this.covered = covered
+        if (covered) {
+            val snap = captureStill()
+            onPeer?.invoke(null)
+            hardware = false
+            img = snap
+            canvas.repaint()
+        } else {
+            img = null
+            if (canvas.isDisplayable && canvas.width > 0 && canvas.height > 0) {
+                onPeer?.invoke(canvas)
+            }
+        }
     }
 
     fun setHardware(on: Boolean) {
+        if (covered) return
         hardware = on
         if (on) img = null
         canvas.repaint()
     }
 
     fun setImage(image: BufferedImage?) {
-        if (hardware) return
+        if (hardware || covered) return
         img = image
         if (pending.compareAndSet(false, true)) {
             SwingUtilities.invokeLater {

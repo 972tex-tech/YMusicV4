@@ -19,31 +19,13 @@ static MseVtBlit mse_still_blit;
 
 static void mse_keep_still(CVPixelBufferRef pb)
 {
-    int tw = 0, th = 0, n;
-    uint8_t *buf;
-    if (mse_still_pb != pb) {
-        if (mse_still_pb)
-            CFRelease(mse_still_pb);
-        mse_still_pb = pb;
-        if (pb)
-            CFRetain(pb);
-    }
-    if (!pb)
+    if (mse_still_pb == pb)
         return;
-    /* Read back on the present thread — UI-thread VT transfer often fails. */
-    if (mse_vt_blit_size(pb, 0, 0, &tw, &th) != 0 || tw <= 0 || th <= 0)
-        return;
-    if ((uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4))
-        return;
-    n = tw * th * 4;
-    buf = (uint8_t *)realloc(mse_still_bgra, (size_t)n);
-    if (!buf)
-        return;
-    mse_still_bgra = buf;
-    if (mse_vt_blit_copy(&mse_still_blit, pb, mse_still_bgra, tw, th) == 0) {
-        mse_still_w = tw;
-        mse_still_h = th;
-    }
+    if (mse_still_pb)
+        CFRelease(mse_still_pb);
+    mse_still_pb = pb;
+    if (pb)
+        CFRetain(pb);
 }
 
 static int mse_ci_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)

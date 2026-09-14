@@ -23,12 +23,8 @@ object VideoOverlayNative {
     /** Seek-bar drag holds the overlay until release. */
     var scrubbing by mutableStateOf(false)
 
-    /** Hide the JAWT canvas (and chrome window) so an in-window context menu can paint and receive clicks. */
+    /** Detach the VT overlay so an in-window context menu can receive clicks over the video. */
     var coverHole by mutableStateOf(false)
-
-    /** Desktop: snapshot the live frame, then set [coverHole]. */
-    @Volatile
-    var prepareCover: (() -> Unit)? = null
 
     /** Bumped on every show so the auto-hide timer restarts. */
     var showGen by mutableIntStateOf(0)

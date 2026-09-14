@@ -688,7 +688,6 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 private fun CoverVideoHole(active: Boolean) {
     DisposableEffect(active) {
         if (!active) return@DisposableEffect onDispose { }
-        VideoOverlayNative.prepareCover?.invoke()
         VideoOverlayNative.coverHole = true
         onDispose { VideoOverlayNative.coverHole = false }
     }
