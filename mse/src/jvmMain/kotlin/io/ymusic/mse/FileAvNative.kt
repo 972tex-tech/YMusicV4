@@ -88,14 +88,6 @@ object FileAvNative {
         fun onMouse(id: Int, xOnScreen: Int, yOnScreen: Int, modifiers: Int, button: Int, clickCount: Int, wheel: Int)
     }
 
-    @Volatile @JvmStatic
-    var overlayLiveResize: ((Boolean) -> Unit)? = null
-
-    @JvmStatic
-    fun onOverlayLiveResize(on: Boolean) {
-        overlayLiveResize?.invoke(on)
-    }
-
     /** memcpy [n] BGRA pixels into a `TYPE_INT_RGB` int array. */
     @JvmStatic external fun copyBgra(bgra: ByteBuffer, rgb: IntArray, n: Int)
 

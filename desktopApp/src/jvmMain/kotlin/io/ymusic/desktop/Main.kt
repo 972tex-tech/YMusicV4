@@ -111,7 +111,10 @@ import kmphttp.create
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
@@ -251,6 +254,39 @@ fun main() {
             },
         ) {
             paintWindowGround(groundColorFor(darkChrome))
+
+            val g = graph
+            val resizePulse = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST) }
+            DisposableEffect(window, g) {
+                if (g == null) return@DisposableEffect onDispose { }
+                var lastW = -1
+                var lastH = -1
+                val listener = object : ComponentAdapter() {
+                    override fun componentResized(e: ComponentEvent) {
+                        val w = window.width
+                        val h = window.height
+                        if (w == lastW && h == lastH) return
+                        val first = lastW < 0
+                        lastW = w
+                        lastH = h
+                        if (first) return
+                        g.windowResizing.value = true
+                        resizePulse.tryEmit(Unit)
+                    }
+                }
+                window.addComponentListener(listener)
+                onDispose {
+                    window.removeComponentListener(listener)
+                    g.windowResizing.value = false
+                }
+            }
+            LaunchedEffect(g) {
+                if (g == null) return@LaunchedEffect
+                resizePulse.collectLatest {
+                    delay(300)
+                    g.windowResizing.value = false
+                }
+            }
 
             LaunchedEffect(Unit) {
                 try {
@@ -560,6 +596,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         null
     }
 
+    val windowResizing = MutableStateFlow(false)
     return AppGraph(
         engines,
         player,
@@ -593,8 +630,9 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         stats = stats,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
+        windowResizing = windowResizing,
     ) { modifier ->
-        DesktopPlayerSurface(localSurface, mseSurface, modifier)
+        DesktopPlayerSurface(localSurface, mseSurface, windowResizing, modifier)
     }
 }
 
@@ -602,6 +640,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
 private fun DesktopPlayerSurface(
     localSurface: LocalVideoSurface,
     mseSurface: io.ymusic.mse.MseVideoSurface,
+    windowResizing: MutableStateFlow<Boolean>,
     modifier: Modifier,
 ) {
     val localVisible by localSurface.visible.collectAsState()
@@ -659,22 +698,7 @@ private fun DesktopPlayerSurface(
         }
     }
     val coverHole = VideoOverlayNative.coverHole
-    val liveResize = VideoOverlayNative.liveResize
-    DisposableEffect(Unit) {
-        FileAvNative.overlayLiveResize = { on ->
-            val apply = {
-                msePanel.setCovered(VideoOverlayNative.coverHole || on)
-                localPanel.setCovered(VideoOverlayNative.coverHole || on)
-            }
-            if (SwingUtilities.isEventDispatchThread()) apply()
-            else SwingUtilities.invokeLater(apply)
-            SwingUtilities.invokeLater { VideoOverlayNative.liveResize = on }
-        }
-        onDispose {
-            FileAvNative.overlayLiveResize = null
-            VideoOverlayNative.liveResize = false
-        }
-    }
+    val windowResizingNow by windowResizing.collectAsState()
     Box(
         modifier.onSizeChanged {
             if (it.width > 0 && it.height > 0) {
@@ -688,7 +712,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { localPanel },
                 modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(coverHole || liveResize) },
+                update = { it.setCovered(coverHole || windowResizingNow) },
             )
             if (localFps > 0) {
                 Text(
@@ -709,7 +733,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { msePanel },
                 modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(coverHole || liveResize) },
+                update = { it.setCovered(coverHole || windowResizingNow) },
             )
         }
     }

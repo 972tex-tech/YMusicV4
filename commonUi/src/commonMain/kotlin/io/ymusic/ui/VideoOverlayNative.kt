@@ -26,9 +26,6 @@ object VideoOverlayNative {
     /** Hide the VT overlay so an in-window context menu can receive clicks over the video. */
     var coverHole by mutableStateOf(false)
 
-    /** True while the player window is in live resize; same still as [coverHole]. */
-    var liveResize by mutableStateOf(false)
-
     /** Bumped on every show so the auto-hide timer restarts. */
     var showGen by mutableIntStateOf(0)
         internal set

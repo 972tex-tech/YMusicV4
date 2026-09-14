@@ -112,6 +112,11 @@ class AppGraph(
      * null only in shells and tests that wire no recorder at all.
      */
     val stats: StatUsage? = null,
+    /**
+     * Desktop: true while the top-level window is being resized. The shell sets this from
+     * `componentResized` and clears it after 300ms without another event. Unused on mobile.
+     */
+    val windowResizing: MutableStateFlow<Boolean> = MutableStateFlow(false),
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {

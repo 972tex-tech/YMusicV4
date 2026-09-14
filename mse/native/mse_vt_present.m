@@ -14,7 +14,6 @@
 void *mse_vt_jawt_layer;
 static NSView *mse_vt_jawt_view;
 static id mse_end_live_obs;
-static id mse_start_live_obs;
 static NSWindow *mse_live_win;
 static int mse_pending_layout;
 static int mse_px, mse_py, mse_pw, mse_ph;
@@ -25,14 +24,12 @@ static int mse_px, mse_py, mse_pw, mse_ph;
 static JavaVM *mse_jvm;
 static jclass mse_native_cls;
 static jmethodID mse_mouse_mid;
-static jmethodID mse_live_mid;
-static int mse_live_notified;
 static int mse_overlay_deferred_show;
 
 static void mse_bind_mouse_jni(JNIEnv *env)
 {
     jclass local;
-    if (mse_jvm && mse_native_cls && mse_mouse_mid && mse_live_mid)
+    if (mse_jvm && mse_native_cls && mse_mouse_mid)
         return;
     if (!env)
         return;
@@ -52,62 +49,30 @@ static void mse_bind_mouse_jni(JNIEnv *env)
             (*env)->ExceptionClear(env);
         mse_logf("mse-v mouse onOverlayMouse mid failed\n");
     }
-    mse_live_mid = (*env)->GetStaticMethodID(env, mse_native_cls, "onOverlayLiveResize", "(Z)V");
-    if (!mse_live_mid && (*env)->ExceptionCheck(env))
-        (*env)->ExceptionClear(env);
 }
 
 static void mse_clear_live_obs(void);
 static void mse_apply_host_frame(int x, int y, int w, int h);
 
-static void mse_java_live_resize(int on)
-{
-    JNIEnv *env = NULL;
-    if (!mse_jvm || !mse_native_cls || !mse_live_mid)
-        return;
-    if ((*mse_jvm)->GetEnv(mse_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK)
-        (*mse_jvm)->AttachCurrentThread(mse_jvm, (void **)&env, NULL);
-    if (!env)
-        return;
-    (*env)->CallStaticVoidMethod(env, mse_native_cls, mse_live_mid, on ? JNI_TRUE : JNI_FALSE);
-    if ((*env)->ExceptionCheck(env))
-        (*env)->ExceptionClear(env);
-}
-
 static void mse_watch_live_resize(NSWindow *win)
 {
-    NSNotificationCenter *c;
     if (!win)
         return;
-    if (mse_live_win == win && mse_start_live_obs && mse_end_live_obs)
+    if (mse_live_win == win && mse_end_live_obs)
         return;
     mse_clear_live_obs();
     mse_live_win = win;
-    c = NSNotificationCenter.defaultCenter;
-    mse_start_live_obs = [c addObserverForName:NSWindowWillStartLiveResizeNotification
-                                       object:win
-                                        queue:nil
-                                   usingBlock:^(NSNotification *note) {
-                                       (void)note;
-                                       if (mse_live_notified)
-                                           return;
-                                       mse_live_notified = 1;
-                                       mse_java_live_resize(1);
-                                   }];
-    mse_end_live_obs = [c addObserverForName:NSWindowDidEndLiveResizeNotification
-                                     object:win
-                                      queue:nil
-                                 usingBlock:^(NSNotification *note) {
-                                     (void)note;
-                                     if (mse_pending_layout) {
-                                         mse_pending_layout = 0;
-                                         mse_apply_host_frame(mse_px, mse_py, mse_pw, mse_ph);
-                                     }
-                                     if (mse_live_notified) {
-                                         mse_live_notified = 0;
-                                         mse_java_live_resize(0);
-                                     }
-                                 }];
+    mse_end_live_obs = [NSNotificationCenter.defaultCenter
+        addObserverForName:NSWindowDidEndLiveResizeNotification
+                    object:win
+                     queue:nil
+                usingBlock:^(NSNotification *note) {
+                    (void)note;
+                    if (mse_pending_layout) {
+                        mse_pending_layout = 0;
+                        mse_apply_host_frame(mse_px, mse_py, mse_pw, mse_ph);
+                    }
+                }];
 }
 
 static jint mse_awt_mods(NSEvent *e)
@@ -248,17 +213,11 @@ static NSRect mse_screen_to_view(NSView *parent, jint x, jint y, jint w, jint h)
 
 static void mse_clear_live_obs(void)
 {
-    NSNotificationCenter *c = NSNotificationCenter.defaultCenter;
-    if (mse_end_live_obs) {
-        [c removeObserver:mse_end_live_obs];
-        mse_end_live_obs = nil;
-    }
-    if (mse_start_live_obs) {
-        [c removeObserver:mse_start_live_obs];
-        mse_start_live_obs = nil;
-    }
+    if (!mse_end_live_obs)
+        return;
+    [NSNotificationCenter.defaultCenter removeObserver:mse_end_live_obs];
+    mse_end_live_obs = nil;
     mse_live_win = nil;
-    mse_live_notified = 0;
 }
 
 static void mse_apply_host_frame(int x, int y, int w, int h)
@@ -434,10 +393,6 @@ void mse_vt_layout_screen(int x, int y, int w, int h)
         win = host.window;
         mse_watch_live_resize(win);
         if (win && win.inLiveResize) {
-            if (!mse_live_notified) {
-                mse_live_notified = 1;
-                mse_java_live_resize(1);
-            }
             mse_px = x;
             mse_py = y;
             mse_pw = w;
