@@ -89,7 +89,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
@@ -116,11 +115,13 @@ import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.cd_sleep_timer
 import io.ymusic.ui.resources.playback_failed
+import io.ymusic.ui.resources.reload
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.sleep_minutes
 import io.ymusic.ui.resources.sleep_off_remaining
 import io.ymusic.ui.resources.up_next
+import io.ymusic.ui.resources.video_quality
 import io.ymusic.ui.resources.video_quality_auto
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -253,16 +254,19 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     DisposableEffect(Unit) {
         onDispose {
             VideoOverlayNative.armed = false
-            VideoOverlayNative.coverHole = false
+            VideoOverlayNative.dismissMenu()
         }
     }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
-        BoxWithConstraints {
-            when {
-                fullscreen -> FullscreenVideo(graph, coordinator, onExit = { fullscreen = false })
-                maxWidth > maxHeight -> LandscapeNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
-                else -> PortraitNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
+        Box(Modifier.fillMaxSize()) {
+            BoxWithConstraints {
+                when {
+                    fullscreen -> FullscreenVideo(graph, coordinator, onExit = { fullscreen = false })
+                    maxWidth > maxHeight -> LandscapeNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
+                    else -> PortraitNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
+                }
             }
+            InWindowPlayerMenu()
         }
     }
 }
@@ -686,11 +690,41 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 }
 
 @Composable
-private fun CoverVideoHole(active: Boolean) {
-    DisposableEffect(active) {
-        if (!active) return@DisposableEffect onDispose { }
-        VideoOverlayNative.coverHole = true
-        onDispose { VideoOverlayNative.coverHole = false }
+private fun BoxScope.InWindowPlayerMenu() {
+    val menu = VideoOverlayNative.menu ?: return
+    Box(
+        Modifier
+            .matchParentSize()
+            .clickable { VideoOverlayNative.dismissMenu() },
+    )
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = DesignColors.SurfaceElevated,
+        shadowElevation = 8.dp,
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(top = 40.dp, end = 8.dp)
+            .widthIn(min = 200.dp),
+    ) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            menu.items.forEach { item ->
+                Text(
+                    item.label,
+                    style = TextStyle(
+                        fontSize = 14.sp,
+                        fontWeight = if (item.selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (item.selected) DesignColors.Accent else DesignColors.Ink,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            item.onClick()
+                            VideoOverlayNative.dismissMenu()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
+        }
     }
 }
 
@@ -702,7 +736,7 @@ internal fun QualityChip(
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    if (coverHole) CoverVideoHole(open)
+    val title = stringResource(Res.string.video_quality)
     Box {
         Text(
             label,
@@ -710,16 +744,27 @@ internal fun QualityChip(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
-                .clickable { open = true }
+                .clickable {
+                    if (coverHole) {
+                        VideoOverlayNative.openMenu(
+                            OverlayMenu(
+                                title,
+                                options.map { (id, text) ->
+                                    OverlayMenuItem(text, selected = text == label) { onSelect(id) }
+                                },
+                            ),
+                        )
+                    } else {
+                        open = true
+                    }
+                }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            properties = PopupProperties(focusable = true),
-        ) {
-            options.forEach { (id, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+        if (!coverHole) {
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                options.forEach { (id, text) ->
+                    DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+                }
             }
         }
     }
@@ -731,32 +776,27 @@ internal fun QualityChip(
 private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
     val audioTracks by player.audioTracks.collectAsState()
-    var open by remember { mutableStateOf(false) }
-    CoverVideoHole(open)
-
-    Box {
-        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            properties = PopupProperties(focusable = true),
-        ) {
-            // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
-            // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
-            DropdownMenuItem(
-                text = { Text("Reload player") },
-                onClick = { player.reload(); open = false },
-            )
-            if (audioTracks.tracks.size > 1) {
-                audioTracks.tracks.forEach { t ->
-                    DropdownMenuItem(
-                        text = { Text(if (t.id == audioTracks.selectedId) "✓ ${t.displayName}" else t.displayName) },
-                        onClick = { player.selectAudioTrack(t.id); open = false },
-                    )
+    val title = stringResource(Res.string.cd_more)
+    val reload = stringResource(Res.string.reload)
+    ActionIcon(
+        Icons.Default.MoreVert,
+        stringResource(Res.string.cd_more),
+        onClick = {
+            val items = buildList {
+                add(OverlayMenuItem(reload) { player.reload() })
+                if (audioTracks.tracks.size > 1) {
+                    audioTracks.tracks.forEach { t ->
+                        add(
+                            OverlayMenuItem(t.displayName, selected = t.id == audioTracks.selectedId) {
+                                player.selectAudioTrack(t.id)
+                            },
+                        )
+                    }
                 }
             }
-        }
-    }
+            VideoOverlayNative.openMenu(OverlayMenu(title, items))
+        },
+    )
 }
 
 /** 3dp track, orange fill, 13dp orange thumb; the m:ss / h:mm:ss labels underneath. */
@@ -1102,30 +1142,42 @@ private fun QueueRow(
 @Composable
 internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    if (coverHole) CoverVideoHole(open)
+    val title = stringResource(Res.string.cd_sleep_timer)
+    val offLabel = sleepMs?.let { stringResource(Res.string.sleep_off_remaining, formatMillis(it)) }
+    val minuteLabels = listOf(15, 30, 60).associateWith { stringResource(Res.string.sleep_minutes, it) }
     Box {
         ActionIcon(
             Icons.Default.Bedtime,
             stringResource(Res.string.cd_sleep_timer),
             tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
-            onClick = { open = true },
+            onClick = {
+                if (coverHole) {
+                    val items = buildList {
+                        offLabel?.let { add(OverlayMenuItem(it) { onSet(null) }) }
+                        minuteLabels.forEach { (minutes, label) ->
+                            add(OverlayMenuItem(label) { onSet(minutes * 60_000L) })
+                        }
+                    }
+                    VideoOverlayNative.openMenu(OverlayMenu(title, items))
+                } else {
+                    open = true
+                }
+            },
         )
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            properties = PopupProperties(focusable = true),
-        ) {
-            sleepMs?.let {
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },
-                    onClick = { onSet(null); open = false },
-                )
-            }
-            listOf(15, 30, 60).forEach { minutes ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.sleep_minutes, minutes)) },
-                    onClick = { onSet(minutes * 60_000L); open = false },
-                )
+        if (!coverHole) {
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                sleepMs?.let {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },
+                        onClick = { onSet(null); open = false },
+                    )
+                }
+                listOf(15, 30, 60).forEach { minutes ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.sleep_minutes, minutes)) },
+                        onClick = { onSet(minutes * 60_000L); open = false },
+                    )
+                }
             }
         }
     }

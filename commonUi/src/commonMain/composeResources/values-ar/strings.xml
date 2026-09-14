@@ -105,6 +105,7 @@
     </plurals>
 
     <string name="audio_only">صوت فقط</string>
+    <string name="video_quality">الجودة</string>
     <string name="video_quality_auto">تلقائي</string>
     <string name="captions_off">إيقاف الترجمة</string>
     <string name="up_next">التالي في القائمة</string>
