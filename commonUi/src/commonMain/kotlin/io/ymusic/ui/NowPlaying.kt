@@ -72,8 +72,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -124,6 +126,7 @@ import io.ymusic.ui.resources.sleep_off_remaining
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_quality_auto
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.stringResource
 
@@ -283,12 +286,22 @@ private fun PortraitNowPlaying(
     val listState = rememberLazyListState()
     val controlsOnVideo by remember {
         derivedStateOf {
-            val item0 = listState.layoutInfo.visibleItemsInfo.find { it.index == 0 }
+            val visible = listState.layoutInfo.visibleItemsInfo
+            // Empty info is a layout gap (pause/play recompose), not "item 0 is gone".
+            if (visible.isEmpty()) return@derivedStateOf false
+            val item0 = visible.find { it.index == 0 }
             // Sticky-header lists can keep item 0 in visibleItemsInfo with a negative offset
             // after it has left the viewport; firstVisibleItemIndex then stays 0 and the
             // overlay never appears.
             item0 == null || item0.offset + item0.size <= 0
         }
+    }
+    var overlayReveal by remember { mutableIntStateOf(0) }
+    val overlayMode = rememberUpdatedState(controlsOnVideo)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .drop(1)
+            .collect { if (overlayMode.value) overlayReveal++ }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
@@ -305,7 +318,11 @@ private fun PortraitNowPlaying(
                 if (controlsOnVideo) {
                     // Not AnimatedVisibility: that kept AutoHidingOverlay composed during
                     // fade-out with visible=false, so a second scroll-up showed nothing.
-                    AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
+                    AutoHidingOverlay(
+                        playing = status.playWhenReady,
+                        revealTick = overlayReveal,
+                        onVisibleChange = { overlayOn = it },
+                    ) {
                         VideoOverlayControls(
                             coordinator, status, progress, current,
                             compact = true, onToggleFullscreen = onFullscreen,
@@ -440,6 +457,7 @@ private fun LandscapeNowPlaying(
 @Composable
 private fun BoxScope.AutoHidingOverlay(
     playing: Boolean,
+    revealTick: Int = 0,
     onVisibleChange: (Boolean) -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -469,9 +487,16 @@ private fun BoxScope.AutoHidingOverlay(
         visible = !visible
         interaction++
     }
-    // Pausing brings the controls back (a transition, not a hold — a tap can still hide them).
+    // Pause or resume: show chrome. Playing then auto-hides; paused stays up.
     LaunchedEffect(playing) {
-        if (!playing) visible = true
+        visible = true
+        interaction++
+    }
+    // Queue scroll while the inline block is off-screen (portrait).
+    LaunchedEffect(revealTick) {
+        if (revealTick == 0) return@LaunchedEffect
+        visible = true
+        interaction++
     }
     LaunchedEffect(playing, visible, interaction, scrubbing) {
         if (playing && visible && !scrubbing) {
