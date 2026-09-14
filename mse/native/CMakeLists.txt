@@ -70,6 +70,7 @@ if(APPLE)
     "-framework AVFoundation"
     "-framework QuartzCore"
     "-framework CoreImage"
+    "-framework CoreGraphics"
     "-framework AppKit"
   )
 endif()

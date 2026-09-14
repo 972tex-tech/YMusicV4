@@ -3,9 +3,11 @@
 #import "mse_vt_blit.h"
 #import "mse_ffmpeg.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#import <VideoToolbox/VideoToolbox.h>
 #import <os/log.h>
 #import <limits.h>
 #import <stdint.h>
@@ -28,6 +30,49 @@ static void mse_keep_still(CVPixelBufferRef pb)
         CFRetain(pb);
 }
 
+static CVPixelBufferRef mse_displayed_pb(void)
+{
+    CVPixelBufferRef pb = NULL;
+    if (@available(macOS 14.0, *)) {
+        if (mse_vt_jawt_layer) {
+            AVSampleBufferDisplayLayer *layer =
+                (__bridge AVSampleBufferDisplayLayer *)mse_vt_jawt_layer;
+            pb = [layer.sampleBufferRenderer copyDisplayedPixelBuffer];
+        }
+    }
+    if (!pb && mse_still_pb) {
+        CFRetain(mse_still_pb);
+        pb = mse_still_pb;
+    }
+    return pb;
+}
+
+static int mse_cg_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
+{
+    CGImageRef cg = NULL;
+    CGContextRef ctx;
+    CGColorSpaceRef cs;
+    if (!pb || !dst || w <= 0 || h <= 0)
+        return -1;
+    if (VTCreateCGImageFromCVPixelBuffer(pb, NULL, &cg) != noErr || !cg)
+        return -1;
+    cs = CGColorSpaceCreateDeviceRGB();
+    ctx = CGBitmapContextCreate(
+        dst, (size_t)w, (size_t)h, 8, (size_t)w * 4, cs,
+        kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little);
+    if (!ctx) {
+        CGImageRelease(cg);
+        CGColorSpaceRelease(cs);
+        return -1;
+    }
+    CGContextSetBlendMode(ctx, kCGBlendModeCopy);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), cg);
+    CGContextRelease(ctx);
+    CGImageRelease(cg);
+    CGColorSpaceRelease(cs);
+    return 0;
+}
+
 static int mse_ci_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
 {
     CIImage *ci;
@@ -41,9 +86,7 @@ static int mse_ci_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
     ctx = [CIContext contextWithOptions:nil];
     if (!ctx)
         return -1;
-    cs = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
-    if (!cs)
-        cs = CGColorSpaceCreateDeviceRGB();
+    cs = CGColorSpaceCreateDeviceRGB();
     if (!cs)
         return -1;
     [ctx render:ci
@@ -56,9 +99,25 @@ static int mse_ci_copy(CVPixelBufferRef pb, uint8_t *dst, int w, int h)
     return 0;
 }
 
+static int mse_nonzero(const uint8_t *p, int n)
+{
+    int i, z = 0;
+    if (!p || n <= 0)
+        return 0;
+    for (i = 0; i < n; i += 64) {
+        if (p[i])
+            return 1;
+    }
+    for (i = 0; i < n && i < 16; i++)
+        z += p[i] != 0;
+    return z > 0;
+}
+
 int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
 {
+    CVPixelBufferRef pb;
     int tw, th, n;
+    const char *how = "none";
     if (mse_still_bgra && mse_still_w > 0 && mse_still_h > 0) {
         n = mse_still_w * mse_still_h * 4;
         if (w)
@@ -72,28 +131,55 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
         memcpy(dst, mse_still_bgra, (size_t)n);
         return n;
     }
-    if (!mse_still_pb)
+    pb = mse_displayed_pb();
+    if (!pb)
         return 0;
-    tw = (int)CVPixelBufferGetWidth(mse_still_pb);
-    th = (int)CVPixelBufferGetHeight(mse_still_pb);
-    if (tw <= 0 || th <= 0)
+    tw = (int)CVPixelBufferGetWidth(pb);
+    th = (int)CVPixelBufferGetHeight(pb);
+    if (tw <= 0 || th <= 0) {
+        CFRelease(pb);
         return 0;
-    if ((uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4))
+    }
+    if ((uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4)) {
+        CFRelease(pb);
         return 0;
+    }
     n = tw * th * 4;
     if (w)
         *w = tw;
     if (h)
         *h = th;
-    if (!dst)
+    if (!dst) {
+        CFRelease(pb);
         return n;
-    if (cap < n)
+    }
+    if (cap < n) {
+        CFRelease(pb);
         return 0;
-    if (mse_ci_copy(mse_still_pb, dst, tw, th) == 0)
-        return n;
-    if (mse_vt_blit_copy(&mse_still_blit, mse_still_pb, dst, tw, th) == 0)
-        return n;
-    return 0;
+    }
+    if (mse_cg_copy(pb, dst, tw, th) == 0)
+        how = "cg";
+    else if (mse_ci_copy(pb, dst, tw, th) == 0)
+        how = "ci";
+    else if (mse_vt_blit_copy(&mse_still_blit, pb, dst, tw, th) == 0)
+        how = "xfer";
+    else {
+        mse_logf("mse-v still fail %dx%d pb=%p\n", tw, th, pb);
+        CFRelease(pb);
+        return 0;
+    }
+    mse_logf("mse-v still %s %dx%d nz=%d\n", how, tw, th, mse_nonzero(dst, n));
+    {
+        uint8_t *buf = (uint8_t *)realloc(mse_still_bgra, (size_t)n);
+        if (buf) {
+            memcpy(buf, dst, (size_t)n);
+            mse_still_bgra = buf;
+            mse_still_w = tw;
+            mse_still_h = th;
+        }
+    }
+    CFRelease(pb);
+    return n;
 }
 
 void mse_vt_detach(void *p)

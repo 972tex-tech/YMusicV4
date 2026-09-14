@@ -777,7 +777,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         canvas.addComponentListener(
             object : ComponentAdapter() {
                 override fun componentResized(e: ComponentEvent) {
-                    if (canvas.width <= 0 || canvas.height <= 0) return
+                    if (covered || canvas.width <= 0 || canvas.height <= 0) return
                     /* Compose addNotify is often 0×0. 8f510cba attached here; layout-only
                        skipped that and stayed on the CPU blit (~300%). */
                     if (!hardware) onPeer?.invoke(canvas)
@@ -785,7 +785,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
                 }
 
                 override fun componentMoved(e: ComponentEvent) {
-                    if (hardware) layoutOverlay()
+                    if (!covered && hardware) layoutOverlay()
                 }
             },
         )
@@ -833,6 +833,10 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         this.covered = covered
         if (covered) {
             val snap = captureStill()
+            System.err.println(
+                if (snap == null) "mse-v still java=null"
+                else "mse-v still java=${snap.width}x${snap.height}",
+            )
             onPeer?.invoke(null)
             hardware = false
             img = snap
