@@ -28,3 +28,13 @@ internal expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
  *  bar icon appearance to contrast the edge-to-edge app background. No-op elsewhere. */
 @Composable
 internal expect fun SyncSystemBars(dark: Boolean)
+
+/**
+ * A modal dialog that stays above the desktop JAWT video hole. Compose [androidx.compose.ui.window.Dialog]
+ * and [androidx.compose.material3.DropdownMenu] are in-window layers and paint under that view.
+ */
+@Composable
+internal expect fun OverlaySafeDialog(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+)

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,8 +30,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -61,6 +64,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -114,12 +118,15 @@ import io.ymusic.ui.resources.cd_repeat
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.cd_sleep_timer
+import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.playback_failed
+import io.ymusic.ui.resources.reload
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.sleep_minutes
 import io.ymusic.ui.resources.sleep_off_remaining
 import io.ymusic.ui.resources.up_next
+import io.ymusic.ui.resources.video_quality
 import io.ymusic.ui.resources.video_quality_auto
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -687,19 +694,22 @@ internal fun QualityChip(
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    Box {
-        Text(
-            label,
-            style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
-                .clickable { open = true }
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+    Text(
+        label,
+        style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
+            .clickable { open = true }
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    )
+    if (open) {
+        PlayerMenuDialog(title = stringResource(Res.string.video_quality), onDismiss = { open = false }) {
             options.forEach { (id, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+                PlayerMenuRow(text, selected = text == label) {
+                    onSelect(id)
+                    open = false
+                }
             }
         }
     }
@@ -713,25 +723,59 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
 
-    Box {
-        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
-            // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
-            DropdownMenuItem(
-                text = { Text("Reload player") },
-                onClick = { player.reload(); open = false },
-            )
+    ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
+    if (open) {
+        PlayerMenuDialog(title = stringResource(Res.string.cd_more), onDismiss = { open = false }) {
+            PlayerMenuRow(stringResource(Res.string.reload)) {
+                player.reload()
+                open = false
+            }
             if (audioTracks.tracks.size > 1) {
                 audioTracks.tracks.forEach { t ->
-                    DropdownMenuItem(
-                        text = { Text(if (t.id == audioTracks.selectedId) "✓ ${t.displayName}" else t.displayName) },
-                        onClick = { player.selectAudioTrack(t.id); open = false },
-                    )
+                    PlayerMenuRow(t.displayName, selected = t.id == audioTracks.selectedId) {
+                        player.selectAudioTrack(t.id)
+                        open = false
+                    }
                 }
             }
         }
     }
+}
+
+/** Top-bar pickers as a real dialog so they are not painted under the JAWT video. */
+@Composable
+private fun PlayerMenuDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scroll = rememberScrollState()
+    OverlaySafeDialog(onDismissRequest = onDismiss) {
+        ElevatedBarDialogContent(
+            title = title,
+            canScrollBackward = scroll.canScrollBackward,
+            canScrollForward = scroll.canScrollForward,
+            buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+        ) {
+            Column(Modifier.fillMaxWidth().verticalScroll(scroll), content = content)
+        }
+    }
+}
+
+@Composable
+private fun PlayerMenuRow(text: String, selected: Boolean = false, onClick: () -> Unit) {
+    Text(
+        text,
+        style = TextStyle(
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) DesignColors.Accent else DesignColors.Ink,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+    )
 }
 
 /** 3dp track, orange fill, 13dp orange thumb; the m:ss / h:mm:ss labels underneath. */
@@ -1077,25 +1121,25 @@ private fun QueueRow(
 @Composable
 internal fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    Box {
-        ActionIcon(
-            Icons.Default.Bedtime,
-            stringResource(Res.string.cd_sleep_timer),
-            tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
-            onClick = { open = true },
-        )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+    ActionIcon(
+        Icons.Default.Bedtime,
+        stringResource(Res.string.cd_sleep_timer),
+        tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
+        onClick = { open = true },
+    )
+    if (open) {
+        PlayerMenuDialog(title = stringResource(Res.string.cd_sleep_timer), onDismiss = { open = false }) {
             sleepMs?.let {
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },
-                    onClick = { onSet(null); open = false },
-                )
+                PlayerMenuRow(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) {
+                    onSet(null)
+                    open = false
+                }
             }
             listOf(15, 30, 60).forEach { minutes ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.sleep_minutes, minutes)) },
-                    onClick = { onSet(minutes * 60_000L); open = false },
-                )
+                PlayerMenuRow(stringResource(Res.string.sleep_minutes, minutes)) {
+                    onSet(minutes * 60_000L)
+                    open = false
+                }
             }
         }
     }

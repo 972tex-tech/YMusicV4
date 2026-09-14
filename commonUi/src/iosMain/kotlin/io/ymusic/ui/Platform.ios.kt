@@ -19,6 +19,14 @@ internal actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 }
 
 @Composable
+internal actual fun OverlaySafeDialog(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest, content = content)
+}
+
+@Composable
 internal actual fun SyncSystemBars(dark: Boolean) {
     // The status bar rides the hosting UIViewController; Compose already draws edge-to-edge
     // under it, and its text style can be wired through MainViewController when needed.

@@ -46,36 +46,53 @@ internal fun ElevatedBarDialog(
     buttons: @Composable RowScope.() -> Unit,
     body: @Composable () -> Unit,
 ) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        ElevatedBarDialogContent(
+            title = title,
+            canScrollBackward = canScrollBackward,
+            canScrollForward = canScrollForward,
+            buttons = buttons,
+            body = body,
+        )
+    }
+}
+
+@Composable
+internal fun ElevatedBarDialogContent(
+    title: String,
+    canScrollBackward: Boolean,
+    canScrollForward: Boolean,
+    buttons: @Composable RowScope.() -> Unit,
+    body: @Composable () -> Unit,
+) {
     // The title/button bars sit a step above the body. On dark, the full SurfaceElevated lift (0x12 →
     // 0x1F) reads too strongly against the near-black body, so use the gentler SurfaceDim step there
     // (the divider + scroll shadow still delineate the bars); light keeps the usual elevated grey.
     val barColor = if (DesignColors.isDark) DesignColors.SurfaceDim else DesignColors.SurfaceElevated
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(4.dp),
-            color = DesignColors.Surface,
-            modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
-        ) {
-            Column {
-                val topShadow by animateDpAsState(if (canScrollBackward) 6.dp else 0.dp)
-                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(barColor)) {
-                    Text(
-                        title,
-                        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                    )
-                    HorizontalDivider(color = DesignColors.Divider)
-                }
-                Box(Modifier.weight(1f, fill = false).heightIn(max = 420.dp)) { body() }
-                val bottomShadow by animateDpAsState(if (canScrollForward) 6.dp else 0.dp)
-                Column(Modifier.fillMaxWidth().zIndex(1f).shadow(bottomShadow).background(barColor)) {
-                    HorizontalDivider(color = DesignColors.Divider)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.End,
-                        content = buttons,
-                    )
-                }
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = DesignColors.Surface,
+        modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
+    ) {
+        Column {
+            val topShadow by animateDpAsState(if (canScrollBackward) 6.dp else 0.dp)
+            Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(barColor)) {
+                Text(
+                    title,
+                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                )
+                HorizontalDivider(color = DesignColors.Divider)
+            }
+            Box(Modifier.weight(1f, fill = false).heightIn(max = 420.dp)) { body() }
+            val bottomShadow by animateDpAsState(if (canScrollForward) 6.dp else 0.dp)
+            Column(Modifier.fillMaxWidth().zIndex(1f).shadow(bottomShadow).background(barColor)) {
+                HorizontalDivider(color = DesignColors.Divider)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.End,
+                    content = buttons,
+                )
             }
         }
     }
