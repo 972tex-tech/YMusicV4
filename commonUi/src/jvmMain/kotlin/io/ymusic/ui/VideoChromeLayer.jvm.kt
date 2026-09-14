@@ -28,6 +28,7 @@ import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import javax.swing.SwingUtilities
 
 private class ChromeHolder {
     var content by mutableStateOf<@Composable BoxScope.() -> Unit>({})
@@ -64,8 +65,12 @@ internal actual fun VideoChromeLayer(
     DisposableEffect(Unit) {
         val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
         fun park() {
-            parked = true
-            parkGen++
+            /* AWT resize callbacks run inside Compose measure on desktop.
+               Writing snapshot state here crashes: layout state is not idle. */
+            SwingUtilities.invokeLater {
+                parked = true
+                parkGen++
+            }
         }
         val components = object : ComponentAdapter() {
             override fun componentMoved(e: ComponentEvent) = park()
@@ -120,7 +125,9 @@ internal actual fun VideoChromeLayer(
                     h = size.height.toDp().value.toInt(),
                 ).insetFromOwner(owner)
             }
-            if (next != bounds) bounds = next
+            if (next != bounds) {
+                SwingUtilities.invokeLater { bounds = next }
+            }
         },
     )
 
@@ -130,7 +137,8 @@ internal actual fun VideoChromeLayer(
         position = WindowPosition(bounds.x.dp, bounds.y.dp),
         size = DpSize(bounds.w.dp, bounds.h.dp),
     )
-    LaunchedEffect(bounds) {
+    LaunchedEffect(bounds, parked) {
+        if (parked) return@LaunchedEffect
         state.position = WindowPosition(bounds.x.dp, bounds.y.dp)
         state.size = DpSize(bounds.w.dp, bounds.h.dp)
     }

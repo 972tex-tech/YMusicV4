@@ -5,8 +5,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -90,23 +90,24 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
         offset.snapTo(0f)
     }
 
-    BoxWithConstraints(
-        modifier = modifier.height(lineH * 2).fillMaxWidth().clipToBounds(),
-        contentAlignment = Alignment.TopStart,
-    ) {
+    Box(modifier.height(lineH * 2).fillMaxWidth().clipToBounds()) {
         val pad = (2 - columnIds.size).coerceAtLeast(0)
-        Column(
-            Modifier
-                .padding(start = maxWidth * 0.2f, end = 12.dp)
-                .graphicsLayer { translationY = offset.value },
-            horizontalAlignment = Alignment.Start,
-        ) {
-            repeat(pad) { Spacer(Modifier.height(lineH)) }
-            val wrap = columnIds.count { it >= 0 } <= 1
-            columnIds.forEach { id ->
-                key(id) {
-                    val text = if (id < 0) "" else textHold[id].orEmpty()
-                    CaptionLineRow(text, lineH, maxLines = if (wrap) 2 else 1)
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(0.2f))
+            Column(
+                Modifier
+                    .weight(0.8f)
+                    .padding(end = 12.dp)
+                    .graphicsLayer { translationY = offset.value },
+                horizontalAlignment = Alignment.Start,
+            ) {
+                repeat(pad) { Spacer(Modifier.height(lineH)) }
+                val wrap = columnIds.count { it >= 0 } <= 1
+                columnIds.forEach { id ->
+                    key(id) {
+                        val text = if (id < 0) "" else textHold[id].orEmpty()
+                        CaptionLineRow(text, lineH, maxLines = if (wrap) 2 else 1)
+                    }
                 }
             }
         }

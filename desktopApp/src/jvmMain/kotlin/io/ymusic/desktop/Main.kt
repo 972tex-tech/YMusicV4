@@ -32,7 +32,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -605,7 +604,6 @@ private fun DesktopPlayerSurface(
 ) {
     val localVisible by localSurface.visible.collectAsState()
     val localFps by localSurface.fps.collectAsState()
-    var size by remember { mutableStateOf(IntSize.Zero) }
     val msePanel = remember { MseVideoPanel() }
     val localPanel = remember { MseVideoPanel() }
     DisposableEffect(msePanel, localPanel) {
@@ -655,7 +653,6 @@ private fun DesktopPlayerSurface(
     }
     Box(
         modifier.onSizeChanged {
-            size = it
             if (it.width > 0 && it.height > 0) {
                 mseSurface.setBlitSize(it.width, it.height)
                 localSurface.setBlitSize(it.width, it.height)
