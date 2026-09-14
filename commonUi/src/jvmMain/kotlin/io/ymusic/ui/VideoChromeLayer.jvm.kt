@@ -152,7 +152,7 @@ internal actual fun VideoChromeLayer(
     DialogWindow(
         onCloseRequest = {},
         state = state,
-        visible = !parked,
+        visible = !parked && !VideoOverlayNative.coverHole,
         title = "YMusic video chrome",
         decoration = WindowDecoration.Undecorated(),
         transparent = true,

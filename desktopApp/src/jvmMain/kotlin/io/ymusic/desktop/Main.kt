@@ -647,6 +647,7 @@ private fun DesktopPlayerSurface(
             localSurface.nativePeer = null
         }
     }
+    val coverHole = VideoOverlayNative.coverHole
     Box(
         modifier.onSizeChanged {
             if (it.width > 0 && it.height > 0) {
@@ -660,6 +661,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { localPanel },
                 modifier = Modifier.fillMaxSize(),
+                update = { it.setCovered(coverHole) },
             )
             if (localFps > 0) {
                 Text(
@@ -680,6 +682,7 @@ private fun DesktopPlayerSurface(
                 background = Color.Black,
                 factory = { msePanel },
                 modifier = Modifier.fillMaxSize(),
+                update = { it.setCovered(coverHole) },
             )
         }
     }
@@ -693,6 +696,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile private var img: BufferedImage? = null
 
     @Volatile private var hardware = false
+    private var covered = false
 
     @Volatile var onPainted: ((BufferedImage?) -> Unit)? = null
 
@@ -794,6 +798,22 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     }
 
     override fun contains(x: Int, y: Int): Boolean = false
+
+    fun setCovered(covered: Boolean) {
+        if (this.covered == covered) return
+        this.covered = covered
+        if (covered) {
+            canvas.isVisible = false
+            isVisible = false
+            onPeer?.invoke(null)
+        } else {
+            isVisible = true
+            canvas.isVisible = true
+            if (canvas.isDisplayable && canvas.width > 0 && canvas.height > 0) {
+                onPeer?.invoke(canvas)
+            }
+        }
+    }
 
     fun setHardware(on: Boolean) {
         hardware = on

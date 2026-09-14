@@ -250,7 +250,10 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
         }
     }
     DisposableEffect(Unit) {
-        onDispose { VideoOverlayNative.armed = false }
+        onDispose {
+            VideoOverlayNative.armed = false
+            VideoOverlayNative.coverHole = false
+        }
     }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
         BoxWithConstraints {
@@ -667,12 +670,13 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
             enabled = downloadLauncher != null && downloadable != null,
             onClick = { downloadable?.let { downloadLauncher?.launch(it) } },
         )
-        SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
+        SleepTimerButton(sleepMs, coverHole = true) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(
                 label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
                     ?: quality.preferredQuality,
                 options = quality.options.map { it.quality to qualityLabel(it) },
+                coverHole = true,
                 onSelect = { player.selectVideoQuality(it) },
             )
         }
@@ -681,12 +685,23 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 }
 
 @Composable
+private fun CoverVideoHole(active: Boolean) {
+    DisposableEffect(active) {
+        if (!active) return@DisposableEffect onDispose { }
+        VideoOverlayNative.coverHole = true
+        onDispose { VideoOverlayNative.coverHole = false }
+    }
+}
+
+@Composable
 internal fun QualityChip(
     label: String,
     options: List<Pair<String, String>>,
+    coverHole: Boolean = false,
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    if (coverHole) CoverVideoHole(open)
     Box {
         Text(
             label,
@@ -712,6 +727,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
+    CoverVideoHole(open)
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
@@ -1075,8 +1091,9 @@ private fun QueueRow(
 }
 
 @Composable
-internal fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
+internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    if (coverHole) CoverVideoHole(open)
     Box {
         ActionIcon(
             Icons.Default.Bedtime,

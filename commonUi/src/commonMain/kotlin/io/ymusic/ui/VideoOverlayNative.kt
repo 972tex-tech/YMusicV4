@@ -23,6 +23,9 @@ object VideoOverlayNative {
     /** Seek-bar drag holds the overlay until release. */
     var scrubbing by mutableStateOf(false)
 
+    /** Hide the JAWT canvas (and chrome window) so an in-window context menu can paint and receive clicks. */
+    var coverHole by mutableStateOf(false)
+
     /** Bumped on every show so the auto-hide timer restarts. */
     var showGen by mutableIntStateOf(0)
         internal set
