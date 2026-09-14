@@ -5,17 +5,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-internal data class OverlayMenuItem(
-    val label: String,
-    val selected: Boolean = false,
-    val onClick: () -> Unit,
-)
-
-internal data class OverlayMenu(
-    val title: String,
-    val items: List<OverlayMenuItem>,
-)
-
 /**
  * Overlay chrome state shared by the main window (scroll, pause, auto-hide)
  * and the desktop chrome window (paint). Do not keep show/hide only in the
@@ -36,9 +25,6 @@ object VideoOverlayNative {
 
     /** Hide the VT overlay so an in-window context menu can receive clicks over the video. */
     var coverHole by mutableStateOf(false)
-
-    /** In-window menu (not a Popup). Popup press is treated as outside; hover is not. */
-    internal var menu by mutableStateOf<OverlayMenu?>(null)
 
     /** Bumped on every show so the auto-hide timer restarts. */
     var showGen by mutableIntStateOf(0)
@@ -65,15 +51,5 @@ object VideoOverlayNative {
         visible = true
         showGen++
         if (raise) raiseWindow?.invoke()
-    }
-
-    internal fun openMenu(menu: OverlayMenu) {
-        this.menu = menu
-        coverHole = true
-    }
-
-    internal fun dismissMenu() {
-        menu = null
-        coverHole = false
     }
 }
