@@ -89,6 +89,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
@@ -712,7 +713,11 @@ internal fun QualityChip(
                 .clickable { open = true }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            properties = PopupProperties(focusable = true),
+        ) {
             options.forEach { (id, text) ->
                 DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
             }
@@ -731,7 +736,11 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            properties = PopupProperties(focusable = true),
+        ) {
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
@@ -1101,7 +1110,11 @@ internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet:
             tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
             onClick = { open = true },
         )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            properties = PopupProperties(focusable = true),
+        ) {
             sleepMs?.let {
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },

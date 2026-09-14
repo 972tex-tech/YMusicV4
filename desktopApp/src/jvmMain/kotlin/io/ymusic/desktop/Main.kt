@@ -7,12 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -125,6 +125,7 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.compose.resources.painterResource
@@ -707,12 +708,13 @@ private fun DesktopPlayerSurface(
     var parked by remember { mutableStateOf(false) }
     var menuStill by remember { mutableStateOf<ImageBitmap?>(null) }
     val panel = if (localVisible) localPanel else msePanel
-    SideEffect {
-        if (coverHole && !parked) {
+    LaunchedEffect(coverHole) {
+        if (coverHole) {
             menuStill = panel.captureStill()?.toComposeImageBitmap()
             panel.setCovered(true)
             parked = true
-        } else if (!coverHole && parked) {
+        } else if (parked) {
+            yield()
             parked = false
             menuStill = null
             panel.setCovered(windowResizingNow)
@@ -737,14 +739,16 @@ private fun DesktopPlayerSurface(
                     )
                 }
             }
-        } else if (localVisible) {
+        }
+        val hole = if (parked) Modifier.size(0.dp) else Modifier.fillMaxSize()
+        if (localVisible) {
             SwingPanel(
                 background = Color.Black,
                 factory = { localPanel },
-                modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(windowResizingNow) },
+                modifier = hole,
+                update = { it.setCovered(parked || windowResizingNow) },
             )
-            if (localFps > 0) {
+            if (!parked && localFps > 0) {
                 Text(
                     "$localFps fps",
                     color = Color.White,
@@ -762,8 +766,8 @@ private fun DesktopPlayerSurface(
             SwingPanel(
                 background = Color.Black,
                 factory = { msePanel },
-                modifier = Modifier.fillMaxSize(),
-                update = { it.setCovered(windowResizingNow) },
+                modifier = hole,
+                update = { it.setCovered(parked || windowResizingNow) },
             )
         }
     }
