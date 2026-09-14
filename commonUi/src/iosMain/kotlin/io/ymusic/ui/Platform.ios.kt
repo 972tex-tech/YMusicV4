@@ -13,8 +13,6 @@ internal actual fun VideoChromeLayer(
     androidx.compose.foundation.layout.Box(modifier, content = content)
 }
 
-internal actual val playerSurfaceCoversCompose: Boolean = false
-
 @Composable
 internal actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
     // iOS has no system back button; the edge-swipe gesture can be wired here later.

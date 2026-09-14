@@ -62,15 +62,15 @@ internal actual fun VideoChromeLayer(
     var bounds by remember { mutableStateOf(ChromeBounds()) }
     var parked by remember { mutableStateOf(false) }
     var parkGen by remember { mutableIntStateOf(0) }
-    /* Don't spawn the overlay NSWindow in the same frame as JAWT re-attach
-       (mini → Now Playing). That freeze is EDT + AppKit re-entry. */
+    // Don't spawn the overlay NSWindow in the same frame as JAWT re-attach
+    // (mini → Now Playing). That freeze is EDT + AppKit re-entry.
     var chromeReady by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
         fun park() {
-            /* AWT resize callbacks run inside Compose measure on desktop.
-               Writing snapshot state here crashes: layout state is not idle. */
+            // AWT resize callbacks run inside Compose measure on desktop.
+            // Writing snapshot state here crashes: layout state is not idle.
             SwingUtilities.invokeLater {
                 parked = true
                 parkGen++
@@ -120,7 +120,7 @@ internal actual fun VideoChromeLayer(
             val p = coords.positionInWindow()
             val size = coords.size
             val insets = owner.insets
-            /* AWT screen coords are points; Compose layout is px. */
+            // AWT screen coords are points; Compose layout is px.
             val next = with(density) {
                 ChromeBounds(
                     x = loc.x + insets.left + p.x.toDp().value.toInt(),
@@ -147,9 +147,8 @@ internal actual fun VideoChromeLayer(
         state.size = DpSize(bounds.w.dp, bounds.h.dp)
     }
 
-    /* Owned modeless dialog stays above the player window when the queue is
-       clicked. Independent Window() went behind JAWT. Do not use alwaysOnTop
-       or click-forward — that froze AppKit. */
+    // Owned modeless dialog stays above the player window. Do not use
+    // alwaysOnTop or click-forward — that froze AppKit.
     DialogWindow(
         onCloseRequest = {},
         state = state,

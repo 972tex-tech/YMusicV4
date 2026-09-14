@@ -6,23 +6,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * Overlay chrome state lives here so the main window (scroll, pause) and the
- * chrome Window (paint) share one snapshot. Do not keep show/hide in the chrome
- * composition — that window often skips parent updates.
+ * Overlay chrome state shared by the main window (scroll, pause, auto-hide)
+ * and the desktop chrome window (paint). Do not keep show/hide only in the
+ * chrome composition — that window often skips parent updates.
  *
- * Native video NSView gets mouse after the chrome window fades to fully transparent
- * (macOS click-through). Do not copy AWT events into the chrome window — that froze
- * the player.
+ * Native video NSView gets mouse after the chrome window is fully transparent
+ * (macOS click-through). Do not copy those AWT events into Compose.
  */
 object VideoOverlayNative {
-    var playing by mutableStateOf(false)
-
     /** Portrait: inline transport has scrolled off. Landscape/fullscreen: always true. */
     var armed by mutableStateOf(false)
 
-    /** User-facing chrome on the video (and/or after auto-hide). */
+    /** User-facing chrome on the video. */
     var visible by mutableStateOf(true)
 
+    /** Seek-bar drag holds the overlay until release. */
     var scrubbing by mutableStateOf(false)
 
     /** Bumped on every show so the auto-hide timer restarts. */
@@ -32,17 +30,12 @@ object VideoOverlayNative {
     val showing: Boolean
         get() = armed && visible
 
-    /** Last overlay visibility (native click-through). */
-    @Volatile
-    var shown: Boolean = true
-
-    /** Desktop chrome window raise; invoked on the EDT from [poke]. */
+    /** Desktop chrome window raise; invoked on the EDT from [show]. */
     @Volatile
     var raiseWindow: (() -> Unit)? = null
 
-    fun poke(raise: Boolean) {
-        overlayLog("poke raise=$raise armed=$armed vis=$visible")
-        if (!raise || !armed) return
+    fun poke() {
+        if (!armed) return
         if (visible) {
             visible = false
         } else {
@@ -50,16 +43,10 @@ object VideoOverlayNative {
         }
     }
 
-    fun show(forceRaise: Boolean = false) {
-        val raise = forceRaise || (armed && !visible)
-        overlayLog("show() armed=$armed vis=$visible -> vis=true raise=$raise gen=$showGen")
+    fun show() {
+        val raise = armed && !visible
         visible = true
         showGen++
-        shown = armed
-        if (raise && armed) raiseWindow?.invoke()
+        if (raise) raiseWindow?.invoke()
     }
-}
-
-internal fun overlayLog(msg: String) {
-    println("[overlay] $msg")
 }

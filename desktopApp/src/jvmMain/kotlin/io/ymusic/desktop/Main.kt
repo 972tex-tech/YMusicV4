@@ -608,10 +608,9 @@ private fun DesktopPlayerSurface(
     val localPanel = remember { MseVideoPanel() }
     DisposableEffect(msePanel, localPanel) {
         FileAvNative.overlayMouse = FileAvNative.OverlayMouse { id, _, _, _, _, _, _ ->
-            /* Do not dispatchEvent into Skia from this JNI click — that is
-               VideoChromeHit and freezes AppKit. Click toggles chrome; hover does not. */
+            // Do not dispatchEvent into Skia from this JNI click — that froze AppKit.
             if (id == MouseEvent.MOUSE_RELEASED) {
-                SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
+                SwingUtilities.invokeLater { VideoOverlayNative.poke() }
             }
         }
         onDispose { FileAvNative.overlayMouse = null }
@@ -749,11 +748,11 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         isRequestFocusEnabled = false
         canvas.background = AwtColor.BLACK
         canvas.isFocusable = false
-        /* HW Canvas / VT NSView sit above Skia. Do not copy AWT events into
-           Compose — that freeze is AppKit re-entry. Click toggles chrome. */
+        // HW Canvas / VT NSView sit above Skia. Do not copy AWT events into
+        // Compose — that freeze is AppKit re-entry. Click toggles chrome.
         val overlayClicks = object : MouseAdapter() {
             override fun mouseReleased(e: MouseEvent) {
-                SwingUtilities.invokeLater { VideoOverlayNative.poke(raise = true) }
+                SwingUtilities.invokeLater { VideoOverlayNative.poke() }
             }
         }
         canvas.addMouseListener(overlayClicks)

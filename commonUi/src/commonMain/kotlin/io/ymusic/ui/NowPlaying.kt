@@ -139,14 +139,6 @@ private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
     return item0 == null || item0.offset + item0.size <= 0
 }
 
-private data class OverlayScrollProbe(
-    val off: Boolean,
-    val idx: Int,
-    val y: Int,
-    val n: Int,
-    val item0: String,
-)
-
 /**
  * The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing.
  *
@@ -251,14 +243,9 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
     val scrubbing = VideoOverlayNative.scrubbing
-    LaunchedEffect(playWhenReady) {
-        overlayLog("playWhenReady=$playWhenReady armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible}")
-    }
     LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing) {
-        overlayLog("hide-timer start play=$playWhenReady armed=$armed vis=$overlayVisible scrub=$scrubbing gen=$showGen")
         if (armed && overlayVisible && playWhenReady && !scrubbing) {
             delay(OVERLAY_HIDE_DELAY_MS)
-            overlayLog("hide-timer fire vis=${VideoOverlayNative.visible} -> false")
             VideoOverlayNative.visible = false
         }
     }
@@ -286,18 +273,14 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     val current = queue.currentItem
 
     SideEffect { VideoOverlayNative.armed = true }
-    DisposableEffect(Unit) {
-        VideoOverlayNative.show(forceRaise = true)
-        onDispose { }
-    }
+    LaunchedEffect(Unit) { VideoOverlayNative.show() }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
-            var overlayOn by remember { mutableStateOf(true) }
-            AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
+            AutoHidingOverlay {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }
-            PlayerCaptionOverlay(graph.player, overlayOn)
+            PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing)
         }
     }
 }
@@ -323,38 +306,14 @@ private fun PortraitNowPlaying(
     val controlsOnVideo by remember {
         derivedStateOf { inlineControlsOffscreen(listState) }
     }
-    // Do not onDispose armed=false here: Compose disposes Portrait AFTER Landscape
+    // Do not onDispose armed=false here: Compose disposes Portrait after Landscape
     // has set armed=true, which left clicks ignored (poke requires armed).
-    // Single writer. Pause/play must not be in this path — they only affect auto-hide.
-    // Show when the title/seek/transport item has left the list viewport.
     LaunchedEffect(listState) {
-        snapshotFlow {
-            val vis = listState.layoutInfo.visibleItemsInfo
-            val item0 = vis.find { it.index == 0 }
-            val off = inlineControlsOffscreen(listState)
-            OverlayScrollProbe(
-                off = off,
-                idx = listState.firstVisibleItemIndex,
-                y = listState.firstVisibleItemScrollOffset,
-                n = vis.size,
-                item0 = if (item0 == null) {
-                    "none"
-                } else {
-                    "y=${item0.offset} h=${item0.size} bot=${item0.offset + item0.size}"
-                },
-            )
-        }.collect { p ->
-            val before = "armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible}"
-            val becameArmed = p.off && !VideoOverlayNative.armed
-            VideoOverlayNative.armed = p.off
-            // Only when play/pause first leaves the viewport — not on later queue scrolls.
-            if (becameArmed) VideoOverlayNative.show(forceRaise = true)
-            overlayLog(
-                "scroll off=${p.off} idx=${p.idx} y=${p.y} n=${p.n} item0=${p.item0} " +
-                    "play=${status.playWhenReady} becameArmed=$becameArmed $before -> " +
-                    "armed=${VideoOverlayNative.armed} vis=${VideoOverlayNative.visible} " +
-                    "show=${VideoOverlayNative.armed && VideoOverlayNative.visible}",
-            )
+        snapshotFlow { inlineControlsOffscreen(listState) }.collect { off ->
+            val becameArmed = off && !VideoOverlayNative.armed
+            VideoOverlayNative.armed = off
+            // Only when item 0 first leaves the viewport — not on later queue scrolls.
+            if (becameArmed) VideoOverlayNative.show()
         }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
@@ -368,17 +327,16 @@ private fun PortraitNowPlaying(
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
-                var overlayOn by remember { mutableStateOf(true) }
                 // Stay composed: remounting after scroll-up missed the next scroll-down
-                // (chrome Window kept a stale content lambda).
-                AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
+                // (chrome window kept a stale content lambda).
+                AutoHidingOverlay {
                     VideoOverlayControls(
                         coordinator, status, progress, current,
                         compact = true, onToggleFullscreen = onFullscreen,
                     )
                 }
-                val armed = VideoOverlayNative.armed
-                PlayerCaptionOverlay(player, overlayVisible = armed && overlayOn)
+                val overlayOn = VideoOverlayNative.showing
+                PlayerCaptionOverlay(player, overlayVisible = overlayOn)
                 if (!overlayOn) {
                     Row(
                         Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 4.dp),
@@ -464,21 +422,17 @@ private fun LandscapeNowPlaying(
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
     SideEffect { VideoOverlayNative.armed = true }
-    DisposableEffect(Unit) {
-        VideoOverlayNative.show(forceRaise = true)
-        onDispose { }
-    }
+    LaunchedEffect(Unit) { VideoOverlayNative.show() }
 
     Row(Modifier.fillMaxSize()) {
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
         Box(Modifier.weight(1f).fillMaxHeight().background(Color.Black)) {
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
-                var overlayOn by remember { mutableStateOf(true) }
-                AutoHidingOverlay(onVisibleChange = { overlayOn = it }) {
+                AutoHidingOverlay {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
-                PlayerCaptionOverlay(player, overlayOn)
+                PlayerCaptionOverlay(player, VideoOverlayNative.showing)
             }
         }
         VerticalDivider(color = DesignColors.Divider)
@@ -502,31 +456,22 @@ private fun LandscapeNowPlaying(
 
 /**
  * Hosts video-overlay [content] with player-style auto-hide: it fades out after a few seconds of
- * playback, and a tap/click on the video toggles it in either state. Hover does not show it.
- * Dragging the seek bar holds it visible. While paused nothing auto-hides; pausing brings the
- * controls back.
+ * playback, and a tap/click on the video toggles it. Dragging the seek bar holds it visible.
+ * While paused nothing auto-hides.
  */
 @Composable
 private fun BoxScope.AutoHidingOverlay(
-    onVisibleChange: (Boolean) -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
     val armed = VideoOverlayNative.armed
     val visible = VideoOverlayNative.visible
     val show = armed && visible
-    LaunchedEffect(show, armed, visible) {
-        overlayLog("paint show=$show armed=$armed vis=$visible")
-    }
-    SideEffect {
-        VideoOverlayNative.shown = show
-        onVisibleChange(show)
-    }
     if (armed) {
         Box(
             Modifier
                 .matchParentSize()
                 .pointerInput(Unit) {
-                    detectTapGestures { VideoOverlayNative.poke(raise = true) }
+                    detectTapGestures { VideoOverlayNative.poke() }
                 },
         )
     }
@@ -537,8 +482,8 @@ private fun BoxScope.AutoHidingOverlay(
 
 private const val OVERLAY_HIDE_DELAY_MS = 3_000L
 
-/** The controls drawn over the video (mockup scrim/otop/octl/vbottom): landscape always, portrait
- *  once the inline controls scroll away. [compact] = prev/play/next only (the portrait overlay). */
+/** The controls drawn over the video: landscape always, portrait once the inline controls scroll
+ *  away. [compact] hides ±10s seek buttons (the portrait overlay). */
 @Composable
 private fun BoxScope.VideoOverlayControls(
     coordinator: PlaybackCoordinator,

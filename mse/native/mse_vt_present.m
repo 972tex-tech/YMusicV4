@@ -18,8 +18,9 @@ static NSWindow *mse_live_win;
 static int mse_pending_layout;
 static int mse_px, mse_py, mse_pw, mse_ph;
 
-/* Overlay sits on AWTView and takes the hit. Copy each NSEvent to Java
-   (FileAvNative.onOverlayMouse) so Compose's SwingPanel/Skia can dispatch it. */
+/* Overlay sits on AWTView and takes the hit. Forward mouse-up to Java
+   (FileAvNative.onOverlayMouse) so the desktop shell can toggle chrome.
+   Do not copy events into Compose — that froze AppKit. */
 static JavaVM *mse_jvm;
 static jclass mse_native_cls;
 static jmethodID mse_mouse_mid;
@@ -168,30 +169,13 @@ static void mse_java_mouse(NSEvent *e)
 - (NSView *)hitTest:(NSPoint)point
 {
     /* Under AWTView we should not be hit. If z-order is wrong, still take the
-       event so JNI can copy it to Compose rather than dropping it. */
+       click so JNI can toggle chrome rather than dropping it. */
     return NSPointInRect(point, self.frame) ? self : nil;
-}
-- (void)updateTrackingAreas
-{
-    NSTrackingArea *a;
-    [super updateTrackingAreas];
-    for (a in [self.trackingAreas copy])
-        [self removeTrackingArea:a];
-    a = [[NSTrackingArea alloc]
-        initWithRect:self.bounds
-             options:NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited |
-                     NSTrackingActiveAlways | NSTrackingInVisibleRect
-               owner:self
-            userInfo:nil];
-    [self addTrackingArea:a];
 }
 #define MSE_JNI_MOUSE(sel) - (void)sel:(NSEvent *)e { mse_java_mouse(e); }
 MSE_JNI_MOUSE(mouseDown)
 MSE_JNI_MOUSE(mouseUp)
-MSE_JNI_MOUSE(mouseMoved)
 MSE_JNI_MOUSE(mouseDragged)
-MSE_JNI_MOUSE(mouseEntered)
-MSE_JNI_MOUSE(mouseExited)
 MSE_JNI_MOUSE(rightMouseDown)
 MSE_JNI_MOUSE(rightMouseUp)
 MSE_JNI_MOUSE(otherMouseDown)
