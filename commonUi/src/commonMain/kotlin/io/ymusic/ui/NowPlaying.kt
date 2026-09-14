@@ -644,34 +644,12 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
 private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClose: () -> Unit) {
     val player = coordinator.player
     val quality by player.videoQuality.collectAsState()
-    val status by player.status.collectAsState()
     val audioOnlyLabel = stringResource(Res.string.audio_only)
     val autoQualityLabel = stringResource(Res.string.video_quality_auto)
     fun qualityLabel(option: VideoQualityOption): String = when (option.quality) {
         VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
         VideoQualityState.AUTO -> autoQualityLabel
         else -> option.label
-    }
-    fun playingLabel(): String {
-        val actual = quality.actualQuality
-        if (actual == VideoQualityState.AUDIO_ONLY) {
-            return quality.options.firstOrNull { it.quality == actual }?.let(::qualityLabel) ?: audioOnlyLabel
-        }
-        if (actual != VideoQualityState.AUTO) {
-            quality.options.firstOrNull { it.quality == actual }?.let { return qualityLabel(it) }
-        }
-        val h = status.videoSize?.let { minOf(it.width, it.height) } ?: 0
-        if (h > 0) {
-            val opt = VideoQualityState.optionForHeight(h)
-            quality.options.firstOrNull { it.quality == opt.quality }?.let { return qualityLabel(it) }
-            return opt.label
-        }
-        if (quality.preferredQuality != VideoQualityState.AUTO &&
-            quality.preferredQuality != VideoQualityState.AUDIO_ONLY
-        ) {
-            quality.options.firstOrNull { it.quality == quality.preferredQuality }?.let { return qualityLabel(it) }
-        }
-        return autoQualityLabel
     }
 
     val queue by player.queue.collectAsState()
@@ -696,7 +674,12 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
         SleepTimerButton(sleepMs, coverHole = true) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(
-                label = playingLabel(),
+                label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
+                    ?: when (quality.actualQuality) {
+                        VideoQualityState.AUTO -> autoQualityLabel
+                        VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
+                        else -> quality.actualQuality
+                    },
                 options = quality.options.map { it.quality to qualityLabel(it) },
                 coverHole = true,
                 onSelect = { player.selectVideoQuality(it) },

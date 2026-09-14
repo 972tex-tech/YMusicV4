@@ -73,20 +73,26 @@ function moviePlayer(): Record<string, unknown> | null {
   return el as unknown as Record<string, unknown> | null;
 }
 
+/** Same as webview-js player_connect: ytInternalPlayer.setPlaybackQuality, else range(q). */
 function pinPlaybackQuality(host: Record<string, unknown> | null, q: string): boolean {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const internal = asRec(g["ytInternalPlayer"]);
+  if (internal && typeof internal["setPlaybackQuality"] === "function") {
+    (internal["setPlaybackQuality"] as (quality: string) => void).call(internal, q);
+    return true;
+  }
   if (!host) return false;
   const range = host["setPlaybackQualityRange"];
-  const one = host["setPlaybackQuality"];
-  let ok = false;
   if (typeof range === "function") {
-    range.call(host, q, q);
-    ok = true;
+    (range as (quality: string) => void).call(host, q);
+    return true;
   }
+  const one = host["setPlaybackQuality"];
   if (typeof one === "function") {
     (one as (quality: string) => void).call(host, q);
-    ok = true;
+    return true;
   }
-  return ok;
+  return false;
 }
 
 function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
@@ -1029,8 +1035,8 @@ class Player {
       "paused": v ? !!v["paused"] : true,
       "ended": !!ended,
       "readyState": v ? Number(v["readyState"]) : 0,
-      "videoWidth": isProductZero() ? 0 : (v ? Number(v["videoWidth"]) || pictureW : pictureW),
-      "videoHeight": isProductZero() ? 0 : (v ? Number(v["videoHeight"]) || pictureH : pictureH),
+      "videoWidth": isProductZero() ? 0 : pictureW,
+      "videoHeight": isProductZero() ? 0 : pictureH,
       "audioOnly": isProductZero(),
     };
   }
