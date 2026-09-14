@@ -262,6 +262,9 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             VideoOverlayNative.visible = false
         }
     }
+    DisposableEffect(Unit) {
+        onDispose { VideoOverlayNative.armed = false }
+    }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
         BoxWithConstraints {
             when {
@@ -282,7 +285,11 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     val queue by player.queue.collectAsState()
     val current = queue.currentItem
 
-    VideoOverlayNative.armed = true
+    SideEffect { VideoOverlayNative.armed = true }
+    DisposableEffect(Unit) {
+        VideoOverlayNative.show(forceRaise = true)
+        onDispose { }
+    }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
@@ -316,9 +323,8 @@ private fun PortraitNowPlaying(
     val controlsOnVideo by remember {
         derivedStateOf { inlineControlsOffscreen(listState) }
     }
-    DisposableEffect(Unit) {
-        onDispose { VideoOverlayNative.armed = false }
-    }
+    // Do not onDispose armed=false here: Compose disposes Portrait AFTER Landscape
+    // has set armed=true, which left clicks ignored (poke requires armed).
     // Single writer. Pause/play must not be in this path — they only affect auto-hide.
     // Show when the title/seek/transport item has left the list viewport.
     LaunchedEffect(listState) {
@@ -457,7 +463,11 @@ private fun LandscapeNowPlaying(
     val queue by player.queue.collectAsState()
     val sleepMs by player.sleepTimerMs.collectAsState()
     val current = queue.currentItem
-    VideoOverlayNative.armed = true
+    SideEffect { VideoOverlayNative.armed = true }
+    DisposableEffect(Unit) {
+        VideoOverlayNative.show(forceRaise = true)
+        onDispose { }
+    }
 
     Row(Modifier.fillMaxSize()) {
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
