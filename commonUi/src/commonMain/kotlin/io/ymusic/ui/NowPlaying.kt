@@ -1,8 +1,8 @@
 package io.ymusic.ui
 
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -281,7 +281,15 @@ private fun PortraitNowPlaying(
     // Everything under the video scrolls as one list; once the meta/seek/transport block (item 0)
     // scrolls away, those controls re-appear overlaid on the video and the queue header pins.
     val listState = rememberLazyListState()
-    val controlsOnVideo by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+    val controlsOnVideo by remember {
+        derivedStateOf {
+            val item0 = listState.layoutInfo.visibleItemsInfo.find { it.index == 0 }
+            // Sticky-header lists can keep item 0 in visibleItemsInfo with a negative offset
+            // after it has left the viewport; firstVisibleItemIndex then stays 0 and the
+            // overlay never appears.
+            item0 == null || item0.offset + item0.size <= 0
+        }
+    }
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
 
@@ -294,16 +302,14 @@ private fun PortraitNowPlaying(
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
                 var overlayOn by remember { mutableStateOf(true) }
-                // Fully qualified: the enclosing Column's scoped AnimatedVisibility otherwise shadows
-                // the top-level overload and cannot be called from Box scope.
-                androidx.compose.animation.AnimatedVisibility(controlsOnVideo, enter = fadeIn(), exit = fadeOut()) {
-                    Box(Modifier.fillMaxSize()) {
-                        AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
-                            VideoOverlayControls(
-                                coordinator, status, progress, current,
-                                compact = true, onToggleFullscreen = onFullscreen,
-                            )
-                        }
+                if (controlsOnVideo) {
+                    // Not AnimatedVisibility: that kept AutoHidingOverlay composed during
+                    // fade-out with visible=false, so a second scroll-up showed nothing.
+                    AutoHidingOverlay(playing = status.playWhenReady, onVisibleChange = { overlayOn = it }) {
+                        VideoOverlayControls(
+                            coordinator, status, progress, current,
+                            compact = true, onToggleFullscreen = onFullscreen,
+                        )
                     }
                 }
                 PlayerCaptionOverlay(player, overlayVisible = controlsOnVideo && overlayOn)
@@ -480,7 +486,11 @@ private fun BoxScope.AutoHidingOverlay(
             interaction++
         },
     ) {
-        androidx.compose.animation.AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible,
+            enter = EnterTransition.None,
+            exit = fadeOut(),
+        ) {
             Box(Modifier.fillMaxSize()) { content() }
         }
     }
