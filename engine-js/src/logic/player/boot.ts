@@ -1016,8 +1016,8 @@ class Player {
       "paused": v ? !!v["paused"] : true,
       "ended": !!ended,
       "readyState": v ? Number(v["readyState"]) : 0,
-      "videoWidth": isProductZero() ? 0 : pictureW,
-      "videoHeight": isProductZero() ? 0 : pictureH,
+      "videoWidth": isProductZero() ? 0 : (v ? Number(v["videoWidth"]) || pictureW : pictureW),
+      "videoHeight": isProductZero() ? 0 : (v ? Number(v["videoHeight"]) || pictureH : pictureH),
       "audioOnly": isProductZero(),
     };
   }
