@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +15,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -32,7 +32,6 @@ import kotlinx.coroutines.yield
 import java.awt.GraphicsEnvironment
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import javax.swing.SwingUtilities
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -65,32 +64,39 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
                 with(density) {
                     val left = loc.x + insets.left + p.x.toDp().value.toInt()
                     val top = loc.y + insets.top + p.y.toDp().value.toInt()
-                    val w = c.size.width.toDp().value.toInt()
-                    val h = c.size.height.toDp().value.toInt()
-                    anchorRight.intValue = left + w
-                    anchorBottom.intValue = top + h
+                    anchorRight.intValue = left + c.size.width.toDp().value.toInt()
+                    anchorBottom.intValue = top + c.size.height.toDp().value.toInt()
                 }
             },
     )
-    if (!expanded) return
-    val state = rememberDialogState(
-        position = WindowPosition(anchorRight.intValue.dp, anchorBottom.intValue.dp),
-        size = DpSize(280.dp, 800.dp),
-    )
-    fun place() {
-        val w = menuW.intValue
-        val h = menuH.intValue
-        val right = anchorRight.intValue
-        val bottom = anchorBottom.intValue
-        if (w <= 0 || h <= 0 || right <= 0 || bottom <= 0) return
-        SwingUtilities.invokeLater {
-            state.size = DpSize(w.dp, h.dp)
-            state.position = WindowPosition((right - w).coerceAtLeast(0).dp, bottom.dp)
+    if (expanded && (menuW.intValue == 0 || menuH.intValue == 0)) {
+        Box(Modifier.size(0.dp)) {
+            Box(
+                Modifier
+                    .wrapContentSize(unbounded = true)
+                    .onSizeChanged {
+                        with(density) {
+                            menuW.intValue = it.width.toDp().value.toInt()
+                            menuH.intValue = it.height.toDp().value.toInt()
+                        }
+                    },
+            ) {
+                MenuBody(content)
+            }
         }
     }
-    LaunchedEffect(anchorRight.intValue, anchorBottom.intValue, menuW.intValue, menuH.intValue) {
-        place()
-    }
+    val ready = expanded &&
+        menuW.intValue > 0 &&
+        menuH.intValue > 0 &&
+        anchorRight.intValue > 0 &&
+        anchorBottom.intValue > 0
+    if (!ready) return
+    val w = menuW.intValue
+    val h = menuH.intValue
+    val state = rememberDialogState(
+        position = WindowPosition((anchorRight.intValue - w).coerceAtLeast(0).dp, anchorBottom.intValue.dp),
+        size = DpSize(w.dp, h.dp),
+    )
     DialogWindow(
         onCloseRequest = onDismiss,
         state = state,
@@ -103,42 +109,30 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         modalityType = DialogModalityType.Modeless,
     ) {
         val allowDismiss = remember { mutableStateOf(false) }
-        LaunchedEffect(menuW.intValue, menuH.intValue) {
-            if (menuW.intValue > 0 && menuH.intValue > 0) {
-                yield()
-                allowDismiss.value = true
-            }
+        LaunchedEffect(Unit) {
+            yield()
+            allowDismiss.value = true
         }
         DisposableEffect(window) {
-            val w = window
             val listener = object : WindowAdapter() {
                 override fun windowDeactivated(e: WindowEvent) {
                     if (allowDismiss.value) onDismiss()
                 }
             }
-            w.addWindowListener(listener)
-            onDispose { w.removeWindowListener(listener) }
+            window.addWindowListener(listener)
+            onDispose { window.removeWindowListener(listener) }
         }
-        Box(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true)) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = DesignColors.SurfaceElevated,
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .wrapContentSize()
-                    .onSizeChanged {
-                        with(density) {
-                            menuW.intValue = it.width.toDp().value.toInt()
-                            menuH.intValue = it.height.toDp().value.toInt()
-                        }
-                        place()
-                    },
-            ) {
-                Column(
-                    Modifier.widthIn(min = 180.dp, max = 280.dp),
-                    content = content,
-                )
-            }
-        }
+        MenuBody(content)
+    }
+}
+
+@Composable
+private fun MenuBody(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = DesignColors.SurfaceElevated,
+        shadowElevation = 8.dp,
+    ) {
+        Column(Modifier.widthIn(min = 180.dp, max = 280.dp), content = content)
     }
 }
