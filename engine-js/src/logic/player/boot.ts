@@ -157,12 +157,24 @@ function bindPictureSize(el: Record<string, unknown>): void {
   });
 }
 
+/** Same as webview-js: chip actual = getPlaybackQuality on onPlaybackQualityChange. */
+function bindPlaybackQualityChange(el: Record<string, unknown>): void {
+  if ((el as { __ymQualityEvt?: boolean }).__ymQualityEvt) return;
+  const add = el["addEventListener"];
+  if (typeof add !== "function") return;
+  (el as { __ymQualityEvt?: boolean }).__ymQualityEvt = true;
+  (add as (name: string, fn: () => void) => void).call(el, "onPlaybackQualityChange", function () {
+    notifyCatalog();
+  });
+}
+
 /** App.FC copies IFrame names (state.Y) onto template.element = #movie_player
  *  when create() is given #player. Copy state.Y if FC landed elsewhere. */
 function bindMoviePlayerApi(app: YtApp | null): void {
   const el = moviePlayer();
   if (!el || !app) return;
   bindPictureSize(el);
+  bindPlaybackQualityChange(el);
   wrapGetPlaybackQuality(el);
   wrapGetPlaybackQuality(app as unknown as Record<string, unknown>);
   if (typeof el["getPlaybackQuality"] === "function") return;
