@@ -126,7 +126,6 @@ import io.ymusic.ui.resources.sleep_off_remaining
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_quality_auto
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.stringResource
 
@@ -299,9 +298,12 @@ private fun PortraitNowPlaying(
     var overlayReveal by remember { mutableIntStateOf(0) }
     val overlayMode = rememberUpdatedState(controlsOnVideo)
     LaunchedEffect(listState) {
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .drop(1)
-            .collect { if (overlayMode.value) overlayReveal++ }
+        // After the queue header pins, firstVisibleItemIndex/offset freeze; further
+        // scrolling would never re-show the overlay. isScrollInProgress flips each gesture.
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (scrolling && overlayMode.value) overlayReveal++
+            }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
