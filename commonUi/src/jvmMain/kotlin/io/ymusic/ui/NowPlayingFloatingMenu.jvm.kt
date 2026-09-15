@@ -28,12 +28,16 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
-import kotlinx.coroutines.yield
+import kotlinx.coroutines.delay
+import java.awt.AWTEvent
+import java.awt.Component
 import java.awt.GraphicsEnvironment
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
-import java.awt.event.WindowAdapter
-import java.awt.event.WindowEvent
+import java.awt.Toolkit
+import java.awt.Window
+import java.awt.event.AWTEventListener
+import java.awt.event.KeyEvent
+import java.awt.event.MouseEvent
+import javax.swing.SwingUtilities
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -92,12 +96,6 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         menuH.intValue > 0 &&
         anchorRight.intValue > 0 &&
         anchorBottom.intValue > 0
-    LaunchedEffect(expanded, ready, menuW.intValue, menuH.intValue, anchorRight.intValue, anchorBottom.intValue) {
-        overlayLog(
-            "menu expanded=$expanded ready=$ready size=${menuW.intValue}x${menuH.intValue} " +
-                "anchorR=${anchorRight.intValue} anchorB=${anchorBottom.intValue}",
-        )
-    }
     if (!ready) return
     val w = menuW.intValue
     val h = menuH.intValue
@@ -105,6 +103,8 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         position = WindowPosition((anchorRight.intValue - w).coerceAtLeast(0).dp, anchorBottom.intValue.dp),
         size = DpSize(w.dp, h.dp),
     )
+    // Not focusable: a key DialogWindow deactivates the Frame and AppKit
+    // restacks the video chrome behind the JAWT hole (overlay blink).
     DialogWindow(
         onCloseRequest = onDismiss,
         state = state,
@@ -112,53 +112,37 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         decoration = WindowDecoration.Undecorated(),
         transparent = false,
         resizable = false,
-        focusable = true,
+        focusable = false,
         alwaysOnTop = false,
         modalityType = DialogModalityType.Modeless,
     ) {
         val allowDismiss = remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
-            yield()
+            delay(200)
             allowDismiss.value = true
         }
         DisposableEffect(window) {
-            overlayLog(
-                "menu window attach showing=${window.isShowing} loc=${window.location} " +
-                    "size=${window.size} owner=${window.owner}",
-            )
-            val listener = object : WindowAdapter() {
-                override fun windowDeactivated(e: WindowEvent) {
-                    overlayLog("menu deactivated allow=${allowDismiss.value} opp=${e.oppositeWindow}")
-                    if (allowDismiss.value) onDismiss()
+            val menu = window
+            menu.focusableWindowState = false
+            val toolkit = Toolkit.getDefaultToolkit()
+            val listener = AWTEventListener { ev ->
+                if (!allowDismiss.value) return@AWTEventListener
+                when (ev) {
+                    is MouseEvent -> {
+                        if (ev.id != MouseEvent.MOUSE_PRESSED) return@AWTEventListener
+                        val src = ev.source as? Component ?: return@AWTEventListener
+                        val win = SwingUtilities.getWindowAncestor(src) ?: src as? Window
+                        if (win != menu) SwingUtilities.invokeLater(onDismiss)
+                    }
+                    is KeyEvent -> {
+                        if (ev.id == KeyEvent.KEY_PRESSED && ev.keyCode == KeyEvent.VK_ESCAPE) {
+                            SwingUtilities.invokeLater(onDismiss)
+                        }
+                    }
                 }
-                override fun windowActivated(e: WindowEvent) =
-                    overlayLog("menu activated opp=${e.oppositeWindow}")
-                override fun windowGainedFocus(e: WindowEvent) =
-                    overlayLog("menu gainedFocus opp=${e.oppositeWindow}")
-                override fun windowLostFocus(e: WindowEvent) =
-                    overlayLog("menu lostFocus opp=${e.oppositeWindow}")
-                override fun windowOpened(e: WindowEvent) = overlayLog("menu opened")
-                override fun windowClosed(e: WindowEvent) = overlayLog("menu closed")
             }
-            val comp = object : ComponentAdapter() {
-                override fun componentShown(e: ComponentEvent) =
-                    overlayLog("menu shown loc=${window.location} size=${window.size}")
-                override fun componentHidden(e: ComponentEvent) =
-                    overlayLog("menu hidden")
-                override fun componentMoved(e: ComponentEvent) =
-                    overlayLog("menu moved loc=${window.location}")
-                override fun componentResized(e: ComponentEvent) =
-                    overlayLog("menu resized size=${window.size}")
-            }
-            window.addWindowListener(listener)
-            window.addWindowFocusListener(listener)
-            window.addComponentListener(comp)
-            onDispose {
-                overlayLog("menu window detach")
-                window.removeWindowListener(listener)
-                window.removeWindowFocusListener(listener)
-                window.removeComponentListener(comp)
-            }
+            toolkit.addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK or AWTEvent.KEY_EVENT_MASK)
+            onDispose { toolkit.removeAWTEventListener(listener) }
         }
         MenuBody(content)
     }
