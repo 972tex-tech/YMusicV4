@@ -31,8 +31,8 @@ internal expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 internal expect fun SyncSystemBars(dark: Boolean)
 
 /**
- * Now Playing menus that would sit over the video. Desktop: an undecorated owned window
- * that closes when it loses focus. Elsewhere: [androidx.compose.material3.DropdownMenu].
+ * Now Playing menus that would sit over the video. Desktop: drawn inside the chrome
+ * overlay window (a second window restacks behind JAWT). Elsewhere: DropdownMenu.
  */
 @Composable
 internal expect fun BoxScope.NowPlayingFloatingMenu(
