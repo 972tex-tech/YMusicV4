@@ -77,6 +77,12 @@ if (ffmpegForDev != null) {
         }
 }
 
+// Dev `:run` only — not the packaged launcher. Caps the Java heap so Activity Monitor
+// RSS can be split: heap vs QuickJS/ffmpeg/Skiko native. 100m will not make RSS 100MB.
+tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
+    jvmArgs("-Xmx100m")
+}
+
 // Host ffmpeg pack (CLI + libav DSOs) into compose app-resources. Rpath finds the siblings;
 // do not set LD_LIBRARY_PATH.
 val ffmpegPackedName = FfmpegRelease.hostCliName()
