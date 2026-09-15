@@ -195,10 +195,7 @@ fun MiniPlayer(
                 ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
             }
         }
-        Column(
-            Modifier.weight(1f).background(DesignColors.SurfaceDim)
-                .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        ) {
+        Column(Modifier.weight(1f).background(DesignColors.SurfaceDim)) {
             LinearProgressIndicator(
                 progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
                 modifier = Modifier.fillMaxWidth().height(2.dp),
@@ -208,7 +205,7 @@ fun MiniPlayer(
                 gapSize = 0.dp,
             )
             Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
