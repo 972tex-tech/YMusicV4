@@ -71,7 +71,8 @@ internal actual fun VideoChromeLayer(
         var lastW = -1
         var lastH = -1
         fun ownerDump() =
-            "size=${owner.width}x${owner.height} loc=${owner.location} state=${owner.extendedState} last=${lastW}x$lastH"
+            "size=${owner.width}x${owner.height} loc=${owner.location} " +
+                "state=${(owner as? Frame)?.extendedState} last=${lastW}x$lastH"
         fun park(why: String) {
             overlayLog("PARK $why ${ownerDump()}")
             lastW = owner.width

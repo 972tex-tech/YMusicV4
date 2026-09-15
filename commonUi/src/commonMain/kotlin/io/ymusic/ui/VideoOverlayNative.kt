@@ -13,7 +13,7 @@ import androidx.compose.runtime.setValue
  * Native video NSView gets mouse after the chrome window is fully transparent
  * (macOS click-through). Do not copy those AWT events into Compose.
  */
-internal fun overlayLog(msg: String) {
+fun overlayLog(msg: String) {
     println("[overlay] $msg")
 }
 
