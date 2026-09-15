@@ -149,7 +149,13 @@ class MsePlayer internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                fail(e.errorCode() ?: "E60033", e.message ?: "mse load failed", e)
+                fail(
+                    e.errorCode()
+                        ?: Regex("""E\d{5}""").find(e.message.orEmpty())?.value
+                        ?: "E60033",
+                    e.message ?: "mse load failed",
+                    e,
+                )
             }
         }
     }
