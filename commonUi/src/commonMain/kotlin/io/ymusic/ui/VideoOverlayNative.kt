@@ -66,6 +66,10 @@ object VideoOverlayNative {
     @Volatile
     var raiseWindow: (() -> Unit)? = null
 
+    /** NP floating menu; order above chrome without becoming key. */
+    @Volatile
+    var raiseMenu: (() -> Unit)? = null
+
     fun poke() {
         overlayLog("poke armed=$armed visible=$visible menuHold=$menuHold")
         if (!armed || menuHold) return
@@ -85,5 +89,6 @@ object VideoOverlayNative {
             overlayLog("raiseWindow")
             raiseWindow?.invoke()
         }
+        if (menuHold) raiseMenu?.invoke()
     }
 }

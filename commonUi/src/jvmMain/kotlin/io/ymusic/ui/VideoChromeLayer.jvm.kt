@@ -228,6 +228,8 @@ internal actual fun VideoChromeLayer(
             val raise = {
                 overlayLog("chrome toFront showing=${w.isShowing} vis=${w.isVisible}")
                 if (w.isDisplayable && w.isShowing) w.toFront()
+                VideoOverlayNative.raiseMenu?.invoke()
+                Unit
             }
             VideoOverlayNative.raiseWindow = raise
             val win = object : WindowAdapter() {

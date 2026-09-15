@@ -130,6 +130,13 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         DisposableEffect(window) {
             val menu = window
             menu.focusableWindowState = false
+            menu.isAutoRequestFocus = false
+            val orderAboveChrome = {
+                if (menu.isDisplayable) menu.toFront()
+            }
+            VideoOverlayNative.raiseMenu = orderAboveChrome
+            orderAboveChrome()
+            SwingUtilities.invokeLater(orderAboveChrome)
             val toolkit = Toolkit.getDefaultToolkit()
             val listener = AWTEventListener { ev ->
                 if (!allowDismiss.value) return@AWTEventListener
@@ -148,7 +155,12 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
                 }
             }
             toolkit.addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK or AWTEvent.KEY_EVENT_MASK)
-            onDispose { toolkit.removeAWTEventListener(listener) }
+            onDispose {
+                toolkit.removeAWTEventListener(listener)
+                if (VideoOverlayNative.raiseMenu === orderAboveChrome) {
+                    VideoOverlayNative.raiseMenu = null
+                }
+            }
         }
         MenuBody(content)
     }
