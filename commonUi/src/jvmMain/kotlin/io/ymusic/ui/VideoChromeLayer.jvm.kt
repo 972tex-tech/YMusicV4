@@ -215,13 +215,12 @@ internal actual fun VideoChromeLayer(
         decoration = WindowDecoration.Undecorated(),
         transparent = true,
         resizable = false,
-        focusable = false,
+        focusable = true,
         alwaysOnTop = false,
         modalityType = DialogModalityType.Modeless,
     ) {
         DisposableEffect(window) {
             val w = window
-            w.focusableWindowState = false
             overlayLog(
                 "chrome window attach showing=${w.isShowing} vis=${w.isVisible} " +
                     "loc=${w.location} size=${w.size} owner=${w.owner}",

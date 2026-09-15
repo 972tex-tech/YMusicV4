@@ -244,8 +244,9 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
     val scrubbing = VideoOverlayNative.scrubbing
-    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing) {
-        if (armed && overlayVisible && playWhenReady && !scrubbing) {
+    val menuHold = VideoOverlayNative.menuHold
+    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing, menuHold) {
+        if (armed && overlayVisible && playWhenReady && !scrubbing && !menuHold) {
             delay(OVERLAY_HIDE_DELAY_MS)
             VideoOverlayNative.visible = false
         }
@@ -254,6 +255,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
         onDispose {
             VideoOverlayNative.armed = false
             VideoOverlayNative.coverHole = false
+            VideoOverlayNative.menuHold = false
         }
     }
     Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {

@@ -96,6 +96,12 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
         menuH.intValue > 0 &&
         anchorRight.intValue > 0 &&
         anchorBottom.intValue > 0
+    DisposableEffect(expanded) {
+        if (!expanded) return@DisposableEffect onDispose { }
+        VideoOverlayNative.menuHold = true
+        VideoOverlayNative.show()
+        onDispose { VideoOverlayNative.menuHold = false }
+    }
     if (!ready) return
     val w = menuW.intValue
     val h = menuH.intValue

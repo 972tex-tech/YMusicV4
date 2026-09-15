@@ -56,6 +56,9 @@ object VideoOverlayNative {
     var showGen by mutableIntStateOf(0)
         internal set
 
+    /** Quality/⋮/sleep menu is open — keep the overlay up, do not poke-hide. */
+    var menuHold by mutableStateOf(false)
+
     val showing: Boolean
         get() = armed && visible
 
@@ -64,8 +67,8 @@ object VideoOverlayNative {
     var raiseWindow: (() -> Unit)? = null
 
     fun poke() {
-        overlayLog("poke armed=$armed visible=$visible")
-        if (!armed) return
+        overlayLog("poke armed=$armed visible=$visible menuHold=$menuHold")
+        if (!armed || menuHold) return
         if (visible) {
             visible = false
         } else {
