@@ -1004,13 +1004,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
         val bgra = FileAvNative.snapshotOverlay(wh)
         if (bgra != null && wh[0] > 0 && wh[1] > 0) return bgraToRgb(wh[0], wh[1], bgra)
         extraSnapshot?.invoke()?.let { return it }
-        if (!canvas.isShowing || canvas.width <= 0 || canvas.height <= 0) return null
-        return try {
-            val loc = canvas.locationOnScreen
-            java.awt.Robot().createScreenCapture(java.awt.Rectangle(loc.x, loc.y, canvas.width, canvas.height))
-        } catch (_: Exception) {
-            null
-        }
+        return null
     }
 
     fun holdLastFrame(snap: BufferedImage) {

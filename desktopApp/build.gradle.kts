@@ -77,12 +77,6 @@ if (ffmpegForDev != null) {
         }
 }
 
-// Dev `:run` only — not the packaged launcher. Caps the Java heap so Activity Monitor
-// RSS can be split: heap vs QuickJS/ffmpeg/Skiko native. 100m will not make RSS 100MB.
-tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
-    jvmArgs("-Xmx100m")
-}
-
 // Host ffmpeg pack (CLI + libav DSOs) into compose app-resources. Rpath finds the siblings;
 // do not set LD_LIBRARY_PATH.
 val ffmpegPackedName = FfmpegRelease.hostCliName()
@@ -346,10 +340,14 @@ compose.desktop {
         // daemon often runs on a JBR that has neither, so find one; -Pymusic.jdkHome overrides.
         fullJdkHome?.let { javaHome = it }
         // Compose SwingPanel (MSE blit) needs AWT internals opened on the JBR/JDK.
+        // Heap 256m: packaged HotSpot otherwise picks ~1/4 RAM (16g on a 64g Mac).
+        // Skia GPU cache default is 256m — one idle atlas was a 113m CGImage.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+            "-Xmx256m",
+            "-Dskiko.gpu.resourceCacheLimit=64M",
         )
         // Release packaging (packageReleaseDmg etc.) runs ProGuard SHRINK-ONLY: no obfuscation, no
         // optimization — dead-code removal is the point (material-icons-extended alone is 37MB of
