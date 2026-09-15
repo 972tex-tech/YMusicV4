@@ -10,6 +10,9 @@ import androidx.compose.ui.Modifier
  *  gesture would steal any click whose press wanders a pixel. */
 internal expect val platformUsesTouch: Boolean
 
+/** Desktop Compose UI uses a transparent window with a layout hole over a video-only Frame. */
+internal expect val desktopLayoutHole: Boolean
+
 /**
  * Hosts captions and transport on the video. On desktop the JAWT overlay covers Skia, so
  * this is a transparent child window above that view; elsewhere it is an in-place Box.
@@ -31,8 +34,8 @@ internal expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 internal expect fun SyncSystemBars(dark: Boolean)
 
 /**
- * Now Playing menus that would sit over the video. Desktop: an undecorated owned window
- * that closes when it loses focus. Elsewhere: [androidx.compose.material3.DropdownMenu].
+ * Now Playing menus that would sit over the video. Desktop layout-hole: DropdownMenu in the
+ * Compose window. Elsewhere: [androidx.compose.material3.DropdownMenu].
  */
 @Composable
 internal expect fun BoxScope.NowPlayingFloatingMenu(

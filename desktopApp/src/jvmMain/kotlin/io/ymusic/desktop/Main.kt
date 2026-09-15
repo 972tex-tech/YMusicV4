@@ -5,12 +5,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.window.WindowDraggableArea
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Minimize
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -19,9 +29,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -34,7 +44,10 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -126,7 +139,6 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.compose.resources.painterResource
@@ -226,6 +238,7 @@ fun main() {
             if (windowState.placement == WindowPlacement.Floating) {
                 saveWindowPrefs(windowState.size, windowState.position)
             }
+            videoUnderlay.dispose()
             exitApplication()
         }
         // Persist the size/position the user settles on (debounced past the live drag/resize
@@ -240,6 +253,10 @@ fun main() {
                     }
                 }
         }
+        DisposableEffect(Unit) {
+            videoUnderlay.frame.isVisible = true
+            onDispose { }
+        }
         Window(
             // Held back until the graph is ready: an empty window that then repaints is a flash of
             // whatever the toolkit felt like showing. Composed all along, so paintWindowGround has
@@ -253,6 +270,8 @@ fun main() {
             title = "YMusic",
             icon = painterResource(Res.drawable.ymusic_logo),
             state = windowState,
+            undecorated = true,
+            transparent = true,
             onPreviewKeyEvent = { event ->
                 val refresh = event.type == KeyEventType.KeyDown &&
                     (event.key == Key.F5 || ((event.isMetaPressed || event.isCtrlPressed) && event.key == Key.R))
@@ -260,62 +279,90 @@ fun main() {
                 refresh
             },
         ) {
-            paintWindowGround(groundColorFor(darkChrome))
+            paintWindowGround(Color.Transparent)
+            val closeApp = {
+                if (graph?.player?.queue?.value?.items?.isNotEmpty() == true) windowVisible = false else quit()
+            }
+            CompositionLocalProvider(LocalAppWindow provides window) {
+                Column(Modifier.fillMaxSize()) {
+                    WindowDraggableArea {
+                        Row(
+                            Modifier.fillMaxWidth().height(36.dp).background(groundColorFor(darkChrome)),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "YMusic",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(start = 12.dp).weight(1f),
+                            )
+                            IconButton(onClick = { window.extendedState = java.awt.Frame.ICONIFIED }) {
+                                Icon(Icons.Default.Minimize, "Minimize")
+                            }
+                            IconButton(onClick = closeApp) {
+                                Icon(Icons.Default.Close, "Close")
+                            }
+                        }
+                    }
 
-            val g = graph
-            val resizePulse = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST) }
-            DisposableEffect(window, g) {
-                if (g == null) return@DisposableEffect onDispose { }
-                var lastW = -1
-                var lastH = -1
-                val listener = object : ComponentAdapter() {
-                    override fun componentResized(e: ComponentEvent) {
-                        val w = window.width
-                        val h = window.height
-                        if (w == lastW && h == lastH) return
-                        val first = lastW < 0
-                        lastW = w
-                        lastH = h
-                        if (first) return
-                        io.ymusic.ui.overlayLog("windowResizing true ${w}x$h")
-                        g.windowResizing.value = true
-                        resizePulse.tryEmit(Unit)
+                    val g = graph
+                    val resizePulse = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST) }
+                    DisposableEffect(window, g) {
+                        if (g == null) return@DisposableEffect onDispose { }
+                        var lastW = -1
+                        var lastH = -1
+                        val listener = object : ComponentAdapter() {
+                            override fun componentResized(e: ComponentEvent) {
+                                val w = window.width
+                                val h = window.height
+                                if (w == lastW && h == lastH) return
+                                val first = lastW < 0
+                                lastW = w
+                                lastH = h
+                                if (first) return
+                                io.ymusic.ui.overlayLog("windowResizing true ${w}x$h")
+                                g.windowResizing.value = true
+                                resizePulse.tryEmit(Unit)
+                            }
+                        }
+                        window.addComponentListener(listener)
+                        onDispose {
+                            window.removeComponentListener(listener)
+                            g.windowResizing.value = false
+                        }
+                    }
+                    LaunchedEffect(g) {
+                        if (g == null) return@LaunchedEffect
+                        resizePulse.collectLatest {
+                            delay(300)
+                            io.ymusic.ui.overlayLog("windowResizing false")
+                            g.windowResizing.value = false
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        try {
+                            graph = buildGraph(settings)
+                        } catch (c: kotlinx.coroutines.CancellationException) {
+                            throw c // the effect was disposed — not a boot failure
+                        } catch (t: Throwable) {
+                            rootLogger.fork("boot").captureError(t)
+                            bootError = t.message ?: t.toString()
+                        }
+                    }
+
+                    Box(Modifier.weight(1f)) {
+                        when {
+                            bootError != null -> Booting {
+                                Text("Startup failed: $bootError", color = MaterialTheme.colorScheme.error)
+                            }
+                            // No spinner while the graph builds: the window paints the app's own ground until
+                            // the first frame has something in it.
+                            graph == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+                            else -> App(graph!!)
+                        }
                     }
                 }
-                window.addComponentListener(listener)
-                onDispose {
-                    window.removeComponentListener(listener)
-                    g.windowResizing.value = false
-                }
-            }
-            LaunchedEffect(g) {
-                if (g == null) return@LaunchedEffect
-                resizePulse.collectLatest {
-                    delay(300)
-                    io.ymusic.ui.overlayLog("windowResizing false")
-                    g.windowResizing.value = false
-                }
-            }
-
-            LaunchedEffect(Unit) {
-                try {
-                    graph = buildGraph(settings)
-                } catch (c: kotlinx.coroutines.CancellationException) {
-                    throw c // the effect was disposed — not a boot failure
-                } catch (t: Throwable) {
-                    rootLogger.fork("boot").captureError(t)
-                    bootError = t.message ?: t.toString()
-                }
-            }
-
-            when {
-                bootError != null -> Booting {
-                    Text("Startup failed: $bootError", color = MaterialTheme.colorScheme.error)
-                }
-                // No spinner while the graph builds: the window paints the app's own ground until
-                // the first frame has something in it.
-                graph == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-                else -> App(graph!!)
             }
         }
         // The tray icon lives whenever there is a queue to control — window open or not — and
@@ -717,79 +764,82 @@ private fun DesktopPlayerSurface(
             localSurface.nativePeer = null
         }
     }
-    val coverHole = VideoOverlayNative.coverHole
     val windowResizingNow by windowResizing.collectAsState()
-    LaunchedEffect(status.playWhenReady, coverHole, windowResizingNow) {
-        if (status.playWhenReady && !coverHole && !windowResizingNow) {
+    LaunchedEffect(status.playWhenReady, windowResizingNow) {
+        if (status.playWhenReady && !windowResizingNow) {
             msePanel.setCovered(false)
             localPanel.setCovered(false)
         }
     }
-    var parked by remember { mutableStateOf(false) }
-    var menuStill by remember { mutableStateOf<ImageBitmap?>(null) }
     val panel = if (localVisible) localPanel else msePanel
-    LaunchedEffect(coverHole) {
-        if (coverHole) {
-            menuStill = panel.captureStill()?.toComposeImageBitmap()
+    DisposableEffect(panel) {
+        videoUnderlay.attach(panel)
+        onDispose { }
+    }
+    val hostWindow = LocalAppWindow.current
+    val density = LocalDensity.current
+    var still by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(windowResizingNow) {
+        if (windowResizingNow) {
+            still = panel.captureStill()?.toComposeImageBitmap()
             panel.setCovered(true)
-            parked = true
-        } else if (parked) {
-            yield()
-            parked = false
-            menuStill = null
-            panel.setCovered(windowResizingNow)
+        } else {
+            still = null
+            panel.setCovered(false)
         }
     }
     Box(
-        modifier.onSizeChanged {
-            if (it.width > 0 && it.height > 0) {
-                mseSurface.setBlitSize(it.width, it.height)
-                localSurface.setBlitSize(it.width, it.height)
+        modifier
+            .onSizeChanged {
+                if (it.width > 0 && it.height > 0) {
+                    mseSurface.setBlitSize(it.width, it.height)
+                    localSurface.setBlitSize(it.width, it.height)
+                }
             }
-        },
+            .onGloballyPositioned { coords ->
+                val win = hostWindow ?: return@onGloballyPositioned
+                val loc = try {
+                    win.locationOnScreen
+                } catch (_: Exception) {
+                    return@onGloballyPositioned
+                }
+                val p = coords.positionInWindow()
+                val insets = win.insets
+                with(density) {
+                    val w = coords.size.width.toDp().value.toInt()
+                    val h = coords.size.height.toDp().value.toInt()
+                    if (h < 80) {
+                        videoUnderlay.setHole(0, 0, 0, 0)
+                        return@with
+                    }
+                    val x = loc.x + insets.left + p.x.toDp().value.toInt()
+                    val y = loc.y + insets.top + p.y.toDp().value.toInt()
+                    videoUnderlay.setHole(x, y, w, h)
+                }
+            },
     ) {
-        if (parked) {
+        if (windowResizingNow) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {
-                menuStill?.let { bmp ->
-                    Image(
-                        bmp,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
+                still?.let { bmp ->
+                    Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 }
             }
         }
-        val hole = if (parked) Modifier.size(0.dp) else Modifier.fillMaxSize()
-        if (localVisible) {
-            SwingPanel(
-                background = Color.Black,
-                factory = { localPanel },
-                modifier = hole,
-                update = { it.setCovered(parked || windowResizingNow) },
-            )
-            if (!parked && localFps > 0) {
-                Text(
-                    "$localFps fps",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp)
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-            }
-        } else {
-            // Same blit as playground MseNativeVideo: Swing paints BGRA, Compose does not recompose
-            // each frame. contains()=false leaves caption/menu clicks in Compose.
-            SwingPanel(
-                background = Color.Black,
-                factory = { msePanel },
-                modifier = hole,
-                update = { it.setCovered(parked || windowResizingNow) },
+        if (localVisible && localFps > 0 && !windowResizingNow) {
+            Text(
+                "$localFps fps",
+                color = Color.White,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
+    }
+    DisposableEffect(Unit) {
+        onDispose { videoUnderlay.setHole(0, 0, 0, 0) }
     }
 }
 
@@ -1233,6 +1283,10 @@ private fun applyWindowChrome(dark: Boolean) {
         if (dark) "NSAppearanceNameDarkAqua" else "NSAppearanceNameAqua",
     )
 }
+
+private val LocalAppWindow = staticCompositionLocalOf<java.awt.Window?> { null }
+
+private val videoUnderlay by lazy { VideoUnderlay() }
 
 private const val DESKTOP_CHROME_UA =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +

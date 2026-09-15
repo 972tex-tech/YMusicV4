@@ -6,6 +6,8 @@ import androidx.compose.ui.Modifier
 
 internal actual val platformUsesTouch: Boolean = true
 
+internal actual val desktopLayoutHole: Boolean = false
+
 @Composable
 internal actual fun VideoChromeLayer(
     modifier: Modifier,

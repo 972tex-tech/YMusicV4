@@ -175,7 +175,10 @@ fun MiniPlayer(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Box(
-                Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(DesignColors.PlaceholderDim),
+                Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).then(
+                    if (surface != null && desktopLayoutHole) Modifier
+                    else Modifier.background(DesignColors.PlaceholderDim),
+                ),
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
@@ -258,7 +261,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             VideoOverlayNative.menuHold = false
         }
     }
-    Surface(Modifier.fillMaxSize(), color = DesignColors.Surface) {
+    val shell = @Composable {
         BoxWithConstraints {
             when {
                 fullscreen -> FullscreenVideo(graph, coordinator, onExit = { fullscreen = false })
@@ -266,6 +269,11 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
                 else -> PortraitNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
             }
         }
+    }
+    if (desktopLayoutHole) {
+        Box(Modifier.fillMaxSize(), content = { shell() })
+    } else {
+        Surface(Modifier.fillMaxSize(), color = DesignColors.Surface, content = { shell() })
     }
 }
 
@@ -280,7 +288,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
 
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black))) {
         graph.playerSurface(Modifier.fillMaxSize())
         VideoChromeLayer(Modifier.fillMaxSize()) {
             AutoHidingOverlay {
@@ -325,12 +333,15 @@ private fun PortraitNowPlaying(
     // Queue rows sit after the controls item and the sticky header in this list.
     val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().then(if (desktopLayoutHole) Modifier.background(Color.Transparent) else Modifier)) {
         PlayerTopBar(coordinator, sleepMs, onClose)
 
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
+        ) {
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
@@ -360,7 +371,12 @@ private fun PortraitNowPlaying(
             }
         }
 
-        LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).then(
+                if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier,
+            ),
+        ) {
             item {
                 Column(Modifier.fillMaxWidth()) {
                     Column(
@@ -431,8 +447,10 @@ private fun LandscapeNowPlaying(
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
 
     Row(Modifier.fillMaxSize()) {
-        // Black: HW overlay letterbox is transparent, so this fill is the bars.
-        Box(Modifier.weight(1f).fillMaxHeight().background(Color.Black)) {
+        Box(
+            Modifier.weight(1f).fillMaxHeight()
+                .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
+        ) {
             graph.playerSurface(Modifier.fillMaxSize())
             VideoChromeLayer(Modifier.fillMaxSize()) {
                 AutoHidingOverlay {
@@ -442,7 +460,10 @@ private fun LandscapeNowPlaying(
             }
         }
         VerticalDivider(color = DesignColors.Divider)
-        Column(Modifier.width(320.dp).fillMaxHeight()) {
+        Column(
+            Modifier.width(320.dp).fillMaxHeight()
+                .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier),
+        ) {
             PlayerTopBar(coordinator, sleepMs, onClose)
             status.error?.let {
                 Box(Modifier.padding(horizontal = 16.dp)) { PlaybackErrorRow(player, it) }
@@ -660,7 +681,9 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
-        Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 3.dp),
+        Modifier.fillMaxWidth()
+            .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier)
+            .padding(horizontal = 11.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
