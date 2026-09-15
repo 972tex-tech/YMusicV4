@@ -268,10 +268,7 @@ internal actual fun VideoChromeLayer(
                 if (VideoOverlayNative.raiseWindow === raise) VideoOverlayNative.raiseWindow = null
             }
         }
-        Box(Modifier.fillMaxSize()) {
-            holder.content.invoke(this)
-            OverlayMenuLayer(bounds.x, bounds.y, bounds.w, bounds.h)
-        }
+        Box(Modifier.fillMaxSize(), content = holder.content)
     }
 }
 
