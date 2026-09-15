@@ -103,13 +103,6 @@ internal actual fun VideoChromeLayer(
             }
             park(why)
         }
-        fun raiseChromeIfShowing() {
-            if (!VideoOverlayNative.armed || !VideoOverlayNative.visible) return
-            SwingUtilities.invokeLater {
-                overlayLog("owner activate raise chrome")
-                VideoOverlayNative.raiseWindow?.invoke()
-            }
-        }
         val components = object : ComponentAdapter() {
             override fun componentMoved(e: ComponentEvent) = parkIfSizeChanged("moved")
             override fun componentResized(e: ComponentEvent) = parkIfSizeChanged("resized")
@@ -123,16 +116,12 @@ internal actual fun VideoChromeLayer(
                 overlayLog("owner iconified ${ownerDump()}")
                 park("iconified")
             }
-            override fun windowActivated(e: WindowEvent) {
+            override fun windowActivated(e: WindowEvent) =
                 overlayLog("owner activated opp=${e.oppositeWindow}")
-                raiseChromeIfShowing()
-            }
             override fun windowDeactivated(e: WindowEvent) =
                 overlayLog("owner deactivated opp=${e.oppositeWindow}")
-            override fun windowGainedFocus(e: WindowEvent) {
+            override fun windowGainedFocus(e: WindowEvent) =
                 overlayLog("owner gainedFocus opp=${e.oppositeWindow}")
-                raiseChromeIfShowing()
-            }
             override fun windowLostFocus(e: WindowEvent) =
                 overlayLog("owner lostFocus opp=${e.oppositeWindow}")
         }
