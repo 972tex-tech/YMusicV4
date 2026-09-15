@@ -2,6 +2,12 @@ package io.ymusic.desktop
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.window.WindowDraggableArea
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Minimize
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +34,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -48,6 +51,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -103,6 +109,8 @@ import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.DarkDesignColors
+import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.WebViewSabrSpecResolver
 import io.ymusic.ui.downloadCaptionPreference
@@ -283,26 +291,52 @@ fun main() {
             val closeApp = {
                 if (graph?.player?.queue?.value?.items?.isNotEmpty() == true) windowVisible = false else quit()
             }
+            val themePref by settings.flow(AppSettings.theme).collectAsState()
+            val darkBar = when (themePref) {
+                "light" -> false
+                "dark" -> true
+                else -> isSystemInDarkTheme()
+            }
+            val palette = if (darkBar) DarkDesignColors else LightDesignColors
             CompositionLocalProvider(LocalAppWindow provides window) {
-                Column(Modifier.fillMaxSize()) {
-                    WindowDraggableArea {
+                Column(
+                    Modifier.fillMaxSize().border(1.dp, palette.Outline),
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().height(36.dp).background(palette.SurfaceElevated),
+                    ) {
+                        WindowDraggableArea(Modifier.fillMaxSize()) { Box(Modifier.fillMaxSize()) }
                         Row(
-                            Modifier.fillMaxWidth().height(36.dp).background(groundColorFor(darkChrome)),
+                            Modifier.align(Alignment.CenterStart).padding(start = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                "YMusic",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(start = 12.dp).weight(1f),
-                            )
-                            IconButton(onClick = { window.extendedState = java.awt.Frame.ICONIFIED }) {
-                                Icon(Icons.Default.Minimize, "Minimize")
-                            }
-                            IconButton(onClick = closeApp) {
-                                Icon(Icons.Default.Close, "Close")
+                            MacTrafficLight(Color(0xFFFF5F57), "Close", "✕", closeApp)
+                            MacTrafficLight(
+                                Color(0xFFFEBC2E),
+                                "Minimize",
+                                "─",
+                            ) { window.extendedState = java.awt.Frame.ICONIFIED }
+                            MacTrafficLight(
+                                Color(0xFF28C840),
+                                "Full screen",
+                                "＋",
+                            ) {
+                                windowState.placement =
+                                    if (windowState.placement == WindowPlacement.Maximized) {
+                                        WindowPlacement.Floating
+                                    } else {
+                                        WindowPlacement.Maximized
+                                    }
                             }
                         }
+                        Text(
+                            "YMusic",
+                            color = if (darkBar) Color.White else palette.InkStrong,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
                     }
 
                     val g = graph
@@ -1292,6 +1326,26 @@ private const val DESKTOP_CHROME_UA =
 private fun readAppResource(name: String): String =
     checkNotNull(object {}.javaClass.getResourceAsStream("/" + name)) { name + " missing from app resources" }
         .readBytes().decodeToString()
+
+@Composable
+private fun MacTrafficLight(color: Color, label: String, glyph: String, onClick: () -> Unit) {
+    val hover = remember { MutableInteractionSource() }
+    val hovered by hover.collectIsHoveredAsState()
+    Box(
+        Modifier
+            .size(12.dp)
+            .clip(CircleShape)
+            .background(color)
+            .semantics { contentDescription = label }
+            .hoverable(hover)
+            .clickable(indication = null, interactionSource = hover, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (hovered) {
+            Text(glyph, color = Color(0x99000000), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
 
 @Composable
 private fun Booting(content: @Composable () -> Unit) {
