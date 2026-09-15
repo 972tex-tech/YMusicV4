@@ -153,6 +153,8 @@ static JSValue js_append(JSContext *ctx, JSValueConst this_val, int argc, JSValu
         return JS_ThrowRangeError(ctx, "__mseAppend: OOB");
     if (size > (size_t)INT_MAX)
         return JS_ThrowRangeError(ctx, "__mseAppend: too large");
+    fprintf(stderr, "[qjs] mseAppend a=%d size=%zu off=%zu abLen=%zu\n", audio, size, offset, len);
+    fflush(stderr);
     if (!g_vt->append(h, audio, p + offset, (int)size, ts, ws, we))
         return JS_ThrowInternalError(ctx, "__mseAppend failed");
     return JS_UNDEFINED;

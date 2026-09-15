@@ -149,8 +149,23 @@ static void throw_qjs(JNIEnv *env, jstring msg) {
 
 static void pump_jobs(Engine *e) {
     JSContext *c;
+    int n = 0;
+    int r;
     JS_UpdateStackTop(e->rt);
-    while (JS_ExecutePendingJob(e->rt, &c) > 0) { /* run microtasks */ }
+    fprintf(stderr, "[qjs] pump start\n");
+    fflush(stderr);
+    while ((r = JS_ExecutePendingJob(e->rt, &c)) > 0) {
+        n++;
+        if ((n & 7) == 0) {
+            fprintf(stderr, "[qjs] pump jobs=%d\n", n);
+            fflush(stderr);
+        }
+    }
+    if (r < 0)
+        fprintf(stderr, "[qjs] pump EXC jobs=%d\n", n);
+    else
+        fprintf(stderr, "[qjs] pump done jobs=%d\n", n);
+    fflush(stderr);
 }
 
 static JNIEnv *engine_env(Engine *e) {
@@ -609,14 +624,20 @@ Java_io_ymusic_quickjs_QuickJsNative_write(JNIEnv *env, jobject thiz, jlong hand
     jsize alen = (*env)->GetArrayLength(env, bytes);
     if (off < 0 || (jlong)off + (jlong)len > (jlong)alen)
         return -1;
+    fprintf(stderr, "[qjs] write id=%d off=%d len=%d alen=%d\n", (int)id, (int)off, (int)len, (int)alen);
+    fflush(stderr);
     jbyte *base = (*env)->GetPrimitiveArrayCritical(env, bytes, NULL);
     if (!base) return -1;
     e->in_critical = 1;
     int rc = qjs_pipe_write(e->pipe, (uint32_t)id, (const uint8_t *)base + off, (size_t)len);
     e->in_critical = 0;
     (*env)->ReleasePrimitiveArrayCritical(env, bytes, base, JNI_ABORT);
+    fprintf(stderr, "[qjs] write copied rc=%d\n", rc);
+    fflush(stderr);
     flush_pending(e, env); /* notifies queued while critical — JNI is legal again */
     pump_jobs(e);
+    fprintf(stderr, "[qjs] write ok rc=%d\n", rc);
+    fflush(stderr);
     return (jint)rc;
 }
 

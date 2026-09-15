@@ -275,6 +275,7 @@ function httpPull(httpRes: HttpResponse, onDone: () => void): PullChunk {
       onDone();
       return null;
     }
+    console.log("qjs-slice httpPull n=" + n + " buf=" + buf.length);
     return buf.slice(0, n);
   };
 }
@@ -290,6 +291,7 @@ function teePull(src: PullChunk): [PullChunk, PullChunk] {
     pending = src()
       .then(function (chunk) {
         q0.push(chunk);
+        if (chunk != null) console.log("qjs-slice tee n=" + chunk.length);
         q1.push(chunk == null ? null : chunk.slice());
       })
       .then(
