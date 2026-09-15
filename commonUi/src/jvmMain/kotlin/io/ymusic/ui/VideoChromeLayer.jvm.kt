@@ -70,7 +70,10 @@ internal actual fun VideoChromeLayer(
         val owner = chromeOwner() ?: return@DisposableEffect onDispose { }
         var lastW = -1
         var lastH = -1
-        fun park() {
+        fun ownerDump() =
+            "size=${owner.width}x${owner.height} loc=${owner.location} state=${owner.extendedState} last=${lastW}x$lastH"
+        fun park(why: String) {
+            overlayLog("PARK $why ${ownerDump()}")
             lastW = owner.width
             lastH = owner.height
             // AWT resize callbacks run inside Compose measure on desktop.
@@ -82,46 +85,73 @@ internal actual fun VideoChromeLayer(
         }
         // Owned dialogs (quality/⋮) fire moved/resized with the same size. Skip
         // the first event and any later zero-delta so chrome does not blink.
-        fun parkIfSizeChanged() {
+        fun parkIfSizeChanged(why: String) {
             val w = owner.width
             val h = owner.height
-            if (w == lastW && h == lastH) return
+            overlayLog("owner $why ${ownerDump()}")
+            if (w == lastW && h == lastH) {
+                overlayLog("owner $why skip same-size")
+                return
+            }
             val first = lastW < 0
             lastW = w
             lastH = h
-            if (first) return
-            park()
+            if (first) {
+                overlayLog("owner $why skip first")
+                return
+            }
+            park(why)
         }
         val components = object : ComponentAdapter() {
-            override fun componentMoved(e: ComponentEvent) = parkIfSizeChanged()
-            override fun componentResized(e: ComponentEvent) = parkIfSizeChanged()
+            override fun componentMoved(e: ComponentEvent) = parkIfSizeChanged("moved")
+            override fun componentResized(e: ComponentEvent) = parkIfSizeChanged("resized")
         }
         val windows = object : WindowAdapter() {
-            override fun windowStateChanged(e: WindowEvent) = park()
-            override fun windowIconified(e: WindowEvent) = park()
+            override fun windowStateChanged(e: WindowEvent) {
+                overlayLog("owner stateChanged old=${e.oldState} new=${e.newState} ${ownerDump()}")
+                park("stateChanged")
+            }
+            override fun windowIconified(e: WindowEvent) {
+                overlayLog("owner iconified ${ownerDump()}")
+                park("iconified")
+            }
+            override fun windowActivated(e: WindowEvent) =
+                overlayLog("owner activated opp=${e.oppositeWindow}")
+            override fun windowDeactivated(e: WindowEvent) =
+                overlayLog("owner deactivated opp=${e.oppositeWindow}")
+            override fun windowGainedFocus(e: WindowEvent) =
+                overlayLog("owner gainedFocus opp=${e.oppositeWindow}")
+            override fun windowLostFocus(e: WindowEvent) =
+                overlayLog("owner lostFocus opp=${e.oppositeWindow}")
         }
         owner.addComponentListener(components)
         owner.addWindowStateListener(windows)
         owner.addWindowListener(windows)
+        owner.addWindowFocusListener(windows)
         onDispose {
             owner.removeComponentListener(components)
             owner.removeWindowStateListener(windows)
             owner.removeWindowListener(windows)
+            owner.removeWindowFocusListener(windows)
         }
     }
 
     LaunchedEffect(parkGen) {
         if (!parked) return@LaunchedEffect
+        overlayLog("parked; unpark in 180ms gen=$parkGen")
         delay(180)
+        overlayLog("unpark gen=$parkGen")
         parked = false
     }
 
     LaunchedEffect(bounds.w, bounds.h) {
         if (bounds.w <= 0 || bounds.h <= 0) {
+            overlayLog("chromeReady=false bounds=$bounds")
             chromeReady = false
             return@LaunchedEffect
         }
         delay(50)
+        overlayLog("chromeReady=true bounds=$bounds")
         chromeReady = true
     }
 
@@ -146,10 +176,20 @@ internal actual fun VideoChromeLayer(
                 ).insetFromOwner(owner)
             }
             if (next != bounds) {
+                overlayLog("bounds $bounds -> $next")
                 SwingUtilities.invokeLater { bounds = next }
             }
         },
     )
+
+    val dlgVisible = !parked && !VideoOverlayNative.coverHole
+    LaunchedEffect(parked, VideoOverlayNative.coverHole, chromeReady, dlgVisible, bounds) {
+        overlayLog(
+            "compose parked=$parked cover=${VideoOverlayNative.coverHole} ready=$chromeReady " +
+                "dlgVisible=$dlgVisible bounds=$bounds overlayVis=${VideoOverlayNative.visible} " +
+                "armed=${VideoOverlayNative.armed}",
+        )
+    }
 
     if (!chromeReady || bounds.w <= 0 || bounds.h <= 0) return
 
@@ -159,6 +199,7 @@ internal actual fun VideoChromeLayer(
     )
     LaunchedEffect(bounds, parked) {
         if (parked) return@LaunchedEffect
+        overlayLog("apply chrome state pos=${bounds.x},${bounds.y} size=${bounds.w}x${bounds.h}")
         state.position = WindowPosition(bounds.x.dp, bounds.y.dp)
         state.size = DpSize(bounds.w.dp, bounds.h.dp)
     }
@@ -168,7 +209,7 @@ internal actual fun VideoChromeLayer(
     DialogWindow(
         onCloseRequest = {},
         state = state,
-        visible = !parked && !VideoOverlayNative.coverHole,
+        visible = dlgVisible,
         title = "YMusic video chrome",
         decoration = WindowDecoration.Undecorated(),
         transparent = true,
@@ -179,9 +220,46 @@ internal actual fun VideoChromeLayer(
     ) {
         DisposableEffect(window) {
             val w = window
-            val raise = { if (w.isDisplayable && w.isShowing) w.toFront() }
+            overlayLog(
+                "chrome window attach showing=${w.isShowing} vis=${w.isVisible} " +
+                    "loc=${w.location} size=${w.size} owner=${w.owner}",
+            )
+            val raise = {
+                overlayLog("chrome toFront showing=${w.isShowing} vis=${w.isVisible}")
+                if (w.isDisplayable && w.isShowing) w.toFront()
+            }
             VideoOverlayNative.raiseWindow = raise
+            val win = object : WindowAdapter() {
+                override fun windowActivated(e: WindowEvent) =
+                    overlayLog("chrome activated opp=${e.oppositeWindow}")
+                override fun windowDeactivated(e: WindowEvent) =
+                    overlayLog("chrome deactivated opp=${e.oppositeWindow}")
+                override fun windowGainedFocus(e: WindowEvent) =
+                    overlayLog("chrome gainedFocus opp=${e.oppositeWindow}")
+                override fun windowLostFocus(e: WindowEvent) =
+                    overlayLog("chrome lostFocus opp=${e.oppositeWindow}")
+                override fun windowOpened(e: WindowEvent) = overlayLog("chrome opened")
+                override fun windowClosed(e: WindowEvent) = overlayLog("chrome closed")
+                override fun windowClosing(e: WindowEvent) = overlayLog("chrome closing")
+            }
+            val comp = object : ComponentAdapter() {
+                override fun componentShown(e: ComponentEvent) =
+                    overlayLog("chrome shown loc=${w.location} size=${w.size}")
+                override fun componentHidden(e: ComponentEvent) =
+                    overlayLog("chrome hidden")
+                override fun componentMoved(e: ComponentEvent) =
+                    overlayLog("chrome moved loc=${w.location}")
+                override fun componentResized(e: ComponentEvent) =
+                    overlayLog("chrome resized size=${w.size}")
+            }
+            w.addWindowListener(win)
+            w.addWindowFocusListener(win)
+            w.addComponentListener(comp)
             onDispose {
+                overlayLog("chrome window detach")
+                w.removeWindowListener(win)
+                w.removeWindowFocusListener(win)
+                w.removeComponentListener(comp)
                 if (VideoOverlayNative.raiseWindow === raise) VideoOverlayNative.raiseWindow = null
             }
         }

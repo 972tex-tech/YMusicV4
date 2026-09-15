@@ -704,7 +704,10 @@ internal fun QualityChip(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
-                .clickable { open = true }
+                .clickable {
+                    overlayLog("quality chip click label=$label")
+                    open = true
+                }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
         if (coverHole) {
@@ -732,7 +735,10 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var open by remember { mutableStateOf(false) }
 
     Box {
-        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
+        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = {
+            overlayLog("more menu click")
+            open = true
+        })
         NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }) {
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
@@ -1100,7 +1106,10 @@ internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet:
             Icons.Default.Bedtime,
             stringResource(Res.string.cd_sleep_timer),
             tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
-            onClick = { open = true },
+            onClick = {
+                overlayLog("sleep timer click")
+                open = true
+            },
         )
         val items: @Composable ColumnScope.() -> Unit = {
             sleepMs?.let {

@@ -277,6 +277,7 @@ fun main() {
                         lastW = w
                         lastH = h
                         if (first) return
+                        io.ymusic.ui.overlayLog("windowResizing true ${w}x$h")
                         g.windowResizing.value = true
                         resizePulse.tryEmit(Unit)
                     }
@@ -291,6 +292,7 @@ fun main() {
                 if (g == null) return@LaunchedEffect
                 resizePulse.collectLatest {
                     delay(300)
+                    io.ymusic.ui.overlayLog("windowResizing false")
                     g.windowResizing.value = false
                 }
             }
@@ -930,6 +932,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
 
     fun setCovered(covered: Boolean) {
         if (this.covered == covered) return
+        io.ymusic.ui.overlayLog("setCovered $covered")
         this.covered = covered
         if (covered) {
             val snap = captureStill()
