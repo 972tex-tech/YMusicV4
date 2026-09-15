@@ -228,8 +228,6 @@ internal actual fun VideoChromeLayer(
             val raise = {
                 overlayLog("chrome toFront showing=${w.isShowing} vis=${w.isVisible}")
                 if (w.isDisplayable && w.isShowing) w.toFront()
-                VideoOverlayNative.raiseMenu?.invoke()
-                Unit
             }
             VideoOverlayNative.raiseWindow = raise
             val win = object : WindowAdapter() {
@@ -304,3 +302,8 @@ internal fun chromeOwner(): Window? =
             w is Frame && w.isShowing && w.isDisplayable && !w.isUndecorated && w.width > 64 && w.height > 64
         }
         .maxByOrNull { it.width * it.height }
+
+internal fun chromeDialog(): Window? =
+    Window.getWindows().firstOrNull { w ->
+        w.isShowing && w.isDisplayable && w is java.awt.Dialog && w.title == "YMusic video chrome"
+    }

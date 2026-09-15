@@ -56,7 +56,7 @@ object VideoOverlayNative {
     var showGen by mutableIntStateOf(0)
         internal set
 
-    /** Quality/⋮/sleep menu is open — keep the overlay up, do not poke-hide. */
+    /** Quality/⋮/sleep menu is open — do not auto-hide or poke-toggle the overlay. */
     var menuHold by mutableStateOf(false)
 
     val showing: Boolean
@@ -65,10 +65,6 @@ object VideoOverlayNative {
     /** Desktop chrome window raise; invoked on the EDT from [show]. */
     @Volatile
     var raiseWindow: (() -> Unit)? = null
-
-    /** NP floating menu; order above chrome without becoming key. */
-    @Volatile
-    var raiseMenu: (() -> Unit)? = null
 
     fun poke() {
         overlayLog("poke armed=$armed visible=$visible menuHold=$menuHold")
@@ -89,6 +85,5 @@ object VideoOverlayNative {
             overlayLog("raiseWindow")
             raiseWindow?.invoke()
         }
-        if (menuHold) raiseMenu?.invoke()
     }
 }

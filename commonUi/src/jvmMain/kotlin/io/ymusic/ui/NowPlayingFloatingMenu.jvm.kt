@@ -17,26 +17,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.ComposeDialog
+import androidx.compose.ui.awt.SwingDialog
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogModalityType
-import androidx.compose.ui.window.DialogWindow
-import androidx.compose.ui.window.WindowDecoration
-import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.window.rememberDialogState
 import kotlinx.coroutines.delay
 import java.awt.AWTEvent
 import java.awt.Component
+import java.awt.Dialog
 import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
 import java.awt.Window
 import java.awt.event.AWTEventListener
 import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
+import javax.swing.JDialog
 import javax.swing.SwingUtilities
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -99,28 +99,37 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
     DisposableEffect(expanded) {
         if (!expanded) return@DisposableEffect onDispose { }
         VideoOverlayNative.menuHold = true
-        VideoOverlayNative.show()
         onDispose { VideoOverlayNative.menuHold = false }
     }
     if (!ready) return
     val w = menuW.intValue
     val h = menuH.intValue
-    val state = rememberDialogState(
-        position = WindowPosition((anchorRight.intValue - w).coerceAtLeast(0).dp, anchorBottom.intValue.dp),
-        size = DpSize(w.dp, h.dp),
-    )
-    // Not focusable: a key DialogWindow deactivates the Frame and AppKit
-    // restacks the video chrome behind the JAWT hole (overlay blink).
-    DialogWindow(
-        onCloseRequest = onDismiss,
-        state = state,
-        title = "",
-        decoration = WindowDecoration.Undecorated(),
-        transparent = false,
-        resizable = false,
-        focusable = false,
-        alwaysOnTop = false,
-        modalityType = DialogModalityType.Modeless,
+    val x = (anchorRight.intValue - w).coerceAtLeast(0)
+    val y = anchorBottom.intValue
+    // Owned by the chrome dialog so AppKit stacks it above the overlay. Owned by
+    // the Frame it sits under chrome. Not focusable so it does not steal key.
+    SwingDialog(
+        visible = true,
+        create = {
+            val owner = chromeDialog() ?: chromeOwner()
+            ComposeDialog(owner = owner, modalityType = Dialog.ModalityType.MODELESS).apply {
+                defaultCloseOperation = JDialog.DO_NOTHING_ON_CLOSE
+                isUndecorated = true
+                isResizable = false
+                focusableWindowState = false
+                isAutoRequestFocus = false
+                addWindowListener(object : WindowAdapter() {
+                    override fun windowClosing(e: WindowEvent?) = onDismiss()
+                })
+            }
+        },
+        dispose = { it.dispose() },
+        update = { dialog ->
+            dialog.focusableWindowState = false
+            dialog.isAutoRequestFocus = false
+            if (dialog.x != x || dialog.y != y) dialog.setLocation(x, y)
+            if (dialog.width != w || dialog.height != h) dialog.setSize(w, h)
+        },
     ) {
         val allowDismiss = remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
@@ -131,12 +140,6 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
             val menu = window
             menu.focusableWindowState = false
             menu.isAutoRequestFocus = false
-            val orderAboveChrome = {
-                if (menu.isDisplayable) menu.toFront()
-            }
-            VideoOverlayNative.raiseMenu = orderAboveChrome
-            orderAboveChrome()
-            SwingUtilities.invokeLater(orderAboveChrome)
             val toolkit = Toolkit.getDefaultToolkit()
             val listener = AWTEventListener { ev ->
                 if (!allowDismiss.value) return@AWTEventListener
@@ -155,12 +158,7 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
                 }
             }
             toolkit.addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK or AWTEvent.KEY_EVENT_MASK)
-            onDispose {
-                toolkit.removeAWTEventListener(listener)
-                if (VideoOverlayNative.raiseMenu === orderAboveChrome) {
-                    VideoOverlayNative.raiseMenu = null
-                }
-            }
+            onDispose { toolkit.removeAWTEventListener(listener) }
         }
         MenuBody(content)
     }
