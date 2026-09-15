@@ -23,6 +23,7 @@ import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
 import io.ymusic.ytmedia.proxy.SabrProxyHttpClient
+import kmpcommon.error.errorCode
 import kmpcommon.log.Logger
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
@@ -148,7 +149,7 @@ class MsePlayer internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                fail("E60033", e.message ?: "mse load failed", e)
+                fail(e.errorCode() ?: "E60033", e.message ?: "mse load failed", e)
             }
         }
     }
