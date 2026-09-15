@@ -485,10 +485,15 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val status by graph.player.status.collectAsState()
         val needsSurface = queue.currentItem is PlayableItem.YtMedia || status.videoSize != null
 
-        BoxWithConstraints(Modifier.fillMaxSize().background(DesignColors.Surface).safeDrawingPadding()) {
+        val holeOpen = desktopLayoutHole && nowPlayingOpen
+        BoxWithConstraints(
+            Modifier.fillMaxSize()
+                .then(if (holeOpen) Modifier else Modifier.background(DesignColors.Surface))
+                .safeDrawingPadding(),
+        ) {
             // design/final/home.html: landscape puts the tab row inline in the app bar.
             val wide = maxWidth > maxHeight && maxWidth >= 600.dp
-            ModalNavigationDrawer(
+            if (!holeOpen) ModalNavigationDrawer(
                 drawerState = drawer,
                 // Swipe-open is touch-only: with a mouse, the whole-screen drag would claim any
                 // click whose press wanders a pixel (mouse slop ~0.1dp). Open stays possible while
