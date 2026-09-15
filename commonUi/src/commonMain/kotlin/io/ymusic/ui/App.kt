@@ -64,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -488,7 +489,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val holeOpen = desktopLayoutHole && nowPlayingOpen
         BoxWithConstraints(
             Modifier.fillMaxSize()
-                .then(if (holeOpen) Modifier else Modifier.background(DesignColors.Surface))
+                .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.Surface))
                 .safeDrawingPadding(),
         ) {
             // design/final/home.html: landscape puts the tab row inline in the app bar.
@@ -564,7 +565,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     DefaultDownloadLocationPrompt(graph)
                     Scaffold(
                         modifier = Modifier.nestedScroll(collapseConnection),
-                        containerColor = DesignColors.Surface,
+                        containerColor = if (desktopLayoutHole) Color.Transparent else DesignColors.Surface,
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
                             // Search and the detail pages carry their own app bars.
@@ -632,7 +633,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             }
                         },
                     ) { padding ->
-                        Column(Modifier.fillMaxSize().padding(padding)) {
+                        Column(
+                            Modifier.fillMaxSize().padding(padding)
+                                .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier),
+                        ) {
                             when (val top = layers.lastOrNull()) {
                                 is AppLayer.Search -> key(top) {
                                     SearchScreen(

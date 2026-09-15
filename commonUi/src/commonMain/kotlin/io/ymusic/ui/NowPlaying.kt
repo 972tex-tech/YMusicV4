@@ -159,85 +159,83 @@ fun MiniPlayer(
     val queue by coordinator.player.queue.collectAsState()
     val item = queue.currentItem ?: return
 
-    Column(Modifier.background(DesignColors.SurfaceDim)) {
-        HorizontalDivider(color = DesignColors.DividerMini)
-        val duration = progress.durationMs
-        Row(
-            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onExpand),
-            verticalAlignment = Alignment.CenterVertically,
+    val duration = progress.durationMs
+    Row(
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onExpand),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .aspectRatio(16f / 9f)
+                .then(
+                    if (surface != null && desktopLayoutHole) Modifier
+                    else Modifier.background(DesignColors.PlaceholderDim),
+                ),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .aspectRatio(16f / 9f)
-                    .then(
-                        if (surface != null && desktopLayoutHole) Modifier
-                        else Modifier.background(DesignColors.PlaceholderDim),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (surface != null) {
-                    if (desktopLayoutHole) {
-                        surface.invoke(Modifier.fillMaxSize())
-                    } else {
-                        // WebView must lay out at real video size; scale-draw into this 16:9 slot.
-                        BoxWithConstraints(Modifier.fillMaxSize()) {
-                            val scale = maxHeight / 135.dp
-                            Box(
-                                Modifier
-                                    .requiredSize(240.dp, 135.dp)
-                                    .graphicsLayer(scaleX = scale, scaleY = scale),
-                            ) {
-                                surface.invoke(Modifier.fillMaxSize())
-                            }
+            if (surface != null) {
+                if (desktopLayoutHole) {
+                    surface.invoke(Modifier.fillMaxSize())
+                } else {
+                    // WebView must lay out at real video size; scale-draw into this 16:9 slot.
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val scale = maxHeight / 135.dp
+                        Box(
+                            Modifier
+                                .requiredSize(240.dp, 135.dp)
+                                .graphicsLayer(scaleX = scale, scaleY = scale),
+                        ) {
+                            surface.invoke(Modifier.fillMaxSize())
                         }
                     }
-                    Box(Modifier.matchParentSize().clickable(onClick = onExpand))
-                } else {
-                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
                 }
+                Box(Modifier.matchParentSize().clickable(onClick = onExpand))
+            } else {
+                ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
             }
-            Column(
-                Modifier.weight(1f).padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        }
+        Column(
+            Modifier.weight(1f).background(DesignColors.SurfaceDim)
+                .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        ) {
+            LinearProgressIndicator(
+                progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = DesignColors.Accent,
+                trackColor = DesignColors.Divider,
+                drawStopIndicator = {},
+                gapSize = 0.dp,
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                LinearProgressIndicator(
-                    progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                    color = DesignColors.Accent,
-                    trackColor = DesignColors.Divider,
-                    drawStopIndicator = {},
-                    gapSize = 0.dp,
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        item.displayTitle,
+                        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    item.displaySubtitle?.let {
                         Text(
-                            item.displayTitle,
-                            style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                            it,
+                            style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        item.displaySubtitle?.let {
-                            Text(
-                                it,
-                                style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
                     }
-                    IconButton(onClick = { coordinator.player.togglePlay() }) {
-                        Icon(
-                            if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            stringResource(Res.string.cd_play_pause),
-                            tint = DesignColors.InkMuted,
-                        )
-                    }
-                    IconButton(onClick = { coordinator.player.skipNext() }) {
-                        Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), tint = DesignColors.InkMuted)
-                    }
+                }
+                IconButton(onClick = { coordinator.player.togglePlay() }) {
+                    Icon(
+                        if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        stringResource(Res.string.cd_play_pause),
+                        tint = DesignColors.InkMuted,
+                    )
+                }
+                IconButton(onClick = { coordinator.player.skipNext() }) {
+                    Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), tint = DesignColors.InkMuted)
                 }
             }
         }
