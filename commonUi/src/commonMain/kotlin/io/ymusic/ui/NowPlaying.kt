@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -161,72 +162,83 @@ fun MiniPlayer(
     Column(Modifier.background(DesignColors.SurfaceDim)) {
         HorizontalDivider(color = DesignColors.DividerMini)
         val duration = progress.durationMs
-        LinearProgressIndicator(
-            progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
-            modifier = Modifier.fillMaxWidth().height(2.dp),
-            color = DesignColors.Accent,
-            trackColor = DesignColors.Divider,
-            drawStopIndicator = {},
-            gapSize = 0.dp,
-        )
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand).padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onExpand),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Box(
-                Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).then(
-                    if (surface != null && desktopLayoutHole) Modifier
-                    else Modifier.background(DesignColors.PlaceholderDim),
-                ),
+                Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(16f / 9f)
+                    .then(
+                        if (surface != null && desktopLayoutHole) Modifier
+                        else Modifier.background(DesignColors.PlaceholderDim),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
-                    // The video surface renders inside the tile on every platform, but it must be
-                    // LAID OUT at real video size and only scale-TRANSFORMED down to fit: a windowed
-                    // WebView (Android) sized to an actual thumbnail breaks the page's stream
-                    // negotiation, and Chromium backgrounds (and stalls) a page whose visible rect
-                    // is clipped away. The draw-time scale changes neither. 240×135 → ×36/135 draws
-                    // a 64×36 cover crop inside the 36dp tile.
-                    val scale = 36f / 135f
-                    Box(
-                        Modifier
-                            .requiredSize(240.dp, 135.dp)
-                            .graphicsLayer(scaleX = scale, scaleY = scale),
-                    ) {
+                    if (desktopLayoutHole) {
                         surface.invoke(Modifier.fillMaxSize())
+                    } else {
+                        // WebView must lay out at real video size; scale-draw into this 16:9 slot.
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val scale = maxHeight / 135.dp
+                            Box(
+                                Modifier
+                                    .requiredSize(240.dp, 135.dp)
+                                    .graphicsLayer(scaleX = scale, scaleY = scale),
+                            ) {
+                                surface.invoke(Modifier.fillMaxSize())
+                            }
+                        }
                     }
-                    // Taps on the tile expand Now Playing — they must not reach the video page.
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
-                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(8.dp))
+                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
                 }
             }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.displayTitle,
-                    style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            Column(
+                Modifier.weight(1f).padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                LinearProgressIndicator(
+                    progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = DesignColors.Accent,
+                    trackColor = DesignColors.Divider,
+                    drawStopIndicator = {},
+                    gapSize = 0.dp,
                 )
-                item.displaySubtitle?.let {
-                    Text(
-                        it,
-                        style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.displayTitle,
+                            style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        item.displaySubtitle?.let {
+                            Text(
+                                it,
+                                style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    IconButton(onClick = { coordinator.player.togglePlay() }) {
+                        Icon(
+                            if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            stringResource(Res.string.cd_play_pause),
+                            tint = DesignColors.InkMuted,
+                        )
+                    }
+                    IconButton(onClick = { coordinator.player.skipNext() }) {
+                        Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), tint = DesignColors.InkMuted)
+                    }
                 }
-            }
-            IconButton(onClick = { coordinator.player.togglePlay() }) {
-                Icon(
-                    if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(Res.string.cd_play_pause),
-                    tint = DesignColors.InkMuted,
-                )
-            }
-            IconButton(onClick = { coordinator.player.skipNext() }) {
-                Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), tint = DesignColors.InkMuted)
             }
         }
     }

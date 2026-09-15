@@ -808,10 +808,6 @@ private fun DesktopPlayerSurface(
                 with(density) {
                     val w = coords.size.width.toDp().value.toInt()
                     val h = coords.size.height.toDp().value.toInt()
-                    if (h < 80) {
-                        videoUnderlay.setHole(0, 0, 0, 0)
-                        return@with
-                    }
                     val x = loc.x + insets.left + p.x.toDp().value.toInt()
                     val y = loc.y + insets.top + p.y.toDp().value.toInt()
                     videoUnderlay.setHole(x, y, w, h)
