@@ -2838,7 +2838,9 @@ void mse_av_seek(MseAv *a, double seconds)
         mse_vt_flush(a->vt_layer);
 #endif
     av_frame_free(&a->vhold);
+#if MSE_DEBUG
     vdbg_n = 0;
+#endif
     maybe_apply_video_rep(a);
     av_unlock_all(a);
 }

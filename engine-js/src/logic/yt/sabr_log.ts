@@ -474,7 +474,7 @@ export function createSabrTee(): SabrTee {
     }
     dumpFirstSps(sps);
     if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
-    if (MSE_DEBUG && isAudioOnly()) {
+    if (isAudioOnly()) {
       dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
       if (media > 0) {
         setTimeout(function () {
@@ -603,5 +603,5 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       " pot=" +
       potB64,
   );
-  if (MSE_DEBUG && isAudioOnly()) dumpDrain("sabr-req");
+  if (isAudioOnly()) dumpDrain("sabr-req");
 }

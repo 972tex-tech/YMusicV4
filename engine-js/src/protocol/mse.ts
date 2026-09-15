@@ -98,6 +98,67 @@ export function appendRestCover(u8: Uint8Array): void {
   mseLog("mse append fake-cover a=0 kind=" + kind + " bytes=" + u8.length);
 }
 
+function logChangeType(audio: number, prev: string, next: string): void {
+  if (!MSE_DEBUG) return;
+  try {
+    const ct = __mseCurrentTime();
+    const br = nativeRanges(audio);
+    mseLog(
+      "mse changeType a=" +
+        audio +
+        " from=" +
+        prev +
+        " to=" +
+        next +
+        " ct=" +
+        ct.toFixed(3) +
+        " leftover=" +
+        leftoverMs(br, ct) +
+        " br=[" +
+        fmtBr(br) +
+        "]",
+    );
+  } catch (_e) {
+    mseLog("mse changeType a=" + audio + " from=" + prev + " to=" + next);
+  }
+}
+
+function logAppend(
+  audio: number,
+  bytes: number,
+  mime: string,
+  tsOff: number,
+  winStart: number,
+  winEnd: number,
+): void {
+  if (!MSE_DEBUG) return;
+  try {
+    const ct = __mseCurrentTime();
+    const ranges = nativeRanges(audio);
+    mseLog(
+      "mse append a=" +
+        audio +
+        " bytes=" +
+        bytes +
+        " mime=" +
+        mime +
+        " tsOff=" +
+        tsOff +
+        " win=" +
+        winStart +
+        ".." +
+        winEnd +
+        " leftover=" +
+        leftoverMs(ranges, ct) +
+        " br=[" +
+        fmtBr(ranges) +
+        "]",
+    );
+  } catch (_e) {
+    mseLog("mse append a=" + audio + " bytes=" + bytes);
+  }
+}
+
 function nativeRanges(audio: number): {
   length: number;
   start(i: number): number;
@@ -291,29 +352,7 @@ class SourceBuffer {
     }
     const prev = String(this["mimeType"] || "");
     const audio = audioFlag(next);
-    if (MSE_DEBUG) {
-      try {
-        const ct = __mseCurrentTime();
-        const br = nativeRanges(audio);
-        mseLog(
-          "mse changeType a=" +
-            audio +
-            " from=" +
-            prev +
-            " to=" +
-            next +
-            " ct=" +
-            ct.toFixed(3) +
-            " leftover=" +
-            leftoverMs(br, ct) +
-            " br=[" +
-            fmtBr(br) +
-            "]",
-        );
-      } catch (_e) {
-        mseLog("mse changeType a=" + audio + " from=" + prev + " to=" + next);
-      }
-    }
+    logChangeType(audio, prev, next);
     this["mimeType"] = next;
     __mseChangeType(audio);
   }
@@ -351,33 +390,7 @@ class SourceBuffer {
       }
       if (audio) drainCalls.audio++;
       else drainCalls.video++;
-      if (MSE_DEBUG) {
-        try {
-          const ct = __mseCurrentTime();
-          const ranges = nativeRanges(audio);
-          mseLog(
-            "mse append a=" +
-              audio +
-              " bytes=" +
-              u8.length +
-              " mime=" +
-              self["mimeType"] +
-              " tsOff=" +
-              tsOff +
-              " win=" +
-              winStart +
-              ".." +
-              winEnd +
-              " leftover=" +
-              leftoverMs(ranges, ct) +
-              " br=[" +
-              fmtBr(ranges) +
-              "]",
-          );
-        } catch (_e) {
-          mseLog("mse append a=" + audio + " bytes=" + u8.length);
-        }
-      }
+      logAppend(audio, u8.length, self["mimeType"], tsOff, winStart, winEnd);
     } catch (e) {
       drainCalls.throw++;
       self["updating"] = false;
