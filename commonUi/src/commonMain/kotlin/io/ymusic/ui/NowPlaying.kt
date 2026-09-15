@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -256,19 +255,14 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
     val scrubbing = VideoOverlayNative.scrubbing
-    val menuHold = VideoOverlayNative.menuHold
-    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing, menuHold) {
-        if (armed && overlayVisible && playWhenReady && !scrubbing && !menuHold) {
+    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing) {
+        if (armed && overlayVisible && playWhenReady && !scrubbing) {
             delay(OVERLAY_HIDE_DELAY_MS)
             VideoOverlayNative.visible = false
         }
     }
     DisposableEffect(Unit) {
-        onDispose {
-            VideoOverlayNative.armed = false
-            VideoOverlayNative.coverHole = false
-            VideoOverlayNative.menuHold = false
-        }
+        onDispose { VideoOverlayNative.armed = false }
     }
     val shell = @Composable {
         BoxWithConstraints {
@@ -299,7 +293,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     Box(Modifier.fillMaxSize().then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black))) {
         graph.playerSurface(Modifier.fillMaxSize())
-        VideoChromeLayer(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             AutoHidingOverlay {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }
@@ -352,7 +346,7 @@ private fun PortraitNowPlaying(
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
         ) {
             graph.playerSurface(Modifier.fillMaxSize())
-            VideoChromeLayer(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
                 // (chrome window kept a stale content lambda).
                 AutoHidingOverlay {
@@ -461,7 +455,7 @@ private fun LandscapeNowPlaying(
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
         ) {
             graph.playerSurface(Modifier.fillMaxSize())
-            VideoChromeLayer(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 AutoHidingOverlay {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
@@ -705,7 +699,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
             enabled = downloadLauncher != null && downloadable != null,
             onClick = { downloadable?.let { downloadLauncher?.launch(it) } },
         )
-        SleepTimerButton(sleepMs, coverHole = true) { player.setSleepTimer(it) }
+        SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(
                 label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
@@ -715,7 +709,6 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
                         else -> quality.actualQuality
                     },
                 options = quality.options.map { it.quality to qualityLabel(it) },
-                coverHole = true,
                 onSelect = { player.selectVideoQuality(it) },
             )
         }
@@ -727,7 +720,6 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 internal fun QualityChip(
     label: String,
     options: List<Pair<String, String>>,
-    coverHole: Boolean = false,
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -738,23 +730,12 @@ internal fun QualityChip(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
-                .clickable {
-                    overlayLog("quality chip click label=$label")
-                    open = true
-                }
+                .clickable { open = true }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
-        if (coverHole) {
-            NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }) {
-                options.forEach { (id, text) ->
-                    DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
-                }
-            }
-        } else {
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                options.forEach { (id, text) ->
-                    DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
-                }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { (id, text) ->
+                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
             }
         }
     }
@@ -769,11 +750,8 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var open by remember { mutableStateOf(false) }
 
     Box {
-        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = {
-            overlayLog("more menu click")
-            open = true
-        })
-        NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }) {
+        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
@@ -1133,19 +1111,16 @@ private fun QueueRow(
 }
 
 @Composable
-internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet: (Long?) -> Unit) {
+internal fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         ActionIcon(
             Icons.Default.Bedtime,
             stringResource(Res.string.cd_sleep_timer),
             tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
-            onClick = {
-                overlayLog("sleep timer click")
-                open = true
-            },
+            onClick = { open = true },
         )
-        val items: @Composable ColumnScope.() -> Unit = {
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             sleepMs?.let {
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },
@@ -1158,11 +1133,6 @@ internal fun SleepTimerButton(sleepMs: Long?, coverHole: Boolean = false, onSet:
                     onClick = { onSet(minutes * 60_000L); open = false },
                 )
             }
-        }
-        if (coverHole) {
-            NowPlayingFloatingMenu(expanded = open, onDismiss = { open = false }, content = items)
-        } else {
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }, content = items)
         }
     }
 }
