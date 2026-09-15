@@ -168,7 +168,6 @@ class MsePlayer internal constructor(
     override fun seekTo(positionMs: Long) {
         if (released) return
         val ms = positionMs.coerceAtLeast(0L)
-        log?.log(Logger.Level.DEBUG, "qjs seekTo $ms")
         _progress.update { it.copy(positionMs = ms) }
         scope.launch { runCatching { engine().seekTo(ms, log) } }
     }

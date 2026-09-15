@@ -420,13 +420,11 @@ export function createSabrTee(): SabrTee {
       if (!inPayload) {
         const id = readUmpVarint(buf, i);
         if (!id) {
-          console.log("qjs-slice sabr leftover n=" + (buf.length - i));
           leftover = buf.slice(i);
           return;
         }
         const sz = readUmpVarint(buf, id.i);
         if (!sz) {
-          console.log("qjs-slice sabr leftover n=" + (buf.length - i));
           leftover = buf.slice(i);
           return;
         }
