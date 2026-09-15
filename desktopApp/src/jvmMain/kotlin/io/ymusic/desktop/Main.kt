@@ -298,9 +298,11 @@ fun main() {
                 else -> isSystemInDarkTheme()
             }
             val palette = if (darkBar) DarkDesignColors else LightDesignColors
+            val frameBorder =
+                if (darkBar) Color.White.copy(alpha = 0.14f) else palette.OutlineSoft
             CompositionLocalProvider(LocalAppWindow provides window) {
                 Column(
-                    Modifier.fillMaxSize().border(1.dp, palette.Outline),
+                    Modifier.fillMaxSize().border(1.dp, frameBorder),
                 ) {
                     Box(
                         Modifier.fillMaxWidth().height(36.dp).background(palette.SurfaceElevated),
