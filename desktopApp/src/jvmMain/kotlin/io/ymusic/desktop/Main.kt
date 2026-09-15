@@ -212,11 +212,9 @@ fun main() {
     }
 
     application {
-        // The macOS Dock ignores Window(icon=) and, outside a bundle (a dev run), shows the JVM's
-        // coffee cup. One 1024px rasterization of the tile vector goes to the Taskbar API — and
-        // the DENSITY is the load-bearing part: VectorPainter caches at its intrinsic size
-        // (declared 192dp × density), so Density(1f) had every render upscaling a 192px cache.
-        // 1024/192 makes the cache itself 1024. desktopApp/ymusic.icns is the packaged twin.
+        // Dock ignores Window(icon=). Vector is 192dp; Density(1024/192) makes the
+        // VectorPainter cache 1024px. Size must stay 192: macOS getResolutionVariants
+        // rasterizes size and size*density (Size(1024) was a 5461px / 113MB CGImage).
         val dockTile = painterResource(io.ymusic.desktop.resources.Res.drawable.ymusic_logo_dock)
         LaunchedEffect(dockTile) {
             runCatching {
@@ -226,7 +224,7 @@ fun main() {
                         taskbar.iconImage = dockTile.toAwtImage(
                             Density(1024f / 192f),
                             LayoutDirection.Ltr,
-                            androidx.compose.ui.geometry.Size(1024f, 1024f),
+                            androidx.compose.ui.geometry.Size(192f, 192f),
                         )
                     }
                 }
