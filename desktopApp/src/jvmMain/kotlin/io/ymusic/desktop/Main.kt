@@ -341,6 +341,19 @@ fun main() {
 
                     val g = graph
                     val resizePulse = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST) }
+                    DisposableEffect(window) {
+                        VideoOverlayNative.onOverlayPress = { videoUnderlay.orderJustBehind(window) }
+                        val stack = object : java.awt.event.WindowAdapter() {
+                            override fun windowActivated(e: java.awt.event.WindowEvent) {
+                                videoUnderlay.orderJustBehind(window)
+                            }
+                        }
+                        window.addWindowListener(stack)
+                        onDispose {
+                            window.removeWindowListener(stack)
+                            VideoOverlayNative.onOverlayPress = null
+                        }
+                    }
                     DisposableEffect(window, g) {
                         if (g == null) return@DisposableEffect onDispose { }
                         var lastW = -1

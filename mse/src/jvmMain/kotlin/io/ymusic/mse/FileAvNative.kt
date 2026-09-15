@@ -69,6 +69,9 @@ object FileAvNative {
     /** Hide the overlay NSView without detaching the layer. */
     @JvmStatic external fun setOverlayHidden(hidden: Boolean)
 
+    /** Place [below] immediately under [above] without making [below] key. macOS only. */
+    @JvmStatic external fun orderWindowBelow(below: java.awt.Window, above: java.awt.Window)
+
     /** Last presented overlay frame as BGRA. Writes width/height into [wh] (length ≥ 2). */
     @JvmStatic external fun snapshotOverlay(wh: IntArray): ByteArray?
 

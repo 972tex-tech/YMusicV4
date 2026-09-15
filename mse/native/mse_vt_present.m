@@ -316,6 +316,59 @@ void mse_vt_reveal_overlay(void)
         });
 }
 
+static NSView *mse_content_view(CALayer *wl);
+
+static NSWindow *mse_awt_nswindow(JNIEnv *env, jobject awt)
+{
+    JAWT awt_api;
+    JAWT_DrawingSurface *ds;
+    JAWT_DrawingSurfaceInfo *dsi;
+    id<JAWT_SurfaceLayers> sl;
+    NSView *v = nil;
+    jint lock;
+
+    if (!awt)
+        return nil;
+    if (!jawt_bind())
+        return nil;
+    memset(&awt_api, 0, sizeof(awt_api));
+    awt_api.version = JAWT_VERSION_1_7;
+    if (mse_jawt_get_awt(env, &awt_api) == JNI_FALSE)
+        return nil;
+    ds = awt_api.GetDrawingSurface(env, awt);
+    if (!ds)
+        return nil;
+    lock = ds->Lock(ds);
+    if ((lock & JAWT_LOCK_ERROR) != 0) {
+        awt_api.FreeDrawingSurface(ds);
+        return nil;
+    }
+    dsi = ds->GetDrawingSurfaceInfo(ds);
+    if (dsi) {
+        sl = (__bridge id<JAWT_SurfaceLayers>)dsi->platformInfo;
+        if (sl && [(NSObject *)sl conformsToProtocol:@protocol(JAWT_SurfaceLayers)])
+            v = mse_content_view(sl.windowLayer);
+        ds->FreeDrawingSurfaceInfo(dsi);
+    }
+    ds->Unlock(ds);
+    awt_api.FreeDrawingSurface(ds);
+    return v ? v.window : nil;
+}
+
+void mse_vt_order_window_below(void *envp, void *below, void *above)
+{
+    JNIEnv *env = envp;
+    NSWindow *lo;
+    NSWindow *hi;
+    if (!env || !below || !above)
+        return;
+    lo = mse_awt_nswindow(env, below);
+    hi = mse_awt_nswindow(env, above);
+    if (!lo || !hi || lo == hi)
+        return;
+    [lo orderWindow:NSWindowBelow relativeTo:hi.windowNumber];
+}
+
 static NSView *mse_content_view(CALayer *wl)
 {
     NSView *v = nil;

@@ -26,7 +26,12 @@ object VideoOverlayNative {
     val showing: Boolean
         get() = armed && visible
 
+    /** Desktop: restack the video underlay behind the UI window. */
+    @Volatile
+    var onOverlayPress: (() -> Unit)? = null
+
     fun poke() {
+        onOverlayPress?.invoke()
         if (!armed) return
         if (visible) {
             visible = false

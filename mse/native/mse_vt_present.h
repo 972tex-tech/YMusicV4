@@ -20,6 +20,8 @@ void mse_vt_set_overlay_hidden(int hid);
 void mse_vt_reveal_overlay(void);
 /* Canvas screen rect (AWT y-down). Async; does not hop the AWT thread. */
 void mse_vt_layout_screen(int x, int y, int w, int h);
+/* Place AWT window [below] immediately under [above] without making it key. */
+void mse_vt_order_window_below(void *env, void *below, void *above);
 
 /* Borrowed AVSampleBufferDisplayLayer. Caller owns the layer. */
 void mse_vt_detach(void *layer);

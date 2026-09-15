@@ -1,7 +1,9 @@
 package io.ymusic.desktop
 
+import io.ymusic.mse.FileAvNative
 import java.awt.Color
 import java.awt.Frame
+import java.awt.Window
 import javax.swing.JComponent
 import javax.swing.SwingUtilities
 
@@ -42,6 +44,19 @@ internal class VideoUnderlay {
             frame.setBounds(x, y, w, h)
         }
         if (!frame.isVisible) frame.isVisible = true
+    }
+
+    /** Sit immediately under [front] so another app cannot stay in the hole. Not key. */
+    fun orderJustBehind(front: Window) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater { orderJustBehind(front) }
+            return
+        }
+        if (!frame.isDisplayable || !front.isDisplayable) return
+        try {
+            FileAvNative.orderWindowBelow(frame, front)
+        } catch (_: Throwable) {
+        }
     }
 
     fun dispose() {

@@ -360,6 +360,19 @@ Java_io_ymusic_mse_FileAvNative_setVideoComponent(JNIEnv *env, jclass cls, jlong
 }
 
 JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_orderWindowBelow(JNIEnv *env, jclass cls, jobject below, jobject above)
+{
+    (void)cls;
+#ifdef __APPLE__
+    mse_vt_order_window_below(env, below, above);
+#else
+    (void)env;
+    (void)below;
+    (void)above;
+#endif
+}
+
+JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setOverlayHidden(JNIEnv *env, jclass cls, jboolean hid)
 {
     (void)env;
