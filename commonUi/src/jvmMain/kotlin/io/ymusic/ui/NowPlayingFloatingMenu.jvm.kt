@@ -106,18 +106,23 @@ internal actual fun BoxScope.NowPlayingFloatingMenu(
     val h = menuH.intValue
     val x = (anchorRight.intValue - w).coerceAtLeast(0)
     val y = anchorBottom.intValue
-    // Owned by the chrome dialog so AppKit stacks it above the overlay. Owned by
-    // the Frame it sits under chrome. Not focusable so it does not steal key.
+    // POPUP window level sits above the chrome dialog without becoming key.
+    // Owning by chrome did not raise z-order; a normal sibling stays under chrome.
     SwingDialog(
         visible = true,
         create = {
-            val owner = chromeDialog() ?: chromeOwner()
+            val owner = chromeOwner()
             ComposeDialog(owner = owner, modalityType = Dialog.ModalityType.MODELESS).apply {
                 defaultCloseOperation = JDialog.DO_NOTHING_ON_CLOSE
                 isUndecorated = true
                 isResizable = false
                 focusableWindowState = false
                 isAutoRequestFocus = false
+                try {
+                    type = Window.Type.POPUP
+                } catch (e: Exception) {
+                    overlayLog("menu type POPUP failed $e")
+                }
                 addWindowListener(object : WindowAdapter() {
                     override fun windowClosing(e: WindowEvent?) = onDismiss()
                 })

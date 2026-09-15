@@ -215,12 +215,16 @@ internal actual fun VideoChromeLayer(
         decoration = WindowDecoration.Undecorated(),
         transparent = true,
         resizable = false,
-        focusable = true,
+        // Not key: a key chrome drops behind JAWT when the Frame is clicked
+        // (sticky overlay blink on pause). Mouse still reaches the overlay.
+        focusable = false,
         alwaysOnTop = false,
         modalityType = DialogModalityType.Modeless,
     ) {
         DisposableEffect(window) {
             val w = window
+            w.focusableWindowState = false
+            w.isAutoRequestFocus = false
             overlayLog(
                 "chrome window attach showing=${w.isShowing} vis=${w.isVisible} " +
                     "loc=${w.location} size=${w.size} owner=${w.owner}",
@@ -302,8 +306,3 @@ internal fun chromeOwner(): Window? =
             w is Frame && w.isShowing && w.isDisplayable && !w.isUndecorated && w.width > 64 && w.height > 64
         }
         .maxByOrNull { it.width * it.height }
-
-internal fun chromeDialog(): Window? =
-    Window.getWindows().firstOrNull { w ->
-        w.isShowing && w.isDisplayable && w is java.awt.Dialog && w.title == "YMusic video chrome"
-    }
