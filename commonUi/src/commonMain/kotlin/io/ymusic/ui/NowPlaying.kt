@@ -59,7 +59,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -196,14 +195,14 @@ fun MiniPlayer(
             }
         }
         Column(Modifier.weight(1f).background(DesignColors.SurfaceDim)) {
-            LinearProgressIndicator(
-                progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = DesignColors.Accent,
-                trackColor = DesignColors.Divider,
-                drawStopIndicator = {},
-                gapSize = 0.dp,
-            )
+            Box(Modifier.fillMaxWidth().height(4.dp)) {
+                val frac = if (duration > 0) {
+                    (progress.positionMs.toFloat() / duration).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(DesignColors.Accent))
+            }
             Row(
                 Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
