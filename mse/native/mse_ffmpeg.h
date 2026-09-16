@@ -67,6 +67,8 @@ int mse_av_audio_pending(MseAv *a);
 int mse_av_has_video(MseAv *a);
 /* 1 if __mseRestVideo: decoder asleep (audio-only / product-zero). */
 int mse_av_video_rested(MseAv *a);
+/* 1 if vdec/vt_dec is open (busy-wait only then). */
+int mse_av_video_decoder_open(MseAv *a);
 
 /* Writes up to [max_pairs] [start,end] pairs. Returns pair count. */
 int mse_av_buffered(MseAv *a, int audio, double *pairs, int max_pairs);

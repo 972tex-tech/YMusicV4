@@ -591,7 +591,8 @@ static void *vid_loop(void *arg)
             struct timespec sl;
             int wait_ns = 4 * 1000 * 1000;
             pthread_mutex_lock(&h->mu);
-            if (h->vw > 0 && (h->vpts < 0 || clock - h->vpts > 0.12) &&
+            if (h->vw > 0 && mse_av_video_decoder_open(h->av) &&
+                (h->vpts < 0 || clock - h->vpts > 0.12) &&
                 mse_av_video_due(h->av, clock))
                 wait_ns = 0;
             pthread_mutex_unlock(&h->mu);

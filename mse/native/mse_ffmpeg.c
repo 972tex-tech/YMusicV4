@@ -2695,6 +2695,21 @@ int mse_av_video_rested(MseAv *a)
     return on;
 }
 
+int mse_av_video_decoder_open(MseAv *a)
+{
+    int on;
+    if (!a)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+    on = a->vdec != NULL;
+#ifdef __APPLE__
+    if (a->vt_dec)
+        on = 1;
+#endif
+    pthread_mutex_unlock(&a->mu);
+    return on;
+}
+
 static void cfb_clear_sent(Cfb *b)
 {
     size_t i;
