@@ -33,7 +33,7 @@ interface Player {
     val audioTracks: StateFlow<AudioTrackState>
 
     /** The current playback settings, pushed to the active engine on every change. Audio-only is
-     *  [PlaybackConfig.audioOnly] (`preferVideoQuality == "zero"`), not a separate flag. */
+     *  [PlaybackConfig.audioOnly], not a quality token. */
     val config: StateFlow<PlaybackConfig>
 
     /** Remaining sleep-timer time (ticked ~1 Hz), or null when no timer is armed. */
@@ -105,10 +105,10 @@ interface Player {
 
     fun setSpeed(speed: Float)
 
-    /** Audio-only sets [PlaybackConfig.preferVideoQuality] to [VideoQualityState.AUDIO_ONLY] / [AUTO][VideoQualityState.AUTO]. */
+    /** Sets [PlaybackConfig.audioOnly]. Quality is unchanged and restored when this is false. */
     fun setAudioOnly(audioOnly: Boolean)
 
-    /** Sets [PlaybackConfig.preferVideoQuality] (a [VideoQualityOption.quality], `AUTO`, or `AUDIO_ONLY`). */
+    /** Sets [PlaybackConfig.preferVideoQuality]. [VideoQualityState.AUDIO_ONLY] maps to [setAudioOnly]. */
     fun selectVideoQuality(quality: String)
 
     /** Sets [PlaybackConfig.preferCaptionLanguage] (a language code, or null for undetermined). */

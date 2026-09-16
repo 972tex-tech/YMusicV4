@@ -99,6 +99,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     var overlayClicks by remember { mutableStateOf(0) }
     var scrubFrac by remember { mutableStateOf<Float?>(null) }
     var quality by remember { mutableStateOf("auto") }
+    var audioOnly by remember { mutableStateOf(true) }
     var qualityChoices by remember { mutableStateOf(FALLBACK_QUALITY_CHOICES) }
     var reportedQuality by remember { mutableStateOf("") }
     var captionTracks by remember { mutableStateOf<List<CaptionTrackInfo>>(emptyList()) }
@@ -144,10 +145,10 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 s.player.load(
                     videoId,
                     s.log,
-                    quality = quality.takeIf { it != "audio" },
+                    quality = quality,
                     width = w,
                     height = h,
-                    audioOnly = quality == "audio",
+                    audioOnly = audioOnly,
                 )
                 s.player.play(s.log)
             }
@@ -333,7 +334,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     val videoPlaceholder = when {
         booting -> "Starting…"
         loading -> "Loading video…"
-        quality == "audio" -> "Audio only"
+        audioOnly -> "Audio only"
         else -> "Waiting for video…"
     }
 
@@ -380,6 +381,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     qualityChoices = FALLBACK_QUALITY_CHOICES
                     val id = videoId
                     val q = quality
+                    val ao = audioOnly
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) {
@@ -388,10 +390,10 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                                 s.player.load(
                                     id,
                                     s.log,
-                                    quality = q.takeIf { it != "audio" },
+                                    quality = q,
                                     width = w,
                                     height = h,
-                                    audioOnly = q == "audio",
+                                    audioOnly = ao,
                                 )
                                 s.player.play(s.log)
                             }
@@ -429,14 +431,20 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                 },
                 stateText = stateText,
                 clockText = clockText,
-                quality = quality,
+                quality = if (audioOnly) "audio" else quality,
                 qualityChoices = qualityChoices,
                 captionVss = captionVss,
                 captionTracks = captionTracks,
                 onQuality = { token ->
-                    if (quality == token) return@PlaygroundChrome
                     val s = session ?: return@PlaygroundChrome
-                    quality = token
+                    if (token == "audio") {
+                        if (audioOnly) return@PlaygroundChrome
+                        audioOnly = true
+                    } else {
+                        if (!audioOnly && quality == token) return@PlaygroundChrome
+                        quality = token
+                        audioOnly = false
+                    }
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) {

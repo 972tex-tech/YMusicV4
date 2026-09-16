@@ -124,8 +124,8 @@ interface MediaEngine<in S : PlayableItem> {
     /**
      * Push the full playback settings ([PlaybackConfig]) — the single runtime-tunable path, the same
      * object [load] applies atomically. The engine diffs against its current config and applies only
-     * what changed (volume, speed/pitch, video quality incl. audio-only via `preferVideoQuality ==
-     * "zero"`, captions, loop, scale). Fields a backend does not support are ignored. Cheap to call on
+     * what changed (volume, speed/pitch, video quality, audio-only, captions, loop, scale). Fields a
+     * backend does not support are ignored. Cheap to call on
      * every change; idempotent for an unchanged config.
      */
     fun setConfig(config: PlaybackConfig)

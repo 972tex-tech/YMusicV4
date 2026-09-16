@@ -176,8 +176,8 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
     }
     var section by sectionState
     LaunchedEffect(graph.player, graph.settings) {
-        val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUDIO_ONLY).value
-        graph.player.selectVideoQuality(quality)
+        val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUTO).value
+        if (quality != VideoQualityState.AUDIO_ONLY) graph.player.selectVideoQuality(quality)
         graph.player.config
             .map { it.preferVideoQuality.first }
             .distinctUntilChanged()

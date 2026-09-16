@@ -763,12 +763,15 @@ class Player {
     const player = this.player;
     if (!player)
       throw new JsEngineErrorImpl("player/setQuality before Application.create", "E20085");
-    if (isAudioOnly()) this.setIsAudioOnly(false);
+    setYmQuality(q);
+    if (isAudioOnly()) {
+      notifyCatalog();
+      return;
+    }
     if (isLiveVideoRest()) {
       setLiveVideoRest(false);
       __mseRestVideo(0);
     }
-    setYmQuality(q);
     bindMoviePlayerApi(player);
     const pinned =
       pinPlaybackQuality(moviePlayer(), q) ||
@@ -784,7 +787,7 @@ class Player {
     notifyCatalog();
   }
 
-  /** Enter: pin Auto, rest decoder, black. Exit: un-rest, keep Auto, no seek. */
+  /** Enter: pin Auto, rest decoder, black. Exit: un-rest, restore remembered quality. */
   setIsAudioOnly(on: boolean): void {
     if (on) {
       setAudioOnly(true);
@@ -793,6 +796,13 @@ class Player {
     } else {
       setAudioOnly(false);
       __mseRestVideo(0);
+      const q = ymQuality();
+      const player = this.player;
+      if (player && q) {
+        bindMoviePlayerApi(player);
+        pinPlaybackQuality(moviePlayer(), q) ||
+          pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
+      }
     }
     resetDrainCounts();
     if (MSE_DEBUG)

@@ -140,14 +140,13 @@ class MsePlayer internal constructor(
                 }
                 val p = ensureInit()
                 val quality = config.preferVideoQuality.first
-                val ao = quality == VideoQualityState.AUDIO_ONLY
                 p.load(
                     source.videoId,
                     log,
-                    quality = if (ao) null else quality,
+                    quality = quality.takeIf { it != VideoQualityState.AUDIO_ONLY },
                     width = viewportW,
                     height = viewportH,
-                    audioOnly = ao,
+                    audioOnly = config.audioOnly,
                 )
                 if (startPositionMs > 0L) p.seekTo(startPositionMs, log)
                 applyCaptionConfig(config)
@@ -212,16 +211,14 @@ class MsePlayer internal constructor(
         }
         scope.launch {
             runCatching {
+                if (config.audioOnly != prev.audioOnly) {
+                    engine().setIsAudioOnly(config.audioOnly, log)
+                }
                 val q = config.preferVideoQuality.first
-                if (q != prev.preferVideoQuality.first) {
-                    if (q == VideoQualityState.AUDIO_ONLY) {
-                        engine().setIsAudioOnly(true, log)
-                    } else {
-                        if (prev.preferVideoQuality.first == VideoQualityState.AUDIO_ONLY) {
-                            engine().setIsAudioOnly(false, log)
-                        }
-                        engine().setQuality(q, log)
-                    }
+                if (!config.audioOnly && q != VideoQualityState.AUDIO_ONLY &&
+                    q != prev.preferVideoQuality.first
+                ) {
+                    engine().setQuality(q, log)
                 }
                 applyCaptionConfig(config)
             }

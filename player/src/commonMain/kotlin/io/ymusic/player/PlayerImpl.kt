@@ -231,13 +231,21 @@ internal class PlayerImpl(
     override fun setSpeed(speed: Float) = pushConfig(currentConfig.copy(speed = speed))
 
     override fun setAudioOnly(audioOnly: Boolean) {
-        // Audio-only is quality "zero"; leaving it restores AUTO. A fresh stamp marks the user's choice.
-        val quality = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO
-        pushConfig(currentConfig.copy(preferVideoQuality = quality to nextSeq()))
+        pushConfig(currentConfig.copy(audioOnly = audioOnly))
     }
 
-    override fun selectVideoQuality(quality: String) =
-        pushConfig(currentConfig.copy(preferVideoQuality = quality to nextSeq()))
+    override fun selectVideoQuality(quality: String) {
+        if (quality == VideoQualityState.AUDIO_ONLY) {
+            setAudioOnly(true)
+            return
+        }
+        pushConfig(
+            currentConfig.copy(
+                preferVideoQuality = quality to nextSeq(),
+                audioOnly = false,
+            ),
+        )
+    }
 
     override fun selectCaption(languageCode: String?) =
         pushConfig(currentConfig.copy(preferCaptionLanguage = (languageCode ?: PlaybackConfig.UNDETERMINED_LANGUAGE) to nextSeq()))

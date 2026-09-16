@@ -24,11 +24,11 @@ fun MediaEngine<*>.currentProgress(): Progress = progress.value
 /**
  * Swift-friendly [PlaybackConfig] factory — Swift can't ergonomically build the `Pair<String, Long>`
  * preference fields, so it passes the three common knobs and audio-only maps to
- * `preferVideoQuality == "zero"`. Read [PlaybackConfig.audioOnly] back on the returned value.
+ * audio-only is [PlaybackConfig.audioOnly], not a quality token.
  */
 fun playbackConfig(volume: Float = 1f, speed: Float = 1f, audioOnly: Boolean = false): PlaybackConfig =
     PlaybackConfig(
-        preferVideoQuality = (if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO) to 0L,
+        audioOnly = audioOnly,
         volume = volume,
         speed = speed,
     )
