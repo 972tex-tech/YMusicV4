@@ -583,12 +583,19 @@ static double g_perf_last;
 
 #define ENT_CAP 65536
 #define ENT_CTX 8
+#define ERR_CTORS 9
+static const char *const k_err_ctors[ERR_CTORS] = {
+    "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError",
+    "URIError", "EvalError", "AggregateError", "InternalError",
+};
+
 typedef struct {
     JSContext *ctx;
     int rec;
     JSValue date_orig;
     JSValue rand_orig;
     JSValue tostr_orig;
+    JSValue error_orig[ERR_CTORS];
     char **line;
     int n;
     int cap;
@@ -609,6 +616,11 @@ static Ent *ent_of(JSContext *ctx)
             g_ent[i].date_orig = JS_UNDEFINED;
             g_ent[i].rand_orig = JS_UNDEFINED;
             g_ent[i].tostr_orig = JS_UNDEFINED;
+            {
+                int k;
+                for (k = 0; k < ERR_CTORS; k++)
+                    g_ent[i].error_orig[k] = JS_UNDEFINED;
+            }
             return &g_ent[i];
         }
     }
@@ -662,6 +674,33 @@ static void ent_raw(Ent *e, const char *s)
     e->line[e->n++] = p;
 }
 
+static void ent_json(Ent *e, JSContext *ctx, char tag, JSValueConst v)
+{
+    JSValue js;
+    const char *s;
+    char *line;
+    size_t n;
+    if (!e || !e->rec)
+        return;
+    js = JS_JSONStringify(ctx, v, JS_UNDEFINED, JS_UNDEFINED);
+    if (JS_IsException(js))
+        return;
+    s = JS_ToCString(ctx, js);
+    JS_FreeValue(ctx, js);
+    if (!s)
+        return;
+    n = strlen(s);
+    line = (char *)malloc(n + 3);
+    if (line) {
+        line[0] = tag;
+        line[1] = ' ';
+        memcpy(line + 2, s, n + 1);
+        ent_raw(e, line);
+        free(line);
+    }
+    JS_FreeCString(ctx, s);
+}
+
 static JSValue js_fn_tostr_rec(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
@@ -669,26 +708,31 @@ static JSValue js_fn_tostr_rec(JSContext *ctx, JSValueConst this_val, int argc, 
     if (!e || JS_IsUndefined(e->tostr_orig))
         return JS_EXCEPTION;
     v = JS_Call(ctx, e->tostr_orig, this_val, argc, argv);
-    if (e->rec && JS_IsString(v)) {
-        JSValue js = JS_JSONStringify(ctx, v, JS_UNDEFINED, JS_UNDEFINED);
-        if (!JS_IsException(js)) {
-            const char *s = JS_ToCString(ctx, js);
-            if (s) {
-                size_t n = strlen(s);
-                char *line = (char *)malloc(n + 3);
-                if (line) {
-                    line[0] = 't';
-                    line[1] = ' ';
-                    memcpy(line + 2, s, n + 1);
-                    ent_raw(e, line);
-                    free(line);
-                }
-                JS_FreeCString(ctx, s);
-            }
-            JS_FreeValue(ctx, js);
-        }
-    }
+    if (e->rec && !JS_IsException(v))
+        ent_json(e, ctx, 't', v);
     return v;
+}
+
+static JSValue js_error_ctor_rec(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv, int magic)
+{
+    Ent *e = ent_of(ctx);
+    JSValue err, name, stack;
+    (void)this_val;
+    if (!e || magic < 0 || magic >= ERR_CTORS || JS_IsUndefined(e->error_orig[magic]))
+        return JS_EXCEPTION;
+    err = JS_CallConstructor(ctx, e->error_orig[magic], argc, argv);
+    if (e->rec && !JS_IsException(err)) {
+        name = JS_GetPropertyStr(ctx, err, "name");
+        stack = JS_GetPropertyStr(ctx, err, "stack");
+        if (!JS_IsException(name))
+            ent_json(e, ctx, 'N', name);
+        if (!JS_IsException(stack))
+            ent_json(e, ctx, 'S', stack);
+        JS_FreeValue(ctx, name);
+        JS_FreeValue(ctx, stack);
+    }
+    return err;
 }
 
 static double timespec_ms(const struct timespec *ts)
@@ -814,6 +858,26 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
                           JS_NewCFunction(ctx, js_fn_tostr_rec, "toString", 0));
         JS_FreeValue(ctx, proto);
         JS_FreeValue(ctx, fn);
+    }
+    {
+        int k;
+        for (k = 0; k < ERR_CTORS; k++) {
+            JSValue orig, wrap, proto;
+            if (!JS_IsUndefined(e->error_orig[k]))
+                continue;
+            orig = JS_GetPropertyStr(ctx, g, k_err_ctors[k]);
+            if (!JS_IsFunction(ctx, orig)) {
+                JS_FreeValue(ctx, orig);
+                continue;
+            }
+            e->error_orig[k] = orig;
+            wrap = JS_NewCFunctionMagic(ctx, js_error_ctor_rec, k_err_ctors[k], 1,
+                                        JS_CFUNC_constructor_magic, k);
+            proto = JS_GetPropertyStr(ctx, orig, "prototype");
+            JS_SetConstructor(ctx, wrap, proto);
+            JS_FreeValue(ctx, proto);
+            JS_SetPropertyStr(ctx, g, k_err_ctors[k], wrap);
+        }
     }
     JS_FreeValue(ctx, date);
     JS_FreeValue(ctx, math);
