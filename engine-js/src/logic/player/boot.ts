@@ -772,9 +772,23 @@ class Player {
       dumpDrain("setQuality-zero");
       return;
     }
-    if (isAudioOnly()) setAudioOnly(false);
-    if (isLiveVideoRest()) setLiveVideoRest(false);
-    __mseRestVideo(0);
+    /* YouTube answers pinAuto with auto/tiny. Stay audio-only; Auto does not interrupt. */
+    if (isAudioOnly() && (q === "auto" || q === "tiny" || q === "small")) {
+      setYmQuality(q === "auto" ? "auto" : ymQuality());
+      bindMoviePlayerApi(player);
+      pinPlaybackQuality(moviePlayer(), "auto") ||
+        pinPlaybackQuality(player as unknown as Record<string, unknown>, "auto");
+      notifyCatalog();
+      return;
+    }
+    if (isAudioOnly()) {
+      setAudioOnly(false);
+      __mseRestVideo(0);
+    }
+    if (isLiveVideoRest()) {
+      setLiveVideoRest(false);
+      __mseRestVideo(0);
+    }
     setYmQuality(q);
     bindMoviePlayerApi(player);
     const pinned =
@@ -846,10 +860,8 @@ class Player {
     this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
-    if (q !== "zero") {
-      setAudioOnly(false);
-      this.setQuality(q);
-    } else this.applyZero();
+    if (q !== "zero") this.setQuality(q);
+    else this.applyZero();
     const msId = mseMediaSourceId();
     const gen0 = mseSourceBufferGen();
     const ingestAt = captionIngestTick();
