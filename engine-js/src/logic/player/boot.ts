@@ -32,7 +32,6 @@ import {
 } from "./captions";
 import { playerStorageReady } from "./storage";
 import { applyViewport, viewportHeight, viewportWidth } from "./viewport";
-import { moviePlayer } from "./movie_player";
 
 const ORIGIN = "https://www.youtube.com";
 let lastQualityExtra = -1;
@@ -60,6 +59,16 @@ function sizePlayerTree(): void {
   sizeNodeList(document.getElementsByTagName("video"));
   sizeNodeList(document.getElementsByClassName("html5-video-container"));
   sizeNodeList(document.getElementsByClassName("html5-video-player"));
+}
+
+let moviePlayerEl: Record<string, unknown> | null = null;
+
+function moviePlayer(): Record<string, unknown> | null {
+  if (!moviePlayerEl) {
+    const el = document.getElementById("movie_player");
+    if (el) moviePlayerEl = el as unknown as Record<string, unknown>;
+  }
+  return moviePlayerEl;
 }
 
 /** Same as webview-js player_connect: ytInternalPlayer.setPlaybackQuality, else range(q). */
