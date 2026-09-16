@@ -772,7 +772,11 @@ class Player {
       dumpDrain("setQuality-zero");
       return;
     }
-    if (isAudioOnly()) setAudioOnly(false);
+    if (isAudioOnly()) {
+      this.pinAuto();
+      notifyCatalog();
+      return;
+    }
     if (isLiveVideoRest()) setLiveVideoRest(false);
     __mseRestVideo(0);
     setYmQuality(q);
