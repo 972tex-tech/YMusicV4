@@ -145,28 +145,13 @@ function bindPlaybackQualityChange(el: Record<string, unknown>): void {
   });
 }
 
-/** App.FC copies IFrame names (state.Y) onto template.element = #movie_player
- *  when create() is given #player. Copy state.Y if FC landed elsewhere. */
+/** Listeners on #movie_player. Application.create copies the IFrame API
+ *  onto that node (getPlaybackQuality, setPlaybackQualityRange, …). */
 function bindMoviePlayerApi(app: YtApp | null): void {
   const el = moviePlayer();
   if (!el || !app) return;
   bindPictureSize(el);
   bindPlaybackQualityChange(el);
-  if (typeof el["getPlaybackQuality"] === "function") return;
-  const rec = app as unknown as Record<string, unknown>;
-  for (const k in rec) {
-    try {
-      const v = rec[k];
-      if (!v || typeof v !== "object") continue;
-      const st = (v as Record<string, unknown>)["state"] as Record<string, unknown> | undefined;
-      const y = st ? (st["Y"] as Record<string, unknown> | undefined) : undefined;
-      if (!y || typeof y["getPlaybackQuality"] !== "function") continue;
-      for (const name in y) {
-        if (Object.prototype.hasOwnProperty.call(y, name)) el[name] = y[name];
-      }
-      return;
-    } catch (_e) {}
-  }
 }
 
 function absUrl(src: string): string {
