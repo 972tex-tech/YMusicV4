@@ -146,41 +146,43 @@ export async function minterFromConfig(
     setupDone();
   };
   const nop = function () {};
-  let ret = (vmA as (...args: unknown[]) => unknown)(
-    program,
-    setup,
-    true,
-    undefined,
-    nop,
-    [[], []],
-    undefined,
-    false,
-    [nop, nop, nop, nop, nop],
-  );
-  if (ret && typeof (ret as Promise<unknown>).then === "function")
-    ret = await (ret as Promise<unknown>);
-  if (typeof fns["asyncSnap"] !== "function") {
-    await Promise.race([
-      setupWait,
-      new Promise<void>(function (resolve) {
-        setTimeout(function () {
-          resolve();
-        }, 15000);
-      }),
-    ]);
-  }
-  const asyncSnap = fns["asyncSnap"];
-  if (typeof asyncSnap !== "function")
-    throw new JsEngineErrorImpl("asyncSnapshotFunction missing", "E20074");
-  await new Promise(function (resolve) {
-    setTimeout(resolve, 50);
-  });
-
-  out["step"] = "snapshot";
-  const webPo: unknown[] = [];
+  /* Record from vm.a (setup Math.random / now) through asyncSnap. Begin
+     after interpreter eval so miller --preload matches this window. */
   __bgEntropyBegin();
   let botguardResponse: unknown;
+  const webPo: unknown[] = [];
   try {
+    let ret = (vmA as (...args: unknown[]) => unknown)(
+      program,
+      setup,
+      true,
+      undefined,
+      nop,
+      [[], []],
+      undefined,
+      false,
+      [nop, nop, nop, nop, nop],
+    );
+    if (ret && typeof (ret as Promise<unknown>).then === "function")
+      ret = await (ret as Promise<unknown>);
+    if (typeof fns["asyncSnap"] !== "function") {
+      await Promise.race([
+        setupWait,
+        new Promise<void>(function (resolve) {
+          setTimeout(function () {
+            resolve();
+          }, 15000);
+        }),
+      ]);
+    }
+    const asyncSnap = fns["asyncSnap"];
+    if (typeof asyncSnap !== "function")
+      throw new JsEngineErrorImpl("asyncSnapshotFunction missing", "E20074");
+    await new Promise(function (resolve) {
+      setTimeout(resolve, 50);
+    });
+
+    out["step"] = "snapshot";
     botguardResponse = await new Promise(function (resolve, reject) {
       try {
         (asyncSnap as (cb: (r: unknown) => void, args: unknown[]) => void)(
@@ -193,28 +195,28 @@ export async function minterFromConfig(
         reject(e);
       }
     });
+    out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
+    out["snapshotPrefix"] =
+      typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
+    if (BG_DUMP) console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
+    out["webPo0"] = typeof webPo[0];
+    out["webPoLen"] = webPo.length;
+    out["ytGets"] = ytWindowGets();
+    out["ytEventIdGets"] = ytEventIdGets();
+    freezeYtAccessCounts();
+    if (!cfg["keepYtcfg"] && ytWindowGets() === 0)
+      throw new JsEngineErrorImpl(
+        "window.yt was not accessed snap=" + out["snapshotLen"] + " webPo=" + out["webPo0"],
+        "E20074",
+      );
+    if (typeof webPo[0] !== "function")
+      throw new JsEngineErrorImpl(
+        "webPo minter missing snap=" + out["snapshotLen"] + " ytGets=" + ytEventIdGets(),
+        "E20074",
+      );
   } finally {
     __bgEntropyEnd();
   }
-  out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
-  out["snapshotPrefix"] =
-    typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
-  if (BG_DUMP) console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
-  out["webPo0"] = typeof webPo[0];
-  out["webPoLen"] = webPo.length;
-  out["ytGets"] = ytWindowGets();
-  out["ytEventIdGets"] = ytEventIdGets();
-  freezeYtAccessCounts();
-  if (!cfg["keepYtcfg"] && ytWindowGets() === 0)
-    throw new JsEngineErrorImpl(
-      "window.yt was not accessed snap=" + out["snapshotLen"] + " webPo=" + out["webPo0"],
-      "E20074",
-    );
-  if (typeof webPo[0] !== "function")
-    throw new JsEngineErrorImpl(
-      "webPo minter missing snap=" + out["snapshotLen"] + " ytGets=" + ytEventIdGets(),
-      "E20074",
-    );
 
   out["step"] = "generateIT";
   const git = await waaJson(GIT_URL, JSON.stringify([REQUEST_KEY, botguardResponse]));
