@@ -615,6 +615,8 @@ class Player {
       );
     }
 
+    const g = globalThis as unknown as Record<string, unknown>;
+    const ytcfg = asRec(g["ytcfg"]);
     const yt = asRec(g["yt"]);
     const playerNs = yt ? asRec(yt["player"]) : null;
     const Application = playerNs ? asRec(playerNs["Application"]) : null;
