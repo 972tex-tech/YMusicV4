@@ -118,11 +118,14 @@ export async function minterFromConfig(
     if (!js) throw new JsEngineErrorImpl("no interpreter javascript", "E20074");
     if (js.indexOf("//#") === 0) js = js.slice(js.indexOf("\n") + 1);
     out["jsLen"] = js.length;
+    /* After fetch, before eval — miller --preload interp is gone so this matches. */
+    __bgEntropyBegin();
     (0, eval)(js);
     vm = (globalThis as unknown as Record<string, unknown>)[globalName] as
       Record<string, unknown> | undefined;
   } else {
     out["jsLen"] = 0;
+    __bgEntropyBegin();
   }
   const vmA = vm && vm["a"];
   if (typeof vmA !== "function") throw new JsEngineErrorImpl("VM missing " + globalName, "E20074");
@@ -146,9 +149,6 @@ export async function minterFromConfig(
     setupDone();
   };
   const nop = function () {};
-  /* Record from vm.a (setup Math.random / now) through asyncSnap. Begin
-     after interpreter eval so miller --preload matches this window. */
-  __bgEntropyBegin();
   let botguardResponse: unknown;
   const webPo: unknown[] = [];
   try {
