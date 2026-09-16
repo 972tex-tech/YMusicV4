@@ -38,10 +38,6 @@ function mimeCodec(mime: string): string {
   return sp >= 0 ? s.slice(0, sp) : s;
 }
 
-function isFakeMime(mime: string): boolean {
-  return String(mime).toLowerCase().indexOf(".fake") >= 0;
-}
-
 /**
  * Chrome MSE rejects illegal vp09/av01 profiles. YouTube mdp() probes
  * vp09.02.51…09.16.09.00 vs …09.99.99.00; both true made we=0 and
@@ -289,7 +285,6 @@ class SourceBuffer {
   ["appendWindowEnd"]: number;
   _ms: MediaSource | null;
   _listeners: Record<string, Listener[]>;
-  _ignoreAppend: boolean;
   /* One TimeRanges object for the life of the SB. base.js HS(!0) caches
      this by reference; start/end must read current leftover. */
   _liveBuffered: { length: number; start(i: number): number; end(i: number): number } | null;
@@ -303,7 +298,6 @@ class SourceBuffer {
     this["appendWindowEnd"] = Infinity;
     this._ms = ms;
     this._listeners = {};
-    this._ignoreAppend = isFakeMime(mime);
     this._liveBuffered = null;
   }
 
@@ -358,12 +352,9 @@ class SourceBuffer {
     }
     const prev = String(this["mimeType"] || "");
     const audio = audioFlag(next);
-    const fake = isFakeMime(next);
     logChangeType(audio, prev, next);
     this["mimeType"] = next;
-    this._ignoreAppend = !audio && fake;
-    /* Fake mime is YouTube's audio-only cover SB. Do not reset the C parser. */
-    if (!this._ignoreAppend) __mseChangeType(audio);
+    __mseChangeType(audio);
   }
 
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
@@ -377,11 +368,7 @@ class SourceBuffer {
     fire(this, "updatestart");
     const self = this;
     try {
-      if (!audio && (this._ignoreAppend || isAudioOnly())) {
-        mseLog("mse append drop video audio-only bytes=" + asU8(data).length);
-        completeUpdate(self);
-        return;
-      }
+      if (!audio && (isAudioOnly() || isLiveVideoRest())) __mseRestVideo(1);
       const u8 = asU8(data);
       const tsOff = self["timestampOffset"];
       const winStart = self["appendWindowStart"];
