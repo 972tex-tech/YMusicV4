@@ -757,7 +757,9 @@ static JSValue js_error_ctor_rec(JSContext *ctx, JSValueConst this_val,
     err = JS_CallConstructor2(ctx, e->error_orig[magic],
                               JS_IsUndefined(this_val) ? e->error_orig[magic] : this_val,
                               argc, argv);
-    if (!JS_IsException(err))
+    /* GETSET on every Error for the process lifetime. rec is mill-only;
+     * playback Errors must stay native data properties. */
+    if (!JS_IsException(err) && e->rec)
         err_install_gets(ctx, err);
     return err;
 }
