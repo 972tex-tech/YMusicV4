@@ -3,7 +3,6 @@
 
 import { onAccept } from "../transport";
 import { commandHandler, JsEngineErrorImpl } from "../protocol/command";
-import { createHtmlMedia } from "../protocol/mse";
 import {
   initPlayer,
   loadPlayer,
@@ -21,8 +20,6 @@ import { applyViewport } from "./player/viewport";
 import { runCatalogSession, runProgressSession } from "./player/push";
 import { listCaptionTracks, runCaptionSession, setCaptionVss } from "./player/captions";
 import { downloadWaitMs, peekDownloadJson, waitDownloadJson } from "./player/player_res";
-
-createHtmlMedia();
 
 onAccept(
   "player/init",

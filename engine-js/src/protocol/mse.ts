@@ -684,7 +684,36 @@ function initHtmlMedia(self: HTMLMediaElement): void {
   (self as unknown as Record<string, unknown>)["textTracks"] = emptyTrackList();
   (self as unknown as Record<string, unknown>)["audioTracks"] = emptyTrackList();
   (self as unknown as Record<string, unknown>)["videoTracks"] = emptyTrackList();
-  activeMedia = self;
+}
+
+function isMainVideo(el: object): boolean {
+  return (
+    (" " + String((el as { className?: string }).className || "") + " ").indexOf(
+      " html5-main-video ",
+    ) >= 0
+  );
+}
+
+function activateIfMainVideo(el: HTMLMediaElement): void {
+  if (isMainVideo(el)) activeMedia = el;
+}
+
+/** classList.add writes el.className. Watch that so preload/ad nodes do not become active. */
+function bindMainVideoClass(el: HTMLMediaElement): void {
+  const rec = el as unknown as Record<string, unknown>;
+  let cur = String(rec["className"] || "");
+  Object.defineProperty(el, "className", {
+    get: function () {
+      return cur;
+    },
+    set: function (v: unknown) {
+      cur = String(v == null ? "" : v);
+      activateIfMainVideo(el);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  if (cur) activateIfMainVideo(el);
 }
 
 class HTMLMediaElement {
@@ -789,6 +818,7 @@ class HTMLMediaElement {
     const ms = blobUrls[url] || null;
     this._src = url;
     mseLog("mse video.src " + url + (ms ? " mse" : " not-mse"));
+    activateIfMainVideo(this);
     if (prev !== ms) {
       /* Chrome: assigning a new media resource detaches the old MediaSource
          (readyState closed, sourceBuffers removed) and the pipeline demuxer
@@ -963,6 +993,7 @@ function attachHtmlMedia(el: object): void {
     if (d) Object.defineProperty(el, n, d);
   }
   bindMediaSrc(el as HTMLMediaElement);
+  bindMainVideoClass(el as HTMLMediaElement);
   const rec = el as Record<string, unknown>;
   const protoSet = rec["setAttribute"];
   rec["setAttribute"] = function (n: string, v: unknown) {
@@ -1053,12 +1084,6 @@ export function installMseGlobals(): void {
   } else {
     glob["URL"] = URLImpl;
   }
-}
-
-export function createHtmlMedia(): HTMLMediaElement {
-  const el = new HTMLMediaElement();
-  activeMedia = el;
-  return el;
 }
 
 export function activeHtmlMedia(): HTMLMediaElement | null {
