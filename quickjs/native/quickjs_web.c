@@ -752,10 +752,11 @@ static JSValue js_error_ctor_rec(JSContext *ctx, JSValueConst this_val,
 {
     Ent *e = ent_of(ctx);
     JSValue err;
-    (void)this_val;
     if (!e || magic < 0 || magic >= ERR_CTORS || JS_IsUndefined(e->error_orig[magic]))
         return JS_EXCEPTION;
-    err = JS_CallConstructor(ctx, e->error_orig[magic], argc, argv);
+    err = JS_CallConstructor2(ctx, e->error_orig[magic],
+                              JS_IsUndefined(this_val) ? e->error_orig[magic] : this_val,
+                              argc, argv);
     if (!JS_IsException(err))
         err_install_gets(ctx, err);
     return err;
@@ -898,7 +899,7 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
             }
             e->error_orig[k] = orig;
             wrap = JS_NewCFunctionMagic(ctx, js_error_ctor_rec, k_err_ctors[k], 1,
-                                        JS_CFUNC_constructor_magic, k);
+                                        JS_CFUNC_constructor_or_func_magic, k);
             proto = JS_GetPropertyStr(ctx, orig, "prototype");
             JS_SetConstructor(ctx, wrap, proto);
             JS_FreeValue(ctx, proto);
