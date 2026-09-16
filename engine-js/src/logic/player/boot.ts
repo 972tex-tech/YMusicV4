@@ -504,19 +504,6 @@ function patchFlags(s: string, patches: Record<string, string>): string {
   return joinQueryMap(map);
 }
 
-function rewritePlayerJsUrls(obj: unknown, depth: number): void {
-  if (!obj || typeof obj !== "object" || depth > 6) return;
-  const rec = obj as Record<string, unknown>;
-  const keys = Object.keys(rec);
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i]!;
-    const v = rec[k];
-    if (typeof v === "string" && v.indexOf("/player_") >= 0)
-      rec[k] = v.replace(/\/player_\w+\.vflset/g, "/player_es6.vflset");
-    else if (v && typeof v === "object") rewritePlayerJsUrls(v, depth + 1);
-  }
-}
-
 async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
   return callMain("get_player_config", async (pipe) => {
     const w = pipe.sink.writeObjectAsJson({});
@@ -595,9 +582,6 @@ class Player {
 
     installPlayerTree();
     installPlayerAdStrip();
-    const g = globalThis as unknown as Record<string, unknown>;
-    const ytcfg = asRec(g["ytcfg"]);
-    if (ytcfg) rewritePlayerJsUrls(ytcfg["data_"] ?? ytcfg, 0);
 
     const jsUrl = absUrl(jsUrlRaw);
     out["jsUrl"] = jsUrl;
