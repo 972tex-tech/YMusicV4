@@ -54,15 +54,17 @@ class DynamicEnginePlayer private constructor(
     suspend fun load(
         videoId: String,
         logger: Logger? = null,
-        quality: String = "zero",
+        quality: String? = null,
         width: Int? = null,
         height: Int? = null,
+        audioOnly: Boolean = quality == null,
     ): JsonObject {
         return engine.jsonCommand(
             "player/load",
             { w ->
                 w.name("videoId").value(videoId)
-                w.name("quality").value(quality)
+                if (quality != null) w.name("quality").value(quality)
+                w.name("audioOnly").value(audioOnly)
                 if (width != null) w.name("width").value(width)
                 if (height != null) w.name("height").value(height)
             },
@@ -91,9 +93,18 @@ class DynamicEnginePlayer private constructor(
         ) { it.readObject() }
     }
 
-    /** `"zero"` is audio-only (no video download/decode/render). Other values are YouTube quality tokens. */
+    /** YouTube quality token (`auto`, `hd720`, …). Not audio-only. */
     suspend fun setQuality(quality: String, logger: Logger? = null) {
         engine.jsonCommand("player/setQuality", { w -> w.name("quality").value(quality) }, logger) { it.skipValue() }
+    }
+
+    /** Pin Auto, rest the C decoder. Does not interrupt playback. */
+    suspend fun setIsAudioOnly(audioOnly: Boolean, logger: Logger? = null) {
+        engine.jsonCommand(
+            "player/setIsAudioOnly",
+            { w -> w.name("audioOnly").value(audioOnly) },
+            logger,
+        ) { it.skipValue() }
     }
 
     suspend fun play(logger: Logger? = null) {

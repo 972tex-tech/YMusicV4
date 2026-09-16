@@ -13,6 +13,7 @@ import {
   playPlayer,
   seekPlayer,
   setPlayerQuality,
+  setPlayerIsAudioOnly,
   setPlayerViewport,
   statusPlayer,
   stopPlayer,
@@ -43,7 +44,8 @@ onAccept(
     if (!id) throw new JsEngineErrorImpl("player/load missing videoId", "E20072");
     applyViewport(a["width"], a["height"]);
     const quality = a["quality"] != null ? String(a["quality"]) : undefined;
-    const result = await loadPlayer(id, quality);
+    const audioOnly = a["audioOnly"] === true;
+    const result = await loadPlayer(id, quality, audioOnly);
     const p = out.writeObjectAsJson(result);
     if (p) await p;
   }),
@@ -133,6 +135,17 @@ onAccept(
     const quality = String(a["quality"] ?? "");
     setPlayerQuality(quality);
     const p = out.writeObjectAsJson({ "ok": true, "quality": quality });
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setIsAudioOnly",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const on = a["audioOnly"] === true;
+    setPlayerIsAudioOnly(on);
+    const p = out.writeObjectAsJson({ "ok": true, "audioOnly": on });
     if (p) await p;
   }),
 );

@@ -77,7 +77,7 @@ class LiveMseTraceTest {
         }
         val session = HeadlessSession.boot(surface)
         try {
-            session.player.load(AUDIO_LIVE_ID, session.log, "zero")
+            session.player.load(AUDIO_LIVE_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 90_000
             var pos = 0L
@@ -139,7 +139,7 @@ class LiveMseTraceTest {
             assertTrue(pos > 10_000, "live auto never joined DVR head pos=$pos")
             delay(800)
             val framesAtSwitch = frames.get()
-            session.player.setQuality("zero", session.log)
+            session.player.setIsAudioOnly(true, session.log)
             delay(500)
             val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
             val samplesAtSwitch = surface.samplesPlayed()
@@ -188,7 +188,7 @@ class LiveMseTraceTest {
         }
         val session = HeadlessSession.boot(surface)
         try {
-            session.player.load(AUDIO_LIVE_ID, session.log, "zero")
+            session.player.load(AUDIO_LIVE_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val d1 = System.currentTimeMillis() + 60_000
             var pos = 0L
@@ -198,7 +198,7 @@ class LiveMseTraceTest {
                 delay(400)
             }
             assertTrue(pos > 10_000, "first live never joined DVR head pos=$pos")
-            session.player.load(SECOND_LIVE_ID, session.log, "zero")
+            session.player.load(SECOND_LIVE_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val d2 = System.currentTimeMillis() + 90_000
             pos = 0L

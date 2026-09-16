@@ -176,7 +176,7 @@ class HeadlessPlayerTest {
                 player.init(log)
             }
             withContext(testEngineDispatcher) {
-                player.load(AUDIO_ONLY_VIDEO_ID, log, quality = "zero")
+                player.load(AUDIO_ONLY_VIDEO_ID, log, audioOnly = true)
                 player.play(log)
             }
             var lastBuffered = 0L
@@ -297,7 +297,7 @@ class HeadlessPlayerTest {
                 lastBuffered = st.longField("bufferedMs")
                 leadAtZero = (lastBuffered - lastPos).coerceIn(3_000L, 45_000L)
                 posAtZero = lastPos
-                withContext(testEngineDispatcher) { player.setQuality("zero", log) }
+                withContext(testEngineDispatcher) { player.setIsAudioOnly(true, log) }
                 switched = true
                 lastMoveAt = System.currentTimeMillis()
                 println("live-ao switch pos=$posAtZero lead=$leadAtZero buffered=$lastBuffered live=${st.flag("live")}")

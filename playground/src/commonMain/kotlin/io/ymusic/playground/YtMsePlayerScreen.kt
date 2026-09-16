@@ -141,7 +141,14 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
         didLoad = true
         try {
             withContext(Dispatchers.Default) {
-                s.player.load(videoId, s.log, quality, w, h)
+                s.player.load(
+                    videoId,
+                    s.log,
+                    quality = quality.takeIf { it != "audio" },
+                    width = w,
+                    height = h,
+                    audioOnly = quality == "audio",
+                )
                 s.player.play(s.log)
             }
             captionTracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
@@ -326,7 +333,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
     val videoPlaceholder = when {
         booting -> "Starting…"
         loading -> "Loading video…"
-        quality == "zero" -> "Audio only"
+        quality == "audio" -> "Audio only"
         else -> "Waiting for video…"
     }
 
@@ -378,7 +385,14 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                             withContext(Dispatchers.Default) {
                                 val w = holeSize.width.takeIf { it > 0 }
                                 val h = holeSize.height.takeIf { it > 0 }
-                                s.player.load(id, s.log, q, w, h)
+                                s.player.load(
+                                    id,
+                                    s.log,
+                                    quality = q.takeIf { it != "audio" },
+                                    width = w,
+                                    height = h,
+                                    audioOnly = q == "audio",
+                                )
                                 s.player.play(s.log)
                             }
                             val tracks = withContext(Dispatchers.Default) { pullCaptionTracks(s) }
@@ -425,7 +439,14 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     quality = token
                     scope.launch {
                         try {
-                            withContext(Dispatchers.Default) { s.player.setQuality(token, s.log) }
+                            withContext(Dispatchers.Default) {
+                                if (token == "audio") {
+                                    s.player.setIsAudioOnly(true, s.log)
+                                } else {
+                                    s.player.setIsAudioOnly(false, s.log)
+                                    s.player.setQuality(token, s.log)
+                                }
+                            }
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse setQuality failed: $t")
@@ -877,7 +898,7 @@ private suspend fun pullCaptionTracks(s: MseSession): List<CaptionTrackInfo> {
 }
 
 private val FALLBACK_QUALITY_CHOICES = listOf(
-    "zero" to "Audio",
+    "audio" to "Audio",
     "auto" to "Auto",
 )
 
@@ -888,12 +909,15 @@ private fun JsonObject.qualityChoices(): List<Pair<String, String>> {
         val q = (o["quality"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }
             ?: return@mapNotNull null
         q to ((o["label"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() } ?: q)
-    }
+    }.filter { it.first != "zero" }
 }
+
+private fun List<Pair<String, String>>.withAudioChip(): List<Pair<String, String>> =
+    listOf("audio" to "Audio") + filter { it.first != "audio" }
 
 private suspend fun pullQualityChoices(s: MseSession): List<Pair<String, String>> {
     repeat(8) { i ->
-        val qs = s.player.status(s.log).qualityChoices()
+        val qs = s.player.status(s.log).qualityChoices().withAudioChip()
         if (qs.size > 2) {
             println("mse quality chips=${qs.joinToString { it.second }} try=$i")
             return qs

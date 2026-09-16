@@ -24,7 +24,7 @@ class AudioOnlySabrTest {
         }
         val session = HeadlessSession.boot(surface)
         try {
-            session.player.load(VIDEO_ID, session.log, "zero")
+            session.player.load(VIDEO_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 90_000
             var pos = 0L
@@ -117,7 +117,7 @@ class AudioOnlySabrTest {
         }
         val session = HeadlessSession.boot(surface)
         try {
-            session.player.load(INIT_VIDEO_ID, session.log, "zero")
+            session.player.load(INIT_VIDEO_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 90_000
             var pos = 0L
@@ -197,7 +197,7 @@ class AudioOnlySabrTest {
         try {
             session.player.init(session.log)
             session.player.setViewport(468, 263, session.log)
-            session.player.load(FIRST_ID, session.log, "zero")
+            session.player.load(FIRST_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val ready = System.currentTimeMillis() + 45_000
             var pos = 0L
@@ -228,7 +228,7 @@ class AudioOnlySabrTest {
                 "Chrome VP9 profile probe must reject …99.99.00 so mdp() keeps .fake",
             )
             session.player.preload(SECOND_ID, session.log)
-            session.player.load(SECOND_ID, session.log, "zero")
+            session.player.load(SECOND_ID, session.log, audioOnly = true)
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 45_000
             var lastMoveAt = System.currentTimeMillis()

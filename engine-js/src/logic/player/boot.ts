@@ -23,8 +23,8 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import {
+  isAudioOnly,
   isLiveVideoRest,
-  isProductZero,
   setAudioOnly,
   setLiveVideoRest,
   setYmQuality,
@@ -100,7 +100,7 @@ function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
   const orig = host["getPlaybackQuality"] as (...a: unknown[]) => unknown;
   if ((orig as { __ym?: boolean }).__ym) return;
   const wrapped = function (this: unknown) {
-    if (isProductZero()) return "zero";
+    if (isAudioOnly()) return "auto";
     try {
       const q = orig.call(this);
       if (q != null && String(q) !== "") return q;
@@ -763,15 +763,7 @@ class Player {
     const player = this.player;
     if (!player)
       throw new JsEngineErrorImpl("player/setQuality before Application.create", "E20085");
-    if (q === "zero") {
-      this.applyZero();
-      resetDrainCounts();
-      if (MSE_DEBUG)
-        console.log("mse setQuality zero clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0));
-      dumpDrain("setQuality-zero");
-      return;
-    }
-    setAudioOnly(false);
+    if (isAudioOnly()) this.setIsAudioOnly(false);
     if (isLiveVideoRest()) {
       setLiveVideoRest(false);
       __mseRestVideo(0);
@@ -792,6 +784,25 @@ class Player {
     notifyCatalog();
   }
 
+  /** Enter: pin Auto, rest decoder, black. Exit: un-rest, keep Auto, no seek. */
+  setIsAudioOnly(on: boolean): void {
+    if (on) {
+      setAudioOnly(true);
+      this.pinAuto();
+      __mseRestVideo(1);
+    } else {
+      setAudioOnly(false);
+      __mseRestVideo(0);
+    }
+    resetDrainCounts();
+    if (MSE_DEBUG)
+      console.log(
+        "mse setIsAudioOnly " + on + " clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0),
+      );
+    dumpDrain(on ? "setIsAudioOnly-on" : "setIsAudioOnly-off");
+    notifyCatalog();
+  }
+
   /** Auto (not tiny): pinning 144p changeType-interrupts leftover. */
   private pinAuto(): void {
     const player = this.player;
@@ -799,14 +810,6 @@ class Player {
     bindMoviePlayerApi(player);
     pinPlaybackQuality(moviePlayer(), "auto") ||
       pinPlaybackQuality(player as unknown as Record<string, unknown>, "auto");
-  }
-
-  /** Rest the C decoder and keep Auto. SABR then sends 40=1 + fake 144p UMP. */
-  private applyZero(): void {
-    setAudioOnly(false);
-    setLiveVideoRest(true);
-    this.pinAuto();
-    __mseRestVideo(1);
   }
 
   private ytHost(): Record<string, unknown> {
@@ -831,12 +834,14 @@ class Player {
     throw new JsEngineErrorImpl("player/load loadVideoById missing", "E20077");
   }
 
-  async load(videoId: string, quality?: string): Promise<Record<string, unknown>> {
+  async load(videoId: string, quality?: string, audioOnly?: boolean): Promise<Record<string, unknown>> {
     const initOut = await this.init();
-    const q = quality && quality.length ? quality : "zero";
+    const ao = audioOnly === true;
+    const q = quality && quality.length ? quality : undefined;
     const out: Record<string, unknown> = {
       "videoId": videoId,
-      "quality": q,
+      "quality": ao ? "auto" : q || "auto",
+      "audioOnly": ao,
       "jsUrl": initOut["jsUrl"],
       "baseJsLen": initOut["baseJsLen"],
       "ytGets": initOut["ytGets"],
@@ -848,12 +853,8 @@ class Player {
     this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
-    if (q !== "zero") this.setQuality(q);
-    else {
-      setAudioOnly(false);
-      setLiveVideoRest(true);
-      __mseRestVideo(1);
-    }
+    if (ao) this.setIsAudioOnly(true);
+    else if (q) this.setQuality(q);
     const msId = mseMediaSourceId();
     const gen0 = mseSourceBufferGen();
     const ingestAt = captionIngestTick();
@@ -868,10 +869,10 @@ class Player {
     }
     await waitCaptionIngest(ingestAt, 8000);
     const t0 = Date.now();
-    const waitMs = q === "zero" ? 2000 : 1000;
+    const waitMs = ao ? 2000 : 1000;
     while (Date.now() - t0 < waitMs) {
       mseAttachLatestIfStale(msId);
-      if (q === "zero") __mseRestVideo(1);
+      if (ao) __mseRestVideo(1);
       const id = mseMediaSourceId();
       const n = mseSourceBufferCount();
       if ((id !== msId && n > 0) || mseSourceBufferGen() > gen0) break;
@@ -883,7 +884,7 @@ class Player {
         }, 20);
       });
     }
-    if (q === "zero") this.setQuality("zero");
+    if (ao) this.setIsAudioOnly(true);
     applyPictureFromResponse();
     notifyProgress();
     notifyCatalog();
@@ -1047,27 +1048,26 @@ class Player {
       "paused": v ? !!v["paused"] : true,
       "ended": !!ended,
       "readyState": v ? Number(v["readyState"]) : 0,
-      "videoWidth": isProductZero() ? 0 : pictureW,
-      "videoHeight": isProductZero() ? 0 : pictureH,
-      "audioOnly": isProductZero(),
+      "videoWidth": isAudioOnly() ? 0 : pictureW,
+      "videoHeight": isAudioOnly() ? 0 : pictureH,
+      "audioOnly": isAudioOnly(),
     };
   }
 
   catalog(): Record<string, unknown> {
     const host = moviePlayer();
-    const pref = isProductZero()
-      ? "zero"
-      : host && typeof host["getUserPlaybackQualityPreference"] === "function"
+    const pref =
+      host && typeof host["getUserPlaybackQualityPreference"] === "function"
         ? String((host["getUserPlaybackQualityPreference"] as () => string)())
         : ymQuality();
-    const actual = isProductZero()
-      ? "zero"
-      : host && typeof host["getPlaybackQuality"] === "function"
+    const actual =
+      host && typeof host["getPlaybackQuality"] === "function"
         ? String((host["getPlaybackQuality"] as () => string)())
         : ymQuality();
     return {
       "quality": actual,
       "preferQuality": pref,
+      "audioOnly": isAudioOnly(),
       "qualities": this.qualityOptions(),
       "caption": selectedCaptionVss(),
     };
@@ -1094,11 +1094,8 @@ class Player {
       "hd2160": "4K",
       "highres": "8K",
     };
-    const rows: Record<string, unknown>[] = [
-      { "quality": "zero", "label": "Audio" },
-      { "quality": "auto", "label": "Auto" },
-    ];
-    const seen: Record<string, boolean> = { "zero": true, "auto": true };
+    const rows: Record<string, unknown>[] = [{ "quality": "auto", "label": "Auto" }];
+    const seen: Record<string, boolean> = { "auto": true };
     function add(q: string, label?: string): void {
       if (!q || q === "auto" || q === "default") return;
       const lab = label && label.length ? label : labels[q] || q;
@@ -1138,7 +1135,7 @@ class Player {
         for (let i = 0; i < list.length; i++) add(String(list[i]));
       }
     } catch (_e) {}
-    const extra = rows.length - 2;
+    const extra = rows.length - 1;
     if (extra !== lastQualityExtra) {
       lastQualityExtra = extra;
       if (MSE_DEBUG)
@@ -1163,8 +1160,12 @@ export function initPlayer(): Promise<Record<string, unknown>> {
   return ytPlayer.init();
 }
 
-export function loadPlayer(videoId: string, quality?: string): Promise<Record<string, unknown>> {
-  return ytPlayer.load(videoId, quality);
+export function loadPlayer(
+  videoId: string,
+  quality?: string,
+  audioOnly?: boolean,
+): Promise<Record<string, unknown>> {
+  return ytPlayer.load(videoId, quality, audioOnly);
 }
 
 export function preloadPlayer(videoId: string): Promise<Record<string, unknown>> {
@@ -1173,6 +1174,10 @@ export function preloadPlayer(videoId: string): Promise<Record<string, unknown>>
 
 export function setPlayerQuality(quality: string): void {
   ytPlayer.setQuality(quality);
+}
+
+export function setPlayerIsAudioOnly(on: boolean): void {
+  ytPlayer.setIsAudioOnly(on);
 }
 
 export function mintPlayerPo(videoId: string): Promise<Record<string, unknown>> {

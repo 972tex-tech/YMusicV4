@@ -1,5 +1,4 @@
-// Two flags: audio-only (boolean) vs YouTube quality (tiny/medium/hd720/auto).
-// "zero" is only a player/setQuality wire token; it is not stored as quality.
+// Audio-only is a boolean (player/setIsAudioOnly). YouTube quality is Auto/tiny/hd720/…
 
 function g(): Record<string, unknown> {
   return globalThis as unknown as Record<string, unknown>;
@@ -18,7 +17,7 @@ export function ymQuality(): string {
 }
 
 export function setYmQuality(quality: string): void {
-  if (quality && quality !== "zero") g()["__ymQuality"] = quality;
+  if (quality) g()["__ymQuality"] = quality;
 }
 
 /** Product "zero": real video still appends; C decoder is rested. */

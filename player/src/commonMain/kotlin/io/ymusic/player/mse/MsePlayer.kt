@@ -140,7 +140,15 @@ class MsePlayer internal constructor(
                 }
                 val p = ensureInit()
                 val quality = config.preferVideoQuality.first
-                p.load(source.videoId, log, quality, viewportW, viewportH)
+                val ao = quality == VideoQualityState.AUDIO_ONLY
+                p.load(
+                    source.videoId,
+                    log,
+                    quality = if (ao) null else quality,
+                    width = viewportW,
+                    height = viewportH,
+                    audioOnly = ao,
+                )
                 if (startPositionMs > 0L) p.seekTo(startPositionMs, log)
                 applyCaptionConfig(config)
                 if (playWhenReady) p.play(log) else p.pause(log)
@@ -205,7 +213,16 @@ class MsePlayer internal constructor(
         scope.launch {
             runCatching {
                 val q = config.preferVideoQuality.first
-                if (q != prev.preferVideoQuality.first) engine().setQuality(q, log)
+                if (q != prev.preferVideoQuality.first) {
+                    if (q == VideoQualityState.AUDIO_ONLY) {
+                        engine().setIsAudioOnly(true, log)
+                    } else {
+                        if (prev.preferVideoQuality.first == VideoQualityState.AUDIO_ONLY) {
+                            engine().setIsAudioOnly(false, log)
+                        }
+                        engine().setQuality(q, log)
+                    }
+                }
                 applyCaptionConfig(config)
             }
         }
@@ -376,16 +393,22 @@ class MsePlayer internal constructor(
     }
 
     private fun applyCatalog(st: JsonObject) {
-        val actual = st.str("quality") ?: VideoQualityState.AUTO
-        val prefer = st.str("preferQuality") ?: applied.preferVideoQuality.first
-        val options = st.qualityOptions()
+        val audioOnly = st.bool("audioOnly", default = false)
+        val actual = if (audioOnly) {
+            VideoQualityState.AUDIO_ONLY
+        } else {
+            st.str("quality") ?: VideoQualityState.AUTO
+        }
+        val prefer = if (audioOnly) {
+            VideoQualityState.AUDIO_ONLY
+        } else {
+            st.str("preferQuality") ?: applied.preferVideoQuality.first
+        }
+        val engineOptions = st.qualityOptions().filter { it.quality != VideoQualityState.AUDIO_ONLY }
+        val options = listOf(VideoQualityOption(VideoQualityState.AUDIO_ONLY, "Audio-only")) +
+            engineOptions.ifEmpty { listOf(VideoQualityOption(VideoQualityState.AUTO, "Auto")) }
         _videoQuality.value = VideoQualityState(
-            options = options.ifEmpty {
-                listOf(
-                    VideoQualityOption(VideoQualityState.AUDIO_ONLY, "Audio-only"),
-                    VideoQualityOption(VideoQualityState.AUTO, "Auto"),
-                )
-            },
+            options = options,
             actualQuality = actual,
             preferredQuality = prefer,
         )
