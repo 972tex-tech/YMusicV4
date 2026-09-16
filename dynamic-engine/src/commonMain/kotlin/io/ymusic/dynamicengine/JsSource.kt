@@ -167,15 +167,22 @@ class DefaultJsSourceProvider(
             client.defaultRedirectOptions,
             null,
         )
-        check(response.code == 200) { "bundle download answered HTTP ${response.code}" }
-        val src = response.body.asyncSource()
-        val buffer = Buffer()
-        val tmp = Buffer()
-        while (true) {
-            val read = src.read(tmp, 64 * 1024L)
-            if (read == -1L) break
-            buffer.write(tmp, read)
+        try {
+            check(response.code == 200) { "bundle download answered HTTP ${response.code}" }
+            val src = response.body.asyncSource()
+            val buffer = Buffer()
+            val tmp = Buffer()
+            while (true) {
+                val read = src.read(tmp, 64 * 1024L)
+                if (read == -1L) break
+                buffer.write(tmp, read)
+            }
+            return buffer.readUtf8()
+        } finally {
+            try {
+                response.close()
+            } catch (_: Throwable) {
+            }
         }
-        return buffer.readUtf8()
     }
 }
