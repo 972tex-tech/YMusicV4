@@ -22,14 +22,7 @@ import { installXhr } from "../yt/xhr";
 import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
-import {
-  isAudioOnly,
-  isLiveVideoRest,
-  setAudioOnly,
-  setLiveVideoRest,
-  setYmQuality,
-  ymQuality,
-} from "./audio_only";
+import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import {
   captionIngestTick,
   installCaptionMinter,
@@ -757,59 +750,36 @@ class Player {
     return typeof minted === "string" ? minted : u8ToB64url(asU8(minted));
   }
 
-  setQuality(quality: string): void {
-    const q = String(quality || "");
-    if (!q) throw new JsEngineErrorImpl("player/setQuality missing quality", "E20085");
+  /** Quality token + audio-only flag, applied together. Audio-only pins Auto and rests C. */
+  setQuality(quality: string, audioOnly: boolean): void {
+    const q = String(quality || "") || ymQuality() || "auto";
     const player = this.player;
     if (!player)
       throw new JsEngineErrorImpl("player/setQuality before Application.create", "E20085");
     setYmQuality(q);
-    if (isAudioOnly()) {
-      notifyCatalog();
-      return;
-    }
-    if (isLiveVideoRest()) {
-      setLiveVideoRest(false);
-      __mseRestVideo(0);
-    }
-    bindMoviePlayerApi(player);
-    const pinned =
-      pinPlaybackQuality(moviePlayer(), q) ||
-      pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
-    if (!pinned && MSE_DEBUG) console.log("mse setQuality no API q=" + q);
-    if (MSE_DEBUG)
-      console.log(
-        "mse setQuality q=" + q + " clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0),
-      );
-    dumpDrain("setQuality-" + q);
-    /* Do not seek. Video SourceBuffer already reports a sliver, so SABR
-       fetches video on the next tick without jumping leftover audio. */
-    notifyCatalog();
-  }
-
-  /** Enter: pin Auto, rest decoder, black. Exit: un-rest, restore remembered quality. */
-  setIsAudioOnly(on: boolean): void {
-    if (on) {
-      setAudioOnly(true);
+    setAudioOnly(!!audioOnly);
+    if (audioOnly) {
       this.pinAuto();
       __mseRestVideo(1);
     } else {
-      setAudioOnly(false);
       __mseRestVideo(0);
-      const q = ymQuality();
-      const player = this.player;
-      if (player && q) {
-        bindMoviePlayerApi(player);
+      bindMoviePlayerApi(player);
+      const pinned =
         pinPlaybackQuality(moviePlayer(), q) ||
-          pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
-      }
+        pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
+      if (!pinned && MSE_DEBUG) console.log("mse setQuality no API q=" + q);
     }
     resetDrainCounts();
     if (MSE_DEBUG)
       console.log(
-        "mse setIsAudioOnly " + on + " clock=" + (activeHtmlMedia() ? __mseCurrentTime() : 0),
+        "mse setQuality q=" +
+          q +
+          " audioOnly=" +
+          (audioOnly ? "1" : "0") +
+          " clock=" +
+          (activeHtmlMedia() ? __mseCurrentTime() : 0),
       );
-    dumpDrain(on ? "setIsAudioOnly-on" : "setIsAudioOnly-off");
+    dumpDrain("setQuality-" + q + (audioOnly ? "-ao" : ""));
     notifyCatalog();
   }
 
@@ -850,7 +820,7 @@ class Player {
     const q = quality && quality.length ? quality : undefined;
     const out: Record<string, unknown> = {
       "videoId": videoId,
-      "quality": ao ? "auto" : q || "auto",
+      "quality": q || "auto",
       "audioOnly": ao,
       "jsUrl": initOut["jsUrl"],
       "baseJsLen": initOut["baseJsLen"],
@@ -863,8 +833,7 @@ class Player {
     this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
-    if (ao) this.setIsAudioOnly(true);
-    else if (q) this.setQuality(q);
+    this.setQuality(q || "auto", ao);
     const msId = mseMediaSourceId();
     const gen0 = mseSourceBufferGen();
     const ingestAt = captionIngestTick();
@@ -894,7 +863,7 @@ class Player {
         }, 20);
       });
     }
-    if (ao) this.setIsAudioOnly(true);
+    if (ao) this.setQuality(q || "auto", true);
     applyPictureFromResponse();
     notifyProgress();
     notifyCatalog();
@@ -1182,12 +1151,8 @@ export function preloadPlayer(videoId: string): Promise<Record<string, unknown>>
   return ytPlayer.preload(videoId);
 }
 
-export function setPlayerQuality(quality: string): void {
-  ytPlayer.setQuality(quality);
-}
-
-export function setPlayerIsAudioOnly(on: boolean): void {
-  ytPlayer.setIsAudioOnly(on);
+export function setPlayerQuality(quality: string, audioOnly: boolean): void {
+  ytPlayer.setQuality(quality, audioOnly);
 }
 
 export function mintPlayerPo(videoId: string): Promise<Record<string, unknown>> {

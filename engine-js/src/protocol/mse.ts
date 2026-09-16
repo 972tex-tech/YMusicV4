@@ -2,7 +2,7 @@
 // Append/play/seek hit C trampolines (`__mse*`). Quoted names so Closure ADVANCED leaves the
 // DOM-shaped API intact for YouTube's player.
 
-import { isAudioOnly, isLiveVideoRest } from "../logic/player/audio_only";
+import { isAudioOnly } from "../logic/player/audio_only";
 import { isYmLive } from "../logic/player/live";
 import { viewportHeight, viewportWidth } from "../logic/player/viewport";
 
@@ -16,7 +16,7 @@ function mseLog(s: string): void {
 /** src= / load() destroy MseAv (v_rest=0). Put the decoder back to sleep. */
 function resetPipeline(): void {
   __mseReset();
-  if (isAudioOnly() || isLiveVideoRest()) __mseRestVideo(1);
+  if (isAudioOnly()) __mseRestVideo(1);
 }
 
 function audioFlag(mime: string): number {
@@ -1068,7 +1068,7 @@ export function activeHtmlMedia(): HTMLMediaElement | null {
 /** MSE-only drain line. Do not walk base.js internals. */
 export function dumpDrain(why: string): void {
   if (!MSE_DEBUG) return;
-  if (!isLiveVideoRest() && why.indexOf("setQuality") < 0) return;
+  if (why.indexOf("setQuality") < 0 && !isAudioOnly()) return;
   try {
     mseLog("mse drain " + why + " " + dumpMseDrain());
   } catch (e) {

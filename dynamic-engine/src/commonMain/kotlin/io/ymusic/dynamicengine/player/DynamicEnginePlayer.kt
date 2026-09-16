@@ -93,16 +93,14 @@ class DynamicEnginePlayer private constructor(
         ) { it.readObject() }
     }
 
-    /** YouTube quality token (`auto`, `hd720`, …). Not audio-only. */
-    suspend fun setQuality(quality: String, logger: Logger? = null) {
-        engine.jsonCommand("player/setQuality", { w -> w.name("quality").value(quality) }, logger) { it.skipValue() }
-    }
-
-    /** Pin Auto, rest the C decoder. Does not interrupt playback. */
-    suspend fun setIsAudioOnly(audioOnly: Boolean, logger: Logger? = null) {
+    /** YouTube quality token (`auto`, `hd720`, …) and audio-only, applied together. */
+    suspend fun setQuality(quality: String, audioOnly: Boolean, logger: Logger? = null) {
         engine.jsonCommand(
-            "player/setIsAudioOnly",
-            { w -> w.name("audioOnly").value(audioOnly) },
+            "player/setQuality",
+            { w ->
+                w.name("quality").value(quality)
+                w.name("audioOnly").value(audioOnly)
+            },
             logger,
         ) { it.skipValue() }
     }

@@ -294,7 +294,7 @@ class HeadlessPlaybackTest {
         try {
             session.player.load(LONG_ID, session.log, "large", 854, 480)
             session.player.setViewport(854, 480, session.log)
-            session.player.setQuality("large", session.log)
+            session.player.setQuality("large", false, session.log)
             session.player.play(session.log)
             val deadline = System.currentTimeMillis() + 60_000
             var saw854 = 0
@@ -350,7 +350,7 @@ class HeadlessPlaybackTest {
                 requireNoJump = false,
             )
             for (q in listOf("large", "medium", "small", "tiny")) {
-                session.player.setQuality(q, session.log)
+                session.player.setQuality(q, false, session.log)
                 delay(250)
             }
             session.player.play(session.log)
@@ -395,9 +395,9 @@ class HeadlessPlaybackTest {
                 label = "live before switch",
                 requireNoJump = false,
             )
-            session.player.setQuality("tiny", session.log)
+            session.player.setQuality("tiny", false, session.log)
             delay(1_500)
-            session.player.setQuality("hd1080", session.log)
+            session.player.setQuality("hd1080", false, session.log)
             session.player.play(session.log)
             session.watchPlay(
                 surface,
@@ -551,7 +551,7 @@ private suspend fun HeadlessSession.switchQuality(
     label: String,
 ) {
     val before = clockMs()
-    player.setQuality(quality, log)
+    player.setQuality(quality, false, log)
     player.play(log)
     watchPlay(
         surface,

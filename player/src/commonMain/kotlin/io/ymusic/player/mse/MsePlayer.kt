@@ -211,14 +211,12 @@ class MsePlayer internal constructor(
         }
         scope.launch {
             runCatching {
-                if (config.audioOnly != prev.audioOnly) {
-                    engine().setIsAudioOnly(config.audioOnly, log)
-                }
-                val q = config.preferVideoQuality.first
-                if (!config.audioOnly && q != VideoQualityState.AUDIO_ONLY &&
-                    q != prev.preferVideoQuality.first
-                ) {
-                    engine().setQuality(q, log)
+                val prevQ = prev.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
+                    ?: VideoQualityState.AUTO
+                val nextQ = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
+                    ?: VideoQualityState.AUTO
+                if (config.audioOnly != prev.audioOnly || nextQ != prevQ) {
+                    engine().setQuality(nextQ, config.audioOnly, log)
                 }
                 applyCaptionConfig(config)
             }

@@ -33,7 +33,7 @@ class Hd2160SwitchTest {
             assertTrue(pos > 3_000, "auto never played pos=$pos frames=${surface.presentedFrames()}")
             val framesAt = surface.presentedFrames()
             val samplesAt = surface.samplesPlayed()
-            session.player.setQuality("hd2160", session.log)
+            session.player.setQuality("hd2160", false, session.log)
             delay(500)
 
             data class Tick(val t: Long, val frames: Int, val samples: Long, val pos: Long)

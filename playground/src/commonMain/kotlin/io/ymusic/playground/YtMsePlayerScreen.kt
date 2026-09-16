@@ -449,10 +449,9 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                         try {
                             withContext(Dispatchers.Default) {
                                 if (token == "audio") {
-                                    s.player.setIsAudioOnly(true, s.log)
+                                    s.player.setQuality(quality, true, s.log)
                                 } else {
-                                    s.player.setIsAudioOnly(false, s.log)
-                                    s.player.setQuality(token, s.log)
+                                    s.player.setQuality(token, false, s.log)
                                 }
                             }
                         } catch (t: Throwable) {

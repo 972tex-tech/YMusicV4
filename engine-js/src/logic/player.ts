@@ -13,7 +13,6 @@ import {
   playPlayer,
   seekPlayer,
   setPlayerQuality,
-  setPlayerIsAudioOnly,
   setPlayerViewport,
   statusPlayer,
   stopPlayer,
@@ -133,19 +132,9 @@ onAccept(
   commandHandler(async (src, out) => {
     const a = await src.readJsonObject();
     const quality = String(a["quality"] ?? "");
-    setPlayerQuality(quality);
-    const p = out.writeObjectAsJson({ "ok": true, "quality": quality });
-    if (p) await p;
-  }),
-);
-
-onAccept(
-  "player/setIsAudioOnly",
-  commandHandler(async (src, out) => {
-    const a = await src.readJsonObject();
-    const on = a["audioOnly"] === true;
-    setPlayerIsAudioOnly(on);
-    const p = out.writeObjectAsJson({ "ok": true, "audioOnly": on });
+    const audioOnly = a["audioOnly"] === true;
+    setPlayerQuality(quality, audioOnly);
+    const p = out.writeObjectAsJson({ "ok": true, "quality": quality, "audioOnly": audioOnly });
     if (p) await p;
   }),
 );

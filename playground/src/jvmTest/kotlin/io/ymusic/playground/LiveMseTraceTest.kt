@@ -139,7 +139,7 @@ class LiveMseTraceTest {
             assertTrue(pos > 10_000, "live auto never joined DVR head pos=$pos")
             delay(800)
             val framesAtSwitch = frames.get()
-            session.player.setIsAudioOnly(true, session.log)
+            session.player.setQuality("auto", true, session.log)
             delay(500)
             val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
             val samplesAtSwitch = surface.samplesPlayed()
