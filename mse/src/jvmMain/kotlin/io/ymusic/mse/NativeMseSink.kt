@@ -1,5 +1,6 @@
 package io.ymusic.mse
 
+import androidx.annotation.Keep
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import java.nio.ByteBuffer
@@ -25,6 +26,7 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
         surface?.clear()
     }
 
+    @Keep
     override fun onFrame(width: Int, height: Int, bgra: ByteBuffer) {
         val img = grab(width, height)
         blit(img, width, height, bgra)
@@ -32,10 +34,12 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
         surface?.publish(img)
     }
 
+    @Keep
     override fun onPcm(rate: Int, channels: Int, s16: ByteArray) {
         if (muted) return
     }
 
+    @Keep
     override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
 
     private val bufs = arrayOfNulls<BufferedImage>(3)

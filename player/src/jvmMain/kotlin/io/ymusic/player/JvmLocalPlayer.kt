@@ -1,5 +1,6 @@
 package io.ymusic.player
 
+import androidx.annotation.Keep
 import io.ymusic.mse.FileAvNative
 import io.ymusic.mse.FileAvSink
 import kmpcommon.uri.Uri
@@ -413,6 +414,7 @@ internal class JvmLocalPlayer(
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
+    @Keep
     override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) {
         if (released || audioOnly) return
         if (bgra == null) {
@@ -428,8 +430,10 @@ internal class JvmLocalPlayer(
         videoSurface?.publish(img)
     }
 
+    @Keep
     override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
 
+    @Keep
     override fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {
         if (released || text.isBlank()) return
         val cue = LocalCue(id, startSec, endSec, text.trim())
@@ -441,6 +445,7 @@ internal class JvmLocalPlayer(
         onApp { emitCaptionLines(pendingPosMs / 1000.0) }
     }
 
+    @Keep
     override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) {
         if (released) return
         if (pendingSeekMs.get() >= 0) return
@@ -473,6 +478,7 @@ internal class JvmLocalPlayer(
         }
     }
 
+    @Keep
     override fun onEvent(ended: Boolean, error: String?) {
         if (released) return
         if (error != null && error.isNotEmpty()) {

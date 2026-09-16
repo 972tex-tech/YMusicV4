@@ -27,6 +27,7 @@ object Versions {
     const val jna = "5.17.0"     // JVM desktop native interop (macOS Now Playing bridge)
 
     // AndroidX
+    const val annotation = "1.9.1"
     const val coreKtx = "1.15.0"
     const val lifecycleRuntimeKtx = "2.8.7"
     const val activityCompose = "1.9.3"
@@ -62,6 +63,7 @@ object Libs {
     }
 
     object AndroidX {
+        const val annotation = "androidx.annotation:annotation:${Versions.annotation}"
         const val coreKtx = "androidx.core:core-ktx:${Versions.coreKtx}"
         const val lifecycleRuntimeKtx = "androidx.lifecycle:lifecycle-runtime-ktx:${Versions.lifecycleRuntimeKtx}"
         const val activityCompose = "androidx.activity:activity-compose:${Versions.activityCompose}"

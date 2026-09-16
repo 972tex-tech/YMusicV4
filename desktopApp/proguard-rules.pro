@@ -17,13 +17,14 @@
 -keep class io.ymusic.quickjs.QuickJsNative { *; }
 -keep class io.ymusic.quickjs.QuickJsException { <init>(java.lang.String); }
 
-# MSE / FileAv JNI callbacks: mse_host_jni.c and file_av_jni.c GetMethodID
-# onFrame/onPcm/onProgress/onEvent/onCaption by name. NativeMseSink.onProgress is
-# a no-op, so shrink-only ProGuard deletes it and setSink throws NoSuchMethodError.
--keep class io.ymusic.mse.MseHostSink { *; }
--keep class * implements io.ymusic.mse.MseHostSink { *; }
--keep class io.ymusic.mse.FileAvSink { *; }
--keep class * implements io.ymusic.mse.FileAvSink { *; }
+# androidx.annotation.Keep — same contract as Android. Annotate JNI/reflection
+# entry points; do not keep whole classes. NativeMseSink.onProgress is a no-op
+# GetMethodID looks up by name (mse_host_jni.c / file_av_jni.c).
+-keep class androidx.annotation.Keep
+-keep @androidx.annotation.Keep class *
+-keepclasseswithmembers,includedescriptorclasses class * {
+    @androidx.annotation.Keep <methods>;
+}
 
 # JNA core (the artifact's own packages, per JNA's documented rule): Structure fields, Library
 # interface methods, and Callback discovery are all resolved reflectively by the native dispatcher.

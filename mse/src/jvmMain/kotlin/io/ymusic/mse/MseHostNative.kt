@@ -1,5 +1,6 @@
 package io.ymusic.mse
 
+import androidx.annotation.Keep
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.file.Files
@@ -8,9 +9,11 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 interface MseHostSink {
-    fun onFrame(width: Int, height: Int, bgra: ByteBuffer)
-    fun onPcm(rate: Int, channels: Int, s16: ByteArray)
-    fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
+    @Keep fun onFrame(width: Int, height: Int, bgra: ByteBuffer)
+
+    @Keep fun onPcm(rate: Int, channels: Int, s16: ByteArray)
+
+    @Keep fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
 }
 
 actual object MseHostNative {

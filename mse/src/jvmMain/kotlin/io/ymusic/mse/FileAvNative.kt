@@ -1,18 +1,19 @@
 package io.ymusic.mse
 
+import androidx.annotation.Keep
 import java.nio.ByteBuffer
 
 /** JNI callbacks from the in-process libav file player (`file_av.c`). */
 interface FileAvSink {
-    fun onFrame(width: Int, height: Int, bgra: ByteBuffer?)
+    @Keep fun onFrame(width: Int, height: Int, bgra: ByteBuffer?)
 
-    fun onPcm(rate: Int, channels: Int, s16: ByteArray)
+    @Keep fun onPcm(rate: Int, channels: Int, s16: ByteArray)
 
-    fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
+    @Keep fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
 
-    fun onEvent(ended: Boolean, error: String?)
+    @Keep fun onEvent(ended: Boolean, error: String?)
 
-    fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {}
+    @Keep fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {}
 }
 
 /**

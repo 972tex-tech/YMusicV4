@@ -167,6 +167,7 @@ kotlin {
 
         jvmMain.dependencies {
             implementation(Libs.Kotlinx.coroutinesSwing)
+            api(Libs.AndroidX.annotation)
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
