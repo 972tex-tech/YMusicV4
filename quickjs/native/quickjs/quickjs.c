@@ -6161,9 +6161,21 @@ static void set_cycle_flag(JSContext *ctx, JSValueConst obj)
 {
 }
 
+/* BEGIN patch: JSVarRef* slots can hold a JSValue payload after heap smash.
+ * hs_err pid57133: free_var_ref RSI=2 (JS_MKVAL INT 2), decl -4(%rsi) → 0xfffffffffffffffe.
+ * hs_err pid12303: gc_decref RSI=0, decl -4(%rsi) → 0xfffffffffffffffc.
+ * js_rc() looks 4 bytes before the pointer (malloc header ref_count). */
+static inline BOOL js_var_ref_ptr_ok(const JSVarRef *var_ref)
+{
+    return (uintptr_t)var_ref >= 4096 &&
+        (((uintptr_t)var_ref) & (JS_MALLOC_ALIGN - 1)) == 0;
+}
+
 static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 {
     if (var_ref) {
+        if (!js_var_ref_ptr_ok(var_ref))
+            return;
         assert(js_rc(var_ref)->ref_count > 0);
         if (--js_rc(var_ref)->ref_count == 0) {
             if (var_ref->is_detached) {
@@ -6182,6 +6194,7 @@ static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
         }
     }
 }
+/* END patch */
 
 static void js_array_finalizer(JSRuntime *rt, JSValue val)
 {
@@ -6275,7 +6288,7 @@ static void js_bytecode_function_mark(JSRuntime *rt, JSValueConst val,
         if (var_refs) {
             for(i = 0; i < b->closure_var_count; i++) {
                 JSVarRef *var_ref = var_refs[i];
-                if (var_ref) {
+                if (js_var_ref_ptr_ok(var_ref)) {
                     mark_func(rt, &var_ref->header);
                 }
             }
@@ -16295,6 +16308,8 @@ static void js_mapped_arguments_finalizer(JSRuntime *rt, JSValue val)
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSVarRef **var_refs = p->u.array.u.var_refs;
     int i;
+    if (!var_refs)
+        return;
     for(i = 0; i < p->u.array.count; i++)
         free_var_ref(rt, var_refs[i]);
     js_free_rt(rt, var_refs);
@@ -16306,9 +16321,16 @@ static void js_mapped_arguments_mark(JSRuntime *rt, JSValueConst val,
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSVarRef **var_refs = p->u.array.u.var_refs;
     int i;
-    
-    for(i = 0; i < p->u.array.count; i++)
-        mark_func(rt, &var_refs[i]->header);
+
+    /* After convert_fast_array_to_array, fast_array is 0 and the tab is
+     * freed. A NULL slot here is mark_func(NULL) → gc_decref RSI=0 (pid12303). */
+    if (!p->fast_array || !var_refs)
+        return;
+    for(i = 0; i < p->u.array.count; i++) {
+        JSVarRef *var_ref = var_refs[i];
+        if (js_var_ref_ptr_ok(var_ref))
+            mark_func(rt, &var_ref->header);
+    }
 }
 
 /* legacy arguments object: add references to the function arguments */
@@ -17420,7 +17442,11 @@ static JSValue js_closure2(JSContext *ctx, JSValue func_obj,
                 break;
             case JS_CLOSURE_REF:
             case JS_CLOSURE_GLOBAL_REF:
-                var_ref = cur_var_refs[cv->var_idx];
+                var_ref = cur_var_refs ? cur_var_refs[cv->var_idx] : NULL;
+                if (!js_var_ref_ptr_ok(var_ref)) {
+                    var_ref = NULL;
+                    break;
+                }
                 js_rc(var_ref)->ref_count++;
                 break;
             default:
@@ -18889,7 +18915,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 if (unlikely(JS_IsException(sp[-1])))
                     goto exception;
                 if (opcode == OP_make_var_ref_ref) {
-                    var_ref = var_refs[idx];
+                    var_ref = var_refs ? var_refs[idx] : NULL;
+                    if (!js_var_ref_ptr_ok(var_ref))
+                        goto exception;
                     js_rc(var_ref)->ref_count++;
                 } else {
                     var_ref = get_var_ref(ctx, sf, idx, opcode == OP_make_arg_ref);
