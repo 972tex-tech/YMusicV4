@@ -1,5 +1,5 @@
-// Two flags: audio-only (boolean) vs YouTube quality (tiny/medium/hd720/auto).
-// "zero" is only a player/setQuality wire token; it is not stored as quality.
+// Audio-only: pin Auto (does not interrupt), isAudioOnly=true, rest C decoder.
+// "zero" is only a player/setQuality wire token; stored quality stays Auto.
 
 function g(): Record<string, unknown> {
   return globalThis as unknown as Record<string, unknown>;

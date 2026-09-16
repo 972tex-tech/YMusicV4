@@ -23,6 +23,7 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import {
+  isAudioOnly,
   isLiveVideoRest,
   isProductZero,
   setAudioOnly,
@@ -771,19 +772,19 @@ class Player {
       dumpDrain("setQuality-zero");
       return;
     }
-    /* applyZero pinAuto() makes YouTube call back auto/tiny. That is SABR's
-       cover itag, not a request to decode. Un-resting ran libvpx until seek
-       passed the video buffer. */
-    if (isLiveVideoRest() && (q === "auto" || q === "tiny" || q === "small")) {
-      setYmQuality(q);
+    /* YouTube answers pinAuto with auto/tiny. Stay audio-only; Auto does not interrupt. */
+    if (isAudioOnly() && (q === "auto" || q === "tiny" || q === "small")) {
+      setYmQuality(q === "auto" ? "auto" : ymQuality());
       bindMoviePlayerApi(player);
-      pinPlaybackQuality(moviePlayer(), q) ||
-        pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
-      __mseRestVideo(1);
+      pinPlaybackQuality(moviePlayer(), "auto") ||
+        pinPlaybackQuality(player as unknown as Record<string, unknown>, "auto");
       notifyCatalog();
       return;
     }
-    setAudioOnly(false);
+    if (isAudioOnly()) {
+      setAudioOnly(false);
+      __mseRestVideo(0);
+    }
     if (isLiveVideoRest()) {
       setLiveVideoRest(false);
       __mseRestVideo(0);
@@ -813,10 +814,9 @@ class Player {
       pinPlaybackQuality(player as unknown as Record<string, unknown>, "auto");
   }
 
-  /** Rest the C decoder and keep Auto. SABR then sends 40=1 + fake 144p UMP. */
+  /** Enter audio-only: pin Auto (no interrupt), flag, rest decoder, black. */
   private applyZero(): void {
-    setAudioOnly(false);
-    setLiveVideoRest(true);
+    setAudioOnly(true);
     this.pinAuto();
     __mseRestVideo(1);
   }
@@ -861,11 +861,7 @@ class Player {
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     if (q !== "zero") this.setQuality(q);
-    else {
-      setAudioOnly(false);
-      setLiveVideoRest(true);
-      __mseRestVideo(1);
-    }
+    else this.applyZero();
     const msId = mseMediaSourceId();
     const gen0 = mseSourceBufferGen();
     const ingestAt = captionIngestTick();
