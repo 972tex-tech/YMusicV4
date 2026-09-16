@@ -107,7 +107,7 @@ declare function btoa(data: string): string;
 
 /** Install C Date.now / Math.random wrappers (rec off). BotGuard must bind these. */
 declare function __bgEntropyStart(): void;
-/** Record Date.now / performance.now / Math.random as `d`/`p`/`r` (interpreter eval through asyncSnap). */
+/** Record d/p/r plus `t` Function#toString JSON (eval through asyncSnap). */
 declare function __bgEntropyBegin(): void;
 declare function __bgEntropyEnd(): void;
 declare function __bgEntropyStop(): void;

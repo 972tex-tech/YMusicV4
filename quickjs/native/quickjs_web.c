@@ -588,6 +588,7 @@ typedef struct {
     int rec;
     JSValue date_orig;
     JSValue rand_orig;
+    JSValue tostr_orig;
     char **line;
     int n;
     int cap;
@@ -607,6 +608,7 @@ static Ent *ent_of(JSContext *ctx)
             g_ent[i].ctx = ctx;
             g_ent[i].date_orig = JS_UNDEFINED;
             g_ent[i].rand_orig = JS_UNDEFINED;
+            g_ent[i].tostr_orig = JS_UNDEFINED;
             return &g_ent[i];
         }
     }
@@ -636,6 +638,57 @@ static void ent_line(Ent *e, char tag, const char *fmt, double v)
         return;
     memcpy(s, buf, (size_t)n + 1);
     e->line[e->n++] = s;
+}
+
+static void ent_raw(Ent *e, const char *s)
+{
+    size_t n;
+    char *p;
+    if (!e || !e->rec || !s || e->n >= ENT_CAP)
+        return;
+    if (e->n >= e->cap) {
+        int cap = e->cap ? e->cap * 2 : 1024;
+        char **nl = (char **)realloc(e->line, sizeof(char *) * (size_t)cap);
+        if (!nl)
+            return;
+        e->line = nl;
+        e->cap = cap;
+    }
+    n = strlen(s);
+    p = (char *)malloc(n + 1);
+    if (!p)
+        return;
+    memcpy(p, s, n + 1);
+    e->line[e->n++] = p;
+}
+
+static JSValue js_fn_tostr_rec(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    Ent *e = ent_of(ctx);
+    JSValue v;
+    if (!e || JS_IsUndefined(e->tostr_orig))
+        return JS_EXCEPTION;
+    v = JS_Call(ctx, e->tostr_orig, this_val, argc, argv);
+    if (e->rec && JS_IsString(v)) {
+        JSValue js = JS_JSONStringify(ctx, v, JS_UNDEFINED, JS_UNDEFINED);
+        if (!JS_IsException(js)) {
+            const char *s = JS_ToCString(ctx, js);
+            if (s) {
+                size_t n = strlen(s);
+                char *line = (char *)malloc(n + 3);
+                if (line) {
+                    line[0] = 't';
+                    line[1] = ' ';
+                    memcpy(line + 2, s, n + 1);
+                    ent_raw(e, line);
+                    free(line);
+                }
+                JS_FreeCString(ctx, s);
+            }
+            JS_FreeValue(ctx, js);
+        }
+    }
+    return v;
 }
 
 static double timespec_ms(const struct timespec *ts)
@@ -752,6 +805,15 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
     if (JS_IsUndefined(e->rand_orig)) {
         e->rand_orig = JS_GetPropertyStr(ctx, math, "random");
         JS_SetPropertyStr(ctx, math, "random", JS_NewCFunction(ctx, js_math_random_rec, "random", 0));
+    }
+    if (JS_IsUndefined(e->tostr_orig)) {
+        JSValue fn = JS_GetPropertyStr(ctx, g, "Function");
+        JSValue proto = JS_GetPropertyStr(ctx, fn, "prototype");
+        e->tostr_orig = JS_GetPropertyStr(ctx, proto, "toString");
+        JS_SetPropertyStr(ctx, proto, "toString",
+                          JS_NewCFunction(ctx, js_fn_tostr_rec, "toString", 0));
+        JS_FreeValue(ctx, proto);
+        JS_FreeValue(ctx, fn);
     }
     JS_FreeValue(ctx, date);
     JS_FreeValue(ctx, math);
