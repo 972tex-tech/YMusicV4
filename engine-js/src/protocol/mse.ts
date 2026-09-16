@@ -368,7 +368,6 @@ class SourceBuffer {
     fire(this, "updatestart");
     const self = this;
     try {
-      if (!audio && (isAudioOnly() || isLiveVideoRest())) __mseRestVideo(1);
       const u8 = asU8(data);
       const tsOff = self["timestampOffset"];
       const winStart = self["appendWindowStart"];

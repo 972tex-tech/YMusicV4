@@ -771,18 +771,6 @@ class Player {
       dumpDrain("setQuality-zero");
       return;
     }
-    /* applyZero pinAuto() makes YouTube call back auto/tiny. That is SABR's
-       cover itag, not a request to decode. Un-resting ran libvpx until seek
-       passed the video buffer. */
-    if (isLiveVideoRest() && (q === "auto" || q === "tiny" || q === "small")) {
-      setYmQuality(q);
-      bindMoviePlayerApi(player);
-      pinPlaybackQuality(moviePlayer(), q) ||
-        pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
-      __mseRestVideo(1);
-      notifyCatalog();
-      return;
-    }
     setAudioOnly(false);
     if (isLiveVideoRest()) {
       setLiveVideoRest(false);
