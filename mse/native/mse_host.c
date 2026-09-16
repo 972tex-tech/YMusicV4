@@ -537,6 +537,18 @@ static void *vid_loop(void *arg)
             pthread_mutex_unlock(&h->mu);
             return NULL;
         }
+        /* Audio-only: decoder rested but vf may still hold clusters.
+           video_due would stay true and wait_ns=0 spun a core. */
+        while (!h->released && h->playing && !h->gate && mse_av_video_rested(h->av))
+            pthread_cond_wait(&h->cv, &h->mu);
+        if (h->released) {
+            pthread_mutex_unlock(&h->mu);
+            return NULL;
+        }
+        if (!h->playing || h->gate) {
+            pthread_mutex_unlock(&h->mu);
+            continue;
+        }
         h->vbusy = 1;
         clock = clock_locked(h);
         dur = mse_av_duration(h->av);
@@ -1350,6 +1362,9 @@ void mse_host_rest_video(MseHost *h, int on)
     if (!h)
         return;
     mse_av_rest_video(h->av, on);
+    pthread_mutex_lock(&h->mu);
+    pthread_cond_broadcast(&h->cv);
+    pthread_mutex_unlock(&h->mu);
     if (on)
         show_black(h);
 }

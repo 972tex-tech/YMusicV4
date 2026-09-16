@@ -2640,6 +2640,10 @@ int mse_av_video_due(MseAv *a, double clock)
     if (!a)
         return 0;
     pthread_mutex_lock(&a->mu);
+    if (a->v_rest) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
 #ifdef __ANDROID__
     if (a->mc_hold) {
         due = a->mc_hold_pts_us / 1e6 <= clock + 0.04;
@@ -2678,6 +2682,17 @@ int mse_av_has_video(MseAv *a)
     n = !a->v_rest && a->vf.n > 0;
     pthread_mutex_unlock(&a->mu);
     return n;
+}
+
+int mse_av_video_rested(MseAv *a)
+{
+    int on;
+    if (!a)
+        return 0;
+    pthread_mutex_lock(&a->mu);
+    on = a->v_rest;
+    pthread_mutex_unlock(&a->mu);
+    return on;
 }
 
 static void cfb_clear_sent(Cfb *b)
