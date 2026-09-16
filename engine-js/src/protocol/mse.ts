@@ -686,36 +686,6 @@ function initHtmlMedia(self: HTMLMediaElement): void {
   (self as unknown as Record<string, unknown>)["videoTracks"] = emptyTrackList();
 }
 
-function isMainVideo(el: object): boolean {
-  return (
-    (" " + String((el as { className?: string }).className || "") + " ").indexOf(
-      " html5-main-video ",
-    ) >= 0
-  );
-}
-
-function activateIfMainVideo(el: HTMLMediaElement): void {
-  if (isMainVideo(el)) activeMedia = el;
-}
-
-/** classList.add writes el.className. Watch that so preload/ad nodes do not become active. */
-function bindMainVideoClass(el: HTMLMediaElement): void {
-  const rec = el as unknown as Record<string, unknown>;
-  let cur = String(rec["className"] || "");
-  Object.defineProperty(el, "className", {
-    get: function () {
-      return cur;
-    },
-    set: function (v: unknown) {
-      cur = String(v == null ? "" : v);
-      activateIfMainVideo(el);
-    },
-    enumerable: true,
-    configurable: true,
-  });
-  if (cur) activateIfMainVideo(el);
-}
-
 class HTMLMediaElement {
   ["paused"]!: boolean;
   ["ended"]!: boolean;
@@ -818,7 +788,6 @@ class HTMLMediaElement {
     const ms = blobUrls[url] || null;
     this._src = url;
     mseLog("mse video.src " + url + (ms ? " mse" : " not-mse"));
-    activateIfMainVideo(this);
     if (prev !== ms) {
       /* Chrome: assigning a new media resource detaches the old MediaSource
          (readyState closed, sourceBuffers removed) and the pipeline demuxer
@@ -960,7 +929,14 @@ function assignMediaSrc(el: HTMLMediaElement, url: string): void {
 }
 
 function attachHtmlMedia(el: object): void {
+  const rec0 = el as Record<string, unknown>;
+  if (rec0["_mseAttached"]) {
+    activeMedia = el as HTMLMediaElement;
+    return;
+  }
+  rec0["_mseAttached"] = 1;
   initHtmlMedia(el as HTMLMediaElement);
+  activeMedia = el as HTMLMediaElement;
   const proto = HTMLMediaElement.prototype as unknown as Record<string, unknown>;
   const methods = [
     "play",
@@ -993,7 +969,6 @@ function attachHtmlMedia(el: object): void {
     if (d) Object.defineProperty(el, n, d);
   }
   bindMediaSrc(el as HTMLMediaElement);
-  bindMainVideoClass(el as HTMLMediaElement);
   const rec = el as Record<string, unknown>;
   const protoSet = rec["setAttribute"];
   rec["setAttribute"] = function (n: string, v: unknown) {
@@ -1076,6 +1051,7 @@ export function installMseGlobals(): void {
   glob["HTMLVideoElement"] = HTMLMediaElement;
   glob["HTMLAudioElement"] = HTMLMediaElement;
   (HTMLMediaElement as unknown as Record<string, unknown>)["attach"] = attachHtmlMedia;
+  (HTMLMediaElement as unknown as Record<string, unknown>)["main"] = null;
   const Url = glob["URL"];
   if (typeof Url === "function") {
     const rec = Url as unknown as Record<string, unknown>;

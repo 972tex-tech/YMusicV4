@@ -1787,6 +1787,10 @@
 
   function element(tagName) {
     var t = String(tagName || "div").toUpperCase();
+    if (t === "VIDEO") {
+      var H = globalThis.HTMLMediaElement;
+      if (H && H.main) return H.main;
+    }
     var kids = [];
     var hostName =
       t === "IFRAME"
@@ -1965,6 +1969,7 @@
       typeof globalThis.HTMLMediaElement.attach === "function"
     ) {
       globalThis.HTMLMediaElement.attach(el);
+      if (t === "VIDEO") globalThis.HTMLMediaElement.main = el;
     }
     if (t === "CANVAS") {
       el.width = 300;
