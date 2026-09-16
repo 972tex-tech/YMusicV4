@@ -713,25 +713,51 @@ static JSValue js_fn_tostr_rec(JSContext *ctx, JSValueConst this_val, int argc, 
     return v;
 }
 
+static JSValue js_err_prop_get(JSContext *ctx, JSValueConst this_val, int magic)
+{
+    Ent *e = ent_of(ctx);
+    JSValue v;
+    if (!(e && e->rec))
+        return JS_GetPropertyStr(ctx, this_val, magic ? "\x01bgS" : "\x01bgN");
+    v = JS_GetPropertyStr(ctx, this_val, magic ? "\x01bgS" : "\x01bgN");
+    if (!JS_IsException(v))
+        ent_json(e, ctx, magic ? 'S' : 'N', v);
+    return v;
+}
+
+static void err_install_gets(JSContext *ctx, JSValueConst err)
+{
+    JSValue name, stack, gn, gs;
+    JSAtom an, as;
+    JSCFunctionType ft;
+    name = JS_GetPropertyStr(ctx, err, "name");
+    stack = JS_GetPropertyStr(ctx, err, "stack");
+    JS_DefinePropertyValueStr(ctx, err, "\x01bgN", name, 0);
+    JS_DefinePropertyValueStr(ctx, err, "\x01bgS", stack, 0);
+    an = JS_NewAtom(ctx, "name");
+    as = JS_NewAtom(ctx, "stack");
+    ft.getter_magic = js_err_prop_get;
+    gn = JS_NewCFunction2(ctx, ft.generic, "get name", 0, JS_CFUNC_getter_magic, 0);
+    gs = JS_NewCFunction2(ctx, ft.generic, "get stack", 0, JS_CFUNC_getter_magic, 1);
+    JS_DefinePropertyGetSet(ctx, err, an, gn, JS_UNDEFINED,
+                            JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE);
+    JS_DefinePropertyGetSet(ctx, err, as, gs, JS_UNDEFINED,
+                            JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE);
+    JS_FreeAtom(ctx, an);
+    JS_FreeAtom(ctx, as);
+}
+
 static JSValue js_error_ctor_rec(JSContext *ctx, JSValueConst this_val,
                                  int argc, JSValueConst *argv, int magic)
 {
     Ent *e = ent_of(ctx);
-    JSValue err, name, stack;
+    JSValue err;
     (void)this_val;
     if (!e || magic < 0 || magic >= ERR_CTORS || JS_IsUndefined(e->error_orig[magic]))
         return JS_EXCEPTION;
     err = JS_CallConstructor(ctx, e->error_orig[magic], argc, argv);
-    if (e->rec && !JS_IsException(err)) {
-        name = JS_GetPropertyStr(ctx, err, "name");
-        stack = JS_GetPropertyStr(ctx, err, "stack");
-        if (!JS_IsException(name))
-            ent_json(e, ctx, 'N', name);
-        if (!JS_IsException(stack))
-            ent_json(e, ctx, 'S', stack);
-        JS_FreeValue(ctx, name);
-        JS_FreeValue(ctx, stack);
-    }
+    if (!JS_IsException(err))
+        err_install_gets(ctx, err);
     return err;
 }
 
