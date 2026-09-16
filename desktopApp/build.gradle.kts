@@ -340,13 +340,16 @@ compose.desktop {
         // daemon often runs on a JBR that has neither, so find one; -Pymusic.jdkHome overrides.
         fullJdkHome?.let { javaHome = it }
         // Compose SwingPanel (MSE blit) needs AWT internals opened on the JBR/JDK.
-        // Heap 256m: packaged HotSpot otherwise picks ~1/4 RAM (16g on a 64g Mac).
-        // Skia GPU cache default is 256m — one idle atlas was a 113m CGImage.
+        // Heap: without these, packaged HotSpot picks ~1/4 RAM (16g here) and
+        // InitialHeapSize=Xmx. Live use was ~50–97m objects / ~38m JIT code.
+        // Skia GPU cache default is 256m.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+            "-Xms96m",
             "-Xmx256m",
+            "-XX:ReservedCodeCacheSize=64m",
             "-Dskiko.gpu.resourceCacheLimit=64M",
         )
         // Release packaging (packageReleaseDmg etc.) runs ProGuard SHRINK-ONLY: no obfuscation, no
