@@ -88,22 +88,6 @@ function pinPlaybackQuality(host: Record<string, unknown> | null, q: string): bo
   return false;
 }
 
-function wrapGetPlaybackQuality(host: Record<string, unknown> | null): void {
-  if (!host || typeof host["getPlaybackQuality"] !== "function") return;
-  const orig = host["getPlaybackQuality"] as (...a: unknown[]) => unknown;
-  if ((orig as { __ym?: boolean }).__ym) return;
-  const wrapped = function (this: unknown) {
-    if (isAudioOnly()) return "auto";
-    try {
-      const q = orig.call(this);
-      if (q != null && String(q) !== "") return q;
-    } catch (_e) {}
-    return "auto";
-  };
-  (wrapped as { __ym?: boolean }).__ym = true;
-  host["getPlaybackQuality"] = wrapped;
-}
-
 let pictureW = 0;
 let pictureH = 0;
 
@@ -168,8 +152,6 @@ function bindMoviePlayerApi(app: YtApp | null): void {
   if (!el || !app) return;
   bindPictureSize(el);
   bindPlaybackQualityChange(el);
-  wrapGetPlaybackQuality(el);
-  wrapGetPlaybackQuality(app as unknown as Record<string, unknown>);
   if (typeof el["getPlaybackQuality"] === "function") return;
   const rec = app as unknown as Record<string, unknown>;
   for (const k in rec) {
@@ -182,8 +164,6 @@ function bindMoviePlayerApi(app: YtApp | null): void {
       for (const name in y) {
         if (Object.prototype.hasOwnProperty.call(y, name)) el[name] = y[name];
       }
-      wrapGetPlaybackQuality(el);
-      wrapGetPlaybackQuality(y);
       return;
     } catch (_e) {}
   }
