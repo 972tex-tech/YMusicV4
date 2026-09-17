@@ -274,7 +274,7 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
         var fpsCount = sink.frameCount
         var fpsMark = TimeSource.Monotonic.markNow()
         while (true) {
-            val n = sink.frameCount
+            val n = surface.presentedFrames().takeIf { it > 0 } ?: sink.frameCount
             if (n != frames) {
                 if (frames == 0 && n > 0) {
                     println("mse first frame ${sink.frameW}x${sink.frameH}")

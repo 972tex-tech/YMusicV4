@@ -32,7 +32,7 @@ actual class MseVideoSurface {
     }
 
     /** Native presented video frames (`mse_host_frames`). */
-    fun presentedFrames(): Int = if (host == 0L) 0 else MseHostNative.frames(host)
+    actual fun presentedFrames(): Int = if (host == 0L) 0 else MseHostNative.frames(host)
 
     /** DAC / pull-audio sample frames (`mse_host_samples_played`). */
     fun samplesPlayed(): Long = if (host == 0L) 0L else MseHostNative.samplesPlayed(host)

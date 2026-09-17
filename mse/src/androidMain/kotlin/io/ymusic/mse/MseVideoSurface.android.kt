@@ -7,4 +7,6 @@ actual class MseVideoSurface(val surface: Surface? = null) {
     var host: Long = 0L
 
     actual fun setBlitSize(width: Int, height: Int) = Unit
+
+    actual fun presentedFrames(): Int = if (host == 0L) 0 else MseHostNative.frames(host)
 }
