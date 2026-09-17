@@ -2767,7 +2767,7 @@ static void vf_resync_key(MseAv *a, double t)
    it is the 0fps hole at clock 18s/25s (log28 20:39 skip-stale 13.847→19.019). */
 static int vf_skip_stale(MseAv *a, double clock)
 {
-    const double stale = 0.20;
+    const double stale = 0.50;
     const double dead = 1.50;
     size_t i, next;
     double kpts, npts;
@@ -3516,7 +3516,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     }
     {
-    for (i = 0; i < 12; i++) {
+    int late_skips = 0;
+    for (i = 0; i < 96; i++) {
         if (!a->vdec)
             break;
         got = avcodec_receive_frame(a->vdec, frame);
@@ -3533,31 +3534,16 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             /* show_late: decode the GOP but only present near the playhead.
                Showing pts=1890 at clock=1895 after seek is the smashed picture. */
             if (p < clock - late && frame->pts != AV_NOPTS_VALUE &&
-                !(a->show_late && p >= clock - 0.35)) {
+                !(a->show_late && p >= clock - 0.35) &&
+                !(late_skips > 0 && p >= clock - 1.0)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 av_frame_unref(frame);
-                /* Do not decode the rest of a late GOP (8× 4K libvpx per
-                   pull → 400% CPU). Jump to the last RAP at/before clock. */
-                {
-                    size_t k, best = a->vf.n;
-                    for (k = a->vf.rd; k < a->vf.n; k++) {
-                        if (a->vf.f[k].pts > clock + 0.04)
-                            break;
-                        if (coded_is_rap(a, &a->vf.f[k]))
-                            best = k;
-                    }
-                    if (best < a->vf.n && best > a->vf.rd) {
-                        size_t j;
-                        for (j = a->vf.rd; j < best; j++)
-                            a->vf.f[j].sent = 1;
-                        a->vf.rd = best;
-                        a->need_rap[0] = 1;
-                        if (a->vdec)
-                            avcodec_flush_buffers(a->vdec);
-                    }
-                }
-                break;
+                /* 4K libvpx sits ~0.5s behind. Breaking here never reached
+                   the 1s catch-up present → 0fps at clock 18s/25s (log28 20:47). */
+                if (late_skips++ < 8)
+                    i--;
+                continue;
             }
             if (!a->v_seen_idr) {
                 av_frame_unref(frame);
