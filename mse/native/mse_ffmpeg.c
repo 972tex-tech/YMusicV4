@@ -2717,25 +2717,16 @@ static void cfb_seek_rd(Cfb *b, double t)
 /* Last keyframe with pts <= t, but only if leftover actually covers t.
  * A RAP in an older island (pts << t) would decode that island and the
  * picture jumps to the buffered edge before SABR fills the seek. */
-static size_t cfb_key_covering(const Cfb *b, double t, int *covered)
+static void cfb_seek_rd_key(Cfb *b, double t)
 {
     size_t i, last_key = b->n;
-    int ok = 0;
+    int covered = 0;
     for (i = 0; i < b->n; i++) {
         if (b->f[i].key && b->f[i].pts <= t + 0.05)
             last_key = i;
         if (b->f[i].pts <= t + 0.05 && b->f[i].pts + b->f[i].dur >= t - 0.05)
-            ok = 1;
+            covered = 1;
     }
-    if (covered)
-        *covered = ok;
-    return last_key;
-}
-
-static void cfb_seek_rd_key(Cfb *b, double t)
-{
-    int covered = 0;
-    size_t last_key = cfb_key_covering(b, t, &covered);
     if (!covered || last_key >= b->n) {
         /* No key at/before t: do not start on a P-frame (VP9 SIGILL after -10s). */
         b->rd = b->n;
@@ -2814,35 +2805,6 @@ void mse_av_seek(MseAv *a, double seconds)
     av_lock_all(a);
     if (a->swr)
         swr_free(&a->swr);
-    {
-        int covered = 0;
-        size_t i, key = cfb_key_covering(&a->vf, seconds, &covered);
-        size_t next_key = a->vf.n;
-        int have_dec = a->vdec != NULL;
-#ifdef __APPLE__
-        have_dec = have_dec || a->vt_dec != NULL;
-#endif
-#ifdef __ANDROID__
-        have_dec = have_dec || a->mc != NULL;
-#endif
-        if (covered && key < a->vf.n) {
-            for (i = key + 1; i < a->vf.n; i++) {
-                if (a->vf.f[i].key) {
-                    next_key = i;
-                    break;
-                }
-            }
-            /* Same GOP: YouTube sets currentTime to the key then to A.
-               Flushing replays A-0.2s→A. */
-            if (have_dec && a->vf.rd >= key && a->vf.rd <= next_key) {
-                a->a_sent = seconds - 0.05;
-                a->v_sent = seconds - 0.05;
-                cfb_seek_rd(&a->af, seconds);
-                av_unlock_all(a);
-                return;
-            }
-        }
-    }
     cfb_clear_sent(&a->af);
     cfb_clear_sent(&a->vf);
     cfb_seek_rd(&a->af, seconds);
