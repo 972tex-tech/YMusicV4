@@ -126,7 +126,10 @@ static double clock_locked(MseHost *h)
        buffered edge, then stalled (iOS) until leftover grew. */
     if (have)
         out = (hold > last + 0.25) || (hold + 0.25 < first);
-    if (out) {
+    if (out || !have) {
+        /* Empty leftover, or hold outside leftover: do not run the gold
+           clock. Chrome currentTime stays at the seek until buffered
+           covers it (log34: clock 0→6s with mse=[a: v:]). */
         if (h->playing)
             h->origin_ns = now_ns();
         t = hold;
