@@ -271,58 +271,6 @@ function sbRemoved(sb: SourceBuffer): boolean {
   return !p || p["sourceBuffers"].indexOf(sb) < 0;
 }
 
-function msAttached(ms: MediaSource | null): boolean {
-  return !!ms && !!activeMedia && activeMedia._ms === ms;
-}
-
-type PendingAppend = {
-  u8: Uint8Array;
-  tsOff: number;
-  winStart: number;
-  winEnd: number;
-};
-
-function feedC(
-  sb: SourceBuffer,
-  u8: Uint8Array,
-  tsOff: number,
-  winStart: number,
-  winEnd: number,
-): void {
-  const audio = audioFlag(sb["mimeType"]);
-  if (!audio && u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46) {
-    mseLog(
-      "mse append fake-cover a=0 kind=" + String.fromCharCode(u8[3]!) + " bytes=" + u8.length,
-    );
-  }
-  __mseAppend(audio, u8, tsOff, winStart, winEnd);
-  if (__mseCurrentTime() < 1) {
-    const br = __mseBuffered(audio);
-    if (br && br.length >= 2 && br[0]! > 60) {
-      mseLog("mse live-join clock " + br[0]);
-      __mseSetCurrentTime(br[0]!);
-    }
-  }
-  if (audio) drainCalls.audio++;
-  else drainCalls.video++;
-  logAppend(audio, u8.length, sb["mimeType"], tsOff, winStart, winEnd);
-}
-
-function flushPending(ms: MediaSource): void {
-  const bufs = ms["sourceBuffers"];
-  for (let i = 0; i < bufs.length; i++) {
-    const sb = bufs[i]!;
-    const q = sb._pending;
-    if (!q || !q.length) continue;
-    sb._pending = [];
-    mseLog("mse flush pending n=" + q.length + " mime=" + sb["mimeType"]);
-    for (let j = 0; j < q.length; j++) {
-      const p = q[j]!;
-      feedC(sb, p.u8, p.tsOff, p.winStart, p.winEnd);
-    }
-  }
-}
-
 function completeUpdate(sb: SourceBuffer): void {
   Promise.resolve().then(function () {
     sb["updating"] = false;
@@ -341,7 +289,6 @@ class SourceBuffer {
   ["appendWindowStart"]: number;
   ["appendWindowEnd"]: number;
   _ms: MediaSource | null;
-  _pending: PendingAppend[];
   _listeners: Record<string, Listener[]>;
   /* One TimeRanges object for the life of the SB. base.js HS(!0) caches
      this by reference; start/end must read current leftover. */
@@ -355,7 +302,6 @@ class SourceBuffer {
     this["appendWindowStart"] = 0;
     this["appendWindowEnd"] = Infinity;
     this._ms = ms;
-    this._pending = [];
     this._listeners = {};
     this._liveBuffered = null;
   }
@@ -383,7 +329,6 @@ class SourceBuffer {
   }
 
   _bufferedPairs(): Array<[number, number]> {
-    if (!msAttached(this._ms)) return [];
     const r = __mseBuffered(audioFlag(this["mimeType"]));
     const ranges: Array<[number, number]> = [];
     if (r) {
@@ -414,7 +359,7 @@ class SourceBuffer {
     const audio = audioFlag(next);
     logChangeType(audio, prev, next);
     this["mimeType"] = next;
-    if (msAttached(parent)) __mseChangeType(audio);
+    __mseChangeType(audio);
   }
 
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
@@ -433,17 +378,22 @@ class SourceBuffer {
       const tsOff = self["timestampOffset"];
       const winStart = self["appendWindowStart"];
       const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
-      if (!msAttached(self._ms)) {
-        self._pending.push({
-          u8: u8.slice(),
-          tsOff,
-          winStart,
-          winEnd,
-        });
-        if (MSE_DEBUG) mseLog("mse append queue a=" + audio + " bytes=" + u8.length);
-      } else {
-        feedC(self, u8, tsOff, winStart, winEnd);
+      if (!audio && u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46) {
+        mseLog(
+          "mse append fake-cover a=0 kind=" + String.fromCharCode(u8[3]!) + " bytes=" + u8.length,
+        );
       }
+      __mseAppend(audio, u8, tsOff, winStart, winEnd);
+      if (__mseCurrentTime() < 1) {
+        const br = __mseBuffered(audio);
+        if (br && br.length >= 2 && br[0]! > 60) {
+          mseLog("mse live-join clock " + br[0]);
+          __mseSetCurrentTime(br[0]!);
+        }
+      }
+      if (audio) drainCalls.audio++;
+      else drainCalls.video++;
+      logAppend(audio, u8.length, self["mimeType"], tsOff, winStart, winEnd);
     } catch (e) {
       drainCalls.throw++;
       self["updating"] = false;
@@ -462,7 +412,7 @@ class SourceBuffer {
     const self = this;
     try {
       const audio = audioFlag(this["mimeType"]);
-      if (msAttached(self._ms)) __mseRemove(audio, start, end);
+      __mseRemove(audio, start, end);
       drainCalls.remove++;
       mseLog("mse remove a=" + audio + " " + start + ".." + end);
     } catch (e) {
@@ -482,8 +432,7 @@ class SourceBuffer {
     const wasUpdating = this["updating"];
     drainCalls.abort++;
     mseLog("mse abort a=" + audio + " upd=" + (wasUpdating ? "1" : "0"));
-    this._pending = [];
-    if (msAttached(this._ms)) __mseAbort(audio);
+    __mseAbort(audio);
     this["updating"] = false;
     /* MSE: abort/updateend only if an update was in progress. Firing updateend while
      * already in updateend (updating=false) re-enters YouTube's listener until the stack blows. */
@@ -607,9 +556,7 @@ class MediaSource {
   ["addSourceBuffer"](mime: string): SourceBuffer {
     if (this["readyState"] !== "open") {
       mseLog("mse addSourceBuffer throw closed mime=" + mime);
-      const err = new Error("MediaSource is not open");
-      err.name = "InvalidStateError";
-      throw err;
+      throw invalidState("MediaSource.addSourceBuffer: not open");
     }
     mseLog("mse addSourceBuffer " + mime);
     sbGen++;
@@ -627,6 +574,8 @@ class MediaSource {
   }
 
   ["endOfStream"](): void {
+    if (this["readyState"] !== "open")
+      throw invalidState("MediaSource.endOfStream: not open");
     this["readyState"] = "ended";
   }
 
@@ -660,7 +609,6 @@ function detachMediaSource(ms: MediaSource): void {
   const bufs = ms["sourceBuffers"].slice();
   for (let i = 0; i < bufs.length; i++) {
     bufs[i]!["updating"] = false;
-    bufs[i]!._pending = [];
     bufs[i]!._ms = null;
   }
   ms["sourceBuffers"].length = 0;
@@ -852,13 +800,9 @@ class HTMLMediaElement {
       if (prev) detachMediaSource(prev);
       resetPipeline();
       this._ms = ms;
-      if (ms) {
-        if (ms["readyState"] === "closed") notifySourceOpen(ms);
-        flushPending(ms);
-      }
+      if (ms && ms["readyState"] === "closed") notifySourceOpen(ms);
     } else {
       this._ms = ms;
-      if (ms) flushPending(ms);
     }
     this["readyState"] = 1;
     const self = this;
@@ -1059,12 +1003,10 @@ export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null):
   if (rec) blobUrls[url] = rec;
   mseLog("mse createObjectURL " + url);
   const el = activeMedia;
-  /* First load: YouTube may skip video.src. Playing: leave src on A;
-     still sourceopen B so preload can addSourceBuffer + queue appends. */
+  /* First load: YouTube may skip video.src. Do not steal a playing
+     element — that would detach leftover. Unattached MS stays closed. */
   if (el && rec && rec !== el._ms && !(el._ms && el._ms["sourceBuffers"].length > 0)) {
     assignMediaSrc(el, url);
-  } else if (rec && (!el || rec !== el._ms)) {
-    notifySourceOpen(rec);
   }
   return url;
 }
