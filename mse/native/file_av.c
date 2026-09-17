@@ -978,6 +978,8 @@ static int present_vt(FileAv *p, AVFrame *fr)
             p->on_frame(p->user, fr->width, fr->height, NULL);
         return 0;
     }
+    if (p->vt_layer)
+        return -1;
     if (mse_vt_blit_size(fr->data[3], p->blit_w, p->blit_h, &w, &h) != 0)
         return -1;
     n = w * h * 4;
@@ -1020,6 +1022,8 @@ static int present_sw_vt(FileAv *p, AVFrame *fr)
             p->on_frame(p->user, fr->width, fr->height, NULL);
         return 0;
     }
+    if (p->vt_layer)
+        return -1;
     if (mse_vt_blit_fit(fr->width, fr->height, p->blit_w, p->blit_h, &w, &h) != 0)
         return -1;
     n = w * h * 4;
@@ -1059,6 +1063,8 @@ static int present_video(FileAv *p, AVFrame *fr)
 #ifdef __APPLE__
     if (present_sw_vt(p, fr) == 0)
         return 0;
+    if (p->vt_layer)
+        return -1;
 #endif
     fr->colorspace = frame_cs(p, fr);
     fr->color_range = frame_range(p, fr);

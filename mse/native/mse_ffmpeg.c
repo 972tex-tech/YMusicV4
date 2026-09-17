@@ -2886,6 +2886,7 @@ static unsigned sw_cv_fmt(enum AVPixelFormat f);
 
 static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 {
+    int r;
 #ifdef __APPLE__
     if (a->vt_layer && frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3] &&
         a->vt_fail_id != (a->vdec ? a->vdec->codec_id : (enum AVCodecID)0)) {
@@ -2896,8 +2897,7 @@ static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *
             return 0;
         }
     }
-    /* Software VP9: show YUV at decode size; the layer ResizeAspect-scales
-       on the GPU. CPU vImage to the fullscreen hole was ~500%. */
+    /* Layer ResizeAspect-scales. Never vImage/sws to the hole (fullscreen ~500%). */
     if (a->vt_layer) {
         unsigned fmt = sw_cv_fmt((enum AVPixelFormat)frame->format);
         if (fmt &&
@@ -2908,17 +2908,34 @@ static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *
             *h = frame->height;
             return 0;
         }
-    }
-#endif
-    if (scale_bgra(a, frame, bgra, w, h) != 0)
-        return -1;
-#ifdef __APPLE__
-    if (a->vt_layer && *bgra && mse_vt_show_bgra(a->vt_layer, *bgra, *w, *h) == 0) {
-        *bgra = NULL;
+        {
+            int bw = a->blit_w, bh = a->blit_h;
+            a->blit_w = a->blit_h = 0;
+            r = scale_bgra(a, frame, bgra, w, h);
+            a->blit_w = bw;
+            a->blit_h = bh;
+        }
+        if (r != 0)
+            return r;
+        if (*bgra && mse_vt_show_bgra(a->vt_layer, *bgra, *w, *h) == 0) {
+            *bgra = NULL;
+            return 0;
+        }
         return 0;
     }
 #endif
-    return 0;
+#ifdef __ANDROID__
+    /* TextureView/SurfaceView scale; don't sws to the view size. */
+    if (a->mc_win) {
+        int bw = a->blit_w, bh = a->blit_h;
+        a->blit_w = a->blit_h = 0;
+        r = scale_bgra(a, frame, bgra, w, h);
+        a->blit_w = bw;
+        a->blit_h = bh;
+        return r;
+    }
+#endif
+    return scale_bgra(a, frame, bgra, w, h);
 }
 
 static uint8_t *sws_scratch(MseAv *a, size_t n)
@@ -3240,6 +3257,8 @@ static int present_cvpb(MseAv *a, void *pb, uint8_t **bgra, int *w, int *h)
         *h = src_h;
         return 0;
     }
+    if (a->vt_layer)
+        return -1;
     {
         int tw, th;
         uint8_t *tdst;
