@@ -237,18 +237,26 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
     MseHost *h = (MseHost *)user;
     int n = 0;
     int cap;
+    int live;
     pthread_mutex_lock(&h->mu);
     cap = h->aq_buf_bytes > 0 ? h->aq_buf_bytes : (int)buf->mAudioDataBytesCapacity;
     if (cap > (int)buf->mAudioDataBytesCapacity)
         cap = (int)buf->mAudioDataBytesCapacity;
-    if (!h->released && !h->flushing && h->playing && h->ring)
+    /* Drop the buffer during reset/stop. Enqueue after Flush put the previous
+       video's PCM back on the queue (~0.5s after the next track). */
+    if (h->released || h->flushing || !h->aq) {
+        pthread_mutex_unlock(&h->mu);
+        return;
+    }
+    live = h->playing && h->ring;
+    if (live)
         n = ring_read(h, (uint8_t *)buf->mAudioData, cap);
+    if (h->flushing || !h->playing)
+        n = 0;
     if (n > 0 && h->rate > 0 && h->ch > 0)
         h->samples_played += n / frame_bytes(h);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
-    /* Do not insert silence into a short read — that clicks while 4K is
-       at 60fps (log28 21:20). Only pad when the ring is empty. */
     if (n <= 0) {
         memset(buf->mAudioData, 0, (size_t)cap);
         n = cap;
@@ -363,8 +371,14 @@ static void sl_callback(SLAndroidSimpleBufferQueueItf bq, void *user)
     idx = h->sl_i;
     h->sl_i = (idx + 1) % h->sl_nbufs;
     dst = h->sl_bufs + idx * cap;
-    if (!h->released && !h->flushing && h->playing && h->ring)
+    if (h->released || h->flushing || !h->sl_bq) {
+        pthread_mutex_unlock(&h->mu);
+        return;
+    }
+    if (h->playing && h->ring)
         n = ring_read(h, dst, cap);
+    if (h->flushing || !h->playing)
+        n = 0;
     if (n > 0 && h->rate > 0 && h->ch > 0)
         h->samples_played += n / frame_bytes(h);
     if (n <= 0) {
@@ -754,6 +768,34 @@ MseHost *mse_host_create(void)
 }
 
 #ifdef MSE_DAC
+#ifdef __APPLE__
+/* video.src swap: Pause+Flush left in-flight callbacks free to Enqueue old PCM. */
+static void aq_kill(MseHost *h)
+{
+    AudioQueueRef aq;
+    uint8_t *ring;
+    pthread_mutex_lock(&h->mu);
+    h->flushing = 1;
+    h->aq_started = 0;
+    aq = h->aq;
+    h->aq = NULL;
+    ring = h->ring;
+    h->ring = NULL;
+    h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
+    pthread_cond_broadcast(&h->cv);
+    pthread_mutex_unlock(&h->mu);
+    if (aq) {
+        AudioQueueStop(aq, true);
+        AudioQueueDispose(aq, true);
+    }
+    free(ring);
+    pthread_mutex_lock(&h->mu);
+    h->flushing = 0;
+    pthread_cond_broadcast(&h->cv);
+    pthread_mutex_unlock(&h->mu);
+}
+#endif
+
 static void aq_pause_flush(MseHost *h)
 {
 #ifdef __APPLE__
@@ -1069,7 +1111,21 @@ void mse_host_reset(MseHost *h)
     if (!h)
         return;
 #ifdef MSE_DAC
-    aq_pause_flush(h);
+#ifdef __APPLE__
+    aq_kill(h);
+#endif
+#ifdef __ANDROID__
+    pthread_mutex_lock(&h->mu);
+    h->playing = 0;
+    h->flushing = 1;
+    h->aq_started = 0;
+    sl_destroy(h);
+    free(h->ring);
+    h->ring = NULL;
+    h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
+    h->flushing = 0;
+    pthread_mutex_unlock(&h->mu);
+#endif
 #endif
     pthread_mutex_lock(&h->mu);
     h->playing = 0;
