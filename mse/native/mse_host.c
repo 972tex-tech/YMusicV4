@@ -606,17 +606,14 @@ static void *vid_loop(void *arg)
             h->on_prog(h->user, clock, dur, w, ht);
         {
             struct timespec sl;
-            int wait_ns = 4 * 1000 * 1000;
-            pthread_mutex_lock(&h->mu);
-            if (h->vw > 0 && (h->vpts < 0 || clock - h->vpts > 0.12) &&
-                mse_av_video_due(h->av, clock))
-                wait_ns = 0;
-            pthread_mutex_unlock(&h->mu);
-            if (wait_ns > 0) {
-                sl.tv_sec = 0;
-                sl.tv_nsec = wait_ns;
-                nanosleep(&sl, NULL);
-            }
+            /* Never wait_ns=0: software 4K60 is always >0.12s behind, so
+               that spun decode+sws as fast as the CPU could (400% vs
+               Chrome ~200% on the same libvpx, no VP9 HW). pull_video
+               already drops late frames; cap presents near vsync. */
+            int wait_ns = show ? 12 * 1000 * 1000 : 2 * 1000 * 1000;
+            sl.tv_sec = 0;
+            sl.tv_nsec = wait_ns;
+            nanosleep(&sl, NULL);
         }
     }
 }
