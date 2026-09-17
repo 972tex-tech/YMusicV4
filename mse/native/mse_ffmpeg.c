@@ -2844,6 +2844,25 @@ void mse_av_seek(MseAv *a, double seconds)
     cfb_clear_sent(&a->af);
     cfb_clear_sent(&a->vf);
     cfb_seek_rd(&a->af, seconds);
+    {
+        int acov = 0;
+        size_t i;
+        for (i = 0; i < a->af.n; i++) {
+            if (a->af.f[i].pts <= seconds + 0.05 &&
+                a->af.f[i].pts + a->af.f[i].dur >= seconds - 0.05)
+                acov = 1;
+        }
+        /* Far seek: audio leftover is other islands (log34 t=67.8 with
+           a:0–20s,110–190s). Keep them and the WebM parser eats the new
+           cluster as a continuation → Unknown-sized element, smashed PCM. */
+        if (!acov) {
+            cfb_free(&a->af);
+            a->pend_n[1] = 0;
+            a->cluster_tc_n[1] = 0;
+            if (a->adec)
+                avcodec_flush_buffers(a->adec);
+        }
+    }
     cfb_seek_rd_key(&a->vf, seconds);
     vlog("seek t=%.3f af=%zu vf=%zu ard=%zu vrd=%zu vkey=%.3f", seconds, a->af.n, a->vf.n,
          a->af.rd, a->vf.rd, a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
