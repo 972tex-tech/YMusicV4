@@ -733,18 +733,11 @@ static void *dec_loop(void *arg)
 
         {
             struct timespec sl;
-            int wait_ns = 4 * 1000 * 1000;
-            pthread_mutex_lock(&h->mu);
-#ifdef MSE_DAC
-            if (ring_ms(h) < 160 && mse_av_audio_pending(h->av))
-                wait_ns = 0;
-#endif
-            pthread_mutex_unlock(&h->mu);
-            if (wait_ns > 0) {
-                sl.tv_sec = 0;
-                sl.tv_nsec = wait_ns;
-                nanosleep(&sl, NULL);
-            }
+            /* Never 0: pull_audio returning 0 with packets still pending
+               was while(true){}. 2ms is plenty for DAC fill. */
+            sl.tv_sec = 0;
+            sl.tv_nsec = 2 * 1000 * 1000;
+            nanosleep(&sl, NULL);
         }
     }
 }
