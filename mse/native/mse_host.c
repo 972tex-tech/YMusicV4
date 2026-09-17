@@ -1083,11 +1083,34 @@ void mse_host_pause(MseHost *h)
 
 static void seek_common(MseHost *h, double seconds)
 {
+    double prev;
 #if MSE_DEBUG
     mse_logf("mse seek t=%.3f\n", seconds);
 #endif
+    pthread_mutex_lock(&h->mu);
+    prev = h->playing ? clock_locked(h) : (h->hold < 0 ? 0 : h->hold);
+    pthread_mutex_unlock(&h->mu);
 #ifdef MSE_DAC
-    aq_pause_flush(h);
+    /* Far seek: Pause+Flush leaves the same AudioQueue; in-flight buffers
+       are the previous playhead (~0.5s smash after a few jumps). */
+    if (seconds > prev + 1.0 || prev > seconds + 1.0) {
+#ifdef __APPLE__
+        aq_kill(h);
+#endif
+#ifdef __ANDROID__
+        pthread_mutex_lock(&h->mu);
+        h->flushing = 1;
+        h->aq_started = 0;
+        sl_destroy(h);
+        free(h->ring);
+        h->ring = NULL;
+        h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
+        h->flushing = 0;
+        pthread_mutex_unlock(&h->mu);
+#endif
+    } else {
+        aq_pause_flush(h);
+    }
 #endif
     pthread_mutex_lock(&h->mu);
     h->gate = 1;

@@ -2812,6 +2812,8 @@ void mse_av_seek(MseAv *a, double seconds)
     if (!a)
         return;
     av_lock_all(a);
+    if (a->swr)
+        swr_free(&a->swr);
     {
         int covered = 0;
         size_t i, key = cfb_key_covering(&a->vf, seconds, &covered);
