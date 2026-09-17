@@ -266,6 +266,11 @@ function notSupported(msg: string): Error {
   return domException("NotSupportedError", msg, 9);
 }
 
+function sbRemoved(sb: SourceBuffer): boolean {
+  const p = sb._ms;
+  return !p || p["sourceBuffers"].indexOf(sb) < 0;
+}
+
 function completeUpdate(sb: SourceBuffer): void {
   Promise.resolve().then(function () {
     sb["updating"] = false;
@@ -340,7 +345,7 @@ class SourceBuffer {
     const next = String(mime || "");
     if (!next) throw new TypeError("The type provided is empty");
     const parent = this._ms;
-    if (!parent || parent["sourceBuffers"].indexOf(this) < 0)
+    if (sbRemoved(this) || !parent)
       throw invalidState("SourceBuffer.changeType: removed");
     if (this["updating"]) throw invalidState("SourceBuffer.changeType: updating");
     if (!MediaSource["isTypeSupported"](next))
@@ -358,6 +363,7 @@ class SourceBuffer {
   }
 
   ["appendBuffer"](data: ArrayBuffer | ArrayBufferView): void {
+    if (sbRemoved(this)) throw invalidState("SourceBuffer.appendBuffer: removed");
     const audio = audioFlag(this["mimeType"]);
     if (this["updating"]) {
       drainCalls.throw++;
@@ -402,6 +408,7 @@ class SourceBuffer {
   }
 
   ["remove"](start: number, end: number): void {
+    if (sbRemoved(this)) throw invalidState("SourceBuffer.remove: removed");
     if (this["updating"]) throw invalidState("SourceBuffer.remove: updating");
     this["updating"] = true;
     fire(this, "updatestart");
@@ -423,6 +430,7 @@ class SourceBuffer {
   }
 
   ["abort"](): void {
+    if (sbRemoved(this)) throw invalidState("SourceBuffer.abort: removed");
     const audio = audioFlag(this["mimeType"]);
     const wasUpdating = this["updating"];
     drainCalls.abort++;
