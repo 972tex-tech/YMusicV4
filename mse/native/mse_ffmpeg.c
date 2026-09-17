@@ -2880,6 +2880,9 @@ void mse_av_seek(MseAv *a, double seconds)
 }
 
 static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h);
+#ifdef __APPLE__
+static unsigned sw_cv_fmt(enum AVPixelFormat f);
+#endif
 
 static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 {
@@ -2887,6 +2890,19 @@ static int present_frame(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *
     if (a->vt_layer && frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3] &&
         a->vt_fail_id != (a->vdec ? a->vdec->codec_id : (enum AVCodecID)0)) {
         if (mse_vt_show(a->vt_layer, frame->data[3], frame->width, frame->height) == 0) {
+            *bgra = NULL;
+            *w = frame->width;
+            *h = frame->height;
+            return 0;
+        }
+    }
+    /* Software VP9: show YUV at decode size; the layer ResizeAspect-scales
+       on the GPU. CPU vImage to the fullscreen hole was ~500%. */
+    if (a->vt_layer) {
+        unsigned fmt = sw_cv_fmt((enum AVPixelFormat)frame->format);
+        if (fmt &&
+            mse_vt_show_sw(a->vt_layer, fmt, (const uint8_t *const *)frame->data, frame->linesize,
+                           frame->width, frame->height) == 0) {
             *bgra = NULL;
             *w = frame->width;
             *h = frame->height;
