@@ -669,6 +669,25 @@ internal const val SwipeSwitchDurationMs = 220
 internal val NavDrawerEdgeReserve = 24.dp
 internal val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
+/** Finger travel that commits a Now Playing dismiss (heavier than the tab-switch 56.dp). */
+private val DismissDragDistance = 120.dp
+private val DismissDragBand = 10.dp
+/** Per 10.dp of finger: 10px, then 5, 3, 2, … — later travel is heavier. */
+private val DismissDragRates = floatArrayOf(1f, 0.5f, 0.3f, 0.2f, 0.14f, 0.1f, 0.07f, 0.05f)
+
+private fun weightedDismissPeek(rawPx: Float, bandPx: Float): Float {
+    if (rawPx <= 0f || bandPx <= 0f) return 0f
+    var left = rawPx
+    var peek = 0f
+    for (rate in DismissDragRates) {
+        val take = minOf(left, bandPx)
+        peek += take * rate
+        left -= take
+        if (left <= 0f) return peek
+    }
+    return peek + left * DismissDragRates.last()
+}
+
 /**
  * Same rubber-band as [SwipeTabSwitcher], vertical: the page peeks down under the finger, then
  * either springs back or slides off and [onDismiss]s. Only a real touch drag counts — a flying
@@ -686,9 +705,11 @@ internal fun SwipeDownDismissBox(
     val density = LocalDensity.current
     val drag = remember { DragDown(peek, scope) }
     drag.onDismiss = onDismiss
-    drag.maxPeek = with(density) { SwipeSwitchPeek.toPx() }
+    drag.bandPx = with(density) { DismissDragBand.toPx() }
+    drag.commitPx = with(density) { DismissDragDistance.toPx() }
     val peekY = peek.value
-    val topShadow = (peekY / drag.maxPeek.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    val fullPeek = weightedDismissPeek(drag.commitPx, drag.bandPx).coerceAtLeast(1f)
+    val topShadow = (peekY / fullPeek).coerceIn(0f, 1f)
     val shadowH = with(density) { 28.dp.roundToPx() }
 
     Box(
@@ -750,22 +771,22 @@ private class DragDown(
 ) {
     var raw = 0f
     var heightPx = 0f
-    var maxPeek = 0f
+    var bandPx = 0f
+    var commitPx = 0f
     var onDismiss: () -> Unit = {}
 
     fun report(deltaY: Float) {
         raw = (raw + deltaY).coerceAtLeast(0f)
-        val target = (raw * SwipeSwitchResist).coerceIn(0f, maxPeek)
+        val target = weightedDismissPeek(raw, bandPx)
         scope.launch { peek.snapTo(target) }
     }
 
-    /** Commit only when the rubber-band is fully extended — no flick shortcut. */
+    /** Commit only after the full finger distance — no flick shortcut. */
     fun settle() {
-        val need = if (SwipeSwitchResist > 0f) maxPeek / SwipeSwitchResist else maxPeek
-        val commit = raw >= need
+        val commit = raw >= commitPx
         scope.launch {
             if (commit) {
-                val end = heightPx.takeIf { it > 0f } ?: (maxPeek * 8f)
+                val end = heightPx.takeIf { it > 0f } ?: (peek.value + 400f)
                 peek.animateTo(end, tween(SwipeSwitchDurationMs))
                 onDismiss()
             } else {
