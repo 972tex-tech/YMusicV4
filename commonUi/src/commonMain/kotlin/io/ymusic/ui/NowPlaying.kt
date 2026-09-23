@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -171,12 +170,12 @@ fun MiniPlayer(
 
     val duration = progress.durationMs
     Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onExpand),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
-                .fillMaxHeight()
+                .height(48.dp)
                 .aspectRatio(16f / 9f)
                 .then(
                     if (surface != null && desktopLayoutHole) Modifier
