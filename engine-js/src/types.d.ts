@@ -107,16 +107,16 @@ declare var TextEncoder: { new (): NativeTextEncoder };
 declare var TextDecoder: { new (label?: string): NativeTextDecoder };
 
 // ---- host-scheduled timers (transport.ts over the "setTimeout"/"setInterval" pipe commands) ----
-// The handle is the timer's PIPE, not a number; clear*() closes it.
+// The handle is a number, same as a browser. The pipe stays inside the transport.
 
-declare var setTimeout: (cb: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => Pipe;
+declare var setTimeout: (cb: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => number;
 declare var setInterval: (
   cb: (...args: unknown[]) => void,
   ms?: number,
   ...args: unknown[]
-) => Pipe;
-declare var clearTimeout: (handle: Pipe | undefined) => void;
-declare var clearInterval: (handle: Pipe | undefined) => void;
+) => number;
+declare var clearTimeout: (handle: number | undefined) => void;
+declare var clearInterval: (handle: number | undefined) => void;
 
 // ---- the error contract (protocol/command.ts; Kotlin mirror: WireError.kt) ----
 

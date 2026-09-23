@@ -582,14 +582,16 @@ globalThis.ymix = {
 //
 // clear*() marks the timer cleared BEFORE closing the pipe, so a tick the host had already committed
 // when the clear arrived (a benign host-side select race) cannot still fire the callback — matching
-// browser/Node semantics where a cleared timer never runs. The slot bridges the handle (a Pipe) to
-// the loop's mutable state, since Pipe carries no room for it; it is dropped when the loop ends.
+// browser/Node semantics where a cleared timer never runs. Callers see a numeric id. The pipe stays
+// in the slot map.
 
 interface TimerSlot {
   cb: ((...args: unknown[]) => void) | null;
   cleared: boolean;
+  pipe: Pipe;
 }
-const timers = new Map<Pipe, TimerSlot>();
+const timers = new Map<number, TimerSlot>();
+let nextTimerId = 1;
 
 function startTimer(
   cb: (...args: unknown[]) => void,
@@ -597,14 +599,16 @@ function startTimer(
   command: string,
   repeat: boolean,
   args: unknown[],
-): Pipe {
+): number {
   const pipe = open(command);
   // Delay as a big-endian 8-byte long — fixed width self-frames it (Kotlin reads it with okio
   // readLong).
   pipe.sink.writeLong(Math.max(0, Math.floor(Number(ms) || 0)));
   pipe.sink.flush();
-  const slot: TimerSlot = { cb: cb, cleared: false };
-  timers.set(pipe, slot);
+  const id = nextTimerId++;
+  if (nextTimerId > 0x7fffffff) nextTimerId = 1;
+  const slot: TimerSlot = { cb: cb, cleared: false, pipe: pipe };
+  timers.set(id, slot);
   const buf = new Uint8Array(1);
   (async function () {
     try {
@@ -617,40 +621,38 @@ function startTimer(
     } catch (e) {
       if (!slot.cleared) throw e; // a live callback/pipe error surfaces; a cleared pipe's does not
     } finally {
-      timers.delete(pipe);
+      if (timers.get(id) === slot) timers.delete(id);
       pipe.sink.close();
       pipe.source.close();
     }
   })();
-  return pipe; // handle; clear*() closes it
+  return id;
 }
 export function setTimeout(
   cb: (...args: unknown[]) => void,
   ms?: number,
   ...args: unknown[]
-): Pipe {
+): number {
   return startTimer(cb, ms, "setTimeout", false, args);
 }
 export function setInterval(
   cb: (...args: unknown[]) => void,
   ms?: number,
   ...args: unknown[]
-): Pipe {
+): number {
   return startTimer(cb, ms, "setInterval", true, args);
 }
-export function clearTimeout(handle: Pipe | undefined): void {
-  if (!handle) return;
+export function clearTimeout(handle: number | undefined): void {
+  if (handle == null || handle === 0) return;
   const slot = timers.get(handle);
-  if (slot) {
-    slot.cleared = true; // gate the loop BEFORE signaling: a committed tick can no longer fire
-    slot.cb = null; // drop the callback reference
-  }
-  if (handle.sink) {
-    try {
-      handle.sink.close();
-    } catch (_e) {
-      /* already closing/closed — clearing is idempotent */
-    }
+  if (!slot) return;
+  slot.cleared = true; // gate the loop BEFORE signaling: a committed tick can no longer fire
+  slot.cb = null; // drop the callback reference
+  timers.delete(handle);
+  try {
+    slot.pipe.sink.close();
+  } catch (_e) {
+    /* already closing/closed — clearing is idempotent */
   }
 }
 export const clearInterval = clearTimeout;

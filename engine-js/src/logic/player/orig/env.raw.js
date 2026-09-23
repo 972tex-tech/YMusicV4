@@ -44,16 +44,25 @@
 
   /* Chrome: insert <script src> fetches and evals globally, then onload.
    * appendChild alone is not enough. */
+  var scriptResult = Object.create(null);
+
   function runScript(el) {
-    var src, code;
-    if (!el || String(el.tagName || "").toUpperCase() !== "SCRIPT" || el._bbd_ran) return;
+    var src, code, prev;
+    if (!el || String(el.tagName || "").toUpperCase() !== "SCRIPT") return;
     src = el.src ? absScriptUrl(el.src) : "";
     if (src && src !== "about:blank") {
+      prev = scriptResult[src];
+      if (prev) {
+        /* Chrome fires load/error on every inserted <script src>, even if
+           the URL was already fetched. */
+        el.readyState = prev.ok ? "complete" : el.readyState;
+        fireScript(el, prev.ok ? "load" : "error");
+        return;
+      }
       if (typeof fetch !== "function") {
         fireScript(el, "error");
         return;
       }
-      el._bbd_ran = true;
       fetch(src)
         .then(function (r) {
           if (!r.ok) throw new Error("script " + r.status);
@@ -64,14 +73,17 @@
             (0, eval)(body + "\n//# sourceURL=" + src);
           } catch (e) {
             console.warn("script eval failed " + src + " " + (e && e.message ? e.message : e));
+            scriptResult[src] = { ok: false };
             fireScript(el, "error");
             return;
           }
+          scriptResult[src] = { ok: true };
           el.readyState = "complete";
           fireScript(el, "load");
         })
         .catch(function (e) {
           console.warn("script fetch failed " + src + " " + (e && e.message ? e.message : e));
+          scriptResult[src] = { ok: false };
           fireScript(el, "error");
         });
       return;
@@ -209,7 +221,10 @@
   if (typeof globalThis.requestAnimationFrame !== "function") {
     globalThis.requestAnimationFrame = native("requestAnimationFrame", function (fn) {
       return setTimeout(function () {
-        fn(Date.now());
+        var ts = 0;
+        if (globalThis.performance && typeof globalThis.performance.now === "function")
+          ts = globalThis.performance.now();
+        fn(ts);
       }, 16);
     });
   }
@@ -490,11 +505,11 @@
     });
   });
   nav.connection = {
-    type: "wifi",
     effectiveType: "4g",
     downlink: 10,
     rtt: 50,
     saveData: false,
+    onchange: null,
     addEventListener: native("addEventListener", function () {}),
     removeEventListener: native("removeEventListener", function () {}),
   };
@@ -858,6 +873,10 @@
     "BarProp",
     "UserActivation",
     "SVGFEColorMatrixElement",
+    "SVGFEComponentTransferElement",
+    "SVGAnimatedNumberList",
+    "XRAnchorSet",
+    "XRWebGLBinding",
     "SVGGraphicsElement",
     "SVGComponentTransferFunctionElement",
   ];
@@ -915,6 +934,24 @@
   }
   var ci;
   for (ci = 0; ci < WINDOW_CTORS.length; ci++) illegalCtor(WINDOW_CTORS[ci]);
+  if (globalThis.HTMLMediaElement && globalThis.HTMLMediaElement.prototype) {
+    globalThis.HTMLMediaElement.prototype.canPlayType = native("canPlayType", function (type) {
+      type = String(type == null ? "" : type).toLowerCase();
+      if (!type) return "";
+      if (/avc1|mp4a\.40|vp09|vp8|vp9|opus|flac|av01/.test(type)) return "probably";
+      if (
+        type.indexOf("video/mp4") === 0 ||
+        type.indexOf("audio/mp4") === 0 ||
+        type.indexOf("video/webm") === 0 ||
+        type.indexOf("audio/webm") === 0 ||
+        type.indexOf("audio/mpeg") === 0 ||
+        type.indexOf("video/ogg") === 0 ||
+        type.indexOf("audio/ogg") === 0
+      )
+        return "maybe";
+      return "";
+    });
+  }
   /* Chrome Event is constructable; illegalCtor would throw on new Event("x"). */
   globalThis.Event = native("Event", function Event(type, init) {
     var o = this && this !== globalThis ? this : {};
