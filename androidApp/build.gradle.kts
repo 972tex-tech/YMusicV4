@@ -122,8 +122,14 @@ dependencies {
 // (npm run build there) rather than checked in. Absent bundle = absent asset: YouTube items then
 // surface E60050 at runtime.
 val copyWebViewJs by tasks.registering(Copy::class) {
-    from(rootProject.file("webview-js/dist/webview_ymusic.js"))
+    val src = rootProject.file("webview-js/dist/webview_ymusic.js")
+    from(src)
     into(layout.projectDirectory.dir("src/main/assets"))
+    doFirst {
+        check(src.isFile) {
+            "webview_ymusic.js missing — run (cd webview-js && npm install && npm run build)"
+        }
+    }
 }
 
 // The engine bundle ships as an ASSET, not a compiled-in constant (its version is the
