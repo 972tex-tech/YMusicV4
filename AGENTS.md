@@ -19,7 +19,7 @@ Each module has a one-line summary here; deeper detail lives in the module's own
 - **`:kmpFfmpeg`** — KMP wrapper over ffmpeg for metadata extraction / (future) transcoding. No-op on iOS (no ffmpeg there).
 - **`:media-store`** — a media-metadata database (buckets / media items / playlists) on SQLite via SQLDelight; CRUD, queries, and reactive flows. Playlist membership is content-addressed (a `code` derived from `youtubeVid` or `fileSize`+duration), not row-FK'd. No scanning.
 - **`:media-scanner`** — walks a document tree and reconciles it into `:media-store`, extracting metadata via `:kmpFfmpeg`. Storage-agnostic via a SAF-shaped `DocumentsProvider` (Android SAF, desktop okio filesystem, iOS no-op). Concurrent and cancelable.
-- **`:engine-js`** — the one home for ALL engine JS (pipe transport, protocol layers, scraping logic, test fixtures): strict TypeScript → esbuild → Closure ADVANCED, emitting `engine.js` (the prod baseline, remotely replaceable whole) and `engine-test.js` (prod + pipe-driven fixtures). → [`engine-js/README.md`](engine-js/README.md)
+- **`:engine-js`** — scrape `engine.js` (remotely replaceable) and MSE `player.js` (plus `engine-test.js` = both + fixtures): TypeScript → esbuild → Closure ADVANCED. → [`engine-js/README.md`](engine-js/README.md)
 - **`webview-js`** *(not a Gradle module — a standalone npm/TS package at the repo root)* — the injected content script for the WebView YouTube player: evaled at document-start on the embed page, rewrites YouTube's own player from inside (host bridge, SABR handling, ad skip, audio-only, signature decode); built standalone to ES5 via esbuild → babel → terser. → [`webview-js/README.md`](webview-js/README.md)
 - **`:dynamic-engine`** — the engine host: `DynamicEngine` + `DynamicEngineManager` (remote-update) and `DynamicEnginePlayer` (JS MSE stubs → C `:mse`); host protocols http/cookies/cache/settings. → [`dynamic-engine/README.md`](dynamic-engine/README.md), protocol spec [`quickjs/HOST_PROTOCOLS.md`](quickjs/HOST_PROTOCOLS.md)
 - **`:quickjs`** — our own QuickJS binding (vendored Bellard QuickJS, V8-shaped toString/stack/eval(TrustedScript)): a duplex flow-controlled pipe transport (JNI on jvm/android, cinterop on Apple/linux) under a multiplexed `Pipe` layer in commonMain (`QuickJsRuntime`), streaming native JSON, bytecode precompile; ships NO JS (the `:engine-js` bundle is evaled once at create). → [`quickjs/README.md`](quickjs/README.md)
@@ -36,6 +36,9 @@ Each module has a one-line summary here; deeper detail lives in the module's own
 - **`:playground`** — Compose MP MSE YouTube lab (`YtMsePlayerScreen` + native blit hole) on JVM, iOS, and Android (`:playground-android`). → [`playground/README.md`](playground/README.md)
 
 ## Coding Rules
+
+### Why questions
+When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a log, a function), answer from the code. Do **not** patch, refactor, or "fix" it in the same turn unless they explicitly ask to change it.
 
 ### Code style
 - **Kotlin**: official Kotlin style (4-space indent), enforced by ktlint via Spotless — run `./gradlew spotlessApply` after Kotlin changes; `spotlessCheck` must pass. Line length is not enforced; aim for ~120.

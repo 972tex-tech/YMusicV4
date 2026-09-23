@@ -53,6 +53,9 @@ androidApp/src/main/assets/
 # release signing scratch (never commit a signed manifest or key material)
 desktopApp/build/update/
 
+# captured YouTube player (debug patch; never commit)
+engine-js/src/logic/player/orig/base.patched.raw.js
+
 # miller/SABR proof dump from HeadlessPlaybackTest / playground
 po-proof.log
 player_req.txt
