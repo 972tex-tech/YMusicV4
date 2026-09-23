@@ -435,7 +435,9 @@ class MsePlayer internal constructor(
         } else {
             st.str("preferQuality") ?: applied.preferVideoQuality.first
         }
-        val engineOptions = st.qualityOptions().filter { it.quality != VideoQualityState.AUDIO_ONLY }
+        val engineOptions = st.qualityOptions().filter {
+            it.quality != VideoQualityState.AUDIO_ONLY && it.quality != "tiny"
+        }
         val options = listOf(VideoQualityOption(VideoQualityState.AUDIO_ONLY, "Audio-only")) +
             engineOptions.ifEmpty { listOf(VideoQualityOption(VideoQualityState.AUTO, "Auto")) }
         _videoQuality.value = VideoQualityState(

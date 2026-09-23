@@ -777,7 +777,9 @@ class Player {
 
   /** Quality token + audio-only flag, applied together. Audio-only pins Auto and rests C. */
   setQuality(quality: string, audioOnly: boolean): void {
-    const q = String(quality || "") || ymQuality() || "auto";
+    /* tiny (144p) is reserved for the fake-144p SABR inject; it is not a playable rung. */
+    let q = String(quality || "") || ymQuality() || "auto";
+    if (q === "tiny") q = "auto";
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("setQuality: no movie_player", "E20085");
     setYmQuality(q);
@@ -1112,7 +1114,7 @@ class Player {
     const rows: Record<string, unknown>[] = [{ "quality": "auto", "label": "Auto" }];
     const seen: Record<string, boolean> = { "auto": true };
     function add(q: string, label?: string): void {
-      if (!q || q === "auto" || q === "default") return;
+      if (!q || q === "auto" || q === "default" || q === "tiny") return;
       const lab = label && label.length ? label : labels[q] || q;
       for (let i = 0; i < rows.length; i++) {
         if (String(rows[i]!["label"]) === lab) return;
