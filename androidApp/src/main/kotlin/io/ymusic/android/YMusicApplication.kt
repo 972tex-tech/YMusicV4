@@ -330,7 +330,7 @@ class YMusicApplication : Application() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         mseTexture.visibility = View.GONE
-        val mseBridge = MseSurfaceBridge()
+        val mseBridge = MseSurfaceBridge(mseTexture)
         mseTexture.surfaceTextureListener = mseBridge.listener
         val graph = withContext(Dispatchers.Default) {
             buildGraphOffMain(videoContainer, downloadContainer, mseTexture, mseBridge)
@@ -543,8 +543,11 @@ class YMusicApplication : Application() {
                     factory = { context -> FrameLayout(context) },
                     modifier = Modifier.fillMaxSize(),
                     update = { host ->
-                        (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
-                        host.addView(videoContainer)
+                        if (videoContainer.parent !== host) {
+                            (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
+                            host.addView(videoContainer)
+                            mseBridge.reattach(mseTexture)
+                        }
                         val showMse = status.videoSize != null
                         mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
                         if (showMse) mseTexture.bringToFront()
@@ -637,31 +640,45 @@ class YMusicApplication : Application() {
 /** Cadence of the webview-js remote-update check (a saved copy applies at the next boot). */
 private const val WEBVIEW_UPDATE_CHECK_MS = 6 * 60 * 60 * 1000L
 
-/** Hands the TextureView window to [MsePlayer] when it appears; null on destroy. */
-private class MseSurfaceBridge {
+/**
+ * Hands the TextureView window to [MsePlayer]. MiniPlayer ↔ Now Playing re-parents the same
+ * TextureView; releasing the SurfaceTexture there tears MediaCodec and glitches audio. Keep the
+ * producer and restore it after re-attach (`setSurfaceTexture`); only bind MediaCodec once.
+ */
+private class MseSurfaceBridge(private val textureView: TextureView) {
     private var player: MsePlayer? = null
     private var pending: Surface? = null
+    private var texture: SurfaceTexture? = null
 
     fun attach(p: MsePlayer) {
         player = p
         pending?.let { p.setVideoSurface(MseVideoSurface(it)) }
     }
 
+    fun reattach(tv: TextureView) {
+        val st = texture ?: return
+        if (tv.surfaceTexture === st) return
+        runCatching { tv.setSurfaceTexture(st) }
+    }
+
     val listener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-            pending?.release()
-            val surface = Surface(st)
-            pending = surface
-            player?.setVideoSurface(MseVideoSurface(surface))
+            if (texture == null) {
+                texture = st
+                pending = Surface(st)
+                player?.setVideoSurface(MseVideoSurface(pending))
+                return
+            }
+            if (st !== texture) {
+                texture?.let { kept -> runCatching { textureView.setSurfaceTexture(kept) } }
+            }
         }
 
         override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = Unit
 
         override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-            pending?.release()
-            pending = null
-            player?.setVideoSurface(null)
-            return true
+            /* false = we own the SurfaceTexture; MediaCodec stays bound across reparent. */
+            return false
         }
 
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
