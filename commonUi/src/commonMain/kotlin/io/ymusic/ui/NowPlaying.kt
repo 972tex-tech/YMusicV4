@@ -141,7 +141,7 @@ internal fun formatMillis(ms: Long): String {
     }
 }
 
-internal fun formatLiveOffset(behindMs: Long): String {
+fun formatLiveOffset(behindMs: Long): String {
     val total = (behindMs / 1000).coerceAtLeast(0)
     val h = total / 3600
     val m = (total % 3600) / 60
