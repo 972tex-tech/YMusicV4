@@ -684,9 +684,9 @@ internal fun SwipeDownDismissBox(
     val density = LocalDensity.current
     val drag = remember { DragDown(peek, scope) }
     drag.onDismiss = onDismiss
-    drag.distancePx = with(density) { SwipeSwitchDistance.toPx() }
-    drag.velocityPx = with(density) { SwipeSwitchVelocity.toPx() }
     drag.maxPeek = with(density) { SwipeSwitchPeek.toPx() }
+    val peekY = peek.value
+    val topShadow = (peekY / drag.maxPeek.coerceAtLeast(1f)).coerceIn(0f, 1f)
 
     Box(
         modifier
@@ -716,12 +716,26 @@ internal fun SwipeDownDismissBox(
                         tracker.addPosition(change.uptimeMillis, change.position)
                         change.consume()
                     }
-                    drag.settle(if (completed) tracker.calculateVelocity().y else 0f, allowFlick = true)
+                    drag.settle()
                 }
             }
             .graphicsLayer { translationY = peek.value },
     ) {
         content()
+        if (topShadow > 0.01f) {
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.22f * topShadow),
+                            1f to Color.Transparent,
+                        ),
+                    ),
+            )
+        }
     }
 }
 
@@ -731,8 +745,6 @@ private class DragDown(
 ) {
     var raw = 0f
     var heightPx = 0f
-    var distancePx = 0f
-    var velocityPx = 0f
     var maxPeek = 0f
     var onDismiss: () -> Unit = {}
 
@@ -742,8 +754,10 @@ private class DragDown(
         scope.launch { peek.snapTo(target) }
     }
 
-    fun settle(flingY: Float, allowFlick: Boolean) {
-        val commit = raw >= distancePx || (allowFlick && flingY >= velocityPx)
+    /** Commit only when the rubber-band is fully extended — no flick shortcut. */
+    fun settle() {
+        val need = if (SwipeSwitchResist > 0f) maxPeek / SwipeSwitchResist else maxPeek
+        val commit = raw >= need
         scope.launch {
             if (commit) {
                 val end = heightPx.takeIf { it > 0f } ?: (maxPeek * 8f)
@@ -774,7 +788,7 @@ private class DragDown(
             if (raw > 0f || peek.value > 0f) {
                 /* Finger already left — commit only if the drag itself passed the threshold,
                    not because leftover list fling velocity is large. */
-                settle(0f, allowFlick = false)
+                settle()
                 return available
             }
             return Velocity.Zero
