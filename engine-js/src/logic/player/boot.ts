@@ -1,19 +1,12 @@
 // Headless YouTube player: singleton Application over WEB homepage config from main.
 
-import { HttpRequest } from "../../protocol/http";
 import { JsEngineErrorImpl, callMain } from "../../protocol/command";
-import { executeWithCookies } from "../yt/cookies";
-import { DESKTOP_UA } from "../yt/session";
 import {
   activeHtmlMedia,
   installMseGlobals,
   isLiveDuration,
   mseCreateObjectURL,
   mseRevokeObjectURL,
-  mseSourceBufferCount,
-  mseMediaSourceId,
-  mseSourceBufferGen,
-  mseAttachLatestIfStale,
   dumpDrain,
   resetDrainCounts,
 } from "../../protocol/mse";
@@ -23,18 +16,11 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
-import {
-  captionIngestTick,
-  installCaptionMinter,
-  onCaptionSeek,
-  selectedCaptionVss,
-  waitCaptionIngest,
-} from "./captions";
+import { installCaptionMinter, onCaptionSeek, selectedCaptionVss } from "./captions";
 import { playerStorageReady } from "./storage";
 import { applyViewport, viewportHeight, viewportWidth } from "./viewport";
 
 const ORIGIN = "https://www.youtube.com";
-let lastQualityExtra = -1;
 
 function asRec(v: unknown): Record<string, unknown> | null {
   if (v == null || typeof v !== "object") return null;
@@ -61,36 +47,38 @@ function sizePlayerTree(): void {
   sizeNodeList(document.getElementsByClassName("html5-video-player"));
 }
 
-let moviePlayerEl: Record<string, unknown> | null = null;
+/** IFrame API copied onto #movie_player by Application.create.
+ *  Quoted names — Closure ADVANCED must not rename these; YouTube's object is uncompiled. */
+type MoviePlayer = {
+  "addEventListener"(name: string, fn: () => void): void;
+  "setPlaybackQuality"(q: string): void;
+  "setPlaybackQualityRange"?(min: string, max?: string): void;
+  "getPlaybackQuality"(): string;
+  "getUserPlaybackQualityPreference"(): string;
+  "getAvailableQualityData"(): unknown;
+  "loadVideoById"(id: string): unknown;
+  "preloadVideoByPlayerVars"(
+    vars: Record<string, unknown>,
+    unused?: unknown,
+    expireSec?: number,
+  ): unknown;
+  "playVideo"(): void;
+  "pauseVideo"(): void;
+  "seekTo"(t: number, allowSeekAhead?: boolean): void;
+  "setLoopVideo"(enable: boolean): void;
+  "getPlayerResponse"(): unknown;
+  "getProgressState"(): Record<string, unknown>;
+  "getPlayerState"(): number;
+};
 
-function moviePlayer(): Record<string, unknown> | null {
+let moviePlayerEl: MoviePlayer | null = null;
+
+function moviePlayer(): MoviePlayer | null {
   if (!moviePlayerEl) {
     const el = document.getElementById("movie_player");
-    if (el) moviePlayerEl = el as unknown as Record<string, unknown>;
+    if (el) moviePlayerEl = el as unknown as MoviePlayer;
   }
   return moviePlayerEl;
-}
-
-/** Same as webview-js player_connect: ytInternalPlayer.setPlaybackQuality, else range(q). */
-function pinPlaybackQuality(host: Record<string, unknown> | null, q: string): boolean {
-  const g = globalThis as unknown as Record<string, unknown>;
-  const internal = asRec(g["ytInternalPlayer"]);
-  if (internal && typeof internal["setPlaybackQuality"] === "function") {
-    (internal["setPlaybackQuality"] as (quality: string) => void).call(internal, q);
-    return true;
-  }
-  if (!host) return false;
-  const range = host["setPlaybackQualityRange"];
-  if (typeof range === "function") {
-    (range as (quality: string) => void).call(host, q);
-    return true;
-  }
-  const one = host["setPlaybackQuality"];
-  if (typeof one === "function") {
-    (one as (quality: string) => void).call(host, q);
-    return true;
-  }
-  return false;
 }
 
 let pictureW = 0;
@@ -98,12 +86,11 @@ let pictureH = 0;
 
 /** First adaptiveFormats width/height — same as webview-js onVideoDataChange → `_aspect_ratio`. */
 function applyPictureFromResponse(): boolean {
-  const el = moviePlayer();
-  const fn = el ? el["getPlayerResponse"] : undefined;
-  if (typeof fn !== "function") return false;
+  const player = moviePlayer();
+  if (!player) return false;
   let pr: unknown;
   try {
-    pr = (fn as () => unknown).call(el);
+    pr = player["getPlayerResponse"]();
   } catch (_e) {
     return false;
   }
@@ -129,34 +116,118 @@ function applyPictureFromResponse(): boolean {
   return false;
 }
 
-function bindPictureSize(el: Record<string, unknown>): void {
-  if ((el as { __ymPicture?: boolean }).__ymPicture) return;
-  (el as { __ymPicture?: boolean }).__ymPicture = true;
-  const add = el["addEventListener"];
-  if (typeof add !== "function") return;
-  (add as (name: string, fn: () => void) => void).call(el, "onVideoDataChange", function () {
-    if (applyPictureFromResponse()) notifyProgress();
+function bindPictureSize(player: MoviePlayer): void {
+  player["addEventListener"]("onVideoDataChange", function () {
+    if (applyPictureFromResponse()) notifyListen("picture");
+    notifyListen("progress");
+    notifyListen("state");
   });
 }
 
-/** Same as webview-js: chip actual = getPlaybackQuality on onPlaybackQualityChange. */
-function bindPlaybackQualityChange(el: Record<string, unknown>): void {
-  if ((el as { __ymQualityEvt?: boolean }).__ymQualityEvt) return;
-  const add = el["addEventListener"];
-  if (typeof add !== "function") return;
-  (el as { __ymQualityEvt?: boolean }).__ymQualityEvt = true;
-  (add as (name: string, fn: () => void) => void).call(el, "onPlaybackQualityChange", function () {
+function bindPlaybackQualityChange(player: MoviePlayer): void {
+  player["addEventListener"]("onPlaybackQualityChange", function () {
     notifyCatalog();
+  });
+}
+
+function bindStateChange(player: MoviePlayer): void {
+  player["addEventListener"]("onStateChange", function () {
+    notifyListen("state");
+  });
+}
+
+function bindVideoProgress(player: MoviePlayer): void {
+  player["addEventListener"]("onVideoProgress", function () {
+    notifyListen("progress");
   });
 }
 
 /** Listeners on #movie_player. Application.create copies the IFrame API
  *  onto that node (getPlaybackQuality, setPlaybackQualityRange, …). */
-function bindMoviePlayerApi(app: YtApp | null): void {
-  const el = moviePlayer();
-  if (!el || !app) return;
-  bindPictureSize(el);
-  bindPlaybackQualityChange(el);
+let htmlListenBound = false;
+
+function bindHtmlMediaEvents(): void {
+  const v = activeHtmlMedia();
+  if (!v || htmlListenBound) return;
+  htmlListenBound = true;
+  v["addEventListener"]("timeupdate", function () {
+    notifyListen("progress");
+  });
+  v["addEventListener"]("seeked", function () {
+    notifyListen("progress");
+  });
+  v["addEventListener"]("durationchange", function () {
+    notifyListen("progress");
+  });
+  v["addEventListener"]("play", function () {
+    notifyListen("state");
+  });
+  v["addEventListener"]("pause", function () {
+    notifyListen("state");
+  });
+  v["addEventListener"]("ended", function () {
+    notifyListen("state");
+  });
+}
+
+let iframeListenBound = false;
+
+function callQualityRange(host: unknown, min: string, max: string): boolean {
+  const rec = asRec(host);
+  if (!rec) return false;
+  const range = rec["setPlaybackQualityRange"];
+  if (typeof range === "function") {
+    (range as (a: string, b: string) => void).call(host, min, max);
+    return true;
+  }
+  const st = asRec(rec["state"]);
+  const z = st ? asRec(st["Z"]) : null;
+  const zfn = z ? z["setPlaybackQualityRange"] : undefined;
+  if (typeof zfn === "function") {
+    (zfn as (a: string, b: string) => void)(min, max);
+    return true;
+  }
+  const gi = rec["getInternalApi"];
+  if (typeof gi === "function") {
+    const api = asRec(gi.call(host));
+    const fn = api ? api["setPlaybackQualityRange"] : undefined;
+    if (typeof fn === "function") {
+      (fn as (a: string, b: string) => void)(min, max);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** IFrame setPlaybackQuality is ez (no-op). Range lives on the API wrapper
+ *  (oV.Sp / #movie_player), including state.Z and getInternalApi(). */
+function pinPlaybackQuality(
+  player: MoviePlayer,
+  app: YtApp | null,
+  min: string,
+  max: string,
+): void {
+  if (callQualityRange(player, min, max)) return;
+  if (app && callQualityRange(app, min, max)) return;
+  if (app) {
+    const rec = app as unknown as Record<string, unknown>;
+    const keys = Object.keys(rec);
+    for (let i = 0; i < keys.length; i++) {
+      if (callQualityRange(rec[keys[i]!], min, max)) return;
+    }
+  }
+  throw new JsEngineErrorImpl("setQuality: no setPlaybackQualityRange", "E20085");
+}
+
+function bindMoviePlayerApi(): void {
+  const player = moviePlayer();
+  if (!player || iframeListenBound) return;
+  iframeListenBound = true;
+  bindPictureSize(player);
+  bindPlaybackQualityChange(player);
+  bindStateChange(player);
+  bindVideoProgress(player);
+  bindHtmlMediaEvents();
 }
 
 function absUrl(src: string): string {
@@ -400,6 +471,9 @@ function enableSharedOwlFlag(): void {
   const flags = asRec(get("EXPERIMENT_FLAGS")) || {};
   flags["html5_use_shared_owl_instance"] = true;
   flags["html5_webpo_idle_priority_job"] = false;
+  /* Bl(): server picks SABR itags; field 16/17 stay empty. Client filter instead. */
+  flags["html5_enable_server_format_filter"] = false;
+  flags["html5_enable_server_format_filter_for_drm"] = false;
   // Player fetch gzips /youtubei/v1/player when this is on; jsonObject() then
   // sees gzip magic (0x1f) instead of `{`.
   flags["wug_networking_gzip_request"] = false;
@@ -589,23 +663,27 @@ class Player {
     installPlayerAdStrip();
 
     const jsUrl = absUrl(jsUrlRaw);
+    if (typeof cfg["jsUrl"] === "string") cfg["jsUrl"] = jsUrl;
     out["jsUrl"] = jsUrl;
     out["step"] = "basejs";
-    const baseRes = await executeWithCookies(
-      jsUrl,
-      HttpRequest.get(jsUrl)
-        .setHeader("User-Agent", DESKTOP_UA)
-        .setHeader("Referer", ORIGIN + "/")
-        .timeout(60000),
-    );
-    if (!baseRes.ok) {
-      baseRes.ignoreResult();
-      throw new JsEngineErrorImpl("base.js HTTP " + baseRes.status, "E20075");
-    }
-    const baseJs = await baseRes.text();
-    out["baseJsLen"] = baseJs.length;
+    let baseJs: string;
     try {
-      (0, eval)(baseJs + "\n//# sourceURL=player_es6_base.js");
+      const res = await fetch(jsUrl);
+      if (!res || !res["ok"])
+        throw new Error("GET " + jsUrl + " status=" + (res ? res["status"] : "no response"));
+      baseJs = await (res as { text(): Promise<string> })["text"]();
+    } catch (e) {
+      throw new JsEngineErrorImpl(
+        "base.js fetch: " + (e instanceof Error ? e.message : String(e)),
+        "E20075",
+        { cause: e instanceof Error ? e : undefined },
+      );
+    }
+    out["baseJsSrc"] = "cdn";
+    out["baseJsLen"] = baseJs.length;
+    console.log("base.js source=cdn len=" + baseJs.length + " jsUrl=" + jsUrl);
+    try {
+      (0, eval)(baseJs + "\n//# sourceURL=" + jsUrl);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       throw new JsEngineErrorImpl(
@@ -635,6 +713,8 @@ class Player {
         "html5_use_shared_owl_instance": "true",
         "html5_webpo_idle_priority_job": "false",
         "wug_networking_gzip_request": "false",
+        "html5_enable_server_format_filter": "false",
+        "html5_enable_server_format_filter_for_drm": "false",
       });
     }
     this.createFn = create as (r: unknown, a: unknown, b: unknown) => unknown;
@@ -674,18 +754,7 @@ class Player {
       (globalThis as unknown as Record<string, unknown>)["__ymPlayer"] = this.player;
       sizePlayerTree();
       fireWindowResize();
-      bindMoviePlayerApi(this.player);
-      if (MSE_DEBUG) {
-        const el = moviePlayer();
-        console.log(
-          "mse create api movie=" +
-            (el && typeof el["getPlaybackQuality"] === "function" ? "1" : "0") +
-            " range=" +
-            (el && typeof el["setPlaybackQualityRange"] === "function" ? "1" : "0") +
-            " levels=" +
-            (el && typeof el["getAvailableQualityLevels"] === "function" ? "1" : "0"),
-        );
-      }
+      bindMoviePlayerApi();
     } catch (e) {
       throw new JsEngineErrorImpl(
         "Application.create: " + (e instanceof Error ? e.message : String(e)),
@@ -709,21 +778,17 @@ class Player {
   /** Quality token + audio-only flag, applied together. Audio-only pins Auto and rests C. */
   setQuality(quality: string, audioOnly: boolean): void {
     const q = String(quality || "") || ymQuality() || "auto";
-    const player = this.player;
-    if (!player)
-      throw new JsEngineErrorImpl("player/setQuality before Application.create", "E20085");
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("setQuality: no movie_player", "E20085");
     setYmQuality(q);
     setAudioOnly(!!audioOnly);
     if (audioOnly) {
-      this.pinAuto();
+      pinPlaybackQuality(player, this.player, "auto", "auto");
       __mseRestVideo(1);
     } else {
       __mseRestVideo(0);
-      bindMoviePlayerApi(player);
-      const pinned =
-        pinPlaybackQuality(moviePlayer(), q) ||
-        pinPlaybackQuality(player as unknown as Record<string, unknown>, q);
-      if (!pinned && MSE_DEBUG) console.log("mse setQuality no API q=" + q);
+      bindMoviePlayerApi();
+      pinPlaybackQuality(player, this.player, q, q);
     }
     resetDrainCounts();
     if (MSE_DEBUG)
@@ -739,38 +804,17 @@ class Player {
     notifyCatalog();
   }
 
-  /** Auto (not tiny): pinning 144p changeType-interrupts leftover. */
-  private pinAuto(): void {
-    const player = this.player;
-    if (!player) return;
-    bindMoviePlayerApi(player);
-    pinPlaybackQuality(moviePlayer(), "auto") ||
-      pinPlaybackQuality(player as unknown as Record<string, unknown>, "auto");
-  }
-
-  private ytHost(): Record<string, unknown> {
-    return moviePlayer() || (this.player as unknown as Record<string, unknown>);
-  }
-
   private loadById(videoId: string): void {
-    const host = this.ytHost();
-    const byId = host["loadVideoById"];
-    if (typeof byId === "function") {
-      (byId as (id: string) => unknown).call(host, videoId);
-      return;
-    }
-    const byVars = host["loadVideoByPlayerVars"];
-    if (typeof byVars === "function") {
-      (byVars as (vars: Record<string, unknown>) => unknown).call(host, {
-        "video_id": videoId,
-        "autoplay": "1",
-      });
-      return;
-    }
-    throw new JsEngineErrorImpl("player/load loadVideoById missing", "E20077");
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("player/load: no movie_player", "E20077");
+    player["loadVideoById"](videoId);
   }
 
-  async load(videoId: string, quality?: string, audioOnly?: boolean): Promise<Record<string, unknown>> {
+  async load(
+    videoId: string,
+    quality?: string,
+    audioOnly?: boolean,
+  ): Promise<Record<string, unknown>> {
     const initOut = await this.init();
     const ao = audioOnly === true;
     const q = quality && quality.length ? quality : undefined;
@@ -783,16 +827,10 @@ class Player {
       "ytGets": initOut["ytGets"],
       "step": "loadVideoById",
     };
-    pictureW = 0;
-    pictureH = 0;
-    notifyProgress();
     this.ensureCreated(out);
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     this.setQuality(q || "auto", ao);
-    const msId = mseMediaSourceId();
-    const gen0 = mseSourceBufferGen();
-    const ingestAt = captionIngestTick();
     try {
       this.loadById(videoId);
     } catch (e) {
@@ -802,27 +840,8 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
-    await waitCaptionIngest(ingestAt, 8000);
-    const t0 = Date.now();
-    const waitMs = ao ? 2000 : 1000;
-    while (Date.now() - t0 < waitMs) {
-      mseAttachLatestIfStale(msId);
-      if (ao) __mseRestVideo(1);
-      const id = mseMediaSourceId();
-      const n = mseSourceBufferCount();
-      if ((id !== msId && n > 0) || mseSourceBufferGen() > gen0) break;
-      /* loadVideoById may reuse the open MediaSource (no new SB). */
-      if (n > 0 && Date.now() - t0 > 400) break;
-      await new Promise<void>(function (resolve) {
-        setTimeout(function () {
-          resolve(undefined);
-        }, 20);
-      });
-    }
-    if (ao) this.setQuality(q || "auto", true);
-    applyPictureFromResponse();
-    notifyProgress();
-    notifyCatalog();
+    /* Fire-and-forget: /player, MSE, picture, catalog arrive on
+       onVideoDataChange / status / catalog. load() does not wait. */
     out["step"] = "ok";
     out["ok"] = true;
     return out;
@@ -836,21 +855,10 @@ class Player {
       "step": "preload",
     };
     this.ensureCreated(out);
-    const host = this.ytHost();
-    const byVars = host["preloadVideoByPlayerVars"];
-    const byId = host["preloadVideoById"];
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("player/preload: no movie_player", "E20092");
     try {
-      /* IFrame preloadVideoById is a no-op unless embedsHostFlags.allowPreloadVideoById.
-         WEB uses preloadVideoByPlayerVars(vars, undefined, expireSec) like webview-js. */
-      if (typeof byVars === "function")
-        (byVars as (vars: Record<string, unknown>, u?: unknown, exp?: number) => unknown).call(
-          host,
-          { "video_id": videoId },
-          undefined,
-          60,
-        );
-      else if (typeof byId === "function") (byId as (id: string) => unknown).call(host, videoId);
-      else throw new JsEngineErrorImpl("player/preload API missing", "E20092");
+      player["preloadVideoByPlayerVars"]({ "video_id": videoId }, undefined, 60);
     } catch (e) {
       if (e instanceof JsEngineErrorImpl) throw e;
       throw new JsEngineErrorImpl(
@@ -881,19 +889,25 @@ class Player {
   }
 
   play(): void {
-    const player = this.player;
+    const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20082");
     player["playVideo"]();
   }
 
+  setLoop(enable: boolean): void {
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("player not created", "E20082");
+    player["setLoopVideo"](!!enable);
+  }
+
   pause(): void {
-    const player = this.player;
+    const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20083");
     player["pauseVideo"]();
   }
 
   seek(t: number): void {
-    const player = this.player;
+    const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20081");
     const ct = activeHtmlMedia() ? __mseCurrentTime() : -1;
     if (MSE_DEBUG) console.log("mse seek fire t=" + t + " ct=" + ct);
@@ -903,12 +917,11 @@ class Player {
 
   /** YouTube IFrame getProgressState — DVR allowSeeking / seekableStart / seekableEnd. */
   private progressState(): Record<string, unknown> | null {
-    const host = moviePlayer();
-    const fn = host && host["getProgressState"];
-    if (typeof fn !== "function") return null;
+    const player = moviePlayer();
+    if (!player) return null;
     try {
-      const s = (fn as () => unknown).call(host);
-      return s && typeof s === "object" ? (s as Record<string, unknown>) : null;
+      const s = player["getProgressState"]();
+      return s && typeof s === "object" ? s : null;
     } catch (_e) {
       return null;
     }
@@ -919,10 +932,18 @@ class Player {
     this.seek(0);
   }
 
-  progress(): Record<string, unknown> {
+  /** Clock group: position, buffer, duration, seek window. Same payload as webview `_progress`. */
+  progressClock(): Record<string, unknown> {
     const v = activeHtmlMedia();
-    const dur = v ? Number(v["duration"]) : NaN;
+    const ps = this.progressState();
+    const live = isLiveDuration();
+    /* Leftover currentTime is the playhead. YouTube getProgressState.current can
+       lag a previous video and would make the facade seek/preload at the wrong time. */
+    let pos = v ? Math.round(Number(v["currentTime"]) * 1000) : 0;
     let bufferedMs = 0;
+    let dur = v ? Number(v["duration"]) : NaN;
+    let skStart = 0;
+    let skEnd = 0;
     if (v) {
       const b = v["buffered"] as { length?: number; end?: (i: number) => number } | null;
       const n = b && typeof b["length"] === "number" ? Number(b["length"]) : 0;
@@ -930,34 +951,30 @@ class Player {
         const end = Number(b!["end"]!(n - 1));
         if (isFinite(end) && end > 0) bufferedMs = Math.round(end * 1000);
       }
+      const sk = v["seekable"] as {
+        length?: number;
+        start?: (i: number) => number;
+        end?: (i: number) => number;
+      } | null;
+      const skN = sk && typeof sk["length"] === "number" ? Number(sk["length"]) : 0;
+      if (skN > 0 && typeof sk!["start"] === "function" && typeof sk!["end"] === "function") {
+        skStart = Number(sk!["start"]!(0));
+        skEnd = Number(sk!["end"]!(skN - 1));
+      }
     }
-    const pos = v ? Math.round(Number(v["currentTime"]) * 1000) : 0;
-    const live = isLiveDuration();
-    const sk = v
-      ? (v["seekable"] as {
-          length?: number;
-          start?: (i: number) => number;
-          end?: (i: number) => number;
-        } | null)
-      : null;
-    const skN = sk && typeof sk["length"] === "number" ? Number(sk["length"]) : 0;
-    let skStart = 0;
-    let skEnd = 0;
-    if (skN > 0 && typeof sk!["start"] === "function" && typeof sk!["end"] === "function") {
-      skStart = Number(sk!["start"]!(0));
-      skEnd = Number(sk!["end"]!(skN - 1));
-    }
-    const ps = this.progressState();
     if (ps) {
+      const loaded = Number(ps["loaded"]);
+      if (isFinite(loaded) && loaded > 0) bufferedMs = Math.round(loaded * 1000);
+      const d = Number(ps["duration"]);
+      if (isFinite(d) && d > 0) dur = d;
       const a = Number(ps["seekableStart"]);
       const b = Number(ps["seekableEnd"]);
       if (isFinite(a)) skStart = a;
       if (isFinite(b) && b > skStart) skEnd = b;
     }
-    /* Leftover is not the DVR window. allowSeeking is YouTube's DVR vs head-only. */
     const seekable = ps ? !!ps["allowSeeking"] : !live;
     if (seekable && !(skEnd > skStart + 1)) {
-      const ct = v ? Number(v["currentTime"]) : 0;
+      const ct = pos / 1000;
       if (isFinite(ct) && ct > 0) {
         skStart = 0;
         skEnd = ct;
@@ -969,36 +986,99 @@ class Player {
         : isFinite(skEnd) && skEnd > 0
           ? Math.round(skEnd * 1000)
           : 0;
-    const ended =
-      (v && !!v["ended"]) ||
-      (!live && durationMs > 0 && pos >= durationMs - 250 && v && !!v["paused"]);
     return {
       "positionMs": pos,
       "durationMs": durationMs,
       "bufferedMs": bufferedMs,
-      "live": live,
       "seekable": seekable,
       "seekableStartMs": Math.round((isFinite(skStart) ? skStart : 0) * 1000),
       "seekableEndMs": Math.round((isFinite(skEnd) ? skEnd : 0) * 1000),
-      "paused": v ? !!v["paused"] : true,
-      "ended": !!ended,
-      "readyState": v ? Number(v["readyState"]) : 0,
-      "videoWidth": isAudioOnly() ? 0 : pictureW,
-      "videoHeight": isAudioOnly() ? 0 : pictureH,
-      "audioOnly": isAudioOnly(),
     };
   }
 
+  /**
+   * Discrete playback state — webview `_state_changed`.
+   * newState: idle | buffering | ready | ended | error
+   */
+  listenState(): Record<string, unknown> {
+    const player = moviePlayer();
+    const live = isLiveDuration();
+    const out: Record<string, unknown> = {
+      "newState": "idle",
+      "playWhenReady": false,
+      "live": live,
+    };
+    if (!player) return out;
+    const media = activeHtmlMedia();
+    if (media && media["ended"]) {
+      out["newState"] = "ended";
+      out["playWhenReady"] = false;
+      return out;
+    }
+    const st = player["getPlayerState"]();
+    out["playWhenReady"] = st === 1 || st === 3;
+    if (st < 0) {
+      const pr = asRec(player["getPlayerResponse"]());
+      const playability = pr ? asRec(pr["playabilityStatus"]) : null;
+      const status =
+        playability && playability["status"] != null ? String(playability["status"]) : "";
+      if (status && status !== "OK") {
+        const code = status.toUpperCase() || "ERROR";
+        out["newState"] = "error";
+        out["code"] = code;
+        out["message"] =
+          playability && playability["reason"] != null ? String(playability["reason"]) : "";
+        out["canRetry"] = true;
+        out["needReset"] =
+          code.indexOf("LOGIN") >= 0 ||
+          code.indexOf("SIGN_IN") >= 0 ||
+          code.indexOf("AUTH") >= 0 ||
+          code.indexOf("CAPTCHA") >= 0 ||
+          code.indexOf("UNPLAYABLE") >= 0;
+        return out;
+      }
+      out["newState"] = "idle";
+      return out;
+    }
+    const mapped: Record<number, string> = {
+      0: "ended",
+      1: "ready",
+      2: "ready",
+      3: "buffering",
+      5: "idle",
+    };
+    out["newState"] = mapped[st] || "idle";
+    return out;
+  }
+
+  picture(): Record<string, unknown> {
+    return {
+      "videoWidth": isAudioOnly() ? 0 : pictureW,
+      "videoHeight": isAudioOnly() ? 0 : pictureH,
+    };
+  }
+
+  progress(): Record<string, unknown> {
+    const clock = this.progressClock();
+    const st = this.listenState();
+    const pic = this.picture();
+    const out: Record<string, unknown> = {};
+    for (const k in clock) out[k] = clock[k];
+    out["live"] = st["live"];
+    out["paused"] = !st["playWhenReady"];
+    out["ended"] = st["newState"] === "ended";
+    out["readyState"] = st["newState"] === "ready" ? 4 : st["newState"] === "buffering" ? 2 : 0;
+    out["videoWidth"] = pic["videoWidth"];
+    out["videoHeight"] = pic["videoHeight"];
+    out["audioOnly"] = isAudioOnly();
+    return out;
+  }
+
   catalog(): Record<string, unknown> {
-    const host = moviePlayer();
-    const pref =
-      host && typeof host["getUserPlaybackQualityPreference"] === "function"
-        ? String((host["getUserPlaybackQualityPreference"] as () => string)())
-        : ymQuality();
-    const actual =
-      host && typeof host["getPlaybackQuality"] === "function"
-        ? String((host["getPlaybackQuality"] as () => string)())
-        : ymQuality();
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("catalog: no movie_player", "E20085");
+    const pref = String(player["getUserPlaybackQualityPreference"]());
+    const actual = String(player["getPlaybackQuality"]());
     return {
       "quality": actual,
       "preferQuality": pref,
@@ -1040,50 +1120,17 @@ class Player {
       seen[q] = true;
       rows.push({ "quality": q, "label": lab });
     }
-    bindMoviePlayerApi(this.player);
-    const host = moviePlayer();
-    let dataN = 0;
-    let levelsN = 0;
-    let dataLabs = "";
-    let levelList = "";
-    try {
-      if (host && typeof host["getAvailableQualityData"] === "function") {
-        const data = (host["getAvailableQualityData"] as () => unknown)();
-        const list = Array.isArray(data) ? data : [];
-        dataN = list.length;
-        const labs: string[] = [];
-        for (let i = 0; i < list.length; i++) {
-          const o = asRec(list[i]);
-          if (!o) continue;
-          const q = o["quality"] != null ? String(o["quality"]) : "";
-          const lab = o["qualityLabel"] != null ? String(o["qualityLabel"]) : "";
-          if (lab) labs.push(lab);
-          add(q, lab);
-        }
-        dataLabs = labs.join(",");
-      }
-      if (host && typeof host["getAvailableQualityLevels"] === "function") {
-        const levels = (host["getAvailableQualityLevels"] as () => unknown)();
-        const list = Array.isArray(levels) ? levels : [];
-        levelsN = list.length;
-        levelList = list.join(",");
-        for (let i = 0; i < list.length; i++) add(String(list[i]));
-      }
-    } catch (_e) {}
-    const extra = rows.length - 1;
-    if (extra !== lastQualityExtra) {
-      lastQualityExtra = extra;
-      if (MSE_DEBUG)
-        console.log(
-          "mse getAvailableQualityData labels=" +
-            dataLabs +
-            " n=" +
-            dataN +
-            " levels=" +
-            levelList +
-            " extra=" +
-            extra,
-        );
+    bindMoviePlayerApi();
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("catalog: no movie_player", "E20085");
+    const data = player["getAvailableQualityData"]();
+    const list = Array.isArray(data) ? data : [];
+    for (let i = 0; i < list.length; i++) {
+      const o = asRec(list[i]);
+      if (!o) continue;
+      const q = o["quality"] != null ? String(o["quality"]) : "";
+      const lab = o["qualityLabel"] != null ? String(o["qualityLabel"]) : "";
+      add(q, lab);
     }
     return rows;
   }
@@ -1119,6 +1166,10 @@ export function playPlayer(): void {
   ytPlayer.play();
 }
 
+export function setPlayerLoop(enable: boolean): void {
+  ytPlayer.setLoop(enable);
+}
+
 export function pausePlayer(): void {
   ytPlayer.pause();
 }
@@ -1139,25 +1190,39 @@ export function progressPlayer(): Record<string, unknown> {
   return ytPlayer.progress();
 }
 
+export function progressClockPlayer(): Record<string, unknown> {
+  return ytPlayer.progressClock();
+}
+
+export function playerStatePlayer(): Record<string, unknown> {
+  return ytPlayer.listenState();
+}
+
+export function picturePlayer(): Record<string, unknown> {
+  return ytPlayer.picture();
+}
+
 export function catalogPlayer(): Record<string, unknown> {
   return ytPlayer.catalog();
 }
 
+export type ListenKind = "progress" | "state" | "picture";
+
 let catalogHook: (() => void) | null = null;
-let progressHook: (() => void) | null = null;
+let listenHook: ((kind: ListenKind) => void) | null = null;
 
 export function setCatalogHook(fn: (() => void) | null): void {
   catalogHook = fn;
 }
 
-export function setProgressHook(fn: (() => void) | null): void {
-  progressHook = fn;
+export function setListenHook(fn: ((kind: ListenKind) => void) | null): void {
+  listenHook = fn;
 }
 
 function notifyCatalog(): void {
   if (catalogHook) catalogHook();
 }
 
-function notifyProgress(): void {
-  if (progressHook) progressHook();
+function notifyListen(kind: ListenKind): void {
+  if (listenHook) listenHook(kind);
 }

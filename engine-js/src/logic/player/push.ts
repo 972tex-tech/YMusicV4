@@ -1,8 +1,19 @@
-// Host opens listen/player/status or listen/player/catalog to subscribe (same as player/caption).
+// Host opens listen/player/status or listen/player/catalog to subscribe.
+// Status is event-driven (webview-js): each message is only the group that changed.
+//   progress — onVideoProgress: position, buffer, duration, seek window
+//   state    — onStateChange: newState, playWhenReady, live, error extras
+//   picture  — onVideoDataChange: videoWidth, videoHeight
 
 import { JsEngineErrorImpl } from "../../protocol/command";
-import { activeHtmlMedia } from "../../protocol/mse";
-import { catalogPlayer, progressPlayer, setCatalogHook, setProgressHook } from "./boot";
+import {
+  catalogPlayer,
+  ListenKind,
+  picturePlayer,
+  playerStatePlayer,
+  progressClockPlayer,
+  setCatalogHook,
+  setListenHook,
+} from "./boot";
 
 let progressPipe: Pipe | null = null;
 let catalogPipe: Pipe | null = null;
@@ -10,11 +21,7 @@ let catalogPipe: Pipe | null = null;
 async function emit(
   sink: PipeSink,
   rec: Record<string, unknown>,
-  last: { json: string },
 ): Promise<void> {
-  const js = JSON.stringify(rec);
-  if (js === last.json) return;
-  last.json = js;
   const p = sink.writeObjectAsJson(rec);
   if (p) await p;
   const f = sink.flush();
@@ -30,42 +37,40 @@ async function waitHostClose(pipe: Pipe): Promise<void> {
   }
 }
 
-export async function runProgressSession(pipe: Pipe): Promise<void> {
+function snapshot(kind: ListenKind): Record<string, unknown> {
+  if (kind === "progress") return progressClockPlayer();
+  if (kind === "state") return playerStatePlayer();
+  return picturePlayer();
+}
+
+export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
   if (progressPipe) throw new JsEngineErrorImpl("listen/player/status busy", "E20089");
   progressPipe = pipe;
-  const last = { json: "" };
-  const onEvt = function (): void {
-    const sink = pipe.sink;
-    void emit(sink, progressPlayer(), last);
-  };
-  const v = activeHtmlMedia();
-  /* Clock lives in C. HTML timeupdate only runs while mediaTick is on
-     (HTMLMediaElement.play). YouTube can leave that off after load/reset
-     while DAC still plays — poll so the seek bar does not freeze. */
-  const tick = setInterval(onEvt, 250);
-  try {
-    if (v) {
-      v["addEventListener"]("timeupdate", onEvt);
-      v["addEventListener"]("play", onEvt);
-      v["addEventListener"]("pause", onEvt);
-      v["addEventListener"]("seeked", onEvt);
-      v["addEventListener"]("ended", onEvt);
-      v["addEventListener"]("durationchange", onEvt);
+  const last: Record<ListenKind, string> = { progress: "", state: "", picture: "" };
+
+  function push(kinds: ListenKind[]): void {
+    const rec: Record<string, unknown> = {};
+    for (let i = 0; i < kinds.length; i++) {
+      const kind = kinds[i]!;
+      const body = snapshot(kind);
+      const js = JSON.stringify(body);
+      if (js === last[kind]) continue;
+      last[kind] = js;
+      rec[kind] = body;
     }
-    setProgressHook(onEvt);
-    await emit(pipe.sink, progressPlayer(), last);
+    if (!Object.keys(rec).length) return;
+    const sink = pipe.sink;
+    void emit(sink, rec);
+  }
+
+  try {
+    setListenHook(function (kind: ListenKind) {
+      push([kind]);
+    });
+    push(["state", "progress", "picture"]);
     await waitHostClose(pipe);
   } finally {
-    clearInterval(tick);
-    setProgressHook(null);
-    if (v) {
-      v["removeEventListener"]("timeupdate", onEvt);
-      v["removeEventListener"]("play", onEvt);
-      v["removeEventListener"]("pause", onEvt);
-      v["removeEventListener"]("seeked", onEvt);
-      v["removeEventListener"]("ended", onEvt);
-      v["removeEventListener"]("durationchange", onEvt);
-    }
+    setListenHook(null);
     progressPipe = null;
   }
 }
@@ -75,11 +80,15 @@ export async function runCatalogSession(pipe: Pipe): Promise<void> {
   catalogPipe = pipe;
   const last = { json: "" };
   const push = function (): void {
-    void emit(pipe.sink, catalogPlayer(), last);
+    const rec = catalogPlayer();
+    const js = JSON.stringify(rec);
+    if (js === last.json) return;
+    last.json = js;
+    void emit(pipe.sink, rec);
   };
   setCatalogHook(push);
   try {
-    await emit(pipe.sink, catalogPlayer(), last);
+    push();
     await waitHostClose(pipe);
   } finally {
     setCatalogHook(null);

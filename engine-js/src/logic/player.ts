@@ -1,5 +1,8 @@
 // App-facing player commands. init warms the singleton WEB player; load stamps the video id and
-// calls loadVideoById. play/pause/seek/stop are playVideo/pauseVideo/seekTo.
+// calls loadVideoById (returns immediately). Host observes:
+//   listen/player/status  — event groups: progress | state | picture (webview-js split)
+//   listen/player/catalog — qualities
+// play/pause/seek/stop are playVideo/pauseVideo/seekTo.
 
 import { onAccept } from "../transport";
 import { commandHandler, JsEngineErrorImpl } from "../protocol/command";
@@ -11,13 +14,14 @@ import {
   pausePlayer,
   playPlayer,
   seekPlayer,
+  setPlayerLoop,
   setPlayerQuality,
   setPlayerViewport,
   statusPlayer,
   stopPlayer,
 } from "./player/boot";
 import { applyViewport } from "./player/viewport";
-import { runCatalogSession, runProgressSession } from "./player/push";
+import { runCatalogSession, listenPlayerStatus } from "./player/push";
 import { listCaptionTracks, runCaptionSession, setCaptionVss } from "./player/captions";
 import { downloadWaitMs, peekDownloadJson, waitDownloadJson } from "./player/player_res";
 
@@ -77,6 +81,16 @@ onAccept(
     if (!id) throw JsEngineErrorImpl.parse("player/mintPo missing videoId");
     const result = await mintPlayerPo(id);
     const p = out.writeObjectAsJson(result);
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setLoop",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    setPlayerLoop(a["enable"] === true);
+    const p = out.writeObjectAsJson({ "ok": true });
     if (p) await p;
   }),
 );
@@ -147,7 +161,7 @@ onAccept(
 
 onAccept("listen/player/status", async (pipe) => {
   try {
-    await runProgressSession(pipe);
+    await listenPlayerStatus(pipe);
     const pr = pipe.sink.close();
     if (pr) await pr;
   } catch (e) {
