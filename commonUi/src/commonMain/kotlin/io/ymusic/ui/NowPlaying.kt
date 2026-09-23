@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -138,18 +139,6 @@ internal fun formatMillis(ms: Long): String {
         "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
     } else {
         "$m:${s.toString().padStart(2, '0')}"
-    }
-}
-
-fun formatLiveOffset(behindMs: Long): String {
-    val total = (behindMs / 1000).coerceAtLeast(0)
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return if (h > 0) {
-        "-$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
-    } else {
-        "-${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
     }
 }
 
@@ -587,29 +576,13 @@ private fun BoxScope.VideoOverlayControls(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!progress.isLive) {
-                Text(
-                    formatMillis(progress.progressLabelMs),
-                    style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-                )
-                Text(
-                    " / ",
-                    style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-                )
-                DurationLabel(
-                    player,
-                    progress,
-                    TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-                )
+            val overlayStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE))
+            progress.progressLabel?.let {
+                Text(it, style = overlayStyle)
+                Text(" / ", style = overlayStyle)
             }
+            DurationLabel(player, progress, overlayStyle)
             Box(Modifier.weight(1f))
-            if (progress.isLive) {
-                DurationLabel(
-                    player,
-                    progress,
-                    TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-                )
-            }
             CaptionToggle(player, offTint = Color(0xFFEEEEEE))
             ActionIcon(
                 if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
@@ -813,11 +786,10 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
         SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft)
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
-            if (!progress.isLive) {
-                Text(formatMillis(progress.progressLabelMs), style = timeStyle)
-            }
+            Text(progress.progressLabel.orEmpty(), style = timeStyle)
+            Spacer(Modifier.weight(1f))
             DurationLabel(player, progress, timeStyle)
         }
     }
@@ -829,22 +801,20 @@ private fun DurationLabel(
     progress: Progress,
     style: TextStyle,
 ) {
-    if (progress.isLive) {
-        val live = stringResource(Res.string.badge_live)
-        val behind = -progress.progressLabelMs
-        val text = if (progress.atLiveHead()) live else "${formatLiveOffset(behind)} / $live"
-        Text(
-            text,
-            style = style.copy(color = DesignColors.Accent),
-            modifier = if (progress.seekable) {
-                Modifier.clickable { player.seekTo(progress.durationMs.coerceAtLeast(0L)) }
-            } else {
-                Modifier
-            },
-        )
+    val text = if (progress.durationIsLive) {
+        stringResource(Res.string.badge_live)
     } else {
-        Text(progress.durationLabelMs?.let { formatMillis(it) } ?: "--:--", style = style)
+        progress.durationLabel ?: "--:--"
     }
+    Text(
+        text,
+        style = if (progress.highlightDuration) style.copy(color = DesignColors.Accent) else style,
+        modifier = if (progress.durationIsLive && progress.seekable) {
+            Modifier.clickable { player.seekTo(progress.durationMs.coerceAtLeast(0L)) }
+        } else {
+            Modifier
+        },
+    )
 }
 
 /** The bare slider (3dp [trackColor] track, orange fill + thumb) — SeekBar's core, reused by the

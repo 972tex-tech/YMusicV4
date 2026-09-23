@@ -38,6 +38,20 @@ function sizeNodeList(list: HTMLCollection | null): void {
   for (let i = 0; i < list.length; i++) sizePlayerEl(list[i] ?? null);
 }
 
+function pad2(n: number): string {
+  return (n < 10 ? "0" : "") + n;
+}
+
+/** `02:03` or `1:02:03`. */
+function fmtProgressClock(ms: number): string {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) return h + ":" + pad2(m) + ":" + pad2(s);
+  return pad2(m) + ":" + pad2(s);
+}
+
 function sizePlayerTree(): void {
   sizePlayerEl(document.getElementById("player"));
   sizePlayerEl(moviePlayer() as unknown as Element | null);
@@ -996,14 +1010,36 @@ class Player {
         : isFinite(skEnd) && skEnd > 0
           ? Math.round(skEnd * 1000)
           : 0;
+    const skStartMs = Math.round((isFinite(skStart) ? skStart : 0) * 1000);
+    const skEndMs = Math.round((isFinite(skEnd) ? skEnd : 0) * 1000);
+    const window = live && skEndMs > skStartMs;
+    const barStart = window ? skStartMs : 0;
+    const barEnd = window ? skEndMs : durationMs;
+    const barSpan = Math.max(0, barEnd - barStart);
+    const progress =
+      barSpan > 0
+        ? Math.min(barSpan, Math.max(0, posMs - barStart))
+        : Math.max(0, posMs - barStart);
+    const barDur = barSpan > 0 ? barSpan : durationMs;
+    const behind = Math.max(0, barDur - progress);
+    const atHead = live && behind <= 2000;
+    let progressLabel: string | null = null;
+    if (live) progressLabel = atHead ? null : "-" + fmtProgressClock(behind);
+    else if (barDur > 0 || progress > 0) progressLabel = fmtProgressClock(progress);
     return {
-      "positionMs": posMs,
-      "durationMs": durationMs,
+      "progress": progress,
+      "progressLabel": progressLabel,
+      "duration": barDur,
+      "durationLabel": live ? "LIVE" : barDur > 0 ? fmtProgressClock(barDur) : null,
+      "highlightDuration": atHead,
       "bufferedMs": isFinite(loaded) && loaded > 0 ? Math.round(loaded * 1000) : 0,
       "seekable": seekable,
       "live": live,
-      "seekableStartMs": Math.round((isFinite(skStart) ? skStart : 0) * 1000),
-      "seekableEndMs": Math.round((isFinite(skEnd) ? skEnd : 0) * 1000),
+      "seekableStartMs": skStartMs,
+      "seekableEndMs": skEndMs,
+      /* Same values as progress/duration — existing status() readers. */
+      "positionMs": progress,
+      "durationMs": barDur,
     };
   }
 

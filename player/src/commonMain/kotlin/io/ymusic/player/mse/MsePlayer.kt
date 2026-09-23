@@ -382,11 +382,13 @@ class MsePlayer internal constructor(
     }
 
     private fun applyProgress(st: JsonObject) {
-        val dur = st.long("durationMs")
+        val dur = if (st["duration"] != null) st.long("duration") else st.long("durationMs")
         val skStart = st.long("seekableStartMs")
         val skEnd = st.long("seekableEndMs")
-        _progress.value = Progress.of(
-            positionMs = st.long("positionMs"),
+        /* Engine already maps the DVR window onto progress/duration (0..bar). */
+        val bar = if (st["progress"] != null) st.long("progress") else st.long("positionMs")
+        _progress.value = Progress(
+            positionMs = bar,
             durationMs = if (dur > 0L) dur else Progress.DURATION_UNKNOWN,
             bufferedPositionMs = st.long("bufferedMs"),
             seekable = st.bool("seekable", default = dur > 0L),

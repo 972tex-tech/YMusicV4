@@ -53,7 +53,6 @@ import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.isPlaying
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SlimSeekBar
-import io.ymusic.ui.formatLiveOffset
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.badge_live
 import org.jetbrains.compose.resources.stringResource
@@ -177,13 +176,11 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
 
         val durationMs = progress.durationMs
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!progress.isLive) {
-                Text(
-                    formatTime(progress.progressLabelMs),
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                progress.progressLabel.orEmpty(),
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SlimSeekBar(
                 fraction = if (durationMs > 0) (progress.positionMs.toFloat() / durationMs) else 0f,
                 enabled = progress.seekable && durationMs > 0,
@@ -196,30 +193,24 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
                 barHeight = 22.dp,
                 thumbShadow = 0.dp,
             )
-            if (progress.isLive) {
-                val live = stringResource(Res.string.badge_live)
-                val text = if (progress.atLiveHead()) {
-                    live
+            Text(
+                if (progress.durationIsLive) {
+                    stringResource(Res.string.badge_live)
                 } else {
-                    "${formatLiveOffset(-progress.progressLabelMs)} / $live"
-                }
-                Text(
-                    text,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = if (progress.seekable) {
-                        Modifier.clickable { player.seekTo(durationMs.coerceAtLeast(0L)) }
-                    } else {
-                        Modifier
-                    },
-                )
-            } else {
-                Text(
-                    progress.durationLabelMs?.let { formatTime(it) } ?: "--:--",
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+                    progress.durationLabel ?: "--:--"
+                },
+                fontSize = 10.sp,
+                color = if (progress.highlightDuration) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = if (progress.durationIsLive && progress.seekable) {
+                    Modifier.clickable { player.seekTo(durationMs.coerceAtLeast(0L)) }
+                } else {
+                    Modifier
+                },
+            )
         }
 
         Spacer(Modifier.height(2.dp))
@@ -282,18 +273,6 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
             }
         }
         onDispose { trayIcon?.let { t -> tray?.remove(t) } }
-    }
-}
-
-private fun formatTime(ms: Long): String {
-    val total = (ms / 1000).coerceAtLeast(0)
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return if (h > 0) {
-        "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
-    } else {
-        "$m:${s.toString().padStart(2, '0')}"
     }
 }
 

@@ -108,27 +108,34 @@ data class Progress(
     val seekableStartMs: Long = 0L,
     val seekableEndMs: Long = 0L,
 ) {
-    /**
-     * Left caption, milliseconds. VOD: elapsed. Live: delay behind the head (≤ 0, UI shows a minus).
-     */
-    val progressLabelMs: Long
-        get() = if (isLive) {
-            val span = durationMs.coerceAtLeast(0L)
-            -(span - positionMs).coerceAtLeast(0L)
-        } else {
-            positionMs
-        }
-
-    /** Right caption, milliseconds. Null when [isLive] — the UI shows LIVE. */
-    val durationLabelMs: Long?
-        get() = if (isLive) null else durationMs.takeIf { it > 0L }
-
     /** Within [thresholdMs] of the live head. */
-    fun atLiveHead(thresholdMs: Long = 2_000L): Boolean {
+    fun atLiveHead(thresholdMs: Long = LIVE_HEAD_MS): Boolean {
         if (!isLive) return false
         val span = durationMs.coerceAtLeast(0L)
         return span - positionMs <= thresholdMs
     }
+
+    /**
+     * Left caption. VOD: elapsed. Live behind the head: `-00:03`. Null at the live head
+     * (the UI shows nothing on the left).
+     */
+    val progressLabel: String?
+        get() = when {
+            isLive && atLiveHead() -> null
+            isLive -> "-${formatProgressClock((durationMs - positionMs).coerceAtLeast(0L))}"
+            durationMs > 0L || positionMs > 0L -> formatProgressClock(positionMs)
+            else -> null
+        }
+
+    /** Right caption when not [durationIsLive]. Null if unknown / live (UI shows LIVE). */
+    val durationLabel: String?
+        get() = if (isLive) null else durationMs.takeIf { it > 0L }?.let { formatProgressClock(it) }
+
+    /** Right caption is the LIVE badge, not a clock. */
+    val durationIsLive: Boolean get() = isLive
+
+    /** Color the duration caption (LIVE at the live head). */
+    val highlightDuration: Boolean get() = atLiveHead()
 
     fun mediaSeekMs(uiPositionMs: Long): Long {
         val window = isLive && seekableEndMs > seekableStartMs
@@ -137,6 +144,7 @@ data class Progress(
 
     companion object {
         const val DURATION_UNKNOWN: Long = -1L
+        const val LIVE_HEAD_MS: Long = 2_000L
 
         /** Map YouTube/media times onto the scrubber the UI already understands (0..duration). */
         fun of(
@@ -173,6 +181,17 @@ data class Progress(
             )
         }
     }
+}
+
+/** `02:03` or `1:02:03`. */
+fun formatProgressClock(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    val mm = m.toString().padStart(2, '0')
+    val ss = s.toString().padStart(2, '0')
+    return if (h > 0) "$h:$mm:$ss" else "$mm:$ss"
 }
 
 /**
