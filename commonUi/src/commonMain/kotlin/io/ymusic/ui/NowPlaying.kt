@@ -141,9 +141,17 @@ internal fun formatMillis(ms: Long): String {
     }
 }
 
-/** [Progress.progressLabelMs] is signed on live (delay behind the head). */
-private fun formatProgressLabel(ms: Long): String =
-    if (ms < 0) "-${formatMillis(-ms)}" else formatMillis(ms)
+internal fun formatLiveOffset(behindMs: Long): String {
+    val total = (behindMs / 1000).coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return if (h > 0) {
+        "-$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
+    } else {
+        "-${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
+    }
+}
 
 /** True when the portrait title/seek/transport block (list item 0) has left the viewport. */
 private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
@@ -579,20 +587,29 @@ private fun BoxScope.VideoOverlayControls(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                formatProgressLabel(progress.progressLabelMs),
-                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-            )
-            Text(
-                " / ",
-                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-            )
-            DurationLabel(
-                player,
-                progress,
-                TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
-            )
+            if (!progress.isLive) {
+                Text(
+                    formatMillis(progress.progressLabelMs),
+                    style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+                )
+                Text(
+                    " / ",
+                    style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+                )
+                DurationLabel(
+                    player,
+                    progress,
+                    TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+                )
+            }
             Box(Modifier.weight(1f))
+            if (progress.isLive) {
+                DurationLabel(
+                    player,
+                    progress,
+                    TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+                )
+            }
             CaptionToggle(player, offTint = Color(0xFFEEEEEE))
             ActionIcon(
                 if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
@@ -798,7 +815,9 @@ private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
         SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft)
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
-            Text(formatProgressLabel(progress.progressLabelMs), style = timeStyle)
+            if (!progress.isLive) {
+                Text(formatMillis(progress.progressLabelMs), style = timeStyle)
+            }
             DurationLabel(player, progress, timeStyle)
         }
     }
@@ -811,8 +830,11 @@ private fun DurationLabel(
     style: TextStyle,
 ) {
     if (progress.isLive) {
+        val live = stringResource(Res.string.badge_live)
+        val behind = -progress.progressLabelMs
+        val text = if (progress.atLiveHead()) live else "${formatLiveOffset(behind)} / $live"
         Text(
-            stringResource(Res.string.badge_live),
+            text,
             style = style.copy(color = DesignColors.Accent),
             modifier = if (progress.seekable) {
                 Modifier.clickable { player.seekTo(progress.durationMs.coerceAtLeast(0L)) }

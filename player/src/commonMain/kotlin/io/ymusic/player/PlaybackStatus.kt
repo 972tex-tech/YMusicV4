@@ -123,6 +123,13 @@ data class Progress(
     val durationLabelMs: Long?
         get() = if (isLive) null else durationMs.takeIf { it > 0L }
 
+    /** Within [thresholdMs] of the live head. */
+    fun atLiveHead(thresholdMs: Long = 2_000L): Boolean {
+        if (!isLive) return false
+        val span = durationMs.coerceAtLeast(0L)
+        return span - positionMs <= thresholdMs
+    }
+
     fun mediaSeekMs(uiPositionMs: Long): Long {
         val window = isLive && seekableEndMs > seekableStartMs
         return if (window) seekableStartMs + uiPositionMs.coerceAtLeast(0L) else uiPositionMs.coerceAtLeast(0L)

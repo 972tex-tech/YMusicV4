@@ -53,6 +53,7 @@ import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.isPlaying
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SlimSeekBar
+import io.ymusic.ui.formatLiveOffset
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.badge_live
 import org.jetbrains.compose.resources.stringResource
@@ -175,13 +176,14 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
         Spacer(Modifier.height(6.dp))
 
         val durationMs = progress.durationMs
-        val labelMs = progress.progressLabelMs
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (labelMs < 0) "-${formatTime(-labelMs)}" else formatTime(labelMs),
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!progress.isLive) {
+                Text(
+                    formatTime(progress.progressLabelMs),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             SlimSeekBar(
                 fraction = if (durationMs > 0) (progress.positionMs.toFloat() / durationMs) else 0f,
                 enabled = progress.seekable && durationMs > 0,
@@ -195,8 +197,14 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
                 thumbShadow = 0.dp,
             )
             if (progress.isLive) {
+                val live = stringResource(Res.string.badge_live)
+                val text = if (progress.atLiveHead()) {
+                    live
+                } else {
+                    "${formatLiveOffset(-progress.progressLabelMs)} / $live"
+                }
                 Text(
-                    stringResource(Res.string.badge_live),
+                    text,
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = if (progress.seekable) {
