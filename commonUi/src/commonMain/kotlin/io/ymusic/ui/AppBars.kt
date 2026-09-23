@@ -669,8 +669,9 @@ internal val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 /**
  * Same rubber-band as [SwipeTabSwitcher], vertical: the page peeks down under the finger, then
- * either springs back or slides off and [onDismiss]s. Nested scroll pulls at the top of a list
- * count; a downward drag on non-scrolling chrome (top bar, video) does too.
+ * either springs back or slides off and [onDismiss]s. Only a real touch drag counts — a flying
+ * queue fling that hits the top must not pull the sheet. Nested scroll at the top of a list and
+ * a downward drag on non-scrolling chrome (top bar, video) both work.
  */
 @Composable
 internal fun SwipeDownDismissBox(
@@ -715,7 +716,7 @@ internal fun SwipeDownDismissBox(
                         tracker.addPosition(change.uptimeMillis, change.position)
                         change.consume()
                     }
-                    drag.settle(if (completed) tracker.calculateVelocity().y else 0f)
+                    drag.settle(if (completed) tracker.calculateVelocity().y else 0f, allowFlick = true)
                 }
             }
             .graphicsLayer { translationY = peek.value },
@@ -741,8 +742,8 @@ private class DragDown(
         scope.launch { peek.snapTo(target) }
     }
 
-    fun settle(flingY: Float) {
-        val commit = raw >= distancePx || flingY >= velocityPx
+    fun settle(flingY: Float, allowFlick: Boolean) {
+        val commit = raw >= distancePx || (allowFlick && flingY >= velocityPx)
         scope.launch {
             if (commit) {
                 val end = heightPx.takeIf { it > 0f } ?: (maxPeek * 8f)
@@ -757,27 +758,31 @@ private class DragDown(
 
     val connection = object : NestedScrollConnection {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-            if (raw <= 0f || available.y >= 0f) return Offset.Zero
+            if (!source.isTouchDrag() || raw <= 0f || available.y >= 0f) return Offset.Zero
             val before = raw
             report(available.y)
             return Offset(0f, raw - before)
         }
 
         override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-            if (available.y <= 0f) return Offset.Zero
+            if (!source.isTouchDrag() || available.y <= 0f) return Offset.Zero
             report(available.y)
             return Offset(0f, available.y)
         }
 
         override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
             if (raw > 0f || peek.value > 0f) {
-                settle(available.y)
+                /* Finger already left — commit only if the drag itself passed the threshold,
+                   not because leftover list fling velocity is large. */
+                settle(0f, allowFlick = false)
                 return available
             }
             return Velocity.Zero
         }
     }
 }
+
+private fun NestedScrollSource.isTouchDrag(): Boolean = this == NestedScrollSource.UserInput
 
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */
 @Composable
