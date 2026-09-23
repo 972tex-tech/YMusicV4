@@ -1,4 +1,4 @@
-/** Adaptive 144p itags (Qf tiny). Fake in /player; strip from SABR vid=/br/sel. */
+/** Adaptive 144p itags (Qf tiny). Used as audio-only fake FormatId (itag+lmt). */
 export const ITAG_144P = [160, 278, 330, 394, 598, 694];
 
 /** Adaptive video itags by codec. Used to read SABR sel= and pick a matching 144p. */
@@ -15,26 +15,42 @@ export function is144pItag(itag: number): boolean {
   return ITAG_144P.indexOf(itag) >= 0;
 }
 
+export function isVideoItag(itag: number): boolean {
+  return (
+    is144pItag(itag) || inSet(ITAG_AV1, itag) || inSet(ITAG_AVC, itag) || inSet(ITAG_VP9, itag)
+  );
+}
+
 export type Fake144Row = {
   itag: number;
   mime: string;
   lmt: string;
+  /** Inclusive byte indexes from /player (YouTube 0–699 = 700 bytes). */
   initStart: number;
   initEnd: number;
   indexStart: number;
   indexEnd: number;
+  bitrate: number;
+  /** FORMAT_INIT 10 / TimeRange 3. mp4 video dump uses 15360, webm 1000. */
+  timescale: number;
 };
 
-let lastVideoId = "";
-let lastRows: Fake144Row[] = [];
+type Fake144Video = { durationMs: number; live: boolean; rows: Fake144Row[] };
 
-export function recordFake144(videoId: string, rows: Fake144Row[]): void {
-  lastVideoId = videoId;
-  lastRows = rows;
-}
+const byVideo: Record<string, Fake144Video> = {};
 
-export function fake144VideoId(): string {
-  return lastVideoId;
+export function recordFake144(
+  videoId: string,
+  rows: Fake144Row[],
+  durationMs: number,
+  live: boolean,
+): void {
+  if (!videoId || !rows.length) return;
+  byVideo[videoId] = {
+    durationMs: durationMs > 0 ? durationMs : 0,
+    live: live,
+    rows: rows,
+  };
 }
 
 function inSet(set: number[], itag: number): boolean {
@@ -48,24 +64,24 @@ function codecOf(itag: number): string {
   return "";
 }
 
-export function fake144ByItag(itag: number): Fake144Row | null {
-  for (let i = 0; i < lastRows.length; i++) {
-    if (lastRows[i]!.itag === itag) return lastRows[i]!;
-  }
-  return null;
-}
-
-function rowWithItag(prefer: number[]): Fake144Row | null {
+function rowWithItag(rows: Fake144Row[], prefer: number[]): Fake144Row | null {
   for (let i = 0; i < prefer.length; i++) {
-    const row = fake144ByItag(prefer[i]!);
-    if (row) return row;
+    const want = prefer[i]!;
+    for (let j = 0; j < rows.length; j++) {
+      if (rows[j]!.itag === want) return rows[j]!;
+    }
   }
   return null;
 }
 
-/** sel= initialized itags. No video sel → av1/avc (mp4), not vp9. */
-export function pickFake144(selItags: number[]): Fake144Row | null {
-  if (!lastRows.length) return null;
+/** sel= initialized itags, else playable video ladder. Match that codec's 144p (vp9→278). */
+export function pickFake144(
+  videoId: string,
+  selItags: number[],
+): { row: Fake144Row; durationMs: number; live: boolean } | null {
+  const rec = byVideo[videoId];
+  if (!rec || !rec.rows.length) return null;
+  const rows = rec.rows;
   let codec = "";
   for (let i = 0; i < selItags.length; i++) {
     const c = codecOf(selItags[i]!);
@@ -76,5 +92,7 @@ export function pickFake144(selItags: number[]): Fake144Row | null {
   }
   if (!codec) codec = "av1";
   const prefer = codec === "vp9" ? [278, 330] : codec === "avc" ? [160, 598] : [394, 694];
-  return rowWithItag(prefer) || rowWithItag([394, 160, 598, 694, 278, 330]) || lastRows[0]!;
+  const row =
+    rowWithItag(rows, prefer) || rowWithItag(rows, [394, 160, 598, 694, 278, 330]) || rows[0]!;
+  return { row: row, durationMs: rec.durationMs, live: rec.live };
 }

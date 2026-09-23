@@ -27,6 +27,12 @@ export function isYmLive(): boolean {
   return !!vd && vd["isLive"] === true;
 }
 
+/** movie_player.getPlayerResponse videoDetails — the presenting video, not a prefetch. */
+export function playingVideoId(): string {
+  const vd = videoDetails();
+  return vd ? String(vd["videoId"] || "") : "";
+}
+
 export function isKnownVod(): boolean {
   const vd = videoDetails();
   return !!vd && vd["isLive"] !== true;

@@ -51,62 +51,49 @@ function isVideoFmt(fmt: Record<string, unknown>): boolean {
   return mime.indexOf("video/") === 0;
 }
 
-/** Keep container; mark codec so SourceBuffer.changeType is visible. */
-function fakeMime(mime: string): string {
-  const m = String(mime);
-  const key = 'codecs="';
-  const i = m.indexOf(key);
-  if (i < 0) return m;
-  const start = i + key.length;
-  const end = m.indexOf('"', start);
-  if (end < 0) return m;
-  const codec = m.slice(start, end);
-  if (codec.indexOf(".fake") >= 0) return m;
-  return m.slice(0, end) + ".fake" + m.slice(end);
-}
-
-/**
- * Rewrite real 144p adaptiveFormats in place (keep itag so Qf still maps qe).
- * initRange/indexRange are inclusive byte indexes (YouTube 0–699 = 700 bytes).
- */
-function injectFakeMp4Format(rec: Record<string, unknown>): void {
+/** Snapshot 144p itag+lmt+mime from /player. Do not rewrite mime or byte ranges. */
+function record144pFormats(rec: Record<string, unknown>): void {
   const sd = asRec(rec["streamingData"]);
   const formats = sd ? sd["adaptiveFormats"] : null;
   if (!Array.isArray(formats)) return;
   const itags: string[] = [];
   const rows: Fake144Row[] = [];
+  let approxMs = 0;
   for (let i = 0; i < formats.length; i++) {
     const fmt = asRec(formats[i]);
     if (!fmt || !isVideoFmt(fmt) || !is144pItag(Number(fmt["itag"]))) continue;
     const itag = Number(fmt["itag"]);
     const lmt = String(fmt["lastModified"] || "0");
-    if (String(fmt["mimeType"] || "").indexOf(".fake") < 0) {
-      if (fmt["_lastModified"] == null) fmt["_lastModified"] = fmt["lastModified"];
-      if (fmt["_mimeType"] == null) fmt["_mimeType"] = fmt["mimeType"];
-      if (fmt["_xtags"] == null) fmt["_xtags"] = fmt["xtags"];
-      if (fmt["_xtag"] == null) fmt["_xtag"] = fmt["xtag"];
-      if (fmt["_initRange"] == null) fmt["_initRange"] = fmt["initRange"];
-      if (fmt["_indexRange"] == null) fmt["_indexRange"] = fmt["indexRange"];
-      fmt["mimeType"] = fakeMime(String(fmt["mimeType"] || ""));
-      fmt["xtags"] = null;
-      fmt["xtag"] = null;
-      fmt["initRange"] = { "start": "0", "end": "1" };
-      fmt["indexRange"] = { "start": "2", "end": "3" };
+    if (!approxMs) {
+      const approx = Number(fmt["approxDurationMs"]);
+      if (isFinite(approx) && approx > 0) approxMs = Math.round(approx);
     }
+    const initR = asRec(fmt["initRange"]);
+    const indexR = asRec(fmt["indexRange"]);
+    const mime = String(fmt["mimeType"] || "");
+    const br = Number(fmt["bitrate"] || fmt["averageBitrate"] || 0);
     itags.push(String(itag));
     rows.push({
       itag: itag,
-      mime: String(fmt["mimeType"] || ""),
+      mime: mime,
       lmt: lmt,
-      initStart: 0,
-      initEnd: 1,
-      indexStart: 2,
-      indexEnd: 3,
+      initStart: initR ? Number(initR["start"]) || 0 : 0,
+      initEnd: initR ? Number(initR["end"]) || 0 : 0,
+      indexStart: indexR ? Number(indexR["start"]) || 0 : 0,
+      indexEnd: indexR ? Number(indexR["end"]) || 0 : 0,
+      bitrate: isFinite(br) && br > 0 ? Math.round(br) : 0,
+      timescale: mime.indexOf("mp4") >= 0 ? 15360 : 1000,
     });
   }
   const vd = asRec(rec["videoDetails"]);
   const vid = vd ? String(vd["videoId"] || "") : "";
-  recordFake144(vid, rows);
+  let durationMs = approxMs;
+  if (!durationMs && vd) {
+    const sec = Number(vd["lengthSeconds"]);
+    if (isFinite(sec) && sec > 0) durationMs = Math.round(sec * 1000);
+  }
+  const live = !!vd && vd["isLive"] === true;
+  recordFake144(vid, rows, durationMs, live);
   if (itags.length)
     console.info(
       "mse fake-fmt 144p itags=" + itags.join(",") + " lmt=" + (rows[0] ? rows[0].lmt : "-"),
@@ -123,7 +110,7 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   const pc = asRec(rec["playerConfig"]);
   const dai = pc ? asRec(pc["daiConfig"]) : null;
   if (dai) dai["sendSsdaiMissingAdBreakReasons"] = false;
-  injectFakeMp4Format(rec);
+  record144pFormats(rec);
   notePlayerResponse(rec);
   ingestPlayerCaptions(rec);
   return rec;

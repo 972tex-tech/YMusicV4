@@ -9,7 +9,8 @@ import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { logSabrRequest, logSabrResponse } from "./sabr_log";
-import { prepareSabrBody, appendFakeUmp } from "./sabr_abr";
+import { transformRequestBody, transformResponseBody } from "./sabr_abr";
+import type { SabrRequestState } from "./sabr_abr";
 import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 
@@ -301,7 +302,9 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   if (!hasOrigin && loc && loc["origin"] != null)
     builder.addHeader("Origin", String(loc["origin"]));
   if (requestRewrite) body = requestRewrite(url, body);
-  body = prepareSabrBody(url, body);
+  const sabr = transformRequestBody(url, body);
+  const sabrState: SabrRequestState | null = sabr.state;
+  body = sabr.body;
   logSabrRequest(url, body);
   if (body != null && body !== "") {
     if (typeof body === "string") builder.body(body);
@@ -361,7 +364,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
         }
       } else if (self["responseType"] === "arraybuffer") {
         let u8 = await drainBytes(res);
-        u8 = appendFakeUmp(u8);
+        u8 = transformResponseBody(u8, sabrState);
         logSabrResponse(url, res.status, u8);
         const copy = new Uint8Array(u8.byteLength);
         copy.set(u8);

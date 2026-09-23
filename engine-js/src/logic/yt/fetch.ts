@@ -16,7 +16,8 @@ import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
 import { createSabrTee, logSabrRequest } from "./sabr_log";
-import { fakeUmpAfter, prepareSabrBody } from "./sabr_abr";
+import { fakeUmpAfter, transformRequestBody } from "./sabr_abr";
+import type { SabrRequestState } from "./sabr_abr";
 import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 import { applyRequestRewrite, applyResponseRewrite, taggedJsonText, wantsJsonRewrite } from "./xhr";
@@ -630,11 +631,13 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   if (!p.headers["has"]("origin") && loc && loc["origin"] != null) {
     builder.addHeader("Origin", String(loc["origin"]));
   }
+  let sabrState: SabrRequestState | null = null;
   if (p.body !== undefined) {
     const rewritten = applyRequestRewrite(p.url, p.body);
-    const body = prepareSabrBody(p.url, rewritten);
-    builder.body(body as string | Uint8Array);
-    logSabrRequest(p.url, body);
+    const sabr = transformRequestBody(p.url, rewritten);
+    sabrState = sabr.state;
+    builder.body(sabr.body as string | Uint8Array);
+    logSabrRequest(p.url, sabr.body);
   } else if (p.method === "POST" || p.method === "PUT" || p.method === "PATCH") {
     builder.body("");
     logSabrRequest(p.url, p.body);
@@ -716,7 +719,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
       }
       if (!fakeSent) {
         fakeSent = true;
-        const extra = fakeUmpAfter(tee.maxHid());
+        const extra = fakeUmpAfter(sabrState, tee.maxHid(), tee.liveAudio());
         if (extra) return extra;
       }
       tee.finish(p.url, httpRes.status);

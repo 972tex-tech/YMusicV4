@@ -255,6 +255,12 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
   if (complete(e)) flush(e, true);
 }
 
+/** SABR `id=o-…` mapped from a prior /player. Empty if this stream is unknown. */
+export function videoIdForSabrUrl(url: string): string {
+  const sid = streamIdOf(url);
+  return (sid && streamToVid[sid]) || "";
+}
+
 export function noteSabrPlaybackUrl(url: string): void {
   if (url.indexOf("/videoplayback") < 0) return;
   if (url.indexOf("sabr=") < 0) return;

@@ -1,10 +1,13 @@
 // SABR /videoplayback debug log (SABR_DEBUG compile define; stripped in prod).
 // PO (query pot= + StreamerContext 19.2).
-// clientAbrState: 28 playerTimeMs, 29 timeSinceLastSeekMs, 40 enabledTrackTypesBitfield.
+// clientAbrState: 16 stickyRes (yt-player-quality px), 18/19 viewport, 23 bandwidth,
+// 21 bitrate cap, 13/14 last manual quality, 38 mediaCapabilities, 40 tracks, 72 quality policy.
 // bufferedRanges: 1 formatId.itag, 2 startMs, 3 durationMs.
 // selected_format_ids=2, selected_audio_format_ids=16, selected_video_format_ids=17.
 
 import { isAudioOnly } from "../player/audio_only";
+import { mhAudioFromPayload } from "./sabr_abr";
+import type { LiveAudioMh } from "./sabr_abr";
 import { dumpBgOnSps, dumpFirstSps, recordSabrForDump } from "../player/bg_dump";
 import { dumpDrain } from "../../protocol/mse";
 
@@ -195,6 +198,114 @@ function fmtMediaHeader(p: Uint8Array): string {
   return s;
 }
 
+function protoRepeatedVarint(buf: Uint8Array, want: number): number[] {
+  const out: number[] = [];
+  let i = 0;
+  while (i < buf.length) {
+    const k = readVarint(buf, i);
+    if (!k) break;
+    i = k.i;
+    const field = k.v >>> 3;
+    const wire = k.v & 7;
+    if (wire === 0) {
+      const n = readVarint(buf, i);
+      if (!n) break;
+      i = n.i;
+      if (field === want) out.push(n.v);
+    } else if (wire === 1) i += 8;
+    else if (wire === 5) i += 4;
+    else if (wire === 2) {
+      const n = readVarint(buf, i);
+      if (!n) break;
+      i = n.i;
+      i += n.v;
+      if (i > buf.length) break;
+    } else break;
+  }
+  return out;
+}
+
+function dash(n: number | null): string {
+  return n != null ? String(n) : "-";
+}
+
+/** ClientAbrState fields the server uses to pick itag (sticky quality, viewport, bw, caps). */
+function fmtClientAbrState(state: Uint8Array): string {
+  const qg = protoBytes(state, 72);
+  let qpol = "-";
+  if (qg) {
+    qpol =
+      "def=" +
+      dash(protoVarint(qg, 1)) +
+      " sm=" +
+      dash(protoVarint(qg, 2)) +
+      " vis=" +
+      dash(protoVarint(qg, 3)) +
+      " gr=" +
+      dash(protoVarint(qg, 4)) +
+      " perf=" +
+      dash(protoVarint(qg, 5)) +
+      " spd=" +
+      dash(protoVarint(qg, 6));
+  }
+  const mc = protoBytes(state, 38);
+  let deny = "-";
+  let vcap = "-";
+  if (mc) {
+    const attrs = protoBytes(mc, 4);
+    if (attrs) {
+      const ds = protoRepeatedVarint(attrs, 1);
+      if (ds.length) deny = ds.join(",");
+    }
+    const vids = protoRepeated(mc, 1);
+    const bits: string[] = [];
+    for (let i = 0; i < vids.length && i < 4; i++) {
+      const m = vids[i]!;
+      bits.push(
+        dash(protoVarint(m, 4)) +
+          "x" +
+          dash(protoVarint(m, 3)) +
+          "@" +
+          dash(protoVarint(m, 11)) +
+          "b=" +
+          dash(protoVarint(m, 12)),
+      );
+    }
+    if (bits.length) vcap = bits.join(";");
+  }
+  return (
+    "sabr clientAbrState sticky=" +
+    dash(protoVarint(state, 16)) +
+    " vw=" +
+    dash(protoVarint(state, 18)) +
+    " vh=" +
+    dash(protoVarint(state, 19)) +
+    " bw=" +
+    dash(protoVarint(state, 23)) +
+    " cap=" +
+    dash(protoVarint(state, 21)) +
+    " lastMs=" +
+    dash(protoVarint(state, 13)) +
+    " lastDir=" +
+    dash(protoVarint(state, 14)) +
+    " vis=" +
+    dash(protoVarint(state, 34)) +
+    " net=" +
+    dash(protoVarint(state, 17)) +
+    " tracks=" +
+    dash(protoVarint(state, 40)) +
+    " audQ=" +
+    dash(protoVarint(state, 73)) +
+    " qpol={" +
+    qpol +
+    "} deny=" +
+    deny +
+    " vcap=[" +
+    vcap +
+    "]"
+  );
+}
+
 function protoRepeated(buf: Uint8Array, want: number): Uint8Array[] {
   const out: Uint8Array[] = [];
   let i = 0;
@@ -332,13 +443,14 @@ function joinU8(parts: Uint8Array[], n: number): Uint8Array {
 }
 
 /**
- * Like Kotlin SabrCacheTee: parse UMP off a copy of each player-read chunk.
- * Pass-through is the same bytes; scan holds at most a straddling header plus one
- * small control payload (MEDIA_DATA is skipped, never buffered).
+ * Scan UMP on the player-read stream without buffering MEDIA_DATA.
+ * Production: SPS, SABR_ERROR, FORMAT_INIT itag, MEDIA_HEADER itag.
+ * MEDIA_DATA is never buffered. SABR_DEBUG keeps the full ump=[] dump.
  */
 export interface SabrTee {
   push(chunk: Uint8Array): void;
   maxHid(): number;
+  liveAudio(): LiveAudioMh | null;
   finish(url: string, status: number): void;
 }
 
@@ -352,6 +464,8 @@ export function createSabrTee(): SabrTee {
   let pay: Uint8Array[] = [];
   let payN = 0;
   let maxHid = -1;
+  let liveAudio: LiveAudioMh | null = null;
+  let prevAudioStart = -1;
   let sps = -1;
   let media = 0;
   let bodyN = 0;
@@ -363,25 +477,51 @@ export function createSabrTee(): SabrTee {
     const payload = needPayload && payN ? joinU8(pay, payN) : null;
     pay = [];
     payN = 0;
-    if (partId === 20 && payload) {
-      const hid = protoVarint(payload, 1);
-      if (hid != null && hid > maxHid) maxHid = hid;
-      if (protoVarint(payload, 8) !== 1) {
-        const seq = protoVarint(payload, 9);
-        if (seq != null && seq > 0 && (mhSeq == null || seq > mhSeq)) mhSeq = seq;
-      }
-    }
     if (partId === 58 && payload) {
       const v = protoVarint(payload, 1);
       sps = v != null ? v : -1;
+    }
+    if (partId === 44) {
+      const msg = payload ? protoString(payload, 1) : "";
+      err = msg || "err";
+      console.warn("sabr error " + (msg || ""));
+    }
+    if (partId === 42 && payload) {
+      const fid = protoBytes(payload, 2);
+      const itag = fid ? protoVarint(fid, 1) : protoVarint(payload, 3);
+      console.log("sabr FORMAT_INIT itag=" + (itag != null ? itag : "-"));
+    }
+    if (partId === 20 && payload) {
+      const hid = protoVarint(payload, 1);
+      if (hid != null && hid > maxHid) maxHid = hid;
+      const itag = protoVarint(payload, 3);
+      const init = protoVarint(payload, 8) === 1 ? 1 : 0;
+      const seq = protoVarint(payload, 9);
+      const audio = mhAudioFromPayload(payload);
+      if (audio && (!liveAudio || audio.startMs >= liveAudio.startMs)) {
+        if (liveAudio) prevAudioStart = liveAudio.startMs;
+        let dur = audio.durationMs;
+        if (!(dur > 0) && prevAudioStart >= 0 && audio.startMs > prevAudioStart)
+          dur = audio.startMs - prevAudioStart;
+        if (!(dur > 0)) dur = 1000;
+        liveAudio = { startMs: audio.startMs, seq: audio.seq, durationMs: dur };
+      }
+      console.log(
+        "sabr MEDIA_HEADER hid=" +
+          (hid != null ? hid : "-") +
+          " itag=" +
+          (itag != null ? itag : "-") +
+          " init=" +
+          init +
+          (seq != null ? " seq=" + seq : ""),
+      );
     }
     if (!SABR_DEBUG) return;
     const name = UMP_NAME[partId] || String(partId);
     if (partId === 58) {
       parts.push("SPS=" + sps + "(" + spsLabel(sps) + ")");
     } else if (partId === 44) {
-      err = "err";
-      parts.push("SABR_ERROR");
+      parts.push("SABR_ERROR" + (err ? ":" + err : ""));
     } else if (partId === 43) {
       parts.push("REDIRECT");
     } else if (partId === 42 && payload) {
@@ -395,6 +535,7 @@ export function createSabrTee(): SabrTee {
       const itag = protoVarint(payload, 3);
       const init = protoVarint(payload, 8) === 1 ? 1 : 0;
       const seq = protoVarint(payload, 9);
+      if (init !== 1 && seq != null && seq > 0 && (mhSeq == null || seq > mhSeq)) mhSeq = seq;
       const t = protoVarint(payload, 11);
       parts.push(
         "MH:itag=" +
@@ -433,7 +574,12 @@ export function createSabrTee(): SabrTee {
         partSize = sz.v;
         partRemain = sz.v;
         i = sz.i;
-        needPayload = partId === 20 || partId === 58 || (SABR_DEBUG && partId !== 21);
+        needPayload =
+          partId === 58 ||
+          partId === 44 ||
+          partId === 42 ||
+          partId === 20 ||
+          (SABR_DEBUG && partId !== 21);
         pay = [];
         payN = 0;
       }
@@ -489,6 +635,9 @@ export function createSabrTee(): SabrTee {
     maxHid: function () {
       return maxHid;
     },
+    liveAudio: function () {
+      return liveAudio;
+    },
     finish: finish,
   };
 }
@@ -525,6 +674,7 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
   let sel = "-";
   let aud = "-";
   let vid = "-";
+  let clientAbrLog = "";
   if (u && u.length > 0) {
     const sc = protoBytes(u, 19);
     if (sc) {
@@ -534,16 +684,17 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
         potB64 = b64url(pot);
       }
     }
-    const cas = protoBytes(u, 1);
-    if (cas) {
-      const t = protoVarint(cas, 28);
+    const clientAbr = protoBytes(u, 1);
+    if (clientAbr) {
+      const t = protoVarint(clientAbr, 28);
       if (t != null) playerTimeMs = t;
-      const s = protoVarint(cas, 29);
+      const s = protoVarint(clientAbr, 29);
       if (s != null) sinceSeekMs = s;
-      const f40 = protoVarint(cas, 40);
+      const f40 = protoVarint(clientAbr, 40);
       if (f40 != null) bit40 = f40;
-      const f46 = protoVarint(cas, 46);
+      const f46 = protoVarint(clientAbr, 46);
       if (f46 != null) bit46 = f46;
+      clientAbrLog = fmtClientAbrState(clientAbr);
     }
     const ranges = protoRepeated(u, 3);
     const parts: string[] = [];
@@ -603,5 +754,6 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       " pot=" +
       potB64,
   );
+  if (clientAbrLog) console.log(clientAbrLog);
   if (isAudioOnly()) dumpDrain("sabr-req");
 }

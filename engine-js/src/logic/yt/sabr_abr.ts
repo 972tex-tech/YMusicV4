@@ -1,12 +1,24 @@
-// SABR VideoPlaybackAbrRequest: drop fake 144p from playable video (17),
-// initialized formats (2), and buffered_ranges (3). Audio-only also
-// sets ClientAbrState field 40=1 (server sends no real video) and appends a
-// fake 144p UMP: one media segment covering 0–duration.
+// SABR VideoPlaybackAbrRequest FormatId lists (SabrProto.kt):
+//   2  selected_format_ids       — initialized (already have init)
+//   16 selected_audio_format_ids — playable audio ladder (client-filtered)
+//   17 selected_video_format_ids — playable video ladder (client-filtered)
+// Audio-only: CAS 40=1; drop 144p from initialized (2) and playable video (17)
+// and those buffered_ranges (3). VOD: a 144p range in (3) means cover is done
+// — skip fake UMP. Live: startMs = max(playerTimeMs, 144p range end). If CAS 38
+// mediaCapabilities is present, add 144p to itagDenylist.
+// !audioOnly still drops 144p if wasFaked[itag_lmt] (set true when we inject
+// fake UMP, false on a real response). No fake/real mix.
+
+const INITIALIZED_FORMAT_IDS = 2;
+const BUFFERED_RANGES = 3;
+const PLAYABLE_AUDIO_FORMAT_IDS = 16;
+const PLAYABLE_VIDEO_FORMAT_IDS = 17;
 
 import { isAudioOnly } from "../player/audio_only";
-import { fake144ByItag, fake144VideoId, is144pItag, pickFake144 } from "../player/itag_144";
+import { ITAG_144P, is144pItag, isVideoItag, pickFake144 } from "../player/itag_144";
 import type { Fake144Row } from "../player/itag_144";
-import { appendRestCover } from "../../protocol/mse";
+import { playingVideoId } from "../player/live";
+import { videoIdForSabrUrl } from "../player/player_res";
 
 function asU8(body: unknown): Uint8Array | null {
   if (body instanceof Uint8Array) return body;
@@ -43,17 +55,7 @@ function writeVarint(v: number): number[] {
   return out;
 }
 
-function decToNum(s: string): number {
-  let n = 0;
-  for (let i = 0; i < s.length; i++) {
-    const d = s.charCodeAt(i) - 48;
-    if (d < 0 || d > 9) continue;
-    n = n * 10 + d;
-  }
-  return n;
-}
-
-type Field = { n: number; w: number; v: number | Uint8Array };
+type Field = { field: number; wire: number; value: number | Uint8Array };
 
 function readFields(buf: Uint8Array): Field[] | null {
   const out: Field[] = [];
@@ -62,27 +64,27 @@ function readFields(buf: Uint8Array): Field[] | null {
     const k = readVarint(buf, i);
     if (!k) return null;
     i = k.i;
-    const n = k.v >>> 3;
-    const w = k.v & 7;
-    if (w === 0) {
+    const field = k.v >>> 3;
+    const wire = k.v & 7;
+    if (wire === 0) {
       const x = readVarint(buf, i);
       if (!x) return null;
       i = x.i;
-      out.push({ n: n, w: 0, v: x.v });
-    } else if (w === 2) {
+      out.push({ field: field, wire: 0, value: x.v });
+    } else if (wire === 2) {
       const x = readVarint(buf, i);
       if (!x) return null;
       i = x.i;
       if (x.v < 0 || i + x.v > buf.length) return null;
-      out.push({ n: n, w: 2, v: buf.subarray(i, i + x.v) });
+      out.push({ field: field, wire: 2, value: buf.subarray(i, i + x.v) });
       i += x.v;
-    } else if (w === 1) {
+    } else if (wire === 1) {
       if (i + 8 > buf.length) return null;
-      out.push({ n: n, w: 1, v: buf.subarray(i, i + 8) });
+      out.push({ field: field, wire: 1, value: buf.subarray(i, i + 8) });
       i += 8;
-    } else if (w === 5) {
+    } else if (wire === 5) {
       if (i + 4 > buf.length) return null;
-      out.push({ n: n, w: 5, v: buf.subarray(i, i + 4) });
+      out.push({ field: field, wire: 5, value: buf.subarray(i, i + 4) });
       i += 4;
     } else return null;
   }
@@ -93,14 +95,14 @@ function writeFields(fs: Field[]): Uint8Array {
   const bytes: number[] = [];
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
-    const key = writeVarint((f.n << 3) | f.w);
+    const key = writeVarint((f.field << 3) | f.wire);
     for (let j = 0; j < key.length; j++) bytes.push(key[j]!);
-    if (f.w === 0) {
-      const v = writeVarint(f.v as number);
+    if (f.wire === 0) {
+      const v = writeVarint(f.value as number);
       for (let j = 0; j < v.length; j++) bytes.push(v[j]!);
     } else {
-      const u = f.v as Uint8Array;
-      if (f.w === 2) {
+      const u = f.value as Uint8Array;
+      if (f.wire === 2) {
         const ln = writeVarint(u.length);
         for (let j = 0; j < ln.length; j++) bytes.push(ln[j]!);
       }
@@ -110,38 +112,73 @@ function writeFields(fs: Field[]): Uint8Array {
   return new Uint8Array(bytes);
 }
 
+function parseFormatId(msg: Uint8Array): { itag: number; lmt: number } | null {
+  const fs = readFields(msg);
+  if (!fs) return null;
+  let itag: number | null = null;
+  let lmt = 0;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.field === 1 && f.wire === 0) itag = f.value as number;
+    if (f.field === 2 && f.wire === 0) lmt = f.value as number;
+  }
+  if (itag == null) return null;
+  return { itag: itag, lmt: lmt };
+}
+
 function formatItag(msg: Uint8Array): number | null {
-  const fs = readFields(msg);
-  if (!fs) return null;
-  for (let i = 0; i < fs.length; i++) {
-    const f = fs[i]!;
-    if (f.n === 1 && f.w === 0) return f.v as number;
-  }
-  return null;
+  const id = parseFormatId(msg);
+  return id ? id.itag : null;
 }
 
-function rangeItag(msg: Uint8Array): number | null {
+function parseBufferedRange(
+  msg: Uint8Array,
+): { itag: number; lmt: number; startMs: number; durationMs: number } | null {
   const fs = readFields(msg);
   if (!fs) return null;
+  let id: { itag: number; lmt: number } | null = null;
+  let startMs: number | null = null;
+  let durationMs: number | null = null;
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
-    if (f.n === 1 && f.w === 2 && f.v instanceof Uint8Array) return formatItag(f.v);
+    if (f.field === 1 && f.wire === 2 && f.value instanceof Uint8Array) id = parseFormatId(f.value);
+    if (f.field === 2 && f.wire === 0) startMs = f.value as number;
+    if (f.field === 3 && f.wire === 0) durationMs = f.value as number;
   }
-  return null;
+  if (!id || startMs == null || durationMs == null) return null;
+  return { itag: id.itag, lmt: id.lmt, startMs: startMs, durationMs: durationMs };
 }
 
-function rangeWindow(msg: Uint8Array): { start: number; dur: number } | null {
-  const fs = readFields(msg);
-  if (!fs) return null;
-  let start: number | null = null;
-  let dur: number | null = null;
+const wasFaked: Record<string, boolean> = {};
+
+function casPlayerTimeMs(cas: Uint8Array): number {
+  const fs = readFields(cas);
+  if (!fs) return 0;
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
-    if (f.n === 2 && f.w === 0) start = f.v as number;
-    if (f.n === 3 && f.w === 0) dur = f.v as number;
+    if (f.field === 28 && f.wire === 0) return f.value as number;
   }
-  if (start == null || dur == null) return null;
-  return { start: start, dur: dur };
+  return 0;
+}
+
+function formatKey(itag: number, lmt: number): string {
+  return itag + "_" + lmt;
+}
+
+function drop144(id: { itag: number; lmt: number }, audioOnly: boolean): boolean {
+  if (!is144pItag(id.itag)) return false;
+  if (audioOnly) return true;
+  return !!wasFaked[formatKey(id.itag, id.lmt)];
+}
+
+function decToNum(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const d = s.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) continue;
+    n = n * 10 + d;
+  }
+  return n;
 }
 
 function asciiU8(s: string): Uint8Array {
@@ -162,7 +199,6 @@ function concatU8(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** UMP varint (not protobuf). Same widths as yt-media Ump.kt. */
 function writeUmpVarint(v: number): number[] {
   v = Math.floor(v);
   if (v < 0) v = 0;
@@ -186,18 +222,21 @@ function umpPart(id: number, payload: Uint8Array): Uint8Array {
 
 function encodeFormatId(itag: number, lmtDec: string): Uint8Array {
   return writeFields([
-    { n: 1, w: 0, v: itag },
-    { n: 2, w: 0, v: decToNum(lmtDec) },
+    { field: 1, wire: 0, value: itag },
+    { field: 2, wire: 0, value: decToNum(lmtDec) },
   ]);
 }
 
-function initLen(row: Fake144Row): number {
-  return row.initEnd - row.initStart + 1 + (row.indexEnd - row.indexStart + 1);
+/** Live FORMAT_INIT field 2 is itag only (dump: len=3). lmt omitted → key itag;0; */
+function encodeItagOnly(itag: number): Uint8Array {
+  return writeFields([{ field: 1, wire: 0, value: itag }]);
 }
 
+/** Init MEDIA_DATA is initRange+indexRange (dump: 0–3191 = 3192). YMF0 at head. */
 function initBytes(row: Fake144Row): Uint8Array {
-  const n = initLen(row);
-  const u = new Uint8Array(n > 0 ? n : 4);
+  const end = row.indexEnd >= row.initEnd ? row.indexEnd : row.initEnd;
+  const n = end - row.initStart + 1;
+  const u = new Uint8Array(n > 4 ? n : 4);
   u[0] = 0x59;
   u[1] = 0x4d;
   u[2] = 0x46;
@@ -216,12 +255,12 @@ function writeU64LE(u: Uint8Array, off: number, v: number): void {
 
 function encodeRange(start: number, end: number): Uint8Array {
   return writeFields([
-    { n: 1, w: 0, v: start },
-    { n: 2, w: 0, v: end },
+    { field: 1, wire: 0, value: start },
+    { field: 2, wire: 0, value: end },
   ]);
 }
 
-/** YMF1 + start_ms + duration_ms. C leftover reports this as buffered. */
+/** YMF1 + startMs (u64le) + durationMs (u64le). appendBuffer parses this. */
 function fakeMediaBytes(startMs: number, durationMs: number): Uint8Array {
   const u = new Uint8Array(20);
   u[0] = 0x59;
@@ -233,20 +272,38 @@ function fakeMediaBytes(startMs: number, durationMs: number): Uint8Array {
   return u;
 }
 
+function ticks(ms: number, timescale: number): number {
+  if (!(ms > 0) || !(timescale > 0)) return 0;
+  return Math.round((ms * timescale) / 1000);
+}
+
 function formatInitUmp(videoId: string, row: Fake144Row, durationMs: number): Uint8Array {
   const fid = encodeFormatId(row.itag, row.lmt);
+  const ts = row.timescale > 0 ? row.timescale : 1000;
   const fs: Field[] = [
-    { n: 1, w: 2, v: asciiU8(videoId) },
-    { n: 2, w: 2, v: fid },
+    { field: 1, wire: 2, value: asciiU8(videoId) },
+    { field: 2, wire: 2, value: fid },
   ];
-  if (durationMs > 0) fs.push({ n: 3, w: 0, v: durationMs });
-  fs.push({ n: 4, w: 0, v: 144 });
-  fs.push({ n: 5, w: 2, v: asciiU8(row.mime) });
-  fs.push({ n: 6, w: 2, v: encodeRange(row.initStart, row.initEnd) });
-  fs.push({ n: 7, w: 2, v: encodeRange(row.indexStart, row.indexEnd) });
-  fs.push({ n: 9, w: 0, v: durationMs > 0 ? durationMs : 1000 });
-  fs.push({ n: 10, w: 0, v: 1000 });
+  if (durationMs > 0) fs.push({ field: 3, wire: 0, value: durationMs });
+  fs.push({ field: 4, wire: 0, value: row.bitrate > 0 ? Math.round(row.bitrate / 1000) : 0 });
+  fs.push({ field: 5, wire: 2, value: asciiU8(row.mime) });
+  fs.push({ field: 6, wire: 2, value: encodeRange(row.initStart, row.initEnd) });
+  fs.push({ field: 7, wire: 2, value: encodeRange(row.indexStart, row.indexEnd) });
+  fs.push({ field: 9, wire: 0, value: ticks(durationMs, ts) });
+  fs.push({ field: 10, wire: 0, value: ts });
   return umpPart(42, writeFields(fs));
+}
+
+/** Live FORMAT_INIT: videoId, itag-only format id, mime. No init/index ranges. */
+function liveFormatInitUmp(videoId: string, itag: number, mime: string): Uint8Array {
+  return umpPart(
+    42,
+    writeFields([
+      { field: 1, wire: 2, value: asciiU8(videoId) },
+      { field: 2, wire: 2, value: encodeItagOnly(itag) },
+      { field: 5, wire: 2, value: asciiU8(mime) },
+    ]),
+  );
 }
 
 function mediaHeaderUmp(opts: {
@@ -260,34 +317,69 @@ function mediaHeaderUmp(opts: {
   durationMs: number;
   startRange: number;
   clen: number;
+  timescale: number;
 }): Uint8Array {
-  const fid = encodeFormatId(opts.itag, opts.lmt);
+  // YouTube's MEDIA_HEADER reader (pT) is sequential: a higher field number
+  // before a lower one is "already passed" — field 13 before 8/9 dropped init+seq.
   const fs: Field[] = [
-    { n: 1, w: 0, v: opts.hid },
-    { n: 2, w: 2, v: asciiU8(opts.videoId) },
-    { n: 3, w: 0, v: opts.itag },
-    { n: 4, w: 0, v: decToNum(opts.lmt) },
-    { n: 6, w: 0, v: opts.startRange },
-    { n: 13, w: 2, v: fid },
-    { n: 14, w: 0, v: opts.clen },
+    { field: 1, wire: 0, value: opts.hid },
+    { field: 2, wire: 2, value: asciiU8(opts.videoId) },
+    { field: 3, wire: 0, value: opts.itag },
+    { field: 4, wire: 0, value: decToNum(opts.lmt) },
+    { field: 6, wire: 0, value: opts.startRange },
+    { field: 8, wire: 0, value: opts.init ? 1 : 0 },
   ];
-  if (opts.init) fs.push({ n: 8, w: 0, v: 1 });
-  else fs.push({ n: 8, w: 0, v: 0 });
   if (!opts.init) {
-    fs.push({ n: 9, w: 0, v: opts.seq });
-    fs.push({ n: 11, w: 0, v: opts.startMs });
-    fs.push({ n: 12, w: 0, v: opts.durationMs });
+    const ts = opts.timescale > 0 ? opts.timescale : 1000;
+    fs.push({ field: 9, wire: 0, value: opts.seq });
+    fs.push({ field: 11, wire: 0, value: opts.startMs });
+    fs.push({ field: 12, wire: 0, value: opts.durationMs });
+  }
+  fs.push({ field: 14, wire: 0, value: opts.clen });
+  if (!opts.init) {
+    const ts = opts.timescale > 0 ? opts.timescale : 1000;
     fs.push({
-      n: 15,
-      w: 2,
-      v: writeFields([
-        { n: 1, w: 0, v: opts.startMs },
-        { n: 2, w: 0, v: opts.durationMs },
-        { n: 3, w: 0, v: 1000 },
+      field: 15,
+      wire: 2,
+      value: writeFields([
+        { field: 1, wire: 0, value: ticks(opts.startMs, ts) },
+        { field: 2, wire: 0, value: ticks(opts.durationMs, ts) },
+        { field: 3, wire: 0, value: ts },
       ]),
     });
   }
   return umpPart(20, writeFields(fs));
+}
+
+/** Live media header matches a real 302: no Po, no lmt, no duration, field 16=1. */
+function liveMediaHeaderUmp(opts: {
+  hid: number;
+  videoId: string;
+  itag: number;
+  seq: number;
+  startMs: number;
+}): Uint8Array {
+  const ts = 1000000000;
+  return umpPart(
+    20,
+    writeFields([
+      { field: 1, wire: 0, value: opts.hid },
+      { field: 2, wire: 2, value: asciiU8(opts.videoId) },
+      { field: 3, wire: 0, value: opts.itag },
+      { field: 9, wire: 0, value: opts.seq },
+      { field: 11, wire: 0, value: opts.startMs },
+      { field: 13, wire: 2, value: encodeItagOnly(opts.itag) },
+      {
+        field: 15,
+        wire: 2,
+        value: writeFields([
+          { field: 1, wire: 0, value: ticks(opts.startMs, ts) },
+          { field: 3, wire: 0, value: ts },
+        ]),
+      },
+      { field: 16, wire: 0, value: 1 },
+    ]),
+  );
 }
 
 function mediaDataUmp(hid: number, data: Uint8Array): Uint8Array {
@@ -301,40 +393,254 @@ function mediaEndUmp(hid: number): Uint8Array {
   return umpPart(22, new Uint8Array([hid]));
 }
 
-function isAudioItag(t: number): boolean {
-  return (
-    t === 139 ||
-    t === 140 ||
-    t === 141 ||
-    t === 249 ||
-    t === 250 ||
-    t === 251 ||
-    t === 599 ||
-    t === 600 ||
-    t === 774
-  );
+export type SabrRequestState = {
+  audioOnly: boolean;
+  videoId: string;
+  row: Fake144Row;
+  durationMs: number;
+  live: boolean;
+  playerTimeMs: number;
+  buffered144End: number;
+};
+
+export type LiveAudioMh = { startMs: number; seq: number; durationMs: number };
+
+function buildFakeUmp(
+  state: SabrRequestState,
+  maxHid: number,
+  liveAudio: LiveAudioMh | null,
+): Uint8Array | null {
+  if (!state.audioOnly) return null;
+  const row = state.row;
+  if (state.live && !liveAudio) return null;
+  const seq = state.live && liveAudio ? liveAudio.seq : 1;
+  const dur = state.live && liveAudio ? liveAudio.durationMs : state.durationMs;
+  if (!(dur > 0)) return null;
+  const startMs = state.live && liveAudio ? liveAudio.startMs : 0;
+  const media = fakeMediaBytes(startMs, dur);
+  const base = maxHid < 0 ? 0 : maxHid;
+  const initHid = (base + 1) & 255;
+  const mediaHid = state.live ? (base + 1) & 255 : (base + 2) & 255;
+  const mediaStart = row.indexEnd >= row.initEnd ? row.indexEnd + 1 : row.initEnd + 1;
+  const parts: Uint8Array[] = state.live
+    ? [
+        liveFormatInitUmp(state.videoId, row.itag, row.mime),
+        liveMediaHeaderUmp({
+          hid: mediaHid,
+          videoId: state.videoId,
+          itag: row.itag,
+          seq: seq,
+          startMs: startMs,
+        }),
+        mediaDataUmp(mediaHid, media),
+        mediaEndUmp(mediaHid),
+      ]
+    : [
+        formatInitUmp(state.videoId, row, state.durationMs),
+        mediaHeaderUmp({
+          hid: initHid,
+          videoId: state.videoId,
+          itag: row.itag,
+          lmt: row.lmt,
+          init: true,
+          seq: 0,
+          startMs: 0,
+          durationMs: 0,
+          startRange: row.initStart,
+          clen: initBytes(row).length,
+          timescale: row.timescale,
+        }),
+        mediaDataUmp(initHid, initBytes(row)),
+        mediaEndUmp(initHid),
+        mediaHeaderUmp({
+          hid: mediaHid,
+          videoId: state.videoId,
+          itag: row.itag,
+          lmt: row.lmt,
+          init: false,
+          seq: seq,
+          startMs: startMs,
+          durationMs: dur,
+          startRange: mediaStart,
+          clen: media.length,
+          timescale: row.timescale,
+        }),
+        mediaDataUmp(mediaHid, media),
+        mediaEndUmp(mediaHid),
+      ];
+  if (MSE_DEBUG)
+    console.log(
+      "mse sabr fake-ump itag=" +
+        row.itag +
+        " lmt=" +
+        row.lmt +
+        " hid=" +
+        (state.live ? String(mediaHid) : initHid + "," + mediaHid) +
+        " startMs=" +
+        startMs +
+        " seq=" +
+        seq +
+        " durMs=" +
+        dur +
+        " playerTimeMs=" +
+        state.playerTimeMs +
+        " buf144End=" +
+        state.buffered144End,
+    );
+  return concatU8(parts);
+}
+
+/** CAS 38.4.1 itagDenylist — merge 144p itags, keep existing denies. */
+function mergeItagDenylist(attrs: Uint8Array): Uint8Array {
+  const fs = attrs.length ? readFields(attrs) : [];
+  const out: Field[] = [];
+  const have: Record<number, boolean> = {};
+  if (fs) {
+    for (let i = 0; i < fs.length; i++) {
+      const f = fs[i]!;
+      out.push(f);
+      if (f.field === 1 && f.wire === 0) have[f.value as number] = true;
+    }
+  }
+  for (let i = 0; i < ITAG_144P.length; i++) {
+    const t = ITAG_144P[i]!;
+    if (!have[t]) out.push({ field: 1, wire: 0, value: t });
+  }
+  return writeFields(out);
+}
+
+function deny144MediaCaps(mc: Uint8Array): Uint8Array {
+  const fs = readFields(mc);
+  if (!fs) return mc;
+  const out: Field[] = [];
+  let saw4 = false;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.field === 4 && f.wire === 2 && f.value instanceof Uint8Array) {
+      out.push({ field: 4, wire: 2, value: mergeItagDenylist(f.value) });
+      saw4 = true;
+      continue;
+    }
+    out.push(f);
+  }
+  if (!saw4) out.push({ field: 4, wire: 2, value: mergeItagDenylist(new Uint8Array(0)) });
+  return writeFields(out);
 }
 
 function rewriteCas40(cas: Uint8Array): Uint8Array {
   const fs = readFields(cas);
   if (!fs) return cas;
   const out: Field[] = [];
+  let saw40 = false;
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
-    if (f.n === 40) continue;
+    if (f.field === 38 && f.wire === 2 && f.value instanceof Uint8Array) {
+      out.push({ field: 38, wire: 2, value: deny144MediaCaps(f.value) });
+      console.log("sabr deny144 mediaCapabilities itags=" + ITAG_144P.join(","));
+      continue;
+    }
+    if (f.field === 40) {
+      saw40 = true;
+      out.push({ field: 40, wire: 0, value: 1 });
+      continue;
+    }
     out.push(f);
   }
-  out.push({ n: 40, w: 0, v: 1 });
+  if (!saw40) out.push({ field: 40, wire: 0, value: 1 });
   return writeFields(out);
 }
 
-function durationMs(): number {
-  if (typeof __mseDuration !== "function") return 0;
-  try {
-    const d = __mseDuration();
-    if (d > 0 && isFinite(d)) return Math.round(d * 1000);
-  } catch (_e) {}
-  return 0;
+function rewriteAbr(
+  u: Uint8Array,
+  videoId: string,
+): { body: Uint8Array; state: SabrRequestState | null } {
+  const fs = readFields(u);
+  if (!fs) return { body: u, state: null };
+  const audioOnly = isAudioOnly();
+  const selItags: number[] = [];
+  const playAud: number[] = [];
+  const playVid: number[] = [];
+  const out: Field[] = [];
+  let stripped = false;
+  let has144Buffered = false;
+  let buffered144End = 0;
+  let playerTimeMs = 0;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.field === 1 && f.wire === 2 && f.value instanceof Uint8Array) {
+      playerTimeMs = casPlayerTimeMs(f.value);
+      if (audioOnly) out.push({ field: 1, wire: 2, value: rewriteCas40(f.value) });
+      else out.push(f);
+      continue;
+    }
+    if (f.field === INITIALIZED_FORMAT_IDS && f.wire === 2 && f.value instanceof Uint8Array) {
+      const id = parseFormatId(f.value);
+      if (id) selItags.push(id.itag);
+      if (id && drop144(id, audioOnly)) {
+        stripped = true;
+        continue;
+      }
+    }
+    if (f.field === PLAYABLE_AUDIO_FORMAT_IDS && f.wire === 2 && f.value instanceof Uint8Array) {
+      const t = formatItag(f.value);
+      if (t != null) playAud.push(t);
+    }
+    if (f.field === PLAYABLE_VIDEO_FORMAT_IDS && f.wire === 2 && f.value instanceof Uint8Array) {
+      const id = parseFormatId(f.value);
+      if (id) playVid.push(id.itag);
+      if (id && drop144(id, audioOnly)) {
+        stripped = true;
+        continue;
+      }
+    }
+    if (f.field === BUFFERED_RANGES && f.wire === 2 && f.value instanceof Uint8Array) {
+      const r = parseBufferedRange(f.value);
+      if (r && drop144(r, audioOnly)) {
+        has144Buffered = true;
+        const end = r.startMs + r.durationMs;
+        if (end > buffered144End) buffered144End = end;
+        stripped = true;
+        continue;
+      }
+    }
+    out.push(f);
+  }
+  console.log("sabr playable audio=[" + playAud.join(",") + "] video=[" + playVid.join(",") + "]");
+  let state: SabrRequestState | null = null;
+  const fake = videoId ? pickFake144(videoId, selItags.length ? selItags : playVid) : null;
+  if (has144Buffered && !(fake && fake.live)) {
+    console.log("sabr skip fake-ump 144p already buffered");
+  } else if (fake && (fake.live || fake.durationMs > 0 || !audioOnly)) {
+    state = {
+      audioOnly: audioOnly,
+      videoId: videoId,
+      row: fake.row,
+      durationMs: fake.durationMs,
+      live: fake.live,
+      playerTimeMs: playerTimeMs,
+      buffered144End: buffered144End,
+    };
+  }
+  const body = !stripped && !audioOnly ? u : writeFields(out);
+  return { body: body, state: state };
+}
+
+function isPlayingSabr(url: string): boolean {
+  const play = playingVideoId();
+  const sabr = videoIdForSabrUrl(url);
+  return !!(play && sabr && play === sabr);
+}
+
+export function transformRequestBody(
+  url: string,
+  body: unknown,
+): { body: unknown; state: SabrRequestState | null } {
+  if (url.indexOf("/videoplayback") < 0) return { body: body, state: null };
+  const u = asU8(body);
+  if (!u || u.length === 0) return { body: body, state: null };
+  const rewritten = rewriteAbr(u, videoIdForSabrUrl(url));
+  if (rewritten.state && !isPlayingSabr(url)) rewritten.state = null;
+  return rewritten;
 }
 
 function readUmpVarint(buf: Uint8Array, i: number): { v: number; i: number } | null {
@@ -358,205 +664,129 @@ function readUmpVarint(buf: Uint8Array, i: number): { v: number; i: number } | n
   };
 }
 
-function maxMediaHid(body: Uint8Array): number {
+function maxHidInUmp(body: Uint8Array): number {
   let i = 0;
   let max = -1;
   while (i < body.length) {
     const id = readUmpVarint(body, i);
     if (!id) break;
-    i = id.i;
-    const sz = readUmpVarint(body, i);
+    const sz = readUmpVarint(body, id.i);
     if (!sz) break;
     i = sz.i;
     if (id.v === 20 && sz.v > 0 && i + sz.v <= body.length) {
-      const fs = readFields(body.subarray(i, i + sz.v));
-      if (fs) {
-        for (let j = 0; j < fs.length; j++) {
-          const f = fs[j]!;
-          if (f.n === 1 && f.w === 0) {
-            const h = f.v as number;
-            if (h > max) max = h;
-          }
-        }
-      }
+      const hid = protoHid(body.subarray(i, i + sz.v));
+      if (hid != null && hid > max) max = hid;
     }
     i += sz.v;
   }
   return max;
 }
 
-type PendingCover = {
-  needInit: boolean;
-  itag: number;
-  audBr: string;
-  fakeBr: string;
-};
-let pendingCover: PendingCover | null = null;
-
-function fmtRange(itag: number, w: { start: number; dur: number } | null): string {
-  if (!w) return String(itag);
-  return itag + ":" + w.start + "+" + w.dur;
-}
-
-function buildFakeUmp(
-  needInit: boolean,
-  itag: number,
-  audBr: string,
-  fakeBr: string,
-  initHid: number,
-  mediaHid: number,
-): Uint8Array | null {
-  const row = fake144ByItag(itag);
-  if (!row) return null;
-  const videoId = fake144VideoId();
-  if (!videoId) return null;
-  const dur = durationMs();
-  const init = initBytes(row);
-  const media = fakeMediaBytes(0, dur);
-  const parts: Uint8Array[] = [];
-  if (needInit) {
-    parts.push(formatInitUmp(videoId, row, dur));
-    parts.push(
-      mediaHeaderUmp({
-        hid: initHid,
-        videoId: videoId,
-        itag: row.itag,
-        lmt: row.lmt,
-        init: true,
-        seq: 0,
-        startMs: 0,
-        durationMs: 0,
-        startRange: row.initStart,
-        clen: init.length,
-      }),
-    );
-    parts.push(mediaDataUmp(initHid, init));
-    parts.push(mediaEndUmp(initHid));
-  }
-  parts.push(
-    mediaHeaderUmp({
-      hid: mediaHid,
-      videoId: videoId,
-      itag: row.itag,
-      lmt: row.lmt,
-      init: false,
-      seq: 1,
-      startMs: 0,
-      durationMs: dur,
-      startRange: init.length,
-      clen: media.length,
-    }),
-  );
-  parts.push(mediaDataUmp(mediaHid, media));
-  parts.push(mediaEndUmp(mediaHid));
-  if (needInit) appendRestCover(init);
-  appendRestCover(media);
-  if (MSE_DEBUG)
-    console.log(
-      "mse sabr fake-ump itag=" +
-        row.itag +
-        " lmt=" +
-        row.lmt +
-        " mime=" +
-        row.mime +
-        " init=" +
-        (needInit ? "1" : "0") +
-        " hid=" +
-        initHid +
-        "," +
-        mediaHid +
-        " seq=1 start=0 dur=" +
-        dur +
-        " range=" +
-        init.length +
-        " clen=" +
-        media.length +
-        " audBr=" +
-        (audBr || "-") +
-        " fakeBr=" +
-        (fakeBr || "-"),
-    );
-  return concatU8(parts);
-}
-
-function rewriteAbr(u: Uint8Array): Uint8Array {
-  const fs = readFields(u);
-  if (!fs) return u;
-  const selItags: number[] = [];
-  const audParts: string[] = [];
-  const fakeParts: string[] = [];
-  const out: Field[] = [];
-  const dropped: number[] = [];
+function protoHid(msg: Uint8Array): number | null {
+  const fs = readFields(msg);
+  if (!fs) return null;
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
-    if (f.n === 1 && f.w === 2 && f.v instanceof Uint8Array) {
-      if (isAudioOnly()) out.push({ n: 1, w: 2, v: rewriteCas40(f.v) });
-      else out.push(f);
-      continue;
+    if (f.field === 1 && f.wire === 0) return f.value as number;
+  }
+  return null;
+}
+
+function mhNum(msg: Uint8Array, field: number): number | null {
+  const fs = readFields(msg);
+  if (!fs) return null;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.field === field && f.wire === 0) return f.value as number;
+  }
+  return null;
+}
+
+function mhBytes(msg: Uint8Array, field: number): Uint8Array | null {
+  const fs = readFields(msg);
+  if (!fs) return null;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.field === field && f.wire === 2 && f.value instanceof Uint8Array) return f.value;
+  }
+  return null;
+}
+
+function mhDurationMs(msg: Uint8Array): number {
+  const d = mhNum(msg, 12);
+  if (d != null && d > 0) return d;
+  const tr = mhBytes(msg, 15);
+  if (tr) {
+    const xf = mhNum(tr, 2);
+    const ts = mhNum(tr, 3);
+    if (xf != null && ts != null && ts > 0) {
+      const ms = Math.round((xf * 1000) / ts);
+      if (ms > 0) return ms;
     }
-    if ((f.n === 17 || f.n === 2) && f.w === 2 && f.v instanceof Uint8Array) {
-      const t = formatItag(f.v);
-      if (t != null && f.n === 2) selItags.push(t);
-      if (t != null && is144pItag(t)) {
-        dropped.push(t);
-        continue;
+  }
+  return 0;
+}
+
+/** Non-init audio MEDIA_HEADER timing. durationMs 0 if the header omitted it. */
+export function mhAudioFromPayload(msg: Uint8Array): LiveAudioMh | null {
+  const itag = mhNum(msg, 3);
+  const init = mhNum(msg, 8);
+  const seq = mhNum(msg, 9);
+  const startMs = mhNum(msg, 11);
+  if (itag == null || isVideoItag(itag) || init === 1 || seq == null || startMs == null)
+    return null;
+  return { startMs: startMs, seq: seq, durationMs: mhDurationMs(msg) };
+}
+
+/** Last non-init audio MEDIA_HEADER (highest startMs). Duration from the header, else seq step. */
+export function liveAudioMh(body: Uint8Array): LiveAudioMh | null {
+  let i = 0;
+  let best: LiveAudioMh | null = null;
+  let prevStart = -1;
+  while (i < body.length) {
+    const id = readUmpVarint(body, i);
+    if (!id) break;
+    const sz = readUmpVarint(body, id.i);
+    if (!sz) break;
+    i = sz.i;
+    if (id.v === 20 && sz.v > 0 && i + sz.v <= body.length) {
+      const one = mhAudioFromPayload(body.subarray(i, i + sz.v));
+      if (one && (!best || one.startMs >= best.startMs)) {
+        if (best) prevStart = best.startMs;
+        best = one;
       }
     }
-    if (f.n === 3 && f.w === 2 && f.v instanceof Uint8Array) {
-      const t = rangeItag(f.v);
-      const w = rangeWindow(f.v);
-      if (t != null && is144pItag(t)) {
-        fakeParts.push(fmtRange(t, w));
-        dropped.push(t);
-        continue;
-      }
-      if (t != null && isAudioItag(t)) audParts.push(fmtRange(t, w));
-    }
-    out.push(f);
+    i += sz.v;
   }
-  if (MSE_DEBUG && dropped.length) console.log("mse sabr drop 144 itags=" + dropped.join(","));
-  pendingCover = null;
-  if (isAudioOnly()) {
-    const fake = pickFake144(selItags);
-    pendingCover = {
-      needInit: !(fake && selItags.indexOf(fake.itag) >= 0),
-      itag: fake ? fake.itag : 0,
-      audBr: audParts.join(","),
-      fakeBr: fakeParts.join(","),
-    };
+  if (!best) return null;
+  if (!(best.durationMs > 0) && prevStart >= 0 && best.startMs > prevStart)
+    best.durationMs = best.startMs - prevStart;
+  if (!(best.durationMs > 0)) best.durationMs = 1000;
+  return best;
+}
+
+export function fakeUmpAfter(
+  state: SabrRequestState | null,
+  maxHid: number,
+  liveAudio?: LiveAudioMh | null,
+): Uint8Array | null {
+  if (!state) return null;
+  const k = formatKey(state.row.itag, decToNum(state.row.lmt));
+  if (!state.audioOnly) {
+    wasFaked[k] = false;
+    return null;
   }
-  if (!dropped.length && !isAudioOnly()) return u;
-  return writeFields(out);
+  const fake = buildFakeUmp(state, maxHid, liveAudio || null);
+  if (!fake || !fake.length) return null;
+  wasFaked[k] = true;
+  return fake;
 }
 
-export function prepareSabrBody(url: string, body: unknown): unknown {
-  if (url.indexOf("/videoplayback") < 0) return body;
-  const u = asU8(body);
-  if (!u || u.length === 0) return body;
-  return rewriteAbr(u);
-}
-
-export function hasPendingFake(): boolean {
-  return pendingCover != null;
-}
-
-function emitPending(initHid: number, mediaHid: number): Uint8Array | null {
-  const p = pendingCover;
-  pendingCover = null;
-  if (!p) return null;
-  if (!p.itag) return null;
-  return buildFakeUmp(p.needInit, p.itag, p.audBr, p.fakeBr, initHid, mediaHid);
-}
-
-/** Fake 144p UMP only — caller already streamed the SABR body. */
-export function fakeUmpAfter(maxHid: number): Uint8Array | null {
-  if (!pendingCover) return null;
-  const fake = emitPending((maxHid + 1) & 255, (maxHid + 2) & 255);
-  return fake && fake.length ? fake : null;
-}
-
-export function appendFakeUmp(body: Uint8Array): Uint8Array {
-  const extra = fakeUmpAfter(maxMediaHid(body));
+export function transformResponseBody(
+  body: Uint8Array,
+  state: SabrRequestState | null,
+): Uint8Array {
+  const extra = fakeUmpAfter(state, maxHidInUmp(body), liveAudioMh(body));
   if (!extra) return body;
   return concatU8([body, extra]);
 }
