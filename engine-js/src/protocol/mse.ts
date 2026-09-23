@@ -88,16 +88,6 @@ export function resetDrainCounts(): void {
   drainCalls.lisErr = 0;
 }
 
-/** Rest-mode video: YMF0 init / YMF1+start_ms+dur_ms media. Not a container. */
-export function appendRestCover(u8: Uint8Array): void {
-  const kind =
-    u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46
-      ? String.fromCharCode(u8[3]!)
-      : "?";
-  __mseAppend(0, u8, 0, 0, 1e300);
-  mseLog("mse append fake-cover a=0 kind=" + kind + " bytes=" + u8.length);
-}
-
 function logChangeType(audio: number, prev: string, next: string): void {
   if (!MSE_DEBUG) return;
   try {
@@ -271,12 +261,133 @@ function sbRemoved(sb: SourceBuffer): boolean {
   return !p || p["sourceBuffers"].indexOf(sb) < 0;
 }
 
+function readU64LE(u: Uint8Array, off: number): number {
+  let n = 0;
+  let p = 1;
+  for (let i = 0; i < 8; i++) {
+    n += (u[off + i] || 0) * p;
+    p *= 256;
+  }
+  return n;
+}
+
+function cBufferedPairs(audio: number): Array<[number, number]> {
+  const r = __mseBuffered(audio);
+  const ranges: Array<[number, number]> = [];
+  if (r) {
+    for (let i = 0; i + 1 < r.length; i += 2) ranges.push([r[i]!, r[i + 1]!]);
+  }
+  return ranges;
+}
+
+function mergeRanges(a: Array<[number, number]>, extra: [number, number]): Array<[number, number]> {
+  const all = a.slice();
+  all.push(extra);
+  all.sort(function (x, y) {
+    return x[0] - y[0];
+  });
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i < all.length; i++) {
+    const r = all[i]!;
+    const last = out.length ? out[out.length - 1] : null;
+    if (!last || r[0] > last[1] + 0.001) out.push([r[0], r[1]]);
+    else if (r[1] > last[1]) last[1] = r[1];
+  }
+  return out;
+}
+
+function clearFakeOverlay(sb: SourceBuffer): void {
+  sb._fakeFollowAudio = false;
+  sb._fakeStart = 0;
+  sb._fakeEnd = 0;
+}
+
+/** YMF0 init, or [hid+]YMF1 startMs/durationMs. Union with C leftover; do not replace. */
+function takeFakeMedia(sb: SourceBuffer, u8: Uint8Array): void {
+  if (isAudioOnly() && activeMedia && sb._ms === activeMedia._ms) __mseRestVideo(1);
+  let p = u8;
+  if (p.length >= 5 && p[1] === 0x59 && p[2] === 0x4d && p[3] === 0x46) p = p.subarray(1);
+  if (p.length < 4 || p[0] !== 0x59 || p[1] !== 0x4d || p[2] !== 0x46) return;
+  if (p[3] === 0x30) {
+    mseLog("mse append fake-init bytes=" + p.length);
+    return;
+  }
+  if (p[3] === 0x31 && p.length >= 20) {
+    const start = readU64LE(p, 4) / 1000;
+    const dur = readU64LE(p, 12) / 1000;
+    if (dur > 0) {
+      sb._fakeFollowAudio = false;
+      const end = start + dur;
+      if (sb._fakeEnd > sb._fakeStart) {
+        if (start < sb._fakeStart) sb._fakeStart = start;
+        if (end > sb._fakeEnd) sb._fakeEnd = end;
+      } else {
+        sb._fakeStart = start;
+        sb._fakeEnd = end;
+      }
+      mseLog(
+        "mse append fake-media " +
+          start +
+          ".." +
+          end +
+          " span=" +
+          sb._fakeStart +
+          ".." +
+          sb._fakeEnd,
+      );
+    } else {
+      sb._fakeFollowAudio = true;
+      sb._fakeStart = 0;
+      sb._fakeEnd = 0;
+      mseLog("mse append fake-media live follow-audio");
+    }
+  }
+}
+
+function playheadBuffered(el: HTMLMediaElement): boolean {
+  const t = Number(el["currentTime"]);
+  const br = el["buffered"];
+  const n = br ? br["length"] : 0;
+  for (let i = 0; i < n; i++) {
+    if (br["start"](i) <= t + 0.35 && br["end"](i) >= t - 0.05) return true;
+  }
+  return false;
+}
+
+/* Chrome: playhead not in buffered → readyState drops, one waiting event.
+   We used to leave HAVE_FUTURE_DATA and never fire waiting, so the player
+   treated an empty live switch as still playable. */
+function syncReadyState(el: HTMLMediaElement | null): void {
+  if (!el) return;
+  if (playheadBuffered(el)) {
+    el._stalled = false;
+    if (el["readyState"] < 3) {
+      el["readyState"] = 3;
+      fire(el, "canplay");
+      if (!el["paused"]) fire(el, "playing");
+    }
+  } else if (!el["paused"] && el["readyState"] >= 2) {
+    el["readyState"] = 1;
+    if (!el._stalled) {
+      el._stalled = true;
+      fire(el, "waiting");
+    }
+  }
+}
+
 function completeUpdate(sb: SourceBuffer): void {
   Promise.resolve().then(function () {
     sb["updating"] = false;
     fire(sb, "update");
     fire(sb, "updateend");
+    const el = activeMedia;
+    if (el && el._ms === sb._ms) syncReadyState(el);
   });
+}
+
+function isYmf(u8: Uint8Array): boolean {
+  if (u8.length >= 5 && u8[1] === 0x59 && u8[2] === 0x4d && u8[3] === 0x46) return true;
+  return u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46;
 }
 
 let nextId = 1;
@@ -293,7 +404,9 @@ class SourceBuffer {
   /* One TimeRanges object for the life of the SB. base.js HS(!0) caches
      this by reference; start/end must read current leftover. */
   _liveBuffered: { length: number; start(i: number): number; end(i: number): number } | null;
-
+  _fakeStart: number;
+  _fakeEnd: number;
+  _fakeFollowAudio: boolean;
   constructor(mime: string, ms: MediaSource | null) {
     this["mimeType"] = mime;
     this["id"] = nextId++;
@@ -304,6 +417,9 @@ class SourceBuffer {
     this._ms = ms;
     this._listeners = {};
     this._liveBuffered = null;
+    this._fakeStart = 0;
+    this._fakeEnd = 0;
+    this._fakeFollowAudio = false;
   }
 
   ["addEventListener"](type: string, fn: Listener): void {
@@ -329,12 +445,11 @@ class SourceBuffer {
   }
 
   _bufferedPairs(): Array<[number, number]> {
-    const r = __mseBuffered(audioFlag(this["mimeType"]));
-    const ranges: Array<[number, number]> = [];
-    if (r) {
-      for (let i = 0; i + 1 < r.length; i += 2) ranges.push([r[i]!, r[i + 1]!]);
-    }
-    return ranges;
+    const audio = audioFlag(this["mimeType"]);
+    if (this._fakeFollowAudio) return cBufferedPairs(1);
+    const real = cBufferedPairs(audio);
+    if (this._fakeEnd > this._fakeStart) return mergeRanges(real, [this._fakeStart, this._fakeEnd]);
+    return real;
   }
 
   ["changeType"](mime: string): void {
@@ -345,8 +460,7 @@ class SourceBuffer {
     const next = String(mime || "");
     if (!next) throw new TypeError("The type provided is empty");
     const parent = this._ms;
-    if (sbRemoved(this) || !parent)
-      throw invalidState("SourceBuffer.changeType: removed");
+    if (sbRemoved(this) || !parent) throw invalidState("SourceBuffer.changeType: removed");
     if (this["updating"]) throw invalidState("SourceBuffer.changeType: updating");
     if (!MediaSource["isTypeSupported"](next))
       throw notSupported("Changing to the type provided ('" + next + "') is not supported.");
@@ -375,25 +489,20 @@ class SourceBuffer {
     const self = this;
     try {
       const u8 = asU8(data);
-      const tsOff = self["timestampOffset"];
-      const winStart = self["appendWindowStart"];
-      const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
-      if (!audio && u8.length >= 4 && u8[0] === 0x59 && u8[1] === 0x4d && u8[2] === 0x46) {
-        mseLog(
-          "mse append fake-cover a=0 kind=" + String.fromCharCode(u8[3]!) + " bytes=" + u8.length,
-        );
+      if (isYmf(u8)) {
+        takeFakeMedia(self, u8);
+      } else {
+        if (!audio) clearFakeOverlay(self);
+        const tsOff = self["timestampOffset"];
+        const winStart = self["appendWindowStart"];
+        const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
+        __mseAppend(audio, u8, tsOff, winStart, winEnd);
+        /* Chrome appendBuffer does not move currentTime. The native clock
+           holds while the playhead is outside the buffer, until the player seeks. */
+        if (audio) drainCalls.audio++;
+        else drainCalls.video++;
+        logAppend(audio, u8.length, self["mimeType"], tsOff, winStart, winEnd);
       }
-      __mseAppend(audio, u8, tsOff, winStart, winEnd);
-      if (__mseCurrentTime() < 1) {
-        const br = __mseBuffered(audio);
-        if (br && br.length >= 2 && br[0]! > 60) {
-          mseLog("mse live-join clock " + br[0]);
-          __mseSetCurrentTime(br[0]!);
-        }
-      }
-      if (audio) drainCalls.audio++;
-      else drainCalls.video++;
-      logAppend(audio, u8.length, self["mimeType"], tsOff, winStart, winEnd);
     } catch (e) {
       drainCalls.throw++;
       self["updating"] = false;
@@ -423,6 +532,8 @@ class SourceBuffer {
       self["updating"] = false;
       fire(self, "update");
       fire(self, "updateend");
+      const el = activeMedia;
+      if (el && el._ms === self._ms) syncReadyState(el);
     });
   }
 
@@ -574,9 +685,10 @@ class MediaSource {
   }
 
   ["endOfStream"](): void {
-    if (this["readyState"] !== "open")
-      throw invalidState("MediaSource.endOfStream: not open");
+    if (this["readyState"] !== "open") throw invalidState("MediaSource.endOfStream: not open");
     this["readyState"] = "ended";
+    const el = activeMedia;
+    if (el && el._ms === this) maybeFireEnded(el);
   }
 
   ["addEventListener"](type: string, fn: Listener): void {
@@ -654,10 +766,43 @@ function stopMediaTick(): void {
   }
 }
 
+function maybeFireEnded(el: HTMLMediaElement): boolean {
+  if (el["paused"] || el["ended"] || el["loop"]) return false;
+  const ct = Number(el["currentTime"]);
+  const d = Number(el["duration"]);
+  const b = el["buffered"];
+  const n = b ? b["length"] : 0;
+  const bufEnd = n > 0 ? Number(b["end"](n - 1)) : NaN;
+  /* Chrome: currentTime >= duration. Audio-only leftover often stops ~0.5s
+     short (fake-144 video cover 0..dur, audio last < dur) — treat clock at
+     buffered end as EOS when leftover is within 1.5s of duration. */
+  let end = isFinite(d) && d > 0 ? d : NaN;
+  if (
+    isFinite(bufEnd) &&
+    bufEnd > 0 &&
+    ct >= bufEnd - 0.05 &&
+    (!isFinite(end) || bufEnd >= end - 1.5)
+  ) {
+    end = bufEnd;
+  }
+  if (!isFinite(end) || end <= 0 || ct < end - 0.05) return false;
+  el["ended"] = true;
+  el["paused"] = true;
+  stopMediaTick();
+  __msePause();
+  fire(el, "timeupdate");
+  fire(el, "ended");
+  fire(el, "pause");
+  return true;
+}
+
 function startMediaTick(el: HTMLMediaElement): void {
   stopMediaTick();
   mediaTick = setInterval(function () {
-    if (!el["paused"]) fire(el, "timeupdate");
+    if (el["paused"]) return;
+    if (maybeFireEnded(el)) return;
+    fire(el, "timeupdate");
+    syncReadyState(el);
   }, 250);
 }
 
@@ -677,7 +822,9 @@ function emptyTrackList(): Record<string, unknown> {
 function initHtmlMedia(self: HTMLMediaElement): void {
   self["paused"] = true;
   self["ended"] = false;
+  self["loop"] = false;
   self["seeking"] = false;
+  self._stalled = false;
   self["muted"] = false;
   self["volume"] = 1;
   self["playbackRate"] = 1;
@@ -694,7 +841,9 @@ function initHtmlMedia(self: HTMLMediaElement): void {
 class HTMLMediaElement {
   ["paused"]!: boolean;
   ["ended"]!: boolean;
+  ["loop"]!: boolean;
   ["seeking"]!: boolean;
+  _stalled!: boolean;
   ["muted"]!: boolean;
   ["volume"]!: number;
   ["playbackRate"]!: number;
@@ -766,12 +915,19 @@ class HTMLMediaElement {
     const self = this;
     this["paused"] = false;
     this["ended"] = false;
-    this["readyState"] = 3;
     __msePlay();
     startMediaTick(self);
     return Promise.resolve().then(function () {
       fire(self, "play");
-      fire(self, "playing");
+      if (playheadBuffered(self)) {
+        self["readyState"] = 3;
+        self._stalled = false;
+        fire(self, "playing");
+      } else {
+        self["readyState"] = 1;
+        self._stalled = true;
+        fire(self, "waiting");
+      }
     });
   }
 
@@ -863,16 +1019,11 @@ class HTMLMediaElement {
     return __mseCurrentTime();
   }
   set ["currentTime"](t: number) {
-    t = Number(t);
-    /* currentTime must be a finite media time. Infinity / huge sentinels
-       clamp to the last buffered end (or 0 if empty) — not duration. */
-    if (t === Infinity || t > 1e11) {
-      const b = this["buffered"];
-      const n = b ? b["length"] : 0;
-      t = n > 0 ? b["end"](n - 1) : 0;
-    } else if (!isFinite(t)) {
-      return;
-    }
+    const raw = Number(t);
+    t = raw;
+    /* Chrome stores the assigned time. Do not rewrite a large finite value to 0
+       when buffered is empty — that is what made the next live segment miss X_. */
+    if (!isFinite(t)) return;
     /* Clamp to a finite duration. Do not snap to leftover — DVR -10s is often
        just outside buffered; SABR fills from the new playhead. */
     if (t < 0) t = 0;
@@ -883,7 +1034,7 @@ class HTMLMediaElement {
     this["ended"] = false;
     const self = this;
     fire(self, "seeking");
-    mseLog("mse currentTime set t=" + t + " prev=" + prev);
+    mseLog("mse currentTime set raw=" + raw + " t=" + t + " prev=" + prev);
     __mseSetCurrentTime(t);
     const t0 = Date.now();
     function finishSeek(): void {
@@ -897,7 +1048,19 @@ class HTMLMediaElement {
       for (let i = 0; i < n; i++) {
         if (br["start"](i) <= t + 0.35 && br["end"](i) >= t - 0.05) ok = true;
       }
-      if (ok || n === 0 || Date.now() - t0 > 8000) {
+      if (ok) {
+        finishSeek();
+        return;
+      }
+      /* Chrome: empty seekable aborts the seek (no seeked). Empty buffered
+         with a non-empty seekable waits for data — do not fake seeked. */
+      const sk = self["seekable"];
+      const skN = sk ? sk["length"] : 0;
+      if (skN === 0) {
+        self["seeking"] = false;
+        return;
+      }
+      if (Date.now() - t0 > 8000) {
         finishSeek();
         return;
       }

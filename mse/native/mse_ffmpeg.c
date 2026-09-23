@@ -1278,8 +1278,12 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             if (a->vf.rd != rd0)
                 vlog_state(a, clock, "rap-skip", a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
             if (a->vf.rd >= a->vf.n) {
-                if (vdbg_ok())
+                static double last_empty;
+                double now = now_ms();
+                if (now - last_empty > 1000) {
+                    last_empty = now;
                     vlog_state(a, clock, "starve-empty", 0);
+                }
                 break;
             }
             if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {
@@ -2768,7 +2772,6 @@ static void vf_resync_key(MseAv *a, double t)
 static int vf_skip_stale(MseAv *a, double clock)
 {
     const double stale = 0.50;
-    const double dead = 1.50;
     size_t i, next;
     double kpts, npts;
     if (a->vf.rd >= a->vf.n)
@@ -2788,7 +2791,9 @@ static int vf_skip_stale(MseAv *a, double clock)
     npts = next < a->vf.n ? a->vf.f[next].pts : -1;
     if (next < a->vf.n && npts > clock + 0.04)
         return 0;
-    if (next >= a->vf.n && kpts >= clock - dead)
+    /* Last GOP: keep it. Dropping it at EOS/seek-into-tail leaves vf empty
+       (log34 skip-stale key=185 next=-1 clock=188 → starve-empty, no ended). */
+    if (next >= a->vf.n)
         return 0;
     for (i = a->vf.rd; i < next; i++)
         a->vf.f[i].sent = 1;
@@ -2809,6 +2814,9 @@ void mse_av_seek(MseAv *a, double seconds)
     cfb_clear_sent(&a->vf);
     cfb_seek_rd(&a->af, seconds);
     {
+        /* Chrome currentTime / abort() keep leftover; only remove() drops it.
+           If t is not in any island, do not start reading a later island
+           (160s leftover while seeking to 60s). Wait for SABR to append. */
         int acov = 0;
         size_t i;
         for (i = 0; i < a->af.n; i++) {
@@ -2816,16 +2824,8 @@ void mse_av_seek(MseAv *a, double seconds)
                 a->af.f[i].pts + a->af.f[i].dur >= seconds - 0.05)
                 acov = 1;
         }
-        /* Far seek: audio leftover is other islands (log34 t=67.8 with
-           a:0–20s,110–190s). Keep them and the WebM parser eats the new
-           cluster as a continuation → Unknown-sized element, smashed PCM. */
-        if (!acov) {
-            cfb_free(&a->af);
-            a->pend_n[1] = 0;
-            a->cluster_tc_n[1] = 0;
-            if (a->adec)
-                avcodec_flush_buffers(a->adec);
-        }
+        if (!acov)
+            a->af.rd = a->af.n;
     }
     cfb_seek_rd_key(&a->vf, seconds);
     vlog("seek t=%.3f af=%zu vf=%zu ard=%zu vrd=%zu vkey=%.3f", seconds, a->af.n, a->vf.n,
@@ -2836,10 +2836,11 @@ void mse_av_seek(MseAv *a, double seconds)
     a->need_rap[1] = 1;
     if (a->adec)
         avcodec_flush_buffers(a->adec);
-    /* No IDR covering t: drop leftover (old 0–30s mixed with new 1890s
-       after a far seek) and wait for SABR to append a real IDR. */
+    /* Chrome currentTime keeps leftover; only remove() drops ranges.
+       If t is not on a RAP, park rd (already) and close the decoder so
+       we do not present the old GOP at the new clock. SABR appends the
+       new island onto vf; buffered still shows the old range. */
     if (a->vf.rd >= a->vf.n || !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
-        cfb_free(&a->vf);
         a->pend_n[0] = 0;
         a->cluster_tc_n[0] = 0;
         close_video_decoder(a);
@@ -3579,8 +3580,12 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         if (vf_skip_stale(a, clock))
             break;
         if (a->vf.rd >= a->vf.n) {
-            if (vdbg_ok())
+            static double last_empty;
+            double now = now_ms();
+            if (now - last_empty > 1000) {
+                last_empty = now;
                 vlog_state(a, clock, "starve-empty", got);
+            }
             break;
         }
         if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {

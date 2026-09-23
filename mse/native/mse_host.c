@@ -151,7 +151,9 @@ static double clock_locked(MseHost *h)
             double cap = last;
             /* VOD catching the real end — not live leftover past a stale
                MediaSource duration (log23 recreate: yt_dur=17253, vf to 17266). */
-            int near_eos = h->yt_dur > 0 && last + 0.5 >= h->yt_dur &&
+            /* Audio-only leftover often ends ~0.5–1s before yt_dur (fake-144
+               cover is 0..dur; audio last is short). 0.5s was too tight. */
+            int near_eos = h->yt_dur > 0 && last + 1.5 >= h->yt_dur &&
                            last <= h->yt_dur + 0.75;
             /* 1s behind leftover end is for video readahead. Audio-only
                (no C video) must play to audio last or the clock freezes
