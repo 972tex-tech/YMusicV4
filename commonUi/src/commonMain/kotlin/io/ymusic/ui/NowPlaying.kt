@@ -283,10 +283,12 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             }
         }
     }
-    if (desktopLayoutHole) {
-        Box(Modifier.fillMaxSize(), content = { shell() })
-    } else {
-        Surface(Modifier.fillMaxSize(), color = DesignColors.Surface, content = { shell() })
+    SwipeDownDismissBox(onDismiss = onClose) {
+        if (desktopLayoutHole) {
+            Box(Modifier.fillMaxSize(), content = { shell() })
+        } else {
+            Surface(Modifier.fillMaxSize(), color = DesignColors.Surface, content = { shell() })
+        }
     }
 }
 

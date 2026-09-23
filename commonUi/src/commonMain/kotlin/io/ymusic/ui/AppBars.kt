@@ -19,7 +19,9 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,11 +80,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -93,6 +99,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -106,6 +113,7 @@ import io.ymusic.ui.resources.cd_menu
 import io.ymusic.ui.resources.cd_more_tabs
 import io.ymusic.ui.resources.cd_search
 import io.ymusic.ui.resources.search_youtube
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
@@ -648,16 +656,128 @@ internal fun <T> SwipeTabSwitcher(
 /** Fraction of the way to the neighbour a tab underline leans while dragging (the rest lands on commit). */
 internal const val TabIndicatorDragTravel = 0.2f
 
-private val SwipeSwitchDistance = 56.dp
-private val SwipeSwitchVelocity = 400.dp // per second
-private val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the finger
-private const val SwipeSwitchResist = 0.4f // fraction of the drag the page follows
-private const val SwipeSwitchDurationMs = 220
+internal val SwipeSwitchDistance = 56.dp
+internal val SwipeSwitchVelocity = 400.dp // per second
+internal val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the finger
+internal const val SwipeSwitchResist = 0.4f // fraction of the drag the page follows
+internal const val SwipeSwitchDurationMs = 220
 
 /** Width of the start-edge zone that opens the nav drawer instead of switching tabs (on top of the
  *  system back-gesture inset). Passed as SwipeTabSwitcher's leadingEdgeReserve on drawer screens. */
 internal val NavDrawerEdgeReserve = 24.dp
-private val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
+internal val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
+
+/**
+ * Same rubber-band as [SwipeTabSwitcher], vertical: the page peeks down under the finger, then
+ * either springs back or slides off and [onDismiss]s. Nested scroll pulls at the top of a list
+ * count; a downward drag on non-scrolling chrome (top bar, video) does too.
+ */
+@Composable
+internal fun SwipeDownDismissBox(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val peek = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val drag = remember { DragDown(peek, scope) }
+    drag.onDismiss = onDismiss
+    drag.distancePx = with(density) { SwipeSwitchDistance.toPx() }
+    drag.velocityPx = with(density) { SwipeSwitchVelocity.toPx() }
+    drag.maxPeek = with(density) { SwipeSwitchPeek.toPx() }
+
+    Box(
+        modifier
+            .fillMaxSize()
+            .onSizeChanged { drag.heightPx = it.height.toFloat() }
+            .nestedScroll(drag.connection)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dy = 0f
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
+                    val past = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                        if (over > 0f || drag.raw > 0f) {
+                            dy += over
+                            drag.report(over)
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            change.consume()
+                        }
+                    }
+                    if (past == null) return@awaitEachGesture
+                    if (dy <= 0f && drag.raw <= 0f) return@awaitEachGesture
+                    val completed = verticalDrag(down.id) { change ->
+                        val d = change.positionChange().y
+                        dy += d
+                        drag.report(d)
+                        tracker.addPosition(change.uptimeMillis, change.position)
+                        change.consume()
+                    }
+                    drag.settle(if (completed) tracker.calculateVelocity().y else 0f)
+                }
+            }
+            .graphicsLayer { translationY = peek.value },
+    ) {
+        content()
+    }
+}
+
+private class DragDown(
+    private val peek: Animatable<Float, *>,
+    private val scope: CoroutineScope,
+) {
+    var raw = 0f
+    var heightPx = 0f
+    var distancePx = 0f
+    var velocityPx = 0f
+    var maxPeek = 0f
+    var onDismiss: () -> Unit = {}
+
+    fun report(deltaY: Float) {
+        raw = (raw + deltaY).coerceAtLeast(0f)
+        val target = (raw * SwipeSwitchResist).coerceIn(0f, maxPeek)
+        scope.launch { peek.snapTo(target) }
+    }
+
+    fun settle(flingY: Float) {
+        val commit = raw >= distancePx || flingY >= velocityPx
+        scope.launch {
+            if (commit) {
+                val end = heightPx.takeIf { it > 0f } ?: (maxPeek * 8f)
+                peek.animateTo(end, tween(SwipeSwitchDurationMs))
+                onDismiss()
+            } else {
+                raw = 0f
+                peek.animateTo(0f, PeekSpring)
+            }
+        }
+    }
+
+    val connection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (raw <= 0f || available.y >= 0f) return Offset.Zero
+            val before = raw
+            report(available.y)
+            return Offset(0f, raw - before)
+        }
+
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            if (available.y <= 0f) return Offset.Zero
+            report(available.y)
+            return Offset(0f, available.y)
+        }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            if (raw > 0f || peek.value > 0f) {
+                settle(available.y)
+                return available
+            }
+            return Velocity.Zero
+        }
+    }
+}
 
 /** The cut-off side's affordance: a fade to the surface color under a chevron. */
 @Composable
