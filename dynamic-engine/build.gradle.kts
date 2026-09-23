@@ -103,10 +103,8 @@ kotlin {
     }
 }
 
-// The :engine-js bundles, embedded as consts: ENGINE_JS (production, Closure ADVANCED) is the
-// baseline DynamicEngine.create evals as the runtime's creation script (a remote bundle replaces
-// it via the engineJs parameter); ENGINE_TEST_JS (production + test fixtures) is what the tests
-// run on.
+// The :engine-js bundles, embedded as consts: ENGINE_JS (scrape), PLAYER_JS (MSE player),
+// ENGINE_TEST_JS (both + fixtures) for tests.
 fun embedBundle(configName: String, projectConfig: String, constName: String, ktFile: String, sourceSet: String) {
     val config = configurations.create(configName) {
         isCanBeConsumed = false
@@ -159,4 +157,5 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
 }
 
 embedBundle("engineJsBundle", "engineJs", "ENGINE_JS", "EngineJsPreamble.kt", "commonMain")
+embedBundle("enginePlayerJsBundle", "enginePlayerJs", "PLAYER_JS", "PlayerJsPreamble.kt", "commonMain")
 embedBundle("engineTestJsBundle", "engineTestJs", "ENGINE_TEST_JS", "EngineTestJsPreamble.kt", "commonTest")

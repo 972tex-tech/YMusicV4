@@ -5,10 +5,11 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **Role** — the engine host: wraps `:quickjs` (`DynamicEngine`) and serves host protocols to the
   remotely-updatable scraping JS (YouTube feed-shape changes ship without an app release).
 
-- **Boot** — `DynamicEngine.create(client, appVersion, logger, engineJs = ENGINE_JS)` boots the whole `:engine-js`
-  bundle (handlers wired BEFORE the eval via `QuickJsRuntime.create`'s configure hook, `versions` installed from C
+- **Boot** — `DynamicEngine.create(client, appVersion, logger, engineJs = ENGINE_JS)` boots scrape `engine.js`
+  (handlers wired BEFORE the eval via `QuickJsRuntime.create`'s configure hook, `versions` installed from C
   at create) and then health-checks it over the bundle-served `"init"` pipe (returns `backendVersion`, the bundle's
   self-declared revision; typed rejections `E20020` load / `E20021` health check).
+  `DynamicEnginePlayer.create(..., engineJs = PLAYER_JS)` boots MSE `player.js` on a second QuickJS runtime.
 
 - **Remote update / lifecycle** — `engineJs` is the remote-update seam; `DynamicEngineManager` owns the current
   engine:

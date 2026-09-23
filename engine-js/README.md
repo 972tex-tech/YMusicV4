@@ -9,10 +9,10 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   Closure's property renaming) → **Closure Compiler ADVANCED** (minify + full mangling, identifiers AND property
   names; type-based passes off — erased-types input).
 
-- **Artifacts** — two, both ADVANCED:
-  - `engine.js` — production; ships with the app as the baseline, remotely replaceable as a whole.
-  - `engine-test.js` — production + pipe-driven test fixtures; `:quickjs`/`:dynamic-engine` tests and pipe_stress
-    run on it.
+- **Artifacts** — all ADVANCED:
+  - `engine.js` — scrape (feed/search/login/download); remotely replaceable.
+  - `player.js` — MSE YouTube player; separate QuickJS runtime.
+  - `engine-test.js` — both + pipe fixtures for `:quickjs`/`:dynamic-engine` tests.
 
 - **Unmangled names** — the ONLY ones:
   - `externs.js` (the C natives, the `__js*` transport globals, `versions`, `console`, WHATWG `fetch` /

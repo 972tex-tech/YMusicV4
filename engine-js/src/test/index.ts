@@ -1,7 +1,6 @@
-// Entry for the TEST bundle (engine-test.js): the whole production bundle plus the test fixtures
-// the Kotlin test suites drive via pipes. Built by the same pipeline as production so tests run on
-// representative output.
+// Entry for the TEST bundle (engine-test.js): scrape + player production entries plus fixtures.
 import "../index";
+import "../player-index";
 import "./fixtures/protocol";
 import "./fixtures/logging";
 import "./fixtures/http";

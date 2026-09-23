@@ -4,7 +4,7 @@ import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DynamicEngine
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.decodeEngineError
-import io.ymusic.dynamicengine.internal.ENGINE_JS
+import io.ymusic.dynamicengine.internal.PLAYER_JS
 import io.ymusic.dynamicengine.internal.installMainProxy
 import io.ymusic.dynamicengine.yt.jsonCommand
 import io.ymusic.mse.MseHostNative
@@ -105,6 +105,14 @@ class DynamicEnginePlayer private constructor(
         ) { it.skipValue() }
     }
 
+    suspend fun setLoop(enable: Boolean, logger: Logger? = null) {
+        engine.jsonCommand(
+            "player/setLoop",
+            { w -> w.name("enable").value(enable) },
+            logger,
+        ) { it.skipValue() }
+    }
+
     suspend fun play(logger: Logger? = null) {
         engine.jsonCommand("player/play", { }, logger) { it.skipValue() }
     }
@@ -125,7 +133,7 @@ class DynamicEnginePlayer private constructor(
         return engine.jsonCommand("player/status", { }, logger) { it.readObject() }
     }
 
-    /** Subscribe to clock/state until cancelled. Host close unsubscribes. */
+    /** Subscribe to event groups (`progress` / `state` / `picture`) until cancelled. */
     suspend fun collectStatus(onStatus: (JsonObject) -> Unit, logger: Logger? = null) {
         collectJsonPipe("listen/player/status", onStatus, logger)
     }
@@ -250,7 +258,7 @@ class DynamicEnginePlayer private constructor(
             appVersion: Int,
             dispatcher: CoroutineDispatcher,
             logger: Logger? = null,
-            engineJs: String = ENGINE_JS,
+            engineJs: String = PLAYER_JS,
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
             settings: SettingsStore? = null,

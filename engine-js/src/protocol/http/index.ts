@@ -8,7 +8,7 @@
 // call.ts (the exchange), response.ts (+ body streaming/parse). WHATWG `fetch` / `XMLHttpRequest`
 // live in logic/yt (they cook the YouTube cookie policy onto the builder). Host-classified errors
 // are decoded by hostError in ../command.
-// Bundled+minified into the :engine-js single bundle (src/index.ts); never shipped as source.
+// Bundled+minified into the :engine-js artifacts (scrape `engine.js`, player `player.js`); never shipped as source.
 
 import { HttpRequestBuilderImpl } from "./builder";
 

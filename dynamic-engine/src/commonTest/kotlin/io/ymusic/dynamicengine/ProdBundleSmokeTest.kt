@@ -1,6 +1,8 @@
 package io.ymusic.dynamicengine
 
+import io.ymusic.dynamicengine.internal.PLAYER_JS
 import io.ymusic.quickjs.PipeResetException
+import io.ymusic.quickjs.QuickJsException
 import io.ymusic.quickjs.asAsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import kmphttp.json.JsonReader
@@ -12,12 +14,13 @@ import okio.Buffer
 import okio.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
-/** Smoke over the PRODUCTION bundle (the Closure-ADVANCED-mangled `ENGINE_JS` default): driven
- *  purely via pipes and the built-in diagnostics commands — no JS symbol is referenced, which is
+/** Smoke over the PRODUCTION artifacts (Closure-ADVANCED-mangled `ENGINE_JS` scrape default and
+ *  `PLAYER_JS` MSE player): driven purely via pipes — no JS symbol is referenced, which is
  *  exactly the production contract. Everything else tests the TEST bundle; this is what proves the
- *  mangled artifact itself boots and serves. */
+ *  mangled artifacts themselves boot and serve. */
 class ProdBundleSmokeTest {
 
     private suspend fun createProdEngine(client: kmphttp.KmpHttpClient): DynamicEngine =
@@ -79,6 +82,38 @@ class ProdBundleSmokeTest {
             }
             assertIs<EngineError.Network>(err)
             pipe.source.close()
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun scrape_bundle_refuses_player_commands() = runTest {
+        val e = createProdEngine(FakeHttpClient(CannedResponse.ofText("")))
+        try {
+            val err = assertFailsWith<QuickJsException> { e.openPipe("player/init") }
+            assertEquals("""open("player/init") refused: no JS handler""", err.message)
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun player_bundle_boots_and_serves_player_init() = runTest {
+        val e = withContext(testEngineDispatcher) {
+            DynamicEngine.create(
+                FakeHttpClient(CannedResponse.ofText("")),
+                1,
+                testEngineDispatcher,
+                engineJs = PLAYER_JS,
+            ).also { it.healthCheck() }
+        }
+        try {
+            val pipe = e.openPipe("player/init")
+            pipe.sink.close()
+            pipe.source.close()
+            val err = assertFailsWith<QuickJsException> { e.openPipe("ping") }
+            assertEquals("""open("ping") refused: no JS handler""", err.message)
         } finally {
             e.close()
         }

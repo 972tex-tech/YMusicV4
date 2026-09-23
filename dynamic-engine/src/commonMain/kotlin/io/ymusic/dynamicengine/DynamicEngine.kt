@@ -111,10 +111,11 @@ class DynamicEngine internal constructor(
 
     companion object {
         /**
-         * Create an engine running [engineJs] — the single :engine-js bundle (transport + protocol
-         * layers + scraping logic) and wire the `"http"` handler onto [client] (before the boot
-         * eval, so the bundle's top-level code can already call it). Create just BOOTS — drive
-         * [healthCheck] afterwards if the caller gates on it (the manager does).
+         * Create an engine running [engineJs] — scrape `engine.js` by default (transport + protocol
+         * layers + feed/search/login/download). MSE playback is a second runtime via
+         * [io.ymusic.dynamicengine.player.DynamicEnginePlayer] (`player.js`). Wires the `"http"`
+         * handler onto [client] before the boot eval so top-level bundle code can already call it.
+         * Create just BOOTS — drive [healthCheck] afterwards if the caller gates on it (the manager does).
          *
          * NOT a suspend function on purpose: the whole boot — native engine, bundle eval, init
          * round-trip (the C layer pumps JS microtasks inside each call, so init has answered

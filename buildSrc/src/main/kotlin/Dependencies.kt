@@ -9,7 +9,7 @@ object Versions {
     /** The engine-js bundle's self-declared revision — BUMP MANUALLY on every remote push. One
      *  value feeds the bundle's inlined BACKEND_VERSION, the embedded-const version, and each
      *  shell's embed-version constant (configuration-time, no artifact plumbing). */
-    const val engineJsBackendVersion = 43L
+    const val engineJsBackendVersion = 68L
     const val targetSdk = 35
 
     // KMP

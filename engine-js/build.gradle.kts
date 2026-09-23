@@ -14,8 +14,8 @@ import com.google.javascript.jscomp.SourceFile
 // quoted wire keys (Closure never renames quoted properties; the coding standard writes all wire
 // objects quoted/bracketed).
 //
-// Two artifacts, same pipeline, both ADVANCED: engine.js (production, src/index.ts) and
-// engine-test.js (src/test/index.ts = production + pipe-driven test fixtures).
+// Prod artifacts, same pipeline, ADVANCED: engine.js (scrape, src/index.ts) and
+// player.js (MSE player, src/player-index.ts). engine-test.js is both + fixtures.
 
 // Closure Compiler (pure-JVM) on the build classpath, only for this module.
 buildscript {
@@ -62,6 +62,10 @@ val rawTestBundleMeta = layout.buildDirectory.file("raw/engine-test.meta.json")
 val sizeReportDir = layout.buildDirectory.dir("reports/engine-js")
 val bundleFile = layout.buildDirectory.file("dist/engine.js")
 val bundleMapFile = layout.buildDirectory.file("dist/engine.js.map")
+val rawPlayerBundleFile = layout.buildDirectory.file("raw/player.raw.js")
+val rawPlayerBundleMeta = layout.buildDirectory.file("raw/player.meta.json")
+val playerBundleFile = layout.buildDirectory.file("dist/player.js")
+val playerBundleMapFile = layout.buildDirectory.file("dist/player.js.map")
 val testBundleFile = layout.buildDirectory.file("dist/engine-test.js")
 
 val typecheckJs by tasks.registering(Exec::class) {
@@ -185,6 +189,39 @@ val closureJs by tasks.registering {
     }
 }
 
+val bundleRawPlayerJs by tasks.registering(Exec::class) {
+    dependsOn(typecheckJs)
+    inputs.dir(srcDir)
+    inputs.property("defines", esbuildDefines.joinToString(" "))
+    outputs.files(rawPlayerBundleFile, rawPlayerBundleMeta)
+    workingDir = projectDir
+    commandLine(
+        "npx", "-y", "esbuild@${Versions.esbuild}",
+        "src/player-index.ts", "--bundle",
+        "--format=iife", "--target=esnext", "--charset=utf8",
+        "--loader:.raw.js=text",
+        *esbuildDefines,
+        "--metafile=${rawPlayerBundleMeta.get().asFile.absolutePath}",
+        "--outfile=${rawPlayerBundleFile.get().asFile.absolutePath}",
+    )
+}
+
+val closurePlayerJs by tasks.registering {
+    dependsOn(bundleRawPlayerJs)
+    inputs.file(rawPlayerBundleFile)
+    inputs.file(externsJs)
+    outputs.files(playerBundleFile, playerBundleMapFile)
+    doLast {
+        closureCompile(
+            rawPlayerBundleFile.get().asFile,
+            playerBundleFile.get().asFile,
+            playerBundleMapFile.get().asFile,
+            rawPlayerBundleMeta.get().asFile,
+            CompilationLevel.ADVANCED_OPTIMIZATIONS,
+        )
+    }
+}
+
 // The TEST bundle: production + fixtures, same pipeline and same ADVANCED level — tests run on
 // output as mangled as production's. The few remaining load() snippets touch only externed
 // natives, which is exactly what survives.
@@ -224,11 +261,15 @@ val bundleTestJs by tasks.registering {
     }
 }
 
-tasks.named("assemble") { dependsOn(closureJs, bundleTestJs) }
+tasks.named("assemble") { dependsOn(closureJs, closurePlayerJs, bundleTestJs) }
 
-// Consumable artifacts: engineJs = the production bundle (:dynamic-engine embeds it as the
-// baseline ENGINE_JS); engineTestJs = the test bundle (:quickjs / :dynamic-engine test consts).
+// Consumable artifacts: engineJs = scrape; enginePlayerJs = MSE player;
+// engineTestJs = both + fixtures.
 val engineJs by configurations.creating {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+}
+val enginePlayerJs by configurations.creating {
     isCanBeConsumed = true
     isCanBeResolved = false
 }
@@ -238,5 +279,6 @@ val engineTestJs by configurations.creating {
 }
 artifacts {
     add(engineJs.name, bundleFile) { builtBy(closureJs) }
+    add(enginePlayerJs.name, playerBundleFile) { builtBy(closurePlayerJs) }
     add(engineTestJs.name, testBundleFile) { builtBy(bundleTestJs) }
 }

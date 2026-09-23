@@ -88,9 +88,11 @@ tasks.matching { it.name == "clean" }.configureEach {
 // their own builds — this exists so `./gradlew syncEngineJs` refreshes every copy in one go.)
 tasks.register("syncEngineJs") {
     dependsOn(
-        ":engine-js:closureJs", // build/dist/engine.js (typecheck + esbuild + Closure)
-        ":androidApp:copyEngineJs", // → androidApp/src/main/assets/engine_ymusic.js
-        ":desktopApp:stageEngineJs", // → desktopApp jar resources
-        ":dynamic-engine:generateEngineJsBundleKt", // → embedded ENGINE_JS + its version const
+        ":engine-js:closureJs",
+        ":engine-js:closurePlayerJs",
+        ":androidApp:copyEngineJs",
+        ":desktopApp:stageEngineJs",
+        ":dynamic-engine:generateEngineJsBundleKt",
+        ":dynamic-engine:generateEnginePlayerJsBundleKt",
     )
 }

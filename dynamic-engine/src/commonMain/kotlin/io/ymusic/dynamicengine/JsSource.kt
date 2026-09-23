@@ -54,6 +54,10 @@ fun interface JsConfigProvider {
 fun embeddedEngineJsSource(): JsSourceProvider =
     StaticJsSource(io.ymusic.dynamicengine.internal.ENGINE_JS, io.ymusic.dynamicengine.internal.ENGINE_JS_VERSION)
 
+/** Embedded MSE player bundle (`player.js`) — [DynamicEnginePlayer] default. */
+fun embeddedPlayerJsSource(): JsSourceProvider =
+    StaticJsSource(io.ymusic.dynamicengine.internal.PLAYER_JS, io.ymusic.dynamicengine.internal.PLAYER_JS_VERSION)
+
 /** An embed-only [JsSourceProvider] — no cache, no remote. Tests and fixed-bundle callers. */
 class StaticJsSource(private val source: String, private val version: Long = 0L) : JsSourceProvider {
     override suspend fun getCached(): Pair<String, Long>? = null
