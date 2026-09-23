@@ -1,8 +1,10 @@
-// Hold the last homepage miller so a later harness run can remill exactly:
-// program, snapshot, IT, pot, SABR body, entropy, timeOrigin.
-// Reproduce params go through cache/put (pipe → blob file), never console —
-// host log splits on newlines and truncated entropy. Short status lines stay
-// logs. SPS≠1 → log/capture attaches that cache blob.
+// On SPS≠1 the harness remills this program and POSTs the saved SABR URL.
+// It does not call /player and does not reproduce the snapshot bytes.
+// Required in the blob: program, interpJs (or interpUrl), eventId, mintId,
+// pot, sabrUrl, sabrBody. sps is only a log line today, not a blob field.
+// Cookie on that POST is not stored. snapshot, integrityToken, entropy,
+// timeOrigin, and visitorData are kept but the SABR replay does not use them.
+// Payloads go through cache/put, never console. SPS≠1 → log/capture attaches the blob.
 
 import { callHost } from "../../protocol/command";
 import { keepCount, scopedCache } from "../../protocol/cache";
