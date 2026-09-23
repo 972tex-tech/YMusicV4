@@ -118,6 +118,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.roundToInt
 
 /*
@@ -671,21 +672,12 @@ internal val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 /** Finger travel that commits a Now Playing dismiss (heavier than the tab-switch 56.dp). */
 private val DismissDragDistance = 120.dp
-private val DismissDragBand = 10.dp
-/** Per 10.dp of finger: 10px, then 5, 3, 2, … — later travel is heavier. */
-private val DismissDragRates = floatArrayOf(1f, 0.5f, 0.3f, 0.2f, 0.14f, 0.1f, 0.07f, 0.05f)
+/** Curve scale: slope starts at 1 and eases off. `peek = k (1 - e^{-raw/k})`. */
+private val DismissDragStiffness = 48.dp
 
-private fun weightedDismissPeek(rawPx: Float, bandPx: Float): Float {
-    if (rawPx <= 0f || bandPx <= 0f) return 0f
-    var left = rawPx
-    var peek = 0f
-    for (rate in DismissDragRates) {
-        val take = minOf(left, bandPx)
-        peek += take * rate
-        left -= take
-        if (left <= 0f) return peek
-    }
-    return peek + left * DismissDragRates.last()
+private fun weightedDismissPeek(rawPx: Float, k: Float): Float {
+    if (rawPx <= 0f || k <= 0f) return 0f
+    return k * (1f - exp(-rawPx / k))
 }
 
 /**
@@ -705,10 +697,10 @@ internal fun SwipeDownDismissBox(
     val density = LocalDensity.current
     val drag = remember { DragDown(peek, scope) }
     drag.onDismiss = onDismiss
-    drag.bandPx = with(density) { DismissDragBand.toPx() }
+    drag.stiffnessPx = with(density) { DismissDragStiffness.toPx() }
     drag.commitPx = with(density) { DismissDragDistance.toPx() }
     val peekY = peek.value
-    val fullPeek = weightedDismissPeek(drag.commitPx, drag.bandPx).coerceAtLeast(1f)
+    val fullPeek = weightedDismissPeek(drag.commitPx, drag.stiffnessPx).coerceAtLeast(1f)
     val topShadow = (peekY / fullPeek).coerceIn(0f, 1f)
     val shadowH = with(density) { 28.dp.roundToPx() }
 
@@ -771,13 +763,13 @@ private class DragDown(
 ) {
     var raw = 0f
     var heightPx = 0f
-    var bandPx = 0f
+    var stiffnessPx = 0f
     var commitPx = 0f
     var onDismiss: () -> Unit = {}
 
     fun report(deltaY: Float) {
         raw = (raw + deltaY).coerceAtLeast(0f)
-        val target = weightedDismissPeek(raw, bandPx)
+        val target = weightedDismissPeek(raw, stiffnessPx)
         scope.launch { peek.snapTo(target) }
     }
 
