@@ -220,7 +220,11 @@ private fun CatalogueList() {
                 mockFeedChips.forEachIndexed { i, label ->
                     FeedChip(label, selected = i == chip) { chip = i }
                 }
-                QualityChip(quality, mockQualities) { id -> quality = mockQualities.first { it.first == id }.second }
+                QualityChip(
+                    quality,
+                    mockQualities,
+                    selectedId = mockQualities.firstOrNull { it.second == quality }?.first,
+                ) { id -> quality = mockQualities.first { it.first == id }.second }
                 CtaPill("Subscribe")
             }
         }

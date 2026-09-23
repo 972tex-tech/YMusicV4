@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FastForward
@@ -719,6 +720,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
                         else -> quality.actualQuality
                     },
                 options = quality.options.map { it.quality to qualityLabel(it) },
+                selectedId = quality.preferredQuality,
                 onSelect = { player.selectVideoQuality(it) },
             )
         }
@@ -730,6 +732,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
 internal fun QualityChip(
     label: String,
     options: List<Pair<String, String>>,
+    selectedId: String? = null,
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -745,7 +748,22 @@ internal fun QualityChip(
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { (id, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); open = false })
+                val selected = id == selectedId
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text,
+                            color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    },
+                    trailingIcon = if (selected) {
+                        { Icon(Icons.Default.Check, contentDescription = null, tint = DesignColors.Accent) }
+                    } else {
+                        null
+                    },
+                    onClick = { onSelect(id); open = false },
+                )
             }
         }
     }
