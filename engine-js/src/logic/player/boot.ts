@@ -1125,7 +1125,9 @@ class Player {
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("catalog: no movie_player", "E20085");
     const pref = String(player["getUserPlaybackQualityPreference"]());
-    const actual = String(player["getPlaybackQuality"]());
+    /* Auto has not settled on a rung yet — YouTube reports unknown/tiny mid-flight. */
+    let actual = String(player["getPlaybackQuality"]());
+    if (actual === "unknown" || actual === "tiny") actual = "auto";
     return {
       "quality": actual,
       "preferQuality": pref,

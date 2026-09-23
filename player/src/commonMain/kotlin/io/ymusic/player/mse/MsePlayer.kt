@@ -432,7 +432,10 @@ class MsePlayer internal constructor(
         val actual = if (audioOnly) {
             VideoQualityState.AUDIO_ONLY
         } else {
-            st.str("quality") ?: VideoQualityState.AUTO
+            when (val q = st.str("quality")) {
+                null, "unknown", "tiny" -> VideoQualityState.AUTO
+                else -> q
+            }
         }
         val prefer = if (audioOnly) {
             VideoQualityState.AUDIO_ONLY

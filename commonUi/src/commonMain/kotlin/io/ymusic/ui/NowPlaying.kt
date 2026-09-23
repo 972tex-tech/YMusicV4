@@ -715,7 +715,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
             QualityChip(
                 label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
                     ?: when (quality.actualQuality) {
-                        VideoQualityState.AUTO -> autoQualityLabel
+                        VideoQualityState.AUTO, "unknown", "tiny" -> autoQualityLabel
                         VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
                         else -> quality.actualQuality
                     },
