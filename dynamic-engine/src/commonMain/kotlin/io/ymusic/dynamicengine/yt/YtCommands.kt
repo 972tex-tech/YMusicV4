@@ -13,6 +13,8 @@ import kmpcommon.log.markTrail
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.withContext
 
 /**
  * The YouTube extraction surface — intent-level twins of the engine bundle's `yt/…` commands
@@ -243,7 +245,7 @@ private suspend fun <R> DynamicEngine.jsonCommandPipe(
     key: Int,
     writeFields: suspend (JsonWriter) -> Unit,
     read: suspend (JsonReader) -> R,
-): R {
+): R = withContext(CoroutineName(command)) {
     val pipe = openPipe(command)
     try {
         // Async: the pipe's sink suspends. The args head is small, so it is built whole and drained
@@ -256,7 +258,7 @@ private suspend fun <R> DynamicEngine.jsonCommandPipe(
         writer.endObject()
         writer.flush()
         pipe.sink.close()
-        return try {
+        try {
             read(JsonReader(pipe.source.asBufferedSource()))
         } catch (e: PipeResetException) {
             throw decodeEngineError(e.reason, e)

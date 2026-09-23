@@ -9,7 +9,8 @@ import kotlin.time.TimeSource
  *
  *  - **stint** ([onSlowStint]): one dispatched task held the thread for [stintMs]+ in one
  *    continuous stretch — blames the CULPRIT (an unchunked loop, a runaway regex, a blocking call
- *    that skipped its `withContext(IO)` hop).
+ *    that skipped its `withContext(IO)` hop). The [String] is a live engine-thread stack dump
+ *    captured at the budget (JVM/Android) while the task is still running.
  *  - **queue wait** ([onSlowWait]): a task waited [waitMs]+ between dispatch and running — the
  *    VICTIM's view, catching cumulative congestion no single stint shows (ten 20ms stints
  *    back-to-back delay the next task 200ms).
@@ -22,7 +23,7 @@ import kotlin.time.TimeSource
 internal expect fun slowStintDispatcher(
     delegate: CloseableCoroutineDispatcher,
     stintMs: Long,
-    onSlowStint: ((millis: Long) -> Unit)?,
+    onSlowStint: ((millis: Long, detail: String) -> Unit)?,
     waitMs: Long,
     onSlowWait: ((millis: Long) -> Unit)?,
 ): CloseableCoroutineDispatcher

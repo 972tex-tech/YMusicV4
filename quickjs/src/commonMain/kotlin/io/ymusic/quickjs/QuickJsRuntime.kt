@@ -747,12 +747,12 @@ class QuickJsRuntime private constructor(
          *  [onSlowWait] (with [slowWaitMs] > 0) watches the victim's side instead: a task that sat
          *  in the queue for [slowWaitMs]+ before running, which also catches cumulative congestion
          *  no single stint shows. Both callbacks run on the engine thread itself: keep them cheap.
-         *  A throwing callback propagates out of the task — strict (fail-fast debug) setups throw
-         *  deliberately to make the stall unmissable. Nothing armed = the raw dispatcher, zero
-         *  overhead. */
+         *  [onSlowStint] receives the stint length and a live engine-thread stack dump (JVM/Android)
+         *  captured at the budget, while the task is still running. A throwing callback propagates
+         *  out of the task. Nothing armed = the raw dispatcher, zero overhead. */
         fun newDispatcher(
             slowStintMs: Long = 0L,
-            onSlowStint: ((millis: Long) -> Unit)? = null,
+            onSlowStint: ((millis: Long, detail: String) -> Unit)? = null,
             slowWaitMs: Long = 0L,
             onSlowWait: ((millis: Long) -> Unit)? = null,
         ): CloseableCoroutineDispatcher {

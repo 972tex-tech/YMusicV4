@@ -112,10 +112,9 @@ class DynamicEngineManager(
     // own Mutex + IO dispatcher, the cookie jar is the platform's thread-safe store, and
     // ParkedLoggers is deliberately unlocked (misses degrade to root).
     // [strictStints] (debug builds) arms the watchdog on every engine thread: a task that HELD
-    // the thread 50ms+ in one stretch (the culprit — a definite bug) logs ERROR and throws on the
-    // engine thread, so the stall is unmissable in development; a task that WAITED 50ms+ for the
-    // thread (the victim — cumulative congestion, possibly just load) only logs WARN. Release
-    // arms nothing: zero overhead, zero output.
+    // the thread 50ms+ in one stretch logs ERROR with a live engine-thread stack (the culprit);
+    // past [BOOT_STINT_MS] it also throws. A task that WAITED 50ms+ for the thread (the victim —
+    // cumulative congestion) only logs WARN. Release arms nothing: zero overhead, zero output.
     /**
      * An engine's private JS thread. [booting] is THIS thread's stint grace: while the engine on
      * it boots, the watchdog answers to [BOOT_STINT_MS] — the bundle eval + health check is one
@@ -133,13 +132,15 @@ class DynamicEngineManager(
             onSlowStint = if (!strictStints) {
                 null
             } else {
-                { ms ->
+                { ms, detail ->
                     if (!booting || ms >= BOOT_STINT_MS) {
                         val budget = if (booting) BOOT_STINT_MS else SLOW_STINT_MS
                         val message = "engine thread held for ${ms}ms by one task (budget ${budget}ms) — " +
-                            "every pipe, timer and command stalls while the thread is held"
+                            "every pipe, timer and command stalls while the thread is held\n$detail"
                         stintLog?.log(Logger.Level.ERROR, message)
-                        throw IllegalStateException(message)
+                        /* A 50ms stint is a bug to find, not a reason to kill playback.
+                           Throw only past the boot budget — that is a real hang. */
+                        if (ms >= BOOT_STINT_MS) throw IllegalStateException(message)
                     }
                 }
             },
