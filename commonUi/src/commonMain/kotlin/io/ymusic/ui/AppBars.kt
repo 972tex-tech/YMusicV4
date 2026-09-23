@@ -98,6 +98,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -117,6 +118,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /*
  * The ONE app-bar language, every scenario (see the "App bars" catalogue group):
@@ -687,6 +689,7 @@ internal fun SwipeDownDismissBox(
     drag.maxPeek = with(density) { SwipeSwitchPeek.toPx() }
     val peekY = peek.value
     val topShadow = (peekY / drag.maxPeek.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    val shadowH = with(density) { 28.dp.roundToPx() }
 
     Box(
         modifier
@@ -718,20 +721,22 @@ internal fun SwipeDownDismissBox(
                     }
                     drag.settle()
                 }
-            }
-            .graphicsLayer { translationY = peek.value },
+            },
     ) {
-        content()
+        Box(Modifier.fillMaxSize().graphicsLayer { translationY = peekY }) {
+            content()
+        }
         if (topShadow > 0.01f) {
             Box(
                 Modifier
-                    .align(Alignment.TopCenter)
+                    .align(Alignment.TopStart)
+                    .offset { IntOffset(0, (peekY - shadowH).roundToInt()) }
                     .fillMaxWidth()
                     .height(28.dp)
                     .background(
                         Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.22f * topShadow),
-                            1f to Color.Transparent,
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.28f * topShadow),
                         ),
                     ),
             )
