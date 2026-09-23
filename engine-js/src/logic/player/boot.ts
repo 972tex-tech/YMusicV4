@@ -683,7 +683,7 @@ class Player {
     out["baseJsLen"] = baseJs.length;
     console.log("base.js source=cdn len=" + baseJs.length + " jsUrl=" + jsUrl);
     try {
-      (0, eval)(baseJs + "\n//# sourceURL=" + jsUrl);
+      (0, eval)(baseJs);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       throw new JsEngineErrorImpl(

@@ -70,7 +70,7 @@
         })
         .then(function (body) {
           try {
-            (0, eval)(body + "\n//# sourceURL=" + src);
+            (0, eval)(body);
           } catch (e) {
             console.warn("script eval failed " + src + " " + (e && e.message ? e.message : e));
             scriptResult[src] = { ok: false };
