@@ -662,8 +662,8 @@ internal const val TabIndicatorDragTravel = 0.2f
 internal val SwipeSwitchDistance = 56.dp
 internal val SwipeSwitchVelocity = 400.dp // per second
 internal const val SwipeSwitchDurationMs = 220
-/** Curve scale for tab + Now Playing rubber-band: slope starts at 1 and eases off. Larger = lighter. */
-private val RubberPeekStiffness = 64.dp
+/** Curve scale for tab + Now Playing rubber-band: slope starts at 1 and eases off. */
+private val RubberPeekStiffness = 48.dp
 
 /** Signed `k (1 - e^{-|raw|/k})`. */
 private fun weightedRubberPeek(rawPx: Float, k: Float): Float {
