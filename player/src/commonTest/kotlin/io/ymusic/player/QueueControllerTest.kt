@@ -43,6 +43,16 @@ class QueueControllerTest {
     }
 
     @Test
+    fun peek_next_does_not_move_current() {
+        val q = controller(3)
+        assertEquals(1, q.peekNext(userInitiated = false))
+        assertEquals(0, q.state.currentIndex)
+        q.commitNext(1)
+        assertEquals(1, q.state.currentIndex)
+        assertNull(controller(1).peekNext(userInitiated = false), "no loop: last item has no next")
+    }
+
+    @Test
     fun linear_advance_and_exhaustion() {
         val q = controller(3)
         assertEquals(1, q.advance(userInitiated = false))

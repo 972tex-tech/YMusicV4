@@ -30,6 +30,7 @@ class PlayerFacadeTest {
     private open class FakeEngine<S : PlayableItem> :
         MediaEngine<S>, VideoQualitySelectable, CaptionSelectable, CaptionRenderable, AudioTrackSelectable {
         val loads = mutableListOf<Load>()
+        val preloads = mutableListOf<S?>()
         var stopped = 0
         var releasedCount = 0
         var lastConfig = PlaybackConfig()
@@ -44,6 +45,10 @@ class PlayerFacadeTest {
         override val captions = MutableStateFlow(CaptionState.DEFAULT)
         override val captionLines = MutableStateFlow<List<CaptionLine>>(emptyList())
         override val audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
+
+        override fun preload(source: S?) {
+            preloads += source
+        }
 
         override fun load(source: S, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
             loads += Load(source, startPositionMs, playWhenReady, config)
@@ -200,6 +205,49 @@ class PlayerFacadeTest {
     }
 
     @Test
+    fun preloads_next_item_in_the_last_ten_seconds() = runTest {
+        val h = Harness(this)
+        h.player.setQueue(listOf(local(1), local(2)), playIndex = 0)
+        runCurrent()
+        assertTrue(h.local.preloads.isEmpty(), "must not preload at the start of a 60s track")
+        h.local.tickTo(50_000)
+        runCurrent()
+        assertEquals(listOf<PlayableItem.LocalMedia?>(local(2)), h.local.preloads)
+        h.local.tickTo(55_000)
+        runCurrent()
+        assertEquals(1, h.local.preloads.size, "preload once per next item")
+    }
+
+    @Test
+    fun preload_cross_engine_clears_the_current_engine_cue() = runTest {
+        val h = Harness(this)
+        h.player.setQueue(listOf(local(1), yt("abc")), playIndex = 0)
+        runCurrent()
+        h.local.tickTo(50_000)
+        runCurrent()
+        assertEquals(1, h.webViewBuilds)
+        assertEquals(listOf<PlayableItem.YtMedia?>(yt("abc")), h.webView.preloads)
+        assertEquals(listOf<PlayableItem.LocalMedia?>(null), h.local.preloads, "other engine: drop the current engine's extra cue")
+    }
+
+    @Test
+    fun preload_skips_live_and_loop_one() = runTest {
+        val h = Harness(this)
+        h.player.setQueue(listOf(PlayableItem.YtMedia("live", live = true), yt("next")), playIndex = 0)
+        runCurrent()
+        h.webView.tickTo(50_000)
+        runCurrent()
+        assertTrue(h.webView.preloads.isEmpty(), "live must not preload")
+
+        h.player.setQueue(listOf(local(1), local(2)), playIndex = 0)
+        h.player.setLoopMode(LoopMode.One)
+        runCurrent()
+        h.local.tickTo(50_000)
+        runCurrent()
+        assertTrue(h.local.preloads.isEmpty(), "loop-one repeats the current item")
+    }
+
+    @Test
     fun auto_advances_on_ended_and_stays_on_last() = runTest {
         val h = Harness(this)
         h.player.setQueue(listOf(local(1), local(2)), playIndex = 0)
@@ -218,16 +266,17 @@ class PlayerFacadeTest {
     }
 
     @Test
-    fun loop_one_reloads_same_item_on_ended() = runTest {
+    fun loop_one_is_engine_native_not_a_facade_reload() = runTest {
         val h = Harness(this)
         h.player.setQueue(listOf(local(1), local(2)), playIndex = 0)
         h.player.setLoopMode(LoopMode.One)
         runCurrent()
+        assertTrue(h.local.lastConfig.loop)
         h.local.finishTrack()
         runCurrent()
         assertEquals(0, h.player.queue.value.currentIndex)
-        assertEquals(2, h.local.loads.size)
-        assertEquals(local(1), h.local.loads[1].item)
+        assertEquals(1, h.local.loads.size, "loop-one must not seek/reload; the engine repeats")
+        assertTrue(assertIs<PlaybackState.Prepared>(h.player.status.value.state).ended)
     }
 
     @Test

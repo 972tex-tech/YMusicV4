@@ -62,15 +62,31 @@ internal class QueueController(private val random: Random = Random.Default) {
     }
 
     /**
+     * The next index after the current one ends ([userInitiated] = false) or is skipped (= true),
+     * without changing state. Null when the queue is exhausted. The facade peeks this to preload,
+     * then [commitNext] / [advance] to actually move.
+     */
+    fun peekNext(userInitiated: Boolean): Int? {
+        val items = state.items
+        if (items.isEmpty()) return null
+        if (!userInitiated && state.loopMode == LoopMode.One) return state.currentIndex
+        return if (state.shuffle) peekShuffled() else nextLinear()
+    }
+
+    /** Make [index] (from [peekNext]) the current item, updating shuffle history. */
+    fun commitNext(index: Int) {
+        val unplayed = state.items.indices - played.toSet()
+        if (state.shuffle && unplayed.isEmpty()) played.clear()
+        advanceTo(index)
+    }
+
+    /**
      * The next item after the current one ends ([userInitiated] = false) or is skipped (= true).
      * Returns the new current index, or null when the queue is exhausted (state is unchanged then).
      */
     fun advance(userInitiated: Boolean): Int? {
-        val items = state.items
-        if (items.isEmpty()) return null
-        if (!userInitiated && state.loopMode == LoopMode.One) return state.currentIndex
-        val next = if (state.shuffle) nextShuffled() else nextLinear()
-        if (next != null) advanceTo(next)
+        val next = peekNext(userInitiated) ?: return null
+        commitNext(next)
         return next
     }
 
@@ -199,13 +215,12 @@ internal class QueueController(private val random: Random = Random.Default) {
         }
     }
 
-    private fun nextShuffled(): Int? {
+    private fun peekShuffled(): Int? {
         val all = state.items.indices
         val unplayed = all - played.toSet()
         if (unplayed.isNotEmpty()) return unplayed.elementAt(random.nextInt(unplayed.size))
         if (state.loopMode != LoopMode.All) return null
         // Every item played: restart the shuffle cycle, avoiding an immediate repeat when possible.
-        played.clear()
         val candidates = if (state.items.size > 1) all - state.currentIndex else all.toList()
         return candidates.elementAt(random.nextInt(candidates.count()))
     }

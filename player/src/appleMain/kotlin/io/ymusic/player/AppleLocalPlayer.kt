@@ -341,9 +341,15 @@ internal class AppleLocalPlayer(
                 val prevDur = _progress.value.durationMs
                 val durMs = if (prevDur > 0L) prevDur else item.duration.toMillisOrUnknown()
                 val ended = durMs > 0L && posMs >= durMs - END_EPSILON_MS && player.rate == 0f && st.playWhenReady
-                _progress.update { it.copy(positionMs = if (ended) durMs else posMs, durationMs = durMs) }
-                if (ended) {
-                    _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
+                if (ended && appliedConfig.loop) {
+                    player.seekToTime(cmTime(0L))
+                    player.setRate(desiredSpeed)
+                    _progress.update { it.copy(positionMs = 0L, durationMs = durMs) }
+                } else {
+                    _progress.update { it.copy(positionMs = if (ended) durMs else posMs, durationMs = durMs) }
+                    if (ended) {
+                        _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
+                    }
                 }
                 if (!audioOnly) {
                     val vs = item.videoSize()

@@ -37,6 +37,10 @@ internal class PlayerImpl(
     private var loadGeneration = 0
     private var advancedGeneration = -1
 
+    /** Next queue index ([QueueController.peekNext]); [prepareNextArmed] once preload (or skip) ran. */
+    private var prepareNextIndex: Int? = null
+    private var prepareNextArmed = false
+
     private val engineJobs = mutableListOf<Job>()
     private var sleepJob: Job? = null
 
@@ -80,11 +84,12 @@ internal class PlayerImpl(
     override fun setQueue(items: List<PlayableItem>, playIndex: Int, startPositionMs: Long, playWhenReady: Boolean) {
         if (released) return
         controller.setQueue(items, playIndex)
-        publishQueue()
         playWhenReadyIntent = playWhenReady
         if (items.isEmpty()) {
+            publishQueue()
             stopActive()
         } else {
+            publishQueue(refreshNext = false)
             loadCurrent(startPositionMs)
         }
     }
@@ -116,18 +121,28 @@ internal class PlayerImpl(
     override fun removeAt(index: Int) {
         if (released) return
         val removedCurrent = controller.removeAt(index)
-        publishQueue()
         if (removedCurrent) {
-            if (controller.state.currentIndex >= 0) loadCurrent(0L) else stopActive()
+            publishQueue(refreshNext = false)
+            if (controller.state.currentIndex >= 0) loadCurrent(0L) else {
+                refreshPrepareNext()
+                stopActive()
+            }
+        } else {
+            publishQueue()
         }
     }
 
     override fun remove(fromIndex: Int, toIndex: Int) {
         if (released) return
         val removedCurrent = controller.removeRange(fromIndex, toIndex)
-        publishQueue()
         if (removedCurrent) {
-            if (controller.state.currentIndex >= 0) loadCurrent(0L) else stopActive()
+            publishQueue(refreshNext = false)
+            if (controller.state.currentIndex >= 0) loadCurrent(0L) else {
+                refreshPrepareNext()
+                stopActive()
+            }
+        } else {
+            publishQueue()
         }
     }
 
@@ -141,7 +156,7 @@ internal class PlayerImpl(
     override fun playAt(index: Int) {
         if (released) return
         if (controller.moveTo(index)) {
-            publishQueue()
+            publishQueue(refreshNext = false)
             playWhenReadyIntent = true
             loadCurrent(0L)
         }
@@ -188,7 +203,7 @@ internal class PlayerImpl(
         if (released) return
         val next = controller.advance(userInitiated = true)
         if (next != null) {
-            publishQueue()
+            publishQueue(refreshNext = false)
             loadCurrent(0L)
         }
     }
@@ -201,7 +216,7 @@ internal class PlayerImpl(
         }
         val prev = controller.previous()
         if (prev != null) {
-            publishQueue()
+            publishQueue(refreshNext = false)
             loadCurrent(0L)
         } else {
             seekTo(0L)
@@ -218,6 +233,9 @@ internal class PlayerImpl(
 
     override fun setLoopMode(mode: LoopMode) {
         controller.setLoopMode(mode)
+        // UniPlayer: loop-one is engine-native (YouTube setLoopVideo / Exo REPEAT_MODE_ONE),
+        // not a facade seek-to-0 on ended.
+        pushConfig(currentConfig.copy(loop = mode == LoopMode.One))
         publishQueue()
     }
 
@@ -321,8 +339,66 @@ internal class PlayerImpl(
         _currentEngine.value = null
     }
 
-    private fun publishQueue() {
+    private fun publishQueue(refreshNext: Boolean = true) {
         _queue.value = controller.state
+        if (refreshNext) refreshPrepareNext()
+    }
+
+    private fun refreshPrepareNext() {
+        prepareNextIndex = controller.peekNext(userInitiated = false)
+        prepareNextArmed = false
+        maybePreloadNext()
+    }
+
+    private fun engineFor(item: PlayableItem, create: Boolean): MediaEngine<*>? = when (item) {
+        is PlayableItem.LocalMedia ->
+            localEngine ?: if (create) engines.local().also { localEngine = it } else null
+        is PlayableItem.YtMedia ->
+            webViewEngine ?: if (create) engines.webView?.invoke()?.also { webViewEngine = it } else null
+    }
+
+    private fun preloadOn(engine: MediaEngine<*>, item: PlayableItem?) {
+        when (engine) {
+            is LocalPlayer -> engine.preload(item as? PlayableItem.LocalMedia)
+            is YtEngine -> engine.preload(item as? PlayableItem.YtMedia)
+        }
+    }
+
+    /** UniPlayer: last 10s, playing, not buffering, not live, not loop-one — cue the next engine. */
+    private fun maybePreloadNext() {
+        if (released || prepareNextArmed) return
+        val nextIndex = prepareNextIndex ?: return
+        val current = controller.state.currentItem
+        if ((current as? PlayableItem.YtMedia)?.live == true) {
+            prepareNextArmed = true
+            return
+        }
+        if (controller.state.loopMode == LoopMode.One) {
+            prepareNextArmed = true
+            return
+        }
+        val engine = _currentEngine.value ?: return
+        val st = engine.status.value.state as? PlaybackState.Prepared ?: return
+        if (!st.playWhenReady || st.buffering || st.ended) return
+        val p = engine.progress.value
+        val dur = p.durationMs
+        if (dur <= 0L) return
+        if (p.positionMs > dur || dur - p.positionMs > PRELOAD_LEAD_MS) return
+        val nextItem = controller.state.items.getOrNull(nextIndex) ?: return
+        val nextEngine = engineFor(nextItem, create = true) ?: run {
+            prepareNextArmed = true
+            return
+        }
+        if (nextEngine.status.value.state.readyToLoad) {
+            preloadOn(nextEngine, nextItem)
+            val currentEngine = _currentEngine.value
+            if (currentEngine != null && currentEngine !== nextEngine) {
+                preloadOn(currentEngine, null)
+            }
+        } else {
+            (nextEngine as? YtEngine)?.warmUp()
+        }
+        prepareNextArmed = true
     }
 
     private fun loadCurrent(startPositionMs: Long) {
@@ -351,6 +427,7 @@ internal class PlayerImpl(
                 engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
             }
         }
+        refreshPrepareNext()
     }
 
     /** Switch-latest: point the facade flows at [engine], stopping whatever played before. */
@@ -365,10 +442,15 @@ internal class PlayerImpl(
         engineJobs += scope.launch {
             engine.status.collect { snapshot ->
                 _status.value = snapshot
-                if (snapshot.state.isEnded()) onTrackEnded()
+                if (snapshot.state.isEnded()) onTrackEnded() else maybePreloadNext()
             }
         }
-        engineJobs += scope.launch { engine.progress.collect { _progress.value = it } }
+        engineJobs += scope.launch {
+            engine.progress.collect {
+                _progress.value = it
+                maybePreloadNext()
+            }
+        }
         bindCapability(engine as? VideoQualitySelectable, _videoQuality, VideoQualityState.DEFAULT) { it.videoQuality }
         bindCapability(engine as? CaptionSelectable, _captions, CaptionState.DEFAULT) { it.captions }
         bindCapability(engine as? CaptionRenderable, _captionLines, emptyList()) { it.captionLines }
@@ -396,10 +478,17 @@ internal class PlayerImpl(
 
     private fun onTrackEnded() {
         if (advancedGeneration == loadGeneration) return
+        val current = controller.state.currentItem
+        if (controller.state.loopMode == LoopMode.One &&
+            (current as? PlayableItem.YtMedia)?.live != true
+        ) {
+            return
+        }
         advancedGeneration = loadGeneration
-        val next = controller.advance(userInitiated = false)
+        val next = prepareNextIndex
         if (next != null) {
-            publishQueue()
+            controller.commitNext(next)
+            publishQueue(refreshNext = false)
             loadCurrent(0L)
         }
     }
@@ -417,5 +506,8 @@ internal class PlayerImpl(
     private companion object {
         /** Played longer than this, "previous" restarts the current track instead. */
         const val SMART_PREV_THRESHOLD_MS = 3_000L
+
+        /** Cue the next item this close to the end — legacy UniPlayer. */
+        const val PRELOAD_LEAD_MS = 10_000L
     }
 }

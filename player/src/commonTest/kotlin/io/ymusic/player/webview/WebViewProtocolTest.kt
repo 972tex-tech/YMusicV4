@@ -43,6 +43,12 @@ class WebViewProtocolTest {
         assertEquals(4, seek["what"]!!.jsonPrimitive.content.toInt())
         assertEquals(2.5, seek["positionSeconds"]!!.jsonPrimitive.content.toDouble())
         assertEquals(5, parse(WebViewProtocol.encodeStop())["what"]!!.jsonPrimitive.content.toInt())
+        val loop = parse(WebViewProtocol.encodeSetLoop(true))
+        assertEquals(6, loop["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals(true, loop["enable"]!!.jsonPrimitive.content.toBoolean())
+        val preload = parse(WebViewProtocol.encodePreload("abcdefghijk"))
+        assertEquals(1, preload["what"]!!.jsonPrimitive.content.toInt())
+        assertEquals("abcdefghijk", preload["videoId"]!!.jsonPrimitive.content)
         assertEquals(0.25f, parse(WebViewProtocol.encodeSetVolume(0.25f))["volume"]!!.jsonPrimitive.content.toFloat())
     }
 

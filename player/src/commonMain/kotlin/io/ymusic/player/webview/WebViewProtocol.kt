@@ -38,6 +38,7 @@ object WebViewProtocol {
     private const val SET_QUALITY = 3
     private const val SEEK = 4
     private const val STOP = 5
+    private const val SET_LOOP = 6
     private const val SET_PREFER_CAPTION_LANGUAGE = 7
     private const val SET_AUDIO_TRACK = 8
     private const val SET_CAPTION_VISIBLE = 9
@@ -66,6 +67,7 @@ object WebViewProtocol {
         volume: Float,
         speed: Float,
         audioOnly: Boolean,
+        loop: Boolean = false,
     ): String {
         val load = buildJsonObject {
             put("what", JsonPrimitive(LOAD))
@@ -78,6 +80,7 @@ object WebViewProtocol {
             add(volumeObject(volume))
             add(speedObject(speed))
             add(qualityObject(if (audioOnly) QUALITY_AUDIO_ONLY else QUALITY_AUTO))
+            add(loopObject(loop))
         }
         return buildJsonObject {
             put("what", JsonPrimitive(BULK))
@@ -111,6 +114,14 @@ object WebViewProtocol {
     fun encodeStop(): String = buildJsonObject {
         put("what", JsonPrimitive(STOP))
     }.toString()
+
+    /** Cue [videoId] via `preloadVideoByPlayerVars` without interrupting the current video. */
+    fun encodePreload(videoId: String): String = buildJsonObject {
+        put("what", JsonPrimitive(PRELOAD_VIDEO))
+        put("videoId", JsonPrimitive(videoId))
+    }.toString()
+
+    fun encodeSetLoop(enable: Boolean): String = loopObject(enable).toString()
 
     fun encodeSetVolume(volume: Float): String = volumeObject(volume).toString()
 
@@ -269,6 +280,11 @@ object WebViewProtocol {
     private fun qualityObject(quality: String): JsonObject = buildJsonObject {
         put("what", JsonPrimitive(SET_QUALITY))
         put("quality", JsonPrimitive(quality))
+    }
+
+    private fun loopObject(enable: Boolean): JsonObject = buildJsonObject {
+        put("what", JsonPrimitive(SET_LOOP))
+        put("enable", JsonPrimitive(enable))
     }
 
     private fun mapState(newState: String?): WebPlaybackState = when (newState) {

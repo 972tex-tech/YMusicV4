@@ -94,6 +94,7 @@ class MsePlayer internal constructor(
     private var statusJob: Job? = null
     private var catalogJob: Job? = null
     private var captionJob: Job? = null
+    private var seekJob: Job? = null
     private var pendingVideoSurface: MseVideoSurface? = null
     private var hasPendingVideoSurface = false
     private var viewportW: Int = 640
@@ -112,6 +113,16 @@ class MsePlayer internal constructor(
         }
     }
 
+    override fun preload(source: PlayableItem.YtMedia?) {
+        source ?: return
+        if (released) return
+        if (!_status.value.state.readyToLoad) {
+            warmUp()
+            return
+        }
+        scope.launch { runCatching { ensureInit().preload(source.videoId, log) } }
+    }
+
     override fun load(
         source: PlayableItem.YtMedia,
         startPositionMs: Long,
@@ -121,6 +132,7 @@ class MsePlayer internal constructor(
         if (released) return
         this.playWhenReady = playWhenReady
         applied = config
+        seekJob?.cancel()
         statusJob?.cancel()
         catalogJob?.cancel()
         _status.update {
@@ -150,6 +162,7 @@ class MsePlayer internal constructor(
                 )
                 if (startPositionMs > 0L) p.seekTo(startPositionMs, log)
                 applyCaptionConfig(config)
+                p.setLoop(config.loop && !source.live, log)
                 if (playWhenReady) p.play(log) else p.pause(log)
                 refreshTracks()
                 startListen()
@@ -183,12 +196,14 @@ class MsePlayer internal constructor(
         if (released) return
         val ms = positionMs.coerceAtLeast(0L)
         _progress.update { it.copy(positionMs = ms) }
-        scope.launch { runCatching { engine().seekTo(ms, log) } }
+        seekJob?.cancel()
+        seekJob = scope.launch { runCatching { engine().seekTo(ms, log) } }
     }
 
     override fun stop() {
         if (released) return
         playWhenReady = false
+        seekJob?.cancel()
         statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
@@ -217,6 +232,9 @@ class MsePlayer internal constructor(
                     ?: VideoQualityState.AUTO
                 if (config.audioOnly != prev.audioOnly || nextQ != prevQ) {
                     engine().setQuality(nextQ, config.audioOnly, log)
+                }
+                if (config.loop != prev.loop) {
+                    engine().setLoop(config.loop, log)
                 }
                 applyCaptionConfig(config)
             }
@@ -340,7 +358,7 @@ class MsePlayer internal constructor(
         catalogJob?.cancel()
         statusJob = scope.launch {
             try {
-                engine().collectStatus({ applyProgress(it) }, log)
+                engine().collectStatus({ applyListen(it) }, log)
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Throwable) {
@@ -356,35 +374,53 @@ class MsePlayer internal constructor(
         }
     }
 
+    private fun applyListen(st: JsonObject) {
+        (st["progress"] as? JsonObject)?.let { applyProgress(it) }
+        (st["state"] as? JsonObject)?.let { applyState(it) }
+        (st["picture"] as? JsonObject)?.let { applyPicture(it) }
+    }
+
     private fun applyProgress(st: JsonObject) {
-        val paused = st.bool("paused", default = true)
-        val ended = st.bool("ended", default = false)
-        val ready = (st["readyState"] as? JsonPrimitive)?.intOrNull ?: 0
-        val buffering = !paused && !ended && ready < 3
-        val pos = st.long("positionMs")
         val dur = st.long("durationMs")
-        val buf = st.long("bufferedMs")
-        val seekable = st.bool("seekable", default = dur > 0L)
         val skStart = st.long("seekableStartMs")
         val skEnd = st.long("seekableEndMs")
         _progress.value = Progress(
-            positionMs = pos,
+            positionMs = st.long("positionMs"),
             durationMs = if (dur > 0L) dur else Progress.DURATION_UNKNOWN,
-            bufferedPositionMs = buf,
-            seekable = seekable,
+            bufferedPositionMs = st.long("bufferedMs"),
+            seekable = st.bool("seekable", default = dur > 0L),
             seekableStartMs = skStart,
             seekableEndMs = if (skEnd > skStart) skEnd else if (dur > 0L) dur else 0L,
         )
+    }
+
+    private fun applyState(st: JsonObject) {
+        val newState = st.str("newState") ?: return
+        val pwr = st.bool("playWhenReady", default = false)
+        val live = st.bool("live", default = false)
+        val state = when (newState) {
+            "idle" -> PlaybackState.Idle
+            "buffering" -> PlaybackState.Prepared(pwr, buffering = true, ended = false)
+            "ready" -> PlaybackState.Prepared(pwr, buffering = false, ended = false)
+            "ended" -> PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true)
+            "error" -> PlaybackState.Error(
+                PlayerError(
+                    st.str("code") ?: "E60033",
+                    st.str("message"),
+                    canRetry = st.bool("canRetry", default = true),
+                    needReset = st.bool("needReset", default = false),
+                ),
+            )
+            else -> return
+        }
+        _status.update { it.copy(state = state, live = live) }
+    }
+
+    private fun applyPicture(st: JsonObject) {
         val w = (st["videoWidth"] as? JsonPrimitive)?.intOrNull ?: 0
         val h = (st["videoHeight"] as? JsonPrimitive)?.intOrNull ?: 0
-        val audioOnly = st.bool("audioOnly", default = false)
-        val size = if (!audioOnly && w > 0 && h > 0) VideoSize(w, h) else null
-        val state = when {
-            ended -> PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true)
-            else -> PlaybackState.Prepared(playWhenReady && !paused, buffering, ended = false)
-        }
-        val live = st.bool("live", default = false)
-        _status.update { it.copy(state = state, videoSize = size, live = live) }
+        val size = if (w > 0 && h > 0) VideoSize(w, h) else null
+        _status.update { it.copy(videoSize = size) }
     }
 
     private fun applyCatalog(st: JsonObject) {

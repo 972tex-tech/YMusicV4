@@ -82,6 +82,21 @@ internal class AndroidLocalPlayer(
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
                 syncFromPlayer(player.playbackState)
 
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && player.currentMediaItemIndex == 1) {
+                    player.playWhenReady = false
+                    _status.update {
+                        it.copy(
+                            state = PlaybackState.Prepared(
+                                playWhenReady = false,
+                                buffering = false,
+                                ended = true,
+                            ),
+                        )
+                    }
+                }
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 _status.update {
                     it.copy(
@@ -179,10 +194,55 @@ internal class AndroidLocalPlayer(
             )
         }
         _progress.value = Progress(positionMs = startPositionMs)
-        player.setMediaItem(MediaItem.fromUri(uri.toPlayableUri()), startPositionMs)
+        val mediaItem = MediaItem.fromUri(uri.toPlayableUri())
+        var preloaded = false
+        val count = player.mediaItemCount
+        if (player.playbackState != Player.STATE_IDLE && count > 0) {
+            for (i in 0 until count) {
+                if (sameUri(player.getMediaItemAt(i), mediaItem)) {
+                    preloaded = true
+                    if (player.currentMediaItemIndex != i) {
+                        player.seekTo(i, startPositionMs)
+                    } else if (startPositionMs > 0L) {
+                        player.seekTo(startPositionMs)
+                    }
+                    if (i == 1) player.removeMediaItem(0)
+                    break
+                }
+            }
+        }
+        if (!preloaded) player.setMediaItem(mediaItem, startPositionMs)
+        player.repeatMode = if (config.loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         player.playWhenReady = playWhenReady
-        player.prepare()
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
         showSurface(true)
+    }
+
+    override fun preload(source: PlayableItem.LocalMedia?) {
+        if (released) return
+        val mediaItem = source?.let { MediaItem.fromUri(it.uri.toPlayableUri()) }
+        when (val count = player.mediaItemCount) {
+            0 -> {
+                mediaItem ?: return
+                player.playWhenReady = false
+                player.addMediaItem(mediaItem)
+                player.prepare()
+            }
+            1 -> {
+                mediaItem ?: return
+                player.addMediaItem(mediaItem)
+            }
+            2 -> {
+                if (mediaItem == null) {
+                    player.removeMediaItem(1)
+                    return
+                }
+                if (!sameUri(player.getMediaItemAt(1), mediaItem)) {
+                    player.replaceMediaItem(1, mediaItem)
+                }
+            }
+            else -> error("unexpected media item count $count")
+        }
     }
 
     override fun play() {
@@ -231,6 +291,9 @@ internal class AndroidLocalPlayer(
             config.captionVisible != prev.captionVisible
         ) {
             applyCaptions(config)
+        }
+        if (config.loop != prev.loop) {
+            player.repeatMode = if (config.loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         }
     }
 
@@ -333,6 +396,7 @@ internal class AndroidLocalPlayer(
     }
 
     private fun syncFromPlayer(playbackState: Int) {
+        if (player.currentMediaItemIndex == 1 && playbackState != Player.STATE_IDLE) return
         val mapped = when (playbackState) {
             Player.STATE_IDLE -> PlaybackState.Idle
             Player.STATE_BUFFERING -> PlaybackState.Prepared(player.playWhenReady, buffering = true, ended = false)
@@ -351,9 +415,13 @@ internal class AndroidLocalPlayer(
     private suspend fun tick() {
         while (scope.isActive) {
             if (!released) {
-                val pos = player.currentPosition.coerceAtLeast(0L)
-                val buf = player.bufferedPosition.coerceAtLeast(0L)
-                _progress.update { it.copy(positionMs = pos, bufferedPositionMs = buf, durationMs = durationOrUnknown()) }
+                if (player.currentMediaItemIndex == 0) {
+                    val pos = player.currentPosition.coerceAtLeast(0L)
+                    val buf = player.bufferedPosition.coerceAtLeast(0L)
+                    _progress.update {
+                        it.copy(positionMs = pos, bufferedPositionMs = buf, durationMs = durationOrUnknown())
+                    }
+                }
             }
             delay(TICK_MS)
         }
@@ -370,3 +438,6 @@ internal class AndroidLocalPlayer(
 /** ExoPlayer needs a scheme; a bare path becomes `file://…`. */
 private fun String.toPlayableUri(): Uri =
     if (contains("://")) Uri.parse(this) else Uri.fromFile(java.io.File(this))
+
+private fun sameUri(a: MediaItem, b: MediaItem): Boolean =
+    a.localConfiguration?.uri == b.localConfiguration?.uri

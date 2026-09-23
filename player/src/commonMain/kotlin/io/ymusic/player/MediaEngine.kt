@@ -111,6 +111,12 @@ interface MediaEngine<in S : PlayableItem> {
         config: PlaybackConfig = PlaybackConfig(),
     )
 
+    /**
+     * Cue [source] as the next item without interrupting current playback. Null clears a previously
+     * cued item. Default is a no-op (JVM/Apple local have no second-item playlist).
+     */
+    fun preload(source: S?) {}
+
     fun play()
 
     fun pause()

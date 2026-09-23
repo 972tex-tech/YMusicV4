@@ -111,6 +111,13 @@ internal class WebViewPlayerImpl(
         if (state is PlaybackState.Uninitialized && !state.isInitializing) initializePage()
     }
 
+    override fun preload(source: PlayableItem.YtMedia?) {
+        source ?: return
+        if (released) return
+        if (!_status.value.state.readyToLoad) return
+        command(WebViewProtocol.encodePreload(source.videoId))
+    }
+
     override fun load(source: PlayableItem.YtMedia, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val request = PendingLoad(source, startPositionMs, playWhenReady, config)
@@ -175,6 +182,7 @@ internal class WebViewPlayerImpl(
                 request.config.volume,
                 request.config.speed,
                 request.config.audioOnly,
+                request.config.loop,
             ),
         )
     }
@@ -224,10 +232,11 @@ internal class WebViewPlayerImpl(
                     WebViewProtocol.encodeSelectVideoQuality(config.preferVideoQuality.first),
                     WebViewProtocol.encodeSelectCaption(lang.takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }),
                     WebViewProtocol.encodeSetCaptionVisible(config.captionVisible),
+                    WebViewProtocol.encodeSetLoop(config.loop),
                 ),
             ),
         )
-        // pitchFactor / loop / scaleMode: no wire encoder yet — ignored per the setConfig contract.
+        // pitchFactor / scaleMode: no wire encoder yet — ignored per the setConfig contract.
     }
 
     override fun selectAudioTrack(id: String) = command(WebViewProtocol.encodeSelectAudioTrack(id))
