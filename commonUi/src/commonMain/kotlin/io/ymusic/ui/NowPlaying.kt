@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,10 +26,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -290,7 +289,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             }
         }
     }
-    SwipeDownDismissBox(onDismiss = onClose) {
+    SwipeDownDismissBox(onDismiss = onClose, modifier = Modifier.statusBarsPadding()) {
         if (desktopLayoutHole) {
             Box(Modifier.fillMaxSize(), content = { shell() })
         } else {
@@ -312,7 +311,10 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     Box(Modifier.fillMaxSize().then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black))) {
         graph.playerSurface(Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Box(
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars)),
+        ) {
             AutoHidingOverlay {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }
@@ -357,7 +359,7 @@ private fun PortraitNowPlaying(
 
     Column(
         Modifier.fillMaxSize()
-            .windowInsetsPadding(WindowInsets.systemBars)
+            .windowInsetsPadding(WindowInsets.navigationBars)
             .then(if (desktopLayoutHole) Modifier.background(Color.Transparent) else Modifier),
     ) {
         PlayerTopBar(coordinator, sleepMs, onClose)
@@ -478,7 +480,10 @@ private fun LandscapeNowPlaying(
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
         ) {
             graph.playerSurface(Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Box(
+                Modifier.fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars)),
+            ) {
                 AutoHidingOverlay {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
@@ -488,7 +493,7 @@ private fun LandscapeNowPlaying(
         VerticalDivider(color = DesignColors.Divider)
         Column(
             Modifier.width(320.dp).fillMaxHeight()
-                .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.navigationBars))
+                .windowInsetsPadding(WindowInsets.navigationBars)
                 .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier),
         ) {
             PlayerTopBar(coordinator, sleepMs, onClose)
