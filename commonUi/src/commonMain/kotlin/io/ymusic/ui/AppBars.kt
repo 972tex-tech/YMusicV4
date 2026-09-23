@@ -584,15 +584,15 @@ internal fun <T> SwipeTabSwitcher(
             .pointerInput(selected, entries, rtl, backStart, backEnd, drawerZone, onLeadingEdgeSwipe) {
                 val distance = SwipeSwitchDistance.toPx()
                 val velocity = SwipeSwitchVelocity.toPx()
-                val maxPeek = SwipeSwitchPeek.toPx()
+                val k = RubberPeekStiffness.toPx()
 
                 // Report progress (for the indicator) + rubber-band the page from the total drag.
                 fun reportDrag(dx: Float) {
                     onDragProgress(((if (rtl) dx else -dx) / distance).coerceIn(-1f, 1f))
                     val forward = if (rtl) dx > 0 else dx < 0
                     val hasNext = (entries.indexOf(selected) + if (forward) 1 else -1) in entries.indices
-                    val resist = if (hasNext) SwipeSwitchResist else SwipeSwitchResist * 0.3f
-                    scope.launch { peek.snapTo((dx * resist).coerceIn(-maxPeek, maxPeek)) }
+                    val stiffness = if (hasNext) k else k * 0.3f
+                    scope.launch { peek.snapTo(weightedRubberPeek(dx, stiffness)) }
                 }
 
                 awaitEachGesture {
@@ -661,9 +661,16 @@ internal const val TabIndicatorDragTravel = 0.2f
 
 internal val SwipeSwitchDistance = 56.dp
 internal val SwipeSwitchVelocity = 400.dp // per second
-internal val SwipeSwitchPeek = 40.dp // how far the page rubber-bands under the finger
-internal const val SwipeSwitchResist = 0.4f // fraction of the drag the page follows
 internal const val SwipeSwitchDurationMs = 220
+/** Curve scale for tab + Now Playing rubber-band: slope starts at 1 and eases off. Larger = lighter. */
+private val RubberPeekStiffness = 64.dp
+
+/** Signed `k (1 - e^{-|raw|/k})`. */
+private fun weightedRubberPeek(rawPx: Float, k: Float): Float {
+    if (rawPx == 0f || k <= 0f) return 0f
+    val s = if (rawPx > 0f) 1f else -1f
+    return s * k * (1f - exp(-abs(rawPx) / k))
+}
 
 /** Width of the start-edge zone that opens the nav drawer instead of switching tabs (on top of the
  *  system back-gesture inset). Passed as SwipeTabSwitcher's leadingEdgeReserve on drawer screens. */
@@ -672,13 +679,6 @@ internal val PeekSpring = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 /** Finger travel that commits a Now Playing dismiss (heavier than the tab-switch 56.dp). */
 private val DismissDragDistance = 120.dp
-/** Curve scale: slope starts at 1 and eases off. `peek = k (1 - e^{-raw/k})`. */
-private val DismissDragStiffness = 48.dp
-
-private fun weightedDismissPeek(rawPx: Float, k: Float): Float {
-    if (rawPx <= 0f || k <= 0f) return 0f
-    return k * (1f - exp(-rawPx / k))
-}
 
 /**
  * Same rubber-band as [SwipeTabSwitcher], vertical: the page peeks down under the finger, then
@@ -697,10 +697,10 @@ internal fun SwipeDownDismissBox(
     val density = LocalDensity.current
     val drag = remember { DragDown(peek, scope) }
     drag.onDismiss = onDismiss
-    drag.stiffnessPx = with(density) { DismissDragStiffness.toPx() }
+    drag.stiffnessPx = with(density) { RubberPeekStiffness.toPx() }
     drag.commitPx = with(density) { DismissDragDistance.toPx() }
     val peekY = peek.value
-    val fullPeek = weightedDismissPeek(drag.commitPx, drag.stiffnessPx).coerceAtLeast(1f)
+    val fullPeek = weightedRubberPeek(drag.commitPx, drag.stiffnessPx).coerceAtLeast(1f)
     val topShadow = (peekY / fullPeek).coerceIn(0f, 1f)
     val shadowH = with(density) { 28.dp.roundToPx() }
 
@@ -769,7 +769,7 @@ private class DragDown(
 
     fun report(deltaY: Float) {
         raw = (raw + deltaY).coerceAtLeast(0f)
-        val target = weightedDismissPeek(raw, stiffnessPx)
+        val target = weightedRubberPeek(raw, stiffnessPx)
         scope.launch { peek.snapTo(target) }
     }
 
