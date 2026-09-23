@@ -96,20 +96,75 @@ data class VideoSize(val width: Int, val height: Int) {
  * never woken by a position tick, and needs no `map`/`distinctUntilChanged` filtering.
  */
 data class Progress(
+    /** Playhead on the scrubber, 0..[durationMs]. Live DVR is already mapped into that range. */
     val positionMs: Long = 0L,
-    /** [DURATION_UNKNOWN] until the media reports it (or for unbounded streams). */
+    /** Scrubber length. [DURATION_UNKNOWN] until the media reports it. */
     val durationMs: Long = DURATION_UNKNOWN,
     val bufferedPositionMs: Long = 0L,
-    /**
-     * False for a live head with no DVR — the host must not seek.
-     * True for VOD and seekable live (DVR); the window is [seekableStartMs, seekableEndMs].
-     */
+    /** False for a live head with no DVR — the host must not seek. */
     val seekable: Boolean = true,
+    val isLive: Boolean = false,
+    /** Media-time origin so [seekTo] can map a scrubber position back. Not a UI field. */
     val seekableStartMs: Long = 0L,
     val seekableEndMs: Long = 0L,
 ) {
+    /**
+     * Left caption, milliseconds. VOD: elapsed. Live: delay behind the head (≤ 0, UI shows a minus).
+     */
+    val progressLabelMs: Long
+        get() = if (isLive) {
+            val span = durationMs.coerceAtLeast(0L)
+            -(span - positionMs).coerceAtLeast(0L)
+        } else {
+            positionMs
+        }
+
+    /** Right caption, milliseconds. Null when [isLive] — the UI shows LIVE. */
+    val durationLabelMs: Long?
+        get() = if (isLive) null else durationMs.takeIf { it > 0L }
+
+    fun mediaSeekMs(uiPositionMs: Long): Long {
+        val window = isLive && seekableEndMs > seekableStartMs
+        return if (window) seekableStartMs + uiPositionMs.coerceAtLeast(0L) else uiPositionMs.coerceAtLeast(0L)
+    }
+
     companion object {
         const val DURATION_UNKNOWN: Long = -1L
+
+        /** Map YouTube/media times onto the scrubber the UI already understands (0..duration). */
+        fun of(
+            positionMs: Long,
+            durationMs: Long,
+            bufferedPositionMs: Long = 0L,
+            seekable: Boolean = true,
+            isLive: Boolean = false,
+            seekableStartMs: Long = 0L,
+            seekableEndMs: Long = 0L,
+        ): Progress {
+            val window = isLive && seekableEndMs > seekableStartMs
+            val start = if (window) seekableStartMs else 0L
+            val end = when {
+                window -> seekableEndMs
+                durationMs > 0L -> durationMs
+                else -> 0L
+            }
+            val span = (end - start).coerceAtLeast(0L)
+            val pos = if (span > 0L) {
+                (positionMs - start).coerceIn(0L, span)
+            } else {
+                (positionMs - start).coerceAtLeast(0L)
+            }
+            val dur = if (span > 0L) span else if (durationMs > 0L) durationMs else DURATION_UNKNOWN
+            return Progress(
+                positionMs = pos,
+                durationMs = dur,
+                bufferedPositionMs = (bufferedPositionMs - start).coerceAtLeast(0L),
+                seekable = seekable,
+                isLive = isLive,
+                seekableStartMs = seekableStartMs,
+                seekableEndMs = if (window) seekableEndMs else end,
+            )
+        }
     }
 }
 

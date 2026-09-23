@@ -96,10 +96,12 @@ import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlaybackStatus
+import io.ymusic.player.Progress
 import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.audio_only
+import io.ymusic.ui.resources.badge_live
 import io.ymusic.ui.resources.captions_off
 import io.ymusic.ui.resources.cd_captions
 import io.ymusic.ui.resources.cd_close
@@ -129,8 +131,19 @@ import org.jetbrains.compose.resources.stringResource
 
 internal fun formatMillis(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
-    return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return if (h > 0) {
+        "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
+    } else {
+        "$m:${s.toString().padStart(2, '0')}"
+    }
 }
+
+/** [Progress.progressLabelMs] is signed on live (delay behind the head). */
+private fun formatProgressLabel(ms: Long): String =
+    if (ms < 0) "-${formatMillis(-ms)}" else formatMillis(ms)
 
 /** True when the portrait title/seek/transport block (list item 0) has left the viewport. */
 private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
@@ -404,7 +417,7 @@ private fun PortraitNowPlaying(
                         }
                         status.error?.let { PlaybackErrorRow(player, it) }
                     }
-                    SeekBar(player, progress.positionMs, progress.durationMs)
+                    SeekBar(player, progress)
                     TransportRow(
                         coordinator,
                         status.playWhenReady,
@@ -567,9 +580,17 @@ private fun BoxScope.VideoOverlayControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "${formatMillis(progress.positionMs)} / " +
-                    if (progress.durationMs > 0) formatMillis(progress.durationMs) else "--:--",
+                formatProgressLabel(progress.progressLabelMs),
                 style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+            )
+            Text(
+                " / ",
+                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
+            )
+            DurationLabel(
+                player,
+                progress,
+                TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE)),
             )
             Box(Modifier.weight(1f))
             CaptionToggle(player, offTint = Color(0xFFEEEEEE))
@@ -580,7 +601,7 @@ private fun BoxScope.VideoOverlayControls(
                 onClick = onToggleFullscreen,
             )
         }
-        SeekSlider(player, progress.positionMs, progress.durationMs, trackColor = Color.White.copy(alpha = 0.32f))
+        SeekSlider(player, progress, trackColor = Color.White.copy(alpha = 0.32f))
     }
 }
 
@@ -772,24 +793,50 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 
 /** 3dp track, orange fill, 13dp orange thumb; the m:ss / h:mm:ss labels underneath. */
 @Composable
-private fun SeekBar(player: io.ymusic.player.Player, positionMs: Long, durationMs: Long) {
+private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
-        SeekSlider(player, positionMs, durationMs, trackColor = DesignColors.OutlineSoft)
+        SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft)
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
-            Text(formatMillis(positionMs), style = timeStyle)
-            Text(if (durationMs > 0) formatMillis(durationMs) else "--:--", style = timeStyle)
+            Text(formatProgressLabel(progress.progressLabelMs), style = timeStyle)
+            DurationLabel(player, progress, timeStyle)
         }
+    }
+}
+
+@Composable
+private fun DurationLabel(
+    player: io.ymusic.player.Player,
+    progress: Progress,
+    style: TextStyle,
+) {
+    if (progress.isLive) {
+        Text(
+            stringResource(Res.string.badge_live),
+            style = style.copy(color = DesignColors.Accent),
+            modifier = if (progress.seekable) {
+                Modifier.clickable { player.seekTo(progress.durationMs.coerceAtLeast(0L)) }
+            } else {
+                Modifier
+            },
+        )
+    } else {
+        Text(progress.durationLabelMs?.let { formatMillis(it) } ?: "--:--", style = style)
     }
 }
 
 /** The bare slider (3dp [trackColor] track, orange fill + thumb) — SeekBar's core, reused by the
  *  landscape video overlay. */
 @Composable
-private fun SeekSlider(player: io.ymusic.player.Player, positionMs: Long, durationMs: Long, trackColor: Color) {
+private fun SeekSlider(
+    player: io.ymusic.player.Player,
+    progress: Progress,
+    trackColor: Color,
+) {
+    val durationMs = progress.durationMs
     SlimSeekBar(
-        fraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-        enabled = durationMs > 0,
+        fraction = if (durationMs > 0) progress.positionMs.toFloat() / durationMs else 0f,
+        enabled = progress.seekable && durationMs > 0,
         onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
         trackColor = trackColor,
         modifier = Modifier.fillMaxWidth(),

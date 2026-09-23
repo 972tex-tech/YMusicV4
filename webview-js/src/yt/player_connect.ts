@@ -271,6 +271,7 @@ export function playerConnect(wvApi = window.ymixWvApi) {
           positionSeconds: progressState?.current ?? 0,
           durationSeconds: (progressState?.seekableEnd || progressState?.duration) ?? 0,
           bufferedSeconds: progressState?.loaded ?? 0,
+          seekableStartSeconds: progressState?.seekableStart ?? 0,
         });
       }
 

@@ -939,20 +939,36 @@ class Player {
     const v = activeHtmlMedia();
     const ps = this.progressState();
     const live = isLiveDuration();
-    /* Leftover currentTime is the playhead. YouTube getProgressState.current can
-       lag a previous video and would make the facade seek/preload at the wrong time. */
-    let pos = v ? Math.round(Number(v["currentTime"]) * 1000) : 0;
-    let bufferedMs = 0;
-    let dur = v ? Number(v["duration"]) : NaN;
-    let skStart = 0;
-    let skEnd = 0;
-    if (v) {
+    /* YouTube's playhead is getProgressState().current — the IFrame UI and SABR
+       playerTimeMs. HTML currentTime resets to 0 on a quality MediaSource swap. */
+    let current = NaN;
+    let loaded = NaN;
+    let dur = NaN;
+    let skStart = NaN;
+    let skEnd = NaN;
+    let allowSeeking: boolean | null = null;
+    if (ps) {
+      current = Number(ps["current"]);
+      loaded = Number(ps["loaded"]);
+      dur = Number(ps["duration"]);
+      skStart = Number(ps["seekableStart"]);
+      skEnd = Number(ps["seekableEnd"]);
+      allowSeeking = !!ps["allowSeeking"];
+    }
+    if (!isFinite(current) && v) current = Number(v["currentTime"]);
+    if (!(isFinite(dur) && dur > 0) && v) {
+      const d = Number(v["duration"]);
+      if (isFinite(d) && d > 0) dur = d;
+    }
+    if (!(isFinite(loaded) && loaded > 0) && v) {
       const b = v["buffered"] as { length?: number; end?: (i: number) => number } | null;
       const n = b && typeof b["length"] === "number" ? Number(b["length"]) : 0;
       if (n > 0 && typeof b!["end"] === "function") {
         const end = Number(b!["end"]!(n - 1));
-        if (isFinite(end) && end > 0) bufferedMs = Math.round(end * 1000);
+        if (isFinite(end) && end > 0) loaded = end;
       }
+    }
+    if (!(isFinite(skStart) && isFinite(skEnd) && skEnd > skStart) && v) {
       const sk = v["seekable"] as {
         length?: number;
         start?: (i: number) => number;
@@ -964,24 +980,16 @@ class Player {
         skEnd = Number(sk!["end"]!(skN - 1));
       }
     }
-    if (ps) {
-      const loaded = Number(ps["loaded"]);
-      if (isFinite(loaded) && loaded > 0) bufferedMs = Math.round(loaded * 1000);
-      const d = Number(ps["duration"]);
-      if (isFinite(d) && d > 0) dur = d;
-      const a = Number(ps["seekableStart"]);
-      const b = Number(ps["seekableEnd"]);
-      if (isFinite(a)) skStart = a;
-      if (isFinite(b) && b > skStart) skEnd = b;
-    }
-    const seekable = ps ? !!ps["allowSeeking"] : !live;
-    if (seekable && !(skEnd > skStart + 1)) {
-      const ct = pos / 1000;
-      if (isFinite(ct) && ct > 0) {
+    /* Live duration is often 0 / Infinity; the bar is the DVR window ending at seekableEnd. */
+    if (!(isFinite(dur) && dur > 0) && isFinite(skEnd) && skEnd > 0) dur = skEnd;
+    const seekable = allowSeeking != null ? allowSeeking : !live;
+    if (!live && seekable && !(isFinite(skEnd) && skEnd > (isFinite(skStart) ? skStart : 0) + 1)) {
+      if (isFinite(current) && current > 0) {
         skStart = 0;
-        skEnd = ct;
+        skEnd = current;
       }
     }
+    const posMs = isFinite(current) ? Math.max(0, Math.round(current * 1000)) : 0;
     const durationMs =
       isFinite(dur) && dur > 0
         ? Math.round(dur * 1000)
@@ -989,10 +997,11 @@ class Player {
           ? Math.round(skEnd * 1000)
           : 0;
     return {
-      "positionMs": pos,
+      "positionMs": posMs,
       "durationMs": durationMs,
-      "bufferedMs": bufferedMs,
+      "bufferedMs": isFinite(loaded) && loaded > 0 ? Math.round(loaded * 1000) : 0,
       "seekable": seekable,
+      "live": live,
       "seekableStartMs": Math.round((isFinite(skStart) ? skStart : 0) * 1000),
       "seekableEndMs": Math.round((isFinite(skEnd) ? skEnd : 0) * 1000),
     };

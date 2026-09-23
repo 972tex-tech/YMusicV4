@@ -192,8 +192,9 @@ internal class WebViewPlayerImpl(
 
     override fun seekTo(positionMs: Long) {
         val clamped = positionMs.coerceAtLeast(0L)
+        val mediaMs = _progress.value.mediaSeekMs(clamped)
         _progress.update { it.copy(positionMs = clamped) }
-        command(WebViewProtocol.encodeSeek(clamped))
+        command(WebViewProtocol.encodeSeek(mediaMs))
     }
 
     override fun stop() {
@@ -324,16 +325,15 @@ internal class WebViewPlayerImpl(
                 bridge.setVisible(state is PlaybackState.Prepared || state is PlaybackState.Error && state.error.code != "E60031")
                 it.copy(state = state)
             }
-            is WebViewEvent.Progress -> _progress.update {
-                it.copy(
-                    positionMs = e.positionMs,
-                    durationMs = if (e.durationMs > 0L) e.durationMs else Progress.DURATION_UNKNOWN,
-                    bufferedPositionMs = e.bufferedMs,
-                    seekable = e.seekable,
-                    seekableStartMs = 0L,
-                    seekableEndMs = if (e.durationMs > 0L) e.durationMs else 0L,
-                )
-            }
+            is WebViewEvent.Progress -> _progress.value = Progress.of(
+                positionMs = e.positionMs,
+                durationMs = if (e.durationMs > 0L) e.durationMs else Progress.DURATION_UNKNOWN,
+                bufferedPositionMs = e.bufferedMs,
+                seekable = e.seekable,
+                isLive = _status.value.live,
+                seekableStartMs = e.seekableStartMs,
+                seekableEndMs = if (e.durationMs > 0L) e.durationMs else 0L,
+            )
             is WebViewEvent.QualityChanged -> _videoQuality.value = e.state
             is WebViewEvent.CaptionsChanged -> _captions.value = e.state
             is WebViewEvent.AudioTracksChanged -> _audioTracks.value = e.state

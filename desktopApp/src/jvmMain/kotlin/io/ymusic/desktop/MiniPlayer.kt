@@ -1,6 +1,7 @@
 package io.ymusic.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +53,9 @@ import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.isPlaying
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SlimSeekBar
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.badge_live
+import org.jetbrains.compose.resources.stringResource
 import java.awt.SystemTray
 import java.awt.Toolkit
 import java.awt.TrayIcon
@@ -171,11 +175,16 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
         Spacer(Modifier.height(6.dp))
 
         val durationMs = progress.durationMs
+        val labelMs = progress.progressLabelMs
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(formatTime(progress.positionMs), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (labelMs < 0) "-${formatTime(-labelMs)}" else formatTime(labelMs),
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SlimSeekBar(
                 fraction = if (durationMs > 0) (progress.positionMs.toFloat() / durationMs) else 0f,
-                enabled = durationMs > 0,
+                enabled = progress.seekable && durationMs > 0,
                 onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
@@ -185,11 +194,24 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
                 barHeight = 22.dp,
                 thumbShadow = 0.dp,
             )
-            Text(
-                if (durationMs > 0) formatTime(durationMs) else "--:--",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (progress.isLive) {
+                Text(
+                    stringResource(Res.string.badge_live),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = if (progress.seekable) {
+                        Modifier.clickable { player.seekTo(durationMs.coerceAtLeast(0L)) }
+                    } else {
+                        Modifier
+                    },
+                )
+            } else {
+                Text(
+                    progress.durationLabelMs?.let { formatTime(it) } ?: "--:--",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Spacer(Modifier.height(2.dp))
@@ -256,10 +278,15 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
 }
 
 private fun formatTime(ms: Long): String {
-    val total = ms / 1000
-    val m = total / 60
+    val total = (ms / 1000).coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
     val s = total % 60
-    return "$m:${s.toString().padStart(2, '0')}"
+    return if (h > 0) {
+        "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
+    } else {
+        "$m:${s.toString().padStart(2, '0')}"
+    }
 }
 
 private const val WIDTH_DP = 340

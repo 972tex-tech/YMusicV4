@@ -195,9 +195,10 @@ class MsePlayer internal constructor(
     override fun seekTo(positionMs: Long) {
         if (released) return
         val ms = positionMs.coerceAtLeast(0L)
+        val mediaMs = _progress.value.mediaSeekMs(ms)
         _progress.update { it.copy(positionMs = ms) }
         seekJob?.cancel()
-        seekJob = scope.launch { runCatching { engine().seekTo(ms, log) } }
+        seekJob = scope.launch { runCatching { engine().seekTo(mediaMs, log) } }
     }
 
     override fun stop() {
@@ -384,11 +385,12 @@ class MsePlayer internal constructor(
         val dur = st.long("durationMs")
         val skStart = st.long("seekableStartMs")
         val skEnd = st.long("seekableEndMs")
-        _progress.value = Progress(
+        _progress.value = Progress.of(
             positionMs = st.long("positionMs"),
             durationMs = if (dur > 0L) dur else Progress.DURATION_UNKNOWN,
             bufferedPositionMs = st.long("bufferedMs"),
             seekable = st.bool("seekable", default = dur > 0L),
+            isLive = st.bool("live", default = _status.value.live),
             seekableStartMs = skStart,
             seekableEndMs = if (skEnd > skStart) skEnd else if (dur > 0L) dur else 0L,
         )

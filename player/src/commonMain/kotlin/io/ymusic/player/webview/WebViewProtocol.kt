@@ -214,6 +214,7 @@ object WebViewProtocol {
                 durationMs = obj.seconds("durationSeconds"),
                 bufferedMs = obj.seconds("bufferedSeconds"),
                 seekable = obj.bool("seekable"),
+                seekableStartMs = obj.seconds("seekableStartSeconds"),
             )
             "quality_changed" -> WebViewEvent.QualityChanged(
                 VideoQualityState(
@@ -364,6 +365,7 @@ sealed interface WebViewEvent {
         val durationMs: Long,
         val bufferedMs: Long,
         val seekable: Boolean,
+        val seekableStartMs: Long = 0L,
     ) : WebViewEvent
 
     data class QualityChanged(val state: VideoQualityState) : WebViewEvent
