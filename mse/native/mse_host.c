@@ -1477,6 +1477,7 @@ void mse_ios_recover_playback(void)
         return;
     }
     mse_ios_log("mse-v recover-playback picture-dead");
+    mse_vt_hold_last(layer);
     mse_av_recover_display(g_ios_host->av);
 }
 #endif

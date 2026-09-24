@@ -8,6 +8,7 @@
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
 #endif
+#import <QuartzCore/QuartzCore.h>
 #import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
@@ -23,6 +24,13 @@ static MseVtBlit mse_still_blit;
 /* Set when vt-show skipped because the app was backgrounded; cleared on a
    successful present. Last-still blit can still succeed while the layer is frozen. */
 static int vt_missed_bg;
+static CALayer *vt_hold_layer;
+
+static void mse_vt_drop_hold(void)
+{
+    [vt_hold_layer removeFromSuperlayer];
+    vt_hold_layer = nil;
+}
 
 static void mse_keep_still(CVPixelBufferRef pb)
 {
@@ -189,6 +197,7 @@ void mse_vt_detach(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+    mse_vt_drop_hold();
 #if TARGET_OS_OSX
     /* JAWT overlay retains the layer; iOS Kotlin owns it and must not CFRelease. */
     if (p == mse_vt_jawt_layer) {
@@ -248,6 +257,7 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     CFRelease(sbuf);
     mse_keep_still(pb);
     vt_missed_bg = 0;
+    mse_vt_drop_hold();
 #if TARGET_OS_OSX
     mse_vt_reveal_overlay();
 #endif
@@ -352,5 +362,38 @@ void mse_vt_flush(void *p)
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
     vt_missed_bg = 0;
+    mse_vt_drop_hold();
+}
+
+void mse_vt_hold_last(void *p)
+{
+    AVSampleBufferDisplayLayer *layer;
+    CALayer *parent;
+    CIImage *ci;
+    CIContext *ctx;
+    CGImageRef cg;
+    if (!p || !mse_still_pb)
+        return;
+    layer = (__bridge AVSampleBufferDisplayLayer *)p;
+    parent = layer.superlayer;
+    if (!parent)
+        return;
+    ci = [CIImage imageWithCVPixelBuffer:mse_still_pb];
+    if (!ci)
+        return;
+    ctx = [CIContext contextWithOptions:nil];
+    if (!ctx)
+        return;
+    cg = [ctx createCGImage:ci fromRect:[ci extent]];
+    if (!cg)
+        return;
+    mse_vt_drop_hold();
+    vt_hold_layer = [CALayer layer];
+    vt_hold_layer.frame = layer.frame;
+    vt_hold_layer.contents = (__bridge id)cg;
+    vt_hold_layer.contentsGravity = kCAGravityResize;
+    [parent insertSublayer:vt_hold_layer above:layer];
+    CGImageRelease(cg);
+    os_log(os_log_create("com.ymusic.mse", "v"), "mse-v hold-last still pinned");
 }
 #endif
