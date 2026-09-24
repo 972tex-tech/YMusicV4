@@ -756,14 +756,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                         }
                                     }
                                 }
-                                if (!nowPlayingOpen) {
-                                    MiniPlayer(
-                                        coordinator,
-                                        surface = if (needsSurface) graph.playerSurface else null,
-                                        onExpand = { nowPlayingOpen = true },
-                                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
-                                    )
-                                }
+                                MiniPlayer(
+                                    coordinator,
+                                    surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
+                                    onExpand = { nowPlayingOpen = true },
+                                    visible = !nowPlayingOpen,
+                                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
+                                )
                             }
                         }
                     }
