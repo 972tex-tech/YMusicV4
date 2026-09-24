@@ -11,6 +11,11 @@ plugins {
  */
 kotlin {
     withComposeIosTargets {
+        val ffmpegSlug = when (name) {
+            "iosArm64" -> "ios-arm64"
+            "iosSimulatorArm64" -> "ios-simulator-arm64"
+            else -> null
+        }
         binaries.framework {
             baseName = "YMusicApp"
             isStatic = false
@@ -19,6 +24,27 @@ kotlin {
             // @available-guards their use, so they're never touched below iOS 26. Drop when on Xcode 26.
             if (providers.gradleProperty("iosAllowUndefined").orNull == "true") {
                 linkerOpts("-undefined", "dynamic_lookup")
+            }
+            // Same as :playground: cinterop linkerOpts is ignored; bake libav + VT here.
+            val lib = ffmpegSlug?.let {
+                rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$it/lib")
+            }
+            if (lib != null && lib.resolve("libavcodec.a").isFile) {
+                linkerOpts("-L${lib.absolutePath}")
+                linkerOpts("-lavformat", "-lavcodec", "-lswscale", "-lswresample", "-lavutil")
+                if (lib.resolve("libdav1d.a").isFile) linkerOpts("-ldav1d")
+                if (lib.resolve("libvpx.a").isFile) linkerOpts("-lvpx")
+                linkerOpts(
+                    "-framework", "AudioToolbox",
+                    "-framework", "CoreAudio",
+                    "-framework", "VideoToolbox",
+                    "-framework", "CoreMedia",
+                    "-framework", "CoreFoundation",
+                    "-framework", "CoreVideo",
+                    "-framework", "AVFoundation",
+                    "-framework", "QuartzCore",
+                    "-lz", "-lbz2", "-liconv",
+                )
             }
         }
     }
