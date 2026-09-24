@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -11,6 +12,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import io.ymusic.mse.MseVideoSurface
+import io.ymusic.mse.cinterop.mse_vt_recover
 import io.ymusic.player.mse.MsePlayer
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
@@ -20,7 +22,9 @@ import kotlinx.cinterop.objcPtr
 import platform.AVFoundation.AVLayerVideoGravityResize
 import platform.AVFoundation.AVSampleBufferDisplayLayer
 import platform.CoreGraphics.CGRectMake
+import platform.Foundation.NSNotificationCenter
 import platform.QuartzCore.CATransaction
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIColor
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
@@ -74,6 +78,13 @@ internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier
     LaunchedEffect(player) {
         val lp = hole.layerPtr() ?: return@LaunchedEffect
         player.setVideoSurface(MseVideoSurface().apply { layer = lp })
+    }
+    DisposableEffect(hole) {
+        val center = NSNotificationCenter.defaultCenter
+        val obs = center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, null) { _ ->
+            hole.layerPtr()?.let { mse_vt_recover(it) }
+        }
+        onDispose { center.removeObserver(obs) }
     }
 }
 

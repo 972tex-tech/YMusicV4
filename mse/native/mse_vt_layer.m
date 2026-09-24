@@ -5,6 +5,9 @@
 #import <TargetConditionals.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#endif
 #import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
@@ -192,12 +195,17 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     if (!p || !pb)
         return -1;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
+#if TARGET_OS_IPHONE
+    /* GPU is gone in the background; enqueueing Failed frames sticks a black layer. */
+    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground)
+        return -1;
+#endif
     if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) {
         NSError *err = layer.error;
         os_log(os_log_create("com.ymusic.mse", "v"),
                "mse-v vt-show layer-failed %{public}s",
                err.localizedDescription.UTF8String ?: "?");
-        [layer flush];
+        mse_vt_recover(p);
     }
     st = CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, pb, &fmt);
     if (st != noErr || !fmt)
@@ -325,5 +333,22 @@ void mse_vt_flush(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+}
+
+void mse_vt_recover(void *p)
+{
+    AVSampleBufferDisplayLayer *layer;
+    if (!p)
+        return;
+    layer = (__bridge AVSampleBufferDisplayLayer *)p;
+    if (@available(iOS 17.2, macOS 14.0, *)) {
+        AVSampleBufferVideoRenderer *r = layer.sampleBufferRenderer;
+        if (r)
+            [r flushWithRemovalOfDisplayedImage:YES completionHandler:^{}];
+        else
+            [layer flushAndRemoveImage];
+    } else {
+        [layer flushAndRemoveImage];
+    }
 }
 #endif
