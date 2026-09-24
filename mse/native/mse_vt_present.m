@@ -469,6 +469,7 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
 
     layer = [AVSampleBufferDisplayLayer layer];
     layer.videoGravity = AVLayerVideoGravityResizeAspect;
+    layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
     layer.actions = @{ @"contents": [NSNull null], @"bounds": [NSNull null], @"frame": [NSNull null] };
     retained = (void *)CFBridgingRetain(layer);
     if (mse_vt_jawt_layer && mse_vt_jawt_layer != retained)

@@ -3,6 +3,7 @@ package io.ymusic.android
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Intent
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
@@ -550,7 +551,11 @@ class YMusicApplication : Application() {
                         }
                         val showMse = status.videoSize != null
                         mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
-                        if (showMse) mseTexture.bringToFront()
+                        if (showMse) {
+                            mseTexture.bringToFront()
+                            val pic = status.videoSize
+                            mseBridge.setPictureSize(pic?.width ?: 0, pic?.height ?: 0)
+                        }
                     },
                 )
             }
@@ -649,6 +654,8 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
     private var player: MsePlayer? = null
     private var pending: Surface? = null
     private var texture: SurfaceTexture? = null
+    private var picW = 0
+    private var picH = 0
 
     fun attach(p: MsePlayer) {
         player = p
@@ -659,6 +666,13 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
         val st = texture ?: return
         if (tv.surfaceTexture === st) return
         runCatching { tv.setSurfaceTexture(st) }
+        applyFit(tv)
+    }
+
+    fun setPictureSize(w: Int, h: Int) {
+        picW = w
+        picH = h
+        applyFit(textureView)
     }
 
     val listener = object : TextureView.SurfaceTextureListener {
@@ -667,6 +681,7 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
                 texture = st
                 pending = Surface(st)
                 player?.setVideoSurface(MseVideoSurface(pending))
+                applyFit(textureView)
                 return
             }
             if (st !== texture) {
@@ -674,7 +689,9 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
             }
         }
 
-        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = Unit
+        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {
+            applyFit(textureView)
+        }
 
         override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
             /* false = we own the SurfaceTexture; MediaCodec stays bound across reparent. */
@@ -682,5 +699,24 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
         }
 
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
+    }
+
+    /** Fit the decoded picture inside the view; leftover stays the opaque black TextureView. */
+    private fun applyFit(tv: TextureView) {
+        val vw = tv.width.toFloat()
+        val vh = tv.height.toFloat()
+        if (picW <= 0 || picH <= 0 || vw <= 0f || vh <= 0f) {
+            tv.setTransform(null)
+            return
+        }
+        val scale = minOf(vw / picW, vh / picH)
+        val dx = (vw - picW * scale) / 2f
+        val dy = (vh - picH * scale) / 2f
+        tv.setTransform(
+            Matrix().apply {
+                setScale(scale, scale)
+                postTranslate(dx, dy)
+            },
+        )
     }
 }
