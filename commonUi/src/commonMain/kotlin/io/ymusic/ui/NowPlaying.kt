@@ -324,29 +324,13 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     SyncImmersiveSystemBars(immersive = true)
     Box(Modifier.fillMaxSize()) {
-        FittedPlayerSurface(graph, status.videoSize?.aspectRatio ?: 0f, Modifier.fillMaxSize())
+        graph.playerSurface(Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize()) {
             AutoHidingOverlay {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }
             PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing)
         }
-    }
-}
-
-/** Letterbox / pillarbox the shared surface to the picture ratio. */
-@Composable
-private fun FittedPlayerSurface(graph: AppGraph, aspectRatio: Float, modifier: Modifier = Modifier) {
-    val ratio = if (aspectRatio > 0f) aspectRatio else 16f / 9f
-    BoxWithConstraints(
-        modifier.then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
-        contentAlignment = Alignment.Center,
-    ) {
-        val parentRatio = if (maxHeight > 0.dp) maxWidth / maxHeight else ratio
-        val hole =
-            if (parentRatio <= ratio) Modifier.fillMaxWidth().aspectRatio(ratio)
-            else Modifier.fillMaxHeight().aspectRatio(ratio)
-        graph.playerSurface(hole)
     }
 }
 
