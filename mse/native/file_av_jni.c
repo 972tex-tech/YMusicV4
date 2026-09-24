@@ -373,6 +373,30 @@ Java_io_ymusic_mse_FileAvNative_orderWindowBelow(JNIEnv *env, jclass cls, jobjec
 }
 
 JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_prepareFullscreen(JNIEnv *env, jclass cls, jobject primary)
+{
+    (void)cls;
+#ifdef __APPLE__
+    mse_vt_prepare_fullscreen(env, primary);
+#else
+    (void)env;
+    (void)primary;
+#endif
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_toggleFullScreen(JNIEnv *env, jclass cls, jobject primary)
+{
+    (void)cls;
+#ifdef __APPLE__
+    mse_vt_toggle_fullscreen(env, primary);
+#else
+    (void)env;
+    (void)primary;
+#endif
+}
+
+JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setOverlayHidden(JNIEnv *env, jclass cls, jboolean hid)
 {
     (void)env;

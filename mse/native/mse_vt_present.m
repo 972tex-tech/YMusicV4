@@ -24,30 +24,39 @@ static int mse_px, mse_py, mse_pw, mse_ph;
 static JavaVM *mse_jvm;
 static jclass mse_native_cls;
 static jmethodID mse_mouse_mid;
+static jmethodID mse_fs_mid;
+static id mse_fs_enter_obs;
+static id mse_fs_exit_obs;
+static NSTimer *mse_fs_timer;
 static int mse_overlay_deferred_show;
 
 static void mse_bind_mouse_jni(JNIEnv *env)
 {
     jclass local;
-    if (mse_jvm && mse_native_cls && mse_mouse_mid)
-        return;
     if (!env)
         return;
-    (*env)->GetJavaVM(env, &mse_jvm);
-    local = (*env)->FindClass(env, "io/ymusic/mse/FileAvNative");
-    if (!local) {
-        if ((*env)->ExceptionCheck(env))
-            (*env)->ExceptionClear(env);
-        mse_logf("mse-v mouse FindClass FileAvNative failed\n");
-        return;
+    if (!mse_jvm)
+        (*env)->GetJavaVM(env, &mse_jvm);
+    if (!mse_native_cls) {
+        local = (*env)->FindClass(env, "io/ymusic/mse/FileAvNative");
+        if (!local) {
+            if ((*env)->ExceptionCheck(env))
+                (*env)->ExceptionClear(env);
+            mse_logf("mse-v mouse FindClass FileAvNative failed\n");
+            return;
+        }
+        mse_native_cls = (*env)->NewGlobalRef(env, local);
+        (*env)->DeleteLocalRef(env, local);
     }
-    mse_native_cls = (*env)->NewGlobalRef(env, local);
-    (*env)->DeleteLocalRef(env, local);
-    mse_mouse_mid = (*env)->GetStaticMethodID(env, mse_native_cls, "onOverlayMouse", "(IIIIIII)V");
     if (!mse_mouse_mid) {
-        if ((*env)->ExceptionCheck(env))
+        mse_mouse_mid = (*env)->GetStaticMethodID(env, mse_native_cls, "onOverlayMouse", "(IIIIIII)V");
+        if (!mse_mouse_mid && (*env)->ExceptionCheck(env))
             (*env)->ExceptionClear(env);
-        mse_logf("mse-v mouse onOverlayMouse mid failed\n");
+    }
+    if (!mse_fs_mid) {
+        mse_fs_mid = (*env)->GetStaticMethodID(env, mse_native_cls, "onFullScreenChanged", "(Z)V");
+        if (!mse_fs_mid && (*env)->ExceptionCheck(env))
+            (*env)->ExceptionClear(env);
     }
 }
 
@@ -367,6 +376,136 @@ void mse_vt_order_window_below(void *envp, void *below, void *above)
     if (!lo || !hi || lo == hi)
         return;
     [lo orderWindow:NSWindowBelow relativeTo:hi.windowNumber];
+}
+
+static NSWindow *mse_named_window(NSString *title)
+{
+    for (NSWindow *w in NSApp.windows) {
+        if ([w.title isEqualToString:title])
+            return w;
+    }
+    return nil;
+}
+
+static void mse_fs_timer_stop(void)
+{
+    [mse_fs_timer invalidate];
+    mse_fs_timer = nil;
+}
+
+static void mse_fs_restack(void)
+{
+    NSWindow *ui = mse_named_window(@"YMusic");
+    NSWindow *video = mse_named_window(@"YMusic video");
+    BOOL fs;
+    if (!ui || !video || ui == video)
+        return;
+    fs = (ui.styleMask & NSWindowStyleMaskFullScreen) != 0;
+    if (video.parentWindow)
+        [video.parentWindow removeChildWindow:video];
+    ui.level = fs ? NSFloatingWindowLevel : NSNormalWindowLevel;
+    video.level = NSNormalWindowLevel;
+    video.collectionBehavior = NSWindowCollectionBehaviorManaged |
+                               NSWindowCollectionBehaviorFullScreenNone |
+                               NSWindowCollectionBehaviorMoveToActiveSpace;
+    video.ignoresMouseEvents = fs;
+    [ui orderFrontRegardless];
+    [video orderWindow:NSWindowBelow relativeTo:ui.windowNumber];
+}
+
+static void mse_fs_timer_start(void)
+{
+    if (mse_fs_timer)
+        return;
+    mse_fs_timer = [NSTimer scheduledTimerWithTimeInterval:0.05
+                                                    repeats:YES
+                                                      block:^(NSTimer *t) {
+                                                          (void)t;
+                                                          mse_fs_restack();
+                                                      }];
+    [[NSRunLoop mainRunLoop] addTimer:mse_fs_timer forMode:NSRunLoopCommonModes];
+}
+
+static void mse_notify_fs(int on)
+{
+    JNIEnv *env = NULL;
+    if (!mse_jvm || !mse_native_cls || !mse_fs_mid)
+        return;
+    if ((*mse_jvm)->GetEnv(mse_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK)
+        (*mse_jvm)->AttachCurrentThread(mse_jvm, (void **)&env, NULL);
+    if (!env)
+        return;
+    (*env)->CallStaticVoidMethod(env, mse_native_cls, mse_fs_mid, on ? JNI_TRUE : JNI_FALSE);
+    if ((*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+}
+
+static void mse_fs_watch(NSWindow *win)
+{
+    NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+    if (!win)
+        return;
+    if (mse_fs_enter_obs) {
+        [nc removeObserver:mse_fs_enter_obs];
+        mse_fs_enter_obs = nil;
+    }
+    if (mse_fs_exit_obs) {
+        [nc removeObserver:mse_fs_exit_obs];
+        mse_fs_exit_obs = nil;
+    }
+    mse_fs_enter_obs = [nc addObserverForName:NSWindowDidEnterFullScreenNotification
+                                      object:win
+                                       queue:nil
+                                  usingBlock:^(NSNotification *note) {
+                                      (void)note;
+                                      mse_fs_restack();
+                                      mse_fs_timer_start();
+                                      mse_notify_fs(1);
+                                  }];
+    mse_fs_exit_obs = [nc addObserverForName:NSWindowDidExitFullScreenNotification
+                                     object:win
+                                      queue:nil
+                                 usingBlock:^(NSNotification *note) {
+                                     (void)note;
+                                     mse_fs_timer_stop();
+                                     mse_fs_restack();
+                                     mse_notify_fs(0);
+                                 }];
+}
+
+void mse_vt_prepare_fullscreen(void *envp, void *primary)
+{
+    JNIEnv *env = envp;
+    NSWindow *ui;
+    if (!env || !primary)
+        return;
+    mse_bind_mouse_jni(env);
+    ui = mse_awt_nswindow(env, primary);
+    if (!ui)
+        ui = mse_named_window(@"YMusic");
+    if (!ui)
+        return;
+    mse_on_main(^{
+        ui.collectionBehavior |= NSWindowCollectionBehaviorFullScreenPrimary |
+                                 NSWindowCollectionBehaviorManaged;
+        mse_fs_watch(ui);
+    });
+}
+
+void mse_vt_toggle_fullscreen(void *envp, void *primary)
+{
+    JNIEnv *env = envp;
+    NSWindow *ui;
+    if (!env)
+        return;
+    ui = primary ? mse_awt_nswindow(env, primary) : nil;
+    if (!ui)
+        ui = mse_named_window(@"YMusic");
+    if (!ui)
+        return;
+    mse_on_main(^{
+        [ui toggleFullScreen:nil];
+    });
 }
 
 static NSView *mse_content_view(CALayer *wl)

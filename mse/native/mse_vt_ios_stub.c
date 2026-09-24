@@ -26,5 +26,15 @@ void mse_vt_order_window_below(void *env, void *below, void *above)
     (void)below;
     (void)above;
 }
+void mse_vt_prepare_fullscreen(void *env, void *primary)
+{
+    (void)env;
+    (void)primary;
+}
+void mse_vt_toggle_fullscreen(void *env, void *primary)
+{
+    (void)env;
+    (void)primary;
+}
 #endif
 #endif

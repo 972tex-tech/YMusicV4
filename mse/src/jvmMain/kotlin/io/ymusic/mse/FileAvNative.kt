@@ -73,6 +73,19 @@ object FileAvNative {
     /** Place [below] immediately under [above] without making [below] key. macOS only. */
     @JvmStatic external fun orderWindowBelow(below: java.awt.Window, above: java.awt.Window)
 
+    /** Enable NSWindowCollectionBehaviorFullScreenPrimary on the Compose window. */
+    @JvmStatic external fun prepareFullscreen(primary: java.awt.Window)
+
+    @JvmStatic external fun toggleFullScreen(primary: java.awt.Window)
+
+    @Volatile @JvmStatic
+    var onFullScreen: ((Boolean) -> Unit)? = null
+
+    @Keep @JvmStatic
+    fun onFullScreenChanged(on: Boolean) {
+        onFullScreen?.invoke(on)
+    }
+
     /** Last presented overlay frame as BGRA. Writes width/height into [wh] (length ≥ 2). */
     @JvmStatic external fun snapshotOverlay(wh: IntArray): ByteArray?
 

@@ -22,6 +22,8 @@ void mse_vt_reveal_overlay(void);
 void mse_vt_layout_screen(int x, int y, int w, int h);
 /* Place AWT window [below] immediately under [above] without making it key. */
 void mse_vt_order_window_below(void *env, void *below, void *above);
+void mse_vt_prepare_fullscreen(void *env, void *primary);
+void mse_vt_toggle_fullscreen(void *env, void *primary);
 
 /* Borrowed AVSampleBufferDisplayLayer. Caller owns the layer. */
 void mse_vt_detach(void *layer);
