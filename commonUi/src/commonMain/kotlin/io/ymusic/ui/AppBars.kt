@@ -687,7 +687,7 @@ private val DismissDragDistance = 120.dp
 internal fun SwipeDownDismissBox(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    /** When set, commit after this fraction of the box height; otherwise [DismissDragDistance]. */
+    /** When set, visual max is this fraction of height; release at half of that commits. */
     commitFractionOfHeight: Float? = null,
     /** True while a downward pull is in progress (so a parent clickable does not fire). */
     onPull: (Boolean) -> Unit = {},
@@ -720,8 +720,8 @@ internal fun SwipeDownDismissBox(
                 val frac = commitFractionOfHeight
                 if (frac != null && it.height > 0) {
                     val px = it.height.toFloat() * frac
-                    drag.commitPx = px
                     drag.maxMovePx = px
+                    drag.commitPx = px * 0.5f
                 } else {
                     drag.commitPx = defaultCommit
                     drag.maxMovePx = 0f
@@ -797,7 +797,7 @@ private class DragDown(
     /** Commit only after the full finger distance — no flick shortcut. */
     fun settle() {
         val cap = maxMovePx
-        val commit = raw >= commitPx || (cap > 0f && peek.value >= cap * 0.95f)
+        val commit = raw >= commitPx || (cap > 0f && peek.value >= cap * 0.5f)
         scope.launch {
             try {
                 if (commit) {
