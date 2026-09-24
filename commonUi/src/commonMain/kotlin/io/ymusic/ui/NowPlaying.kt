@@ -191,7 +191,7 @@ fun MiniPlayer(
                 .aspectRatio(16f / 9f)
                 .then(
                     if (surface != null && desktopLayoutHole) Modifier
-                    else Modifier.background(DesignColors.PlaceholderDim),
+                    else Modifier.background(DesignColors.SurfaceDim),
                 ),
             contentAlignment = Alignment.Center,
         ) {

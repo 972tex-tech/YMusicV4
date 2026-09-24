@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.sentry.kotlin.multiplatform.Sentry
@@ -56,6 +57,7 @@ import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.DesignColors
 import io.ymusic.ui.WebViewSabrSpecResolver
 import io.ymusic.ui.downloadCaptionPreference
 import io.ymusic.ui.downloadLocationFolder
@@ -538,6 +540,7 @@ class YMusicApplication : Application() {
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
             val status by player.status.collectAsState()
+            val bar = DesignColors.SurfaceDim.toArgb()
             Box(modifier) {
                 AndroidView(
                     factory = { context -> FrameLayout(context) },
@@ -550,6 +553,8 @@ class YMusicApplication : Application() {
                         }
                         val showMse = status.videoSize != null
                         mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
+                        host.setBackgroundColor(bar)
+                        videoContainer.setBackgroundColor(bar)
                         if (showMse) mseTexture.bringToFront()
                     },
                 )
