@@ -703,7 +703,10 @@ internal fun SwipeDownDismissBox(
     val defaultCommit = with(density) { DismissDragDistance.toPx() }
     drag.commitPx = defaultCommit
     val peekY = peek.value
-    val fullPeek = weightedRubberPeek(drag.commitPx, drag.stiffnessPx).coerceAtLeast(1f)
+    val fullPeek = (
+        if (drag.maxMovePx > 0f) drag.maxMovePx
+        else weightedRubberPeek(drag.commitPx, drag.stiffnessPx)
+        ).coerceAtLeast(1f)
     val topShadow = (peekY / fullPeek).coerceIn(0f, 1f)
     val shadowH = with(density) { 28.dp.roundToPx() }
 
@@ -715,9 +718,10 @@ internal fun SwipeDownDismissBox(
                 if (frac != null && it.height > 0) {
                     val px = it.height.toFloat() * frac
                     drag.commitPx = px
-                    drag.stiffnessPx = px
+                    drag.maxMovePx = px
                 } else {
                     drag.commitPx = defaultCommit
+                    drag.maxMovePx = 0f
                 }
             }
             .nestedScroll(drag.connection)
@@ -777,11 +781,19 @@ private class DragDown(
     var heightPx = 0f
     var stiffnessPx = 0f
     var commitPx = 0f
+    /** Visual ceiling; 0 = Now Playing exponential (no hard max). */
+    var maxMovePx = 0f
     var onDismiss: () -> Unit = {}
 
     fun report(deltaY: Float) {
         raw = (raw + deltaY).coerceAtLeast(0f)
-        val target = weightedRubberPeek(raw, stiffnessPx)
+        val cap = maxMovePx
+        val target = if (cap > 0f) {
+            val t = (raw / cap).coerceIn(0f, 1f)
+            cap * (1f - (1f - t) * (1f - t))
+        } else {
+            weightedRubberPeek(raw, stiffnessPx)
+        }
         scope.launch { peek.snapTo(target) }
     }
 
