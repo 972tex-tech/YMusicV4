@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Same concentric-ring geometry as desktop ymusic_logo / ymusic_logo_dock, clipped to the
-     1024 square so the launcher mask (circle / squircle) crops it. -->
+<!-- Same concentric-ring geometry as ymusic_logo, sitting in the adaptive-icon
+     safe zone. The 1024 disc is centered on a 1536 canvas (1024 = 72/108 of
+     1536) so the launcher mask shows the full mark instead of cropping into
+     the inner rings and blowing up the play glyph. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="1024"
-    android:viewportHeight="1024">
-    <group>
-        <clip-path android:pathData="M0,0 H1024 V1024 H0 Z" />
+    android:viewportWidth="1536"
+    android:viewportHeight="1536">
+    <path
+        android:pathData="M0,0h1536v1536h-1536z"
+        android:fillColor="#267C4E" />
+    <group
+        android:translateX="256"
+        android:translateY="256">
+        <clip-path android:pathData="M0,512 a512,512 0 1,0 1024,0 a512,512 0 1,0 -1024,0 Z" />
         <path
             android:pathData="M-358.46,-896.36 L2458.27,512 L-358.46,1920.36 Z"
             android:fillColor="#267C4E" />
