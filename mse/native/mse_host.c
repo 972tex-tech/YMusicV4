@@ -1468,9 +1468,15 @@ void mse_ios_log(const char *msg)
 #ifdef __APPLE__
 void mse_ios_recover_playback(void)
 {
-    mse_ios_log("mse-v recover-playback enter");
+    void *layer;
     if (!g_ios_host || !g_ios_host->av)
         return;
+    layer = g_ios_host->window;
+    if (mse_vt_picture_ok(layer)) {
+        mse_ios_log("mse-v recover-skip picture-ok");
+        return;
+    }
+    mse_ios_log("mse-v recover-playback picture-dead");
     mse_av_recover_display(g_ios_host->av);
 }
 #endif

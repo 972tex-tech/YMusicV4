@@ -166,6 +166,45 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
     return n;
 }
 
+int mse_vt_picture_ok(void *p)
+{
+    AVSampleBufferDisplayLayer *layer;
+    uint8_t *tmp;
+    int n, tw, th, mean;
+    const char *how = "none";
+    CVPixelBufferRef pb;
+    if (p) {
+        layer = (__bridge AVSampleBufferDisplayLayer *)p;
+        if (layer.status == AVQueuedSampleBufferRenderingStatusFailed)
+            return 0;
+    }
+    if (!mse_still_pb)
+        return 0;
+    pb = mse_still_pb;
+    CFRetain(pb);
+    tw = (int)CVPixelBufferGetWidth(pb);
+    th = (int)CVPixelBufferGetHeight(pb);
+    if (tw <= 0 || th <= 0 || (uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4)) {
+        CFRelease(pb);
+        return 0;
+    }
+    n = tw * th * 4;
+    tmp = (uint8_t *)malloc((size_t)n);
+    if (!tmp) {
+        CFRelease(pb);
+        return 0;
+    }
+    if (mse_copy_try(pb, tmp, tw, th, &how) != 0) {
+        free(tmp);
+        CFRelease(pb);
+        return 0;
+    }
+    mean = mse_rgb_mean(tmp, n);
+    free(tmp);
+    CFRelease(pb);
+    return mean >= 8;
+}
+
 void mse_vt_detach(void *p)
 {
     AVSampleBufferDisplayLayer *layer;

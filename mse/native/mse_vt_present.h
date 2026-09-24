@@ -34,6 +34,8 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h);
 int mse_vt_show_sw(void *layer, unsigned cv_pix_fmt,
                    const uint8_t *const *data, const int *linesize, int w, int h);
 void mse_vt_flush(void *layer);
+/* 1 if the last still copies and is not black, and the layer is not Failed. */
+int mse_vt_picture_ok(void *layer);
 
 /* H.264 / VP9 VTDecompressionSession. Enable HW, do not Require it
    (simulator / Intel use Apple software VT). NULL if create fails.
