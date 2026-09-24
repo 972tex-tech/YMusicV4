@@ -11,6 +11,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import io.ymusic.mse.MseVideoSurface
+import io.ymusic.mse.cinterop.mse_ios_park_video
 import io.ymusic.mse.cinterop.mse_ios_recover_playback
 import io.ymusic.player.mse.MsePlayer
 import kotlinx.cinterop.COpaque
@@ -41,7 +42,12 @@ internal class IosMseHole {
         interpretCPointer<COpaque>(view.vtLayer.objcPtr())
 }
 
-/** Swift [iOSApp] calls this on scenePhase == .active. */
+/** Swift [iOSApp] calls this on scenePhase == .background / .active. */
+@OptIn(ExperimentalForeignApi::class)
+fun iosMseWentBackground() {
+    mse_ios_park_video()
+}
+
 @OptIn(ExperimentalForeignApi::class)
 fun iosMseBecameActive() {
     mse_ios_recover_playback()

@@ -38,6 +38,7 @@ void mse_av_abort(MseAv *a, int audio);
 void mse_av_change_type(MseAv *a, int audio);
 /* Live audio-only: keep appending video leftover, do not decode. */
 void mse_av_rest_video(MseAv *a, int on);
+int mse_av_video_resting(const MseAv *a);
 void mse_av_seek(MseAv *a, double seconds);
 
 /* Android: borrowed ANativeWindow. Apple: borrowed AVSampleBufferDisplayLayer.

@@ -27,11 +27,16 @@ struct iOSApp: App {
         WindowGroup {
             ComposeView().ignoresSafeArea()
                 .onChange(of: scenePhase) { phase in
-                    if phase == .active {
-                        // Probe last still; no-op if the picture is still there.
+                    switch phase {
+                    case .background:
+                        // Park the video decoder; leftover stays (audio-only rest).
+                        IosMseSurfaceKt.iosMseWentBackground()
+                    case .active:
                         DispatchQueue.main.async {
                             IosMseSurfaceKt.iosMseBecameActive()
                         }
+                    default:
+                        break
                     }
                 }
         }

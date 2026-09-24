@@ -1466,6 +1466,14 @@ void mse_ios_log(const char *msg)
 }
 
 #ifdef __APPLE__
+void mse_ios_park_video(void)
+{
+    if (!g_ios_host || !g_ios_host->av)
+        return;
+    mse_ios_log("mse-v park rest-video");
+    mse_av_rest_video(g_ios_host->av, 1);
+}
+
 void mse_ios_recover_playback(void)
 {
     void *layer;
@@ -1473,11 +1481,11 @@ void mse_ios_recover_playback(void)
     if (!g_ios_host || !g_ios_host->av)
         return;
     layer = g_ios_host->window;
-    if (mse_vt_picture_ok(layer)) {
+    if (!mse_av_video_resting(g_ios_host->av) && mse_vt_picture_ok(layer)) {
         mse_ios_log("mse-v recover-skip picture-ok");
         return;
     }
-    mse_ios_log("mse-v recover-playback picture-dead");
+    mse_ios_log("mse-v recover rest-off");
     pthread_mutex_lock(&g_ios_host->mu);
     clock = clock_locked(g_ios_host);
     pthread_mutex_unlock(&g_ios_host->mu);
