@@ -82,7 +82,7 @@ private fun IosAppRoot() {
         g == null -> Center { CircularProgressIndicator() }
         else -> {
             LaunchedEffect(g) {
-                connectIosMediaSession(g.player, this, g.logger?.fork("now-playing"))
+                connectIosMediaSession(g.player, this, g.logger?.fork("now-playing"), g.imageLoader)
             }
             App(g)
         }

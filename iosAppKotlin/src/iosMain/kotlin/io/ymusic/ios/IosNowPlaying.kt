@@ -1,5 +1,6 @@
 package io.ymusic.ios
 
+import io.ymusic.imageloader.ImageLoader
 import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
 import kmpcommon.log.Logger
@@ -11,7 +12,9 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSNumber
 import platform.Foundation.timeIntervalSince1970
 import platform.MediaPlayer.MPChangePlaybackPositionCommandEvent
+import platform.MediaPlayer.MPMediaItemArtwork
 import platform.MediaPlayer.MPMediaItemPropertyArtist
+import platform.MediaPlayer.MPMediaItemPropertyArtwork
 import platform.MediaPlayer.MPMediaItemPropertyPlaybackDuration
 import platform.MediaPlayer.MPMediaItemPropertyTitle
 import platform.MediaPlayer.MPNowPlayingInfoCenter
@@ -22,6 +25,7 @@ import platform.MediaPlayer.MPNowPlayingPlaybackStatePlaying
 import platform.MediaPlayer.MPNowPlayingPlaybackStateStopped
 import platform.MediaPlayer.MPRemoteCommandCenter
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusSuccess
+import platform.UIKit.UIImage
 import kotlin.math.abs
 
 /**
@@ -30,7 +34,12 @@ import kotlin.math.abs
  * `.playback` so background audio keeps running.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun connectIosMediaSession(player: Player, scope: CoroutineScope, logger: Logger? = null) {
+fun connectIosMediaSession(
+    player: Player,
+    scope: CoroutineScope,
+    logger: Logger? = null,
+    imageLoader: ImageLoader? = null,
+) {
     val commands = MPRemoteCommandCenter.sharedCommandCenter()
     commands.playCommand.setEnabled(true)
     commands.pauseCommand.setEnabled(true)
@@ -68,10 +77,13 @@ fun connectIosMediaSession(player: Player, scope: CoroutineScope, logger: Logger
     scope.launch {
         var last: NowPlayingSnap? = null
         var lastAtMs = 0L
+        var artUrl: String? = null
+        var art: MPMediaItemArtwork? = null
         combine(player.status, player.queue, player.progress) { status, queue, progress ->
             NowPlayingSnap(
                 title = queue.currentItem?.displayTitle,
                 artist = queue.currentItem?.displaySubtitle,
+                artworkUrl = queue.currentItem?.displayThumbnailUrl,
                 playing = status.state.isPlaying(),
                 positionMs = progress.positionMs,
                 durationMs = progress.durationMs.takeIf { it > 0 },
@@ -86,19 +98,47 @@ fun connectIosMediaSession(player: Player, scope: CoroutineScope, logger: Logger
                 prev.playing -> prev.positionMs + ((now - lastAtMs) * prev.speed.toDouble()).toLong()
                 else -> prev.positionMs
             }
+            val urlChanged = state.artworkUrl != artUrl
+            if (urlChanged) {
+                artUrl = state.artworkUrl
+                art = null
+            }
             val identityChanged = prev == null || prev.copy(positionMs = 0) != state.copy(positionMs = 0)
             val jumped = expectedMs != null && abs(state.positionMs - expectedMs) > 2_000L
-            if (identityChanged || jumped) {
-                publish(state)
+            if (identityChanged || jumped || urlChanged) {
+                publish(state, art)
                 last = state
                 lastAtMs = now
+            }
+            val url = state.artworkUrl
+            if (urlChanged && url != null && imageLoader != null) {
+                launch {
+                    val loaded = loadArtwork(imageLoader, url, logger)
+                    if (artUrl == url && loaded != null) {
+                        art = loaded
+                        publish(state, loaded)
+                    }
+                }
             }
         }
     }
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun publish(state: NowPlayingSnap) {
+private suspend fun loadArtwork(loader: ImageLoader, url: String, logger: Logger?): MPMediaItemArtwork? {
+    return runCatching {
+        val path = loader.loadFile(url, ARTWORK_MAX_PX, ARTWORK_MAX_PX, cacheKey = url.substringBefore('?'))
+            ?: return null
+        val image = UIImage.imageWithContentsOfFile(path.toString()) ?: return null
+        val size = image.size
+        MPMediaItemArtwork(boundsSize = size) { _ -> image }
+    }.onFailure {
+        logger?.log(Logger.Level.DEBUG, "now-playing artwork failed for $url", it)
+    }.getOrNull()
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun publish(state: NowPlayingSnap, artwork: MPMediaItemArtwork?) {
     val center = MPNowPlayingInfoCenter.defaultCenter()
     if (!state.hasItem) {
         center.nowPlayingInfo = null
@@ -108,6 +148,7 @@ private fun publish(state: NowPlayingSnap) {
     val info = mutableMapOf<Any?, Any?>()
     state.title?.let { info[MPMediaItemPropertyTitle] = it }
     state.artist?.let { info[MPMediaItemPropertyArtist] = it }
+    artwork?.let { info[MPMediaItemPropertyArtwork] = it }
     state.durationMs?.let { info[MPMediaItemPropertyPlaybackDuration] = NSNumber(double = it / 1000.0) }
     info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(double = state.positionMs / 1000.0)
     info[MPNowPlayingInfoPropertyPlaybackRate] =
@@ -117,9 +158,12 @@ private fun publish(state: NowPlayingSnap) {
         if (state.playing) MPNowPlayingPlaybackStatePlaying else MPNowPlayingPlaybackStatePaused
 }
 
+private const val ARTWORK_MAX_PX = 640
+
 private data class NowPlayingSnap(
     val title: String?,
     val artist: String?,
+    val artworkUrl: String?,
     val playing: Boolean,
     val positionMs: Long,
     val durationMs: Long?,
