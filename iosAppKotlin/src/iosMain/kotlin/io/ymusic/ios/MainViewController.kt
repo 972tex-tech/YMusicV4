@@ -80,7 +80,12 @@ private fun IosAppRoot() {
     when {
         error != null -> Center { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
         g == null -> Center { CircularProgressIndicator() }
-        else -> App(g)
+        else -> {
+            LaunchedEffect(g) {
+                connectIosMediaSession(g.player, this, g.logger?.fork("now-playing"))
+            }
+            App(g)
+        }
     }
 }
 

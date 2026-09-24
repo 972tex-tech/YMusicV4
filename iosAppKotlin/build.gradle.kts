@@ -25,6 +25,7 @@ kotlin {
             if (providers.gradleProperty("iosAllowUndefined").orNull == "true") {
                 linkerOpts("-undefined", "dynamic_lookup")
             }
+            linkerOpts("-framework", "MediaPlayer")
             // Same as :playground: cinterop linkerOpts is ignored; bake libav + VT here.
             val lib = ffmpegSlug?.let {
                 rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$it/lib")
