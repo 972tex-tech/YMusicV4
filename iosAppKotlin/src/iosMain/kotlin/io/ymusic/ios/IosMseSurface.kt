@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -12,7 +11,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import io.ymusic.mse.MseVideoSurface
-import io.ymusic.mse.cinterop.mse_vt_recover
 import io.ymusic.player.mse.MsePlayer
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
@@ -22,9 +20,7 @@ import kotlinx.cinterop.objcPtr
 import platform.AVFoundation.AVLayerVideoGravityResize
 import platform.AVFoundation.AVSampleBufferDisplayLayer
 import platform.CoreGraphics.CGRectMake
-import platform.Foundation.NSNotificationCenter
 import platform.QuartzCore.CATransaction
-import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIColor
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
@@ -42,6 +38,30 @@ internal class IosMseHole {
 
     fun layerPtr(): COpaquePointer? =
         interpretCPointer<COpaque>(view.vtLayer.objcPtr())
+
+    fun replaceLayer() {
+        view.replaceLayer()
+    }
+}
+
+/** Swift [iOSApp] calls this on scenePhase == .active. Flush is not enough after background. */
+@OptIn(ExperimentalForeignApi::class)
+fun iosMseBecameActive() {
+    IosMseLifecycle.onBecameActive?.invoke()
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal object IosMseLifecycle {
+    var onBecameActive: (() -> Unit)? = null
+
+    fun bind(hole: IosMseHole, player: MsePlayer) {
+        onBecameActive = {
+            hole.replaceLayer()
+            hole.layerPtr()?.let { lp ->
+                player.setVideoSurface(MseVideoSurface().apply { layer = lp })
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -79,13 +99,6 @@ internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier
         val lp = hole.layerPtr() ?: return@LaunchedEffect
         player.setVideoSurface(MseVideoSurface().apply { layer = lp })
     }
-    DisposableEffect(hole) {
-        val center = NSNotificationCenter.defaultCenter
-        val obs = center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, null) { _ ->
-            hole.layerPtr()?.let { mse_vt_recover(it) }
-        }
-        onDispose { center.removeObserver(obs) }
-    }
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -100,17 +113,30 @@ private fun adopt(child: UIView, host: UIView) {
 
 @OptIn(ExperimentalForeignApi::class)
 internal class MseVtView : UIView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0)) {
-    val vtLayer = AVSampleBufferDisplayLayer()
+    var vtLayer = AVSampleBufferDisplayLayer()
+        private set
 
     init {
         backgroundColor = UIColor.blackColor
         userInteractionEnabled = false
         opaque = true
         contentMode = UIViewContentMode.UIViewContentModeScaleToFill
-        vtLayer.videoGravity = AVLayerVideoGravityResize
-        vtLayer.backgroundColor = UIColor.blackColor.CGColor
-        layer.addSublayer(vtLayer)
+        installLayer(vtLayer)
         setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
+    }
+
+    fun replaceLayer() {
+        vtLayer.removeFromSuperlayer()
+        val next = AVSampleBufferDisplayLayer()
+        installLayer(next)
+        vtLayer = next
+        layoutSubviews()
+    }
+
+    private fun installLayer(l: AVSampleBufferDisplayLayer) {
+        l.videoGravity = AVLayerVideoGravityResize
+        l.backgroundColor = UIColor.blackColor.CGColor
+        layer.addSublayer(l)
     }
 
     override fun layoutSubviews() {

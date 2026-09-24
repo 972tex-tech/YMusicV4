@@ -15,15 +15,25 @@ struct ComposeView: UIViewControllerRepresentable {
 
 @main
 struct iOSApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
-        // Let audio (YouTube WebView / AVPlayer) keep playing when the app is backgrounded/locked.
+        // Let audio keep playing when the app is backgrounded/locked.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
     }
 
     var body: some Scene {
         WindowGroup {
-            ComposeView().ignoresSafeArea() // Compose draws edge-to-edge and handles its own insets.
+            ComposeView().ignoresSafeArea()
+                .onChange(of: scenePhase) { phase in
+                    if phase == .active {
+                        // GPU for AVSampleBufferDisplayLayer is dead after background; mint a new layer.
+                        DispatchQueue.main.async {
+                            IosMseSurfaceKt.iosMseBecameActive()
+                        }
+                    }
+                }
         }
     }
 }
