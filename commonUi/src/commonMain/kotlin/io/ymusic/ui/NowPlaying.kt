@@ -78,6 +78,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,6 +92,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -176,13 +179,16 @@ fun MiniPlayer(
     val item = queue.currentItem ?: return
 
     val duration = progress.durationMs
+    val density = LocalDensity.current
+    var colH by remember { mutableIntStateOf(0) }
+    val tileH = with(density) { if (colH > 0) colH.toDp() else 48.dp }
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
-                .height(48.dp)
+                .height(tileH)
                 .aspectRatio(16f / 9f)
                 .then(
                     if (surface != null && desktopLayoutHole) Modifier
@@ -194,7 +200,7 @@ fun MiniPlayer(
                 if (desktopLayoutHole) {
                     surface.invoke(Modifier.fillMaxSize())
                 } else {
-                    // WebView must lay out at real video size; scale-draw into this 16:9 slot.
+                    // WebView must lay out at real video size; scale-draw into this 16:9 slot. // wtf is webview, we no longer use webview
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         val scale = maxHeight / 135.dp
                         Box(
@@ -211,7 +217,9 @@ fun MiniPlayer(
                 ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
             }
         }
-        Column(Modifier.weight(1f).background(DesignColors.SurfaceDim)) {
+        Column(
+            Modifier.weight(1f).background(DesignColors.SurfaceDim).onSizeChanged { colH = it.height },
+        ) {
             LinearProgressIndicator(
                 progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
                 modifier = Modifier.fillMaxWidth().height(4.dp),
