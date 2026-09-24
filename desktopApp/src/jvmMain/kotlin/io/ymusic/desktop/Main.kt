@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -47,6 +48,7 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -61,7 +63,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -237,23 +238,20 @@ fun main() {
         var windowVisible by remember { mutableStateOf(true) }
         val (initialSize, initialPosition) = remember { loadWindowPrefs() }
         val windowState = rememberWindowState(size = initialSize, position = initialPosition)
+        val frame = remember { DesktopFrame(windowState, initialSize, initialPosition) }
         fun quit() {
-            // Flush the geometry synchronously — a move/resize inside the debounce window would
-            // otherwise be lost with the cancelled save (every exit path funnels through here).
-            if (windowState.placement == WindowPlacement.Floating) {
-                saveWindowPrefs(windowState.size, windowState.position)
+            if (!frame.fullscreen) {
+                saveWindowPrefs(frame.persistSize(), frame.persistPosition())
             }
             videoUnderlay.dispose()
             exitApplication()
         }
-        // Persist the size/position the user settles on (debounced past the live drag/resize
-        // churn); a maximized/fullscreen geometry is the placement's, not the user's chosen
-        // floating one, so it's skipped.
         LaunchedEffect(windowState) {
-            snapshotFlow { Triple(windowState.size, windowState.position, windowState.placement) }
-                .collectLatest { (size, position, placement) ->
+            snapshotFlow { windowState.size to windowState.position }
+                .collectLatest { (size, position) ->
                     delay(500)
-                    if (placement == WindowPlacement.Floating) {
+                    frame.noteFloatingIfIdle()
+                    if (!frame.fullscreen && !frame.zoomed) {
                         withContext(Dispatchers.IO) { saveWindowPrefs(size, position) }
                     }
                 }
@@ -277,11 +275,21 @@ fun main() {
             state = windowState,
             undecorated = true,
             transparent = true,
-            onPreviewKeyEvent = { event ->
-                val refresh = event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.F5 || ((event.isMetaPressed || event.isCtrlPressed) && event.key == Key.R))
-                if (refresh) graph?.requestRefresh()
-                refresh
+            onPreviewKeyEvent = preview@{ event ->
+                if (event.type != KeyEventType.KeyDown) return@preview false
+                when {
+                    (event.key == Key.Escape && frame.fullscreen) ||
+                        (event.isMetaPressed && event.isCtrlPressed && event.key == Key.F) -> {
+                        frame.toggleFullscreen()
+                        true
+                    }
+                    else -> {
+                        val refresh = event.key == Key.F5 ||
+                            ((event.isMetaPressed || event.isCtrlPressed) && event.key == Key.R)
+                        if (refresh) graph?.requestRefresh()
+                        refresh
+                    }
+                }
             },
         ) {
             paintWindowGround(Color.Transparent)
@@ -298,11 +306,25 @@ fun main() {
             val frameBorder =
                 if (darkBar) Color.White.copy(alpha = 0.14f) else palette.OutlineSoft
             CompositionLocalProvider(LocalAppWindow provides window) {
+                DisposableEffect(window) {
+                    frame.host = window
+                    FileAvNative.onFullScreen = { on ->
+                        SwingUtilities.invokeLater { frame.onNativeFullscreen(on) }
+                    }
+                    SwingUtilities.invokeLater { FileAvNative.prepareFullscreen(window) }
+                    onDispose { FileAvNative.onFullScreen = null }
+                }
                 Column(
-                    Modifier.fillMaxSize().border(1.dp, frameBorder),
+                    Modifier.fillMaxSize().then(if (frame.fullscreen) Modifier else Modifier.border(1.dp, frameBorder)),
                 ) {
-                    Box(
-                        Modifier.fillMaxWidth().height(36.dp).background(palette.SurfaceElevated),
+                    if (!frame.fullscreen) Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .background(palette.SurfaceElevated)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onDoubleTap = { frame.toggleZoom() })
+                            },
                     ) {
                         WindowDraggableArea(Modifier.fillMaxSize()) { Box(Modifier.fillMaxSize()) }
                         Row(
@@ -320,14 +342,8 @@ fun main() {
                                 Color(0xFF28C840),
                                 "Full screen",
                                 "＋",
-                            ) {
-                                windowState.placement =
-                                    if (windowState.placement == WindowPlacement.Maximized) {
-                                        WindowPlacement.Floating
-                                    } else {
-                                        WindowPlacement.Maximized
-                                    }
-                            }
+                                onClick = { frame.toggleFullscreen() },
+                            )
                         }
                         Text(
                             "YMusic",

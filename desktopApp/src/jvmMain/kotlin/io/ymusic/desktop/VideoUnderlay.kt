@@ -12,7 +12,7 @@ import javax.swing.SwingUtilities
  * Frame, so the canvas cannot restack over chrome. Never toFront, never key.
  */
 internal class VideoUnderlay {
-    val frame: Frame = Frame("YMusic video").apply {
+    val frame: Frame = Frame("YMusic video").apply { // title matched in mse_vt_present fullscreen restack
         isUndecorated = true
         isResizable = false
         focusableWindowState = false
