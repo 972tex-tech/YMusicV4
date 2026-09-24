@@ -301,11 +301,12 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
                     .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                     .fillMaxWidth()
                     .height(96.dp)
-                    .background(DesignColors.Placeholder, RoundedCornerShape(12.dp)),
+                    .clip(RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Image, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
-                ThumbImage(banner, 480.dp, RoundedCornerShape(12.dp))
+                ThumbImage(banner, 480.dp, RoundedCornerShape(12.dp)) {
+                    ThumbPlaceholder(Icons.Outlined.Image, 26.dp)
+                }
             }
         }
         Row(
@@ -314,11 +315,12 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(64.dp).background(DesignColors.PlaceholderDim, CircleShape),
+                Modifier.size(64.dp).clip(CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Person, null, Modifier.size(26.dp), tint = DesignColors.PlaceholderIcon)
-                ThumbImage(header?.thumbs ?: fallback.thumbs, 64.dp, CircleShape)
+                ThumbImage(header?.thumbs ?: fallback.thumbs, 64.dp, CircleShape) {
+                    ThumbPlaceholder(Icons.Outlined.Person, 26.dp, DesignColors.PlaceholderDim)
+                }
             }
             Column(Modifier.weight(1f)) {
                 Text(

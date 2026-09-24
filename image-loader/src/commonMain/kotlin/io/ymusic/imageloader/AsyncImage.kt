@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -52,7 +53,7 @@ fun AsyncImage(
     // The size the showing bitmap was decoded for — the growth-threshold baseline.
     var loadedFor by remember(key) { mutableStateOf(IntSize.Zero) }
 
-    Box(modifier.onSizeChanged { sizePx = it }) {
+    Box(modifier.onSizeChanged { sizePx = it }, contentAlignment = Alignment.Center) {
         // Synchronous memory-cache peek: an already-cached image draws on its FIRST frame — routing
         // the hit through the effect would flash the placeholder for a frame (list scroll jitter).
         val bitmap = loaded

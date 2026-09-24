@@ -1,11 +1,18 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -21,21 +28,51 @@ internal fun List<YtThumb>.thumbUrlFor(targetPx: Int): String? =
     firstOrNull { (it.w ?: 0) >= targetPx }?.url ?: lastOrNull()?.url
 
 /**
- * The image layer of a thumbnail box: fills the parent, clipped to [shape], drawn over the
- * placeholder content (which keeps showing until the bitmap lands or when loading fails).
+ * Gray fill + icon shown only while a thumb is loading or failed. Must be passed as
+ * [ArtImage]/[ThumbImage] `placeholder` so a loaded bitmap is not drawn over it (GPU overdraw).
+ */
+@Composable
+internal fun BoxScope.ThumbPlaceholder(
+    icon: ImageVector,
+    iconSize: Dp,
+    color: Color = DesignColors.Placeholder,
+) {
+    Box(Modifier.matchParentSize().background(color))
+    Icon(icon, null, Modifier.size(iconSize), tint = DesignColors.PlaceholderIcon)
+}
+
+/**
+ * The image layer of a thumbnail box: fills the parent, clipped to [shape].
+ * [placeholder] draws only until the bitmap lands (or on failure).
  * [targetDp] picks the variant to download; the decode sizes itself to the measured pixels.
  */
 @Composable
-internal fun BoxScope.ThumbImage(thumbs: List<YtThumb>, targetDp: Dp, shape: Shape) {
+internal fun BoxScope.ThumbImage(
+    thumbs: List<YtThumb>,
+    targetDp: Dp,
+    shape: Shape,
+    placeholder: (@Composable BoxScope.() -> Unit)? = null,
+) {
     val targetPx = with(LocalDensity.current) { targetDp.roundToPx() }
-    ArtImage(thumbs.thumbUrlFor(targetPx), shape)
+    ArtImage(thumbs.thumbUrlFor(targetPx), shape, placeholder)
 }
 
 /** One url straight into the thumbnail box — the single-variant sibling of [ThumbImage]. */
 @Composable
-internal fun BoxScope.ArtImage(url: String?, shape: Shape) {
-    if (url == null) return
-    val loader = LocalImageLoader.current ?: return
+internal fun BoxScope.ArtImage(
+    url: String?,
+    shape: Shape,
+    placeholder: (@Composable BoxScope.() -> Unit)? = null,
+) {
+    val loader = LocalImageLoader.current
+    if (url == null || loader == null) {
+        if (placeholder != null) {
+            Box(Modifier.matchParentSize().clip(shape), contentAlignment = Alignment.Center) {
+                placeholder()
+            }
+        }
+        return
+    }
     AsyncImage(
         loader,
         url,
@@ -45,5 +82,6 @@ internal fun BoxScope.ArtImage(url: String?, shape: Shape) {
         // ytimg URLs rotate their signature query params (?sqp=…&rs=…) across sessions; the path
         // alone identifies the image, so keying on it keeps the caches warm across rotations.
         cacheKey = url.substringBefore('?'),
+        placeholder = placeholder,
     )
 }

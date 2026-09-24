@@ -66,7 +66,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -194,29 +193,28 @@ fun MiniPlayer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.SurfaceDim))
                 .clickable(onClick = onExpand),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 Modifier
                     .height(tileH)
-                    .aspectRatio(16f / 9f)
-                    .then(
-                        if (surface != null && desktopLayoutHole) Modifier
-                        else Modifier.background(DesignColors.SurfaceDim),
-                    ),
+                    .aspectRatio(16f / 9f),
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
                     surface.invoke(Modifier.fillMaxSize())
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
-                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
+                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp)) {
+                        ThumbPlaceholder(Icons.Outlined.Image, 18.dp, DesignColors.SurfaceDim)
+                    }
                 }
             }
             Column(
-                Modifier.weight(1f).background(DesignColors.SurfaceDim).onSizeChanged { colH = it.height },
+                Modifier.weight(1f)
+                    .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.SurfaceDim))
+                    .onSizeChanged { colH = it.height },
             ) {
                 LinearProgressIndicator(
                     progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
@@ -271,7 +269,12 @@ fun MiniPlayer(
  * edge, with the auto-hiding overlay.
  */
 @Composable
-fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose: () -> Unit) {
+fun NowPlayingScreen(
+    graph: AppGraph,
+    coordinator: PlaybackCoordinator,
+    onClose: () -> Unit,
+    onPeek: (Float) -> Unit = {},
+) {
     var fullscreen by remember { mutableStateOf(false) }
     val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
     val armed = VideoOverlayNative.armed
@@ -296,12 +299,14 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             }
         }
     }
-    SwipeDownDismissBox(onDismiss = onClose, modifier = Modifier.statusBarsPadding().fillMaxSize()) {
-        if (desktopLayoutHole) {
-            Box(Modifier.fillMaxSize(), content = { shell() })
-        } else {
-            Surface(Modifier.fillMaxSize(), color = DesignColors.Surface, content = { shell() })
-        }
+    SwipeDownDismissBox(
+        onDismiss = onClose,
+        modifier = Modifier.statusBarsPadding().fillMaxSize(),
+        onPeek = onPeek,
+    ) {
+        // No full-screen fill: the video hole is opaque (TextureView) and the chrome paints
+        // Surface itself. A wrapping Surface under the picture is 1× overdraw on every pixel.
+        Box(Modifier.fillMaxSize(), content = { shell() })
     }
 }
 
@@ -316,7 +321,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
 
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
-    Box(Modifier.fillMaxSize().then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black))) {
+    Box(Modifier.fillMaxSize()) {
         graph.playerSurface(Modifier.fillMaxSize())
         Box(
             Modifier.fillMaxSize()
@@ -373,10 +378,7 @@ private fun PortraitNowPlaying(
 
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
-        ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
             graph.playerSurface(Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
@@ -408,9 +410,7 @@ private fun PortraitNowPlaying(
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).then(
-                if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier,
-            ),
+            modifier = Modifier.weight(1f).background(DesignColors.Surface),
         ) {
             item {
                 Column(Modifier.fillMaxWidth()) {
@@ -452,7 +452,12 @@ private fun PortraitNowPlaying(
                 val headerColor by animateColorAsState(
                     if (pinned) DesignColors.SurfaceElevated else DesignColors.Surface,
                 )
-                Column(Modifier.fillMaxWidth().shadow(headerShadow).background(headerColor)) {
+                Column(
+                    Modifier.fillMaxWidth().then(
+                        if (pinned) Modifier.shadow(headerShadow).background(headerColor)
+                        else Modifier,
+                    ),
+                ) {
                     QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
                     HorizontalDivider(color = DesignColors.Divider)
                 }
@@ -482,10 +487,7 @@ private fun LandscapeNowPlaying(
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
 
     Row(Modifier.fillMaxSize()) {
-        Box(
-            Modifier.weight(1f).fillMaxHeight()
-                .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
-        ) {
+        Box(Modifier.weight(1f).fillMaxHeight()) {
             graph.playerSurface(Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxSize()
@@ -501,7 +503,7 @@ private fun LandscapeNowPlaying(
         Column(
             Modifier.width(320.dp).fillMaxHeight()
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier),
+                .background(DesignColors.Surface),
         ) {
             PlayerTopBar(coordinator, sleepMs, onClose)
             status.error?.let {
@@ -722,7 +724,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
         Modifier.fillMaxWidth()
-            .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier)
+            .background(DesignColors.Surface)
             .padding(horizontal = 11.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1147,11 +1149,12 @@ private fun QueueRow(
             tint = DesignColors.Outline,
         )
         Box(
-            Modifier.size(48.dp).background(DesignColors.Placeholder, RoundedCornerShape(6.dp)),
+            Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Outlined.Image, null, Modifier.size(18.dp), tint = DesignColors.PlaceholderIcon)
-            ArtImage(item.displayThumbnailUrl, RoundedCornerShape(6.dp))
+            ArtImage(item.displayThumbnailUrl, RoundedCornerShape(6.dp)) {
+                ThumbPlaceholder(Icons.Outlined.Image, 18.dp)
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(

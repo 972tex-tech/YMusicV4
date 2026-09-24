@@ -10,6 +10,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
@@ -25,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
@@ -163,6 +165,8 @@ class MainActivity : ComponentActivity() {
         // icon color must not follow the SYSTEM dark-mode setting — that yields white-on-white.
         val light = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = light, navigationBarStyle = light)
+        // Compose paints its own surface; a window background under it is 1× overdraw on every pixel.
+        window.setBackgroundDrawable(null)
         // Diagnosis-only instrumentation: the watchdog probes the main looper/choreographer/frame
         // clock every 3s and the composition probe forces a frame request every 500ms — never in a
         // release build. BuildConfig.DEBUG is a compile-time constant, so R8 strips these branches
@@ -278,5 +282,5 @@ private fun NotificationRequiredDialog(onAllow: () -> Unit) {
 
 @androidx.compose.runtime.Composable
 private fun Booting(content: @androidx.compose.runtime.Composable () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+    Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { content() }
 }

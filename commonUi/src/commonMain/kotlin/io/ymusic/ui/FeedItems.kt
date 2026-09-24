@@ -157,11 +157,12 @@ fun SectionHeader(
         )
         if (header != null && header.iconThumbs.isNotEmpty()) {
             Box(
-                Modifier.size(26.dp).background(DesignColors.PlaceholderDim, CircleShape),
+                Modifier.size(26.dp).clip(CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.MusicNote, null, Modifier.size(14.dp), tint = DesignColors.PlaceholderIcon)
-                ThumbImage(header.iconThumbs, 26.dp, CircleShape)
+                ThumbImage(header.iconThumbs, 26.dp, CircleShape) {
+                    ThumbPlaceholder(Icons.Outlined.MusicNote, 14.dp, DesignColors.PlaceholderDim)
+                }
             }
         }
         Text(
@@ -305,11 +306,12 @@ fun FeedGridCard(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(DesignColors.Placeholder, RoundedCornerShape(5.dp)),
+                    .clip(RoundedCornerShape(5.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Image, null, Modifier.size(22.dp), tint = DesignColors.PlaceholderIcon)
-                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(5.dp))
+                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(5.dp)) {
+                    ThumbPlaceholder(Icons.Outlined.Image, 22.dp)
+                }
                 Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
             }
         }
@@ -467,11 +469,12 @@ internal fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
 @Composable
 private fun CircleThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
     Box(
-        Modifier.size(size).background(DesignColors.Placeholder, CircleShape),
+        Modifier.size(size).clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Outlined.Person, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
-        ThumbImage(item.thumbs, size, CircleShape)
+        ThumbImage(item.thumbs, size, CircleShape) {
+            ThumbPlaceholder(Icons.Outlined.Person, 28.dp)
+        }
     }
 }
 
@@ -485,11 +488,12 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
         Modifier
             .size(width = width, height = height)
             .then(if (stacked) Modifier.drawBehind { drawPlaylistStack(stackFar, stackNear) } else Modifier)
-            .background(DesignColors.Placeholder, RoundedCornerShape(6.dp)),
+            .clip(RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Outlined.Image, null, Modifier.size(if (height < 80.dp) 21.dp else 30.dp), tint = DesignColors.PlaceholderIcon)
-        ThumbImage(item.thumbs, width, RoundedCornerShape(6.dp))
+        ThumbImage(item.thumbs, width, RoundedCornerShape(6.dp)) {
+            ThumbPlaceholder(Icons.Outlined.Image, if (height < 80.dp) 21.dp else 30.dp)
+        }
         Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
     }
 }

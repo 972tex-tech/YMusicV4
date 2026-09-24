@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -693,6 +694,8 @@ internal fun SwipeDownDismissBox(
     onPull: (Boolean) -> Unit = {},
     /** Mini-player overlay keeps a thin top shadow at rest; Now Playing only while pulling. */
     restingShadow: Boolean = false,
+    /** Visual translation in px; parent uses this to draw the shell only while the sheet is peeking. */
+    onPeek: (Float) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val peek = remember { Animatable(0f) }
@@ -705,6 +708,7 @@ internal fun SwipeDownDismissBox(
     val defaultCommit = with(density) { DismissDragDistance.toPx() }
     drag.commitPx = defaultCommit
     val peekY = peek.value
+    SideEffect { onPeek(peekY) }
     val fullPeek = (
         if (drag.maxMovePx > 0f) drag.maxMovePx
         else weightedRubberPeek(drag.commitPx, drag.stiffnessPx)

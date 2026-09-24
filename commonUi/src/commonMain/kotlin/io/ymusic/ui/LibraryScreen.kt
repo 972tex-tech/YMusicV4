@@ -1555,11 +1555,12 @@ private fun LibraryGridCard(
                 Modifier
                     .fillMaxSize()
                     .alpha(contentAlpha)
-                    .background(DesignColors.Placeholder, RoundedCornerShape(10.dp)),
+                    .clip(RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, null, Modifier.size(28.dp), tint = DesignColors.PlaceholderIcon)
-                ArtImage(artUrl, RoundedCornerShape(10.dp))
+                ArtImage(artUrl, RoundedCornerShape(10.dp)) {
+                    ThumbPlaceholder(icon, 28.dp)
+                }
             }
             if (marked) {
                 Icon(
@@ -1623,11 +1624,12 @@ internal fun LibraryThumb(icon: ImageVector, badge: String?, artUrl: String? = n
     Box(
         modifier = Modifier
             .size(56.dp)
-            .background(DesignColors.Placeholder, shape),
+            .clip(shape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, Modifier.size(21.dp), tint = DesignColors.PlaceholderIcon)
-        ArtImage(artUrl, shape)
+        ArtImage(artUrl, shape) {
+            ThumbPlaceholder(icon, 21.dp)
+        }
         badge?.let {
             Text(
                 it,
