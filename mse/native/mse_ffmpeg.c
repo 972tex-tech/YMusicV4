@@ -1209,13 +1209,14 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             return 0;
         }
-        if (p < clock - late) {
+        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
             vlog_state(a, clock, "hold-late", d);
             mc_hold_drop(a, 0);
         } else {
             mc_hold_drop(a, 1);
             *pts = p;
             a->v_sent = p;
+            a->show_late = 0;
             *w = a->mc_w;
             *h = a->mc_h;
             if (vdbg_ok())
@@ -1237,7 +1238,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                     vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 return 0;
             }
-            if (p < clock - late) {
+            if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
                 if (vdbg_ok() || d < -0.25)
                     vlog_state(a, clock, "recv-late", d);
                 AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
@@ -1246,6 +1247,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 1);
             *pts = p;
             a->v_sent = p;
+            a->show_late = 0;
             *w = a->mc_w;
             *h = a->mc_h;
             if (vdbg_ok())
@@ -1317,7 +1319,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
 
 static int mc_try_open(MseAv *a)
 {
-    if (!a->mc_win || !a->vpar || a->mc_fail)
+    if (a->v_rest || !a->mc_win || !a->vpar || a->mc_fail)
         return -1;
     if (a->mc)
         return 0;
@@ -2521,7 +2523,7 @@ void mse_av_change_type(MseAv *a, int audio)
     av_unlock(a, audio);
 }
 
-void mse_av_rest_video(MseAv *a, int on)
+void mse_av_rest_video(MseAv *a, int on, double clock)
 {
     if (!a)
         return;
@@ -2535,18 +2537,22 @@ void mse_av_rest_video(MseAv *a, int on)
     if (on)
         close_video_decoder(a);
     else {
+        double t;
         cfb_drop_fake(&a->vf);
-        /* Decoder was closed. Resume from the last key at/before the
-           playhead, not the P-frame rd was on (log28: send-err key=0
-           Invalid OBU, decode-dead, black while leftover still appends). */
-        double t = a->v_sent >= 0 ? a->v_sent : 0;
+        /* v_sent froze at rest-on. Resync to the playhead. */
+        t = clock > 0 ? clock : (a->v_sent >= 0 ? a->v_sent : 0);
         if (t <= 0 && a->vf.rd < a->vf.n)
             t = a->vf.f[a->vf.rd].pts;
         vf_resync_key(a, t);
+        a->show_late = 1;
+#ifdef __ANDROID__
+        mc_close(a);
+        a->mc_fail = 0;
+#endif
         if (a->vf.rd < a->vf.n)
             a->v_sent = a->vf.f[a->vf.rd].pts;
     }
-    vlog("rest-video %d vf=%zu", on, a->vf.n);
+    vlog("rest-video %d vf=%zu clock=%.3f", on, a->vf.n, clock);
     pthread_mutex_unlock(&a->mu);
 }
 

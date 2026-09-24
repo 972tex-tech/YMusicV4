@@ -1438,9 +1438,13 @@ static void show_black(MseHost *h)
 
 void mse_host_rest_video(MseHost *h, int on)
 {
+    double clock = 0;
     if (!h)
         return;
-    mse_av_rest_video(h->av, on);
+    pthread_mutex_lock(&h->mu);
+    clock = clock_locked(h);
+    pthread_mutex_unlock(&h->mu);
+    mse_av_rest_video(h->av, on, clock);
     pthread_mutex_lock(&h->mu);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);

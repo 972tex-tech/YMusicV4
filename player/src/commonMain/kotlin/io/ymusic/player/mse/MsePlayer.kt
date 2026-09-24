@@ -97,6 +97,7 @@ class MsePlayer internal constructor(
     private var seekJob: Job? = null
     private var pendingVideoSurface: MseVideoSurface? = null
     private var hasPendingVideoSurface = false
+    private var lastVideoSize: VideoSize? = null
     private var viewportW: Int = 640
     private var viewportH: Int = 360
 
@@ -140,7 +141,7 @@ class MsePlayer internal constructor(
                 state = PlaybackState.Uninitialized(isInitializing = true),
                 volume = config.volume,
                 speed = config.speed,
-                videoSize = if (config.audioOnly) null else it.videoSize,
+                videoSize = if (config.audioOnly) null else (it.videoSize ?: lastVideoSize),
             )
         }
         _progress.value = Progress(positionMs = startPositionMs)
@@ -222,7 +223,7 @@ class MsePlayer internal constructor(
             it.copy(
                 volume = config.volume.coerceIn(0f, 1f),
                 speed = config.speed,
-                videoSize = if (config.audioOnly) null else it.videoSize,
+                videoSize = if (config.audioOnly) null else (it.videoSize ?: lastVideoSize),
             )
         }
         scope.launch {
@@ -424,7 +425,10 @@ class MsePlayer internal constructor(
         val w = (st["videoWidth"] as? JsonPrimitive)?.intOrNull ?: 0
         val h = (st["videoHeight"] as? JsonPrimitive)?.intOrNull ?: 0
         val size = if (w > 0 && h > 0) VideoSize(w, h) else null
-        _status.update { it.copy(videoSize = size) }
+        if (size != null) lastVideoSize = size
+        _status.update {
+            it.copy(videoSize = size ?: if (applied.audioOnly) null else lastVideoSize)
+        }
     }
 
     private fun applyCatalog(st: JsonObject) {
