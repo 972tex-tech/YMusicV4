@@ -497,7 +497,7 @@ private fun LandscapeNowPlaying(
             graph.playerSurface(Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars)),
+                    .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
                 AutoHidingOverlay {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
