@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -59,6 +58,8 @@ class MainActivity : ComponentActivity() {
      *  composition once the graph is up — survives arriving before the app finishes booting. */
     private val pendingSection = mutableStateOf<AppSection?>(null)
     private var appGraph: AppGraph? = null
+    /** PiP just ended; [onResume] means expand-to-full, [onStop] means the user closed PiP. */
+    private var pipExitPending = false
 
     // Notifications are MANDATORY: playback lives in a foreground service whose notification is
     // its lifeline. While disabled, a non-dismissible dialog sits over the app with granting as
@@ -240,7 +241,13 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Covers 13+ permission AND the pre-13 app-level notification toggle.
         notificationsEnabled.value = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        appGraph?.pip?.onEnterForeground()
+        val g = appGraph
+        if (pipExitPending) {
+            pipExitPending = false
+            g?.pip?.onPipStopped(appInForeground = true)
+        } else {
+            g?.pip?.onEnterForeground()
+        }
     }
 
     override fun onUserLeaveHint() {
@@ -255,17 +262,24 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         val g = appGraph ?: return
         val inPip = Build.VERSION.SDK_INT >= 26 && isInPictureInPictureMode
-        if (!inPip) g.pip.onLeaveWithoutPip()
+        if (inPip) return
+        if (pipExitPending) {
+            pipExitPending = false
+            g.pip.onPipStopped(appInForeground = false)
+        } else {
+            g.pip.onLeaveWithoutPip()
+        }
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         val g = appGraph ?: return
         if (isInPictureInPictureMode) {
+            pipExitPending = false
             g.pip.onPipStarted()
         } else {
-            val foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-            g.pip.onPipStopped(appInForeground = foreground)
+            // Runs before onResume on expand. onResume vs onStop decides restore vs pause+AudioOnly.
+            pipExitPending = true
         }
     }
 
