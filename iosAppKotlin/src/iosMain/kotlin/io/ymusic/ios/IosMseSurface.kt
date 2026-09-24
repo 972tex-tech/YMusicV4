@@ -1,10 +1,12 @@
 package io.ymusic.ios
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
@@ -41,15 +43,25 @@ internal class IosMseHole {
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier = Modifier) {
-    Box(modifier.onSizeChanged { player.setViewport(it.width.coerceAtLeast(1), it.height.coerceAtLeast(1)) }) {
+    Box(
+        modifier
+            .background(Color.Black)
+            .onSizeChanged { player.setViewport(it.width.coerceAtLeast(1), it.height.coerceAtLeast(1)) },
+    ) {
         UIKitView(
             factory = {
                 UIView().also { host ->
+                    host.backgroundColor = UIColor.blackColor
+                    host.opaque = true
                     adopt(hole.view, host)
                 }
             },
             modifier = Modifier.fillMaxSize(),
-            update = { host -> adopt(hole.view, host) },
+            update = { host ->
+                host.backgroundColor = UIColor.blackColor
+                host.opaque = true
+                adopt(hole.view, host)
+            },
             onRelease = { host ->
                 if (hole.view.superview === host) hole.view.removeFromSuperview()
             },
@@ -85,6 +97,7 @@ internal class MseVtView : UIView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0)) {
         opaque = true
         contentMode = UIViewContentMode.UIViewContentModeScaleToFill
         vtLayer.videoGravity = AVLayerVideoGravityResize
+        vtLayer.backgroundColor = UIColor.blackColor.CGColor
         layer.addSublayer(vtLayer)
         setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
     }

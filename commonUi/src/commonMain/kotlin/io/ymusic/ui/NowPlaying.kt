@@ -377,7 +377,10 @@ private fun PortraitNowPlaying(
 
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
+        ) {
             graph.playerSurface(Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
