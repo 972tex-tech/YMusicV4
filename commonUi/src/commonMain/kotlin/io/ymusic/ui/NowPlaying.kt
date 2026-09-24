@@ -431,6 +431,7 @@ private fun PortraitNowPlaying(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).background(DesignColors.Surface),
+            overscrollEffect = null,
         ) {
             item {
                 Column(Modifier.fillMaxWidth()) {
