@@ -3,7 +3,7 @@ package io.ymusic.ios
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
-import platform.Foundation.NSLog
+import platform.posix.puts
 
 internal class IosLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs) {
     constructor() : this(emptyList())
@@ -11,8 +11,7 @@ internal class IosLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(
     override fun fork(crumbs: List<Crumb>): CrumbLogger = IosLogger(crumbs)
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
-        // NSLog lands in the simulator unified log (process iosApp). println does not.
-        val line = "[ymusic][${level.name}] $path $message${error?.let { ": $it" }.orEmpty()}"
-        NSLog("%@", line)
+        // C string: NSLog("%@", kotlinString) SEGV — Kotlin String is not an NSObject.
+        puts("[ymusic][${level.name}] $path $message${error?.let { ": $it" }.orEmpty()}")
     }
 }

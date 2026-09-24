@@ -2,6 +2,7 @@
 #import "mse_vt_present.h"
 #import "mse_vt_blit.h"
 #import "mse_ffmpeg.h"
+#import <TargetConditionals.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreImage/CoreImage.h>
@@ -169,11 +170,14 @@ void mse_vt_detach(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+#if TARGET_OS_OSX
+    /* JAWT overlay retains the layer; iOS Kotlin owns it and must not CFRelease. */
     if (p == mse_vt_jawt_layer) {
         mse_vt_jawt_layer = NULL;
         mse_vt_jawt_unhost();
         CFRelease(p);
     }
+#endif
 }
 
 int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
