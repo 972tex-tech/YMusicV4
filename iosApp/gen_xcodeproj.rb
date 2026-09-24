@@ -31,7 +31,15 @@ target.add_resources([
 gradle_phase = target.new_shell_script_build_phase("Build & embed YMusicApp.framework (Compose/Kotlin)")
 gradle_phase.shell_script = <<~SH
   set -e
-  export JAVA_HOME="${JAVA_HOME:-$HOME/.sdkman/candidates/java/current}"
+  if [ ! -x "${JAVA_HOME:-}/bin/java" ]; then
+    if [ -x /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin/java ]; then
+      export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+    elif [ -x "$HOME/.sdkman/candidates/java/current/bin/java" ]; then
+      export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
+    else
+      export JAVA_HOME="$(/usr/libexec/java_home 2>/dev/null)"
+    fi
+  fi
   mkdir -p "$SRCROOT/Resources"
   cp -f "$SRCROOT/../webview-js/dist/webview_ymusic.js" "$SRCROOT/Resources/webview_ymusic.js"
   cd "$SRCROOT/.."
