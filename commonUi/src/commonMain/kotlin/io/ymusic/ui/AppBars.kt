@@ -693,7 +693,6 @@ internal fun SwipeDownDismissBox(
     onPull: (Boolean) -> Unit = {},
     /** Mini-player overlay keeps a thin top shadow at rest; Now Playing only while pulling. */
     restingShadow: Boolean = false,
-    gesturesEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val peek = remember { Animatable(0f) }
@@ -729,8 +728,7 @@ internal fun SwipeDownDismissBox(
                 }
             }
             .nestedScroll(drag.connection)
-            .pointerInput(gesturesEnabled) {
-                if (!gesturesEnabled) return@pointerInput
+            .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onVerticalDrag = { change, amount ->
                         if (amount > 0f || drag.raw > 0f) {

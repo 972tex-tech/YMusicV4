@@ -760,7 +760,6 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                     coordinator,
                                     surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
                                     onExpand = { nowPlayingOpen = true },
-                                    visible = !nowPlayingOpen,
                                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
                                 )
                             }

@@ -172,7 +172,6 @@ fun MiniPlayer(
     surface: (@Composable (Modifier) -> Unit)? = null,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
-    visible: Boolean = true,
 ) {
     val status by coordinator.player.status.collectAsState()
     val progress by coordinator.player.progress.collectAsState()
@@ -188,16 +187,15 @@ fun MiniPlayer(
             coordinator.player.stop()
             coordinator.player.clearQueue()
         },
-        modifier = modifier.fillMaxWidth().graphicsLayer { alpha = if (visible) 1f else 0f },
+        modifier = modifier.fillMaxWidth(),
         commitFractionOfHeight = 1f / 3f,
         restingShadow = true,
-        gesturesEnabled = visible,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.SurfaceDim))
-                .clickable(enabled = visible, onClick = onExpand),
+                .clickable(onClick = onExpand),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
