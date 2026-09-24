@@ -43,11 +43,19 @@ gradle_phase.shell_script = <<~SH
   mkdir -p "$SRCROOT/Resources"
   cp -f "$SRCROOT/../webview-js/dist/webview_ymusic.js" "$SRCROOT/Resources/webview_ymusic.js"
   cd "$SRCROOT/.."
+  # Gradle daemon started from SSH cannot use the login keychain (errSecInternalComponent).
+  ./gradlew --stop >/dev/null 2>&1 || true
+  # Let this shell (Xcode's child) codesign; Gradle's codesign hits errSecInternalComponent.
+  SIGN_ID="${EXPANDED_CODE_SIGN_IDENTITY:-}"
+  unset EXPANDED_CODE_SIGN_IDENTITY
   # -PkmpTargets=all so iosArm64 / iosSimulatorArm64 are configured even on this Intel host.
   # -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode
   # (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.
-  # Compose has no iosX64: the Intel simulator (x86_64) cannot run this app.
-  ./gradlew :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true
+  ./gradlew --no-daemon :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true
+  FW="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/YMusicApp.framework"
+  if [ -n "$SIGN_ID" ] && [ "$SIGN_ID" != "-" ] && [ -d "$FW" ]; then
+    /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$FW"
+  fi
 SH
 target.build_phases.unshift(target.build_phases.delete(gradle_phase))
 
