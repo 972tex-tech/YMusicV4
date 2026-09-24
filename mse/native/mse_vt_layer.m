@@ -20,6 +20,9 @@
 
 static CVPixelBufferRef mse_still_pb;
 static MseVtBlit mse_still_blit;
+/* Set when vt-show skipped because the app was backgrounded; cleared on a
+   successful present. Last-still blit can still succeed while the layer is frozen. */
+static int vt_missed_bg;
 
 static void mse_keep_still(CVPixelBufferRef pb)
 {
@@ -169,40 +172,14 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
 int mse_vt_picture_ok(void *p)
 {
     AVSampleBufferDisplayLayer *layer;
-    uint8_t *tmp;
-    int n, tw, th, mean;
-    const char *how = "none";
-    CVPixelBufferRef pb;
     if (p) {
         layer = (__bridge AVSampleBufferDisplayLayer *)p;
         if (layer.status == AVQueuedSampleBufferRenderingStatusFailed)
             return 0;
     }
-    if (!mse_still_pb)
-        return 0;
-    pb = mse_still_pb;
-    CFRetain(pb);
-    tw = (int)CVPixelBufferGetWidth(pb);
-    th = (int)CVPixelBufferGetHeight(pb);
-    if (tw <= 0 || th <= 0 || (uint64_t)tw * (uint64_t)th > (uint64_t)(INT_MAX / 4)) {
-        CFRelease(pb);
-        return 0;
-    }
-    n = tw * th * 4;
-    tmp = (uint8_t *)malloc((size_t)n);
-    if (!tmp) {
-        CFRelease(pb);
-        return 0;
-    }
-    if (mse_copy_try(pb, tmp, tw, th, &how) != 0) {
-        free(tmp);
-        CFRelease(pb);
-        return 0;
-    }
-    mean = mse_rgb_mean(tmp, n);
-    free(tmp);
-    CFRelease(pb);
-    return mean >= 8;
+    /* A CPU blit of the last still can succeed while the display is frozen.
+       Live means we presented after the last background skip. */
+    return !vt_missed_bg;
 }
 
 void mse_vt_detach(void *p)
@@ -235,8 +212,10 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
         return -1;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
 #if TARGET_OS_IPHONE
-    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground)
+    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) {
+        vt_missed_bg = 1;
         return -1;
+    }
 #endif
     if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) {
         NSError *err = layer.error;
@@ -268,6 +247,7 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     }
     CFRelease(sbuf);
     mse_keep_still(pb);
+    vt_missed_bg = 0;
 #if TARGET_OS_OSX
     mse_vt_reveal_overlay();
 #endif
@@ -371,5 +351,6 @@ void mse_vt_flush(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
+    vt_missed_bg = 0;
 }
 #endif
