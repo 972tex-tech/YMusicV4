@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 
 /** True where the primary pointer is a finger (Android/iOS). Mouse-driven platforms disable
  *  touch idioms like edge-swipe — Compose's mouse drag slop is ~0.1dp, so a whole-screen drag
@@ -23,3 +24,7 @@ internal expect fun SyncSystemBars(dark: Boolean)
 /** Fullscreen video: hide status/nav bars; a swipe at the bar edge shows them (system). */
 @Composable
 internal expect fun SyncImmersiveSystemBars(immersive: Boolean)
+
+/** Status-bar height even while bars are hidden (fullscreen overlay title). No-op on desktop. */
+@Composable
+internal expect fun Modifier.keepBelowStatusBar(): Modifier

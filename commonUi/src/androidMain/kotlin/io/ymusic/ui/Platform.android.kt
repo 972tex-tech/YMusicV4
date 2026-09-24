@@ -3,8 +3,13 @@ package io.ymusic.ui
 import android.app.Activity
 import android.content.ContextWrapper
 import android.os.Build
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -54,6 +59,11 @@ internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {
         }
     }
 }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal actual fun Modifier.keepBelowStatusBar(): Modifier =
+    windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
 
 private fun android.view.View.activityWindow(): android.view.Window? {
     var context = context

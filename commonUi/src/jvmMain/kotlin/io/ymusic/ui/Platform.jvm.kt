@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 
 internal actual val platformUsesTouch: Boolean = false
 
@@ -18,3 +19,6 @@ internal actual fun SyncSystemBars(dark: Boolean) {
 
 @Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) = Unit
+
+@Composable
+internal actual fun Modifier.keepBelowStatusBar(): Modifier = this
