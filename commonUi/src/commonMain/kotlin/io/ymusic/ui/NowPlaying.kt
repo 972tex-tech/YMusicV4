@@ -191,6 +191,7 @@ fun MiniPlayer(
         modifier = modifier.fillMaxWidth(),
         commitFractionOfHeight = 1f / 3f,
         onPull = { pulling = it },
+        restingShadow = true,
     ) {
         Row(
             modifier = Modifier

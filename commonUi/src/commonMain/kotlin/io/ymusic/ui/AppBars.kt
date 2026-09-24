@@ -98,7 +98,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -119,7 +118,6 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.roundToInt
 
 /*
  * The ONE app-bar language, every scenario (see the "App bars" catalogue group):
@@ -694,6 +692,8 @@ internal fun SwipeDownDismissBox(
     commitFractionOfHeight: Float? = null,
     /** True while a downward pull is in progress (so a parent clickable does not fire). */
     onPull: (Boolean) -> Unit = {},
+    /** Mini-player overlay keeps a thin top shadow at rest; Now Playing only while pulling. */
+    restingShadow: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val peek = remember { Animatable(0f) }
@@ -711,7 +711,8 @@ internal fun SwipeDownDismissBox(
         else weightedRubberPeek(drag.commitPx, drag.stiffnessPx)
         ).coerceAtLeast(1f)
     val topShadow = (peekY / fullPeek).coerceIn(0f, 1f)
-    val shadowH = with(density) { 28.dp.roundToPx() }
+    val shadowAlpha = if (restingShadow) 0.10f + 0.08f * topShadow else 0.16f * topShadow
+    val showShadow = restingShadow || topShadow > 0.01f
 
     Box(
         modifier
@@ -758,23 +759,23 @@ internal fun SwipeDownDismissBox(
                 }
             },
     ) {
-        Box(Modifier.graphicsLayer { translationY = peekY }) {
-            content()
-        }
-        if (topShadow > 0.01f) {
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .offset { IntOffset(0, (peekY - shadowH).roundToInt()) }
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.28f * topShadow),
+        Box(Modifier.fillMaxWidth().graphicsLayer { translationY = peekY }) {
+            if (showShadow) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset(y = (-8).dp)
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = shadowAlpha),
+                            ),
                         ),
-                    ),
-            )
+                )
+            }
+            content()
         }
     }
 }
