@@ -365,6 +365,17 @@ void mse_vt_flush(void *p)
     mse_vt_drop_hold();
 }
 
+void mse_vt_resume_presents(void *p)
+{
+    AVSampleBufferDisplayLayer *layer;
+    vt_missed_bg = 0;
+    if (!p)
+        return;
+    layer = (__bridge AVSampleBufferDisplayLayer *)p;
+    if (layer.status == AVQueuedSampleBufferRenderingStatusFailed)
+        [layer flush];
+}
+
 void mse_vt_hold_last(void *p)
 {
     AVSampleBufferDisplayLayer *layer;

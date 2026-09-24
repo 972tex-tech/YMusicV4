@@ -3193,7 +3193,9 @@ void mse_av_set_window(MseAv *a, void *window)
 }
 
 #ifdef __APPLE__
-void mse_av_recover_display(MseAv *a)
+static void mse_av_vt_catchup(MseAv *a, double clock);
+
+void mse_av_recover_display(MseAv *a, double clock)
 {
     int i, nq;
     if (!a)
@@ -3203,15 +3205,10 @@ void mse_av_recover_display(MseAv *a)
     for (i = 0; i < a->vt_q_n; i++)
         mse_vt_pb_release(a->vt_q_pb[i]);
     a->vt_q_n = 0;
-    if (a->vt_dec) {
-        mse_vt_dec_close(a->vt_dec);
-        a->vt_dec = NULL;
-    }
-    a->need_rap[0] = 1;
-    a->v_seen_idr = 0;
-    /* Do not flushAndRemoveImage: that is the 2–5s black wait for the next IDR. */
+    mse_vt_resume_presents(a->vt_layer);
+    mse_av_vt_catchup(a, clock);
     os_log(os_log_create("com.ymusic.mse", "v"),
-           "mse-v recover-display drained-q=%d reopen-vt-dec layer=%p", nq, a->vt_layer);
+           "mse-v recover-display drained-q=%d clock=%.3f layer=%p", nq, clock, a->vt_layer);
     pthread_mutex_unlock(&a->mu);
 }
 #endif
@@ -3436,6 +3433,60 @@ static int pull_vt(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, doubl
             return 0;
     }
     return 0;
+}
+
+static void mse_av_vt_catchup(MseAv *a, double clock)
+{
+    int last_rap = -1, n, output;
+    size_t i;
+    void *pb = NULL;
+    int rw = 0, rh = 0;
+    if (!a->vpar || !apple_vt_codec(a->vpar))
+        return;
+    for (i = 0; i < a->vf.n; i++) {
+        if (coded_is_rap(a, &a->vf.f[i]) && a->vf.f[i].pts <= clock + 0.04)
+            last_rap = (int)i;
+    }
+    if (last_rap < 0)
+        return;
+    a->vf.rd = (size_t)last_rap;
+    for (i = (size_t)last_rap; i < a->vf.n; i++)
+        a->vf.f[i].sent = 0;
+    if (a->vt_dec) {
+        mse_vt_dec_close(a->vt_dec);
+        a->vt_dec = NULL;
+    }
+    a->need_rap[0] = 1;
+    a->v_seen_idr = 0;
+    a->show_late = 1;
+    a->vt_dec = open_apple_vt(a);
+    if (!a->vt_dec)
+        return;
+    for (n = 0; n < 256 && a->vf.rd < a->vf.n; n++) {
+        Cf *c = &a->vf.f[a->vf.rd];
+        if (c->dts > clock + 0.04 && c->pts > clock + 0.04)
+            break;
+        output = (a->v_seen_idr || coded_is_rap(a, c)) && c->pts >= clock - 0.12;
+        if (mse_vt_dec_send(a->vt_dec, c->data, (int)c->n, output) < 0) {
+            c->sent = 1;
+            a->vf.rd++;
+            continue;
+        }
+        if (coded_is_rap(a, c)) {
+            a->need_rap[0] = 0;
+            a->v_seen_idr = 1;
+        }
+        c->sent = 1;
+        a->vf.rd++;
+        if (output && mse_vt_dec_recv(a->vt_dec, &pb, &rw, &rh) && pb) {
+            vt_q_put(a, pb, rw, rh, c->pts);
+            if (c->pts >= clock - 0.08)
+                break;
+        }
+    }
+    os_log(os_log_create("com.ymusic.mse", "v"),
+           "mse-v catchup rap=%d clock=%.3f rd=%zu/%zu q=%d",
+           last_rap, clock, a->vf.rd, a->vf.n, a->vt_q_n);
 }
 #endif
 

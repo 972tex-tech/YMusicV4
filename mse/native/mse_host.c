@@ -1469,6 +1469,7 @@ void mse_ios_log(const char *msg)
 void mse_ios_recover_playback(void)
 {
     void *layer;
+    double clock;
     if (!g_ios_host || !g_ios_host->av)
         return;
     layer = g_ios_host->window;
@@ -1477,7 +1478,9 @@ void mse_ios_recover_playback(void)
         return;
     }
     mse_ios_log("mse-v recover-playback picture-dead");
-    mse_vt_hold_last(layer);
-    mse_av_recover_display(g_ios_host->av);
+    pthread_mutex_lock(&g_ios_host->mu);
+    clock = clock_locked(g_ios_host);
+    pthread_mutex_unlock(&g_ios_host->mu);
+    mse_av_recover_display(g_ios_host->av, clock);
 }
 #endif

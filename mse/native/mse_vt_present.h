@@ -36,8 +36,7 @@ int mse_vt_show_sw(void *layer, unsigned cv_pix_fmt,
 void mse_vt_flush(void *layer);
 /* 1 if we have presented since the last background skip (layer not Failed). */
 int mse_vt_picture_ok(void *layer);
-/* Pin the last still above the VT layer so recover can wait for an IDR without a black hole. */
-void mse_vt_hold_last(void *layer);
+void mse_vt_resume_presents(void *layer);
 
 /* H.264 / VP9 VTDecompressionSession. Enable HW, do not Require it
    (simulator / Intel use Apple software VT). NULL if create fails.
