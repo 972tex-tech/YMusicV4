@@ -211,13 +211,20 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
         CFMutableDictionaryRef d = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(atts, 0);
         CFDictionarySetValue(d, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
     }
-    if (@available(macOS 14.0, *))
-        [layer.sampleBufferRenderer enqueueSampleBuffer:sbuf];
-    else
+    if (@available(iOS 17.2, macOS 14.0, *)) {
+        AVSampleBufferVideoRenderer *r = layer.sampleBufferRenderer;
+        if (r)
+            [r enqueueSampleBuffer:sbuf];
+        else
+            [layer enqueueSampleBuffer:sbuf];
+    } else {
         [layer enqueueSampleBuffer:sbuf];
+    }
     CFRelease(sbuf);
     mse_keep_still(pb);
+#if TARGET_OS_OSX
     mse_vt_reveal_overlay();
+#endif
     {
         static int shown;
         if (shown < 3) {
