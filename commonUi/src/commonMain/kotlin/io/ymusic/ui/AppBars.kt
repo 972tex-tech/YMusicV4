@@ -19,9 +19,8 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.horizontalDrag
-import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -730,33 +729,16 @@ internal fun SwipeDownDismissBox(
             }
             .nestedScroll(drag.connection)
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var dy = 0f
-                    val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, down.position)
-                    val past = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
-                        if (over > 0f || drag.raw > 0f) {
-                            dy += over
-                            drag.report(over)
-                            tracker.addPosition(change.uptimeMillis, change.position)
+                detectVerticalDragGestures(
+                    onVerticalDrag = { change, amount ->
+                        if (amount > 0f || drag.raw > 0f) {
                             change.consume()
+                            drag.report(amount)
                         }
-                    }
-                    if (past == null) return@awaitEachGesture
-                    if (dy <= 0f && drag.raw <= 0f) return@awaitEachGesture
-                    try {
-                        verticalDrag(down.id) { change ->
-                            val d = change.positionChange().y
-                            dy += d
-                            drag.report(d)
-                            tracker.addPosition(change.uptimeMillis, change.position)
-                            change.consume()
-                        }
-                    } finally {
-                        if (drag.raw > 0f) drag.settle()
-                    }
-                }
+                    },
+                    onDragEnd = { if (drag.raw > 0f) drag.settle() },
+                    onDragCancel = { if (drag.raw > 0f) drag.settle() },
+                )
             },
     ) {
         Box(Modifier.fillMaxWidth().graphicsLayer { translationY = peekY }) {
