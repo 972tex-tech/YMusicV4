@@ -712,10 +712,12 @@ internal fun SwipeDownDismissBox(
             .onSizeChanged {
                 drag.heightPx = it.height.toFloat()
                 val frac = commitFractionOfHeight
-                drag.commitPx = if (frac != null && it.height > 0) {
-                    it.height.toFloat() * frac
+                if (frac != null && it.height > 0) {
+                    val px = it.height.toFloat() * frac
+                    drag.commitPx = px
+                    drag.stiffnessPx = px
                 } else {
-                    defaultCommit
+                    drag.commitPx = defaultCommit
                 }
             }
             .nestedScroll(drag.connection)
