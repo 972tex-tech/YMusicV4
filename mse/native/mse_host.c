@@ -113,14 +113,16 @@ static double media_dur(MseHost *h)
     return d;
 }
 
-static double clock_locked(MseHost *h)
+/* h->mu held. Do not take MseAv locks: OpenSL's callback needs h->mu, and
+   MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
+static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
 {
-    double t, first = 0, last = 0, hold;
-    int have, out = 0;
+    double t, hold;
+    int out = 0;
 
     hold = h->hold < 0 ? 0 : h->hold;
     t = hold;
-    have = mse_av_span(h->av, &first, &last) && last > first;
+    have = have && last > first;
     /* Seek/hold outside leftover: keep currentTime at the seek so JS/SABR
        fetch that time. Clamping to `last` jumped the playhead to the
        buffered edge, then stalled (iOS) until leftover grew. */
@@ -158,7 +160,7 @@ static double clock_locked(MseHost *h)
             /* 1s behind leftover end is for video readahead. Audio-only
                (no C video) must play to audio last or the clock freezes
                1s early and SABR audio never appends (log2: clock=570.884). */
-            if (!near_eos && last - first >= 1.0 && mse_av_has_video(h->av))
+            if (!near_eos && last - first >= 1.0 && has_video)
                 cap = last - 1.0;
             if (t < first)
                 t = first;
@@ -178,6 +180,18 @@ static double clock_locked(MseHost *h)
     if (h->yt_dur > 0 && t > h->yt_dur && (!have || last <= h->yt_dur + 0.75))
         t = h->yt_dur;
     return t < 0 ? 0 : t;
+}
+
+static double host_clock(MseHost *h)
+{
+    double first = 0, last = 0, t;
+    int have, has_v;
+    have = mse_av_span(h->av, &first, &last);
+    has_v = mse_av_has_video(h->av);
+    pthread_mutex_lock(&h->mu);
+    t = clock_with_span(h, have, first, last, has_v);
+    pthread_mutex_unlock(&h->mu);
+    return t;
 }
 
 #ifdef MSE_DAC
@@ -550,28 +564,39 @@ static void *vid_loop(void *arg)
         pthread_mutex_lock(&h->mu);
         h->vbusy = 0;
         pthread_cond_broadcast(&h->cv);
-        while (!h->released && (!h->playing || h->gate))
+        for (;;) {
+            while (!h->released && (!h->playing || h->gate))
+                pthread_cond_wait(&h->cv, &h->mu);
+            if (h->released) {
+                pthread_mutex_unlock(&h->mu);
+                return NULL;
+            }
+            pthread_mutex_unlock(&h->mu);
+            /* v_rest is on a->mu. Do not nest under h->mu: rest-off's
+               mc_close holds a->mu and OpenSL needs h->mu. */
+            if (!mse_av_video_rested(h->av)) {
+                pthread_mutex_lock(&h->mu);
+                if (h->released) {
+                    pthread_mutex_unlock(&h->mu);
+                    return NULL;
+                }
+                if (!h->playing || h->gate)
+                    continue;
+                break;
+            }
+            pthread_mutex_lock(&h->mu);
+            if (h->released) {
+                pthread_mutex_unlock(&h->mu);
+                return NULL;
+            }
+            if (!h->playing || h->gate)
+                continue;
             pthread_cond_wait(&h->cv, &h->mu);
-        if (h->released) {
-            pthread_mutex_unlock(&h->mu);
-            return NULL;
-        }
-        /* Audio-only: decoder rested but vf may still hold clusters.
-           video_due would stay true and wait_ns=0 spun a core. */
-        while (!h->released && h->playing && !h->gate && mse_av_video_rested(h->av))
-            pthread_cond_wait(&h->cv, &h->mu);
-        if (h->released) {
-            pthread_mutex_unlock(&h->mu);
-            return NULL;
-        }
-        if (!h->playing || h->gate) {
-            pthread_mutex_unlock(&h->mu);
-            continue;
         }
         h->vbusy = 1;
-        clock = clock_locked(h);
-        dur = mse_av_duration(h->av);
         pthread_mutex_unlock(&h->mu);
+        clock = host_clock(h);
+        dur = mse_av_duration(h->av);
 
         if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0) {
 #ifdef __ANDROID__
@@ -642,8 +667,8 @@ static void *dec_loop(void *arg)
             return NULL;
         }
         h->busy = 1;
-        clock = clock_locked(h);
         pthread_mutex_unlock(&h->mu);
+        clock = host_clock(h);
 
 #ifdef MSE_DAC
         /* Own thread: a late 4K GOP must not starve AudioQueue. */
@@ -913,30 +938,25 @@ void mse_host_destroy(MseHost *h)
 
 void mse_host_set_video_surface(MseHost *h, void *window)
 {
+    void *old;
     if (!h)
         return;
     pthread_mutex_lock(&h->mu);
+    old = h->window;
+    h->window = window;
+    pthread_mutex_unlock(&h->mu);
 #ifdef __ANDROID__
-    {
-        void *old = h->window;
-        /* Close MediaCodec on the old window before releasing it. */
-        mse_av_set_window(h->av, window);
-        h->window = window;
-        if (old)
-            ANativeWindow_release((ANativeWindow *)old);
-    }
+    mse_av_set_window(h->av, window);
+    if (old)
+        ANativeWindow_release((ANativeWindow *)old);
 #elif defined(__APPLE__)
-    {
-        void *old = h->window;
-        mse_av_set_window(h->av, window);
-        h->window = window;
-        if (old && old != window)
-            mse_vt_detach(old);
-    }
+    mse_av_set_window(h->av, window);
+    if (old && old != window)
+        mse_vt_detach(old);
 #else
     (void)window;
+    (void)old;
 #endif
-    pthread_mutex_unlock(&h->mu);
 }
 
 #ifdef __ANDROID__
@@ -1015,18 +1035,25 @@ void mse_host_play(MseHost *h)
 #endif
     if (!h)
         return;
-    pthread_mutex_lock(&h->mu);
     dur = mse_av_duration(h->av);
-    clock = clock_locked(h);
+    {
+        double first = 0, last = 0;
+        int have = mse_av_span(h->av, &first, &last);
+        int has_v = mse_av_has_video(h->av);
+        pthread_mutex_lock(&h->mu);
+        clock = clock_with_span(h, have, first, last, has_v);
+    }
     if (h->eos && dur > 0 && clock >= dur - 0.05) {
         h->hold = 0;
         h->seek_base = 0;
-        mse_av_seek(h->av, 0);
         h->eos = 0;
 #ifdef MSE_DAC
         h->samples_played = 0;
         h->aq_started = 0;
 #endif
+        pthread_mutex_unlock(&h->mu);
+        mse_av_seek(h->av, 0);
+        pthread_mutex_lock(&h->mu);
     }
     if (!h->playing) {
         h->origin_ns = now_ns();
@@ -1061,8 +1088,15 @@ void mse_host_pause(MseHost *h)
         return;
     pthread_mutex_lock(&h->mu);
     if (h->playing) {
-        h->hold = clock_locked(h);
-        h->playing = 0;
+        pthread_mutex_unlock(&h->mu);
+        {
+            double t = host_clock(h);
+            pthread_mutex_lock(&h->mu);
+            if (h->playing) {
+                h->hold = t;
+                h->playing = 0;
+            }
+        }
     }
     pthread_cond_broadcast(&h->cv);
 #ifdef __APPLE__
@@ -1085,8 +1119,10 @@ static void seek_common(MseHost *h, double seconds)
     mse_logf("mse seek t=%.3f\n", seconds);
 #endif
     pthread_mutex_lock(&h->mu);
-    prev = h->playing ? clock_locked(h) : (h->hold < 0 ? 0 : h->hold);
+    prev = h->playing ? 0 : (h->hold < 0 ? 0 : h->hold);
     pthread_mutex_unlock(&h->mu);
+    if (h->playing)
+        prev = host_clock(h);
 #ifdef MSE_DAC
     /* Far seek: Pause+Flush leaves the same AudioQueue; in-flight buffers
        are the previous playhead (~0.5s smash after a few jumps). */
@@ -1123,7 +1159,9 @@ static void seek_common(MseHost *h, double seconds)
     h->ring_r = h->ring_w = h->ring_n = 0;
 #endif
     h->vpts = -1;
+    pthread_mutex_unlock(&h->mu);
     mse_av_seek(h->av, seconds);
+    pthread_mutex_lock(&h->mu);
     h->gate = 0;
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
@@ -1209,13 +1247,9 @@ int mse_host_ready_state(MseHost *h)
 
 double mse_host_current_time(MseHost *h)
 {
-    double t;
     if (!h)
         return 0;
-    pthread_mutex_lock(&h->mu);
-    t = clock_locked(h);
-    pthread_mutex_unlock(&h->mu);
-    return t;
+    return host_clock(h);
 }
 
 void mse_host_set_current_time(MseHost *h, double seconds)
@@ -1225,8 +1259,8 @@ void mse_host_set_current_time(MseHost *h, double seconds)
         return;
     if (seconds < 0)
         seconds = 0;
+    now = host_clock(h);
     pthread_mutex_lock(&h->mu);
-    now = clock_locked(h);
     d = seconds - now;
     if (d < 0)
         d = -d;
@@ -1441,9 +1475,7 @@ void mse_host_rest_video(MseHost *h, int on)
     double clock = 0;
     if (!h)
         return;
-    pthread_mutex_lock(&h->mu);
-    clock = clock_locked(h);
-    pthread_mutex_unlock(&h->mu);
+    clock = host_clock(h);
     mse_av_rest_video(h->av, on, clock);
     pthread_mutex_lock(&h->mu);
     pthread_cond_broadcast(&h->cv);
@@ -1494,9 +1526,7 @@ void mse_ios_recover_playback(void)
         return;
     }
     mse_ios_log("mse-v recover bg-unpark");
-    pthread_mutex_lock(&g_ios_host->mu);
-    clock = clock_locked(g_ios_host);
-    pthread_mutex_unlock(&g_ios_host->mu);
+    clock = host_clock(g_ios_host);
     mse_av_recover_display(g_ios_host->av, clock);
 }
 #endif
