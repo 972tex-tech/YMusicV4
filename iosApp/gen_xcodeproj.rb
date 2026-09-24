@@ -23,7 +23,10 @@ target.add_file_references([src_group.new_file("iOSApp.swift")])
 src_group.new_file("Info.plist")
 
 res_group = project.new_group("Resources", "Resources")
-target.add_resources([res_group.new_file("webview_ymusic.js")])
+target.add_resources([
+  res_group.new_file("webview_ymusic.js"),
+  project.new_file("Assets.xcassets"),
+])
 
 gradle_phase = target.new_shell_script_build_phase("Build & embed YMusicApp.framework (Compose/Kotlin)")
 gradle_phase.shell_script = <<~SH
@@ -52,6 +55,7 @@ target.build_configurations.each do |config|
   # DEVELOPMENT_TEAM intentionally unset — pick your Team in Xcode's Signing tab.
   s["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
   s["ONLY_ACTIVE_ARCH"] = "YES"
+  s["ASSETCATALOG_COMPILER_APPICON_NAME"] = "AppIcon"
   s["ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS"] = "NO"
   # Compose MP has no iosX64, so the simulator path is arm64-only (Apple-Silicon hosts).
   s["FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]"] = "$(SRCROOT)/../commonUi/build/bin/iosArm64/debugFramework"
