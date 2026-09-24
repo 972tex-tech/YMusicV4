@@ -8,6 +8,8 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     static let shared = IosPip()
 
     private var controller: AVPictureInPictureController?
+    /// Set in restoreUserInterface… (expand). X-close never calls that method.
+    private var restoringFromPip = false
     var isActive: Bool { controller?.isPictureInPictureActive ?? false }
 
     func syncEligible() {
@@ -37,8 +39,18 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         IosPipHostKt.iosOnPipStarted()
     }
 
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void,
+    ) {
+        restoringFromPip = true
+        completionHandler(true)
+    }
+
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        let foreground = UIApplication.shared.applicationState == .active
+        let restore = restoringFromPip
+        restoringFromPip = false
+        let foreground = restore || UIApplication.shared.applicationState == .active
         IosPipHostKt.iosOnPipStopped(appInForeground: foreground)
     }
 
