@@ -16,7 +16,6 @@ struct ComposeView: UIViewControllerRepresentable {
 @main
 struct iOSApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var wasBackgrounded = false
 
     init() {
         // Let audio keep playing when the app is backgrounded/locked.
@@ -28,21 +27,11 @@ struct iOSApp: App {
         WindowGroup {
             ComposeView().ignoresSafeArea()
                 .onChange(of: scenePhase) { phase in
-                    switch phase {
-                    case .background:
-                        // GPU/IOSurface is torn down only once we actually leave the screen.
-                        wasBackgrounded = true
-                    case .active:
-                        // Notification Center / Control Center is .inactive, not .background —
-                        // reopening VT there blacks the picture for 1–2s while the app is still up.
-                        if wasBackgrounded {
-                            wasBackgrounded = false
-                            DispatchQueue.main.async {
-                                IosMseSurfaceKt.iosMseBecameActive()
-                            }
+                    if phase == .active {
+                        // Probe last still; no-op if the picture is still there.
+                        DispatchQueue.main.async {
+                            IosMseSurfaceKt.iosMseBecameActive()
                         }
-                    default:
-                        break
                     }
                 }
         }
