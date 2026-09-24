@@ -146,7 +146,8 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         userAgent = MSE_CHROME_UA,
     )
 
-    val mseSurface = MseVideoSurface()
+    val mseHole = IosMseHole()
+    val mseSurface = MseVideoSurface().apply { layer = mseHole.layerPtr() }
     val msePlayer = MsePlayer.create(
         client = http.engine,
         appVersion = 5000,
@@ -177,7 +178,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         loginBrowser = { url, state, onPageChanged, modifier ->
             IosLoginBrowser(url, state, onPageChanged, modifier)
         },
-    ) { modifier -> IosMseVideo(msePlayer, modifier) }
+    ) { modifier -> IosMseVideo(mseHole, msePlayer, modifier) }
 }
 
 private const val MSE_CHROME_UA =
