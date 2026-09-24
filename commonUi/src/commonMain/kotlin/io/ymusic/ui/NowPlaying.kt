@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,7 +26,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -304,7 +302,7 @@ fun NowPlayingScreen(
     }
     SwipeDownDismissBox(
         onDismiss = onClose,
-        modifier = Modifier.statusBarsPadding().fillMaxSize(),
+        modifier = Modifier.then(if (fullscreen) Modifier else Modifier.statusBarsPadding()).fillMaxSize(),
         onPeek = onPeek,
     ) {
         // No full-screen fill: the video hole is opaque (TextureView) and the chrome paints
@@ -324,12 +322,10 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
 
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
+    SyncImmersiveSystemBars(immersive = true)
     Box(Modifier.fillMaxSize()) {
         graph.playerSurface(Modifier.fillMaxSize())
-        Box(
-            Modifier.fillMaxSize()
-                .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars)),
-        ) {
+        Box(Modifier.fillMaxSize()) {
             AutoHidingOverlay {
                 VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
             }

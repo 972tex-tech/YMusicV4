@@ -15,3 +15,6 @@ internal actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 internal actual fun SyncSystemBars(dark: Boolean) {
     // Desktop windows carry no app-tinted OS chrome.
 }
+
+@Composable
+internal actual fun SyncImmersiveSystemBars(immersive: Boolean) = Unit

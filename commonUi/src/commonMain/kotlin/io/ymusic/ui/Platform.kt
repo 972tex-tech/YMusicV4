@@ -19,3 +19,7 @@ internal expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
  *  bar icon appearance to contrast the edge-to-edge app background. No-op elsewhere. */
 @Composable
 internal expect fun SyncSystemBars(dark: Boolean)
+
+/** Fullscreen video: hide status/nav bars; a swipe at the bar edge shows them (system). */
+@Composable
+internal expect fun SyncImmersiveSystemBars(immersive: Boolean)
