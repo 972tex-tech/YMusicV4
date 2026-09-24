@@ -801,9 +801,10 @@ private class DragDown(
         }
         val cap = maxMovePx
         val target = if (cap > 0f) {
-            /* t uses 2×cap so g'(0)=1 for 1-(1-t)^2 (was 3× finger with t=raw/cap). */
-            val t = (raw / (2f * cap)).coerceIn(0f, 1f)
-            cap * (1f - (1f - t) * (1f - t))
+            /* t uses 4×cap so g'(0)=1 for 1-(1-t)^4. */
+            val t = (raw / (4f * cap)).coerceIn(0f, 1f)
+            val u = 1f - t
+            cap * (1f - u * u * u * u)
         } else {
             weightedRubberPeek(raw, stiffnessPx)
         }
