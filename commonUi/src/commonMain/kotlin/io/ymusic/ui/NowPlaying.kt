@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
@@ -197,21 +196,7 @@ fun MiniPlayer(
             contentAlignment = Alignment.Center,
         ) {
             if (surface != null) {
-                if (desktopLayoutHole) {
-                    surface.invoke(Modifier.fillMaxSize())
-                } else {
-                    // WebView must lay out at real video size; scale-draw into this 16:9 slot. // wtf is webview, we no longer use webview
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
-                        val scale = maxHeight / 135.dp
-                        Box(
-                            Modifier
-                                .requiredSize(240.dp, 135.dp)
-                                .graphicsLayer(scaleX = scale, scaleY = scale),
-                        ) {
-                            surface.invoke(Modifier.fillMaxSize())
-                        }
-                    }
-                }
+                surface.invoke(Modifier.fillMaxSize())
                 Box(Modifier.matchParentSize().clickable(onClick = onExpand))
             } else {
                 ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
