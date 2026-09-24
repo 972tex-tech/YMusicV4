@@ -108,6 +108,10 @@ struct MseAv {
     AVCodecParameters *vpar_next;
     double v_switch_pts;
     int v_rest;
+#ifdef __APPLE__
+    /* iOS app background: decoder closed, leftover kept. Not JS audio-only rest. */
+    int v_bg_park;
+#endif
     /* After seek: present RAP-to-playhead even if pts is behind clock. */
     int show_late;
     /* H.264: AV_PKT_FLAG_KEY can be a recovery point, not IDR. Don't show
@@ -1473,7 +1477,11 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 {
     const AVCodec *codec;
     AVCodecContext **ctxp = video ? &a->vdec : &a->adec;
-    if (video && a->v_rest)
+    if (video && (a->v_rest
+#ifdef __APPLE__
+        || a->v_bg_park
+#endif
+    ))
         return 0;
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
@@ -2547,6 +2555,23 @@ int mse_av_video_resting(const MseAv *a)
     return a && a->v_rest;
 }
 
+#ifdef __APPLE__
+void mse_av_park_video(MseAv *a)
+{
+    if (!a)
+        return;
+    pthread_mutex_lock(&a->mu);
+    if (a->v_rest || a->v_bg_park) {
+        pthread_mutex_unlock(&a->mu);
+        return;
+    }
+    a->v_bg_park = 1;
+    close_video_decoder(a);
+    vlog("bg-park vf=%zu", a->vf.n);
+    pthread_mutex_unlock(&a->mu);
+}
+#endif
+
 void mse_av_remove(MseAv *a, int audio, double start, double end)
 {
     if (!a)
@@ -2649,7 +2674,11 @@ int mse_av_video_due(MseAv *a, double clock)
     if (!a)
         return 0;
     pthread_mutex_lock(&a->mu);
-    if (a->v_rest) {
+    if (a->v_rest
+#ifdef __APPLE__
+        || a->v_bg_park
+#endif
+    ) {
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
@@ -3207,12 +3236,19 @@ void mse_av_recover_display(MseAv *a, double clock)
     for (i = 0; i < a->vt_q_n; i++)
         mse_vt_pb_release(a->vt_q_pb[i]);
     a->vt_q_n = 0;
-    /* Same as rest-video off: leftover was parked, resume from last key
-       at/before the playhead. Waiting for the *next* GOP is the 2–5s black. */
     if (a->v_rest) {
-        a->v_rest = 0;
-        cfb_drop_fake(&a->vf);
+        /* JS audio-only rest: do not turn video back on. */
+        mse_vt_resume_presents(a->vt_layer);
+        pthread_mutex_unlock(&a->mu);
+        return;
     }
+    if (!a->v_bg_park) {
+        mse_vt_resume_presents(a->vt_layer);
+        pthread_mutex_unlock(&a->mu);
+        return;
+    }
+    a->v_bg_park = 0;
+    cfb_drop_fake(&a->vf);
     vf_resync_key(a, clock);
     a->show_late = 1;
     if (a->vt_dec) {
@@ -3223,7 +3259,7 @@ void mse_av_recover_display(MseAv *a, double clock)
     if (a->vf.rd < a->vf.n)
         a->v_sent = a->vf.f[a->vf.rd].pts;
     os_log(os_log_create("com.ymusic.mse", "v"),
-           "mse-v rest-off resync clock=%.3f rd=%zu/%zu", clock, a->vf.rd, a->vf.n);
+           "mse-v bg-unpark resync clock=%.3f rd=%zu/%zu", clock, a->vf.rd, a->vf.n);
     pthread_mutex_unlock(&a->mu);
 }
 #endif
@@ -3462,7 +3498,11 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         return -1;
     *bgra = NULL;
     pthread_mutex_lock(&a->mu);
-    if (a->v_rest) {
+    if (a->v_rest
+#ifdef __APPLE__
+        || a->v_bg_park
+#endif
+    ) {
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
