@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -570,6 +572,7 @@ private const val OVERLAY_HIDE_DELAY_MS = 3_000L
 
 /** The controls drawn over the video: landscape always, portrait once the inline controls scroll
  *  away. [compact] hides ±10s seek buttons (the portrait overlay). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BoxScope.VideoOverlayControls(
     coordinator: PlaybackCoordinator,
@@ -583,7 +586,14 @@ private fun BoxScope.VideoOverlayControls(
     val player = coordinator.player
     Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.24f)))
 
-    Column(Modifier.align(Alignment.TopStart).padding(start = 16.dp, end = 16.dp, top = 11.dp)) {
+    Column(
+        Modifier.align(Alignment.TopStart)
+            .then(
+                if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+                else Modifier,
+            )
+            .padding(start = 16.dp, end = 16.dp, top = 11.dp),
+    ) {
         Text(
             current?.displayTitle.orEmpty(),
             style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White),
