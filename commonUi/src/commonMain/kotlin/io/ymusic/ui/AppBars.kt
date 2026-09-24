@@ -802,7 +802,7 @@ private class DragDown(
         val cap = maxMovePx
         val target = if (cap > 0f) {
             val t = (raw / cap).coerceIn(0f, 1f)
-            cap * t * t * t
+            cap * (1f - (1f - t) * (1f - t) * (1f - t))
         } else {
             weightedRubberPeek(raw, stiffnessPx)
         }
