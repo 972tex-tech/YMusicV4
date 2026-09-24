@@ -199,16 +199,15 @@ fun MiniPlayer(
             Box(
                 Modifier
                     .height(tileH)
-                    .aspectRatio(16f / 9f),
+                    .aspectRatio(16f / 9f)
+                    .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
                     surface.invoke(Modifier.fillMaxSize())
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
-                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp)) {
-                        ThumbPlaceholder(Icons.Outlined.Image, 18.dp, DesignColors.SurfaceDim)
-                    }
+                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
                 }
             }
             Column(
