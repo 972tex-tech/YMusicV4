@@ -706,7 +706,6 @@ internal fun SwipeDownDismissBox(
 
     Box(
         modifier
-            .fillMaxSize()
             .onSizeChanged { drag.heightPx = it.height.toFloat() }
             .nestedScroll(drag.connection)
             .pointerInput(Unit) {
@@ -736,7 +735,7 @@ internal fun SwipeDownDismissBox(
                 }
             },
     ) {
-        Box(Modifier.fillMaxSize().graphicsLayer { translationY = peekY }) {
+        Box(Modifier.graphicsLayer { translationY = peekY }) {
             content()
         }
         if (topShadow > 0.01f) {

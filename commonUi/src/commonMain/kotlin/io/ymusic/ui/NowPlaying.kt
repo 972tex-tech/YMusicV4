@@ -181,68 +181,76 @@ fun MiniPlayer(
     val density = LocalDensity.current
     var colH by remember { mutableIntStateOf(0) }
     val tileH = with(density) { if (colH > 0) colH.toDp() else 48.dp }
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand),
-        verticalAlignment = Alignment.CenterVertically,
+    SwipeDownDismissBox(
+        onDismiss = {
+            coordinator.player.stop()
+            coordinator.player.clearQueue()
+        },
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Box(
-            Modifier
-                .height(tileH)
-                .aspectRatio(16f / 9f)
-                .then(
-                    if (surface != null && desktopLayoutHole) Modifier
-                    else Modifier.background(DesignColors.SurfaceDim),
-                ),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (surface != null) {
-                surface.invoke(Modifier.fillMaxSize())
-                Box(Modifier.matchParentSize().clickable(onClick = onExpand))
-            } else {
-                ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
-            }
-        }
-        Column(
-            Modifier.weight(1f).background(DesignColors.SurfaceDim).onSizeChanged { colH = it.height },
-        ) {
-            LinearProgressIndicator(
-                progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = DesignColors.Accent,
-                trackColor = Color.Transparent,
-                strokeCap = StrokeCap.Butt,
-                drawStopIndicator = {},
-                gapSize = 0.dp,
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Box(
+                Modifier
+                    .height(tileH)
+                    .aspectRatio(16f / 9f)
+                    .then(
+                        if (surface != null && desktopLayoutHole) Modifier
+                        else Modifier.background(DesignColors.SurfaceDim),
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.displayTitle,
-                        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    item.displaySubtitle?.let {
+                if (surface != null) {
+                    surface.invoke(Modifier.fillMaxSize())
+                    Box(Modifier.matchParentSize().clickable(onClick = onExpand))
+                } else {
+                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
+                }
+            }
+            Column(
+                Modifier.weight(1f).background(DesignColors.SurfaceDim).onSizeChanged { colH = it.height },
+            ) {
+                LinearProgressIndicator(
+                    progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
+                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                    color = DesignColors.Accent,
+                    trackColor = Color.Transparent,
+                    strokeCap = StrokeCap.Butt,
+                    drawStopIndicator = {},
+                    gapSize = 0.dp,
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            it,
-                            style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
+                            item.displayTitle,
+                            style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        item.displaySubtitle?.let {
+                            Text(
+                                it,
+                                style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                }
-                IconButton(onClick = { coordinator.player.togglePlay() }) {
-                    Icon(
-                        if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        stringResource(Res.string.cd_play_pause),
-                        tint = DesignColors.InkMuted,
-                    )
-                }
-                IconButton(onClick = { coordinator.player.skipNext() }) {
-                    Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), tint = DesignColors.InkMuted)
+                    IconButton(onClick = { coordinator.player.togglePlay() }) {
+                        Icon(
+                            if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            stringResource(Res.string.cd_play_pause),
+                            tint = DesignColors.InkMuted,
+                        )
+                    }
+                    IconButton(onClick = { coordinator.player.skipNext() }) {
+                        Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), tint = DesignColors.InkMuted)
+                    }
                 }
             }
         }
@@ -282,7 +290,7 @@ fun NowPlayingScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onClose:
             }
         }
     }
-    SwipeDownDismissBox(onDismiss = onClose, modifier = Modifier.statusBarsPadding()) {
+    SwipeDownDismissBox(onDismiss = onClose, modifier = Modifier.statusBarsPadding().fillMaxSize()) {
         if (desktopLayoutHole) {
             Box(Modifier.fillMaxSize(), content = { shell() })
         } else {
