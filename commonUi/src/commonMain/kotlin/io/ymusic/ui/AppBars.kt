@@ -692,6 +692,8 @@ internal fun SwipeDownDismissBox(
     modifier: Modifier = Modifier,
     /** When set, commit after this fraction of the box height; otherwise [DismissDragDistance]. */
     commitFractionOfHeight: Float? = null,
+    /** True while a downward pull is in progress (so a parent clickable does not fire). */
+    onPull: (Boolean) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val peek = remember { Animatable(0f) }
@@ -699,6 +701,7 @@ internal fun SwipeDownDismissBox(
     val density = LocalDensity.current
     val drag = remember { DragDown(peek, scope) }
     drag.onDismiss = onDismiss
+    drag.onPull = onPull
     drag.stiffnessPx = with(density) { RubberPeekStiffness.toPx() }
     val defaultCommit = with(density) { DismissDragDistance.toPx() }
     drag.commitPx = defaultCommit
@@ -741,14 +744,17 @@ internal fun SwipeDownDismissBox(
                     }
                     if (past == null) return@awaitEachGesture
                     if (dy <= 0f && drag.raw <= 0f) return@awaitEachGesture
-                    val completed = verticalDrag(down.id) { change ->
-                        val d = change.positionChange().y
-                        dy += d
-                        drag.report(d)
-                        tracker.addPosition(change.uptimeMillis, change.position)
-                        change.consume()
+                    try {
+                        verticalDrag(down.id) { change ->
+                            val d = change.positionChange().y
+                            dy += d
+                            drag.report(d)
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            change.consume()
+                        }
+                    } finally {
+                        if (drag.raw > 0f) drag.settle()
                     }
-                    drag.settle()
                 }
             },
     ) {
@@ -784,9 +790,15 @@ private class DragDown(
     /** Visual ceiling; 0 = Now Playing exponential (no hard max). */
     var maxMovePx = 0f
     var onDismiss: () -> Unit = {}
+    var onPull: (Boolean) -> Unit = {}
+    private var pulling = false
 
     fun report(deltaY: Float) {
         raw = (raw + deltaY).coerceAtLeast(0f)
+        if (!pulling) {
+            pulling = true
+            onPull(true)
+        }
         val cap = maxMovePx
         val target = if (cap > 0f) {
             val t = (raw / cap).coerceIn(0f, 1f)
@@ -799,15 +811,21 @@ private class DragDown(
 
     /** Commit only after the full finger distance — no flick shortcut. */
     fun settle() {
-        val commit = raw >= commitPx
+        val cap = maxMovePx
+        val commit = raw >= commitPx || (cap > 0f && peek.value >= cap * 0.95f)
         scope.launch {
-            if (commit) {
-                val end = heightPx.takeIf { it > 0f } ?: (peek.value + 400f)
-                peek.animateTo(end, tween(SwipeSwitchDurationMs))
-                onDismiss()
-            } else {
-                raw = 0f
-                peek.animateTo(0f, PeekSpring)
+            try {
+                if (commit) {
+                    val end = heightPx.takeIf { it > 0f } ?: (peek.value + 400f)
+                    peek.animateTo(end, tween(SwipeSwitchDurationMs))
+                    onDismiss()
+                } else {
+                    raw = 0f
+                    peek.animateTo(0f, PeekSpring)
+                }
+            } finally {
+                pulling = false
+                onPull(false)
             }
         }
     }

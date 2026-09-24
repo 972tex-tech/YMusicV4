@@ -181,6 +181,7 @@ fun MiniPlayer(
     val density = LocalDensity.current
     var colH by remember { mutableIntStateOf(0) }
     val tileH = with(density) { if (colH > 0) colH.toDp() else 48.dp }
+    var pulling by remember { mutableStateOf(false) }
     SwipeDownDismissBox(
         onDismiss = {
             coordinator.player.stop()
@@ -188,9 +189,10 @@ fun MiniPlayer(
         },
         modifier = Modifier.fillMaxWidth(),
         commitFractionOfHeight = 1f / 3f,
+        onPull = { pulling = it },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = { if (!pulling) onExpand() }),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
