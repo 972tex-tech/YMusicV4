@@ -11,6 +11,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import io.ymusic.mse.MseVideoSurface
+import io.ymusic.mse.cinterop.mse_ios_log
+import io.ymusic.mse.cinterop.mse_ios_recover_playback
 import io.ymusic.player.mse.MsePlayer
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
@@ -44,24 +46,11 @@ internal class IosMseHole {
     }
 }
 
-/** Swift [iOSApp] calls this on scenePhase == .active. Flush is not enough after background. */
+/** Swift [iOSApp] calls this on scenePhase == .active. */
 @OptIn(ExperimentalForeignApi::class)
 fun iosMseBecameActive() {
-    IosMseLifecycle.onBecameActive?.invoke()
-}
-
-@OptIn(ExperimentalForeignApi::class)
-internal object IosMseLifecycle {
-    var onBecameActive: (() -> Unit)? = null
-
-    fun bind(hole: IosMseHole, player: MsePlayer) {
-        onBecameActive = {
-            hole.replaceLayer()
-            hole.layerPtr()?.let { lp ->
-                player.setVideoSurface(MseVideoSurface().apply { layer = lp })
-            }
-        }
-    }
+    mse_ios_log("mse-v became-active")
+    mse_ios_recover_playback()
 }
 
 @OptIn(ExperimentalForeignApi::class)

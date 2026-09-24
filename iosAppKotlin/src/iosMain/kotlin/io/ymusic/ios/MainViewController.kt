@@ -159,7 +159,6 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         main = engines,
         mediaProxy = mediaProxy,
     )
-    IosMseLifecycle.bind(mseHole, msePlayer)
     val player = createPlayer(
         PlayerEngines(
             local = { createLocalPlayer(LocalPlayerContext(container)) },

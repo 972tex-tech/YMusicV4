@@ -3192,6 +3192,31 @@ void mse_av_set_window(MseAv *a, void *window)
 #endif
 }
 
+#ifdef __APPLE__
+void mse_av_recover_display(MseAv *a)
+{
+    int i, nq;
+    if (!a)
+        return;
+    pthread_mutex_lock(&a->mu);
+    nq = a->vt_q_n;
+    for (i = 0; i < a->vt_q_n; i++)
+        mse_vt_pb_release(a->vt_q_pb[i]);
+    a->vt_q_n = 0;
+    if (a->vt_dec) {
+        mse_vt_dec_close(a->vt_dec);
+        a->vt_dec = NULL;
+    }
+    a->need_rap[0] = 1;
+    a->v_seen_idr = 0;
+    if (a->vt_layer)
+        mse_vt_recover(a->vt_layer);
+    os_log(os_log_create("com.ymusic.mse", "v"),
+           "mse-v recover-display drained-q=%d reopen-vt-dec layer=%p", nq, a->vt_layer);
+    pthread_mutex_unlock(&a->mu);
+}
+#endif
+
 void mse_av_set_blit_size(MseAv *a, int w, int h)
 {
     if (!a)

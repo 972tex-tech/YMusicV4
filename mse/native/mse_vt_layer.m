@@ -197,8 +197,13 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
 #if TARGET_OS_IPHONE
     /* GPU is gone in the background; enqueueing Failed frames sticks a black layer. */
-    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground)
+    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) {
+        static int skip_n;
+        if (skip_n++ < 3 || (skip_n % 120) == 0)
+            os_log(os_log_create("com.ymusic.mse", "v"),
+                   "mse-v vt-show skip-background n=%d", skip_n);
         return -1;
+    }
 #endif
     if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) {
         NSError *err = layer.error;
@@ -239,6 +244,13 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
             shown++;
             mse_logf("mse-v vt-show %dx%d layer=%.0fx%.0f status=%d\n",
                      w, h, layer.bounds.size.width, layer.bounds.size.height, (int)layer.status);
+        } else {
+            static int shown_n;
+            if ((++shown_n % 120) == 0)
+                os_log(os_log_create("com.ymusic.mse", "v"),
+                       "mse-v vt-show n=%d %dx%d layer=%.0fx%.0f status=%d",
+                       shown_n, w, h, layer.bounds.size.width, layer.bounds.size.height,
+                       (int)layer.status);
         }
     }
     return 0;

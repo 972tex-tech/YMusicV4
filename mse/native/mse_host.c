@@ -739,6 +739,11 @@ static void *dec_loop(void *arg)
     }
 }
 
+#ifdef __APPLE__
+static MseHost *g_ios_host;
+void mse_ios_log(const char *msg);
+#endif
+
 MseHost *mse_host_create(void)
 {
     MseHost *h = (MseHost *)calloc(1, sizeof(MseHost));
@@ -754,6 +759,9 @@ MseHost *mse_host_create(void)
         free(h);
         return NULL;
     }
+#ifdef __APPLE__
+    g_ios_host = h;
+#endif
     return h;
 }
 
@@ -861,6 +869,8 @@ void mse_host_destroy(MseHost *h)
         pthread_join(h->vdec, NULL);
     }
 #ifdef __APPLE__
+    if (g_ios_host == h)
+        g_ios_host = NULL;
     if (h->aq) {
         AudioQueueStop(h->aq, true);
         AudioQueueDispose(h->aq, true);
@@ -1454,3 +1464,13 @@ void mse_ios_log(const char *msg)
 #endif
     fprintf(stderr, "%s\n", msg);
 }
+
+#ifdef __APPLE__
+void mse_ios_recover_playback(void)
+{
+    mse_ios_log("mse-v recover-playback enter");
+    if (!g_ios_host || !g_ios_host->av)
+        return;
+    mse_av_recover_display(g_ios_host->av);
+}
+#endif

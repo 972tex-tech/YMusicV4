@@ -43,6 +43,10 @@ void mse_av_seek(MseAv *a, double seconds);
 /* Android: borrowed ANativeWindow. Apple: borrowed AVSampleBufferDisplayLayer.
  * NULL detaches. No-op on other hosts. */
 void mse_av_set_window(MseAv *a, void *window);
+#ifdef __APPLE__
+/* Foreground after iOS suspend: IOSurface from the old VT session is dead. */
+void mse_av_recover_display(MseAv *a);
+#endif
 
 /* JVM desktop blit hole in pixels. 0×0 = decode size. Downscale-only min-fit
  * (never upscale; dest is the fitted picture, not a letterboxed panel). */
