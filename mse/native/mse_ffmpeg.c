@@ -3210,7 +3210,7 @@ void mse_av_recover_display(MseAv *a)
     a->need_rap[0] = 1;
     a->v_seen_idr = 0;
     if (a->vt_layer)
-        mse_vt_recover(a->vt_layer);
+        mse_vt_flush(a->vt_layer);
     os_log(os_log_create("com.ymusic.mse", "v"),
            "mse-v recover-display drained-q=%d reopen-vt-dec layer=%p", nq, a->vt_layer);
     pthread_mutex_unlock(&a->mu);

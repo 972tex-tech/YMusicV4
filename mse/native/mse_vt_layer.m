@@ -196,21 +196,15 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
         return -1;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
 #if TARGET_OS_IPHONE
-    /* GPU is gone in the background; enqueueing Failed frames sticks a black layer. */
-    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) {
-        static int skip_n;
-        if (skip_n++ < 3 || (skip_n % 120) == 0)
-            os_log(os_log_create("com.ymusic.mse", "v"),
-                   "mse-v vt-show skip-background n=%d", skip_n);
+    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground)
         return -1;
-    }
 #endif
     if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) {
         NSError *err = layer.error;
         os_log(os_log_create("com.ymusic.mse", "v"),
                "mse-v vt-show layer-failed %{public}s",
                err.localizedDescription.UTF8String ?: "?");
-        mse_vt_recover(p);
+        [layer flush];
     }
     st = CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, pb, &fmt);
     if (st != noErr || !fmt)
@@ -244,13 +238,6 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
             shown++;
             mse_logf("mse-v vt-show %dx%d layer=%.0fx%.0f status=%d\n",
                      w, h, layer.bounds.size.width, layer.bounds.size.height, (int)layer.status);
-        } else {
-            static int shown_n;
-            if ((++shown_n % 120) == 0)
-                os_log(os_log_create("com.ymusic.mse", "v"),
-                       "mse-v vt-show n=%d %dx%d layer=%.0fx%.0f status=%d",
-                       shown_n, w, h, layer.bounds.size.width, layer.bounds.size.height,
-                       (int)layer.status);
         }
     }
     return 0;
@@ -345,22 +332,5 @@ void mse_vt_flush(void *p)
         return;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
     [layer flushAndRemoveImage];
-}
-
-void mse_vt_recover(void *p)
-{
-    AVSampleBufferDisplayLayer *layer;
-    if (!p)
-        return;
-    layer = (__bridge AVSampleBufferDisplayLayer *)p;
-    if (@available(iOS 17.2, macOS 14.0, *)) {
-        AVSampleBufferVideoRenderer *r = layer.sampleBufferRenderer;
-        if (r)
-            [r flushWithRemovalOfDisplayedImage:YES completionHandler:^{}];
-        else
-            [layer flushAndRemoveImage];
-    } else {
-        [layer flushAndRemoveImage];
-    }
 }
 #endif

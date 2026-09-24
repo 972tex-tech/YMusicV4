@@ -28,7 +28,7 @@ struct iOSApp: App {
             ComposeView().ignoresSafeArea()
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
-                        // GPU for AVSampleBufferDisplayLayer is dead after background; mint a new layer.
+                        // IOSurface from the old VT session dies with the GPU process.
                         DispatchQueue.main.async {
                             IosMseSurfaceKt.iosMseBecameActive()
                         }

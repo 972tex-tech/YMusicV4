@@ -11,7 +11,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import io.ymusic.mse.MseVideoSurface
-import io.ymusic.mse.cinterop.mse_ios_log
 import io.ymusic.mse.cinterop.mse_ios_recover_playback
 import io.ymusic.player.mse.MsePlayer
 import kotlinx.cinterop.COpaque
@@ -40,16 +39,11 @@ internal class IosMseHole {
 
     fun layerPtr(): COpaquePointer? =
         interpretCPointer<COpaque>(view.vtLayer.objcPtr())
-
-    fun replaceLayer() {
-        view.replaceLayer()
-    }
 }
 
 /** Swift [iOSApp] calls this on scenePhase == .active. */
 @OptIn(ExperimentalForeignApi::class)
 fun iosMseBecameActive() {
-    mse_ios_log("mse-v became-active")
     mse_ios_recover_playback()
 }
 
@@ -102,30 +96,17 @@ private fun adopt(child: UIView, host: UIView) {
 
 @OptIn(ExperimentalForeignApi::class)
 internal class MseVtView : UIView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0)) {
-    var vtLayer = AVSampleBufferDisplayLayer()
-        private set
+    val vtLayer = AVSampleBufferDisplayLayer()
 
     init {
         backgroundColor = UIColor.blackColor
         userInteractionEnabled = false
         opaque = true
         contentMode = UIViewContentMode.UIViewContentModeScaleToFill
-        installLayer(vtLayer)
+        vtLayer.videoGravity = AVLayerVideoGravityResize
+        vtLayer.backgroundColor = UIColor.blackColor.CGColor
+        layer.addSublayer(vtLayer)
         setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
-    }
-
-    fun replaceLayer() {
-        vtLayer.removeFromSuperlayer()
-        val next = AVSampleBufferDisplayLayer()
-        installLayer(next)
-        vtLayer = next
-        layoutSubviews()
-    }
-
-    private fun installLayer(l: AVSampleBufferDisplayLayer) {
-        l.videoGravity = AVLayerVideoGravityResize
-        l.backgroundColor = UIColor.blackColor.CGColor
-        layer.addSublayer(l)
     }
 
     override fun layoutSubviews() {

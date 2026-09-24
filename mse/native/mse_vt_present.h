@@ -34,8 +34,6 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h);
 int mse_vt_show_sw(void *layer, unsigned cv_pix_fmt,
                    const uint8_t *const *data, const int *linesize, int w, int h);
 void mse_vt_flush(void *layer);
-/* After background: Failed renderer / frozen GPU. flushAndRemoveImage so the next enqueue paints. */
-void mse_vt_recover(void *layer);
 
 /* H.264 / VP9 VTDecompressionSession. Enable HW, do not Require it
    (simulator / Intel use Apple software VT). NULL if create fails.
