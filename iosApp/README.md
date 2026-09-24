@@ -30,6 +30,12 @@ Undefined symbols for architecture arm64:
   `YMusicApp.framework` + `compose-resources`). Runtime on-device is still to be confirmed; this is a
   dev/test build, **not** App-Store-shippable (dynamic_lookup) — drop the flag on Xcode 26.
 
+## Simulator
+
+Compose MP 1.11.1 has **no `iosX64`**. The Intel iOS Simulator is x86_64, so this app **cannot run
+in Simulator on this Mac**. Apple Silicon hosts use `iosSimulatorArm64` (Xcode destination → any
+iPhone/iPad sim). On Intel, skip the sim and use a plugged-in device.
+
 ## Run on a device (Xcode 16.2, today)
 
 1. `ruby gen_xcodeproj.rb` (regenerates `iosApp.xcodeproj`; needs the `xcodeproj` gem)
@@ -39,9 +45,10 @@ Undefined symbols for architecture arm64:
 4. Plug in + unlock + **Trust** the device; select it as the run destination.
 5. **Run** (⌘R). First launch: **Settings → General → VPN & Device Management** → trust the profile.
 
-The Gradle build phase runs `:commonUi:embedAndSignAppleFrameworkForXcode -PkmpTargets=all
+The Gradle build phase runs `:iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all
 -PiosAllowUndefined=true` to build + embed + sign `YMusicApp.framework`. `-PkmpTargets=all` configures
 `iosArm64` on this Intel host; `JAVA_HOME` is set to `$HOME/.sdkman/candidates/java/current`.
+The build phase also copies `webview-js/dist/webview_ymusic.js` into `iosApp/Resources/`.
 
 Signing is the only manual step — this environment can't enter your Apple ID; Xcode does it locally.
 

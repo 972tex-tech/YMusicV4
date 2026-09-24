@@ -161,7 +161,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nexport JAVA_HOME=\"${JAVA_HOME:-$HOME/.sdkman/candidates/java/current}\"\ncd \"$SRCROOT/..\"\n# -PkmpTargets=all so iosArm64 (device) is configured even on this Intel host.\n# -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode\n# (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.\n./gradlew :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true\n";
+			shellScript = "set -e\nexport JAVA_HOME=\"${JAVA_HOME:-$HOME/.sdkman/candidates/java/current}\"\nmkdir -p \"$SRCROOT/Resources\"\ncp -f \"$SRCROOT/../webview-js/dist/webview_ymusic.js\" \"$SRCROOT/Resources/webview_ymusic.js\"\ncd \"$SRCROOT/..\"\n# -PkmpTargets=all so iosArm64 / iosSimulatorArm64 are configured even on an Intel host.\n# -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode\n# (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.\n./gradlew :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

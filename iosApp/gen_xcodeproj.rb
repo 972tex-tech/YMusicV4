@@ -29,11 +29,14 @@ gradle_phase = target.new_shell_script_build_phase("Build & embed YMusicApp.fram
 gradle_phase.shell_script = <<~SH
   set -e
   export JAVA_HOME="${JAVA_HOME:-$HOME/.sdkman/candidates/java/current}"
+  mkdir -p "$SRCROOT/Resources"
+  cp -f "$SRCROOT/../webview-js/dist/webview_ymusic.js" "$SRCROOT/Resources/webview_ymusic.js"
   cd "$SRCROOT/.."
-  # -PkmpTargets=all so iosArm64 (device) is configured even on this Intel host.
+  # -PkmpTargets=all so iosArm64 / iosSimulatorArm64 are configured even on this Intel host.
   # -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode
   # (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.
-  ./gradlew :commonUi:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true
+  # Compose has no iosX64: the Intel simulator (x86_64) cannot run this app.
+  ./gradlew :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true
 SH
 target.build_phases.unshift(target.build_phases.delete(gradle_phase))
 
