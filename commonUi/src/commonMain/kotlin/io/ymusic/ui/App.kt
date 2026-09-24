@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -621,149 +623,146 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                     }
                                 }
                             },
-                            bottomBar = {
-                                Column {
-                                    // While Now Playing is closed, the mini player's art tile hosts the
-                                    // video surface (all platforms — the tile lays it out at real size
-                                    // and scales the drawing, see MiniPlayer) so a WebView source keeps
-                                    // playing across the transition.
-                                    MiniPlayer(
-                                        coordinator,
-                                        surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
-                                        onExpand = { nowPlayingOpen = true },
-                                    )
-                                }
-                            },
                         ) { padding ->
-                            Column(
-                                Modifier.fillMaxSize().padding(padding)
-                                    .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier),
-                            ) {
-                                when (val top = layers.lastOrNull()) {
-                                    is AppLayer.Search -> key(top) {
-                                        SearchScreen(
-                                            graph,
-                                            coordinator,
-                                            onBack = popLayer,
-                                            onOpen = openItem,
-                                            session = top.session,
-                                            onDeeplink = openDeeplink,
-                                        )
-                                    }
-                                    is AppLayer.LibrarySearch -> key(top) {
-                                        LibrarySearchScreen(
-                                            top.session,
-                                            coordinator,
-                                            onBack = popLayer,
-                                            onSearchOnline = searchOnline,
-                                        )
-                                    }
-                                    is AppLayer.Playlist -> key(top) {
-                                        PlaylistDetailScreen(
-                                            coordinator,
-                                            top.session,
-                                            onBack = popLayer,
-                                            onSearch = openSearch,
-                                        )
-                                    }
-                                    is AppLayer.Channel -> key(top) {
-                                        ChannelDetailScreen(
-                                            coordinator,
-                                            top.session,
-                                            onBack = popLayer,
-                                            // A music artist page's search is music search, not YouTube.
-                                            onSearch = if (top.session.url.startsWith(MusicBrowsePrefix)) openMusicSearch else openSearch,
-                                            onOpen = openItem,
-                                            onDeeplink = openDeeplink,
-                                        )
-                                    }
-                                    is AppLayer.Feed -> key(top) {
-                                        FeedDetailScreen(
-                                            coordinator,
-                                            top.session,
-                                            onBack = popLayer,
-                                            onSearch = openSearch,
-                                            onOpen = openItem,
-                                            onDeeplink = openDeeplink,
-                                        )
-                                    }
-                                    is AppLayer.MusicBrowse -> key(top) {
-                                        MusicDetailScreen(
-                                            coordinator,
-                                            top.session,
-                                            onBack = popLayer,
-                                            onSearch = openMusicSearch,
-                                            onOpen = openItem,
-                                            onDeeplink = openDeeplink,
-                                        )
-                                    }
-                                    is AppLayer.Login -> key(top) {
-                                        YtLoginScreen(
-                                            graph,
-                                            top.state,
-                                            onBack = popLayer,
-                                            // Gate passed: drop the browser, then let the controller pull
-                                            // the account card, reload feeds, and stale the player page.
-                                            // (The switcher never fires this — popLayer is its signal.)
-                                            onComplete = {
-                                                popLayer()
-                                                accountController.onLoginComplete()
-                                            },
-                                            switchAccount = top.switchAccount,
-                                        )
-                                    }
-                                    // Saveable state (tab picks, folder crumbs, scroll positions) is
-                                    // kept per section while its content is out of composition —
-                                    // Library must come back on the tab and folder it was left on.
-                                    null -> sectionStateHolder.SaveableStateProvider(section.name) {
-                                        when (section) {
-                                            AppSection.Discover -> SwipeTabSwitcher(
-                                                discoverTab,
-                                                DiscoverTab.entries,
-                                                onSelect = { discoverTab = it },
-                                                onDragProgress = { discoverDrag = it },
-                                                leadingEdgeReserve = NavDrawerEdgeReserve,
-                                                onLeadingEdgeSwipe = { scope.launch { drawer.open() } },
-                                            ) { current ->
-                                                DiscoverFeed(
-                                                    graph,
-                                                    coordinator,
-                                                    current,
-                                                    localeEpoch,
-                                                    loginEpoch,
-                                                    discoverSessions,
-                                                    scope,
-                                                    signedIn = signedIn,
-                                                    account = account,
-                                                    onLogin = openLogin,
-                                                    onSignOut = { accountController.signOut() },
-                                                    onSwitchAccount = openSwitchAccount,
-                                                    onOpen = openItem,
-                                                    onDeeplink = openDeeplink,
-                                                )
-                                            }
-                                            AppSection.YtMusic -> YtMusicScreen(
+                            Box(Modifier.fillMaxSize()) {
+                                Column(
+                                    Modifier.fillMaxSize().padding(padding)
+                                        .then(if (desktopLayoutHole) Modifier.background(DesignColors.Surface) else Modifier),
+                                ) {
+                                    when (val top = layers.lastOrNull()) {
+                                        is AppLayer.Search -> key(top) {
+                                            SearchScreen(
                                                 graph,
                                                 coordinator,
-                                                ytMusicSessions,
-                                                localeEpoch + loginEpoch,
-                                                scope,
-                                                signedIn = signedIn,
-                                                onLogin = openLogin,
+                                                onBack = popLayer,
+                                                onOpen = openItem,
+                                                session = top.session,
+                                                onDeeplink = openDeeplink,
+                                            )
+                                        }
+                                        is AppLayer.LibrarySearch -> key(top) {
+                                            LibrarySearchScreen(
+                                                top.session,
+                                                coordinator,
+                                                onBack = popLayer,
+                                                onSearchOnline = searchOnline,
+                                            )
+                                        }
+                                        is AppLayer.Playlist -> key(top) {
+                                            PlaylistDetailScreen(
+                                                coordinator,
+                                                top.session,
+                                                onBack = popLayer,
+                                                onSearch = openSearch,
+                                            )
+                                        }
+                                        is AppLayer.Channel -> key(top) {
+                                            ChannelDetailScreen(
+                                                coordinator,
+                                                top.session,
+                                                onBack = popLayer,
+                                                // A music artist page's search is music search, not YouTube.
+                                                onSearch = if (top.session.url.startsWith(MusicBrowsePrefix)) openMusicSearch else openSearch,
                                                 onOpen = openItem,
                                                 onDeeplink = openDeeplink,
                                             )
-                                            AppSection.Library -> LibraryScreen(graph, coordinator)
-                                            AppSection.Downloads -> DownloadsScreen(graph, coordinator)
-                                            AppSection.Settings -> SettingsScreen(graph)
-                                            AppSection.Feedback ->
-                                                if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
-                                                else ComingSoon(section)
-                                            AppSection.Catalogue ->
-                                                if (DEBUG_BUILD) CatalogueScreen() else ComingSoon(section)
-                                            else -> ComingSoon(section)
+                                        }
+                                        is AppLayer.Feed -> key(top) {
+                                            FeedDetailScreen(
+                                                coordinator,
+                                                top.session,
+                                                onBack = popLayer,
+                                                onSearch = openSearch,
+                                                onOpen = openItem,
+                                                onDeeplink = openDeeplink,
+                                            )
+                                        }
+                                        is AppLayer.MusicBrowse -> key(top) {
+                                            MusicDetailScreen(
+                                                coordinator,
+                                                top.session,
+                                                onBack = popLayer,
+                                                onSearch = openMusicSearch,
+                                                onOpen = openItem,
+                                                onDeeplink = openDeeplink,
+                                            )
+                                        }
+                                        is AppLayer.Login -> key(top) {
+                                            YtLoginScreen(
+                                                graph,
+                                                top.state,
+                                                onBack = popLayer,
+                                                // Gate passed: drop the browser, then let the controller pull
+                                                // the account card, reload feeds, and stale the player page.
+                                                // (The switcher never fires this — popLayer is its signal.)
+                                                onComplete = {
+                                                    popLayer()
+                                                    accountController.onLoginComplete()
+                                                },
+                                                switchAccount = top.switchAccount,
+                                            )
+                                        }
+                                        // Saveable state (tab picks, folder crumbs, scroll positions) is
+                                        // kept per section while its content is out of composition —
+                                        // Library must come back on the tab and folder it was left on.
+                                        null -> sectionStateHolder.SaveableStateProvider(section.name) {
+                                            when (section) {
+                                                AppSection.Discover -> SwipeTabSwitcher(
+                                                    discoverTab,
+                                                    DiscoverTab.entries,
+                                                    onSelect = { discoverTab = it },
+                                                    onDragProgress = { discoverDrag = it },
+                                                    leadingEdgeReserve = NavDrawerEdgeReserve,
+                                                    onLeadingEdgeSwipe = { scope.launch { drawer.open() } },
+                                                ) { current ->
+                                                    DiscoverFeed(
+                                                        graph,
+                                                        coordinator,
+                                                        current,
+                                                        localeEpoch,
+                                                        loginEpoch,
+                                                        discoverSessions,
+                                                        scope,
+                                                        signedIn = signedIn,
+                                                        account = account,
+                                                        onLogin = openLogin,
+                                                        onSignOut = { accountController.signOut() },
+                                                        onSwitchAccount = openSwitchAccount,
+                                                        onOpen = openItem,
+                                                        onDeeplink = openDeeplink,
+                                                    )
+                                                }
+                                                AppSection.YtMusic -> YtMusicScreen(
+                                                    graph,
+                                                    coordinator,
+                                                    ytMusicSessions,
+                                                    localeEpoch + loginEpoch,
+                                                    scope,
+                                                    signedIn = signedIn,
+                                                    onLogin = openLogin,
+                                                    onOpen = openItem,
+                                                    onDeeplink = openDeeplink,
+                                                )
+                                                AppSection.Library -> LibraryScreen(graph, coordinator)
+                                                AppSection.Downloads -> DownloadsScreen(graph, coordinator)
+                                                AppSection.Settings -> SettingsScreen(graph)
+                                                AppSection.Feedback ->
+                                                    if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
+                                                    else ComingSoon(section)
+                                                AppSection.Catalogue ->
+                                                    if (DEBUG_BUILD) CatalogueScreen() else ComingSoon(section)
+                                                else -> ComingSoon(section)
+                                            }
                                         }
                                     }
+                                }
+                                if (!nowPlayingOpen) {
+                                    MiniPlayer(
+                                        coordinator,
+                                        surface = if (needsSurface) graph.playerSurface else null,
+                                        onExpand = { nowPlayingOpen = true },
+                                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
+                                    )
                                 }
                             }
                         }

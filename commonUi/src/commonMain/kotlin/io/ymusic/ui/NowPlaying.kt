@@ -171,6 +171,7 @@ fun MiniPlayer(
     coordinator: PlaybackCoordinator,
     surface: (@Composable (Modifier) -> Unit)? = null,
     onExpand: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val status by coordinator.player.status.collectAsState()
     val progress by coordinator.player.progress.collectAsState()
@@ -187,12 +188,15 @@ fun MiniPlayer(
             coordinator.player.stop()
             coordinator.player.clearQueue()
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         commitFractionOfHeight = 1f / 3f,
         onPull = { pulling = it },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = { if (!pulling) onExpand() }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.SurfaceDim))
+                .clickable(onClick = { if (!pulling) onExpand() }),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
