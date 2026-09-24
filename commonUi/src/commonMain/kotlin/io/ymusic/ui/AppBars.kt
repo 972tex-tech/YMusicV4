@@ -690,6 +690,8 @@ private val DismissDragDistance = 120.dp
 internal fun SwipeDownDismissBox(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** When set, commit after this fraction of the box height; otherwise [DismissDragDistance]. */
+    commitFractionOfHeight: Float? = null,
     content: @Composable () -> Unit,
 ) {
     val peek = remember { Animatable(0f) }
@@ -698,7 +700,8 @@ internal fun SwipeDownDismissBox(
     val drag = remember { DragDown(peek, scope) }
     drag.onDismiss = onDismiss
     drag.stiffnessPx = with(density) { RubberPeekStiffness.toPx() }
-    drag.commitPx = with(density) { DismissDragDistance.toPx() }
+    val defaultCommit = with(density) { DismissDragDistance.toPx() }
+    drag.commitPx = defaultCommit
     val peekY = peek.value
     val fullPeek = weightedRubberPeek(drag.commitPx, drag.stiffnessPx).coerceAtLeast(1f)
     val topShadow = (peekY / fullPeek).coerceIn(0f, 1f)
@@ -706,7 +709,15 @@ internal fun SwipeDownDismissBox(
 
     Box(
         modifier
-            .onSizeChanged { drag.heightPx = it.height.toFloat() }
+            .onSizeChanged {
+                drag.heightPx = it.height.toFloat()
+                val frac = commitFractionOfHeight
+                drag.commitPx = if (frac != null && it.height > 0) {
+                    it.height.toFloat() * frac
+                } else {
+                    defaultCommit
+                }
+            }
             .nestedScroll(drag.connection)
             .pointerInput(Unit) {
                 awaitEachGesture {

@@ -187,6 +187,7 @@ fun MiniPlayer(
             coordinator.player.clearQueue()
         },
         modifier = Modifier.fillMaxWidth(),
+        commitFractionOfHeight = 1f / 3f,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand),
