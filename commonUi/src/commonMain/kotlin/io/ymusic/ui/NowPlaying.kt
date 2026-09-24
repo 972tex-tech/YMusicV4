@@ -275,6 +275,10 @@ fun NowPlayingScreen(
     onPeek: (Float) -> Unit = {},
 ) {
     var fullscreen by remember { mutableStateOf(false) }
+    DisposableEffect(fullscreen) {
+        graph.pip.videoFullscreen.value = fullscreen
+        onDispose { graph.pip.videoFullscreen.value = false }
+    }
     val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
     val armed = VideoOverlayNative.armed
     val overlayVisible = VideoOverlayNative.visible

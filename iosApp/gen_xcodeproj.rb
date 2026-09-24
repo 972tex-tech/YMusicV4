@@ -19,7 +19,10 @@ project = Xcodeproj::Project.new(proj_path)
 target = project.new_target(:application, "iosApp", :ios, "15.0")
 
 src_group = project.new_group("iosApp", "iosApp")
-target.add_file_references([src_group.new_file("iOSApp.swift")])
+target.add_file_references([
+  src_group.new_file("iOSApp.swift"),
+  src_group.new_file("IosPip.swift"),
+])
 src_group.new_file("Info.plist")
 
 res_group = project.new_group("Resources", "Resources")

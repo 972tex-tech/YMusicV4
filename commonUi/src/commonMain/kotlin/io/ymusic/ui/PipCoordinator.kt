@@ -1,0 +1,72 @@
+package io.ymusic.ui
+
+import io.ymusic.player.Player
+import io.ymusic.player.VideoQualityState
+import io.ymusic.player.isPlaying
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.SettingsStore
+import io.ymusic.settings.flow
+import kotlinx.coroutines.flow.MutableStateFlow
+
+/**
+ * Picture-in-picture eligibility and the AudioOnly demotion used when the app leaves
+ * the screen without PiP (or when the user closes the PiP window).
+ */
+class PipCoordinator(
+    private val player: Player,
+    private val settings: SettingsStore,
+) {
+    val nowPlayingOpen = MutableStateFlow(false)
+    val videoFullscreen = MutableStateFlow(false)
+    val inPip = MutableStateFlow(false)
+
+    /** True while quality was forced to AudioOnly for background; restore Auto on foreground. */
+    private var demotedToAudioOnly = false
+
+    fun enablePip(): Boolean = settings.flow(AppSettings.enablePip).value
+
+    fun playingVideo(): Boolean {
+        if (player.config.value.audioOnly) return false
+        val q = player.videoQuality.value
+        if (q.preferredQuality == VideoQualityState.AUDIO_ONLY) return false
+        if (q.actualQuality == VideoQualityState.AUDIO_ONLY) return false
+        return player.status.value.state.isPlaying() || player.status.value.playWhenReady
+    }
+
+    /** Now Playing or fullscreen, video (not AudioOnly), PiP setting on, currently playing. */
+    fun autoEnterEligible(): Boolean {
+        if (!enablePip()) return false
+        if (!nowPlayingOpen.value && !videoFullscreen.value) return false
+        return playingVideo()
+    }
+
+    fun onLeaveWithoutPip() {
+        if (inPip.value) return
+        if (playingVideo()) {
+            demotedToAudioOnly = true
+            player.setAudioOnly(true)
+        }
+    }
+
+    fun onPipStarted() {
+        inPip.value = true
+    }
+
+    fun onPipStopped(appInForeground: Boolean) {
+        inPip.value = false
+        if (appInForeground) {
+            onEnterForeground()
+            return
+        }
+        if (playingVideo()) {
+            demotedToAudioOnly = true
+            player.setAudioOnly(true)
+        }
+    }
+
+    fun onEnterForeground() {
+        if (!demotedToAudioOnly) return
+        demotedToAudioOnly = false
+        player.selectVideoQuality(VideoQualityState.AUTO)
+    }
+}

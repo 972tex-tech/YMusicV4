@@ -102,6 +102,12 @@ object AppSettings {
     val stats = BoolSetting("telemetry.stats", false)
 
     /**
+     * Enter picture-in-picture when the OS asks (Home / app switch) while Now Playing or
+     * fullscreen video is up. Off: going to background drops to AudioOnly until the app returns.
+     */
+    val enablePip = BoolSetting("playback.enablePip", true)
+
+    /**
      * Where finished downloads are written — a media-store bucket uri (the folder is also a Library
      * bucket, since downloads land inside the local library). Empty = not chosen yet: the download
      * flow asks the user to pick a folder before the first download.

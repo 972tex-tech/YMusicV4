@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftUI
+import UIKit
 import YMusicApp
 
 // The iOS product shell: hosts the shared Compose UI (MainViewControllerKt.MainViewController from the
@@ -28,10 +29,19 @@ struct iOSApp: App {
             ComposeView().ignoresSafeArea()
                 .onChange(of: scenePhase) { phase in
                     switch phase {
+                    case .inactive:
+                        IosPip.shared.syncEligible()
                     case .background:
-                        // Park the video decoder; leftover stays (audio-only rest).
-                        IosMseSurfaceKt.iosMseWentBackground()
+                        if IosPip.shared.isActive {
+                            break
+                        }
+                        if IosPipHostKt.iosPipShouldAutoEnter() {
+                            IosPip.shared.startIfEligible()
+                        } else {
+                            IosPipHostKt.iosOnLeaveWithoutPip()
+                        }
                     case .active:
+                        IosPipHostKt.iosOnEnterForeground()
                         DispatchQueue.main.async {
                             IosMseSurfaceKt.iosMseBecameActive()
                         }

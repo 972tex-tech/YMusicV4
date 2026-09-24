@@ -124,6 +124,8 @@ class AppGraph(
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.
      */
+    val pip = PipCoordinator(player, settings)
+
     val localeEpoch = MutableStateFlow(0)
 
     /** App-wide reload signal (desktop F5/Cmd+R): the visible feed surface refetches. */

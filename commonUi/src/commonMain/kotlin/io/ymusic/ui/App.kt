@@ -250,6 +250,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        val inPip by graph.pip.inPip.collectAsState()
+        if (inPip) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                graph.playerSurface(Modifier.fillMaxSize())
+            }
+            return@run
+        }
         // A folder-reveal target (bucket id) set by Downloads' "Reveal in Library" and consumed by the
         // Library once it composes. Lives here so it survives the section switch.
         val libraryReveal = remember { androidx.compose.runtime.mutableStateOf<Long?>(null) }
@@ -278,7 +285,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
         var discoverDrag by remember { mutableFloatStateOf(0f) }
-        var nowPlayingOpen by rememberSaveable { mutableStateOf(false) }
+        val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
         var nowPlayingPeeking by remember { mutableStateOf(false) }
         // Discover feeds cache per browseId — switching tab or navigating away and back must show
         // the already-loaded feed at its old scroll position, not reload it.
@@ -471,7 +478,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             val top = layers.lastOrNull()
             when {
                 drawer.isOpen -> scope.launch { drawer.close() }
-                nowPlayingOpen -> nowPlayingOpen = false
+                nowPlayingOpen -> graph.pip.nowPlayingOpen.value = false
                 top is AppLayer.Search && top.session.editing && top.session.submitted != null ->
                     top.session.editing = false
                 top is AppLayer.LibrarySearch && top.session.drill != null -> top.session.drill = null
@@ -767,7 +774,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                     MiniPlayer(
                                         coordinator,
                                         surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
-                                        onExpand = { nowPlayingOpen = true },
+                                        onExpand = { graph.pip.nowPlayingOpen.value = true },
                                         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
                                     )
                                 }
@@ -782,7 +789,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                     graph,
                     coordinator,
                     onClose = {
-                        nowPlayingOpen = false
+                        graph.pip.nowPlayingOpen.value = false
                         nowPlayingPeeking = false
                     },
                     onPeek = { nowPlayingPeeking = it > 0.5f },

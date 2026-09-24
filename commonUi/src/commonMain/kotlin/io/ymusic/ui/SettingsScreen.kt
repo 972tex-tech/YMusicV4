@@ -51,6 +51,8 @@ import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_crash_reports
 import io.ymusic.ui.resources.settings_crash_reports_hint
+import io.ymusic.ui.resources.settings_enable_pip
+import io.ymusic.ui.resources.settings_enable_pip_hint
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
@@ -123,6 +125,7 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
+        ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
         // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
         // on also makes future releases apply on the next start.
         if (graph.updates != null) {

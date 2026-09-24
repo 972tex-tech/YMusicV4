@@ -1,10 +1,14 @@
 package io.ymusic.android
 
 import android.Manifest
+import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -30,6 +34,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.flow
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppSection
@@ -37,6 +45,8 @@ import io.ymusic.ui.FeedbackFile
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -48,6 +58,7 @@ class MainActivity : ComponentActivity() {
     /** A section requested by a platform surface (download notification tap), consumed by the
      *  composition once the graph is up — survives arriving before the app finishes booting. */
     private val pendingSection = mutableStateOf<AppSection?>(null)
+    private var appGraph: AppGraph? = null
 
     // Notifications are MANDATORY: playback lives in a foreground service whose notification is
     // its lifeline. While disabled, a non-dismissible dialog sits over the app with granting as
@@ -200,6 +211,7 @@ class MainActivity : ComponentActivity() {
                 error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
                 graph == null -> Booting { CircularProgressIndicator() }
                 else -> {
+                    LaunchedEffect(graph) { attachPip(graph!!) }
                     val section = rememberSaveable { mutableStateOf(AppSection.Discover) }
                     LaunchedEffect(pendingSection.value) {
                         pendingSection.value?.let {
@@ -228,6 +240,76 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Covers 13+ permission AND the pre-13 app-level notification toggle.
         notificationsEnabled.value = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        appGraph?.pip?.onEnterForeground()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val g = appGraph ?: return
+        if (Build.VERSION.SDK_INT in 26..30 && g.pip.autoEnterEligible()) {
+            enterPip()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val g = appGraph ?: return
+        val inPip = Build.VERSION.SDK_INT >= 26 && isInPictureInPictureMode
+        if (!inPip) g.pip.onLeaveWithoutPip()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        val g = appGraph ?: return
+        if (isInPictureInPictureMode) {
+            g.pip.onPipStarted()
+        } else {
+            val foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            g.pip.onPipStopped(appInForeground = foreground)
+        }
+    }
+
+    private fun attachPip(graph: AppGraph) {
+        appGraph = graph
+        if (Build.VERSION.SDK_INT < 26 ||
+            !packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+        ) {
+            return
+        }
+        lifecycleScope.launch {
+            combine(
+                graph.settings.flow(AppSettings.enablePip),
+                graph.pip.nowPlayingOpen,
+                graph.pip.videoFullscreen,
+                graph.player.status,
+                graph.player.videoQuality,
+            ) { _, _, _, _, _ -> }
+                .combine(graph.player.config) { _, _ -> graph.pip.autoEnterEligible() }
+                .collect { eligible ->
+                    val size = graph.player.status.value.videoSize
+                    val ratio = if (size != null && size.width > 0 && size.height > 0) {
+                        Rational(size.width, size.height)
+                    } else {
+                        Rational(16, 9)
+                    }
+                    val b = PictureInPictureParams.Builder().setAspectRatio(ratio)
+                    if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible)
+                    setPictureInPictureParams(b.build())
+                }
+        }
+    }
+
+    private fun enterPip() {
+        if (Build.VERSION.SDK_INT < 26) return
+        val size = appGraph?.player?.status?.value?.videoSize
+        val ratio = if (size != null && size.width > 0 && size.height > 0) {
+            Rational(size.width, size.height)
+        } else {
+            Rational(16, 9)
+        }
+        enterPictureInPictureMode(
+            PictureInPictureParams.Builder().setAspectRatio(ratio).build(),
+        )
     }
 
     override fun onNewIntent(intent: Intent) {

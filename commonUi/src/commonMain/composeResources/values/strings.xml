@@ -243,6 +243,8 @@
     <string name="settings_crash_reports_hint">Help fix bugs by reporting crashes and errors. Reports carry a random app id — no account data, no listening history.</string>
     <string name="settings_stats">Send anonymous stats</string>
     <string name="settings_stats_hint">Share anonymous usage signals to help improve the app.</string>
+    <string name="settings_enable_pip">Picture in picture</string>
+    <string name="settings_enable_pip_hint">When watching video in Now Playing or fullscreen, continue in a small window if you leave the app. Otherwise video switches to audio-only until you return.</string>
     <string name="update_available_title">Update available</string>
     <string name="update_version">Version %1$s</string>
     <string name="update_download">Download</string>

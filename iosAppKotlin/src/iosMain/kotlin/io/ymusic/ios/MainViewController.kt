@@ -171,7 +171,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         ),
     )
 
-    return AppGraph(
+    val graph = AppGraph(
         engines = engines,
         player = player,
         logger = rootLogger,
@@ -184,6 +184,10 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
             IosLoginBrowser(url, state, onPageChanged, modifier)
         },
     ) { modifier -> IosMseVideo(mseHole, msePlayer, modifier) }
+    IosPipHost.hole = mseHole
+    IosPipHost.pip = graph.pip
+    IosPipHost.player = player
+    return graph
 }
 
 private const val MSE_CHROME_UA =
