@@ -146,16 +146,11 @@ abstract class SyncFfmpeg : DefaultTask() {
             val slug = slugOf(asset)
             FfmpegRelease.localBuildPack(project, slug)?.let { asset to it }
         }
-        if (fromLocalBuild.size == wanted.size) {
-            for ((asset, pack) in fromLocalBuild) {
-                val dest = unpackDest(out, asset)
-                copyPack(pack, dest)
-                logger.lifecycle("ffmpeg: $asset <- ${pack.absolutePath}")
-            }
-            markCliExecutable(out, wanted)
-            return
+        for ((asset, pack) in fromLocalBuild) {
+            val dest = unpackDest(out, asset)
+            copyPack(pack, dest)
+            logger.lifecycle("ffmpeg: $asset <- ${pack.absolutePath}")
         }
-
         val missing = wanted.filterNot { packLooksPresent(unpackDest(out, it)) }
         if (missing.isEmpty() && !force.get()) return
         if (offline.get()) {
@@ -169,7 +164,7 @@ abstract class SyncFfmpeg : DefaultTask() {
             return
         }
 
-        for (asset in wanted) {
+        for (asset in missing) {
             val dest = unpackDest(out, asset)
             val want = release.sums[asset] ?: error("${release.tag} publishes no $asset")
             val tarDir = File(out, ".tars").apply { mkdirs() }

@@ -285,12 +285,24 @@ val stageAndroidJni by tasks.registering {
     inputs.dir(mseNativeSrc)
     outputs.dir(jniLibsDir)
     onlyIf {
-        ffmpegBuildDir != null && mseAndroidAbis.any { File(ffmpegBuildDir, "out/android-$it/lib/libavformat.so").isFile }
+        ffmpegBuildDir != null && mseAndroidAbis.any { File(ffmpegBuildDir, "out/android-$it/include").isDirectory }
     }
     doLast {
         val ndk = ndkDir ?: error("Android NDK not found (set ANDROID_HOME with an installed NDK)")
         val toolchain = File(ndk, "build/cmake/android.toolchain.cmake")
         val root = ffmpegBuildDir ?: error("ffmpeg-build not found next to YMusicV4-mse")
+        val sharedMissing = mseAndroidAbis.filter { abi ->
+            val prefix = File(root, "out/android-$abi")
+            prefix.resolve("include").isDirectory &&
+                !prefix.resolve("lib/libavformat.so").isFile
+        }
+        if (sharedMissing.isNotEmpty()) {
+            throw GradleException(
+                "ffmpeg-build out/android-{${sharedMissing.joinToString()}} has no shared libavformat.so. " +
+                    "Rebuild with scripts/build-android.sh <abi> (--enable-shared). " +
+                    "Do not static-link libav into libmseffmpegjni.so.",
+            )
+        }
         fun sh(vararg args: String) {
             val p = ProcessBuilder(*args).redirectErrorStream(true).start()
             val out = p.inputStream.bufferedReader().readText()

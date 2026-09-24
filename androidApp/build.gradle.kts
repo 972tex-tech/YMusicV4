@@ -73,9 +73,9 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-        // The prebuilt ffmpeg pack ships as lib/<abi>/{libffmpeg.so,libav*.so}; legacy packaging
+        // libffmpeg.so (CLI) + :mse's libav*.so sit together under lib/<abi>/. Legacy packaging
         // extracts them to nativeLibraryDir so the scanner can exec() the CLI (mmap'd libs can't)
-        // and the CLI/MSE find libav via $ORIGIN.
+        // and both the CLI and MSE load the same libav via $ORIGIN.
         jniLibs { useLegacyPackaging = true }
     }
 
@@ -92,6 +92,8 @@ val stageFfmpeg by tasks.registering(Copy::class) {
         from(FfmpegRelease.androidPackDir(project, abi)) {
             into(abi)
             exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
+            // Shared libav lives in the :mse AAR (same DSOs the CLI loads via $ORIGIN).
+            exclude("libav*", "libsw*")
         }
     }
 }

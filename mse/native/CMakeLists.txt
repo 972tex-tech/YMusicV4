@@ -16,6 +16,23 @@ if(NOT DEFINED FFMPEG_ROOT)
   message(FATAL_ERROR "FFMPEG_ROOT must be ffmpeg-build out/<slug> (include/ + shared lib/)")
 endif()
 
+# The ffmpeg CLI and this JNI must load the same libav DSOs. A prefix that only has
+# libavformat.a would silently static-link a second copy into libmseffmpegjni.
+set(_avformat_shared "")
+foreach(_n libavformat.so libavformat.dylib avformat.dll libavformat.dll)
+  foreach(_d ${FFMPEG_ROOT}/lib ${FFMPEG_ROOT}/bin ${FFMPEG_ROOT})
+    if(EXISTS "${_d}/${_n}")
+      set(_avformat_shared "${_d}/${_n}")
+    endif()
+  endforeach()
+endforeach()
+if(NOT _avformat_shared)
+  message(FATAL_ERROR
+    "FFMPEG_ROOT=${FFMPEG_ROOT} has no shared libavformat (.so/.dylib/.dll). "
+    "Rebuild ffmpeg-build with --enable-shared (scripts/build-android.sh / build-desktop.sh). "
+    "Do not static-link libav into mseffmpegjni.")
+endif()
+
 set(MSE_SOURCES mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c file_av.c file_av_jni.c)
 add_library(mseffmpegjni SHARED ${MSE_SOURCES})
 target_include_directories(mseffmpegjni PRIVATE
