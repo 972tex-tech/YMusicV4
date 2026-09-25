@@ -160,8 +160,14 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             /* 1s behind leftover end is for video readahead. Audio-only
                (no C video) must play to audio last or the clock freezes
                1s early and SABR audio never appends (log2: clock=570.884). */
-            if (!near_eos && last - first >= 1.0 && has_video)
-                cap = last - 1.0;
+            /* Live leftover is often ~2s. Keep 1s video readahead on long
+               VOD; 0.35s on a short live window so we do not starve-empty. */
+            if (!near_eos && has_video) {
+                double span = last - first;
+                double keep = span >= 4.0 ? 1.0 : 0.35;
+                if (span > keep)
+                    cap = last - keep;
+            }
             if (t < first)
                 t = first;
             else if (t > cap) {
