@@ -101,6 +101,8 @@ declare function __mseReset(): void;
 declare function __mseAv1Ok(): number;
 /** 0 if this host cannot decode VP9. */
 declare function __mseVp9Ok(): number;
+/** Max AVC level_idc (0x1f = 3.1). 255 = no cap. */
+declare function __mseAvcMaxLevel(): number;
 
 declare function atob(data: string): string;
 declare function btoa(data: string): string;

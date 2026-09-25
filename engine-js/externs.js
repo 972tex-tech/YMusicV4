@@ -202,6 +202,7 @@ function __mseBuffered(audio) {}
 function __mseReset() {}
 function __mseAv1Ok() {}
 function __mseVp9Ok() {}
+function __mseAvcMaxLevel() {}
 function __bgEntropyStart() {}
 function __bgEntropyBegin() {}
 function __bgEntropyEnd() {}

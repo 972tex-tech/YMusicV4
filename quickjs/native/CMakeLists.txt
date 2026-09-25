@@ -27,6 +27,7 @@ target_include_directories(quickjsjni PRIVATE ${QJS_DIR})
 
 if(ANDROID)
   # The NDK sysroot provides jni.h automatically.
+  target_link_libraries(quickjsjni mediandk log)
 else()
   # Host JVM: JNI headers straight from JAVA_HOME. We avoid find_package(JNI) (it insists on the
   # AWT/jawt component we don't need) — a JNI shared library resolves JVM symbols at load time.

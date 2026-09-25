@@ -10,6 +10,14 @@
 #include <sys/sysctl.h>
 #endif
 #endif
+#ifdef __ANDROID__
+#include <android/log.h>
+#include <dlfcn.h>
+#include <media/NdkMediaCodec.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/system_properties.h>
+#endif
 
 static const QjsMseVt *g_vt;
 
@@ -293,6 +301,97 @@ static int ios_av1_hw(void)
 }
 #endif
 
+#ifdef __ANDROID__
+typedef media_status_t (*mse_mc_get_name_fn)(AMediaCodec *, char **);
+typedef void (*mse_mc_rel_name_fn)(AMediaCodec *, char *);
+
+static int android_decoder_ok(const char *mime)
+{
+    AMediaCodec *c = AMediaCodec_createDecoderByType(mime);
+    int ok = c != NULL;
+    if (c)
+        AMediaCodec_delete(c);
+    __android_log_print(ANDROID_LOG_INFO, "mse-v", "canPlay %s=%d", mime, ok);
+    return ok;
+}
+
+static int android_hw_decoder(const char *mime)
+{
+    static mse_mc_get_name_fn get_name;
+    static mse_mc_rel_name_fn rel_name;
+    static int once;
+    AMediaCodec *c;
+    char *name = NULL;
+    int hw = 0;
+    if (!once) {
+        once = 1;
+        get_name = (mse_mc_get_name_fn)dlsym(RTLD_DEFAULT, "AMediaCodec_getName");
+        rel_name = (mse_mc_rel_name_fn)dlsym(RTLD_DEFAULT, "AMediaCodec_releaseName");
+    }
+    c = AMediaCodec_createDecoderByType(mime);
+    if (!c) {
+        __android_log_print(ANDROID_LOG_INFO, "mse-v", "canPlay %s hw=0 create=fail", mime);
+        return 0;
+    }
+    if (get_name && get_name(c, &name) == AMEDIA_OK && name) {
+        int google = strstr(name, "google") || strstr(name, "c2.android");
+        int sw = strstr(name, ".sw") || strstr(name, "sw-based");
+        hw = !google && !sw;
+        __android_log_print(ANDROID_LOG_INFO, "mse-v", "canPlay %s hw=%d name=%s", mime, hw, name);
+        if (rel_name)
+            rel_name(c, name);
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, "mse-v", "canPlay %s hw=0 name=missing", mime);
+    }
+    AMediaCodec_delete(c);
+    return hw;
+}
+
+static int android_mpc_high(void)
+{
+    char v[PROP_VALUE_MAX];
+    int n;
+    if (__system_property_get("ro.odm.build.media_performance_class", v) <= 0)
+        v[0] = 0;
+    n = atoi(v);
+    __android_log_print(ANDROID_LOG_INFO, "mse-v", "mpc=%d high=%d", n, n >= 30);
+    return n >= 30;
+}
+
+static int android_av1_ok(void)
+{
+    static int probed, ok;
+    if (!probed) {
+        probed = 1;
+        ok = android_decoder_ok("video/av01");
+    }
+    return ok;
+}
+
+static int android_vp9_ok(void)
+{
+    static int probed, ok;
+    if (!probed) {
+        probed = 1;
+        ok = android_hw_decoder("video/x-vnd.on2.vp9") || android_mpc_high();
+        __android_log_print(ANDROID_LOG_INFO, "mse-v", "vp9Playable=%d", ok);
+    }
+    return ok;
+}
+
+/* High@L4.0 is 720p60 (itag 298). i.MX8 cannot keep that realtime. */
+static int android_avc_max_level(void)
+{
+    static int probed, lvl;
+    if (!probed) {
+        probed = 1;
+        lvl = android_mpc_high() ? 255 : 0x1f;
+        __android_log_print(ANDROID_LOG_INFO, "mse-v", "avcMaxLevel=%d", lvl);
+    }
+    return lvl;
+}
+#endif
+
 static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     (void)this_val;
@@ -300,8 +399,22 @@ static JSValue js_av1_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     (void)argv;
 #if TARGET_OS_IPHONE
     return JS_NewInt32(ctx, ios_av1_hw());
+#elif defined(__ANDROID__)
+    return JS_NewInt32(ctx, android_av1_ok());
 #else
     return JS_NewInt32(ctx, 1);
+#endif
+}
+
+static JSValue js_avc_max_level(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+#ifdef __ANDROID__
+    return JS_NewInt32(ctx, android_avc_max_level());
+#else
+    return JS_NewInt32(ctx, 255);
 #endif
 }
 
@@ -312,6 +425,8 @@ static JSValue js_vp9_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     (void)argv;
 #if TARGET_OS_IPHONE
     return JS_NewInt32(ctx, 0);
+#elif defined(__ANDROID__)
+    return JS_NewInt32(ctx, android_vp9_ok());
 #else
     return JS_NewInt32(ctx, 1);
 #endif
@@ -338,5 +453,6 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseReset", JS_NewCFunction(ctx, js_reset, "__mseReset", 0));
     JS_SetPropertyStr(ctx, g, "__mseAv1Ok", JS_NewCFunction(ctx, js_av1_ok, "__mseAv1Ok", 0));
     JS_SetPropertyStr(ctx, g, "__mseVp9Ok", JS_NewCFunction(ctx, js_vp9_ok, "__mseVp9Ok", 0));
+    JS_SetPropertyStr(ctx, g, "__mseAvcMaxLevel", JS_NewCFunction(ctx, js_avc_max_level, "__mseAvcMaxLevel", 0));
     JS_FreeValue(ctx, g);
 }

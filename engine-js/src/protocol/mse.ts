@@ -653,6 +653,17 @@ class MediaSource {
         return false;
       }
     }
+    if (typeof __mseAvcMaxLevel === "function") {
+      const avc = /avc1\.([0-9a-f]{6})/i.exec(m);
+      const hex = avc ? avc[1] : "";
+      if (hex && hex.length >= 6) {
+        const lvl = parseInt(hex.slice(4, 6), 16);
+        if (lvl > __mseAvcMaxLevel()) {
+          mseLog("mse isTypeSupported reject avc level " + lvl.toString(16));
+          return false;
+        }
+      }
+    }
     const ok =
       m.indexOf("audio/webm") === 0 ||
       m.indexOf("video/webm") === 0 ||

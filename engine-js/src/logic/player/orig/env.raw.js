@@ -938,6 +938,11 @@
     globalThis.HTMLMediaElement.prototype.canPlayType = native("canPlayType", function (type) {
       type = String(type == null ? "" : type).toLowerCase();
       if (!type) return "";
+      var avc = /avc1\.([0-9a-f]{6})/i.exec(type);
+      if (avc && typeof __mseAvcMaxLevel === "function") {
+        var lvl = parseInt(avc[1].slice(4, 6), 16);
+        if (lvl > __mseAvcMaxLevel()) return "";
+      }
       if (/avc1|mp4a\.40|vp09|vp8|vp9|opus|flac|av01/.test(type)) return "probably";
       if (
         type.indexOf("video/mp4") === 0 ||
