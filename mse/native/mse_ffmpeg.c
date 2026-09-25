@@ -114,6 +114,8 @@ struct MseAv {
 #endif
     /* After seek: present RAP-to-playhead even if pts is behind clock. */
     int show_late;
+    /* 0 until a picture is released to the surface (seek sets v_sent). */
+    int v_pictured;
     /* H.264: AV_PKT_FLAG_KEY can be a recovery point, not IDR. Don't show
        until an IDR NAL has been sent (open-GOP seek = broken picture). */
     int v_seen_idr;
@@ -140,6 +142,14 @@ struct MseAv {
     int64_t mc_hold_pts_us;
     int mc_w;
     int mc_h;
+    int mc_cfg_w;
+    int mc_cfg_h;
+    double cost_q_pts[32];
+    int64_t cost_q_t[32];
+    int cost_q_i;
+    double mc_dec_ema;
+    int64_t mc_pts0;
+    int mc_pts0_set;
 #endif
 };
 
@@ -148,9 +158,57 @@ static int vdbg_n;
 #endif
 static void vf_resync_key(MseAv *a, double t);
 static void close_video_decoder(MseAv *a);
+#ifdef __ANDROID__
+static int64_t mc_now_us(void);
+static void mc_flush(MseAv *a);
+static void mc_hold_drop(MseAv *a, int render);
+static void mc_cost_note_in(MseAv *a, double pts);
+static void mc_cost_note_out(MseAv *a, double pts);
+#endif
 static void maybe_apply_video_rep(MseAv *a);
 
+#ifdef __ANDROID__
+#define MSE_SEND_AHEAD 0.25
+#else
 #define MSE_SEND_AHEAD 0.08
+#endif
+
+static double mc_send_ahead(const MseAv *a)
+{
+#ifdef __ANDROID__
+    double ahead;
+    /* Live head: keep ~1s in-flight until the first picture. */
+    if (!a->v_pictured)
+        return 1.0;
+    if (a->mc_dec_ema <= 0)
+        return MSE_SEND_AHEAD;
+    /* Submit a bit more than measured queue→output so the 80ms late
+       window does not see decode latency as lateness. */
+    ahead = a->mc_dec_ema * 1.5 + 0.05;
+    if (ahead < 0.12)
+        ahead = 0.12;
+    if (ahead > 0.45)
+        ahead = 0.45;
+    return ahead;
+#else
+    (void)a;
+    return MSE_SEND_AHEAD;
+#endif
+}
+
+/* C2 treats flush-before-any-input as lastFlushIndex=0, then the IDR
+   (frameIndex=0) is ignored. Live seek hits that; VOD does not. */
+static void mc_flush(MseAv *a)
+{
+    if (!a->mc)
+        return;
+    mc_hold_drop(a, 0);
+    if (!a->mc_pts0_set)
+        return;
+    AMediaCodec_flush(a->mc);
+    a->mc_pts0_set = 0;
+    a->v_pictured = 0;
+}
 
 static int h264_nal_len_size(const AVCodecParameters *par)
 {
@@ -1050,12 +1108,16 @@ static int mc_open(MseAv *a)
     if (!a->mc_win || !a->vpar)
         return -1;
     mime = mc_mime(a->vpar->codec_id);
-    if (!mime)
+    if (!mime) {
+        vlog("mediacodec no mime codec_id=%d", (int)a->vpar->codec_id);
         return -1;
+    }
     mc_close(a);
     a->mc = AMediaCodec_createDecoderByType(mime);
-    if (!a->mc)
+    if (!a->mc) {
+        vlog("mediacodec createDecoderByType %s failed codec_id=%d", mime, (int)a->vpar->codec_id);
         return -1;
+    }
     fmt = AMediaFormat_new();
     if (!fmt) {
         mc_close(a);
@@ -1084,7 +1146,13 @@ static int mc_open(MseAv *a)
     a->mc_codec_id = a->vpar->codec_id;
     a->mc_w = w;
     a->mc_h = h;
+    a->mc_cfg_w = w;
+    a->mc_cfg_h = h;
     a->mc_hold = 0;
+    a->v_pictured = 0;
+    a->mc_dec_ema = 0;
+    a->mc_pts0 = 0;
+    a->mc_pts0_set = 0;
     {
         double t = a->v_sent >= 0 ? a->v_sent : 0;
         size_t i, key = a->vf.n;
@@ -1112,6 +1180,73 @@ static int mc_open(MseAv *a)
     return 0;
 }
 
+static int h264_avcc_to_annexb(const uint8_t *src, int n, int nal_len, uint8_t *dst, int dst_cap, int *dn)
+{
+    int i = 0, o = 0;
+    /* fMP4/avcC samples are length-prefixed. Do not sniff 00 00 01: an AVCC
+       size of 0x000001xx (256–511 byte NALs) looks like a 3-byte start code. */
+    if (nal_len < 1 || nal_len > 4 || !dst || dst_cap < 4)
+        return -1;
+    while (i + nal_len <= n) {
+        uint32_t sz = 0;
+        int k;
+        for (k = 0; k < nal_len; k++)
+            sz = (sz << 8) | src[i + k];
+        i += nal_len;
+        if (sz < 1 || i + (int)sz > n)
+            break;
+        if (o + 4 + (int)sz > dst_cap)
+            return -1;
+        dst[o] = 0;
+        dst[o + 1] = 0;
+        dst[o + 2] = 0;
+        dst[o + 3] = 1;
+        o += 4;
+        memcpy(dst + o, src + i, sz);
+        o += (int)sz;
+        i += (int)sz;
+    }
+    if (o <= 0 || i != n)
+        return -1;
+    *dn = o;
+    return 0;
+}
+
+static int64_t mc_now_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000LL + ts.tv_nsec / 1000;
+}
+
+static void mc_cost_note_in(MseAv *a, double pts)
+{
+    int i = a->cost_q_i++ & 31;
+    a->cost_q_pts[i] = pts;
+    a->cost_q_t[i] = mc_now_us();
+}
+
+static void mc_cost_note_out(MseAv *a, double pts)
+{
+    int k;
+    int64_t now = mc_now_us();
+    for (k = 0; k < 32; k++) {
+        int i = (a->cost_q_i - 1 - k) & 31;
+        double d = a->cost_q_pts[i] - pts;
+        if (d < 0)
+            d = -d;
+        if (a->cost_q_t[i] && d < 0.002) {
+            double lat = (now - a->cost_q_t[i]) / 1e6;
+            a->cost_q_t[i] = 0;
+            if (a->mc_dec_ema <= 0)
+                a->mc_dec_ema = lat;
+            else
+                a->mc_dec_ema = 0.8 * a->mc_dec_ema + 0.2 * lat;
+            return;
+        }
+    }
+}
+
 static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int key)
 {
     ssize_t ix;
@@ -1124,17 +1259,34 @@ static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int ke
     if (ix < 0)
         return AVERROR(EAGAIN);
     buf = AMediaCodec_getInputBuffer(a->mc, (size_t)ix, &cap);
-    if (!buf || cap < (size_t)n)
+    if (!buf)
         return -1;
-    memcpy(buf, data, (size_t)n);
+    if (a->vpar && a->vpar->codec_id == AV_CODEC_ID_H264) {
+        int an = 0;
+        if (h264_avcc_to_annexb(data, n, h264_nal_len_size(a->vpar), buf, (int)cap, &an) == 0)
+            n = an;
+        else if (cap >= (size_t)n)
+            memcpy(buf, data, (size_t)n);
+        else
+            return -1;
+    } else if (cap >= (size_t)n) {
+        memcpy(buf, data, (size_t)n);
+    } else {
+        return -1;
+    }
 #ifdef AMEDIACODEC_BUFFER_FLAG_KEY_FRAME
     if (key)
         flags |= AMEDIACODEC_BUFFER_FLAG_KEY_FRAME;
 #else
     (void)key;
 #endif
-    if (AMediaCodec_queueInputBuffer(a->mc, (size_t)ix, 0, (size_t)n, pts_us, flags) != AMEDIA_OK)
+    if (!a->mc_pts0_set) {
+        a->mc_pts0 = pts_us;
+        a->mc_pts0_set = 1;
+    }
+    if (AMediaCodec_queueInputBuffer(a->mc, (size_t)ix, 0, (size_t)n, pts_us - a->mc_pts0, flags) != AMEDIA_OK)
         return -1;
+    mc_cost_note_in(a, pts_us / 1e6);
     return 0;
 }
 
@@ -1196,26 +1348,37 @@ static int mc_send_one(MseAv *a)
     return r < 0 ? r : 0;
 }
 
+static int mc_out_late(const MseAv *a, double p, double clock)
+{
+    const double late = 0.08;
+    /* Do not present a 0.9s-late first IDR then return — that leaves every
+       following picture late and FPS collapses. Skip until within 350ms. */
+    if (!a->v_pictured)
+        return p < clock - 0.35;
+    return p < clock - late && !(a->show_late && p >= clock - 0.35);
+}
+
 static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
 {
     const double early = 0.04;
-    const double late = 0.08;
     int i;
     if (a->mc_hold) {
-        double p = a->mc_hold_pts_us / 1e6;
+        double p = (a->mc_hold_pts_us + a->mc_pts0) / 1e6;
         double d = p - clock;
         if (p > clock + early) {
             if (vdbg_ok() || d > 0.2)
                 vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             return 0;
         }
-        if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
+        if (mc_out_late(a, p, clock)) {
             vlog_state(a, clock, "hold-late", d);
             mc_hold_drop(a, 0);
         } else {
             mc_hold_drop(a, 1);
             *pts = p;
             a->v_sent = p;
+            a->v_pictured = 1;
+            mc_cost_note_out(a, p);
             a->show_late = 0;
             *w = a->mc_w;
             *h = a->mc_h;
@@ -1228,7 +1391,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         AMediaCodecBufferInfo info;
         ssize_t ox = AMediaCodec_dequeueOutputBuffer(a->mc, &info, 0);
         if (ox >= 0) {
-            double p = info.presentationTimeUs / 1e6;
+            double p = (info.presentationTimeUs + a->mc_pts0) / 1e6;
             double d = p - clock;
             if (p > clock + early) {
                 a->mc_hold = 1;
@@ -1238,8 +1401,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                     vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 return 0;
             }
-            if (p < clock - late && !(a->show_late && p >= clock - 0.35)) {
-                if (vdbg_ok() || d < -0.25)
+            if (mc_out_late(a, p, clock)) {
+                if (vdbg_ok())
                     vlog_state(a, clock, "recv-late", d);
                 AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
                 continue;
@@ -1247,6 +1410,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 1);
             *pts = p;
             a->v_sent = p;
+            a->v_pictured = 1;
+            mc_cost_note_out(a, p);
             a->show_late = 0;
             *w = a->mc_w;
             *h = a->mc_h;
@@ -1257,9 +1422,33 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         if (ox == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
             AMediaFormat *fmt = AMediaCodec_getOutputFormat(a->mc);
             if (fmt) {
-                int32_t mw = 0, mh = 0;
+                int32_t mw = 0, mh = 0, cl = 0, ct = 0, cr = 0, cb = 0;
+                int have_crop;
                 AMediaFormat_getInt32(fmt, AMEDIAFORMAT_KEY_WIDTH, &mw);
                 AMediaFormat_getInt32(fmt, AMEDIAFORMAT_KEY_HEIGHT, &mh);
+                have_crop =
+                    AMediaFormat_getInt32(fmt, "crop-left", &cl) == AMEDIA_OK &&
+                    AMediaFormat_getInt32(fmt, "crop-top", &ct) == AMEDIA_OK &&
+                    AMediaFormat_getInt32(fmt, "crop-right", &cr) == AMEDIA_OK &&
+                    AMediaFormat_getInt32(fmt, "crop-bottom", &cb) == AMEDIA_OK;
+                if (have_crop) {
+                    int cw = cr - cl + 1, ch = cb - ct + 1;
+                    /* i.MX reports 0,0,0,0 → 1x1, or crop=buffer stride. */
+                    if (cw >= 16 && ch >= 16 &&
+                        (a->mc_cfg_w <= 0 || cw <= a->mc_cfg_w + 16)) {
+                        mw = cw;
+                        mh = ch;
+                    } else {
+                        have_crop = 0;
+                    }
+                }
+                if (!have_crop) {
+                    /* i.MX stride (1280 coded → 1536 output). Keep coded size. */
+                    if (a->mc_cfg_w > 0 && mw > a->mc_cfg_w)
+                        mw = a->mc_cfg_w;
+                    if (a->mc_cfg_h > 0 && mh > a->mc_cfg_h)
+                        mh = a->mc_cfg_h;
+                }
                 if (mw > 0)
                     a->mc_w = mw;
                 if (mh > 0)
@@ -1292,19 +1481,22 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 }
                 break;
             }
-            if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {
+            if (a->vf.f[a->vf.rd].pts > clock + mc_send_ahead(a)) {
                 vlog_starve_ahead(a, clock, a->vf.rd);
                 break;
             }
             {
                 double sp = a->vf.f[a->vf.rd].pts;
                 int key = a->vf.f[a->vf.rd].key;
+                size_t sent_rd = a->vf.rd;
                 sr = mc_send_one(a);
                 if (sr < 0) {
                     vlog("mediacodec send-err pts=%.3f key=%d r=%d", sp, key, sr);
                     a->need_rap[0] = 1;
                     continue;
                 }
+                if (a->vf.rd == sent_rd)
+                    break;
                 if (key)
                     a->need_rap[0] = 0;
                 if (vdbg_ok())
@@ -2340,12 +2532,18 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                         vlog("video-rep %dx%d -> %dx%d keep vf=%zu",
                              a->vpar->width, a->vpar->height, par->width, par->height,
                              a->vf.n);
+#ifdef __ANDROID__
+                        /* Live 298→135: draining leftover feeds 480p into a 720p session. */
+                        cfb_free(&a->vf);
+                        apply_pending_video_rep(a);
+#else
                         if (!a->vdec
 #ifdef __APPLE__
                             && !apple_vt_codec(a->vpar)
 #endif
                         )
                             open_decoder(a, 1, a->vpar);
+#endif
                     }
                     avcodec_parameters_free(&par);
                     par = NULL;
@@ -2361,8 +2559,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
 #ifdef __ANDROID__
                     if (a->mc &&
                         (a->mc_codec_id != par->codec_id ||
-                         (par->width > 0 && a->mc_w > 0 && par->width != a->mc_w) ||
-                         (par->height > 0 && a->mc_h > 0 && par->height != a->mc_h))) {
+                         (par->width > 0 && a->mc_cfg_w > 0 && par->width != a->mc_cfg_w) ||
+                         (par->height > 0 && a->mc_cfg_h > 0 && par->height != a->mc_cfg_h))) {
                         mc_close(a);
                         a->mc_fail = 0;
                     }
@@ -2488,10 +2686,8 @@ void mse_av_abort(MseAv *a, int audio)
     if (!audio && a->vbsf)
         av_bsf_flush(a->vbsf);
 #ifdef __ANDROID__
-    if (!audio && a->mc) {
-        mc_hold_drop(a, 0);
-        AMediaCodec_flush(a->mc);
-    }
+    if (!audio)
+        mc_flush(a);
 #endif
     av_unlock(a, audio);
 }
@@ -2545,6 +2741,7 @@ void mse_av_rest_video(MseAv *a, int on, double clock)
             t = a->vf.f[a->vf.rd].pts;
         vf_resync_key(a, t);
         a->show_late = 1;
+        a->v_pictured = 0;
 #ifdef __ANDROID__
         mc_close(a);
         a->mc_fail = 0;
@@ -2607,10 +2804,8 @@ void mse_av_flush(MseAv *a, int audio, int video)
     if (video && a->vbsf)
         av_bsf_flush(a->vbsf);
 #ifdef __ANDROID__
-    if (video && a->mc) {
-        mc_hold_drop(a, 0);
-        AMediaCodec_flush(a->mc);
-    }
+    if (video)
+        mc_flush(a);
 #endif
     if (audio) {
         a->pend_n[1] = 0;
@@ -2701,7 +2896,7 @@ int mse_av_video_due(MseAv *a, double clock)
         return due;
     }
     rd = vf_send_rd(a);
-    due = rd < a->vf.n && a->vf.f[rd].pts <= clock + MSE_SEND_AHEAD;
+    due = rd < a->vf.n && a->vf.f[rd].pts <= clock + mc_send_ahead(a);
     pthread_mutex_unlock(&a->mu);
     return due;
 }
@@ -2839,6 +3034,9 @@ static int vf_skip_stale(MseAv *a, double clock)
         a->vf.f[i].sent = 1;
     a->vf.rd = next;
     a->need_rap[0] = 1;
+#ifdef __ANDROID__
+    mc_flush(a);
+#endif
     vlog("skip-stale key=%.3f next=%.3f clock=%.3f", kpts, npts, clock);
     return 1;
 }
@@ -2893,6 +3091,7 @@ void mse_av_seek(MseAv *a, double seconds)
 #endif
     }
     a->show_late = 1;
+    a->v_pictured = 0;
 #ifdef __APPLE__
     while (a->vt_q_n > 0) {
         a->vt_q_n--;
@@ -2903,10 +3102,7 @@ void mse_av_seek(MseAv *a, double seconds)
     if (a->vbsf)
         av_bsf_flush(a->vbsf);
 #ifdef __ANDROID__
-    if (a->mc && a->vf.rd < a->vf.n && a->vf.f[a->vf.rd].key) {
-        mc_hold_drop(a, 0);
-        AMediaCodec_flush(a->mc);
-    }
+    mc_flush(a);
 #endif
 #ifdef __APPLE__
     if (a->vt_layer)
@@ -3257,6 +3453,7 @@ void mse_av_recover_display(MseAv *a, double clock)
     cfb_drop_fake(&a->vf);
     vf_resync_key(a, clock);
     a->show_late = 1;
+    a->v_pictured = 0;
     if (a->vt_dec) {
         mse_vt_dec_close(a->vt_dec);
         a->vt_dec = NULL;
