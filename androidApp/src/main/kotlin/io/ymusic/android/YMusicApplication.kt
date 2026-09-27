@@ -10,11 +10,19 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.widget.FrameLayout
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.sentry.kotlin.multiplatform.Sentry
@@ -82,6 +90,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.last
@@ -417,6 +426,7 @@ class YMusicApplication : Application() {
         }
 
         var ytEngine: io.ymusic.player.YtEngine? = null
+        var msePlayer: MsePlayer? = null
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
@@ -433,6 +443,7 @@ class YMusicApplication : Application() {
                         mediaProxy = mediaProxy,
                     ).also {
                         ytEngine = it
+                        msePlayer = it
                         mseBridge.attach(it)
                     }
                 },
@@ -538,6 +549,15 @@ class YMusicApplication : Application() {
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
             val status by player.status.collectAsState()
+            val fps by produceState(0, msePlayer) {
+                var prev = msePlayer?.videoSurface?.presentedFrames() ?: 0
+                while (true) {
+                    delay(1_000)
+                    val n = msePlayer?.videoSurface?.presentedFrames() ?: 0
+                    value = (n - prev).coerceAtLeast(0)
+                    prev = n
+                }
+            }
             Box(modifier) {
                 AndroidView(
                     factory = { context -> FrameLayout(context) },
@@ -553,6 +573,18 @@ class YMusicApplication : Application() {
                         if (showMse) mseTexture.bringToFront()
                     },
                 )
+                if (fps > 0 && status.videoSize != null) {
+                    Text(
+                        "$fps fps",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
         }
     }
