@@ -80,7 +80,7 @@ internal class PlayerImpl(
 
     init {
         scope.launch {
-            delay(5_000)
+            delay(3_000)
             prepareYoutubeEngine()
         }
     }
