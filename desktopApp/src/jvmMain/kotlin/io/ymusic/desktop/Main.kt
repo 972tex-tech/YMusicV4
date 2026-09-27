@@ -623,12 +623,6 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
     // backend yet). Commands come back on the Main dispatcher, where the player is driven.
     connectMediaSession(player, CoroutineScope(Dispatchers.Main), rootLogger.fork("now-playing"))
 
-    // Warm the YouTube MSE engine ~5s after startup so the first play skips JS/C construction.
-    CoroutineScope(Dispatchers.Default).launch {
-        delay(5_000)
-        withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-    }
-
     // Offline downloads: SABR stack over ffmpeg. Spec comes from the MSE engine's cached
     // /player + decoded googlevideo URL (preload if that video is not already cached).
     val downloadService = withContext(Dispatchers.IO) {

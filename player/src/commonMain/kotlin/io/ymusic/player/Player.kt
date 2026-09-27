@@ -142,8 +142,8 @@ interface Player {
 
     /**
      * Eagerly create + warm the YouTube engine so the first video play skips construction cost.
-     * Safe to call once, a few seconds after startup. No-op if the engine already exists or none
-     * is configured.
+     * [createPlayer] already does this ~5s after construction on every platform. Safe to call
+     * again (downloads). No-op if the engine already exists or none is configured.
      */
     fun prepareYoutubeEngine()
 

@@ -450,12 +450,6 @@ class YMusicApplication : Application() {
             ),
         )
 
-        // Warm the YouTube MSE engine ~5s after startup so the first play skips JS/C construction.
-        appScope.launch {
-            kotlinx.coroutines.delay(5_000)
-            player.prepareYoutubeEngine()
-        }
-
         // Offline downloads: SABR stack + on-device ffmpeg. Spec from MSE /player + decoded SABR URL.
         val downloadService = run {
             val ffmpegBin = File(applicationInfo.nativeLibraryDir, "libffmpeg.so")

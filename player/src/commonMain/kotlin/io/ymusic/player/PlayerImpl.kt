@@ -78,6 +78,13 @@ internal class PlayerImpl(
      *  video container to the engines and each owns its own surface, so it never needs this). */
     private val _currentEngine = MutableStateFlow<MediaEngine<*>?>(null)
 
+    init {
+        scope.launch {
+            delay(5_000)
+            prepareYoutubeEngine()
+        }
+    }
+
     private val _sleepTimerMs = MutableStateFlow<Long?>(null)
     override val sleepTimerMs: StateFlow<Long?> = _sleepTimerMs.asStateFlow()
 
