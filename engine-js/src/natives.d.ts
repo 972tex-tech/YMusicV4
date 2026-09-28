@@ -90,6 +90,8 @@ declare function __msePaused(): boolean;
 declare function __mseReadyState(): number;
 declare function __msePlay(): void;
 declare function __msePause(): void;
+/** 1 = room (after coded-frame eviction). 0 = still full; throw QuotaExceededError. */
+declare function __msePrepareAppend(audio: number, nbytes: number): number;
 declare function __mseAppend(
   audio: number,
   bytes: Uint8Array,

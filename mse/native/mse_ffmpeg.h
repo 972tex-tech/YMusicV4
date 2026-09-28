@@ -32,6 +32,9 @@ void mse_av_destroy(MseAv *a);
 MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double ts_off,
                           double win_start, double win_end);
 void mse_av_remove(MseAv *a, int audio, double start, double end);
+size_t mse_av_leftover_bytes(MseAv *a, int audio);
+/* Drop coded frames with pts+dur <= before until `need` bytes are freed (Chrome MSE GC). */
+void mse_av_evict_before(MseAv *a, int audio, double before, size_t need);
 void mse_av_flush(MseAv *a, int audio, int video);
 void mse_av_abort(MseAv *a, int audio);
 /* MSE changeType: reset parser + drop init for that track; leftover stays. */

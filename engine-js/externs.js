@@ -202,6 +202,7 @@ function __msePaused() {}
 function __mseReadyState() {}
 function __msePlay() {}
 function __msePause() {}
+function __msePrepareAppend(audio, nbytes) {}
 function __mseAppend(audio, bytes, tsOff, winStart, winEnd) {}
 function __mseRemove(audio, start, end) {}
 function __mseAbort(audio) {}

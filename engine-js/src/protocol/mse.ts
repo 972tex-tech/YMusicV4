@@ -252,6 +252,14 @@ function invalidState(msg: string): Error {
   return domException("InvalidStateError", msg, 11);
 }
 
+function quotaExceeded(): Error {
+  return domException(
+    "QuotaExceededError",
+    "The SourceBuffer is full, and cannot free space to append additional buffers.",
+    22,
+  );
+}
+
 function notSupported(msg: string): Error {
   return domException("NotSupportedError", msg, 9);
 }
@@ -484,11 +492,18 @@ class SourceBuffer {
       if (MSE_DEBUG) mseLog("mse append throw updating a=" + audio);
       throw invalidState("SourceBuffer.appendBuffer: updating");
     }
+    const u8 = asU8(data);
+    /* Chrome prepareAppend: coded-frame eviction, then QuotaExceededError while
+       updating is still false so YouTube can remove() immediately. */
+    if (!isYmf(u8) && typeof __msePrepareAppend === "function" && !__msePrepareAppend(audio, u8.length)) {
+      drainCalls.throw++;
+      mseLog("mse quota a=" + audio + " n=" + u8.length);
+      throw quotaExceeded();
+    }
     this["updating"] = true;
     fire(this, "updatestart");
     const self = this;
     try {
-      const u8 = asU8(data);
       if (isYmf(u8)) {
         takeFakeMedia(self, u8);
       } else {

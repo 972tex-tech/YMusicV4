@@ -1481,6 +1481,33 @@ int64_t mse_host_samples_played(MseHost *h)
     return n;
 }
 
+/* Chrome SourceBuffer limits: 12 MiB audio, 150 MiB video. */
+#define MSE_QUOTA_AUDIO ((size_t)12 * 1024 * 1024)
+#define MSE_QUOTA_VIDEO ((size_t)150 * 1024 * 1024)
+
+int mse_host_prepare_append(MseHost *h, int audio, int n)
+{
+    size_t cap, have;
+    double t;
+    if (!h)
+        return 0;
+    if (n <= 0)
+        return 1;
+    cap = audio ? MSE_QUOTA_AUDIO : MSE_QUOTA_VIDEO;
+    have = mse_av_leftover_bytes(h->av, audio);
+    if (have + (size_t)n <= cap)
+        return 1;
+    t = mse_host_current_time(h);
+    if (t > 1.0)
+        mse_av_evict_before(h->av, audio, t - 1.0, have + (size_t)n - cap);
+    have = mse_av_leftover_bytes(h->av, audio);
+    if (have + (size_t)n <= cap)
+        return 1;
+    mse_logf("mse quota a=%d have=%zu need=%d cap=%zu clock=%.3f\n", audio, have, n, cap,
+             t);
+    return 0;
+}
+
 int mse_host_append(MseHost *h, int audio, const uint8_t *p, int n, double ts_off, double win_start, double win_end)
 {
     MseAvIngest r;

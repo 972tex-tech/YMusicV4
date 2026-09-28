@@ -58,6 +58,7 @@ typedef struct {
     size_t n;
     size_t cap;
     size_t rd;
+    size_t bytes;
 } Cfb;
 
 struct MseAv {
@@ -465,6 +466,7 @@ static int cfb_push(Cfb *b, double pts, double dts, double dur, int key, const u
     b->f[b->n].data = d;
     b->f[b->n].n = n;
     b->n++;
+    b->bytes += n;
     return 0;
 }
 
@@ -475,6 +477,10 @@ static void cfb_drop(Cfb *b, double start, double end)
         if (b->f[i].pts + 1e-4 >= start && b->f[i].pts < end) {
             if (i < b->rd)
                 dropped_before++;
+            if (b->bytes >= b->f[i].n)
+                b->bytes -= b->f[i].n;
+            else
+                b->bytes = 0;
             free(b->f[i].data);
             continue;
         }
@@ -533,6 +539,10 @@ static void cfb_drop_fake(Cfb *b)
         if (fake) {
             if (i < b->rd)
                 dropped_before++;
+            if (b->bytes >= b->f[i].n)
+                b->bytes -= b->f[i].n;
+            else
+                b->bytes = 0;
             free(b->f[i].data);
             continue;
         }
@@ -2776,6 +2786,52 @@ void mse_av_park_video(MseAv *a)
     pthread_mutex_unlock(&a->mu);
 }
 #endif
+
+size_t mse_av_leftover_bytes(MseAv *a, int audio)
+{
+    Cfb *b;
+    size_t n;
+    if (!a)
+        return 0;
+    av_lock(a, audio);
+    b = audio ? &a->af : &a->vf;
+    n = b->bytes;
+    av_unlock(a, audio);
+    return n;
+}
+
+void mse_av_evict_before(MseAv *a, int audio, double before, size_t need)
+{
+    Cfb *b;
+    size_t i, w = 0, dropped_rd = 0, freed = 0;
+    if (!a || need == 0)
+        return;
+    av_lock(a, audio);
+    b = audio ? &a->af : &a->vf;
+    for (i = 0; i < b->n; i++) {
+        int evict = freed < need && b->f[i].pts + b->f[i].dur <= before;
+        if (evict) {
+            if (i < b->rd)
+                dropped_rd++;
+            if (b->bytes >= b->f[i].n)
+                b->bytes -= b->f[i].n;
+            else
+                b->bytes = 0;
+            freed += b->f[i].n;
+            free(b->f[i].data);
+            continue;
+        }
+        b->f[w++] = b->f[i];
+    }
+    b->n = w;
+    if (b->rd > dropped_rd)
+        b->rd -= dropped_rd;
+    else
+        b->rd = 0;
+    if (b->rd > b->n)
+        b->rd = b->n;
+    av_unlock(a, audio);
+}
 
 void mse_av_remove(MseAv *a, int audio, double start, double end)
 {

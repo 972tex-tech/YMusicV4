@@ -197,6 +197,24 @@ static JSValue js_append(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     return JS_UNDEFINED;
 }
 
+static JSValue js_prepare_append(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    int audio = 0, n = 0;
+    (void)this_val;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (argc < 2)
+        return JS_ThrowTypeError(ctx, "__msePrepareAppend(audio, nbytes)");
+    if (JS_ToInt32(ctx, &audio, argv[0]))
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &n, argv[1]))
+        return JS_EXCEPTION;
+    if (!g_vt->prepare_append)
+        return JS_NewInt32(ctx, 1);
+    return JS_NewInt32(ctx, g_vt->prepare_append(h, audio, n));
+}
+
 static JSValue js_remove(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     void *h = host_of(ctx);
@@ -506,6 +524,7 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__msePlay", JS_NewCFunction(ctx, js_play, "__msePlay", 0));
     JS_SetPropertyStr(ctx, g, "__msePause", JS_NewCFunction(ctx, js_pause, "__msePause", 0));
     JS_SetPropertyStr(ctx, g, "__mseAppend", JS_NewCFunction(ctx, js_append, "__mseAppend", 5));
+    JS_SetPropertyStr(ctx, g, "__msePrepareAppend", JS_NewCFunction(ctx, js_prepare_append, "__msePrepareAppend", 2));
     JS_SetPropertyStr(ctx, g, "__mseRemove", JS_NewCFunction(ctx, js_remove, "__mseRemove", 3));
     JS_SetPropertyStr(ctx, g, "__mseAbort", JS_NewCFunction(ctx, js_abort, "__mseAbort", 1));
     JS_SetPropertyStr(ctx, g, "__mseChangeType", JS_NewCFunction(ctx, js_change_type, "__mseChangeType", 1));
