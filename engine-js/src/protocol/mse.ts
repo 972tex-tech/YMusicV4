@@ -1295,12 +1295,13 @@ export function activeHtmlMedia(): HTMLMediaElement | null {
 /** SoundTouch pair: playbackRate (currentTime) + tempo (PCM stretch). */
 export function setHtmlPlaybackRate(speed: number, tempo: number): void {
   const el = activeMedia;
+  const prev = el ? el._rate : speed;
   if (el) {
     el._tempo = tempo;
     el._rate = speed;
   }
   if (typeof __mseSetSpeed === "function") __mseSetSpeed(speed, tempo);
-  if (el) fire(el, "ratechange");
+  if (el && prev !== speed) fire(el, "ratechange");
 }
 
 /** MSE-only drain line. Do not walk base.js internals. */

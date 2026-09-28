@@ -224,18 +224,35 @@ void audio_fx_set_virtualizer(AudioFx *fx, float width)
     rebuild(fx);
 }
 
+static void stretch_clear(AudioFx *fx)
+{
+    fx->in_n = 0;
+    fx->ola_pos = 0;
+    memset(fx->ola, 0, sizeof(fx->ola));
+}
+
 void audio_fx_set_speed(AudioFx *fx, float speed)
 {
+    float s;
     if (!fx)
         return;
-    fx->speed = clampf(speed, 0.25f, 4.f);
+    s = clampf(speed, 0.25f, 4.f);
+    if (fabsf(fx->speed - s) < 0.001f)
+        return;
+    fx->speed = s;
+    stretch_clear(fx);
 }
 
 void audio_fx_set_pitch(AudioFx *fx, float pitch)
 {
+    float p;
     if (!fx)
         return;
-    fx->pitch = clampf(pitch, 0.5f, 2.f);
+    p = clampf(pitch, 0.5f, 2.f);
+    if (fabsf(fx->pitch - p) < 0.001f)
+        return;
+    fx->pitch = p;
+    stretch_clear(fx);
 }
 
 void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch)
@@ -287,19 +304,41 @@ static int ensure_in(AudioFx *fx, int extra, int ch)
     return 0;
 }
 
+static float lerp_ch(const float *buf, int n, int nch, int c, float src)
+{
+    int i;
+    float f;
+    if (n <= 0)
+        return 0;
+    if (src <= 0.f)
+        return buf[c];
+    i = (int)src;
+    f = src - (float)i;
+    if (i >= n - 1)
+        return buf[(n - 1) * nch + c];
+    return buf[i * nch + c] * (1.f - f) + buf[(i + 1) * nch + c] * f;
+}
+
 int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out, int out_cap, int ch)
 {
     float pitch, tempo, hop_in;
-    int nch, i, o, c, produced = 0;
+    int nch, i, o, c, produced = 0, do_pitch;
     if (!fx || !out || out_cap <= 0)
         return 0;
     nch = ch < 1 ? 1 : (ch > 2 ? 2 : ch);
-    /* fx->speed is SoundTouch tempo (pitch-preserving stretch). Clock uses playbackRate. */
+    /* fx->speed is WSOLA tempo and must match HTML playbackRate / DAC clock.
+       Pitch is a duration-preserving resample of each hop, not hop_in = HOP*speed/pitch
+       (that starved AudioQueue when pitch > 1 and froze currentTime). */
     tempo = fx->speed;
     pitch = fx->pitch;
     if (tempo < 0.26f)
         tempo = 0.26f;
-    if (fabsf(tempo - 1.f) < 0.02f && fabsf(pitch - 1.f) < 0.02f) {
+    if (pitch < 0.5f)
+        pitch = 0.5f;
+    if (pitch > 2.f)
+        pitch = 2.f;
+    do_pitch = fabsf(pitch - 1.f) >= 0.02f;
+    if (fabsf(tempo - 1.f) < 0.02f && !do_pitch) {
         int n = in_frames < out_cap ? in_frames : out_cap;
         if (in && n > 0)
             memcpy(out, in, (size_t)n * (size_t)nch * sizeof(int16_t));
@@ -311,45 +350,45 @@ int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out
             return 0;
         for (i = 0; i < in_frames; i++) {
             int dst = fx->in_n + i;
-            for (c = 0; c < nch; c++) {
-                float x = (float)in[i * nch + c];
-                if (fabsf(pitch - 1.f) >= 0.02f) {
-                    /* crude pitch: already handled via tempo ratio; samples stored as-is */
-                    (void)x;
-                }
+            for (c = 0; c < nch; c++)
                 fx->inbuf[dst * nch + c] = (float)in[i * nch + c];
-            }
         }
         fx->in_n += in_frames;
     }
     o = 0;
     while (fx->in_n >= AFX_WIN && o + AFX_HOP <= out_cap) {
         int t, c2;
-        for (t = 0; t < AFX_WIN; t++) {
-            float w = fx->hann[t];
-            for (c2 = 0; c2 < nch; c2++)
-                fx->ola[c2][t] += fx->inbuf[t * nch + c2] * w;
+        int skip = (int)(hop_in + 0.5f);
+        if (skip < 1)
+            skip = 1;
+        if (skip > fx->in_n)
+            skip = fx->in_n;
+        if (do_pitch) {
+            for (t = 0; t < AFX_HOP; t++) {
+                float src = (float)t * pitch;
+                for (c2 = 0; c2 < nch; c2++)
+                    out[(o + t) * nch + c2] = sat16(lerp_ch(fx->inbuf, fx->in_n, nch, c2, src));
+            }
+        } else {
+            for (t = 0; t < AFX_WIN; t++) {
+                float w = fx->hann[t];
+                for (c2 = 0; c2 < nch; c2++)
+                    fx->ola[c2][t] += fx->inbuf[t * nch + c2] * w;
+            }
+            for (t = 0; t < AFX_HOP; t++) {
+                for (c2 = 0; c2 < nch; c2++)
+                    out[(o + t) * nch + c2] = sat16(fx->ola[c2][t]);
+            }
+            for (t = 0; t < AFX_WIN - AFX_HOP; t++) {
+                for (c2 = 0; c2 < nch; c2++)
+                    fx->ola[c2][t] = fx->ola[c2][t + AFX_HOP];
+            }
+            for (t = AFX_WIN - AFX_HOP; t < AFX_WIN; t++)
+                fx->ola[0][t] = fx->ola[1][t] = 0;
         }
-        for (t = 0; t < AFX_HOP; t++) {
-            for (c2 = 0; c2 < nch; c2++)
-                out[(o + t) * nch + c2] = sat16(fx->ola[c2][t]);
-        }
-        for (t = 0; t < AFX_WIN - AFX_HOP; t++) {
-            for (c2 = 0; c2 < nch; c2++)
-                fx->ola[c2][t] = fx->ola[c2][t + AFX_HOP];
-        }
-        for (t = AFX_WIN - AFX_HOP; t < AFX_WIN; t++)
-            fx->ola[0][t] = fx->ola[1][t] = 0;
-        {
-            int skip = (int)(hop_in + 0.5f);
-            if (skip < 1)
-                skip = 1;
-            if (skip > fx->in_n)
-                skip = fx->in_n;
-            fx->in_n -= skip;
-            if (fx->in_n > 0)
-                memmove(fx->inbuf, fx->inbuf + skip * nch, (size_t)fx->in_n * (size_t)nch * sizeof(float));
-        }
+        fx->in_n -= skip;
+        if (fx->in_n > 0)
+            memmove(fx->inbuf, fx->inbuf + skip * nch, (size_t)fx->in_n * (size_t)nch * sizeof(float));
         o += AFX_HOP;
         produced += AFX_HOP;
     }
