@@ -44,7 +44,7 @@ int64_t mse_host_samples_played(MseHost *h);
 int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int *gen);
 
 int mse_host_append(MseHost *h, int audio, const uint8_t *p, int n, double ts_off, double win_start, double win_end);
-/* Chrome prepareAppend: evict then 0 if still over quota (12MB audio / 150MB video). */
+/* Chrome prepareAppend: evict then 0 if still over quota (RAM class 12/150, 5/80, 2/30, 1/15). */
 int mse_host_prepare_append(MseHost *h, int audio, int n);
 void mse_host_remove(MseHost *h, int audio, double start, double end);
 void mse_host_abort(MseHost *h, int audio);

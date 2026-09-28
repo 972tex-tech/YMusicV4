@@ -8,11 +8,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
 #include <mach/mach_time.h>
 #include <os/log.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
 #include "mse_vt_present.h"
 #endif
 #ifdef __ANDROID__
@@ -1484,19 +1487,68 @@ int64_t mse_host_samples_played(MseHost *h)
     return n;
 }
 
-/* Chrome SourceBuffer limits: 12 MiB audio, 150 MiB video. */
-#define MSE_QUOTA_AUDIO ((size_t)12 * 1024 * 1024)
-#define MSE_QUOTA_VIDEO ((size_t)150 * 1024 * 1024)
+#define MSE_MIB ((size_t)1024 * 1024)
+
+/* Chromium demuxer_memory_limit: default 12/150, medium 5/80, low 2/30, very-low 1/15. */
+static size_t phys_mib(void)
+{
+#ifdef __APPLE__
+    uint64_t mem = 0;
+    size_t len = sizeof(mem);
+    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) != 0 || mem == 0)
+        return 8192;
+    return (size_t)(mem / MSE_MIB);
+#else
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long psz = sysconf(_SC_PAGE_SIZE);
+    if (pages <= 0 || psz <= 0)
+        return 4096;
+    return (size_t)(((uint64_t)pages * (uint64_t)psz) / MSE_MIB);
+#endif
+}
+
+static void mse_quota_caps(size_t *audio, size_t *video)
+{
+    static size_t a, v;
+    static int once;
+    size_t mib;
+    if (once) {
+        *audio = a;
+        *video = v;
+        return;
+    }
+    mib = phys_mib();
+    /* Chrome Android: <=512 Go very-low; IsLowEndDevice (~1GiB) low;
+       PartialLowEndModeOn3GbDevices medium; else default. */
+    if (mib <= 512) {
+        a = 1 * MSE_MIB;
+        v = 15 * MSE_MIB;
+    } else if (mib <= 1024) {
+        a = 2 * MSE_MIB;
+        v = 30 * MSE_MIB;
+    } else if (mib <= 3072) {
+        a = 5 * MSE_MIB;
+        v = 80 * MSE_MIB;
+    } else {
+        a = 12 * MSE_MIB;
+        v = 150 * MSE_MIB;
+    }
+    once = 1;
+    mse_logf("mse quota class ram=%zuMiB audio=%zu video=%zu\n", mib, a, v);
+    *audio = a;
+    *video = v;
+}
 
 int mse_host_prepare_append(MseHost *h, int audio, int n)
 {
-    size_t cap, have;
+    size_t cap, have, qa, qv;
     double t;
     if (!h)
         return 0;
     if (n <= 0)
         return 1;
-    cap = audio ? MSE_QUOTA_AUDIO : MSE_QUOTA_VIDEO;
+    mse_quota_caps(&qa, &qv);
+    cap = audio ? qa : qv;
     have = mse_av_leftover_bytes(h->av, audio);
     if (have + (size_t)n <= cap)
         return 1;
