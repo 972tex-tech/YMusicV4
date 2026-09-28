@@ -753,6 +753,8 @@ class Player {
        would do it again. Watch starts only in loadVideoByPlayerVars. */
     const playerVars: Record<string, unknown> = {
       "skip_ads": 1,
+      /* Without this, getAvailablePlaybackRates() is [1] and setPlaybackRate snaps to 1×. */
+      "enableSpeedOptions": true,
     };
     const param2 = {
       "args": playerVars,
@@ -929,11 +931,15 @@ class Player {
     if (s < 0.25) s = 0.25;
     if (s > 3) s = 3;
     this.tempo = s;
-    if (this.speed === s) return;
-    this.speed = s;
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20082");
-    player["setPlaybackRate"](s);
+    if (this.speed !== s) {
+      this.speed = s;
+      player["setPlaybackRate"](s);
+    }
+    /* IFrame API ZlP-snaps to getAvailablePlaybackRates(); always write the element. */
+    const el = activeHtmlMedia();
+    if (el) el["playbackRate"] = s;
   }
 
   setSpeedPitch(speed: number, pitch: number): void {
@@ -946,7 +952,10 @@ class Player {
     const player = moviePlayer();
     if (player) player["setPlaybackRate"](this.speed);
     const el = activeHtmlMedia();
-    if (el) el["pitch"] = this.pitch;
+    if (el) {
+      el["playbackRate"] = this.speed;
+      el["pitch"] = this.pitch;
+    }
   }
 
   private applyHtmlPitch(pitch: number): void {

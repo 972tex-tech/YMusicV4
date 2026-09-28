@@ -1114,12 +1114,17 @@ class HTMLMediaElement {
     if (s < 0.25) s = 0.25;
     if (s > 4) s = 4;
     const prev = this._rate;
-    if (prev === s) return;
+    const native = typeof __msePlaybackRate === "function" ? Number(__msePlaybackRate()) : prev;
+    if (prev === s && native === s) return;
     this._rate = s;
     this._tempo = s;
     if (typeof __mseSetSpeed === "function") __mseSetSpeed(s, s);
     mseLog("mse ratechange " + prev + "->" + s);
     fire(this, "ratechange");
+  }
+
+  ["setPlaybackRate"](v: number): void {
+    this["playbackRate"] = v;
   }
 
   get ["pitch"](): number {
@@ -1241,6 +1246,7 @@ function attachHtmlMedia(el: object): void {
     "addEventListener",
     "removeEventListener",
     "fastSeek",
+    "setPlaybackRate",
   ];
   for (let i = 0; i < methods.length; i++) {
     const n = methods[i]!;
