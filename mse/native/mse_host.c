@@ -62,6 +62,7 @@ struct MseHost {
     double vpts;
     int rate;
     int ch;
+    float speed;
     int64_t samples_played;
     int64_t samples_pulled;
     AudioFx *fx;
@@ -116,6 +117,18 @@ static double media_dur(MseHost *h)
     return d;
 }
 
+static double play_speed(MseHost *h)
+{
+    float s = h->speed;
+    if (s <= 0.f)
+        return 1;
+    if (s < 0.25f)
+        return 0.25;
+    if (s > 4.f)
+        return 4;
+    return (double)s;
+}
+
 /* h->mu held. Do not take MseAv locks: OpenSL's callback needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
 static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
@@ -140,13 +153,14 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
         t = hold;
     } else {
         if (h->playing && h->origin_ns > 0)
-            t += (now_ns() - h->origin_ns) / 1e9;
+            t += (now_ns() - h->origin_ns) / 1e9 * play_speed(h);
 #ifdef MSE_DAC
         /* Audio is the master clock while the DAC is running (Chrome
            AudioRendererImpl). Wall time was winning after sink-delay
            subtract because dac < wall, so video stayed ~100ms early. */
         if (h->aq_started && h->rate > 0 && h->samples_played > 0) {
-            double dac = h->seek_base + (double)h->samples_played / (double)h->rate;
+            double sp = play_speed(h);
+            double dac = h->seek_base + (double)h->samples_played / (double)h->rate * sp;
             double one = 0.02;
             int nbufs = 4;
             if (h->aq_buf_bytes > 0 && h->ch > 0)
@@ -156,13 +170,13 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             if (h->sl_nbufs > 0)
                 nbufs = h->sl_nbufs;
 #endif
-            dac -= one * (double)nbufs;
+            dac -= one * (double)nbufs * sp;
             if (h->dac_tick_ns > 0) {
                 double extra = (now_ns() - h->dac_tick_ns) / 1e9;
                 if (extra > one)
                     extra = one;
                 if (extra > 0)
-                    dac += extra;
+                    dac += extra * sp;
             }
             t = dac;
         }
@@ -848,6 +862,7 @@ MseHost *mse_host_create(void)
     pthread_cond_init(&h->cv, NULL);
     h->av = mse_av_create();
     h->fx = audio_fx_create();
+    h->speed = 1.f;
     h->playing = 0;
     h->vpts = -1;
     if (!h->av) {
@@ -1573,7 +1588,14 @@ void mse_host_set_volume(MseHost *h, float vol)
 
 void mse_host_set_speed(MseHost *h, float speed)
 {
-    if (h && h->fx)
+    if (!h)
+        return;
+    if (speed < 0.25f)
+        speed = 0.25f;
+    if (speed > 4.f)
+        speed = 4.f;
+    h->speed = speed;
+    if (h->fx)
         audio_fx_set_speed(h->fx, speed);
 }
 

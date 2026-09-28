@@ -80,12 +80,29 @@ type MoviePlayer = {
   "pauseVideo"(): void;
   "seekTo"(t: number, allowSeekAhead?: boolean): void;
   "setLoopVideo"(enable: boolean): void;
+  "setPlayerSpeed"?(speed: number): void;
+  "setPlaybackRate"?(speed: number): void;
   "getPlayerResponse"(): unknown;
   "getProgressState"(): Record<string, unknown>;
   "getPlayerState"(): number;
 };
 
 let moviePlayerEl: MoviePlayer | null = null;
+
+function callPlayerSpeed(obj: Record<string, unknown> | null, speed: number): boolean {
+  if (!obj) return false;
+  const a = obj["setPlayerSpeed"];
+  if (typeof a === "function") {
+    (a as (n: number) => void).call(obj, speed);
+    return true;
+  }
+  const b = obj["setPlaybackRate"];
+  if (typeof b === "function") {
+    (b as (n: number) => void).call(obj, speed);
+    return true;
+  }
+  return false;
+}
 
 function moviePlayer(): MoviePlayer | null {
   if (!moviePlayerEl) {
@@ -609,6 +626,7 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
 
 class Player {
   private player: YtApp | null = null;
+  private speed = 1;
   private mintFn: ((id: Uint8Array) => unknown) | null = null;
   private config: Record<string, unknown> | null = null;
   private minterP: Promise<Record<string, unknown>> | null = null;
@@ -856,6 +874,7 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
+    this.applySpeed();
     /* Fire-and-forget: /player, MSE, picture, catalog arrive on
        onVideoDataChange / status / catalog. load() does not wait. */
     out["step"] = "ok";
@@ -914,6 +933,23 @@ class Player {
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20082");
     player["setLoopVideo"](!!enable);
+  }
+
+  setSpeed(speed: number): void {
+    let s = Number(speed);
+    if (!Number.isFinite(s)) s = 1;
+    if (s < 0.25) s = 0.25;
+    if (s > 2) s = 2;
+    this.speed = s;
+    this.applySpeed();
+  }
+
+  private applySpeed(): void {
+    const movie = moviePlayer() as unknown as Record<string, unknown> | null;
+    const app = this.player as unknown as Record<string, unknown> | null;
+    if (!movie && !app) throw new JsEngineErrorImpl("player not created", "E20082");
+    callPlayerSpeed(movie, this.speed);
+    callPlayerSpeed(app, this.speed);
   }
 
   pause(): void {
@@ -1218,6 +1254,10 @@ export function playPlayer(): void {
 
 export function setPlayerLoop(enable: boolean): void {
   ytPlayer.setLoop(enable);
+}
+
+export function setPlayerSpeed(speed: number): void {
+  ytPlayer.setSpeed(speed);
 }
 
 export function pausePlayer(): void {

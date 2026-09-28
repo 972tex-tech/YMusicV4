@@ -61,7 +61,7 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) â
 
 - **Player** â€” `DynamicEnginePlayer` is a sibling of `DynamicEngine`: same HTTP/cookies/cache/settings
   plus native `:mse` (or pipe MSE in tests). App commands are
-  `player/init|load|play|pause|seek|stop|status|mintPo`. Host opens `listen/player/status` and
+  `player/init|load|play|pause|seek|stop|setSpeed|status|mintPo`. Host opens `listen/player/status` and
   `listen/player/catalog` to subscribe (JS pushes; host close unsubscribes), same as
   `player/caption`. Pass the scraping [DynamicEngineManager] as
   `main` so player JS `open("host/main/"+command)` is a one-way host proxy (homepage

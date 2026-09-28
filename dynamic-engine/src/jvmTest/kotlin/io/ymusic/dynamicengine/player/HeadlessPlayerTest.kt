@@ -220,6 +220,92 @@ class HeadlessPlayerTest {
     }
 
     @Test
+    fun player_set_speed_advances_faster() = runBlocking {
+        val jar = InMemoryCookieJar()
+        val inner = OkKmpHttpClient.Builder().apply {
+            defaultExecuteTimeout = 60.seconds
+        }.build()
+        val mediaDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-player-speed-cache"
+        FileSystem.SYSTEM.deleteRecursively(mediaDir)
+        val driver = jvmSegmentDatabaseDriver()
+        val mediaCache = MediaCache(
+            DiskMediaBlobCache(mediaDir, FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+            SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
+        )
+        val proxy = LocalMediaProxy(
+            mediaCache,
+            inner,
+            userAgent = DESKTOP_UA,
+        )
+        val http = RecordingHttpClient(SabrProxyHttpClient(inner, proxy))
+        val log = PrintLog()
+        val blobDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-player-speed-engine"
+        FileSystem.SYSTEM.deleteRecursively(blobDir)
+        val cache = DiskCacheStore(testCacheDriver(), blobDir, FileSystem.SYSTEM, now = { System.currentTimeMillis() })
+        val main = DynamicEngineManager(
+            http,
+            appVersion = 1,
+            logger = log,
+            jsSource = StaticJsSource(ENGINE_TEST_JS),
+            cacheStore = cache,
+            cookieJar = jar,
+            settings = InMemorySettingsStore(),
+        )
+        main.start()
+        val player = withContext(testEngineDispatcher) {
+            DynamicEnginePlayer.create(
+                http,
+                appVersion = 1,
+                dispatcher = testEngineDispatcher,
+                logger = log,
+                engineJs = ENGINE_TEST_JS,
+                cookieJar = jar,
+                cacheStore = cache,
+                settings = InMemorySettingsStore(),
+                videoSurface = MseVideoSurface(),
+                main = main,
+            )
+        }
+        try {
+            withContext(testEngineDispatcher) {
+                player.init(log)
+                player.load(AUDIO_ONLY_VIDEO_ID, log, audioOnly = true)
+                player.play(log)
+            }
+            val readyBy = System.currentTimeMillis() + 60_000
+            var pos = 0L
+            while (System.currentTimeMillis() < readyBy) {
+                pos = withContext(testEngineDispatcher) { player.status(log) }.longField("positionMs")
+                if (pos >= 2_000L) break
+                delay(400)
+            }
+            assertTrue(pos >= 2_000L, "clock did not start pos=$pos rec=${http.summary()}")
+            suspend fun mediaPerWall(windowMs: Long): Double {
+                val a = withContext(testEngineDispatcher) { player.status(log) }.longField("positionMs")
+                delay(windowMs)
+                val b = withContext(testEngineDispatcher) { player.status(log) }.longField("positionMs")
+                return (b - a).toDouble() / windowMs.toDouble()
+            }
+            val atOne = mediaPerWall(2_500)
+            withContext(testEngineDispatcher) { player.setSpeed(2f, log) }
+            delay(400)
+            val atTwo = mediaPerWall(2_500)
+            println("speed at1=$atOne at2=$atTwo pos=$pos")
+            assertTrue(atTwo > atOne * 1.4, "2× should outrun 1× at1=$atOne at2=$atTwo")
+            assertTrue(atTwo > 1.3, "2× media/wall should be well above 1 at2=$atTwo")
+        } catch (e: EngineError) {
+            println("headless speed EngineError code=${e.code} msg=${e.message}")
+            println("jsName=${e.jsName} jsStack=${e.jsStack}")
+            e.cause?.let { println("cause=${it::class.simpleName} ${it.message}") }
+            if (e is EngineError.Network) return@runBlocking
+            throw e
+        } finally {
+            player.close()
+            main.close()
+        }
+    }
+
+    @Test
     fun player_live_audio_only_advances_past_leftover_drain() = runBlocking {
         val jar = InMemoryCookieJar()
         val inner = OkKmpHttpClient.Builder().apply {

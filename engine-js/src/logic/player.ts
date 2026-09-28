@@ -16,6 +16,7 @@ import {
   seekPlayer,
   setPlayerLoop,
   setPlayerQuality,
+  setPlayerSpeed,
   setPlayerViewport,
   statusPlayer,
   stopPlayer,
@@ -91,6 +92,18 @@ onAccept(
     const a = await src.readJsonObject();
     setPlayerLoop(a["enable"] === true);
     const p = out.writeObjectAsJson({ "ok": true });
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setSpeed",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const speed = Number(a["speed"]);
+    const s = Number.isFinite(speed) ? speed : 1;
+    setPlayerSpeed(s);
+    const p = out.writeObjectAsJson({ "ok": true, "speed": s });
     if (p) await p;
   }),
 );
