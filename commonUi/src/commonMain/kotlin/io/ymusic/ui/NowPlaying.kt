@@ -133,7 +133,8 @@ import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.sleep_minutes
 import io.ymusic.ui.resources.sleep_off_remaining
-import io.ymusic.ui.resources.sound_title
+import io.ymusic.ui.resources.sound_eq
+import io.ymusic.ui.resources.sound_speed
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_quality_auto
 import kotlinx.coroutines.delay
@@ -838,14 +839,19 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
-    var soundOpen by remember { mutableStateOf(false) }
+    var playbackOpen by remember { mutableStateOf(false) }
+    var eqOpen by remember { mutableStateOf(false) }
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
-                text = { Text(stringResource(Res.string.sound_title)) },
-                onClick = { soundOpen = true; open = false },
+                text = { Text(stringResource(Res.string.sound_speed)) },
+                onClick = { playbackOpen = true; open = false },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.sound_eq)) },
+                onClick = { eqOpen = true; open = false },
             )
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
@@ -863,8 +869,11 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
             }
         }
     }
-    if (soundOpen) {
-        AudioFxSheet(player, onDismiss = { soundOpen = false })
+    if (playbackOpen) {
+        PlaybackFxSheet(player, onDismiss = { playbackOpen = false })
+    }
+    if (eqOpen) {
+        EqualizerFxSheet(player, onDismiss = { eqOpen = false })
     }
 }
 

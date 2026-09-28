@@ -53,17 +53,19 @@ import io.ymusic.ui.resources.settings_crash_reports
 import io.ymusic.ui.resources.settings_crash_reports_hint
 import io.ymusic.ui.resources.settings_enable_pip
 import io.ymusic.ui.resources.settings_enable_pip_hint
+import io.ymusic.ui.resources.settings_eq_hint
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
-import io.ymusic.ui.resources.settings_sound
-import io.ymusic.ui.resources.settings_sound_hint
+import io.ymusic.ui.resources.settings_speed_hint
 import io.ymusic.ui.resources.settings_stats
 import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
 import io.ymusic.ui.resources.settings_theme_system
+import io.ymusic.ui.resources.sound_eq
+import io.ymusic.ui.resources.sound_speed
 import kmpcommon.log.Logger
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
@@ -127,7 +129,8 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
-        SoundRow(graph)
+        SoundRow(graph, speed = true)
+        SoundRow(graph, speed = false)
         ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
         // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
         // on also makes future releases apply on the next start.
@@ -143,7 +146,7 @@ fun SettingsScreen(graph: AppGraph) {
 }
 
 @Composable
-private fun SoundRow(graph: AppGraph) {
+private fun SoundRow(graph: AppGraph, speed: Boolean) {
     var open by remember { mutableStateOf(false) }
     Row(
         Modifier
@@ -155,17 +158,20 @@ private fun SoundRow(graph: AppGraph) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(Res.string.settings_sound),
+                stringResource(if (speed) Res.string.sound_speed else Res.string.sound_eq),
                 style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             )
             Text(
-                stringResource(Res.string.settings_sound_hint),
+                stringResource(if (speed) Res.string.settings_speed_hint else Res.string.settings_eq_hint),
                 style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
                 modifier = Modifier.padding(top = DesignSpacing.Space2),
             )
         }
     }
-    if (open) AudioFxSheet(graph.player, onDismiss = { open = false })
+    if (open) {
+        if (speed) PlaybackFxSheet(graph.player, onDismiss = { open = false })
+        else EqualizerFxSheet(graph.player, onDismiss = { open = false })
+    }
 }
 
 /** A boolean setting as a switch row: tap anywhere to flip, persisted immediately. */
