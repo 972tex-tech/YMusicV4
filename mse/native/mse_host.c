@@ -1779,6 +1779,13 @@ void mse_host_set_virtualizer(MseHost *h, float width)
         audio_fx_set_virtualizer(h->fx, width);
 }
 
+int mse_host_pcm_levels(MseHost *h, float *out, int n)
+{
+    if (!h || !h->fx)
+        return 0;
+    return audio_fx_levels(h->fx, out, n);
+}
+
 void mse_ios_log(const char *msg)
 {
     if (!msg)

@@ -207,12 +207,14 @@ fun MiniPlayer(
                     .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
                 contentAlignment = Alignment.Center,
             ) {
+                val config by coordinator.player.config.collectAsState()
                 if (surface != null) {
                     VideoHole(coordinator.player, surface, Modifier.fillMaxSize())
-                    Box(Modifier.matchParentSize().clickable(onClick = onExpand))
-                } else {
-                    ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
                 }
+                if (config.audioOnly || surface == null) {
+                    AudioOnlyCover(item.displayThumbnailUrl, Modifier.fillMaxSize())
+                }
+                Box(Modifier.matchParentSize().clickable(onClick = onExpand))
             }
             Column(
                 Modifier.weight(1f)
@@ -336,7 +338,13 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     SyncSensorRotation(enabled = true)
     val fillScreen by graph.videoFillScreen
     Box(Modifier.fillMaxSize()) {
-        VideoHole(player, graph.playerSurface, Modifier.fillMaxSize(), fill = fillScreen)
+        PlayerSurfaceHole(
+            player,
+            graph.playerSurface,
+            current?.displayThumbnailUrl,
+            Modifier.fillMaxSize(),
+            fill = fillScreen,
+        )
         Box(Modifier.fillMaxSize()) {
             AutoHidingOverlay {
                 VideoOverlayControls(
@@ -399,7 +407,12 @@ private fun PortraitNowPlaying(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
         ) {
-            VideoHole(player, graph.playerSurface, Modifier.fillMaxSize())
+            PlayerSurfaceHole(
+                player,
+                graph.playerSurface,
+                current?.displayThumbnailUrl,
+                Modifier.fillMaxSize(),
+            )
             Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
                 // (chrome window kept a stale content lambda).
@@ -509,7 +522,12 @@ private fun LandscapeNowPlaying(
 
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
-            VideoHole(player, graph.playerSurface, Modifier.fillMaxSize())
+            PlayerSurfaceHole(
+                player,
+                graph.playerSurface,
+                current?.displayThumbnailUrl,
+                Modifier.fillMaxSize(),
+            )
             Box(
                 Modifier.fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars),

@@ -45,6 +45,8 @@ object FileAvNative {
 
     @JvmStatic external fun setVolume(handle: Long, volume: Double)
 
+    @JvmStatic external fun pcmLevels(handle: Long, out: FloatArray): Int
+
     @JvmStatic external fun setPitch(handle: Long, pitch: Double)
 
     @JvmStatic external fun setEq(handle: Long, bands: FloatArray)

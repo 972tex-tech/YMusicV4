@@ -50,6 +50,9 @@ actual class MseVideoSurface {
         MseHostNative.setVirtualizer(host, virtualizer)
     }
 
+    actual fun pcmLevels(out: FloatArray): Int =
+        if (host == 0L || out.isEmpty()) 0 else MseHostNative.pcmLevels(host, out)
+
     /** DAC / pull-audio sample frames (`mse_host_samples_played`). */
     fun samplesPlayed(): Long = if (host == 0L) 0L else MseHostNative.samplesPlayed(host)
 

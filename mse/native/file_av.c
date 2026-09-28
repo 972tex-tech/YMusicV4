@@ -2250,6 +2250,13 @@ void file_av_set_bass(FileAv *p, float db)
         audio_fx_set_bass(p->fx, db);
 }
 
+int file_av_pcm_levels(FileAv *p, float *out, int n)
+{
+    if (!p || !p->fx)
+        return 0;
+    return audio_fx_levels(p->fx, out, n);
+}
+
 void file_av_set_virtualizer(FileAv *p, float width)
 {
     if (p && p->fx)

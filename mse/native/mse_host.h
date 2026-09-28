@@ -60,6 +60,8 @@ void mse_host_set_pitch(MseHost *h, float pitch);
 void mse_host_set_eq(MseHost *h, const float bands_db[10]);
 void mse_host_set_bass(MseHost *h, float db);
 void mse_host_set_virtualizer(MseHost *h, float width);
+/* Oldest-first live RMS bars in 0..1 from the PCM color path. */
+int mse_host_pcm_levels(MseHost *h, float *out, int n);
 
 #ifdef __cplusplus
 }

@@ -14,4 +14,7 @@ expect class MseVideoSurface {
         bass: Float,
         virtualizer: Float,
     )
+
+    /** Oldest-first live RMS bars in 0..1. Returns count written. */
+    fun pcmLevels(out: FloatArray): Int
 }

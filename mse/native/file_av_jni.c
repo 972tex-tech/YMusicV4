@@ -247,6 +247,24 @@ Java_io_ymusic_mse_FileAvNative_setVolume(JNIEnv *env, jclass cls, jlong handle,
     file_av_set_volume((FileAv *)(intptr_t)handle, vol);
 }
 
+JNIEXPORT jint JNICALL
+Java_io_ymusic_mse_FileAvNative_pcmLevels(JNIEnv *env, jclass cls, jlong handle, jfloatArray out)
+{
+    float tmp[64];
+    jsize n;
+    int got;
+    (void)cls;
+    if (!out)
+        return 0;
+    n = (*env)->GetArrayLength(env, out);
+    if (n > 64)
+        n = 64;
+    got = file_av_pcm_levels((FileAv *)(intptr_t)handle, tmp, (int)n);
+    if (got > 0)
+        (*env)->SetFloatArrayRegion(env, out, 0, got, tmp);
+    return got;
+}
+
 JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setPitch(JNIEnv *env, jclass cls, jlong handle, jdouble pitch)
 {

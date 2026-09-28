@@ -35,6 +35,7 @@ void file_av_set_pitch(FileAv *p, double pitch);
 void file_av_set_eq(FileAv *p, const float bands_db[10]);
 void file_av_set_bass(FileAv *p, float db);
 void file_av_set_virtualizer(FileAv *p, float width);
+int file_av_pcm_levels(FileAv *p, float *out, int n);
 void file_av_set_audio_index(FileAv *p, int stream_index);
 /* -1 = captions off. Text subtitle stream index from file_av_stream_at. */
 void file_av_set_subtitle_index(FileAv *p, int stream_index);

@@ -4,6 +4,7 @@ import io.ymusic.mse.cinterop.mse_host_copy_frame
 import io.ymusic.mse.cinterop.mse_host_create
 import io.ymusic.mse.cinterop.mse_host_destroy
 import io.ymusic.mse.cinterop.mse_host_frames
+import io.ymusic.mse.cinterop.mse_host_pcm_levels
 import io.ymusic.mse.cinterop.mse_host_samples_played
 import io.ymusic.mse.cinterop.mse_host_set_bass
 import io.ymusic.mse.cinterop.mse_host_set_eq
@@ -106,6 +107,13 @@ actual object MseHostNative {
     actual fun setVirtualizer(handle: Long, width: Float) {
         if (handle == 0L) return
         mse_host_set_virtualizer(handle.toCPointer<COpaque>(), width)
+    }
+
+    actual fun pcmLevels(handle: Long, out: FloatArray): Int {
+        if (handle == 0L || out.isEmpty()) return 0
+        return out.usePinned { pinned ->
+            mse_host_pcm_levels(handle.toCPointer<COpaque>(), pinned.addressOf(0), out.size)
+        }
     }
 
     actual fun copyFrame(handle: Long, afterGen: Int): NativeMseFrame? {

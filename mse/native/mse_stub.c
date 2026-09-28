@@ -62,3 +62,11 @@ int mse_host_video_size(void *h, int *w, int *ht)
         *ht = 0;
     return 0;
 }
+
+int mse_host_pcm_levels(void *h, float *out, int n)
+{
+    (void)h;
+    (void)out;
+    (void)n;
+    return 0;
+}

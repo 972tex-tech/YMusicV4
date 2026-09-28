@@ -30,4 +30,7 @@ actual class MseVideoSurface {
         MseHostNative.setBass(host, bass)
         MseHostNative.setVirtualizer(host, virtualizer)
     }
+
+    actual fun pcmLevels(out: FloatArray): Int =
+        if (host == 0L || out.isEmpty()) 0 else MseHostNative.pcmLevels(host, out)
 }

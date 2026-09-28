@@ -55,4 +55,7 @@ actual object MseHostNative {
 
     @JvmStatic
     actual external fun setVirtualizer(handle: Long, width: Float)
+
+    @JvmStatic
+    actual external fun pcmLevels(handle: Long, out: FloatArray): Int
 }

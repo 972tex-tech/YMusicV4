@@ -408,6 +408,12 @@ internal class JvmLocalPlayer(
         }
     }
 
+    override fun pcmLevels(out: FloatArray): Int {
+        val h = handle
+        if (released || h == 0L || out.isEmpty()) return 0
+        return FileAvNative.pcmLevels(h, out)
+    }
+
     override fun release() {
         if (released) return
         cmds.offer {

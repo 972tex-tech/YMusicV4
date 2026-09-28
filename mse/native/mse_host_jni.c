@@ -265,6 +265,24 @@ Java_io_ymusic_mse_MseHostNative_setVirtualizer(JNIEnv *env, jclass cls, jlong h
     mse_host_set_virtualizer((MseHost *)(intptr_t)handle, width);
 }
 
+JNIEXPORT jint JNICALL
+Java_io_ymusic_mse_MseHostNative_pcmLevels(JNIEnv *env, jclass cls, jlong handle, jfloatArray out)
+{
+    float tmp[64];
+    jsize n;
+    int got;
+    (void)cls;
+    if (!out)
+        return 0;
+    n = (*env)->GetArrayLength(env, out);
+    if (n > 64)
+        n = 64;
+    got = mse_host_pcm_levels((MseHost *)(intptr_t)handle, tmp, (int)n);
+    if (got > 0)
+        (*env)->SetFloatArrayRegion(env, out, 0, got, tmp);
+    return got;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_io_ymusic_mse_MseHostNative_videoSize(JNIEnv *env, jclass cls, jlong handle, jintArray outWh)
 {

@@ -423,6 +423,11 @@ internal class AndroidLocalPlayer(
         _audioTracks.value = if (audio.isEmpty()) AudioTrackState.DEFAULT else AudioTrackState(audio, selectedAudio)
     }
 
+    override fun pcmLevels(out: FloatArray): Int {
+        if (released || fxHandle == 0L || out.isEmpty()) return 0
+        return AudioFxNative.levels(fxHandle, out)
+    }
+
     override fun release() {
         if (released) return
         released = true

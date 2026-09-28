@@ -46,6 +46,10 @@ struct AudioFx {
     float fir_h[AFX_FIR];
     float fir_z[2][AFX_FIR];
     float fir_cut;
+    float levels[AFX_LEVELS];
+    int level_i;
+    float level_acc;
+    int level_acc_n;
 };
 
 static const float k_hz[AFX_BANDS] = {
@@ -218,6 +222,10 @@ void audio_fx_reset(AudioFx *fx)
     for (i = 0; i < AFX_BANDS; i++)
         bq_clear(&fx->peak[i]);
     bq_clear(&fx->bass);
+    memset(fx->levels, 0, sizeof(fx->levels));
+    fx->level_i = 0;
+    fx->level_acc = 0;
+    fx->level_acc_n = 0;
     pthread_mutex_unlock(&fx->mu);
 }
 
@@ -288,37 +296,83 @@ void audio_fx_set_pitch(AudioFx *fx, float pitch)
     pthread_mutex_unlock(&fx->mu);
 }
 
+static void feed_levels(AudioFx *fx, const int16_t *s16, int frames, int nch)
+{
+    int i;
+    int hop;
+    pthread_mutex_lock(&fx->mu);
+    hop = fx->rate / 50;
+    if (hop < 64)
+        hop = 64;
+    for (i = 0; i < frames; i++) {
+        float l = (float)s16[i * nch];
+        float r = nch > 1 ? (float)s16[i * nch + 1] : l;
+        float a = 0.5f * (l + r);
+        float rms;
+        fx->level_acc += a * a;
+        fx->level_acc_n++;
+        if (fx->level_acc_n < hop)
+            continue;
+        rms = sqrtf(fx->level_acc / (float)fx->level_acc_n) / 32768.f;
+        rms *= 2.6f;
+        if (rms > 1.f)
+            rms = 1.f;
+        fx->levels[fx->level_i] = rms;
+        fx->level_i = (fx->level_i + 1) % AFX_LEVELS;
+        fx->level_acc = 0;
+        fx->level_acc_n = 0;
+    }
+    pthread_mutex_unlock(&fx->mu);
+}
+
+int audio_fx_levels(AudioFx *fx, float *out, int n)
+{
+    int i, start, got;
+    if (!fx || !out || n <= 0)
+        return 0;
+    got = n < AFX_LEVELS ? n : AFX_LEVELS;
+    pthread_mutex_lock(&fx->mu);
+    start = fx->level_i - got;
+    if (start < 0)
+        start += AFX_LEVELS;
+    for (i = 0; i < got; i++)
+        out[i] = fx->levels[(start + i) % AFX_LEVELS];
+    pthread_mutex_unlock(&fx->mu);
+    return got;
+}
+
 void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch)
 {
     int i, c, nch;
     if (!fx || !s16 || frames <= 0)
         return;
     nch = ch < 1 ? 1 : (ch > 2 ? 2 : ch);
-    if (!fx->color_on)
-        return;
-    for (i = 0; i < frames; i++) {
-        float l, r, mid, side, y;
-        l = (float)s16[i * nch];
-        r = nch > 1 ? (float)s16[i * nch + 1] : l;
-        for (c = 0; c < AFX_BANDS; c++) {
-            l = bq_tick(&fx->peak[c], 0, l);
+    if (fx->color_on) {
+        for (i = 0; i < frames; i++) {
+            float l, r, mid, side, y;
+            l = (float)s16[i * nch];
+            r = nch > 1 ? (float)s16[i * nch + 1] : l;
+            for (c = 0; c < AFX_BANDS; c++) {
+                l = bq_tick(&fx->peak[c], 0, l);
+                if (nch > 1)
+                    r = bq_tick(&fx->peak[c], 1, r);
+            }
+            l = bq_tick(&fx->bass, 0, l);
             if (nch > 1)
-                r = bq_tick(&fx->peak[c], 1, r);
+                r = bq_tick(&fx->bass, 1, r);
+            if (nch > 1 && fabsf(fx->width - 1.f) >= 0.02f) {
+                mid = 0.5f * (l + r);
+                side = 0.5f * (l - r) * fx->width;
+                l = mid + side;
+                r = mid - side;
+            }
+            y = fx->volume;
+            s16[i * nch] = sat16(l * y);
+            if (nch > 1)
+                s16[i * nch + 1] = sat16(r * y);
         }
-        l = bq_tick(&fx->bass, 0, l);
-        if (nch > 1)
-            r = bq_tick(&fx->bass, 1, r);
-        if (nch > 1 && fabsf(fx->width - 1.f) >= 0.02f) {
-            mid = 0.5f * (l + r);
-            side = 0.5f * (l - r) * fx->width;
-            l = mid + side;
-            r = mid - side;
-        }
-        y = fx->volume;
-        s16[i * nch] = sat16(l * y);
-        if (nch > 1)
-            s16[i * nch + 1] = sat16(r * y);
     }
+    feed_levels(fx, s16, frames, nch);
 }
 
 static int ensure_buf(float **buf, int *cap, int need, int ch)

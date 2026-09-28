@@ -28,6 +28,7 @@ void mse_host_set_pitch(void *h, float pitch);
 void mse_host_set_eq(void *h, const float *bands_db);
 void mse_host_set_bass(void *h, float db);
 void mse_host_set_virtualizer(void *h, float width);
+int mse_host_pcm_levels(void *h, float *out, int n);
 
 #ifdef __cplusplus
 }

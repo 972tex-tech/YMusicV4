@@ -136,6 +136,12 @@ interface MediaEngine<in S : PlayableItem> {
      */
     fun setConfig(config: PlaybackConfig)
 
+    /**
+     * Oldest-first live RMS bars in 0..1 from PCM currently hitting the DAC.
+     * Writes up to [out].size samples and returns the count; 0 when idle or unsupported.
+     */
+    fun pcmLevels(out: FloatArray): Int = 0
+
     /** Releases native resources. The instance is unusable afterwards. Idempotent. */
     fun release()
 }

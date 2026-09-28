@@ -76,6 +76,9 @@ actual object MseHostNative {
     @JvmStatic
     actual external fun setVirtualizer(handle: Long, width: Float)
 
+    @JvmStatic
+    actual external fun pcmLevels(handle: Long, out: FloatArray): Int
+
     /** macOS: overlay VideoToolbox on [component] via JAWT. Other JVMs return false. */
     @JvmStatic
     external fun setVideoComponent(handle: Long, component: java.awt.Component?): Boolean

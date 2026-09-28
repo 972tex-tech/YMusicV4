@@ -305,6 +305,9 @@ class MsePlayer internal constructor(
     override suspend fun requestPoToken(videoId: String): String =
         engine().mintContentPoToken(videoId, log)
 
+    override fun pcmLevels(out: FloatArray): Int =
+        if (released || out.isEmpty()) 0 else videoSurface.pcmLevels(out)
+
     override fun release() {
         if (released) return
         released = true
