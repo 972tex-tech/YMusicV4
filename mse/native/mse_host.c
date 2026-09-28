@@ -751,6 +751,12 @@ static void *dec_loop(void *arg)
                     frames = nout;
                 }
             }
+            if (frames <= 0) {
+                free(pcm);
+                pcm = NULL;
+                filled++;
+                continue;
+            }
             {
                 int nbytes = frames * ch * (int)sizeof(int16_t);
                         pthread_mutex_lock(&h->mu);
@@ -824,15 +830,21 @@ static void *dec_loop(void *arg)
                     pcm = tmp;
                     frames = nout;
                 }
-                audio_fx_color(h->fx, pcm, frames, ch);
+                if (frames > 0)
+                    audio_fx_color(h->fx, pcm, frames, ch);
             }
-            nbytes = frames * ch * (int)sizeof(int16_t);
-            if (h->on_pcm)
-                h->on_pcm(h->user, rate, ch, pcm, nbytes);
-            pthread_mutex_lock(&h->mu);
-            h->samples_pulled += frames;
-            pthread_mutex_unlock(&h->mu);
-            free(pcm);
+            if (frames <= 0) {
+                free(pcm);
+                pcm = NULL;
+            } else {
+                nbytes = frames * ch * (int)sizeof(int16_t);
+                if (h->on_pcm)
+                    h->on_pcm(h->user, rate, ch, pcm, nbytes);
+                pthread_mutex_lock(&h->mu);
+                h->samples_pulled += frames;
+                pthread_mutex_unlock(&h->mu);
+                free(pcm);
+            }
         }
 #endif
 

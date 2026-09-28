@@ -1,6 +1,7 @@
 #include "audio_fx.h"
 
 #include <math.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -14,6 +15,7 @@ typedef struct {
 } Biquad;
 
 struct AudioFx {
+    pthread_mutex_t mu;
     int rate;
     float volume;
     float bands[AFX_BANDS];
@@ -27,6 +29,10 @@ struct AudioFx {
     float *inbuf;
     int in_n;
     int in_cap;
+    double in_frac;
+    float *mid;
+    int mid_n;
+    int mid_cap;
     float ola[2][AFX_WIN];
     int ola_pos;
     float hann[AFX_WIN];
@@ -152,17 +158,36 @@ AudioFx *audio_fx_create(void)
     fx->width = 1.f;
     fx->speed = 1.f;
     fx->pitch = 1.f;
+    if (pthread_mutex_init(&fx->mu, NULL) != 0) {
+        free(fx);
+        return NULL;
+    }
     for (i = 0; i < AFX_WIN; i++)
         fx->hann[i] = 0.5f - 0.5f * cosf(2.f * PI * (float)i / (float)(AFX_WIN - 1));
     rebuild(fx);
     return fx;
 }
 
+static void stretch_reset_unlocked(AudioFx *fx)
+{
+    fx->in_n = 0;
+    fx->in_frac = 0;
+    fx->mid_n = 0;
+    fx->ola_pos = 0;
+    memset(fx->ola, 0, sizeof(fx->ola));
+}
+
 void audio_fx_destroy(AudioFx *fx)
 {
     if (!fx)
         return;
+    pthread_mutex_lock(&fx->mu);
     free(fx->inbuf);
+    fx->inbuf = NULL;
+    free(fx->mid);
+    fx->mid = NULL;
+    pthread_mutex_unlock(&fx->mu);
+    pthread_mutex_destroy(&fx->mu);
     free(fx);
 }
 
@@ -171,23 +196,27 @@ void audio_fx_reset(AudioFx *fx)
     int i;
     if (!fx)
         return;
-    fx->in_n = 0;
-    fx->ola_pos = 0;
-    memset(fx->ola, 0, sizeof(fx->ola));
+    pthread_mutex_lock(&fx->mu);
+    stretch_reset_unlocked(fx);
     for (i = 0; i < AFX_BANDS; i++)
         bq_clear(&fx->peak[i]);
     bq_clear(&fx->bass);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_rate(AudioFx *fx, int rate)
 {
     if (!fx || rate <= 0)
         return;
-    if (fx->rate == rate)
+    pthread_mutex_lock(&fx->mu);
+    if (fx->rate == rate) {
+        pthread_mutex_unlock(&fx->mu);
         return;
+    }
     fx->rate = rate;
     rebuild(fx);
-    audio_fx_reset(fx);
+    stretch_reset_unlocked(fx);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_volume(AudioFx *fx, float vol)
@@ -224,35 +253,22 @@ void audio_fx_set_virtualizer(AudioFx *fx, float width)
     rebuild(fx);
 }
 
-static void stretch_clear(AudioFx *fx)
-{
-    fx->in_n = 0;
-    fx->ola_pos = 0;
-    memset(fx->ola, 0, sizeof(fx->ola));
-}
-
 void audio_fx_set_speed(AudioFx *fx, float speed)
 {
-    float s;
     if (!fx)
         return;
-    s = clampf(speed, 0.25f, 4.f);
-    if (fabsf(fx->speed - s) < 0.001f)
-        return;
-    fx->speed = s;
-    stretch_clear(fx);
+    pthread_mutex_lock(&fx->mu);
+    fx->speed = clampf(speed, 0.25f, 4.f);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_pitch(AudioFx *fx, float pitch)
 {
-    float p;
     if (!fx)
         return;
-    p = clampf(pitch, 0.5f, 2.f);
-    if (fabsf(fx->pitch - p) < 0.001f)
-        return;
-    fx->pitch = p;
-    stretch_clear(fx);
+    pthread_mutex_lock(&fx->mu);
+    fx->pitch = clampf(pitch, 0.5f, 2.f);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch)
@@ -288,47 +304,105 @@ void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch)
     }
 }
 
-static int ensure_in(AudioFx *fx, int extra, int ch)
+static int ensure_buf(float **buf, int *cap, int need, int ch)
 {
-    int need = fx->in_n + extra;
     float *nbuf;
-    if (need <= fx->in_cap)
+    if (need <= *cap)
         return 0;
     if (need < 4096)
         need = 4096;
-    nbuf = (float *)realloc(fx->inbuf, (size_t)need * (size_t)ch * sizeof(float));
+    nbuf = (float *)realloc(*buf, (size_t)need * (size_t)ch * sizeof(float));
     if (!nbuf)
         return -1;
-    fx->inbuf = nbuf;
-    fx->in_cap = need;
+    *buf = nbuf;
+    *cap = need;
     return 0;
 }
 
-static float lerp_ch(const float *buf, int n, int nch, int c, float src)
+static float lerp_ch(const float *buf, int n, int nch, int c, double src)
 {
     int i;
     float f;
     if (n <= 0)
         return 0;
-    if (src <= 0.f)
+    if (src <= 0.0)
         return buf[c];
     i = (int)src;
-    f = src - (float)i;
+    f = (float)(src - (double)i);
     if (i >= n - 1)
         return buf[(n - 1) * nch + c];
     return buf[i * nch + c] * (1.f - f) + buf[(i + 1) * nch + c] * f;
 }
 
+/* SoundTouch RateTransposer: read original at increment `rate` (= virtualPitch). */
+static void rate_to_mid(AudioFx *fx, float rate, int nch)
+{
+    int drop;
+    if (rate < 0.25f)
+        rate = 0.25f;
+    while ((int)fx->in_frac + 1 < fx->in_n) {
+        int c;
+        if (ensure_buf(&fx->mid, &fx->mid_cap, fx->mid_n + 8, nch) != 0)
+            return;
+        for (c = 0; c < nch; c++)
+            fx->mid[fx->mid_n * nch + c] = lerp_ch(fx->inbuf, fx->in_n, nch, c, fx->in_frac);
+        fx->mid_n++;
+        fx->in_frac += (double)rate;
+    }
+    drop = (int)fx->in_frac;
+    if (drop > 0 && drop <= fx->in_n) {
+        fx->in_n -= drop;
+        fx->in_frac -= (double)drop;
+        if (fx->in_n > 0)
+            memmove(fx->inbuf, fx->inbuf + drop * nch, (size_t)fx->in_n * (size_t)nch * sizeof(float));
+    }
+}
+
+/* SoundTouch Stretch (WSOLA, no cross-correlation seek). hop_in = HOP * tempo. */
+static int wsola_from(AudioFx *fx, float *src, int *src_n, float hop_in, int16_t *out, int out_cap,
+                      int nch, int o)
+{
+    int produced = o;
+    while (*src_n >= AFX_WIN && produced + AFX_HOP <= out_cap) {
+        int t, c2;
+        int skip = (int)(hop_in + 0.5f);
+        if (skip < 1)
+            skip = 1;
+        if (skip > *src_n)
+            skip = *src_n;
+        for (t = 0; t < AFX_WIN; t++) {
+            float w = fx->hann[t];
+            for (c2 = 0; c2 < nch; c2++)
+                fx->ola[c2][t] += src[t * nch + c2] * w;
+        }
+        for (t = 0; t < AFX_HOP; t++) {
+            for (c2 = 0; c2 < nch; c2++)
+                out[(produced + t) * nch + c2] = sat16(fx->ola[c2][t]);
+        }
+        for (t = 0; t < AFX_WIN - AFX_HOP; t++) {
+            for (c2 = 0; c2 < nch; c2++)
+                fx->ola[c2][t] = fx->ola[c2][t + AFX_HOP];
+        }
+        for (t = AFX_WIN - AFX_HOP; t < AFX_WIN; t++)
+            fx->ola[0][t] = fx->ola[1][t] = 0;
+        *src_n -= skip;
+        if (*src_n > 0)
+            memmove(src, src + skip * nch, (size_t)*src_n * (size_t)nch * sizeof(float));
+        produced += AFX_HOP;
+    }
+    return produced;
+}
+
 int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out, int out_cap, int ch)
 {
     float pitch, tempo, hop_in;
-    int nch, i, o, c, produced = 0, do_pitch;
+    int nch, i, c, produced = 0, do_pitch;
     if (!fx || !out || out_cap <= 0)
         return 0;
     nch = ch < 1 ? 1 : (ch > 2 ? 2 : ch);
-    /* fx->speed is WSOLA tempo and must match HTML playbackRate / DAC clock.
-       Pitch is a duration-preserving resample of each hop, not hop_in = HOP*speed/pitch
-       (that starved AudioQueue when pitch > 1 and froze currentTime). */
+    pthread_mutex_lock(&fx->mu);
+    /* SoundTouch: _rate = virtualRate * virtualPitch, _tempo = virtualTempo / virtualPitch.
+       virtualRate=1, virtualTempo=playbackRate (fx->speed), virtualPitch=fx->pitch. */
     tempo = fx->speed;
     pitch = fx->pitch;
     if (tempo < 0.26f)
@@ -342,12 +416,14 @@ int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out
         int n = in_frames < out_cap ? in_frames : out_cap;
         if (in && n > 0)
             memcpy(out, in, (size_t)n * (size_t)nch * sizeof(int16_t));
+        pthread_mutex_unlock(&fx->mu);
         return n;
     }
-    hop_in = (float)AFX_HOP * tempo;
     if (in && in_frames > 0) {
-        if (ensure_in(fx, in_frames + 8, nch) != 0)
+        if (ensure_buf(&fx->inbuf, &fx->in_cap, fx->in_n + in_frames + 8, nch) != 0) {
+            pthread_mutex_unlock(&fx->mu);
             return 0;
+        }
         for (i = 0; i < in_frames; i++) {
             int dst = fx->in_n + i;
             for (c = 0; c < nch; c++)
@@ -355,42 +431,16 @@ int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out
         }
         fx->in_n += in_frames;
     }
-    o = 0;
-    while (fx->in_n >= AFX_WIN && o + AFX_HOP <= out_cap) {
-        int t, c2;
-        int skip = (int)(hop_in + 0.5f);
-        if (skip < 1)
-            skip = 1;
-        if (skip > fx->in_n)
-            skip = fx->in_n;
-        if (do_pitch) {
-            for (t = 0; t < AFX_HOP; t++) {
-                float src = (float)t * pitch;
-                for (c2 = 0; c2 < nch; c2++)
-                    out[(o + t) * nch + c2] = sat16(lerp_ch(fx->inbuf, fx->in_n, nch, c2, src));
-            }
-        } else {
-            for (t = 0; t < AFX_WIN; t++) {
-                float w = fx->hann[t];
-                for (c2 = 0; c2 < nch; c2++)
-                    fx->ola[c2][t] += fx->inbuf[t * nch + c2] * w;
-            }
-            for (t = 0; t < AFX_HOP; t++) {
-                for (c2 = 0; c2 < nch; c2++)
-                    out[(o + t) * nch + c2] = sat16(fx->ola[c2][t]);
-            }
-            for (t = 0; t < AFX_WIN - AFX_HOP; t++) {
-                for (c2 = 0; c2 < nch; c2++)
-                    fx->ola[c2][t] = fx->ola[c2][t + AFX_HOP];
-            }
-            for (t = AFX_WIN - AFX_HOP; t < AFX_WIN; t++)
-                fx->ola[0][t] = fx->ola[1][t] = 0;
-        }
-        fx->in_n -= skip;
-        if (fx->in_n > 0)
-            memmove(fx->inbuf, fx->inbuf + skip * nch, (size_t)fx->in_n * (size_t)nch * sizeof(float));
-        o += AFX_HOP;
-        produced += AFX_HOP;
+    if (do_pitch) {
+        /* _rate = pitch, _tempo = speed/pitch. Resample then WSOLA (rate <= 1) or
+           the same order is fine here: hop_in is applied on the resampled stream. */
+        rate_to_mid(fx, pitch, nch);
+        hop_in = (float)AFX_HOP * (tempo / pitch);
+        produced = wsola_from(fx, fx->mid, &fx->mid_n, hop_in, out, out_cap, nch, 0);
+    } else {
+        hop_in = (float)AFX_HOP * tempo;
+        produced = wsola_from(fx, fx->inbuf, &fx->in_n, hop_in, out, out_cap, nch, 0);
     }
+    pthread_mutex_unlock(&fx->mu);
     return produced;
 }

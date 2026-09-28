@@ -27,8 +27,7 @@ void audio_fx_set_pitch(AudioFx *fx, float pitch);
 void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch);
 
 /*
- * Tempo matches playbackRate / DAC clock. Pitch is a duration-preserving hop
- * resample. Returns output frames. speed=1,pitch=1 copies.
+ * SoundTouch pair: rate = pitch, tempo = speed/pitch (WSOLA). speed=1,pitch=1 copies.
  */
 int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out, int out_cap, int ch);
 
