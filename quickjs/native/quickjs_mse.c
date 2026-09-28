@@ -268,6 +268,32 @@ static JSValue js_set_duration(JSContext *ctx, JSValueConst this_val, int argc, 
     return JS_UNDEFINED;
 }
 
+static JSValue js_ended(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (!g_vt->ended)
+        return JS_NewInt32(ctx, 0);
+    return JS_NewInt32(ctx, g_vt->ended(h));
+}
+
+static JSValue js_end_of_stream(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (g_vt->end_of_stream)
+        g_vt->end_of_stream(h);
+    return JS_UNDEFINED;
+}
+
 static JSValue js_buffered(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     void *h = host_of(ctx);
@@ -473,6 +499,8 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__msePlaybackRate", JS_NewCFunction(ctx, js_playback_rate, "__msePlaybackRate", 0));
     JS_SetPropertyStr(ctx, g, "__mseDuration", JS_NewCFunction(ctx, js_duration, "__mseDuration", 0));
     JS_SetPropertyStr(ctx, g, "__mseSetDuration", JS_NewCFunction(ctx, js_set_duration, "__mseSetDuration", 1));
+    JS_SetPropertyStr(ctx, g, "__mseEnded", JS_NewCFunction(ctx, js_ended, "__mseEnded", 0));
+    JS_SetPropertyStr(ctx, g, "__mseEndOfStream", JS_NewCFunction(ctx, js_end_of_stream, "__mseEndOfStream", 0));
     JS_SetPropertyStr(ctx, g, "__msePaused", JS_NewCFunction(ctx, js_paused, "__msePaused", 0));
     JS_SetPropertyStr(ctx, g, "__mseReadyState", JS_NewCFunction(ctx, js_ready_state, "__mseReadyState", 0));
     JS_SetPropertyStr(ctx, g, "__msePlay", JS_NewCFunction(ctx, js_play, "__msePlay", 0));

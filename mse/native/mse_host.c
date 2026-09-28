@@ -1378,6 +1378,37 @@ void mse_host_set_duration(MseHost *h, double seconds)
     pthread_mutex_unlock(&h->mu);
 }
 
+int mse_host_ended(MseHost *h)
+{
+    double first = 0, last = 0, yt;
+    int have, eos;
+    if (!h)
+        return 0;
+    if (!mse_av_drained(h->av))
+        return 0;
+    have = mse_av_span(h->av, &first, &last);
+    pthread_mutex_lock(&h->mu);
+    yt = h->yt_dur;
+    eos = h->eos;
+    pthread_mutex_unlock(&h->mu);
+    if (eos)
+        return 1;
+    /* YouTube lengthSeconds is often 0.1–0.4s past the last sample. Mid-play
+       SABR starve (last ≪ duration) is waiting, not ended. */
+    if (yt > 0 && have && last + 1.5 >= yt && last <= yt + 0.75)
+        return 1;
+    return 0;
+}
+
+void mse_host_end_of_stream(MseHost *h)
+{
+    if (!h)
+        return;
+    pthread_mutex_lock(&h->mu);
+    h->eos = 1;
+    pthread_mutex_unlock(&h->mu);
+}
+
 int mse_host_video_size(MseHost *h, int *w, int *ht)
 {
     if (!h || !w || !ht)

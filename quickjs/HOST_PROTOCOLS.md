@@ -362,7 +362,11 @@ JS (`player/seek` → `HTMLMediaElement.currentTime` → `__mseSetCurrentTime`).
 App control (`player/load|play|pause|seek|stop|setQuality|setSpeed|setLoop|setViewport`) is a bundle command that talks to the
 stub media element (and thus those trampolines). `player/setSpeed` `{speed,tempo}` sets
 `HTMLMediaElement.playbackRate` (currentTime + `ratechange`) and `__mseSetSpeed(speed,tempo)`
-together — SoundTouch's rate/tempo pair; do not call YouTube `setPlaybackRate`. Display viewport defaults to 640×360; the host
+together — SoundTouch's rate/tempo pair; do not call YouTube `setPlaybackRate`.
+`HTMLMediaElement.ended` follows Chrome `WebMediaPlayer::IsEnded`: leftover drained and
+(`MediaSource.endOfStream` / `__mseEndOfStream`, or last sample within 1.5s of
+`MediaSource.duration`). `currentTime` then clamps to `duration`. `__mseEnded()` is the native query.
+Display viewport defaults to 640×360; the host
 sends `player/setViewport` `{width,height}` (also accepted on `player/init` / `player/load`) so SABR
 ABR matches the real hole. `player/load` defaults quality `"zero"`: base.js
 still builds a normal video SourceBuffer; MSE does not append video to C; dummy `buffered` leads

@@ -67,6 +67,11 @@ double mse_av_duration(MseAv *a);
 /* First..last PTS across leftover. 1 if any packets. */
 int mse_av_span(MseAv *a, double *first, double *last);
 
+/* 1 when leftover had samples and every AU is consumed (rd >= n). Mid-play
+ * SABR starve with an empty unread queue also returns 1 — the host still
+ * requires last ≈ MediaSource.duration (or endOfStream) before HTML ended. */
+int mse_av_drained(MseAv *a);
+
 /* Unsent packets remain (rd < n). */
 int mse_av_video_pending(MseAv *a);
 /* 1 if pull can send or present now (not waiting on a future pts). 0 if v_rest. */

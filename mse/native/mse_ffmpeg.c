@@ -2859,6 +2859,19 @@ int mse_av_span(MseAv *a, double *first, double *last)
     return 1;
 }
 
+int mse_av_drained(MseAv *a)
+{
+    int had, a_done, v_done;
+    if (!a)
+        return 0;
+    av_lock_all(a);
+    had = a->af.n > 0 || (!a->v_rest && a->vf.n > 0);
+    a_done = a->af.n == 0 || a->af.rd >= a->af.n;
+    v_done = a->v_rest || a->vf.n == 0 || a->vf.rd >= a->vf.n;
+    av_unlock_all(a);
+    return had && a_done && v_done;
+}
+
 int mse_av_video_pending(MseAv *a)
 {
     int n;

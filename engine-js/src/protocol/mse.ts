@@ -551,6 +551,8 @@ class SourceBuffer {
       fire(this, "abort");
       fire(this, "updateend");
     }
+    const el = activeMedia;
+    if (el && el._ms === this._ms) maybeFireEnded(el);
   }
 }
 
@@ -698,6 +700,8 @@ class MediaSource {
   ["endOfStream"](): void {
     if (this["readyState"] !== "open") throw invalidState("MediaSource.endOfStream: not open");
     this["readyState"] = "ended";
+    mseLog("mse endOfStream");
+    if (typeof __mseEndOfStream === "function") __mseEndOfStream();
     const el = activeMedia;
     if (el && el._ms === this) maybeFireEnded(el);
   }
@@ -768,39 +772,50 @@ function notifySourceOpen(ms: MediaSource): void {
 const blobUrls: Record<string, MediaSource> = {};
 
 let activeMedia: HTMLMediaElement | null = null;
-let mediaTick: ReturnType<typeof setInterval> | null = null;
+let mediaTick: ReturnType<typeof setTimeout> | null = null;
 
 function stopMediaTick(): void {
   if (mediaTick != null) {
-    clearInterval(mediaTick);
+    clearTimeout(mediaTick);
     mediaTick = null;
   }
 }
 
-function maybeFireEnded(el: HTMLMediaElement): boolean {
-  if (el["paused"] || el["ended"] || el["loop"]) return false;
-  const ct = Number(el["currentTime"]);
+function pipelineEnded(el: HTMLMediaElement): boolean {
   const d = Number(el["duration"]);
+  const live = !isFinite(d) || d === Infinity || d <= 0;
+  const ms = el._ms;
+  const msEos = !!(ms && ms["readyState"] === "ended");
+  let drained = false;
+  if (typeof __mseEnded === "function") {
+    try {
+      drained = !!__mseEnded();
+    } catch (_e) {
+      drained = false;
+    }
+  }
   const b = el["buffered"];
   const n = b ? b["length"] : 0;
   const bufEnd = n > 0 ? Number(b["end"](n - 1)) : NaN;
-  /* Chrome: currentTime >= duration. Audio-only leftover often stops ~0.5s
-     short (fake-144 video cover 0..dur, audio last < dur) — treat clock at
-     buffered end as EOS when leftover is within 1.5s of duration. */
-  let end = isFinite(d) && d > 0 ? d : NaN;
-  if (
-    isFinite(bufEnd) &&
-    bufEnd > 0 &&
-    ct >= bufEnd - 0.05 &&
-    (!isFinite(end) || bufEnd >= end - 1.5)
-  ) {
-    end = bufEnd;
-  }
-  if (!isFinite(end) || end <= 0 || ct < end - 0.05) return false;
+  const ct = Number(el["currentTime"]);
+  /* DAC / last-sample slack: Chrome IsEnded is pipeline EOS, not now >= dur. */
+  const atBufEnd =
+    isFinite(bufEnd) && bufEnd > 0 && isFinite(ct) && ct >= bufEnd - 0.15;
+  const nearDur = !live && isFinite(bufEnd) && bufEnd >= d - 1.5;
+  if (msEos && (drained || atBufEnd)) return true;
+  if (!live && nearDur && (drained || atBufEnd)) return true;
+  if (!live && isFinite(ct) && ct >= d - 0.05) return true;
+  return false;
+}
+
+function maybeFireEnded(el: HTMLMediaElement): boolean {
+  if (el["paused"] || el["ended"] || el["loop"] || el["seeking"]) return false;
+  if (!pipelineEnded(el)) return false;
   el["ended"] = true;
   el["paused"] = true;
   stopMediaTick();
   __msePause();
+  mseLog("mse ended clock=" + __mseCurrentTime() + " dur=" + Number(el["duration"]));
   fire(el, "timeupdate");
   fire(el, "ended");
   fire(el, "pause");
@@ -809,12 +824,17 @@ function maybeFireEnded(el: HTMLMediaElement): boolean {
 
 function startMediaTick(el: HTMLMediaElement): void {
   stopMediaTick();
-  mediaTick = setInterval(function () {
-    if (el["paused"]) return;
+  function pulse(): void {
+    if (el["paused"] || el["ended"]) return;
     if (maybeFireEnded(el)) return;
     fire(el, "timeupdate");
     syncReadyState(el);
-  }, 250);
+    const d = Number(el["duration"]);
+    const ct = Number(el["currentTime"]);
+    const near = isFinite(d) && d > 0 && isFinite(ct) && d - ct < 2;
+    mediaTick = setTimeout(pulse, near ? 50 : 250);
+  }
+  mediaTick = setTimeout(pulse, 250);
 }
 
 function emptyTrackList(): Record<string, unknown> {
@@ -928,6 +948,8 @@ class HTMLMediaElement {
 
   ["play"](): Promise<void> {
     const self = this;
+    /* Chrome: play() after ended seeks to the start, then plays. */
+    if (this["ended"]) this["currentTime"] = 0;
     this["paused"] = false;
     this["ended"] = false;
     __msePlay();
@@ -1047,6 +1069,11 @@ class HTMLMediaElement {
   }
 
   get ["currentTime"](): number {
+    /* Chrome WMPI::CurrentTime clamps to duration once the pipeline has ended. */
+    if (this["ended"]) {
+      const d = Number(this["duration"]);
+      if (isFinite(d) && d > 0) return d;
+    }
     return __mseCurrentTime();
   }
   set ["currentTime"](t: number) {

@@ -30,6 +30,8 @@ static const QjsMseVt kVt = {
     .rest_video = (void (*)(void *, int))mse_host_rest_video,
     .set_speed = vt_set_speed,
     .playback_rate = vt_playback_rate,
+    .ended = (int (*)(void *))mse_host_ended,
+    .end_of_stream = (void (*)(void *))mse_host_end_of_stream,
 };
 
 const void *mse_host_vtable(void)

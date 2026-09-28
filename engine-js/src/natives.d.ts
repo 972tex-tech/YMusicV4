@@ -83,6 +83,9 @@ declare function __mseSetSpeed(speed: number, tempo: number): void;
 declare function __msePlaybackRate(): number;
 declare function __mseDuration(): number;
 declare function __mseSetDuration(seconds: number): void;
+/** 1 when leftover is drained and (endOfStream or last ≈ duration). Chrome IsEnded. */
+declare function __mseEnded(): number;
+declare function __mseEndOfStream(): void;
 declare function __msePaused(): boolean;
 declare function __mseReadyState(): number;
 declare function __msePlay(): void;

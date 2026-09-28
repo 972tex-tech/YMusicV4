@@ -34,6 +34,9 @@ double mse_host_current_time(MseHost *h);
 void mse_host_set_current_time(MseHost *h, double seconds);
 double mse_host_duration(MseHost *h);
 void mse_host_set_duration(MseHost *h, double seconds);
+/* Chrome WebMediaPlayer::IsEnded: leftover drained and (endOfStream or last ≈ duration). */
+int mse_host_ended(MseHost *h);
+void mse_host_end_of_stream(MseHost *h);
 int mse_host_video_size(MseHost *h, int *w, int *ht);
 int mse_host_frames(MseHost *h);
 int64_t mse_host_samples_played(MseHost *h);

@@ -196,6 +196,8 @@ function __mseSetSpeed(speed, tempo) {}
 function __msePlaybackRate() {}
 function __mseDuration() {}
 function __mseSetDuration(seconds) {}
+function __mseEnded() {}
+function __mseEndOfStream() {}
 function __msePaused() {}
 function __mseReadyState() {}
 function __msePlay() {}
