@@ -52,9 +52,8 @@ internal fun ElevatedBarDialog(
     // (the divider + scroll shadow still delineate the bars); light keeps the usual elevated grey.
     val barColor = if (DesignColors.isDark) DesignColors.SurfaceDim else DesignColors.SurfaceElevated
     BoxWithConstraints {
-        val wide = desktopLayoutHole || maxWidth >= 600.dp
-        val bodyMax = if (wide) {
-            (maxHeight * 0.85f - 112.dp).coerceIn(420.dp, 960.dp)
+        val bodyMax = if (maxHeight.value.isFinite() && maxHeight > 0.dp) {
+            (maxHeight * 0.85f - 112.dp).coerceAtLeast(240.dp)
         } else {
             420.dp
         }
