@@ -51,6 +51,8 @@ fun SlimSeekBar(
     trackHeight: Dp = 3.dp,
     barHeight: Dp = 20.dp,
     thumbShadow: Dp = 1.dp,
+    /** Live value while dragging. Seek overlay is skipped when this is set. */
+    onScrub: ((Float) -> Unit)? = null,
 ) {
     var widthPx by remember { mutableStateOf(0) }
     var dragging by remember { mutableStateOf<Float?>(null) }
@@ -59,29 +61,33 @@ fun SlimSeekBar(
         modifier
             .height(barHeight)
             .onSizeChanged { widthPx = it.width }
-            .pointerInput(enabled) {
+            .pointerInput(enabled, onScrub) {
                 if (!enabled) return@pointerInput
                 detectTapGestures { offset -> onSeek((offset.x / size.width).coerceIn(0f, 1f)) }
             }
-            .pointerInput(enabled) {
+            .pointerInput(enabled, onScrub) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
                         dragging = (offset.x / size.width).coerceIn(0f, 1f)
-                        VideoOverlayNative.scrubbing = true
-                        VideoOverlayNative.show()
+                        if (onScrub == null) {
+                            VideoOverlayNative.scrubbing = true
+                            VideoOverlayNative.show()
+                        }
                     },
                     onHorizontalDrag = { change, _ ->
-                        dragging = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val f = (change.position.x / size.width).coerceIn(0f, 1f)
+                        dragging = f
+                        onScrub?.invoke(f)
                     },
                     onDragEnd = {
                         dragging?.let(onSeek)
                         dragging = null
-                        VideoOverlayNative.scrubbing = false
+                        if (onScrub == null) VideoOverlayNative.scrubbing = false
                     },
                     onDragCancel = {
                         dragging = null
-                        VideoOverlayNative.scrubbing = false
+                        if (onScrub == null) VideoOverlayNative.scrubbing = false
                     },
                 )
             },

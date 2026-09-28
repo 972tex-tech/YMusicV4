@@ -1,29 +1,24 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,13 +29,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.sp
 import io.ymusic.player.Player
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.sound_bass
 import io.ymusic.ui.resources.sound_eq
-import io.ymusic.ui.resources.sound_eq_band
 import io.ymusic.ui.resources.sound_ok
 import io.ymusic.ui.resources.sound_pitch
 import io.ymusic.ui.resources.sound_playback
@@ -63,8 +61,8 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 import kotlin.math.round
 
-private val SPEED_CHIPS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-private val PITCH_CHIPS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+/** Same chips for speed and pitch; 1× sits in the middle. */
+private val RATE_CHIPS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f)
 private val EQ_HZ = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")
 
 private data class EqPreset(val label: StringResource, val bands: List<Float>)
@@ -81,42 +79,53 @@ private val EQ_PRESETS = listOf(
     EqPreset(Res.string.sound_preset_electronic, listOf(4f, 3f, 1f, 0f, -2f, 2f, 1f, 2f, 3f, 4f)),
 )
 
+private val DialogPad = Modifier.padding(horizontal = 24.dp)
+
 @Composable
 internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
     val config by player.config.collectAsState()
-    FxDialog(title = stringResource(Res.string.sound_playback), onDismiss = onDismiss) {
-        Text(stringResource(Res.string.sound_volume, (config.volume * 100).toInt()))
-        Slider(
-            value = config.volume,
-            onValueChange = { player.setVolume(it) },
-            valueRange = 0f..1f,
-        )
-        Spacer(Modifier.height(8.dp))
-        TickRow(
-            title = stringResource(Res.string.sound_speed),
-            value = config.speed,
-            display = "${trimFloat(config.speed)}×",
-            range = 0.25f..2f,
-            chips = SPEED_CHIPS,
-            onChange = { player.setSpeed(it) },
-        )
-        Spacer(Modifier.height(12.dp))
-        TickRow(
-            title = stringResource(Res.string.sound_pitch, trimFloat(config.pitchFactor)),
-            value = config.pitchFactor,
-            display = "${trimFloat(config.pitchFactor)}×",
-            range = 0.5f..2f,
-            chips = PITCH_CHIPS,
-            onChange = { player.setPitch(it) },
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    val scroll = rememberScrollState()
+    ElevatedBarDialog(
+        title = stringResource(Res.string.sound_playback),
+        onDismiss = onDismiss,
+        canScrollBackward = scroll.canScrollBackward,
+        canScrollForward = scroll.canScrollForward,
+        buttons = {
             TextButton(
                 onClick = {
                     player.setVolume(1f)
                     player.setSpeed(1f)
                     player.setPitch(1f)
                 },
-            ) { Text(stringResource(Res.string.sound_reset)) }
+            ) { Text(stringResource(Res.string.sound_reset), color = DesignColors.Ink) }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(Res.string.sound_ok), color = DesignColors.Accent)
+            }
+        },
+    ) {
+        Column(Modifier.verticalScroll(scroll).padding(vertical = 8.dp)) {
+            LabelValue(
+                stringResource(Res.string.sound_volume, (config.volume * 100).toInt()),
+                "",
+            )
+            FxBar(
+                fraction = config.volume,
+                onChange = { player.setVolume(it) },
+            )
+            Spacer(Modifier.height(16.dp))
+            RateBlock(
+                title = stringResource(Res.string.sound_speed),
+                value = config.speed,
+                range = 0.25f..2f,
+                onChange = { player.setSpeed(it) },
+            )
+            Spacer(Modifier.height(16.dp))
+            RateBlock(
+                title = stringResource(Res.string.sound_pitch, trimFloat(config.pitchFactor)),
+                value = config.pitchFactor,
+                range = 0.5f..2f,
+                onChange = { player.setPitch(it) },
+            )
         }
     }
 }
@@ -124,132 +133,175 @@ internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
 @Composable
 internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
     val config by player.config.collectAsState()
-    FxDialog(title = stringResource(Res.string.sound_eq), onDismiss = onDismiss) {
-        EqPresetDropdown(
-            bands = config.eqBands,
-            onSelect = { player.setEqBands(it) },
-        )
-        Spacer(Modifier.height(8.dp))
-        EQ_HZ.forEachIndexed { i, label ->
-            val db = config.eqBands.getOrElse(i) { 0f }
-            Text(stringResource(Res.string.sound_eq_band, label, db.toInt()))
-            Slider(
-                value = db,
-                onValueChange = { v ->
-                    val next = config.eqBands.toMutableList()
-                    while (next.size < 10) next.add(0f)
-                    next[i] = snapBand(v)
-                    player.setEqBands(next)
-                },
-                valueRange = -12f..12f,
-            )
-        }
-        Text(stringResource(Res.string.sound_bass, config.bassBoostDb.toInt()))
-        Slider(
-            value = config.bassBoostDb,
-            onValueChange = { player.setBassBoost(it) },
-            valueRange = 0f..12f,
-        )
-        Text(stringResource(Res.string.sound_virtualizer, trimFloat(config.virtualizer)))
-        Slider(
-            value = config.virtualizer,
-            onValueChange = { player.setVirtualizer(it) },
-            valueRange = 0f..2f,
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    val scroll = rememberScrollState()
+    ElevatedBarDialog(
+        title = stringResource(Res.string.sound_eq),
+        onDismiss = onDismiss,
+        canScrollBackward = scroll.canScrollBackward,
+        canScrollForward = scroll.canScrollForward,
+        buttons = {
             TextButton(
                 onClick = {
                     player.setEqBands(List(10) { 0f })
                     player.setBassBoost(0f)
                     player.setVirtualizer(1f)
                 },
-            ) { Text(stringResource(Res.string.sound_reset)) }
-        }
-    }
-}
-
-@Composable
-private fun FxDialog(
-    title: String,
-    onDismiss: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    BoxWithConstraints {
-        val elevated = desktopLayoutHole || maxWidth >= 600.dp || maxWidth > maxHeight
-        Dialog(onDismissRequest = onDismiss) {
-            Surface(
-                modifier = Modifier
-                    .then(if (elevated) Modifier.widthIn(max = 440.dp) else Modifier.fillMaxWidth())
-                    .heightIn(max = maxHeight * 0.9f),
-                shape = RoundedCornerShape(if (elevated) 12.dp else 16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = if (elevated) 6.dp else 1.dp,
-                shadowElevation = if (elevated) 8.dp else 2.dp,
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = maxHeight * 0.9f)
-                        .padding(top = 20.dp, start = 20.dp, end = 20.dp, bottom = 8.dp),
-                ) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(12.dp))
-                    Column(
-                        Modifier
-                            .weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        content()
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = onDismiss) { Text(stringResource(Res.string.sound_ok)) }
-                    }
-                }
+            ) { Text(stringResource(Res.string.sound_reset), color = DesignColors.Ink) }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(Res.string.sound_ok), color = DesignColors.Accent)
             }
+        },
+    ) {
+        Column(Modifier.verticalScroll(scroll).padding(vertical = 8.dp)) {
+            EqPresetDropdown(
+                bands = config.eqBands,
+                onSelect = { player.setEqBands(it) },
+            )
+            Spacer(Modifier.height(8.dp))
+            EQ_HZ.forEachIndexed { i, hz ->
+                val db = config.eqBands.getOrElse(i) { 0f }
+                EqBandRow(
+                    label = hz,
+                    db = db,
+                    onChange = { v ->
+                        val next = config.eqBands.toMutableList()
+                        while (next.size < 10) next.add(0f)
+                        next[i] = v
+                        player.setEqBands(next)
+                    },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            LabelValue(stringResource(Res.string.sound_bass, config.bassBoostDb.toInt()), "")
+            FxBar(
+                fraction = config.bassBoostDb / 12f,
+                onChange = { player.setBassBoost(it * 12f) },
+            )
+            Spacer(Modifier.height(12.dp))
+            LabelValue(stringResource(Res.string.sound_virtualizer, trimFloat(config.virtualizer)), "")
+            FxBar(
+                fraction = config.virtualizer / 2f,
+                onChange = { player.setVirtualizer(it * 2f) },
+            )
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TickRow(
+private fun RateBlock(
     title: String,
     value: Float,
-    display: String,
     range: ClosedFloatingPointRange<Float>,
-    chips: List<Float>,
     onChange: (Float) -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(title)
-        Text(display, color = MaterialTheme.colorScheme.primary)
-    }
+    LabelValue(title, "${trimFloat(value)}×")
     FlowRow(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        DialogPad.fillMaxWidth().padding(bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        chips.forEach { s ->
-            FilterChip(
+        RATE_CHIPS.forEach { s ->
+            RateChip(
+                label = if (s == 1f) "1×" else "${trimFloat(s)}×",
                 selected = abs(value - s) < 0.02f,
                 onClick = { onChange(s) },
-                label = { Text(if (s == 1f) "1×" else "${trimFloat(s)}×") },
             )
         }
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(
-            onClick = { onChange(snap05((value - 0.05f).coerceIn(range.start, range.endInclusive))) },
-        ) { Text("−") }
-        Slider(
-            value = value.coerceIn(range),
-            onValueChange = { onChange(snap05(it.coerceIn(range.start, range.endInclusive))) },
-            valueRange = range,
+    Row(
+        DialogPad.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Stepper("−") { onChange(snap05((value - 0.05f).coerceIn(range.start, range.endInclusive))) }
+        FxBar(
+            fraction = (value - range.start) / (range.endInclusive - range.start),
+            onChange = { f ->
+                onChange(snap05(range.start + f * (range.endInclusive - range.start)))
+            },
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+        )
+        Stepper("+") { onChange(snap05((value + 0.05f).coerceIn(range.start, range.endInclusive))) }
+    }
+}
+
+@Composable
+private fun EqBandRow(label: String, db: Float, onChange: (Float) -> Unit) {
+    Row(
+        DialogPad.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            modifier = Modifier.width(36.dp),
+        )
+        FxBar(
+            fraction = (db + 12f) / 24f,
+            onChange = { onChange(round(it * 24f - 12f)) },
             modifier = Modifier.weight(1f),
         )
-        TextButton(
-            onClick = { onChange(snap05((value + 0.05f).coerceIn(range.start, range.endInclusive))) },
-        ) { Text("+") }
+        Text(
+            if (db > 0.4f) "+${db.toInt()}" else db.toInt().toString(),
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
+            modifier = Modifier.padding(start = 10.dp),
+        )
     }
+}
+
+@Composable
+private fun FxBar(fraction: Float, onChange: (Float) -> Unit, modifier: Modifier = DialogPad.fillMaxWidth()) {
+    SlimSeekBar(
+        fraction = fraction.coerceIn(0f, 1f),
+        enabled = true,
+        onSeek = onChange,
+        onScrub = onChange,
+        trackColor = DesignColors.OutlineSoft,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun LabelValue(label: String, value: String) {
+    Row(
+        DialogPad.fillMaxWidth().padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink))
+        if (value.isNotEmpty()) {
+            Text(value, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent))
+        }
+    }
+}
+
+@Composable
+private fun RateChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(999.dp)
+    Text(
+        label,
+        style = TextStyle(
+            fontSize = 12.sp,
+            color = if (selected) Color.White else DesignColors.InkSoft,
+        ),
+        modifier = Modifier
+            .clip(shape)
+            .background(if (selected) DesignColors.Accent else Color.Transparent)
+            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
+private fun Stepper(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -257,22 +309,29 @@ private fun EqPresetDropdown(bands: List<Float>, onSelect: (List<Float>) -> Unit
     var expanded by remember { mutableStateOf(false) }
     val match = EQ_PRESETS.firstOrNull { bandsMatch(bands, it.bands) }
     val label = stringResource(match?.label ?: Res.string.sound_preset_custom)
-    Box {
+    Box(DialogPad.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .border(1.dp, DesignColors.Outline, RoundedCornerShape(4.dp))
                 .clickable { expanded = true }
-                .padding(vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
+            Text("▾", style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             EQ_PRESETS.forEach { preset ->
                 DropdownMenuItem(
-                    text = { Text(stringResource(preset.label)) },
+                    text = {
+                        Text(
+                            stringResource(preset.label),
+                            style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+                        )
+                    },
                     onClick = {
                         onSelect(preset.bands)
                         expanded = false
@@ -284,8 +343,6 @@ private fun EqPresetDropdown(bands: List<Float>, onSelect: (List<Float>) -> Unit
 }
 
 private fun snap05(v: Float): Float = round(v * 20f) / 20f
-
-private fun snapBand(v: Float): Float = round(v)
 
 private fun trimFloat(v: Float): String {
     val x = round(v * 100f) / 100f
