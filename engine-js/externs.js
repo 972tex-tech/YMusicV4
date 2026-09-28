@@ -193,6 +193,7 @@ function __mseSetCurrentTime(seconds) {}
  * @return {undefined}
  */
 function __mseSetSpeed(speed, tempo) {}
+function __mseSetPitch(pitch) {}
 function __msePlaybackRate() {}
 function __mseDuration() {}
 function __mseSetDuration(seconds) {}

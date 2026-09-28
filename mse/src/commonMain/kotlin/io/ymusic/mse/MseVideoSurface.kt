@@ -7,10 +7,9 @@ expect class MseVideoSurface {
     /** Native presents since attach (`mse_host_frames`). */
     fun presentedFrames(): Int
 
-    fun applyAudioFx(
-        volume: Float,
-        speed: Float,
-        pitch: Float,
+    fun setVolume(volume: Float)
+
+    fun setAudioEffect(
         bands: FloatArray,
         bass: Float,
         virtualizer: Float,

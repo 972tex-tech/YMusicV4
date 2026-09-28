@@ -359,10 +359,10 @@ call QuickJS `__mse*` trampolines, which hit `:mse` C (`mse_host.c`) through a v
 passes in (`attachMseHost(host, vtable)`). JNI from the app is **only** `setVideoSurface`. Seek is
 JS (`player/seek` → `HTMLMediaElement.currentTime` → `__mseSetCurrentTime`).
 
-App control (`player/load|play|pause|seek|stop|setQuality|setSpeed|setLoop|setViewport`) is a bundle command that talks to the
-stub media element (and thus those trampolines). `player/setSpeed` `{speed,tempo}` sets
-`HTMLMediaElement.playbackRate` (currentTime + `ratechange`) and `__mseSetSpeed(speed,tempo)`
-together — SoundTouch's rate/tempo pair; do not call YouTube `setPlaybackRate`.
+App control (`player/load|play|pause|seek|stop|setQuality|setSpeed|setSpeedPitch|setLoop|setViewport`)
+talks to the stub media element. Speed/pitch: `player/setSpeedPitch` → YouTube
+`setPlaybackRate` and `video.pitch` → `__mseSetSpeed` / `__mseSetPitch`. Volume and EQ stay
+on `MseVideoSurface.setVolume` / `setAudioEffect`. Kotlin must not call `MseHostNative.setSpeed`.
 `HTMLMediaElement.ended` follows Chrome `WebMediaPlayer::IsEnded`: leftover drained and
 (`MediaSource.endOfStream` / `__mseEndOfStream`, or last sample within 1.5s of
 `MediaSource.duration`). `currentTime` then clamps to `duration`. `__mseEnded()` is the native query.

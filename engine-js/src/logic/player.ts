@@ -17,6 +17,7 @@ import {
   setPlayerLoop,
   setPlayerQuality,
   setPlayerSpeed,
+  setPlayerSpeedPitch,
   setPlayerViewport,
   statusPlayer,
   stopPlayer,
@@ -106,6 +107,20 @@ onAccept(
     const t = Number.isFinite(tempo) ? tempo : s;
     setPlayerSpeed(s, t);
     const p = out.writeObjectAsJson({ "ok": true, "speed": s, "tempo": t });
+    if (p) await p;
+  }),
+);
+
+onAccept(
+  "player/setSpeedPitch",
+  commandHandler(async (src, out) => {
+    const a = await src.readJsonObject();
+    const speed = Number(a["speed"]);
+    const pitch = Number(a["pitch"]);
+    const s = Number.isFinite(speed) ? speed : 1;
+    const p0 = Number.isFinite(pitch) ? pitch : 1;
+    setPlayerSpeedPitch(s, p0);
+    const p = out.writeObjectAsJson({ "ok": true, "speed": s, "pitch": p0 });
     if (p) await p;
   }),
 );

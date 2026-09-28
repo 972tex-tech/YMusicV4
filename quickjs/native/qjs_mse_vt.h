@@ -30,6 +30,7 @@ typedef struct QjsMseVt {
     int (*ended)(void *);
     void (*end_of_stream)(void *);
     int (*prepare_append)(void *, int audio, int n);
+    void (*set_pitch)(void *, double);
 } QjsMseVt;
 
 #ifdef __cplusplus

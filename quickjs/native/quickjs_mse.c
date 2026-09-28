@@ -101,6 +101,20 @@ static JSValue js_playback_rate(JSContext *ctx, JSValueConst this_val, int argc,
     return JS_NewFloat64(ctx, g_vt->playback_rate(h));
 }
 
+static JSValue js_set_pitch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    double pitch = 1;
+    (void)this_val;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (argc < 1 || JS_ToFloat64(ctx, &pitch, argv[0]))
+        return JS_EXCEPTION;
+    if (g_vt->set_pitch)
+        g_vt->set_pitch(h, pitch);
+    return JS_UNDEFINED;
+}
+
 static JSValue js_duration(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     void *h = host_of(ctx);
@@ -515,6 +529,7 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseSetCurrentTime", JS_NewCFunction(ctx, js_set_current_time, "__mseSetCurrentTime", 1));
     JS_SetPropertyStr(ctx, g, "__mseSetSpeed", JS_NewCFunction(ctx, js_set_speed, "__mseSetSpeed", 2));
     JS_SetPropertyStr(ctx, g, "__msePlaybackRate", JS_NewCFunction(ctx, js_playback_rate, "__msePlaybackRate", 0));
+    JS_SetPropertyStr(ctx, g, "__mseSetPitch", JS_NewCFunction(ctx, js_set_pitch, "__mseSetPitch", 1));
     JS_SetPropertyStr(ctx, g, "__mseDuration", JS_NewCFunction(ctx, js_duration, "__mseDuration", 0));
     JS_SetPropertyStr(ctx, g, "__mseSetDuration", JS_NewCFunction(ctx, js_set_duration, "__mseSetDuration", 1));
     JS_SetPropertyStr(ctx, g, "__mseEnded", JS_NewCFunction(ctx, js_ended, "__mseEnded", 0));

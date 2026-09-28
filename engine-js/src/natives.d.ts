@@ -81,6 +81,7 @@ declare function __mseSetCurrentTime(seconds: number): void;
 /** speed = playbackRate (currentTime). tempo = PCM stretch. Pair them. */
 declare function __mseSetSpeed(speed: number, tempo: number): void;
 declare function __msePlaybackRate(): number;
+declare function __mseSetPitch(pitch: number): void;
 declare function __mseDuration(): number;
 declare function __mseSetDuration(seconds: number): void;
 /** 1 when leftover is drained and (endOfStream or last ≈ duration). Chrome IsEnded. */

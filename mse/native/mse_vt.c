@@ -11,6 +11,11 @@ static double vt_playback_rate(void *h)
     return (double)mse_host_playback_rate((MseHost *)h);
 }
 
+static void vt_set_pitch(void *h, double pitch)
+{
+    mse_host_set_pitch((MseHost *)h, (float)pitch);
+}
+
 static const QjsMseVt kVt = {
     .current_time = (double (*)(void *))mse_host_current_time,
     .set_current_time = (void (*)(void *, double))mse_host_set_current_time,
@@ -33,6 +38,7 @@ static const QjsMseVt kVt = {
     .ended = (int (*)(void *))mse_host_ended,
     .end_of_stream = (void (*)(void *))mse_host_end_of_stream,
     .prepare_append = (int (*)(void *, int, int))mse_host_prepare_append,
+    .set_pitch = vt_set_pitch,
 };
 
 const void *mse_host_vtable(void)

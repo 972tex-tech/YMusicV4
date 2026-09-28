@@ -114,12 +114,22 @@ class DynamicEnginePlayer private constructor(
     }
 
     suspend fun setSpeed(speed: Float, tempo: Float = speed, logger: Logger? = null) {
-        nativeMse?.setSpeed(speed, tempo)
         engine.jsonCommand(
             "player/setSpeed",
             { w ->
                 w.name("speed").value(speed.toString())
                 w.name("tempo").value(tempo.toString())
+            },
+            logger,
+        ) { it.skipValue() }
+    }
+
+    suspend fun setSpeedPitch(speed: Float, pitch: Float, logger: Logger? = null) {
+        engine.jsonCommand(
+            "player/setSpeedPitch",
+            { w ->
+                w.name("speed").value(speed.toString())
+                w.name("pitch").value(pitch.toString())
             },
             logger,
         ) { it.skipValue() }

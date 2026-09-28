@@ -167,12 +167,11 @@ class MsePlayer internal constructor(
                 if (playWhenReady) p.play(log) else p.pause(log)
                 run {
                     val s = config.speed.coerceIn(0.25f, 2f)
-                    p.setSpeed(s, s, log)
+                    val pitch = config.pitchFactor.coerceIn(0.5f, 2f)
+                    p.setSpeedPitch(s, pitch, log)
                 }
-                videoSurface.applyAudioFx(
-                    config.volume.coerceIn(0f, 1f),
-                    config.speed.coerceIn(0.25f, 4f),
-                    config.pitchFactor.coerceIn(0.5f, 2f),
+                videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
+                videoSurface.setAudioEffect(
                     FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
                     config.bassBoostDb.coerceIn(0f, 12f),
                     config.virtualizer.coerceIn(0f, 2f),
@@ -238,14 +237,19 @@ class MsePlayer internal constructor(
                 videoSize = if (config.audioOnly) null else (it.videoSize ?: lastVideoSize),
             )
         }
-        videoSurface.applyAudioFx(
-            config.volume.coerceIn(0f, 1f),
-            config.speed.coerceIn(0.25f, 4f),
-            config.pitchFactor.coerceIn(0.5f, 2f),
-            FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
-            config.bassBoostDb.coerceIn(0f, 12f),
-            config.virtualizer.coerceIn(0f, 2f),
-        )
+        if (config.volume != prev.volume) {
+            videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
+        }
+        if (config.eqBands != prev.eqBands ||
+            config.bassBoostDb != prev.bassBoostDb ||
+            config.virtualizer != prev.virtualizer
+        ) {
+            videoSurface.setAudioEffect(
+                FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
+                config.bassBoostDb.coerceIn(0f, 12f),
+                config.virtualizer.coerceIn(0f, 2f),
+            )
+        }
         scope.launch {
             runCatching {
                 val prevQ = prev.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
@@ -258,9 +262,12 @@ class MsePlayer internal constructor(
                 if (config.loop != prev.loop) {
                     engine().setLoop(config.loop, log)
                 }
-                if (config.speed != prev.speed) {
-                    val s = config.speed.coerceIn(0.25f, 2f)
-                    engine().setSpeed(s, s, log)
+                if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
+                    engine().setSpeedPitch(
+                        config.speed.coerceIn(0.25f, 2f),
+                        config.pitchFactor.coerceIn(0.5f, 2f),
+                        log,
+                    )
                 }
                 applyCaptionConfig(config)
             }

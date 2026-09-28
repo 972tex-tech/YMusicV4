@@ -4,7 +4,6 @@ import { JsEngineErrorImpl, callMain } from "../../protocol/command";
 import {
   activeHtmlMedia,
   installMseGlobals,
-  setHtmlPlaybackRate,
   isLiveDuration,
   mseCreateObjectURL,
   mseRevokeObjectURL,
@@ -82,7 +81,7 @@ type MoviePlayer = {
   "seekTo"(t: number, allowSeekAhead?: boolean): void;
   "setLoopVideo"(enable: boolean): void;
   "setPlayerSpeed"?(speed: number): void;
-  "setPlaybackRate"?(speed: number): void;
+  "setPlaybackRate"(speed: number): void;
   "getPlayerResponse"(): unknown;
   "getProgressState"(): Record<string, unknown>;
   "getPlayerState"(): number;
@@ -162,6 +161,7 @@ function bindVideoProgress(player: MoviePlayer): void {
 /** Listeners on #movie_player. Application.create copies the IFrame API
  *  onto that node (getPlaybackQuality, setPlaybackQualityRange, …). */
 let htmlListenBound = false;
+let lastYtPlayerState = -999;
 
 function bindHtmlMediaEvents(): void {
   const v = activeHtmlMedia();
@@ -614,6 +614,7 @@ class Player {
   private player: YtApp | null = null;
   private speed = 1;
   private tempo = 1;
+  private pitch = 1;
   private mintFn: ((id: Uint8Array) => unknown) | null = null;
   private config: Record<string, unknown> | null = null;
   private minterP: Promise<Record<string, unknown>> | null = null;
@@ -861,7 +862,7 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
-    this.applyHtmlSpeed();
+    this.reapplySpeedPitch();
     /* Fire-and-forget: /player, MSE, picture, catalog arrive on
        onVideoDataChange / status / catalog. load() does not wait. */
     out["step"] = "ok";
@@ -922,21 +923,41 @@ class Player {
     player["setLoopVideo"](!!enable);
   }
 
-  setSpeed(speed: number, tempo?: number): void {
+  setSpeed(speed: number, _tempo?: number): void {
     let s = Number(speed);
     if (!Number.isFinite(s)) s = 1;
     if (s < 0.25) s = 0.25;
     if (s > 2) s = 2;
-    let t = tempo != null && Number.isFinite(Number(tempo)) ? Number(tempo) : s;
-    if (t < 0.25) t = 0.25;
-    if (t > 4) t = 4;
+    this.tempo = s;
+    if (this.speed === s) return;
     this.speed = s;
-    this.tempo = t;
-    this.applyHtmlSpeed();
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("player not created", "E20082");
+    player["setPlaybackRate"](s);
   }
 
-  private applyHtmlSpeed(): void {
-    setHtmlPlaybackRate(this.speed, this.tempo);
+  setSpeedPitch(speed: number, pitch: number): void {
+    this.setSpeed(speed);
+    this.applyHtmlPitch(pitch);
+  }
+
+  /** After loadVideoById YouTube may reset the element; push stored rate/pitch. */
+  private reapplySpeedPitch(): void {
+    const player = moviePlayer();
+    if (player) player["setPlaybackRate"](this.speed);
+    const el = activeHtmlMedia();
+    if (el) el["pitch"] = this.pitch;
+  }
+
+  private applyHtmlPitch(pitch: number): void {
+    let p = Number(pitch);
+    if (!Number.isFinite(p)) p = 1;
+    if (p < 0.5) p = 0.5;
+    if (p > 2) p = 2;
+    if (this.pitch === p) return;
+    this.pitch = p;
+    const el = activeHtmlMedia();
+    if (el) el["pitch"] = p;
   }
 
   pause(): void {
@@ -1083,6 +1104,10 @@ class Player {
     if (media && media["ended"]) {
       out["newState"] = "ended";
       out["playWhenReady"] = false;
+      if (MSE_DEBUG && lastYtPlayerState !== 0) {
+        lastYtPlayerState = 0;
+        console.log("mse ytState ended ct=" + Number(media["currentTime"]).toFixed(3));
+      }
       return out;
     }
     const st = player["getPlayerState"]();
@@ -1118,6 +1143,23 @@ class Player {
       5: "idle",
     };
     out["newState"] = mapped[st] || "idle";
+    if (MSE_DEBUG && st !== lastYtPlayerState) {
+      lastYtPlayerState = st;
+      console.log(
+        "mse ytState " +
+          st +
+          "=" +
+          String(out["newState"]) +
+          (media
+            ? " ct=" +
+              Number(media["currentTime"]).toFixed(3) +
+              " rs=" +
+              media["readyState"] +
+              " paused=" +
+              (media["paused"] ? "1" : "0")
+            : ""),
+      );
+    }
     return out;
   }
 
@@ -1245,6 +1287,10 @@ export function setPlayerLoop(enable: boolean): void {
 
 export function setPlayerSpeed(speed: number, tempo?: number): void {
   ytPlayer.setSpeed(speed, tempo);
+}
+
+export function setPlayerSpeedPitch(speed: number, pitch: number): void {
+  ytPlayer.setSpeedPitch(speed, pitch);
 }
 
 export function pausePlayer(): void {

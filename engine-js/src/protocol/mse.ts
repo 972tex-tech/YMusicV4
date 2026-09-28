@@ -13,6 +13,36 @@ function mseLog(s: string): void {
   console.log(s);
 }
 
+function fmtRanges(b: { length: number; start(i: number): number; end(i: number): number } | null): string {
+  if (!b || !b["length"]) return "-";
+  const parts: string[] = [];
+  for (let i = 0; i < b["length"]; i++) {
+    parts.push(b["start"](i).toFixed(3) + ".." + b["end"](i).toFixed(3));
+  }
+  return parts.join(",");
+}
+
+function mseMediaLog(el: HTMLMediaElement, ev: string): void {
+  mseLog(
+    "mse " +
+      ev +
+      " ct=" +
+      Number(el["currentTime"]).toFixed(3) +
+      " rs=" +
+      el["readyState"] +
+      " paused=" +
+      (el["paused"] ? "1" : "0") +
+      " ended=" +
+      (el["ended"] ? "1" : "0") +
+      " rate=" +
+      Number(el["playbackRate"]).toFixed(3) +
+      " buf=" +
+      fmtRanges(el["buffered"]) +
+      " dur=" +
+      Number(el["duration"]),
+  );
+}
+
 /** src= / load() destroy MseAv (v_rest=0). Put the decoder back to sleep. */
 function resetPipeline(): void {
   __mseReset();
@@ -378,6 +408,7 @@ function syncReadyState(el: HTMLMediaElement | null): void {
     el["readyState"] = 1;
     if (!el._stalled) {
       el._stalled = true;
+      mseMediaLog(el, "waiting");
       fire(el, "waiting");
     }
   }
@@ -875,6 +906,7 @@ function initHtmlMedia(self: HTMLMediaElement): void {
   self["volume"] = 1;
   self._rate = 1;
   self._tempo = 1;
+  self._pitch = 1;
   self["defaultPlaybackRate"] = 1;
   self["readyState"] = 0;
   self["networkState"] = 0;
@@ -896,6 +928,7 @@ class HTMLMediaElement {
   ["volume"]!: number;
   _rate!: number;
   _tempo!: number;
+  _pitch!: number;
   ["defaultPlaybackRate"]!: number;
   ["readyState"]!: number;
   ["networkState"]!: number;
@@ -970,14 +1003,17 @@ class HTMLMediaElement {
     __msePlay();
     startMediaTick(self);
     return Promise.resolve().then(function () {
+      mseMediaLog(self, "play");
       fire(self, "play");
       if (playheadBuffered(self)) {
         self["readyState"] = 3;
         self._stalled = false;
+        mseMediaLog(self, "playing");
         fire(self, "playing");
       } else {
         self["readyState"] = 1;
         self._stalled = true;
+        mseMediaLog(self, "waiting");
         fire(self, "waiting");
       }
     });
@@ -988,6 +1024,7 @@ class HTMLMediaElement {
     const self = this;
     stopMediaTick();
     __msePause();
+    mseMediaLog(self, "pause");
     Promise.resolve().then(function () {
       fire(self, "pause");
     });
@@ -1076,11 +1113,28 @@ class HTMLMediaElement {
     if (!Number.isFinite(s) || s === 0) return;
     if (s < 0.25) s = 0.25;
     if (s > 4) s = 4;
-    const tempo = this._tempo > 0 ? this._tempo : s;
     const prev = this._rate;
+    if (prev === s) return;
     this._rate = s;
-    if (typeof __mseSetSpeed === "function") __mseSetSpeed(s, tempo);
-    if (prev !== s) fire(this, "ratechange");
+    this._tempo = s;
+    if (typeof __mseSetSpeed === "function") __mseSetSpeed(s, s);
+    mseLog("mse ratechange " + prev + "->" + s);
+    fire(this, "ratechange");
+  }
+
+  get ["pitch"](): number {
+    return this._pitch > 0 ? this._pitch : 1;
+  }
+  set ["pitch"](v: number) {
+    let p = Number(v);
+    if (!Number.isFinite(p) || p === 0) return;
+    if (p < 0.5) p = 0.5;
+    if (p > 2) p = 2;
+    const prev = this._pitch;
+    if (prev === p) return;
+    this._pitch = p;
+    if (typeof __mseSetPitch === "function") __mseSetPitch(p);
+    mseLog("mse pitch " + prev + "->" + p);
   }
 
   get ["currentTime"](): number {
@@ -1203,6 +1257,16 @@ function attachHtmlMedia(el: object): void {
     "played",
     "videoWidth",
     "videoHeight",
+    "playbackRate",
+    "defaultPlaybackRate",
+    "paused",
+    "ended",
+    "seeking",
+    "muted",
+    "volume",
+    "readyState",
+    "loop",
+    "pitch",
   ];
   for (let i = 0; i < props.length; i++) {
     const n = props[i]!;
