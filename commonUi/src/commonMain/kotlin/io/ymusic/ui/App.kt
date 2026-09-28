@@ -181,10 +181,33 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUTO).value
         if (quality != VideoQualityState.AUDIO_ONLY) graph.player.selectVideoQuality(quality)
-        graph.player.config
-            .map { it.preferVideoQuality.first }
-            .distinctUntilChanged()
-            .collect { graph.settings.putString(PlaybackQualitySettingKey, it) }
+        graph.player.setVolume(graph.settings.string(PlaybackVolumeKey, "1").value.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
+        graph.player.setSpeed(graph.settings.string(PlaybackSpeedKey, "1").value.toFloatOrNull()?.coerceIn(0.25f, 4f) ?: 1f)
+        graph.player.setPitch(graph.settings.string(PlaybackPitchKey, "1").value.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
+        graph.settings.string(PlaybackEqKey, "").value.split(',').mapNotNull { it.toFloatOrNull() }.let { n ->
+            if (n.size >= 12) {
+                graph.player.setBassBoost(n[0])
+                graph.player.setVirtualizer(n[1])
+                graph.player.setEqBands(n.drop(2).take(10))
+            }
+        }
+        launch {
+            graph.player.config.map { it.preferVideoQuality.first }.distinctUntilChanged()
+                .collect { graph.settings.putString(PlaybackQualitySettingKey, it) }
+        }
+        launch {
+            graph.player.config.map { "${it.volume}|${it.speed}|${it.pitchFactor}|${it.bassBoostDb}|${it.virtualizer}|${it.eqBands.joinToString(",")}" }
+                .distinctUntilChanged()
+                .collect { blob ->
+                    val p = blob.split('|')
+                    if (p.size >= 6) {
+                        graph.settings.putString(PlaybackVolumeKey, p[0])
+                        graph.settings.putString(PlaybackSpeedKey, p[1])
+                        graph.settings.putString(PlaybackPitchKey, p[2])
+                        graph.settings.putString(PlaybackEqKey, "${p[3]},${p[4]},${p[5]}")
+                    }
+                }
+        }
     }
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr

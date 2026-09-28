@@ -58,6 +58,24 @@ actual object MseHostNative {
     @JvmStatic
     external fun setBlitSize(handle: Long, width: Int, height: Int)
 
+    @JvmStatic
+    actual external fun setVolume(handle: Long, vol: Float)
+
+    @JvmStatic
+    actual external fun setSpeed(handle: Long, speed: Float)
+
+    @JvmStatic
+    actual external fun setPitch(handle: Long, pitch: Float)
+
+    @JvmStatic
+    actual external fun setEq(handle: Long, bands: FloatArray)
+
+    @JvmStatic
+    actual external fun setBass(handle: Long, db: Float)
+
+    @JvmStatic
+    actual external fun setVirtualizer(handle: Long, width: Float)
+
     /** macOS: overlay VideoToolbox on [component] via JAWT. Other JVMs return false. */
     @JvmStatic
     external fun setVideoComponent(handle: Long, component: java.awt.Component?): Boolean

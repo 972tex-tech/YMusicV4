@@ -54,6 +54,10 @@ data class PlaybackConfig(
     val volume: Float = 1f,
     val speed: Float = 1f,
     val pitchFactor: Float = 1f,
+    val eqBands: List<Float> = List(10) { 0f },
+    val bassBoostDb: Float = 0f,
+    /** 1 = natural stereo; 0 = mono; >1 = wider. */
+    val virtualizer: Float = 1f,
     val loop: Boolean = false,
     val preferCaptionLanguage: Pair<String, Long> = UNDETERMINED_LANGUAGE to 0L,
     val scaleMode: ScaleMode = ScaleMode.CONTAIN,

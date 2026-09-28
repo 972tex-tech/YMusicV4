@@ -47,6 +47,13 @@ void mse_host_change_type(MseHost *h, int audio);
 void mse_host_rest_video(MseHost *h, int on);
 int mse_host_buffered(MseHost *h, int audio, double *pairs, int max_pairs);
 
+void mse_host_set_volume(MseHost *h, float vol);
+void mse_host_set_speed(MseHost *h, float speed);
+void mse_host_set_pitch(MseHost *h, float pitch);
+void mse_host_set_eq(MseHost *h, const float bands_db[10]);
+void mse_host_set_bass(MseHost *h, float db);
+void mse_host_set_virtualizer(MseHost *h, float width);
+
 #ifdef __cplusplus
 }
 #endif

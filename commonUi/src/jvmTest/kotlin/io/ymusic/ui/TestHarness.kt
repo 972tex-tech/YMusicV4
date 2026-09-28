@@ -181,6 +181,14 @@ internal class StubPlayer : Player {
 
     override fun setSpeed(speed: Float) {}
 
+    override fun setPitch(pitch: Float) {}
+
+    override fun setEqBands(bands: List<Float>) {}
+
+    override fun setBassBoost(db: Float) {}
+
+    override fun setVirtualizer(width: Float) {}
+
     override fun setAudioOnly(audioOnly: Boolean) {}
 
     override fun selectVideoQuality(quality: String) {}

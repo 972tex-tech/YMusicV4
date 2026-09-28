@@ -1,4 +1,5 @@
 #include "file_av.h"
+#include "audio_fx.h"
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -77,6 +78,7 @@ struct FileAv {
     int blit_w;
     int blit_h;
     double speed;
+    AudioFx *fx;
     double hold;
     double origin_ns;
     double duration;
@@ -1344,11 +1346,21 @@ static int decode_pcm(FileAv *p, uint8_t **out, int *nbytes)
             free(tmp);
             return 0;
         }
-        if (ensure_speed_swr(p, p->speed) < 0) {
-            free(tmp);
-            return -1;
-        }
-        if (p->swr_speed) {
+        if (p->fx) {
+            int cap = got * 4 + 1024;
+            int16_t *stretched = (int16_t *)malloc((size_t)cap * OUT_CH * sizeof(int16_t));
+            int nout;
+            audio_fx_set_rate(p->fx, OUT_RATE);
+            audio_fx_set_speed(p->fx, (float)p->speed);
+            if (stretched) {
+                nout = audio_fx_stretch(p->fx, (int16_t *)tmp, got, stretched, cap, OUT_CH);
+                free(tmp);
+                tmp = (uint8_t *)stretched;
+                got = nout;
+            }
+            if (got > 0)
+                audio_fx_color(p->fx, (int16_t *)tmp, got, OUT_CH);
+        } else if (p->swr_speed) {
             int mout = (int)swr_get_out_samples(p->swr_speed, got) + 256;
             uint8_t *ins[1] = {tmp};
             if (mout < 1)
@@ -1472,11 +1484,21 @@ static int pump_audio(FileAv *p, double clock)
             free(tmp);
             return 0;
         }
-        if (ensure_speed_swr(p, p->speed) < 0) {
-            free(tmp);
-            return -1;
-        }
-        if (p->swr_speed) {
+        if (p->fx) {
+            int cap = got * 4 + 1024;
+            int16_t *stretched = (int16_t *)malloc((size_t)cap * OUT_CH * sizeof(int16_t));
+            int nout;
+            audio_fx_set_rate(p->fx, OUT_RATE);
+            audio_fx_set_speed(p->fx, (float)p->speed);
+            if (stretched) {
+                nout = audio_fx_stretch(p->fx, (int16_t *)tmp, got, stretched, cap, OUT_CH);
+                free(tmp);
+                tmp = (uint8_t *)stretched;
+                got = nout;
+            }
+            if (got > 0)
+                audio_fx_color(p->fx, (int16_t *)tmp, got, OUT_CH);
+        } else if (ensure_speed_swr(p, p->speed) == 0 && p->swr_speed) {
             int mout = (int)swr_get_out_samples(p->swr_speed, got) + 256;
             uint8_t *ins[1] = {tmp};
             if (mout < 1)
@@ -1735,6 +1757,7 @@ FileAv *file_av_create(void)
     pthread_mutex_init(&p->mu, NULL);
     pthread_cond_init(&p->cv, NULL);
     p->speed = 1.0;
+    p->fx = audio_fx_create();
     p->want_video = 1;
     p->v_need_key = 0;
     p->audio_index = -1;
@@ -1805,6 +1828,7 @@ void file_av_destroy(FileAv *p)
     av_frame_free(&p->vsw);
     for (i = 0; i < VOUT_N; i++)
         av_frame_free(&p->vout[i]);
+    audio_fx_destroy(p->fx);
     pthread_cond_destroy(&p->cv);
     pthread_mutex_destroy(&p->mu);
     free(p);
@@ -2019,6 +2043,8 @@ void file_av_set_speed(FileAv *p, double speed)
     if (p->playing)
         p->hold = media_time_locked(p);
     p->speed = speed > 0.05 ? speed : 0.05;
+    if (p->fx)
+        audio_fx_set_speed(p->fx, (float)p->speed);
 #ifdef __APPLE__
     p->seek_base = p->hold;
     p->samples_played = 0;
@@ -2179,9 +2205,13 @@ void file_av_set_video_layer(FileAv *p, void *layer)
         mse_vt_detach(old);
 }
 
+#endif
+
 void file_av_set_volume(FileAv *p, double vol)
 {
+#ifdef __APPLE__
     AudioQueueRef aq;
+#endif
     if (!p)
         return;
     if (vol < 0)
@@ -2189,13 +2219,42 @@ void file_av_set_volume(FileAv *p, double vol)
     if (vol > 1)
         vol = 1;
     pthread_mutex_lock(&p->mu);
+#ifdef __APPLE__
     p->volume = (float)vol;
     aq = p->dac;
+#endif
+    if (p->fx)
+        audio_fx_set_volume(p->fx, (float)vol);
     pthread_mutex_unlock(&p->mu);
+#ifdef __APPLE__
     if (aq)
         AudioQueueSetParameter(aq, kAudioQueueParam_Volume, (Float32)vol);
-}
 #endif
+}
+
+void file_av_set_pitch(FileAv *p, double pitch)
+{
+    if (p && p->fx)
+        audio_fx_set_pitch(p->fx, (float)pitch);
+}
+
+void file_av_set_eq(FileAv *p, const float bands_db[10])
+{
+    if (p && p->fx)
+        audio_fx_set_eq(p->fx, bands_db);
+}
+
+void file_av_set_bass(FileAv *p, float db)
+{
+    if (p && p->fx)
+        audio_fx_set_bass(p->fx, db);
+}
+
+void file_av_set_virtualizer(FileAv *p, float width)
+{
+    if (p && p->fx)
+        audio_fx_set_virtualizer(p->fx, width);
+}
 
 double file_av_duration(FileAv *p)
 {

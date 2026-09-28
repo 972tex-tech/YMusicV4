@@ -105,6 +105,14 @@ interface Player {
 
     fun setSpeed(speed: Float)
 
+    fun setPitch(pitch: Float)
+
+    fun setEqBands(bands: List<Float>)
+
+    fun setBassBoost(db: Float)
+
+    fun setVirtualizer(width: Float)
+
     /** Sets [PlaybackConfig.audioOnly]. Quality is unchanged and restored when this is false. */
     fun setAudioOnly(audioOnly: Boolean)
 

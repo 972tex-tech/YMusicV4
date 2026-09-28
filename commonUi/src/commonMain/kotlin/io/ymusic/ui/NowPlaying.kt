@@ -837,10 +837,15 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
     val audioTracks by player.audioTracks.collectAsState()
     var open by remember { mutableStateOf(false) }
+    var soundOpen by remember { mutableStateOf(false) }
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Sound") },
+                onClick = { soundOpen = true; open = false },
+            )
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
             // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
@@ -856,6 +861,9 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                 }
             }
         }
+    }
+    if (soundOpen) {
+        AudioFxSheet(player, onDismiss = { soundOpen = false })
     }
 }
 

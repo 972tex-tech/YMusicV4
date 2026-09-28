@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct {
     JavaVM *jvm;
@@ -206,6 +207,62 @@ Java_io_ymusic_mse_MseHostNative_setBlitSize(JNIEnv *env, jclass cls, jlong hand
     (void)env;
     (void)cls;
     mse_host_set_blit_size((MseHost *)(intptr_t)handle, w, ht);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setVolume(JNIEnv *env, jclass cls, jlong handle, jfloat vol)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_volume((MseHost *)(intptr_t)handle, vol);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setSpeed(JNIEnv *env, jclass cls, jlong handle, jfloat speed)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_speed((MseHost *)(intptr_t)handle, speed);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setPitch(JNIEnv *env, jclass cls, jlong handle, jfloat pitch)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_pitch((MseHost *)(intptr_t)handle, pitch);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setEq(JNIEnv *env, jclass cls, jlong handle, jfloatArray bands)
+{
+    float tmp[10];
+    jsize n;
+    (void)cls;
+    memset(tmp, 0, sizeof(tmp));
+    if (bands) {
+        n = (*env)->GetArrayLength(env, bands);
+        if (n > 10)
+            n = 10;
+        (*env)->GetFloatArrayRegion(env, bands, 0, n, tmp);
+    }
+    mse_host_set_eq((MseHost *)(intptr_t)handle, tmp);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setBass(JNIEnv *env, jclass cls, jlong handle, jfloat db)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_bass((MseHost *)(intptr_t)handle, db);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setVirtualizer(JNIEnv *env, jclass cls, jlong handle, jfloat width)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_virtualizer((MseHost *)(intptr_t)handle, width);
 }
 
 JNIEXPORT jboolean JNICALL

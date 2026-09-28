@@ -5,7 +5,13 @@ import io.ymusic.mse.cinterop.mse_host_create
 import io.ymusic.mse.cinterop.mse_host_destroy
 import io.ymusic.mse.cinterop.mse_host_frames
 import io.ymusic.mse.cinterop.mse_host_samples_played
+import io.ymusic.mse.cinterop.mse_host_set_bass
+import io.ymusic.mse.cinterop.mse_host_set_eq
+import io.ymusic.mse.cinterop.mse_host_set_pitch
+import io.ymusic.mse.cinterop.mse_host_set_speed
 import io.ymusic.mse.cinterop.mse_host_set_video_surface
+import io.ymusic.mse.cinterop.mse_host_set_virtualizer
+import io.ymusic.mse.cinterop.mse_host_set_volume
 import io.ymusic.mse.cinterop.mse_host_video_size
 import io.ymusic.mse.cinterop.mse_host_vtable
 import io.ymusic.mse.cinterop.mse_ios_log
@@ -68,6 +74,38 @@ actual object MseHostNative {
     actual fun samplesPlayed(handle: Long): Long {
         if (handle == 0L) return 0L
         return mse_host_samples_played(handle.toCPointer<COpaque>())
+    }
+
+    actual fun setVolume(handle: Long, vol: Float) {
+        if (handle == 0L) return
+        mse_host_set_volume(handle.toCPointer<COpaque>(), vol)
+    }
+
+    actual fun setSpeed(handle: Long, speed: Float) {
+        if (handle == 0L) return
+        mse_host_set_speed(handle.toCPointer<COpaque>(), speed)
+    }
+
+    actual fun setPitch(handle: Long, pitch: Float) {
+        if (handle == 0L) return
+        mse_host_set_pitch(handle.toCPointer<COpaque>(), pitch)
+    }
+
+    actual fun setEq(handle: Long, bands: FloatArray) {
+        if (handle == 0L) return
+        bands.usePinned { pinned ->
+            mse_host_set_eq(handle.toCPointer<COpaque>(), pinned.addressOf(0))
+        }
+    }
+
+    actual fun setBass(handle: Long, db: Float) {
+        if (handle == 0L) return
+        mse_host_set_bass(handle.toCPointer<COpaque>(), db)
+    }
+
+    actual fun setVirtualizer(handle: Long, width: Float) {
+        if (handle == 0L) return
+        mse_host_set_virtualizer(handle.toCPointer<COpaque>(), width)
     }
 
     actual fun copyFrame(handle: Long, afterGen: Int): NativeMseFrame? {

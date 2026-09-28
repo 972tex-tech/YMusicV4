@@ -21,6 +21,12 @@ void mse_ios_recover_playback(void);
 void mse_ios_park_video(void);
 /* Unified log on iOS (os_log); stderr elsewhere. Safe for any message text. */
 void mse_ios_log(const char *msg);
+void mse_host_set_volume(void *h, float vol);
+void mse_host_set_speed(void *h, float speed);
+void mse_host_set_pitch(void *h, float pitch);
+void mse_host_set_eq(void *h, const float *bands_db);
+void mse_host_set_bass(void *h, float db);
+void mse_host_set_virtualizer(void *h, float width);
 
 #ifdef __cplusplus
 }

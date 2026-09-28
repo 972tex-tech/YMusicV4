@@ -279,9 +279,10 @@ internal class AndroidLocalPlayer(
             player.volume = v
             _status.update { it.copy(volume = v) }
         }
-        if (config.speed != prev.speed) {
+        if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
             val s = config.speed.coerceAtLeast(0.01f)
-            player.setPlaybackSpeed(s)
+            val p = config.pitchFactor.coerceIn(0.5f, 2f)
+            player.playbackParameters = androidx.media3.common.PlaybackParameters(s, p)
             _status.update { it.copy(speed = s) }
         }
         if (config.preferVideoQuality.first != prev.preferVideoQuality.first) {

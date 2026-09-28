@@ -1,7 +1,11 @@
 package io.ymusic.ios
 
 import io.ymusic.settings.StringBackedSettingsStore
+import io.ymusic.ui.PlaybackEqKey
+import io.ymusic.ui.PlaybackPitchKey
 import io.ymusic.ui.PlaybackQualitySettingKey
+import io.ymusic.ui.PlaybackSpeedKey
+import io.ymusic.ui.PlaybackVolumeKey
 import platform.Foundation.NSUserDefaults
 internal class IosSettingsStore(
     private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults,
@@ -28,6 +32,10 @@ internal class IosSettingsStore(
             "download.captionLanguages",
             "download.captionDefault",
             PlaybackQualitySettingKey,
+            PlaybackVolumeKey,
+            PlaybackSpeedKey,
+            PlaybackPitchKey,
+            PlaybackEqKey,
         )
     }
 }

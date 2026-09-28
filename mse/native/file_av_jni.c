@@ -244,12 +244,47 @@ Java_io_ymusic_mse_FileAvNative_setVolume(JNIEnv *env, jclass cls, jlong handle,
 {
     (void)env;
     (void)cls;
-#ifdef __APPLE__
     file_av_set_volume((FileAv *)(intptr_t)handle, vol);
-#else
-    (void)handle;
-    (void)vol;
-#endif
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setPitch(JNIEnv *env, jclass cls, jlong handle, jdouble pitch)
+{
+    (void)env;
+    (void)cls;
+    file_av_set_pitch((FileAv *)(intptr_t)handle, pitch);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setEq(JNIEnv *env, jclass cls, jlong handle, jfloatArray bands)
+{
+    float tmp[10];
+    jsize n;
+    (void)cls;
+    if (!bands)
+        return;
+    n = (*env)->GetArrayLength(env, bands);
+    if (n > 10)
+        n = 10;
+    memset(tmp, 0, sizeof(tmp));
+    (*env)->GetFloatArrayRegion(env, bands, 0, n, tmp);
+    file_av_set_eq((FileAv *)(intptr_t)handle, tmp);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setBass(JNIEnv *env, jclass cls, jlong handle, jfloat db)
+{
+    (void)env;
+    (void)cls;
+    file_av_set_bass((FileAv *)(intptr_t)handle, db);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setVirtualizer(JNIEnv *env, jclass cls, jlong handle, jfloat width)
+{
+    (void)env;
+    (void)cls;
+    file_av_set_virtualizer((FileAv *)(intptr_t)handle, width);
 }
 
 JNIEXPORT void JNICALL

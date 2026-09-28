@@ -253,7 +253,19 @@ internal class PlayerImpl(
 
     override fun setVolume(volume: Float) = pushConfig(currentConfig.copy(volume = volume.coerceIn(0f, 1f)))
 
-    override fun setSpeed(speed: Float) = pushConfig(currentConfig.copy(speed = speed))
+    override fun setSpeed(speed: Float) = pushConfig(currentConfig.copy(speed = speed.coerceIn(0.25f, 4f)))
+
+    override fun setPitch(pitch: Float) = pushConfig(currentConfig.copy(pitchFactor = pitch.coerceIn(0.5f, 2f)))
+
+    override fun setEqBands(bands: List<Float>) {
+        val ten = (bands + List(10) { 0f }).take(10).map { it.coerceIn(-12f, 12f) }
+        pushConfig(currentConfig.copy(eqBands = ten))
+    }
+
+    override fun setBassBoost(db: Float) = pushConfig(currentConfig.copy(bassBoostDb = db.coerceIn(0f, 12f)))
+
+    override fun setVirtualizer(width: Float) =
+        pushConfig(currentConfig.copy(virtualizer = width.coerceIn(0f, 2f)))
 
     override fun setAudioOnly(audioOnly: Boolean) {
         pushConfig(currentConfig.copy(audioOnly = audioOnly))
@@ -333,6 +345,7 @@ internal class PlayerImpl(
         val factory = engines.webView ?: return
         val engine = webViewEngine ?: factory().also { webViewEngine = it }
         engine.warmUp()
+        engine.setConfig(currentConfig)
     }
 
     override fun release() {

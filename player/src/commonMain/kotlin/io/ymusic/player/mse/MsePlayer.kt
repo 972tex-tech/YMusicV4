@@ -165,6 +165,14 @@ class MsePlayer internal constructor(
                 applyCaptionConfig(config)
                 p.setLoop(config.loop && !source.live, log)
                 if (playWhenReady) p.play(log) else p.pause(log)
+                videoSurface.applyAudioFx(
+                    config.volume.coerceIn(0f, 1f),
+                    config.speed.coerceIn(0.25f, 4f),
+                    config.pitchFactor.coerceIn(0.5f, 2f),
+                    FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
+                    config.bassBoostDb.coerceIn(0f, 12f),
+                    config.virtualizer.coerceIn(0f, 2f),
+                )
                 refreshTracks()
                 startListen()
             } catch (e: CancellationException) {
@@ -226,6 +234,14 @@ class MsePlayer internal constructor(
                 videoSize = if (config.audioOnly) null else (it.videoSize ?: lastVideoSize),
             )
         }
+        videoSurface.applyAudioFx(
+            config.volume.coerceIn(0f, 1f),
+            config.speed.coerceIn(0.25f, 4f),
+            config.pitchFactor.coerceIn(0.5f, 2f),
+            FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
+            config.bassBoostDb.coerceIn(0f, 12f),
+            config.virtualizer.coerceIn(0f, 2f),
+        )
         scope.launch {
             runCatching {
                 val prevQ = prev.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }

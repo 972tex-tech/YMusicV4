@@ -45,6 +45,14 @@ object FileAvNative {
 
     @JvmStatic external fun setVolume(handle: Long, volume: Double)
 
+    @JvmStatic external fun setPitch(handle: Long, pitch: Double)
+
+    @JvmStatic external fun setEq(handle: Long, bands: FloatArray)
+
+    @JvmStatic external fun setBass(handle: Long, db: Float)
+
+    @JvmStatic external fun setVirtualizer(handle: Long, width: Float)
+
     @JvmStatic external fun setAudioIndex(handle: Long, index: Int)
 
     /** -1 turns captions off. [index] is the file stream index (`streams()` kind=2). */

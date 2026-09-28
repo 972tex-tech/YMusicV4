@@ -30,6 +30,11 @@ void file_av_seek(FileAv *p, double seconds);
 /* One present tick. Video decode runs on an internal thread. */
 int file_av_step(FileAv *p);
 void file_av_set_speed(FileAv *p, double speed);
+void file_av_set_volume(FileAv *p, double vol);
+void file_av_set_pitch(FileAv *p, double pitch);
+void file_av_set_eq(FileAv *p, const float bands_db[10]);
+void file_av_set_bass(FileAv *p, float db);
+void file_av_set_virtualizer(FileAv *p, float width);
 void file_av_set_audio_index(FileAv *p, int stream_index);
 /* -1 = captions off. Text subtitle stream index from file_av_stream_at. */
 void file_av_set_subtitle_index(FileAv *p, int stream_index);
@@ -41,7 +46,6 @@ void file_av_set_blit_size(FileAv *p, int w, int h);
 #ifdef __APPLE__
 /* Borrowed AVSampleBufferDisplayLayer from JAWT Canvas. NULL = CPU blit. */
 void file_av_set_video_layer(FileAv *p, void *layer);
-void file_av_set_volume(FileAv *p, double vol);
 #endif
 
 double file_av_duration(FileAv *p);

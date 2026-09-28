@@ -37,4 +37,22 @@ actual object MseHostNative {
 
     @JvmStatic
     external fun videoSize(handle: Long, outWh: IntArray): Boolean
+
+    @JvmStatic
+    actual external fun setVolume(handle: Long, vol: Float)
+
+    @JvmStatic
+    actual external fun setSpeed(handle: Long, speed: Float)
+
+    @JvmStatic
+    actual external fun setPitch(handle: Long, pitch: Float)
+
+    @JvmStatic
+    actual external fun setEq(handle: Long, bands: FloatArray)
+
+    @JvmStatic
+    actual external fun setBass(handle: Long, db: Float)
+
+    @JvmStatic
+    actual external fun setVirtualizer(handle: Long, width: Float)
 }

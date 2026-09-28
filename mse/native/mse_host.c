@@ -1,5 +1,6 @@
 #include "mse_host.h"
 #include "mse_ffmpeg.h"
+#include "audio_fx.h"
 
 #include <limits.h>
 #include <pthread.h>
@@ -63,6 +64,7 @@ struct MseHost {
     int ch;
     int64_t samples_played;
     int64_t samples_pulled;
+    AudioFx *fx;
 #ifdef MSE_DAC
     uint8_t *ring;
     int ring_cap;
@@ -273,6 +275,11 @@ static int ring_read(MseHost *h, uint8_t *p, int n)
         }
         h->ring_n -= chunk;
         got += chunk;
+    }
+    if (got > 0 && h->fx && h->ch > 0) {
+        int fb = frame_bytes(h);
+        if (fb > 0)
+            audio_fx_color(h->fx, (int16_t *)p, got / fb, h->ch);
     }
     return got;
 }
@@ -715,6 +722,21 @@ static void *dec_loop(void *arg)
             pcm = NULL;
             if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
+            if (h->fx) {
+                int16_t *tmp;
+                int nout, cap;
+                audio_fx_set_rate(h->fx, rate);
+                cap = frames * 4 + 1024;
+                if (cap < frames)
+                    cap = frames;
+                tmp = (int16_t *)malloc((size_t)cap * (size_t)ch * sizeof(int16_t));
+                if (tmp) {
+                    nout = audio_fx_stretch(h->fx, pcm, frames, tmp, cap, ch);
+                    free(pcm);
+                    pcm = tmp;
+                    frames = nout;
+                }
+            }
             {
                 int nbytes = frames * ch * (int)sizeof(int16_t);
                         pthread_mutex_lock(&h->mu);
@@ -775,7 +797,22 @@ static void *dec_loop(void *arg)
 #endif
 #else
         if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
-            int nbytes = frames * ch * (int)sizeof(int16_t);
+            int nbytes;
+            if (h->fx) {
+                int16_t *tmp;
+                int nout, cap;
+                audio_fx_set_rate(h->fx, rate);
+                cap = frames * 4 + 1024;
+                tmp = (int16_t *)malloc((size_t)cap * (size_t)ch * sizeof(int16_t));
+                if (tmp) {
+                    nout = audio_fx_stretch(h->fx, pcm, frames, tmp, cap, ch);
+                    free(pcm);
+                    pcm = tmp;
+                    frames = nout;
+                }
+                audio_fx_color(h->fx, pcm, frames, ch);
+            }
+            nbytes = frames * ch * (int)sizeof(int16_t);
             if (h->on_pcm)
                 h->on_pcm(h->user, rate, ch, pcm, nbytes);
             pthread_mutex_lock(&h->mu);
@@ -810,6 +847,7 @@ MseHost *mse_host_create(void)
     pthread_mutex_init(&h->frame_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
     h->av = mse_av_create();
+    h->fx = audio_fx_create();
     h->playing = 0;
     h->vpts = -1;
     if (!h->av) {
@@ -962,6 +1000,7 @@ void mse_host_destroy(MseHost *h)
     h->last_h = 0;
     pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
+    audio_fx_destroy(h->fx);
     pthread_mutex_destroy(&h->frame_mu);
     pthread_mutex_destroy(&h->mu);
     pthread_cond_destroy(&h->cv);
@@ -1524,6 +1563,42 @@ int mse_host_buffered(MseHost *h, int audio, double *pairs, int max_pairs)
     if (!h)
         return 0;
     return mse_av_buffered(h->av, audio, pairs, max_pairs);
+}
+
+void mse_host_set_volume(MseHost *h, float vol)
+{
+    if (h && h->fx)
+        audio_fx_set_volume(h->fx, vol);
+}
+
+void mse_host_set_speed(MseHost *h, float speed)
+{
+    if (h && h->fx)
+        audio_fx_set_speed(h->fx, speed);
+}
+
+void mse_host_set_pitch(MseHost *h, float pitch)
+{
+    if (h && h->fx)
+        audio_fx_set_pitch(h->fx, pitch);
+}
+
+void mse_host_set_eq(MseHost *h, const float bands_db[10])
+{
+    if (h && h->fx)
+        audio_fx_set_eq(h->fx, bands_db);
+}
+
+void mse_host_set_bass(MseHost *h, float db)
+{
+    if (h && h->fx)
+        audio_fx_set_bass(h->fx, db);
+}
+
+void mse_host_set_virtualizer(MseHost *h, float width)
+{
+    if (h && h->fx)
+        audio_fx_set_virtualizer(h->fx, width);
 }
 
 void mse_ios_log(const char *msg)
