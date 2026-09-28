@@ -169,6 +169,21 @@
     <!-- Updates -->
     <string name="settings_auto_update">تنزيل التحديثات تلقائيًا</string>
     <string name="settings_auto_update_hint">تنزيل الإصدارات الجديدة في الخلفية وتثبيتها عند التشغيل التالي.</string>
+    <string name="settings_sound">الصوت</string>
+    <string name="settings_sound_hint">مستوى الصوت والسرعة والمعادل والمحاكي</string>
+    <string name="sound_title">الصوت</string>
+    <string name="sound_volume">مستوى الصوت %1$d%%</string>
+    <string name="sound_speed">السرعة</string>
+    <string name="sound_pitch">طبقة الصوت %1$s</string>
+    <string name="sound_eq">المعادل</string>
+    <string name="sound_eq_band">%1$s هرتز  %2$d ديسيبل</string>
+    <string name="sound_bass">تعزيز الباس %1$d ديسيبل</string>
+    <string name="sound_virtualizer">المحاكي %1$s</string>
+    <string name="sound_reset">إعادة ضبط</string>
+    <string name="sound_preset_flat">مسطّح</string>
+    <string name="sound_preset_bass">باس</string>
+    <string name="sound_preset_treble">حاد</string>
+    <string name="sound_preset_voice">صوت</string>
     <string name="update_available_title">يتوفّر تحديث</string>
     <string name="update_version">الإصدار %1$s</string>
     <string name="update_download">تنزيل</string>

@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(UnstableApi::class)
+
 package io.ymusic.player
 
 import android.content.Context
@@ -11,12 +13,20 @@ import android.widget.FrameLayout
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.text.CueGroup
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.ui.SubtitleView
+import io.ymusic.mse.AudioFxNative
+import io.ymusic.player.media3.AudioFxProcessor
+import io.ymusic.player.media3.AudioFxProcessorChain
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,8 +67,25 @@ internal class AndroidLocalPlayer(
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
 
+    private val fxHandle = AudioFxNative.create()
+    private val fxProcessor = AudioFxProcessor(fxHandle)
+
     private val player = ExoPlayer.Builder(context.applicationContext)
         .setLooper(Looper.getMainLooper())
+        .setRenderersFactory(
+            object : DefaultRenderersFactory(context.applicationContext) {
+                override fun buildAudioSink(
+                    context: Context,
+                    enableFloatOutput: Boolean,
+                    enableAudioOutputPlaybackParams: Boolean,
+                ): AudioSink =
+                    DefaultAudioSink.Builder(context)
+                        .setEnableFloatOutput(enableFloatOutput)
+                        .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                        .setAudioProcessorChain(AudioFxProcessorChain(fxProcessor))
+                        .build()
+            },
+        )
         .build()
 
     private var released = false
@@ -182,7 +209,11 @@ internal class AndroidLocalPlayer(
         audioOnly = config.audioOnly
         preferVideoQuality = config.preferVideoQuality.first
         player.volume = config.volume.coerceIn(0f, 1f)
-        player.setPlaybackSpeed(config.speed.coerceAtLeast(0.01f))
+        player.playbackParameters = PlaybackParameters(
+            config.speed.coerceAtLeast(0.01f),
+            config.pitchFactor.coerceIn(0.5f, 2f),
+        )
+        applyColor(config)
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, config.audioOnly)
             .build()
@@ -282,8 +313,13 @@ internal class AndroidLocalPlayer(
         if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
             val s = config.speed.coerceAtLeast(0.01f)
             val p = config.pitchFactor.coerceIn(0.5f, 2f)
-            player.playbackParameters = androidx.media3.common.PlaybackParameters(s, p)
+            player.playbackParameters = PlaybackParameters(s, p)
             _status.update { it.copy(speed = s) }
+        }
+        if (config.eqBands != prev.eqBands || config.bassBoostDb != prev.bassBoostDb ||
+            config.virtualizer != prev.virtualizer
+        ) {
+            applyColor(config)
         }
         if (config.preferVideoQuality.first != prev.preferVideoQuality.first) {
             applyVideoQuality(config.preferVideoQuality.first)
@@ -393,6 +429,7 @@ internal class AndroidLocalPlayer(
         scope.cancel()
         rootView?.let { root -> videoContainer?.removeView(root) }
         player.release()
+        AudioFxNative.destroy(fxHandle)
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
@@ -426,6 +463,13 @@ internal class AndroidLocalPlayer(
             }
             delay(TICK_MS)
         }
+    }
+
+    private fun applyColor(config: PlaybackConfig) {
+        if (fxHandle == 0L) return
+        AudioFxNative.setEq(fxHandle, FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } })
+        AudioFxNative.setBass(fxHandle, config.bassBoostDb)
+        AudioFxNative.setVirtualizer(fxHandle, config.virtualizer)
     }
 
     private fun durationOrUnknown(): Long =

@@ -133,6 +133,7 @@ import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.sleep_minutes
 import io.ymusic.ui.resources.sleep_off_remaining
+import io.ymusic.ui.resources.sound_title
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_quality_auto
 import kotlinx.coroutines.delay
@@ -843,7 +844,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
-                text = { Text("Sound") },
+                text = { Text(stringResource(Res.string.sound_title)) },
                 onClick = { soundOpen = true; open = false },
             )
             // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose

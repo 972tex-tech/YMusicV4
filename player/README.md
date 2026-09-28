@@ -10,7 +10,7 @@ The cross-platform playback layer.
 
 - **PlaybackConfig** — **all runtime-tunable settings travel through one object**, `PlaybackConfig`.
   - A faithful port of the legacy `BasicMediaPlayer.Config` (`preferVideoQuality: Pair<String,Long>` /
-    `captionVisible` / `volume` / `speed` / `pitchFactor` / `loop` / `preferCaptionLanguage: Pair<String,Long>` /
+    `captionVisible` / `volume` / `speed` / `pitchFactor` / `eqBands` / `bassBoostDb` / `virtualizer` / `loop` / `preferCaptionLanguage: Pair<String,Long>` /
     `scaleMode`; the `.second` of each pair is a monotonic stamp so the freshest user choice wins a restore).
   - Pushed via `setConfig` (the same object `load` applies atomically pre-first-frame; each engine diffs old→new and
     applies only what changed, ignoring fields it can't honor).

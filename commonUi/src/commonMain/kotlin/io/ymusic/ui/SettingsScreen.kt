@@ -56,6 +56,8 @@ import io.ymusic.ui.resources.settings_enable_pip_hint
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
+import io.ymusic.ui.resources.settings_sound
+import io.ymusic.ui.resources.settings_sound_hint
 import io.ymusic.ui.resources.settings_stats
 import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
@@ -125,6 +127,7 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
+        SoundRow(graph)
         ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
         // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
         // on also makes future releases apply on the next start.
@@ -137,6 +140,32 @@ fun SettingsScreen(graph: AppGraph) {
         ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
         LicensesRow()
     }
+}
+
+@Composable
+private fun SoundRow(graph: AppGraph) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(Res.string.settings_sound),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            Text(
+                stringResource(Res.string.settings_sound_hint),
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(top = DesignSpacing.Space2),
+            )
+        }
+    }
+    if (open) AudioFxSheet(graph.player, onDismiss = { open = false })
 }
 
 /** A boolean setting as a switch row: tap anywhere to flip, persisted immediately. */
