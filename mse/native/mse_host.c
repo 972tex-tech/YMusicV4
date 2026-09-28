@@ -309,10 +309,13 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
     cap = h->aq_buf_bytes > 0 ? h->aq_buf_bytes : (int)buf->mAudioDataBytesCapacity;
     if (cap > (int)buf->mAudioDataBytesCapacity)
         cap = (int)buf->mAudioDataBytesCapacity;
-    /* Drop the buffer during reset/stop. Enqueue after Flush put the previous
-       video's PCM back on the queue (~0.5s after the next track). */
+    /* Always EnqueueBuffer. Returning without it leaves the buffer outstanding
+       and AudioQueueStop(true) in aq_kill blocks ~20s (src="" MSE recycle). */
     if (h->released || h->flushing || !h->aq) {
         pthread_mutex_unlock(&h->mu);
+        memset(buf->mAudioData, 0, (size_t)cap);
+        buf->mAudioDataByteSize = (UInt32)cap;
+        AudioQueueEnqueueBuffer(q, buf, 0, NULL);
         return;
     }
     live = h->playing && h->ring;
@@ -905,7 +908,7 @@ static void aq_kill(MseHost *h)
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
     if (aq) {
-        AudioQueueStop(aq, true);
+        AudioQueueStop(aq, false);
         AudioQueueDispose(aq, true);
     }
     free(ring);
