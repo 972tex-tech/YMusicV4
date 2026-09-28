@@ -23,6 +23,11 @@ internal actual fun SyncSystemBars(dark: Boolean) {
 }
 
 @Composable
+internal actual fun SyncSensorRotation(enabled: Boolean) {
+    // Info.plist already lists portrait and both landscapes.
+}
+
+@Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {
     val vc = androidx.compose.ui.uikit.LocalUIViewController.current
     androidx.compose.runtime.DisposableEffect(immersive) {

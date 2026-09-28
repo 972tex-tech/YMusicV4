@@ -323,6 +323,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     SyncImmersiveSystemBars(immersive = true)
+    SyncSensorRotation(enabled = true)
     Box(Modifier.fillMaxSize()) {
         graph.playerSurface(Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize()) {

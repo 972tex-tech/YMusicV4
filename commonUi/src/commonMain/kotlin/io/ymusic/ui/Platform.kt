@@ -25,6 +25,10 @@ internal expect fun SyncSystemBars(dark: Boolean)
 @Composable
 internal expect fun SyncImmersiveSystemBars(immersive: Boolean)
 
+/** Fullscreen video: follow the phone's rotation. Restores the default when [enabled] is false. */
+@Composable
+internal expect fun SyncSensorRotation(enabled: Boolean)
+
 /** Status-bar height even while bars are hidden (fullscreen overlay title). No-op on desktop. */
 @Composable
 internal expect fun Modifier.keepBelowStatusBar(): Modifier

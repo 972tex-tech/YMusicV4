@@ -2,6 +2,7 @@ package io.ymusic.ui
 
 import android.app.Activity
 import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.os.Build
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
@@ -35,6 +36,25 @@ internal actual fun SyncSystemBars(dark: Boolean) {
             isAppearanceLightNavigationBars = !dark
         }
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
+    }
+}
+
+@Composable
+internal actual fun SyncSensorRotation(enabled: Boolean) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    DisposableEffect(enabled) {
+        var ctx = view.context
+        while (ctx is ContextWrapper && ctx !is Activity) {
+            ctx = ctx.baseContext
+        }
+        val activity = ctx as? Activity
+        activity?.requestedOrientation =
+            if (enabled) ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
 }
 
