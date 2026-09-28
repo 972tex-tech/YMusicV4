@@ -141,6 +141,21 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
 #ifdef MSE_DAC
         if (h->aq_started && h->rate > 0 && h->samples_played > 0) {
             double dac = h->seek_base + (double)h->samples_played / (double)h->rate;
+            /* Chrome AudioClock front_timestamp = written − sink delay.
+               samples_played is enqueue, not the speaker; 4×2048-frame
+               buffers leave ~120–170ms still in the HAL. */
+            if (h->aq_buf_bytes > 0 && h->ch > 0) {
+                int nbufs = 4;
+                double one;
+#ifdef __ANDROID__
+                if (h->sl_nbufs > 0)
+                    nbufs = h->sl_nbufs;
+#endif
+                one = (double)h->aq_buf_bytes /
+                      (double)(h->rate * (h->ch > 0 ? h->ch * 2 : 4));
+                if (nbufs > 1)
+                    dac -= one * (double)(nbufs - 1);
+            }
             if (dac > t)
                 t = dac;
         }
