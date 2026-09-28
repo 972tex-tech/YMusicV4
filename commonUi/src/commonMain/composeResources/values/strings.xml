@@ -196,6 +196,8 @@
     <string name="cd_download">Download</string>
     <string name="cd_fullscreen">Full screen</string>
     <string name="cd_exit_fullscreen">Exit full screen</string>
+    <string name="cd_fit_video">Fit video</string>
+    <string name="cd_fill_video">Fill screen</string>
     <string name="cd_rewind10">Rewind 10 seconds</string>
     <string name="cd_forward10">Forward 10 seconds</string>
     <string name="cd_repeat">Repeat</string>

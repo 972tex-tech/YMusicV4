@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.imageloader.ImageLoader
@@ -125,6 +126,9 @@ class AppGraph(
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.
      */
     val pip = PipCoordinator(player, settings)
+
+    /** Fullscreen only: stretch the picture to the hole. Mini / Now Playing always fit. */
+    val videoFillScreen = mutableStateOf(false)
 
     val localeEpoch = MutableStateFlow(0)
 

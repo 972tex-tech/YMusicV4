@@ -253,7 +253,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val inPip by graph.pip.inPip.collectAsState()
         if (inPip) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {
-                graph.playerSurface(Modifier.fillMaxSize())
+                VideoHole(graph.player, graph.playerSurface, Modifier.fillMaxSize())
             }
             return@run
         }

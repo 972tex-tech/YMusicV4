@@ -39,9 +39,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -114,6 +116,8 @@ import io.ymusic.ui.resources.cd_close
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_drag_to_reorder
 import io.ymusic.ui.resources.cd_exit_fullscreen
+import io.ymusic.ui.resources.cd_fill_video
+import io.ymusic.ui.resources.cd_fit_video
 import io.ymusic.ui.resources.cd_forward10
 import io.ymusic.ui.resources.cd_fullscreen
 import io.ymusic.ui.resources.cd_more
@@ -202,7 +206,7 @@ fun MiniPlayer(
                 contentAlignment = Alignment.Center,
             ) {
                 if (surface != null) {
-                    surface.invoke(Modifier.fillMaxSize())
+                    VideoHole(coordinator.player, surface, Modifier.fillMaxSize())
                     Box(Modifier.matchParentSize().clickable(onClick = onExpand))
                 } else {
                     ArtImage(item.displayThumbnailUrl, RoundedCornerShape(0.dp))
@@ -275,7 +279,11 @@ fun NowPlayingScreen(
     var fullscreen by remember { mutableStateOf(false) }
     DisposableEffect(fullscreen) {
         graph.pip.videoFullscreen.value = fullscreen
-        onDispose { graph.pip.videoFullscreen.value = false }
+        if (!fullscreen) graph.videoFillScreen.value = false
+        onDispose {
+            graph.pip.videoFullscreen.value = false
+            graph.videoFillScreen.value = false
+        }
     }
     val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
     val armed = VideoOverlayNative.armed
@@ -324,11 +332,18 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     SyncImmersiveSystemBars(immersive = true)
     SyncSensorRotation(enabled = true)
+    val fillScreen by graph.videoFillScreen
     Box(Modifier.fillMaxSize()) {
-        graph.playerSurface(Modifier.fillMaxSize())
+        VideoHole(player, graph.playerSurface, Modifier.fillMaxSize(), fill = fillScreen)
         Box(Modifier.fillMaxSize()) {
             AutoHidingOverlay {
-                VideoOverlayControls(coordinator, status, progress, current, isFullscreen = true, onToggleFullscreen = onExit)
+                VideoOverlayControls(
+                    coordinator, status, progress, current,
+                    isFullscreen = true,
+                    fillScreen = fillScreen,
+                    onToggleFill = { graph.videoFillScreen.value = !graph.videoFillScreen.value },
+                    onToggleFullscreen = onExit,
+                )
             }
             PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing)
         }
@@ -382,7 +397,7 @@ private fun PortraitNowPlaying(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
         ) {
-            graph.playerSurface(Modifier.fillMaxSize())
+            VideoHole(player, graph.playerSurface, Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
                 // (chrome window kept a stale content lambda).
@@ -492,7 +507,7 @@ private fun LandscapeNowPlaying(
 
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
-            graph.playerSurface(Modifier.fillMaxSize())
+            VideoHole(player, graph.playerSurface, Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars),
@@ -564,6 +579,8 @@ private fun BoxScope.VideoOverlayControls(
     current: PlayableItem?,
     compact: Boolean = false,
     isFullscreen: Boolean = false,
+    fillScreen: Boolean = false,
+    onToggleFill: (() -> Unit)? = null,
     onToggleFullscreen: () -> Unit,
 ) {
     val player = coordinator.player
@@ -620,6 +637,14 @@ private fun BoxScope.VideoOverlayControls(
             DurationLabel(player, progress, overlayStyle)
             Box(Modifier.weight(1f))
             CaptionToggle(player, offTint = Color(0xFFEEEEEE))
+            if (onToggleFill != null) {
+                ActionIcon(
+                    if (fillScreen) Icons.Default.FitScreen else Icons.Default.CropFree,
+                    stringResource(if (fillScreen) Res.string.cd_fit_video else Res.string.cd_fill_video),
+                    tint = Color(0xFFEEEEEE),
+                    onClick = onToggleFill,
+                )
+            }
             ActionIcon(
                 if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                 stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
