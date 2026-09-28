@@ -81,9 +81,9 @@ actual object MseHostNative {
         mse_host_set_volume(handle.toCPointer<COpaque>(), vol)
     }
 
-    actual fun setSpeed(handle: Long, speed: Float) {
+    actual fun setSpeed(handle: Long, speed: Float, tempo: Float) {
         if (handle == 0L) return
-        mse_host_set_speed(handle.toCPointer<COpaque>(), speed)
+        mse_host_set_speed(handle.toCPointer<COpaque>(), speed, tempo)
     }
 
     actual fun setPitch(handle: Long, pitch: Float) {

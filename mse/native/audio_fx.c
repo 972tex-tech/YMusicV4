@@ -289,22 +289,22 @@ static int ensure_in(AudioFx *fx, int extra, int ch)
 
 int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out, int out_cap, int ch)
 {
-    float speed, pitch, tempo, hop_in;
+    float pitch, tempo, hop_in;
     int nch, i, o, c, produced = 0;
     if (!fx || !out || out_cap <= 0)
         return 0;
     nch = ch < 1 ? 1 : (ch > 2 ? 2 : ch);
-    speed = fx->speed;
+    /* fx->speed is SoundTouch tempo (pitch-preserving stretch). Clock uses playbackRate. */
+    tempo = fx->speed;
     pitch = fx->pitch;
-    if (speed < 0.26f)
-        speed = 0.26f;
-    if (fabsf(speed - 1.f) < 0.02f && fabsf(pitch - 1.f) < 0.02f) {
+    if (tempo < 0.26f)
+        tempo = 0.26f;
+    if (fabsf(tempo - 1.f) < 0.02f && fabsf(pitch - 1.f) < 0.02f) {
         int n = in_frames < out_cap ? in_frames : out_cap;
         if (in && n > 0)
             memcpy(out, in, (size_t)n * (size_t)nch * sizeof(int16_t));
         return n;
     }
-    tempo = speed / pitch;
     hop_in = (float)AFX_HOP * tempo;
     if (in && in_frames > 0) {
         if (ensure_in(fx, in_frames + 8, nch) != 0)

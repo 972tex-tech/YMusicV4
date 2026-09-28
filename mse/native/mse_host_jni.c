@@ -218,11 +218,11 @@ Java_io_ymusic_mse_MseHostNative_setVolume(JNIEnv *env, jclass cls, jlong handle
 }
 
 JNIEXPORT void JNICALL
-Java_io_ymusic_mse_MseHostNative_setSpeed(JNIEnv *env, jclass cls, jlong handle, jfloat speed)
+Java_io_ymusic_mse_MseHostNative_setSpeed(JNIEnv *env, jclass cls, jlong handle, jfloat speed, jfloat tempo)
 {
     (void)env;
     (void)cls;
-    mse_host_set_speed((MseHost *)(intptr_t)handle, speed);
+    mse_host_set_speed((MseHost *)(intptr_t)handle, speed, tempo);
 }
 
 JNIEXPORT void JNICALL

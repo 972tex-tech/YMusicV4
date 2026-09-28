@@ -1,6 +1,16 @@
 #include "mse_host.h"
 #include "qjs_mse_vt.h"
 
+static void vt_set_speed(void *h, double speed, double tempo)
+{
+    mse_host_set_speed((MseHost *)h, (float)speed, (float)tempo);
+}
+
+static double vt_playback_rate(void *h)
+{
+    return (double)mse_host_playback_rate((MseHost *)h);
+}
+
 static const QjsMseVt kVt = {
     .current_time = (double (*)(void *))mse_host_current_time,
     .set_current_time = (void (*)(void *, double))mse_host_set_current_time,
@@ -18,6 +28,8 @@ static const QjsMseVt kVt = {
     .video_size = (int (*)(void *, int *, int *))mse_host_video_size,
     .change_type = (void (*)(void *, int))mse_host_change_type,
     .rest_video = (void (*)(void *, int))mse_host_rest_video,
+    .set_speed = vt_set_speed,
+    .playback_rate = vt_playback_rate,
 };
 
 const void *mse_host_vtable(void)

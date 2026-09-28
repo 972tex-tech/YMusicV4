@@ -113,11 +113,14 @@ class DynamicEnginePlayer private constructor(
         ) { it.skipValue() }
     }
 
-    suspend fun setSpeed(speed: Float, logger: Logger? = null) {
-        nativeMse?.setSpeed(speed)
+    suspend fun setSpeed(speed: Float, tempo: Float = speed, logger: Logger? = null) {
+        nativeMse?.setSpeed(speed, tempo)
         engine.jsonCommand(
             "player/setSpeed",
-            { w -> w.name("speed").value(speed.toString()) },
+            { w ->
+                w.name("speed").value(speed.toString())
+                w.name("tempo").value(tempo.toString())
+            },
             logger,
         ) { it.skipValue() }
     }
@@ -292,7 +295,7 @@ class DynamicEnginePlayer private constructor(
 
 internal interface NativeMseHost {
     fun setVideoSurface(surface: MseVideoSurface?)
-    fun setSpeed(speed: Float)
+    fun setSpeed(speed: Float, tempo: Float)
     fun close()
 }
 

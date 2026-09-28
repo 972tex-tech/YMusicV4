@@ -14,8 +14,8 @@ internal actual fun bindNativeMse(runtime: QuickJsRuntime, surface: MseVideoSurf
     return object : NativeMseHost {
         override fun setVideoSurface(surface: MseVideoSurface?) = Unit
 
-        override fun setSpeed(speed: Float) {
-            MseHostNative.setSpeed(host, speed)
+        override fun setSpeed(speed: Float, tempo: Float) {
+            MseHostNative.setSpeed(host, speed, tempo)
         }
 
         override fun close() {

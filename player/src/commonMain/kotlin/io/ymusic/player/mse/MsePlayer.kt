@@ -165,7 +165,10 @@ class MsePlayer internal constructor(
                 applyCaptionConfig(config)
                 p.setLoop(config.loop && !source.live, log)
                 if (playWhenReady) p.play(log) else p.pause(log)
-                p.setSpeed(config.speed.coerceIn(0.25f, 2f), log)
+                run {
+                    val s = config.speed.coerceIn(0.25f, 2f)
+                    p.setSpeed(s, (s / config.pitchFactor.coerceAtLeast(0.25f)).coerceIn(0.25f, 4f), log)
+                }
                 videoSurface.applyAudioFx(
                     config.volume.coerceIn(0f, 1f),
                     config.speed.coerceIn(0.25f, 4f),
@@ -255,8 +258,9 @@ class MsePlayer internal constructor(
                 if (config.loop != prev.loop) {
                     engine().setLoop(config.loop, log)
                 }
-                if (config.speed != prev.speed) {
-                    engine().setSpeed(config.speed.coerceIn(0.25f, 2f), log)
+                if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
+                    val s = config.speed.coerceIn(0.25f, 2f)
+                    engine().setSpeed(s, (s / config.pitchFactor.coerceAtLeast(0.25f)).coerceIn(0.25f, 4f), log)
                 }
                 applyCaptionConfig(config)
             }

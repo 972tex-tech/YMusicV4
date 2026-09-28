@@ -20,7 +20,7 @@ actual class MseVideoSurface(val surface: Surface? = null) {
     ) {
         if (host == 0L) return
         MseHostNative.setVolume(host, volume)
-        MseHostNative.setSpeed(host, speed)
+        MseHostNative.setSpeed(host, speed, (speed / pitch.coerceAtLeast(0.25f)).coerceIn(0.25f, 4f))
         MseHostNative.setPitch(host, pitch)
         MseHostNative.setEq(host, bands)
         MseHostNative.setBass(host, bass)

@@ -15,7 +15,7 @@ expect object MseHostNative {
 
     fun setVolume(handle: Long, vol: Float)
 
-    fun setSpeed(handle: Long, speed: Float)
+    fun setSpeed(handle: Long, speed: Float, tempo: Float)
 
     fun setPitch(handle: Long, pitch: Float)
 

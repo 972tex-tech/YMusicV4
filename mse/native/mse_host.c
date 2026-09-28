@@ -1586,17 +1586,48 @@ void mse_host_set_volume(MseHost *h, float vol)
         audio_fx_set_volume(h->fx, vol);
 }
 
-void mse_host_set_speed(MseHost *h, float speed)
+float mse_host_playback_rate(MseHost *h)
 {
+    if (!h)
+        return 1.f;
+    return h->speed > 0.f ? h->speed : 1.f;
+}
+
+void mse_host_set_speed(MseHost *h, float speed, float tempo)
+{
+    float old;
     if (!h)
         return;
     if (speed < 0.25f)
         speed = 0.25f;
     if (speed > 4.f)
         speed = 4.f;
+    if (tempo < 0.25f)
+        tempo = 0.25f;
+    if (tempo > 4.f)
+        tempo = 4.f;
+    pthread_mutex_lock(&h->mu);
+    old = h->speed > 0.f ? h->speed : 1.f;
+    if (old == speed) {
+        if (h->fx)
+            audio_fx_set_speed(h->fx, tempo);
+        pthread_mutex_unlock(&h->mu);
+        return;
+    }
     h->speed = speed;
+#ifdef MSE_DAC
+    /* Keep currentTime continuous: samples * new_rate = samples * old_rate. */
+    if (h->samples_played > 0)
+        h->samples_played = (int64_t)((double)h->samples_played * (double)old / (double)speed);
+#else
+    if (h->origin_ns > 0) {
+        double n = now_ns();
+        h->origin_ns = n - (n - h->origin_ns) * (double)old / (double)speed;
+    }
+#endif
     if (h->fx)
-        audio_fx_set_speed(h->fx, speed);
+        audio_fx_set_speed(h->fx, tempo);
+    pthread_mutex_unlock(&h->mu);
 }
 
 void mse_host_set_pitch(MseHost *h, float pitch)

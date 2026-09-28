@@ -62,7 +62,7 @@ actual object MseHostNative {
     actual external fun setVolume(handle: Long, vol: Float)
 
     @JvmStatic
-    actual external fun setSpeed(handle: Long, speed: Float)
+    actual external fun setSpeed(handle: Long, speed: Float, tempo: Float)
 
     @JvmStatic
     actual external fun setPitch(handle: Long, pitch: Float)

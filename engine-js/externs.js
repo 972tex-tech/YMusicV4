@@ -187,6 +187,13 @@ function __nativeFn(name, impl) {}
 function __mseReady() {}
 function __mseCurrentTime() {}
 function __mseSetCurrentTime(seconds) {}
+/**
+ * @param {number} speed
+ * @param {number} tempo
+ * @return {undefined}
+ */
+function __mseSetSpeed(speed, tempo) {}
+function __msePlaybackRate() {}
 function __mseDuration() {}
 function __mseSetDuration(seconds) {}
 function __msePaused() {}

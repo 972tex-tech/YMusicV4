@@ -838,7 +838,9 @@ function initHtmlMedia(self: HTMLMediaElement): void {
   self._stalled = false;
   self["muted"] = false;
   self["volume"] = 1;
-  self["playbackRate"] = 1;
+  self._rate = 1;
+  self._tempo = 1;
+  self["defaultPlaybackRate"] = 1;
   self["readyState"] = 0;
   self["networkState"] = 0;
   self._src = "";
@@ -857,7 +859,9 @@ class HTMLMediaElement {
   _stalled!: boolean;
   ["muted"]!: boolean;
   ["volume"]!: number;
-  ["playbackRate"]!: number;
+  _rate!: number;
+  _tempo!: number;
+  ["defaultPlaybackRate"]!: number;
   ["readyState"]!: number;
   ["networkState"]!: number;
   _src!: string;
@@ -1024,6 +1028,22 @@ class HTMLMediaElement {
 
   ["fastSeek"](t: number): void {
     this["currentTime"] = t;
+  }
+
+  get ["playbackRate"](): number {
+    if (typeof __msePlaybackRate === "function") return __msePlaybackRate();
+    return this._rate;
+  }
+  set ["playbackRate"](v: number) {
+    let s = Number(v);
+    if (!Number.isFinite(s) || s === 0) return;
+    if (s < 0.25) s = 0.25;
+    if (s > 4) s = 4;
+    const tempo = this._tempo > 0 ? this._tempo : s;
+    const prev = this._rate;
+    this._rate = s;
+    if (typeof __mseSetSpeed === "function") __mseSetSpeed(s, tempo);
+    if (prev !== s) fire(this, "ratechange");
   }
 
   get ["currentTime"](): number {
@@ -1243,6 +1263,17 @@ export function installMseGlobals(): void {
 
 export function activeHtmlMedia(): HTMLMediaElement | null {
   return activeMedia;
+}
+
+/** SoundTouch pair: playbackRate (currentTime) + tempo (PCM stretch). */
+export function setHtmlPlaybackRate(speed: number, tempo: number): void {
+  const el = activeMedia;
+  if (el) {
+    el._tempo = tempo;
+    el._rate = speed;
+  }
+  if (typeof __mseSetSpeed === "function") __mseSetSpeed(speed, tempo);
+  if (el) fire(el, "ratechange");
 }
 
 /** MSE-only drain line. Do not walk base.js internals. */

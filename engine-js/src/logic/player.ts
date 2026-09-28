@@ -101,9 +101,11 @@ onAccept(
   commandHandler(async (src, out) => {
     const a = await src.readJsonObject();
     const speed = Number(a["speed"]);
+    const tempo = Number(a["tempo"]);
     const s = Number.isFinite(speed) ? speed : 1;
-    setPlayerSpeed(s);
-    const p = out.writeObjectAsJson({ "ok": true, "speed": s });
+    const t = Number.isFinite(tempo) ? tempo : s;
+    setPlayerSpeed(s, t);
+    const p = out.writeObjectAsJson({ "ok": true, "speed": s, "tempo": t });
     if (p) await p;
   }),
 );

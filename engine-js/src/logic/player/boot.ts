@@ -4,6 +4,7 @@ import { JsEngineErrorImpl, callMain } from "../../protocol/command";
 import {
   activeHtmlMedia,
   installMseGlobals,
+  setHtmlPlaybackRate,
   isLiveDuration,
   mseCreateObjectURL,
   mseRevokeObjectURL,
@@ -88,21 +89,6 @@ type MoviePlayer = {
 };
 
 let moviePlayerEl: MoviePlayer | null = null;
-
-function callPlayerSpeed(obj: Record<string, unknown> | null, speed: number): boolean {
-  if (!obj) return false;
-  const a = obj["setPlayerSpeed"];
-  if (typeof a === "function") {
-    (a as (n: number) => void).call(obj, speed);
-    return true;
-  }
-  const b = obj["setPlaybackRate"];
-  if (typeof b === "function") {
-    (b as (n: number) => void).call(obj, speed);
-    return true;
-  }
-  return false;
-}
 
 function moviePlayer(): MoviePlayer | null {
   if (!moviePlayerEl) {
@@ -627,6 +613,7 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
 class Player {
   private player: YtApp | null = null;
   private speed = 1;
+  private tempo = 1;
   private mintFn: ((id: Uint8Array) => unknown) | null = null;
   private config: Record<string, unknown> | null = null;
   private minterP: Promise<Record<string, unknown>> | null = null;
@@ -874,7 +861,7 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
-    this.applySpeed();
+    this.applyHtmlSpeed();
     /* Fire-and-forget: /player, MSE, picture, catalog arrive on
        onVideoDataChange / status / catalog. load() does not wait. */
     out["step"] = "ok";
@@ -935,21 +922,21 @@ class Player {
     player["setLoopVideo"](!!enable);
   }
 
-  setSpeed(speed: number): void {
+  setSpeed(speed: number, tempo?: number): void {
     let s = Number(speed);
     if (!Number.isFinite(s)) s = 1;
     if (s < 0.25) s = 0.25;
     if (s > 2) s = 2;
+    let t = tempo != null && Number.isFinite(Number(tempo)) ? Number(tempo) : s;
+    if (t < 0.25) t = 0.25;
+    if (t > 4) t = 4;
     this.speed = s;
-    this.applySpeed();
+    this.tempo = t;
+    this.applyHtmlSpeed();
   }
 
-  private applySpeed(): void {
-    const movie = moviePlayer() as unknown as Record<string, unknown> | null;
-    const app = this.player as unknown as Record<string, unknown> | null;
-    if (!movie && !app) throw new JsEngineErrorImpl("player not created", "E20082");
-    callPlayerSpeed(movie, this.speed);
-    callPlayerSpeed(app, this.speed);
+  private applyHtmlSpeed(): void {
+    setHtmlPlaybackRate(this.speed, this.tempo);
   }
 
   pause(): void {
@@ -1256,8 +1243,8 @@ export function setPlayerLoop(enable: boolean): void {
   ytPlayer.setLoop(enable);
 }
 
-export function setPlayerSpeed(speed: number): void {
-  ytPlayer.setSpeed(speed);
+export function setPlayerSpeed(speed: number, tempo?: number): void {
+  ytPlayer.setSpeed(speed, tempo);
 }
 
 export function pausePlayer(): void {

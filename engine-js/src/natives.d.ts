@@ -78,6 +78,9 @@ declare function __nativeFn(name: string, impl?: Function, length?: number): Fun
 declare function __mseReady(): boolean;
 declare function __mseCurrentTime(): number;
 declare function __mseSetCurrentTime(seconds: number): void;
+/** speed = playbackRate (currentTime). tempo = PCM stretch. Pair them. */
+declare function __mseSetSpeed(speed: number, tempo: number): void;
+declare function __msePlaybackRate(): number;
 declare function __mseDuration(): number;
 declare function __mseSetDuration(seconds: number): void;
 declare function __msePaused(): boolean;

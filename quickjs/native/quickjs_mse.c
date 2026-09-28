@@ -70,6 +70,37 @@ static JSValue js_set_current_time(JSContext *ctx, JSValueConst this_val, int ar
     return JS_UNDEFINED;
 }
 
+static JSValue js_set_speed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    double speed = 1, tempo = 1;
+    (void)this_val;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (!g_vt->set_speed)
+        return JS_UNDEFINED;
+    if (argc < 1 || JS_ToFloat64(ctx, &speed, argv[0]))
+        return JS_EXCEPTION;
+    tempo = speed;
+    if (argc >= 2 && JS_ToFloat64(ctx, &tempo, argv[1]))
+        return JS_EXCEPTION;
+    g_vt->set_speed(h, speed, tempo);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_playback_rate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    void *h = host_of(ctx);
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (!g_vt || !h)
+        return throw_no_mse(ctx);
+    if (!g_vt->playback_rate)
+        return JS_NewFloat64(ctx, 1);
+    return JS_NewFloat64(ctx, g_vt->playback_rate(h));
+}
+
 static JSValue js_duration(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     void *h = host_of(ctx);
@@ -438,6 +469,8 @@ void qjs_mse_install(JSContext *ctx)
     JS_SetPropertyStr(ctx, g, "__mseReady", JS_NewCFunction(ctx, js_ready, "__mseReady", 0));
     JS_SetPropertyStr(ctx, g, "__mseCurrentTime", JS_NewCFunction(ctx, js_current_time, "__mseCurrentTime", 0));
     JS_SetPropertyStr(ctx, g, "__mseSetCurrentTime", JS_NewCFunction(ctx, js_set_current_time, "__mseSetCurrentTime", 1));
+    JS_SetPropertyStr(ctx, g, "__mseSetSpeed", JS_NewCFunction(ctx, js_set_speed, "__mseSetSpeed", 2));
+    JS_SetPropertyStr(ctx, g, "__msePlaybackRate", JS_NewCFunction(ctx, js_playback_rate, "__msePlaybackRate", 0));
     JS_SetPropertyStr(ctx, g, "__mseDuration", JS_NewCFunction(ctx, js_duration, "__mseDuration", 0));
     JS_SetPropertyStr(ctx, g, "__mseSetDuration", JS_NewCFunction(ctx, js_set_duration, "__mseSetDuration", 1));
     JS_SetPropertyStr(ctx, g, "__msePaused", JS_NewCFunction(ctx, js_paused, "__msePaused", 0));

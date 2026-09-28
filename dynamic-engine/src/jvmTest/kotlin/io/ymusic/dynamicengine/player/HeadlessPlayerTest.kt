@@ -287,7 +287,7 @@ class HeadlessPlayerTest {
                 return (b - a).toDouble() / windowMs.toDouble()
             }
             val atOne = mediaPerWall(2_500)
-            withContext(testEngineDispatcher) { player.setSpeed(2f, log) }
+            withContext(testEngineDispatcher) { player.setSpeed(2f, logger = log) }
             delay(400)
             val atTwo = mediaPerWall(2_500)
             println("speed at1=$atOne at2=$atTwo pos=$pos")
