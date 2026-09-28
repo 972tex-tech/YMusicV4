@@ -5,9 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define AFX_OVL 256
-#define AFX_SEEK 192
-#define AFX_SEQ 1024
+#define AFX_OVL_MAX 1024
+#define AFX_FIR 32
 #define PI 3.14159265358979323846f
 
 typedef struct {
@@ -38,10 +37,15 @@ struct AudioFx {
     float *xf;
     int xf_n;
     int xf_cap;
-    float ovl[2][AFX_OVL];
+    float ovl[2][AFX_OVL_MAX];
     int have_ovl;
+    int ovl_n;
+    int prev_off;
     double skip_frac;
     int path;
+    float fir_h[AFX_FIR];
+    float fir_z[2][AFX_FIR];
+    float fir_cut;
 };
 
 static const float k_hz[AFX_BANDS] = {
@@ -179,9 +183,13 @@ static void stretch_reset_unlocked(AudioFx *fx)
     fx->mid_frac = 0;
     fx->xf_n = 0;
     fx->have_ovl = 0;
+    fx->ovl_n = 0;
+    fx->prev_off = 0;
     fx->skip_frac = 0;
     fx->path = 0;
+    fx->fir_cut = 0;
     memset(fx->ovl, 0, sizeof(fx->ovl));
+    memset(fx->fir_z, 0, sizeof(fx->fir_z));
 }
 
 void audio_fx_destroy(AudioFx *fx)
@@ -343,6 +351,64 @@ static float lerp_ch(const float *buf, int n, int nch, int c, double src)
     return buf[i * nch + c] * (1.f - f) + buf[(i + 1) * nch + c] * f;
 }
 
+/* Catmull-Rom, SoundTouch cubic interpolator. */
+static float hermite_ch(const float *buf, int n, int nch, int c, double src)
+{
+    int i;
+    float f, y0, y1, y2, y3, a0, a1, a2;
+    if (n <= 3)
+        return lerp_ch(buf, n, nch, c, src);
+    i = (int)src;
+    f = (float)(src - (double)i);
+    if (i < 1 || i + 2 >= n)
+        return lerp_ch(buf, n, nch, c, src);
+    y0 = buf[(i - 1) * nch + c];
+    y1 = buf[i * nch + c];
+    y2 = buf[(i + 1) * nch + c];
+    y3 = buf[(i + 2) * nch + c];
+    a0 = -0.5f * y0 + 1.5f * y1 - 1.5f * y2 + 0.5f * y3;
+    a1 = y0 - 2.5f * y1 + 2.f * y2 - 0.5f * y3;
+    a2 = -0.5f * y0 + 0.5f * y2;
+    return ((a0 * f + a1) * f + a2) * f + y1;
+}
+
+static void fir_design(AudioFx *fx, float cutoff)
+{
+    int i, m;
+    float sum = 0.f;
+    if (cutoff > 0.49f)
+        cutoff = 0.49f;
+    if (cutoff < 0.04f)
+        cutoff = 0.04f;
+    if (fabsf(fx->fir_cut - cutoff) < 0.002f)
+        return;
+    fx->fir_cut = cutoff;
+    m = AFX_FIR / 2;
+    for (i = 0; i < AFX_FIR; i++) {
+        float x = (float)(i - m);
+        float w = 0.54f - 0.46f * cosf(2.f * PI * (float)i / (float)(AFX_FIR - 1));
+        float s = (x == 0.f) ? (2.f * cutoff) : (sinf(2.f * PI * cutoff * x) / (PI * x));
+        fx->fir_h[i] = s * w;
+        sum += fx->fir_h[i];
+    }
+    if (sum > 1e-12f) {
+        for (i = 0; i < AFX_FIR; i++)
+            fx->fir_h[i] /= sum;
+    }
+    memset(fx->fir_z, 0, sizeof(fx->fir_z));
+}
+
+static float fir_tick(AudioFx *fx, int c, float x)
+{
+    int i;
+    float y = 0.f;
+    memmove(&fx->fir_z[c][1], &fx->fir_z[c][0], (AFX_FIR - 1) * sizeof(float));
+    fx->fir_z[c][0] = x;
+    for (i = 0; i < AFX_FIR; i++)
+        y += fx->fir_h[i] * fx->fir_z[c][i];
+    return y;
+}
+
 static void consume(float *buf, int *n, int drop, int nch)
 {
     if (drop <= 0)
@@ -354,19 +420,58 @@ static void consume(float *buf, int *n, int drop, int nch)
         memmove(buf, buf + drop * nch, (size_t)*n * (size_t)nch * sizeof(float));
 }
 
-/* SoundTouch RateTransposer: linear interpolate, step = rate. */
-static void rate_xfer(float *src, int *src_n, double *frac, float **dst, int *dst_n, int *dst_cap,
-                      float rate, int nch)
+static void st_params(int rate, float tempo, int *ovl, int *seq, int *seek)
+{
+    float seq_ms, seek_ms;
+    int ov, sq, sk;
+    if (rate < 8000)
+        rate = 48000;
+    ov = ((rate * 8) / 1000 + 7) & ~7;
+    if (ov < 64)
+        ov = 64;
+    if (ov > AFX_OVL_MAX)
+        ov = AFX_OVL_MAX;
+    /* SoundTouch auto sequence 50–125ms, seek 15–25ms. */
+    seq_ms = 110.f - 20.f * tempo;
+    if (seq_ms < 50.f)
+        seq_ms = 50.f;
+    if (seq_ms > 125.f)
+        seq_ms = 125.f;
+    seek_ms = 23.f - 2.5f * tempo;
+    if (seek_ms < 15.f)
+        seek_ms = 15.f;
+    if (seek_ms > 25.f)
+        seek_ms = 25.f;
+    sq = ((int)((float)rate * seq_ms / 1000.f) + 7) & ~7;
+    if (sq < ov * 3)
+        sq = ov * 3;
+    sk = ((int)((float)rate * seek_ms / 1000.f) + 7) & ~7;
+    if (sk < 64)
+        sk = 64;
+    *ovl = ov;
+    *seq = sq;
+    *seek = sk;
+}
+
+/* SoundTouch RateTransposer: cubic + FIR cutoff 0.5/max(rate,1). */
+static void rate_xfer(AudioFx *fx, float *src, int *src_n, double *frac, float **dst, int *dst_n,
+                      int *dst_cap, float rate, int nch, int use_aa)
 {
     int drop;
     if (rate < 0.25f)
         rate = 0.25f;
-    while ((int)*frac + 1 < *src_n) {
+    if (use_aa)
+        fir_design(fx, 0.45f / (rate > 1.f ? rate : 1.f));
+    while ((int)*frac + 2 < *src_n) {
         int c;
         if (ensure_buf(dst, dst_cap, *dst_n + 8, nch) != 0)
             return;
-        for (c = 0; c < nch; c++)
-            (*dst)[*dst_n * nch + c] = lerp_ch(src, *src_n, nch, c, *frac);
+        for (c = 0; c < nch; c++) {
+            float y = hermite_ch(src, *src_n, nch, c, *frac);
+            if (use_aa)
+                y = fir_tick(fx, c, y);
+            (*dst)[*dst_n * nch + c] = y;
+        }
         (*dst_n)++;
         *frac += (double)rate;
     }
@@ -379,16 +484,22 @@ static void rate_xfer(float *src, int *src_n, double *frac, float **dst, int *ds
     }
 }
 
-static int rate_to_s16(float *src, int *src_n, double *frac, float rate, int16_t *out, int out_cap,
-                       int nch)
+static int rate_to_s16(AudioFx *fx, float *src, int *src_n, double *frac, float rate, int16_t *out,
+                       int out_cap, int nch, int use_aa)
 {
     int o = 0, drop;
     if (rate < 0.25f)
         rate = 0.25f;
-    while ((int)*frac + 1 < *src_n && o < out_cap) {
+    if (use_aa)
+        fir_design(fx, 0.45f / (rate > 1.f ? rate : 1.f));
+    while ((int)*frac + 2 < *src_n && o < out_cap) {
         int c;
-        for (c = 0; c < nch; c++)
-            out[o * nch + c] = sat16(lerp_ch(src, *src_n, nch, c, *frac));
+        for (c = 0; c < nch; c++) {
+            float y = hermite_ch(src, *src_n, nch, c, *frac);
+            if (use_aa)
+                y = fir_tick(fx, c, y);
+            out[o * nch + c] = sat16(y);
+        }
         o++;
         *frac += (double)rate;
     }
@@ -402,28 +513,35 @@ static int rate_to_s16(float *src, int *src_n, double *frac, float rate, int16_t
     return o;
 }
 
-static float xcorr(const float *src, int off, int nch, const float ovl[2][AFX_OVL])
+static float xcorr(const float *src, int off, int nch, const float ovl[2][AFX_OVL_MAX], int ovl_n)
 {
-    float e = 0;
+    float e = 0.f, nrm = 0.f;
     int t, c;
-    for (t = 0; t < AFX_OVL; t++) {
-        for (c = 0; c < nch; c++)
-            e += src[(off + t) * nch + c] * ovl[c][t];
+    for (t = 0; t < ovl_n; t++) {
+        for (c = 0; c < nch; c++) {
+            float x = src[(off + t) * nch + c];
+            e += x * ovl[c][t];
+            nrm += x * x;
+        }
     }
-    return e;
+    if (nrm < 1e-12f)
+        return 0.f;
+    return e / sqrtf(nrm);
 }
 
-static int best_off(const float *src, int src_n, int nch, const float ovl[2][AFX_OVL])
+static int best_off(AudioFx *fx, const float *src, int src_n, int nch, int ovl_n, int seek_n)
 {
     int i, best = 0, max, lo, hi;
     float beste = -1e30f;
-    max = AFX_SEEK;
-    if (max + AFX_OVL > src_n)
-        max = src_n - AFX_OVL;
+    max = seek_n;
+    if (max + ovl_n > src_n)
+        max = src_n - ovl_n;
     if (max < 0)
         return 0;
     for (i = 0; i <= max; i += 4) {
-        float e = xcorr(src, i, nch, ovl);
+        float e = xcorr(src, i, nch, fx->ovl, ovl_n);
+        if (i == fx->prev_off)
+            e += 0.1f;
         if (e > beste) {
             beste = e;
             best = i;
@@ -436,65 +554,67 @@ static int best_off(const float *src, int src_n, int nch, const float ovl[2][AFX
     if (hi > max)
         hi = max;
     for (i = lo; i <= hi; i++) {
-        float e = xcorr(src, i, nch, ovl);
+        float e = xcorr(src, i, nch, fx->ovl, ovl_n);
         if (e > beste) {
             beste = e;
             best = i;
         }
     }
+    fx->prev_off = best;
     return best;
 }
 
-/* SoundTouch Stretch: overlap-add with correlation seek, skip = tempo*(seq-ovl). */
 static void tdstretch(AudioFx *fx, float *src, int *src_n, float tempo, float *dst, int *dst_n,
-                      int dst_cap, int nch)
+                      int dst_cap, int nch, int ovl_n, int seq_n, int seek_n)
 {
     int t, c, off, skip, midlen, req;
     float nom;
     if (tempo < 0.26f)
         tempo = 0.26f;
-    nom = tempo * (float)(AFX_SEQ - AFX_OVL);
+    if (ovl_n > AFX_OVL_MAX)
+        ovl_n = AFX_OVL_MAX;
+    nom = tempo * (float)(seq_n - ovl_n);
     if (nom < 1.f)
         nom = 1.f;
-    req = (int)(nom + 0.5f) + AFX_OVL;
-    if (req < AFX_SEQ + AFX_SEEK)
-        req = AFX_SEQ + AFX_SEEK;
+    req = (int)(nom + 0.5f) + ovl_n;
+    if (req < seq_n + seek_n)
+        req = seq_n + seek_n;
     if (!fx->have_ovl) {
-        if (*src_n < AFX_OVL)
+        if (*src_n < ovl_n)
             return;
-        for (t = 0; t < AFX_OVL; t++) {
+        for (t = 0; t < ovl_n; t++) {
             for (c = 0; c < nch; c++)
                 fx->ovl[c][t] = src[t * nch + c];
         }
         fx->have_ovl = 1;
-        consume(src, src_n, AFX_OVL, nch);
+        fx->ovl_n = ovl_n;
+        consume(src, src_n, ovl_n, nch);
     }
-    while (*src_n >= req && *dst_n + (AFX_SEQ - AFX_OVL) <= dst_cap) {
-        off = best_off(src, *src_n, nch, fx->ovl);
-        for (t = 0; t < AFX_OVL; t++) {
-            float a = (float)t / (float)AFX_OVL;
+    while (*src_n >= req && *dst_n + (seq_n - ovl_n) <= dst_cap) {
+        off = best_off(fx, src, *src_n, nch, ovl_n, seek_n);
+        for (t = 0; t < ovl_n; t++) {
+            float a = (float)t / (float)ovl_n;
             float b = 1.f - a;
             for (c = 0; c < nch; c++)
-                dst[(*dst_n + t) * nch + c] =
-                    src[(off + t) * nch + c] * a + fx->ovl[c][t] * b;
+                dst[(*dst_n + t) * nch + c] = src[(off + t) * nch + c] * a + fx->ovl[c][t] * b;
         }
-        *dst_n += AFX_OVL;
-        midlen = AFX_SEQ - 2 * AFX_OVL;
+        *dst_n += ovl_n;
+        midlen = seq_n - 2 * ovl_n;
         if (midlen > 0) {
             if (*dst_n + midlen > dst_cap)
                 midlen = dst_cap - *dst_n;
-            if (off + AFX_OVL + midlen > *src_n)
-                midlen = *src_n - off - AFX_OVL;
+            if (off + ovl_n + midlen > *src_n)
+                midlen = *src_n - off - ovl_n;
             if (midlen > 0) {
-                memcpy(dst + *dst_n * nch, src + (off + AFX_OVL) * nch,
+                memcpy(dst + *dst_n * nch, src + (off + ovl_n) * nch,
                        (size_t)midlen * (size_t)nch * sizeof(float));
                 *dst_n += midlen;
             }
         }
-        if (off + AFX_SEQ - AFX_OVL + AFX_OVL <= *src_n) {
-            for (t = 0; t < AFX_OVL; t++) {
+        if (off + seq_n <= *src_n) {
+            for (t = 0; t < ovl_n; t++) {
                 for (c = 0; c < nch; c++)
-                    fx->ovl[c][t] = src[(off + AFX_SEQ - AFX_OVL + t) * nch + c];
+                    fx->ovl[c][t] = src[(off + seq_n - ovl_n + t) * nch + c];
             }
         }
         fx->skip_frac += (double)nom;
@@ -560,38 +680,46 @@ int audio_fx_stretch(AudioFx *fx, const int16_t *in, int in_frames, int16_t *out
         if (path != fx->path) {
             fx->have_ovl = 0;
             fx->skip_frac = 0;
+            fx->prev_off = 0;
+            fx->fir_cut = 0;
+            memset(fx->fir_z, 0, sizeof(fx->fir_z));
             fx->path = path;
         }
     }
-    if (!do_tempo) {
-        /* speed == pitch: resample only. */
-        produced = rate_to_s16(fx->inbuf, &fx->in_n, &fx->in_frac, pitch, out, out_cap, nch);
-    } else if (!do_rate) {
-        /* pitch == 1: WSOLA only. */
-        if (ensure_buf(&fx->mid, &fx->mid_cap, fx->mid_n + AFX_SEQ * 2, nch) != 0) {
-            pthread_mutex_unlock(&fx->mu);
-            return 0;
+    {
+        int ovl_n, seq_n, seek_n;
+        st_params(fx->rate, tempo, &ovl_n, &seq_n, &seek_n);
+        if (!do_tempo) {
+            produced = rate_to_s16(fx, fx->inbuf, &fx->in_n, &fx->in_frac, pitch, out, out_cap, nch,
+                                   1);
+        } else if (!do_rate) {
+            if (ensure_buf(&fx->mid, &fx->mid_cap, fx->mid_n + seq_n * 2, nch) != 0) {
+                pthread_mutex_unlock(&fx->mu);
+                return 0;
+            }
+            tdstretch(fx, fx->inbuf, &fx->in_n, tempo, fx->mid, &fx->mid_n, fx->mid_cap, nch, ovl_n,
+                      seq_n, seek_n);
+            produced = fifo_to_s16(fx->mid, &fx->mid_n, out, out_cap, nch);
+        } else if (pitch > 1.f) {
+            if (ensure_buf(&fx->mid, &fx->mid_cap, fx->mid_n + seq_n * 2, nch) != 0) {
+                pthread_mutex_unlock(&fx->mu);
+                return 0;
+            }
+            tdstretch(fx, fx->inbuf, &fx->in_n, tempo, fx->mid, &fx->mid_n, fx->mid_cap, nch, ovl_n,
+                      seq_n, seek_n);
+            produced = rate_to_s16(fx, fx->mid, &fx->mid_n, &fx->mid_frac, pitch, out, out_cap, nch,
+                                   1);
+        } else {
+            rate_xfer(fx, fx->inbuf, &fx->in_n, &fx->in_frac, &fx->mid, &fx->mid_n, &fx->mid_cap,
+                      pitch, nch, 1);
+            if (ensure_buf(&fx->xf, &fx->xf_cap, fx->xf_n + seq_n * 2, nch) != 0) {
+                pthread_mutex_unlock(&fx->mu);
+                return 0;
+            }
+            tdstretch(fx, fx->mid, &fx->mid_n, tempo, fx->xf, &fx->xf_n, fx->xf_cap, nch, ovl_n,
+                      seq_n, seek_n);
+            produced = fifo_to_s16(fx->xf, &fx->xf_n, out, out_cap, nch);
         }
-        tdstretch(fx, fx->inbuf, &fx->in_n, tempo, fx->mid, &fx->mid_n, fx->mid_cap, nch);
-        produced = fifo_to_s16(fx->mid, &fx->mid_n, out, out_cap, nch);
-    } else if (pitch > 1.f) {
-        /* SoundTouch rate>1: stretch then transpose. */
-        if (ensure_buf(&fx->mid, &fx->mid_cap, fx->mid_n + AFX_SEQ * 2, nch) != 0) {
-            pthread_mutex_unlock(&fx->mu);
-            return 0;
-        }
-        tdstretch(fx, fx->inbuf, &fx->in_n, tempo, fx->mid, &fx->mid_n, fx->mid_cap, nch);
-        produced = rate_to_s16(fx->mid, &fx->mid_n, &fx->mid_frac, pitch, out, out_cap, nch);
-    } else {
-        /* rate<=1: transpose then stretch. */
-        rate_xfer(fx->inbuf, &fx->in_n, &fx->in_frac, &fx->mid, &fx->mid_n, &fx->mid_cap, pitch,
-                  nch);
-        if (ensure_buf(&fx->xf, &fx->xf_cap, fx->xf_n + AFX_SEQ * 2, nch) != 0) {
-            pthread_mutex_unlock(&fx->mu);
-            return 0;
-        }
-        tdstretch(fx, fx->mid, &fx->mid_n, tempo, fx->xf, &fx->xf_n, fx->xf_cap, nch);
-        produced = fifo_to_s16(fx->xf, &fx->xf_n, out, out_cap, nch);
     }
     pthread_mutex_unlock(&fx->mu);
     return produced;
