@@ -61,8 +61,8 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 import kotlin.math.round
 
-/** Same chips for speed and pitch; 1× sits in the middle. */
-private val RATE_CHIPS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f)
+/** Same chips for speed and pitch. */
+private val RATE_CHIPS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 private val EQ_HZ = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")
 
 private data class EqPreset(val label: StringResource, val bands: List<Float>)
@@ -116,12 +116,12 @@ internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
             RateBlock(
                 title = stringResource(Res.string.sound_speed),
                 value = config.speed,
-                range = 0.25f..2f,
+                range = 0.25f..3f,
                 onChange = { player.setSpeed(it) },
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(20.dp))
             RateBlock(
-                title = stringResource(Res.string.sound_pitch, trimFloat(config.pitchFactor)),
+                title = stringResource(Res.string.sound_pitch, "").trim(),
                 value = config.pitchFactor,
                 range = 0.5f..2f,
                 onChange = { player.setPitch(it) },
@@ -195,9 +195,9 @@ private fun RateBlock(
     range: ClosedFloatingPointRange<Float>,
     onChange: (Float) -> Unit,
 ) {
-    LabelValue(title, "${trimFloat(value)}×")
+    LabelValue("$title ×${trimFloat(value)}", "")
     FlowRow(
-        DialogPad.fillMaxWidth().padding(bottom = 6.dp),
+        DialogPad.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -264,7 +264,7 @@ private fun FxBar(fraction: Float, onChange: (Float) -> Unit, modifier: Modifier
 @Composable
 private fun LabelValue(label: String, value: String) {
     Row(
-        DialogPad.fillMaxWidth().padding(bottom = 4.dp),
+        DialogPad.fillMaxWidth().padding(bottom = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(label, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink))

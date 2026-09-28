@@ -927,7 +927,7 @@ class Player {
     let s = Number(speed);
     if (!Number.isFinite(s)) s = 1;
     if (s < 0.25) s = 0.25;
-    if (s > 2) s = 2;
+    if (s > 3) s = 3;
     this.tempo = s;
     if (this.speed === s) return;
     this.speed = s;

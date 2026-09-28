@@ -166,7 +166,7 @@ class MsePlayer internal constructor(
                 p.setLoop(config.loop && !source.live, log)
                 if (playWhenReady) p.play(log) else p.pause(log)
                 run {
-                    val s = config.speed.coerceIn(0.25f, 2f)
+                    val s = config.speed.coerceIn(0.25f, 3f)
                     val pitch = config.pitchFactor.coerceIn(0.5f, 2f)
                     p.setSpeedPitch(s, pitch, log)
                 }
@@ -264,7 +264,7 @@ class MsePlayer internal constructor(
                 }
                 if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
                     engine().setSpeedPitch(
-                        config.speed.coerceIn(0.25f, 2f),
+                        config.speed.coerceIn(0.25f, 3f),
                         config.pitchFactor.coerceIn(0.5f, 2f),
                         log,
                     )
