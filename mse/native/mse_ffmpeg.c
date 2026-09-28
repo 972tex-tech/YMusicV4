@@ -196,6 +196,7 @@ static double mc_send_ahead(const MseAv *a)
 #endif
 }
 
+#ifdef __ANDROID__
 /* C2 treats flush-before-any-input as lastFlushIndex=0, then the IDR
    (frameIndex=0) is ignored. Live seek hits that; VOD does not. */
 static void mc_flush(MseAv *a)
@@ -209,6 +210,7 @@ static void mc_flush(MseAv *a)
     a->mc_pts0_set = 0;
     a->v_pictured = 0;
 }
+#endif
 
 static int h264_nal_len_size(const AVCodecParameters *par)
 {
