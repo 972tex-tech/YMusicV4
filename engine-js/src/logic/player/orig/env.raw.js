@@ -352,29 +352,36 @@
 
   if (typeof globalThis.Intl !== "object" || globalThis.Intl == null) {
     (function () {
+      /* __nativeFn is a C function: `new C()` is the C return value, not
+         an auto-created `this`. Must return the instance. */
+      function resolvedOptions() {
+        return {
+          locale: "en-US",
+          calendar: "gregory",
+          numberingSystem: "latn",
+          timeZone: "America/Los_Angeles",
+        };
+      }
       function ctor(name) {
         var C = native(name, function () {
-          this.format = native("format", function (v) {
+          var self = {};
+          self.format = native("format", function (v) {
             return String(v == null ? "" : v);
           });
-          this.formatToParts = native("formatToParts", function () {
+          self.formatToParts = native("formatToParts", function () {
             return [];
           });
-          this.resolvedOptions = native("resolvedOptions", function () {
-            return {
-              locale: "en-US",
-              calendar: "gregory",
-              numberingSystem: "latn",
-              timeZone: "America/Los_Angeles",
-            };
-          });
-          this.compare = native("compare", function (a, b) {
+          self.resolvedOptions = native("resolvedOptions", resolvedOptions);
+          self.compare = native("compare", function (a, b) {
             return a < b ? -1 : a > b ? 1 : 0;
           });
-          this.select = native("select", function () {
+          self.select = native("select", function () {
             return "other";
           });
+          return self;
         });
+        if (!C.prototype) C.prototype = {};
+        C.prototype.resolvedOptions = resolvedOptions;
         C.supportedLocalesOf = native("supportedLocalesOf", function () {
           return ["en-US"];
         });
