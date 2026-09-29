@@ -7,7 +7,7 @@
 
 #define AFX_OVL_MAX 1024
 #define AFX_FIR 32
-#define AFX_FFT 1024
+#define AFX_FFT 2048
 #define PI 3.14159265358979323846f
 
 typedef struct {
@@ -361,7 +361,7 @@ int audio_fx_levels(AudioFx *fx, float *out, int n)
 {
     float re[AFX_FFT];
     float im[AFX_FFT];
-    int i, k, got, w, filled, rate, nyq;
+    int i, k, got, w, filled, nyq, prev;
     if (!fx || !out || n <= 0)
         return 0;
     got = n < AFX_LEVELS ? n : AFX_LEVELS;
@@ -370,7 +370,6 @@ int audio_fx_levels(AudioFx *fx, float *out, int n)
     pthread_mutex_lock(&fx->mu);
     w = fx->vis_w;
     filled = fx->vis_n;
-    rate = fx->rate > 0 ? fx->rate : 48000;
     if (filled >= AFX_FFT) {
         for (i = 0; i < AFX_FFT; i++)
             re[i] = fx->vis[(w + i) % AFX_FFT];
@@ -384,34 +383,28 @@ int audio_fx_levels(AudioFx *fx, float *out, int n)
     fft_radix2(re, im, AFX_FFT);
     nyq = AFX_FFT / 2;
     pthread_mutex_lock(&fx->mu);
+    prev = 1;
     for (i = 0; i < got; i++) {
-        float t0 = (float)i / (float)got;
-        float t1 = (float)(i + 1) / (float)got;
-        float f0 = 40.f * powf(16000.f / 40.f, t0);
-        float f1 = 40.f * powf(16000.f / 40.f, t1);
-        int b0 = (int)(f0 * (float)AFX_FFT / (float)rate);
-        int b1 = (int)(f1 * (float)AFX_FFT / (float)rate);
-        float e = 0.f;
-        int cnt = 0;
+        float t = (float)(i + 1) / (float)got;
+        int next = (int)(powf((float)nyq, t) + 0.5f);
+        float peak = 0.f;
         float mag;
-        if (b0 < 1)
-            b0 = 1;
-        if (b1 <= b0)
-            b1 = b0 + 1;
-        if (b1 > nyq)
-            b1 = nyq;
-        for (k = b0; k < b1; k++) {
-            e += hypotf(re[k], im[k]);
-            cnt++;
+        if (next <= prev)
+            next = prev + 1;
+        if (next > nyq)
+            next = nyq;
+        for (k = prev; k < next; k++) {
+            float m = hypotf(re[k], im[k]);
+            if (m > peak)
+                peak = m;
         }
-        if (cnt > 0)
-            e /= (float)cnt;
-        mag = sqrtf(e * (2.f / (float)AFX_FFT)) * 4.2f;
+        prev = next;
+        /* Hann sine peak ≈ N/4; *3.2 so loud music reaches 1 easily. */
+        mag = peak * (4.f / (float)AFX_FFT) * 3.2f;
         if (mag > 1.f)
             mag = 1.f;
-        /* Ease toward the band (including 0). Faster on the way up. */
         {
-            float a = mag > fx->vis_hold[i] ? 0.5f : 0.14f;
+            float a = mag > fx->vis_hold[i] ? 0.72f : 0.14f;
             fx->vis_hold[i] += (mag - fx->vis_hold[i]) * a;
         }
         out[i] = fx->vis_hold[i];
