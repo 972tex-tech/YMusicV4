@@ -6,8 +6,12 @@
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
+#include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 
 /* Flat-string access (BEGIN/END patch at the end of vendored quickjs.c). */
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
@@ -988,11 +992,64 @@ static void install_performance(JSContext *ctx, JSValueConst global)
     JS_FreeValue(ctx, perf);
 }
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+static int tz_looks_iana(const char *s)
+{
+    return s && s[0] && (strchr(s, '/') || !strcmp(s, "UTC") || !strcmp(s, "GMT"));
+}
+
+static const char *zoneinfo_tail(const char *path)
+{
+    const char *p = path;
+    const char *hit = NULL;
+    while ((p = strstr(p, "zoneinfo/"))) {
+        hit = p + 9;
+        p = hit;
+    }
+    return hit && hit[0] ? hit : NULL;
+}
+
+/** IANA id of the host zone (TZ, Android persist.sys.timezone, /etc/localtime). */
+static JSValue js_time_zone(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    const char *tz;
+    char path[PATH_MAX];
+    ssize_t n;
+    const char *tail;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    tz = getenv("TZ");
+    if (tz && tz[0] == ':')
+        tz++;
+    if (tz_looks_iana(tz))
+        return JS_NewString(ctx, tz);
+#ifdef __ANDROID__
+    {
+        char prop[PROP_VALUE_MAX];
+        if (__system_property_get("persist.sys.timezone", prop) > 0 && tz_looks_iana(prop))
+            return JS_NewString(ctx, prop);
+    }
+#endif
+    n = readlink("/etc/localtime", path, sizeof(path) - 1);
+    if (n > 0) {
+        path[n] = 0;
+        tail = zoneinfo_tail(path);
+        if (tz_looks_iana(tail))
+            return JS_NewString(ctx, tail);
+    }
+    return JS_NewString(ctx, "UTC");
+}
+
 void qjs_register_web(JSContext *ctx)
 {
     JSValue g = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, g, "btoa", JS_NewCFunction(ctx, js_btoa, "btoa", 0));
     JS_SetPropertyStr(ctx, g, "atob", JS_NewCFunction(ctx, js_atob, "atob", 0));
+    JS_SetPropertyStr(ctx, g, "__timeZone", JS_NewCFunction(ctx, js_time_zone, "__timeZone", 0));
     install_ctor(ctx, g, "TextEncoder", js_textencoder_ctor, 0,
                  textencoder_proto, countof(textencoder_proto));
     install_ctor(ctx, g, "TextDecoder", js_textdecoder_ctor, 0,

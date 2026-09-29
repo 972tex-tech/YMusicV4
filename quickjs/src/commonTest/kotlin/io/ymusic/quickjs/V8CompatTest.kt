@@ -95,4 +95,15 @@ class V8CompatTest {
             rt.close()
         }
     }
+
+    @Test
+    fun time_zone_is_iana() = runTest {
+        val rt = QuickJsRuntime.create()
+        try {
+            val z = rt.load("typeof __timeZone === 'function' ? __timeZone() : ''")!!
+            assertTrue(z.contains('/') || z == "UTC" || z == "GMT", z)
+        } finally {
+            rt.close()
+        }
+    }
 }

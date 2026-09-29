@@ -184,6 +184,7 @@ function __consoleLog(level, msg) {}
  * @return {!Function}
  */
 function __nativeFn(name, impl) {}
+function __timeZone() {}
 function __mseReady() {}
 function __mseCurrentTime() {}
 function __mseSetCurrentTime(seconds) {}

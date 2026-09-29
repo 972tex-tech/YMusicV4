@@ -354,12 +354,27 @@
     (function () {
       /* __nativeFn is a C function: `new C()` is the C return value, not
          an auto-created `this`. Must return the instance. */
+      function hostTimeZone() {
+        if (typeof __timeZone === "function") {
+          try {
+            var z = __timeZone();
+            if (typeof z === "string" && z) return z;
+          } catch (e) {}
+        }
+        var off = 0;
+        try {
+          off = new Date().getTimezoneOffset();
+        } catch (e2) {}
+        if (!off) return "UTC";
+        var h = Math.round(off / 60);
+        return "Etc/GMT" + (h > 0 ? "+" + h : h);
+      }
       function resolvedOptions() {
         return {
           locale: "en-US",
           calendar: "gregory",
           numberingSystem: "latn",
-          timeZone: "America/Los_Angeles",
+          timeZone: hostTimeZone(),
         };
       }
       function ctor(name) {
