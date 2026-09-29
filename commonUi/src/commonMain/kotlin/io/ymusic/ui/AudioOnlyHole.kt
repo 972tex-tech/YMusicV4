@@ -102,7 +102,7 @@ internal fun AudioOnlyArtWave(
                 val gap = size.width * 0.014f
                 val barW = ((size.width - gap * (n - 1)) / n).coerceAtLeast(1.5f)
                 val mid = size.height * 0.5f
-                val maxH = size.height * 0.92f
+                val maxH = minOf(size.height * 0.92f, side.toPx() * 2f)
                 for (i in 0 until n) {
                     val h = (levels[i].coerceIn(0f, 1f) * maxH).coerceAtLeast(2f)
                     drawRoundRect(
