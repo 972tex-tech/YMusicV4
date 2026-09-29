@@ -17,6 +17,7 @@ import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
+import { isYmLive } from "./live";
 import { installCaptionMinter, onCaptionSeek, selectedCaptionVss } from "./captions";
 import { playerStorageReady } from "./storage";
 import { applyViewport, viewportHeight, viewportWidth } from "./viewport";
@@ -812,7 +813,7 @@ class Player {
       __mseRestVideo(1);
     } else {
       __mseRestVideo(0);
-      dropVideoFakeOverlay();
+      if (!isYmLive()) dropVideoFakeOverlay();
       bindMoviePlayerApi();
       pinPlaybackQuality(player, this.player, q, q);
     }
