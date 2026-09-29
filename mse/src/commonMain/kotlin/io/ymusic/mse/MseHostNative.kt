@@ -25,6 +25,6 @@ expect object MseHostNative {
 
     fun setVirtualizer(handle: Long, width: Float)
 
-    /** Oldest-first live RMS bars in 0..1. Returns count written. */
+    /** Fixed-position log-frequency bars in 0..1. Returns count written. */
     fun pcmLevels(handle: Long, out: FloatArray): Int
 }

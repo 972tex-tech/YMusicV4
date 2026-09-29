@@ -7,6 +7,7 @@
 
 #define AFX_OVL_MAX 1024
 #define AFX_FIR 32
+#define AFX_FFT 1024
 #define PI 3.14159265358979323846f
 
 typedef struct {
@@ -46,10 +47,10 @@ struct AudioFx {
     float fir_h[AFX_FIR];
     float fir_z[2][AFX_FIR];
     float fir_cut;
-    float levels[AFX_LEVELS];
-    int level_i;
-    float level_acc;
-    int level_acc_n;
+    float vis[AFX_FFT];
+    int vis_w;
+    int vis_n;
+    float vis_hold[AFX_LEVELS];
 };
 
 static const float k_hz[AFX_BANDS] = {
@@ -222,10 +223,10 @@ void audio_fx_reset(AudioFx *fx)
     for (i = 0; i < AFX_BANDS; i++)
         bq_clear(&fx->peak[i]);
     bq_clear(&fx->bass);
-    memset(fx->levels, 0, sizeof(fx->levels));
-    fx->level_i = 0;
-    fx->level_acc = 0;
-    fx->level_acc_n = 0;
+    memset(fx->vis, 0, sizeof(fx->vis));
+    memset(fx->vis_hold, 0, sizeof(fx->vis_hold));
+    fx->vis_w = 0;
+    fx->vis_n = 0;
     pthread_mutex_unlock(&fx->mu);
 }
 
@@ -299,44 +300,121 @@ void audio_fx_set_pitch(AudioFx *fx, float pitch)
 static void feed_levels(AudioFx *fx, const int16_t *s16, int frames, int nch)
 {
     int i;
-    int hop;
     pthread_mutex_lock(&fx->mu);
-    hop = fx->rate / 50;
-    if (hop < 64)
-        hop = 64;
     for (i = 0; i < frames; i++) {
         float l = (float)s16[i * nch];
         float r = nch > 1 ? (float)s16[i * nch + 1] : l;
-        float a = 0.5f * (l + r);
-        float rms;
-        fx->level_acc += a * a;
-        fx->level_acc_n++;
-        if (fx->level_acc_n < hop)
-            continue;
-        rms = sqrtf(fx->level_acc / (float)fx->level_acc_n) / 32768.f;
-        rms *= 2.6f;
-        if (rms > 1.f)
-            rms = 1.f;
-        fx->levels[fx->level_i] = rms;
-        fx->level_i = (fx->level_i + 1) % AFX_LEVELS;
-        fx->level_acc = 0;
-        fx->level_acc_n = 0;
+        fx->vis[fx->vis_w] = 0.5f * (l + r) / 32768.f;
+        fx->vis_w++;
+        if (fx->vis_w >= AFX_FFT)
+            fx->vis_w = 0;
+        if (fx->vis_n < AFX_FFT)
+            fx->vis_n++;
     }
     pthread_mutex_unlock(&fx->mu);
 }
 
+static void fft_radix2(float *re, float *im, int n)
+{
+    int i, j, k, m;
+    j = 0;
+    for (i = 0; i < n; i++) {
+        if (i < j) {
+            float tr = re[i], ti = im[i];
+            re[i] = re[j];
+            im[i] = im[j];
+            re[j] = tr;
+            im[j] = ti;
+        }
+        m = n >> 1;
+        while (m >= 1 && j >= m) {
+            j -= m;
+            m >>= 1;
+        }
+        j += m;
+    }
+    for (m = 2; m <= n; m <<= 1) {
+        float wm_re = cosf(-2.f * PI / (float)m);
+        float wm_im = sinf(-2.f * PI / (float)m);
+        for (k = 0; k < n; k += m) {
+            float w_re = 1.f, w_im = 0.f;
+            int half = m >> 1;
+            for (j = 0; j < half; j++) {
+                int u = k + j;
+                int t = u + half;
+                float tr = w_re * re[t] - w_im * im[t];
+                float ti = w_re * im[t] + w_im * re[t];
+                float nw_re;
+                re[t] = re[u] - tr;
+                im[t] = im[u] - ti;
+                re[u] += tr;
+                im[u] += ti;
+                nw_re = w_re * wm_re - w_im * wm_im;
+                w_im = w_re * wm_im + w_im * wm_re;
+                w_re = nw_re;
+            }
+        }
+    }
+}
+
 int audio_fx_levels(AudioFx *fx, float *out, int n)
 {
-    int i, start, got;
+    float re[AFX_FFT];
+    float im[AFX_FFT];
+    int i, k, got, w, filled, rate, nyq;
     if (!fx || !out || n <= 0)
         return 0;
     got = n < AFX_LEVELS ? n : AFX_LEVELS;
+    memset(re, 0, sizeof(re));
+    memset(im, 0, sizeof(im));
     pthread_mutex_lock(&fx->mu);
-    start = fx->level_i - got;
-    if (start < 0)
-        start += AFX_LEVELS;
-    for (i = 0; i < got; i++)
-        out[i] = fx->levels[(start + i) % AFX_LEVELS];
+    w = fx->vis_w;
+    filled = fx->vis_n;
+    rate = fx->rate > 0 ? fx->rate : 48000;
+    if (filled >= AFX_FFT) {
+        for (i = 0; i < AFX_FFT; i++)
+            re[i] = fx->vis[(w + i) % AFX_FFT];
+    } else {
+        for (i = 0; i < filled; i++)
+            re[i] = fx->vis[i];
+    }
+    pthread_mutex_unlock(&fx->mu);
+    for (i = 0; i < AFX_FFT; i++)
+        re[i] *= 0.5f * (1.f - cosf(2.f * PI * (float)i / (float)(AFX_FFT - 1)));
+    fft_radix2(re, im, AFX_FFT);
+    nyq = AFX_FFT / 2;
+    pthread_mutex_lock(&fx->mu);
+    for (i = 0; i < got; i++) {
+        float t0 = (float)i / (float)got;
+        float t1 = (float)(i + 1) / (float)got;
+        float f0 = 40.f * powf(16000.f / 40.f, t0);
+        float f1 = 40.f * powf(16000.f / 40.f, t1);
+        int b0 = (int)(f0 * (float)AFX_FFT / (float)rate);
+        int b1 = (int)(f1 * (float)AFX_FFT / (float)rate);
+        float e = 0.f;
+        int cnt = 0;
+        float mag;
+        if (b0 < 1)
+            b0 = 1;
+        if (b1 <= b0)
+            b1 = b0 + 1;
+        if (b1 > nyq)
+            b1 = nyq;
+        for (k = b0; k < b1; k++) {
+            e += hypotf(re[k], im[k]);
+            cnt++;
+        }
+        if (cnt > 0)
+            e /= (float)cnt;
+        mag = sqrtf(e * (2.f / (float)AFX_FFT)) * 4.2f;
+        if (mag > 1.f)
+            mag = 1.f;
+        if (mag > fx->vis_hold[i])
+            fx->vis_hold[i] = mag;
+        else
+            fx->vis_hold[i] *= 0.84f;
+        out[i] = fx->vis_hold[i];
+    }
     pthread_mutex_unlock(&fx->mu);
     return got;
 }

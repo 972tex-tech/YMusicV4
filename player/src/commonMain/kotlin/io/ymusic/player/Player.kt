@@ -156,7 +156,7 @@ interface Player {
     fun prepareYoutubeEngine()
 
     /**
-     * Oldest-first live RMS bars in 0..1 from the active engine's PCM.
+     * Fixed-position log-frequency bars in 0..1 from the active engine's PCM.
      * Writes up to [out].size samples and returns the count; 0 when idle.
      */
     fun pcmLevels(out: FloatArray): Int = 0
