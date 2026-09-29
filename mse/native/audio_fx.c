@@ -409,10 +409,11 @@ int audio_fx_levels(AudioFx *fx, float *out, int n)
         mag = sqrtf(e * (2.f / (float)AFX_FFT)) * 4.2f;
         if (mag > 1.f)
             mag = 1.f;
-        if (mag > fx->vis_hold[i])
-            fx->vis_hold[i] = mag;
-        else
-            fx->vis_hold[i] *= 0.84f;
+        /* Ease toward the band (including 0). Faster on the way up. */
+        {
+            float a = mag > fx->vis_hold[i] ? 0.5f : 0.14f;
+            fx->vis_hold[i] += (mag - fx->vis_hold[i]) * a;
+        }
         out[i] = fx->vis_hold[i];
     }
     pthread_mutex_unlock(&fx->mu);
