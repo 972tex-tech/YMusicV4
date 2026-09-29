@@ -3,6 +3,7 @@
 import { JsEngineErrorImpl, callMain } from "../../protocol/command";
 import {
   activeHtmlMedia,
+  dropVideoFakeOverlay,
   installMseGlobals,
   isLiveDuration,
   mseCreateObjectURL,
@@ -811,6 +812,7 @@ class Player {
       __mseRestVideo(1);
     } else {
       __mseRestVideo(0);
+      dropVideoFakeOverlay();
       bindMoviePlayerApi();
       pinPlaybackQuality(player, this.player, q, q);
     }

@@ -340,6 +340,40 @@ function clearFakeOverlay(sb: SourceBuffer): void {
   sb._fakeEnd = 0;
 }
 
+function sbHasFakeOverlay(sb: SourceBuffer): boolean {
+  return sb._fakeFollowAudio || sb._fakeEnd > sb._fakeStart;
+}
+
+/** AO-off: drop fake-144p TimeRanges so leftover is real video. SABR then fetches. */
+export function dropVideoFakeOverlay(): void {
+  const el = activeMedia;
+  const ms = el && el._ms;
+  if (!ms) return;
+  const bufs = ms["sourceBuffers"];
+  for (let i = 0; i < bufs.length; i++) {
+    const sb = bufs[i]!;
+    if (audioFlag(sb["mimeType"])) continue;
+    if (!sbHasFakeOverlay(sb)) continue;
+    mseLog(
+      "mse drop fake-cover follow=" +
+        (sb._fakeFollowAudio ? "1" : "0") +
+        " span=" +
+        sb._fakeStart +
+        ".." +
+        sb._fakeEnd,
+    );
+    clearFakeOverlay(sb);
+    if (sb["updating"]) continue;
+    Promise.resolve().then(function () {
+      if (sbRemoved(sb) || sb["updating"]) return;
+      fire(sb, "update");
+      fire(sb, "updateend");
+      const media = activeMedia;
+      if (media && media._ms === sb._ms) syncReadyState(media);
+    });
+  }
+}
+
 /** YMF0 init, or [hid+]YMF1 startMs/durationMs. Union with C leftover; do not replace. */
 function takeFakeMedia(sb: SourceBuffer, u8: Uint8Array): void {
   if (isAudioOnly() && activeMedia && sb._ms === activeMedia._ms) __mseRestVideo(1);
