@@ -696,6 +696,8 @@ internal fun SwipeDownDismissBox(
     restingShadow: Boolean = false,
     /** Visual translation in px; parent uses this to draw the shell only while the sheet is peeking. */
     onPeek: (Float) -> Unit = {},
+    /** Off on desktop: a peek would show the transparent video hole, not the shell. */
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val peek = remember { Animatable(0f) }
@@ -717,8 +719,8 @@ internal fun SwipeDownDismissBox(
     val shadowAlpha = if (restingShadow) 0.10f + 0.08f * topShadow else 0.16f * topShadow
     val showShadow = restingShadow || topShadow > 0.01f
 
-    Box(
-        modifier
+    val gestures = if (enabled) {
+        Modifier
             .onSizeChanged {
                 drag.heightPx = it.height.toFloat()
                 val frac = commitFractionOfHeight
@@ -743,8 +745,11 @@ internal fun SwipeDownDismissBox(
                     onDragEnd = { if (drag.raw > 0f) drag.settle() },
                     onDragCancel = { if (drag.raw > 0f) drag.settle() },
                 )
-            },
-    ) {
+            }
+    } else {
+        Modifier
+    }
+    Box(modifier.then(gestures)) {
         Box(Modifier.fillMaxWidth().graphicsLayer { translationY = peekY }) {
             if (showShadow) {
                 Box(
