@@ -313,7 +313,13 @@ function cBufferedPairs(audio: number): Array<[number, number]> {
   const r = __mseBuffered(audio);
   const ranges: Array<[number, number]> = [];
   if (r) {
-    for (let i = 0; i + 1 < r.length; i += 2) ranges.push([r[i]!, r[i + 1]!]);
+    for (let i = 0; i + 1 < r.length; i += 2) {
+      let a = r[i]!;
+      const b = r[i + 1]!;
+      /* miller DM5 Y=10ms; first opus packet is ~14ms. */
+      if (a > 0 && a < 0.05) a = 0;
+      ranges.push([a, b]);
+    }
   }
   return ranges;
 }
