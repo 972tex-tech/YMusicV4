@@ -215,6 +215,7 @@ fun MiniPlayer(
                 if (config.audioOnly || surface == null) {
                     AudioOnlyCover(item.displayThumbnailUrl, Modifier.fillMaxSize())
                 }
+                BufferingIndicator(status, size = 22.dp, strokeWidth = 2.dp)
                 Box(Modifier.matchParentSize().clickable(onClick = onExpand))
             }
             Column(
@@ -348,6 +349,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
             fill = fillScreen,
         )
         Box(Modifier.fillMaxSize()) {
+            BufferingIndicator(status)
             AutoHidingOverlay {
                 VideoOverlayControls(
                     coordinator, status, progress, current,
@@ -418,6 +420,7 @@ private fun PortraitNowPlaying(
             Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
                 // (chrome window kept a stale content lambda).
+                BufferingIndicator(status)
                 AutoHidingOverlay {
                     VideoOverlayControls(
                         coordinator, status, progress, current,
@@ -473,11 +476,7 @@ private fun PortraitNowPlaying(
                         status.error?.let { PlaybackErrorRow(player, it) }
                     }
                     SeekBar(player, progress)
-                    TransportRow(
-                        coordinator,
-                        status.playWhenReady,
-                        (status.state as? PlaybackState.Prepared)?.buffering == true,
-                    )
+                    TransportRow(coordinator, status.playWhenReady)
                 }
             }
             stickyHeader {
@@ -534,6 +533,7 @@ private fun LandscapeNowPlaying(
                 Modifier.fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
+                BufferingIndicator(status)
                 AutoHidingOverlay {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
@@ -591,6 +591,28 @@ private fun BoxScope.AutoHidingOverlay(
 
 private const val OVERLAY_HIDE_DELAY_MS = 3_000L
 
+private fun PlaybackStatus.isBufferingOrLoading(): Boolean = when (val s = state) {
+    is PlaybackState.Prepared -> s.buffering
+    is PlaybackState.Uninitialized -> s.isInitializing
+    PlaybackState.Idle -> playWhenReady
+    is PlaybackState.Error -> false
+}
+
+/** Stays on the video while overlay chrome auto-hides; transport play/pause stays tappable. */
+@Composable
+private fun BoxScope.BufferingIndicator(
+    status: PlaybackStatus,
+    size: Dp = 72.dp,
+    strokeWidth: Dp = 3.dp,
+) {
+    if (!status.isBufferingOrLoading()) return
+    CircularProgressIndicator(
+        Modifier.align(Alignment.Center).size(size),
+        color = Color.White,
+        strokeWidth = strokeWidth,
+    )
+}
+
 /** The controls drawn over the video: landscape always, portrait once the inline controls scroll
  *  away. [compact] hides ±10s seek buttons (the portrait overlay). */
 @Composable
@@ -634,7 +656,6 @@ private fun BoxScope.VideoOverlayControls(
         TransportRow(
             coordinator,
             status.playWhenReady,
-            (status.state as? PlaybackState.Prepared)?.buffering == true,
             iconTint = Color.White,
             playBackground = Color.Black.copy(alpha = 0.42f),
             playForeground = Color.White,
@@ -957,7 +978,6 @@ private fun SeekSlider(
 private fun TransportRow(
     coordinator: PlaybackCoordinator,
     playing: Boolean,
-    buffering: Boolean,
     iconTint: Color = DesignColors.InkStrong,
     playBackground: Color = DesignColors.InkStrong,
     playForeground: Color = DesignColors.OnInk,
@@ -998,16 +1018,12 @@ private fun TransportRow(
                 Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable { player.togglePlay() },
                 contentAlignment = Alignment.Center,
             ) {
-                if (buffering) {
-                    CircularProgressIndicator(Modifier.size(26.dp), color = playForeground, strokeWidth = 2.dp)
-                } else {
-                    Icon(
-                        if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        stringResource(Res.string.cd_play_pause),
-                        Modifier.size(26.dp),
-                        tint = playForeground,
-                    )
-                }
+                Icon(
+                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    stringResource(Res.string.cd_play_pause),
+                    Modifier.size(26.dp),
+                    tint = playForeground,
+                )
             }
             ActionIcon(
                 Icons.Default.SkipNext,
