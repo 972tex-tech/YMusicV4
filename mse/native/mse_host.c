@@ -640,7 +640,7 @@ static void maybe_notify_ended(MseHost *h)
     pthread_mutex_unlock(&h->mu);
     fn = g_js_event;
     if (fn)
-        fn("ended");
+        fn("mse_ended");
     mse_logf("mse ended notify\n");
 }
 

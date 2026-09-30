@@ -883,9 +883,9 @@ function pipelineEnded(): boolean {
   }
 }
 
-function maybeFireEnded(el: HTMLMediaElement, fromNative = false): boolean {
+function maybeFireEnded(el: HTMLMediaElement): boolean {
   if (el["paused"] || el["ended"] || el["loop"] || el["seeking"]) return false;
-  if (!fromNative && !pipelineEnded()) return false;
+  if (!pipelineEnded()) return false;
   el["ended"] = true;
   el["paused"] = true;
   stopMediaTick();
@@ -897,9 +897,9 @@ function maybeFireEnded(el: HTMLMediaElement, fromNative = false): boolean {
   return true;
 }
 
-onEvent("ended", function () {
+onEvent("mse_ended", function () {
   const el = activeMedia;
-  if (el) maybeFireEnded(el, true);
+  if (el) maybeFireEnded(el);
 });
 
 function startMediaTick(el: HTMLMediaElement): void {
@@ -909,10 +909,7 @@ function startMediaTick(el: HTMLMediaElement): void {
     if (maybeFireEnded(el)) return;
     fire(el, "timeupdate");
     syncReadyState(el);
-    const d = Number(el["duration"]);
-    const ct = Number(el["currentTime"]);
-    const near = isFinite(d) && d > 0 && isFinite(ct) && d - ct < 2;
-    mediaTick = setTimeout(pulse, near ? 50 : 250);
+    mediaTick = setTimeout(pulse, 250);
   }
   mediaTick = setTimeout(pulse, 250);
 }
