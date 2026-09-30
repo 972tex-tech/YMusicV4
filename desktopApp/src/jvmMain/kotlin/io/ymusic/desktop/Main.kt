@@ -118,6 +118,7 @@ import io.ymusic.ui.WebViewSabrSpecResolver
 import io.ymusic.ui.downloadCaptionPreference
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
+import io.ymusic.ui.importSessionCookies
 import io.ymusic.ui.mediaStoreArtFetcher
 import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ui.resources.Res
@@ -466,7 +467,7 @@ fun main() {
 private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
     // File-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
-    // Desktop has no WebView cookie store; login-by-QR/paste comes later.
+    // Desktop has no WebView cookie store: sign-in imports cookies from a phone QR or a browser paste.
     val cookies = PersistentCookieJar(File(dataDir, "api-cookies.json").absolutePath.toPath(), FileSystem.SYSTEM)
     // One client stack, one disk cache. The engine HTTP client stays jar-less — JS cooks Cookie
     // headers against [cookies] — while the API client / media proxy use the jar directly.
@@ -735,6 +736,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         // MSE blit and ffmpeg frames scale; safe to display at art-tile size.
         surfaceScalesDown = true,
         loginBrowser = null,
+        importSessionCookies = { cookies.importSessionCookies(it) },
         downloads = downloadService,
         updates = desktopUpdates,
         stats = stats,

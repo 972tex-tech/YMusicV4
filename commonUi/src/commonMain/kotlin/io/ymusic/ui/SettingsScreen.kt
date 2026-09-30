@@ -129,6 +129,9 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
+        if (graph.exportSessionCookies != null && graph.scanQrCode != null) {
+            LinkDevicesRow(graph)
+        }
         SoundRow(graph, speed = true)
         SoundRow(graph, speed = false)
         ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)

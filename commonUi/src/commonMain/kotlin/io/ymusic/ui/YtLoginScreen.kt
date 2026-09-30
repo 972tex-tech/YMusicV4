@@ -226,7 +226,8 @@ internal fun YtLoginScreen(
     switchAccount: Boolean = false,
 ) {
     var entryUrl by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(graph.loginBrowser, switchAccount) {
+        if (graph.loginBrowser == null && !switchAccount) return@LaunchedEffect
         entryUrl = runCatching {
             if (switchAccount) graph.engines.ytSwitchAccountUrl() else graph.engines.ytLoginUrl()
         }.onFailure { graph.logger?.fork("login")?.captureError(it, "login entry url failed — blank login screen") }
@@ -234,11 +235,13 @@ internal fun YtLoginScreen(
     }
 
     val browser = graph.loginBrowser
+    val cookieSignIn = !switchAccount && browser == null && graph.importSessionCookies != null
     // Poll the cookie gate while the user signs in. Cookie-only, so polling costs nothing and never
     // disturbs the half-set jar. Stops itself the instant it flips (onComplete pops this screen).
     // The account switcher doesn't poll — the jar is signed in throughout; closing IS completion.
-    LaunchedEffect(browser, switchAccount) {
-        if (browser == null || switchAccount) return@LaunchedEffect
+    // Desktop cookie sign-in polls its own webhook and calls onComplete itself.
+    LaunchedEffect(browser, switchAccount, cookieSignIn) {
+        if (browser == null || switchAccount || cookieSignIn) return@LaunchedEffect
         var done = false
         while (isActive && !done) {
             delay(LOGIN_POLL_MS)
@@ -260,6 +263,7 @@ internal fun YtLoginScreen(
         }
         val url = entryUrl
         when {
+            cookieSignIn -> DesktopCookieSignIn(graph, onComplete)
             browser == null -> CenteredBox {
                 Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
             }

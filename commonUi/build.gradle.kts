@@ -57,6 +57,13 @@ kotlin {
                 implementation(compose.components.resources)
                 implementation(Libs.Kotlinx.coroutinesCore)
                 implementation(Libs.Kotlinx.dateTime)
+                implementation(project(":kmpHttp:core"))
+            }
+        }
+
+        val jvmMain by getting {
+            dependencies {
+                implementation(Libs.Zxing.core)
             }
         }
 

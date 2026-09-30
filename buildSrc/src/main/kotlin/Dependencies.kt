@@ -136,4 +136,12 @@ object Libs {
     object Sentry {
         const val kmp = "io.sentry:sentry-kotlin-multiplatform:${Versions.sentry}"
     }
+
+    object Zxing {
+        const val core = "com.google.zxing:core:3.5.3"
+    }
+
+    object PlayServices {
+        const val codeScanner = "com.google.android.gms:play-services-code-scanner:16.1.0"
+    }
 }

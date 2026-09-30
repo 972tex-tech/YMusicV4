@@ -10,7 +10,9 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
 
 - **AppGraph** — shells construct `AppGraph` (engines + `Player` facade + optional mediaStore/scan callback + the
   platform `playerSurface(modifier)` composable, which hosts the one shared video container the shell handed the
-  engines) — nothing platform-specific in common.
+  engines) — nothing platform-specific in common. Desktop YouTube sign-in is cookie import (`importSessionCookies`:
+  a webhook.site QR scanned from the phone, or a DevTools cookie paste). Mobile exposes Settings → Link devices
+  (`exportSessionCookies` + `scanQrCode`) so the phone can encrypt the jar and POST it to that inbox.
 
 - **PlaybackCoordinator** — play-now-with-watch-next-autoplay + display metadata for queue items.
 

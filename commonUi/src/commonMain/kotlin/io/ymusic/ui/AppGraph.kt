@@ -83,11 +83,27 @@ class AppGraph(
     val surfaceScalesDown: Boolean = false,
     /**
      * The platform browser WebView for the YouTube sign-in flow, provided by the shell (like
-     * [playerSurface]) so the shared UI carries no WebView dependency. Null hosts (headless tests, a
-     * shell without a WebView stack) show a "sign-in unavailable" note. It MUST use the platform's
-     * default cookie store — the same jar the engine reads — so sign-in cookies reach the login gate.
+     * [playerSurface]) so the shared UI carries no WebView dependency. Null hosts fall through to
+     * [importSessionCookies] (desktop QR / paste) or a "sign-in unavailable" note. It MUST use the
+     * platform's default cookie store — the same jar the engine reads — so sign-in cookies reach the
+     * login gate.
      */
     val loginBrowser: LoginBrowser? = null,
+    /**
+     * Writes YouTube session cookies into the shell's jar. Desktop sign-in (QR / paste) uses this;
+     * null hides that path (mobile keeps [loginBrowser]).
+     */
+    val importSessionCookies: (suspend (List<SessionCookie>) -> Unit)? = null,
+    /**
+     * Reads the current YouTube/Google cookies from the shell's store. Null hides Settings →
+     * Link devices together with [scanQrCode].
+     */
+    val exportSessionCookies: (suspend () -> List<SessionCookie>)? = null,
+    /**
+     * Opens the camera, scans one QR, and returns its raw payload (null if the user canceled).
+     * Null hides Settings → Link devices together with [exportSessionCookies].
+     */
+    val scanQrCode: (suspend () -> String?)? = null,
     /**
      * The offline-download queue service; null on a shell that can't download (no WebView stack, or a
      * headless test graph) — the Downloads screen then shows an unavailable note. Built once per shell,
