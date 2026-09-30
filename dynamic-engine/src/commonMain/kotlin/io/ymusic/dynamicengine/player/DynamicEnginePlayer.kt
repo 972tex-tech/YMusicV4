@@ -8,6 +8,7 @@ import io.ymusic.dynamicengine.internal.PLAYER_JS
 import io.ymusic.dynamicengine.internal.installMainProxy
 import io.ymusic.dynamicengine.yt.jsonCommand
 import io.ymusic.mse.MseHostNative
+import io.ymusic.mse.MseJsEventBridge
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.mse.NativeMseFrame
 import io.ymusic.quickjs.PipeResetException
@@ -269,6 +270,7 @@ class DynamicEnginePlayer private constructor(
         MseHostNative.copyFrame(handle, afterGen)
 
     suspend fun close() {
+        MseJsEventBridge.clear()
         /* Stop JS (__mse*) before freeing the C host. */
         engine.close()
         nativeMse?.close()
@@ -298,6 +300,7 @@ class DynamicEnginePlayer private constructor(
                 }
             }
             engine.healthCheck()
+            MseJsEventBridge.setJsEventBridge { eventName -> engine.fire(eventName) }
             return DynamicEnginePlayer(engine, nativeMse)
         }
     }

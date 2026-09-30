@@ -119,6 +119,32 @@ class QuickJsRuntime private constructor(
         engine.setMseHost(mseHandle, vtable)
     }
 
+    /**
+     * Any thread. Opens `"event"` to JS with [eventName] as the UTF-8 body (EOF-delimited).
+     * JS `ymix.onEvent` runs on the engine thread. No-ops if closed or JS has no handler.
+     */
+    fun fireEvent(eventName: String) {
+        if (closed.load()) return
+        scope.launch {
+            if (closed.load()) return@launch
+            try {
+                val pipe = openPipe("event")
+                val body = Buffer().writeUtf8(eventName)
+                pipe.sink.send(body, body.size)
+                pipe.sink.close()
+                pipe.source.close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: QuickJsException) {
+                // JS has no onAccept("event") (old bundle)
+            } catch (_: PipeResetException) {
+                // JS RESET
+            } catch (_: BrokenPipeException) {
+                // JS closed early
+            }
+        }
+    }
+
     /** Handle pipes JS opens with the exact [command] name, replacing any previous handler. Any
      *  arguments are read inside [handler] from the pipe's bytes — the command is a routing name
      *  only, never carries args. Returns a registration whose [AcceptRegistration.remove]

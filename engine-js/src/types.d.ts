@@ -53,6 +53,8 @@ declare var ymix: {
   open(command: string): Pipe;
   /** Handle pipes the host opens to us; returns a removable registration. */
   onAccept(command: string, handler: (pipe: Pipe) => void | Promise<void>): { remove(): void };
+  /** Host [DynamicEngine.fire] / `"event"` pipe. Multiple listeners per name. */
+  onEvent(name: string, handler: (name: string) => void): { remove(): void };
   utf8Encode(...parts: string[]): Uint8Array;
   utf8Decode(bytes: Uint8Array, from?: number, to?: number): string;
 };
@@ -109,7 +111,11 @@ declare var TextDecoder: { new (label?: string): NativeTextDecoder };
 // ---- host-scheduled timers (transport.ts over the "setTimeout"/"setInterval" pipe commands) ----
 // The handle is a number, same as a browser. The pipe stays inside the transport.
 
-declare var setTimeout: (cb: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => number;
+declare var setTimeout: (
+  cb: (...args: unknown[]) => void,
+  ms?: number,
+  ...args: unknown[]
+) => number;
 declare var setInterval: (
   cb: (...args: unknown[]) => void,
   ms?: number,

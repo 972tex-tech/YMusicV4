@@ -8,6 +8,7 @@
 //  - ymix.open(command) -> a pipe to Kotlin (this side is the client).
 //  - ymix.onAccept(command, async (pipe) => ...) -> handle pipes Kotlin opens to us (server
 //    side); returns { remove() } to unregister.
+//  - ymix.onEvent(name, fn) -> host DynamicEngine.fire opens `"event"` (UTF-8 name, END).
 //  - a pipe is the PAIR OF ENDS this side holds, like pipe(2) fds: pipe.source (readable) and
 //    pipe.sink (writable), each closed independently — closing both releases the pipe.
 //    source: receive(buf,off,len) (-> count or -1), buffered reads (readInt/readLong, readUtf8,
@@ -558,6 +559,41 @@ export function onAccept(
   };
 }
 
+const eventListeners: Record<string, Array<(n: string) => void>> = {};
+
+export function onEvent(name: string, handler: (name: string) => void): { remove(): void } {
+  let list = eventListeners[name];
+  if (!list) {
+    list = [];
+    eventListeners[name] = list;
+  }
+  list.push(handler);
+  return {
+    remove: function () {
+      const cur = eventListeners[name];
+      if (!cur) return;
+      const i = cur.indexOf(handler);
+      if (i >= 0) cur.splice(i, 1);
+      if (cur.length === 0) delete eventListeners[name];
+    },
+  };
+}
+
+onAccept("event", function (pipe) {
+  const p = pipe.source.readUtf8();
+  const run = function (name: string) {
+    pipe.source.close();
+    const c = pipe.sink.close();
+    const list = eventListeners[name];
+    if (list) {
+      for (let i = 0; i < list.length; i++) list[i]!(name);
+    }
+    return c;
+  };
+  if (typeof p === "string") return run(p);
+  return p.then(run);
+});
+
 // Native decode (JS_NewStringLen) — astral-correct, no per-codepoint JS loop. Range args avoid
 // a subarray view: utf8Decode(bytes, from, to).
 export function utf8Decode(bytes: Uint8Array, from?: number, to?: number): string {
@@ -567,13 +603,14 @@ export function utf8Decode(bytes: Uint8Array, from?: number, to?: number): strin
 
 export { utf8Encode };
 
-// The global surface mirrors the module exports — in-bundle code imports these instead; the object
-// exists for externally-evaled JS (dev/debug), and its name mangles in the Closure pass.
-globalThis.ymix = {
-  open: open,
-  onAccept: onAccept,
-  utf8Encode: utf8Encode,
-  utf8Decode: utf8Decode,
+// The global surface mirrors the module exports — in-bundle code imports these instead. Quoted
+// keys keep the names for eval'd JS after Closure ADVANCED.
+globalThis["ymix"] = {
+  "open": open,
+  "onAccept": onAccept,
+  "onEvent": onEvent,
+  "utf8Encode": utf8Encode,
+  "utf8Decode": utf8Decode,
 };
 
 // ---- Host-scheduled timers: setTimeout/setInterval over the pipe protocol (see Timers.kt). A

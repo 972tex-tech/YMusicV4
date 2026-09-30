@@ -92,6 +92,9 @@ class DynamicEngine internal constructor(
     /** Evaluate [script] synchronously (load engine code / register `ymix.onAccept` handlers). */
     internal suspend fun load(script: String, filename: String = "<engine>"): String? = runtime.load(script, filename)
 
+    /** Any thread. Opens `"event"`; JS `ymix.onEvent` runs on the engine thread. */
+    fun fire(eventName: String) = runtime.fireEvent(eventName)
+
     /** Handle pipes the engine JS opens with the exact [command] name (wrap [handler] in
      *  [commandHandler] for the error contract). */
     internal fun onAccept(command: String, handler: suspend (Pipe) -> Unit) = runtime.onAccept(command, handler)
