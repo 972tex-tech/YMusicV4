@@ -1,5 +1,6 @@
 package io.ymusic.ios
 
+import io.ymusic.ui.SessionCookie
 import kmphttp.Cookie
 import kmphttp.CookieBuilder
 import kmphttp.CookieJar
@@ -62,6 +63,23 @@ internal class IosWebViewCookieJar(
 
     override suspend fun loadForRequest(url: HttpUrl): List<Cookie> = withContext(Dispatchers.Main) {
         allCookies().mapNotNull { it.toKmpCookie() }.filter { it.matches(url) }
+    }
+
+    suspend fun exportSessionCookies(): List<SessionCookie> = withContext(Dispatchers.Main) {
+        allCookies().mapNotNull { native ->
+            val cookie = native.toKmpCookie() ?: return@mapNotNull null
+            val domain = cookie.domain.removePrefix(".")
+            if (!domain.endsWith("youtube.com") && !domain.endsWith("google.com")) return@mapNotNull null
+            SessionCookie(
+                name = cookie.name,
+                value = cookie.value,
+                domain = domain,
+                path = cookie.path,
+                secure = cookie.secure,
+                httpOnly = cookie.httpOnly,
+                expiresAt = cookie.expiresAt.takeIf { cookie.persistent },
+            )
+        }
     }
 
     private suspend fun allCookies(): List<NSHTTPCookie> = suspendCancellableCoroutine { continuation ->

@@ -35,6 +35,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.ui.App
@@ -160,6 +163,33 @@ class MainActivity : ComponentActivity() {
         return FeedbackFile(filename, bytes, contentType = contentResolver.getType(uri))
     }
 
+    private var pendingScan: CompletableDeferred<String?>? = null
+    private val scanQr: suspend () -> String? = {
+        pendingScan?.complete(null)
+        val deferred = CompletableDeferred<String?>()
+        pendingScan = deferred
+        withContext(Dispatchers.Main) {
+            val options = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build()
+            GmsBarcodeScanning.getClient(this@MainActivity, options)
+                .startScan()
+                .addOnSuccessListener { barcode ->
+                    pendingScan?.complete(barcode.rawValue)
+                    pendingScan = null
+                }
+                .addOnCanceledListener {
+                    pendingScan?.complete(null)
+                    pendingScan = null
+                }
+                .addOnFailureListener { e ->
+                    pendingScan?.completeExceptionally(e)
+                    pendingScan = null
+                }
+        }
+        deferred.await()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         val app = application as YMusicApplication
@@ -169,6 +199,9 @@ class MainActivity : ComponentActivity() {
         if (app.feedbackFilePicker === pickFeedbackFiles) app.feedbackFilePicker = null
         pendingFilePick?.complete(emptyList())
         pendingFilePick = null
+        if (app.qrScanner === scanQr) app.qrScanner = null
+        pendingScan?.complete(null)
+        pendingScan = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -193,6 +226,7 @@ class MainActivity : ComponentActivity() {
         }
         (application as YMusicApplication).folderPicker = pickFolder
         (application as YMusicApplication).feedbackFilePicker = pickFeedbackFiles
+        (application as YMusicApplication).qrScanner = scanQr
         sectionFor(intent)?.let { pendingSection.value = it }
         setContent {
             if (BuildConfig.DEBUG) CompositionClockProbe()

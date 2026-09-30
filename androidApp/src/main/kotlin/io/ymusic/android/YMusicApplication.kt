@@ -112,7 +112,7 @@ import java.io.File
  */
 class SharedServices(
     val http: AppHttpClients,
-    val cookies: kmphttp.CookieJar,
+    val cookies: WebViewCookieJar,
     val settings: PrefsSettingsStore,
     val engines: DynamicEngineManager,
     val cacheStore: CacheStore,
@@ -145,6 +145,9 @@ class YMusicApplication : Application() {
 
     /** The current Activity's feedback-attachment file pick — same lifecycle as [folderPicker]. */
     @Volatile var feedbackFilePicker: (suspend () -> List<io.ymusic.ui.FeedbackFile>)? = null
+
+    /** The current Activity's QR scan — same lifecycle as [folderPicker]. */
+    @Volatile var qrScanner: (suspend () -> String?)? = null
 
     // For onTrimMemory, which cannot await the deferred; set once the build completes.
     @Volatile private var builtImageLoader: ImageLoader? = null
@@ -535,6 +538,8 @@ class YMusicApplication : Application() {
             loginBrowser = { url, state, onPageChanged, modifier ->
                 AndroidLoginBrowser(url, state, onPageChanged, modifier)
             },
+            exportSessionCookies = { shared.cookies.exportSessionCookies() },
+            scanQrCode = { qrScanner?.invoke() },
             downloads = downloadService,
             sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
             pickFeedbackFiles = { feedbackFilePicker?.invoke() ?: emptyList() },

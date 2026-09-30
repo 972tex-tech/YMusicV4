@@ -2,7 +2,7 @@
 
 Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) — read this before working inside the module.
 
-- **What it is** — the Android product shell: plain AGP 9 application module booting the same shared `App` over ExoPlayer + MSE YouTube. The WebView is the login browser and the cookie store (`WebViewCookieJar` wraps `CookieManager`).
+- **What it is** — the Android product shell: plain AGP 9 application module booting the same shared `App` over ExoPlayer + MSE YouTube. The WebView is the login browser and the cookie store (`WebViewCookieJar` wraps `CookieManager`). Settings → Link devices scans a desktop QR (Play services code scanner, no CAMERA permission) and POSTs the encrypted jar.
   - **`com.android.application` cannot combine with the KMP plugin since AGP 9** — plain layout `src/main/`, built-in Kotlin, `org.jetbrains.compose` plugin applied for dependency substitution.
 
 - **compileSdk** — 36 (okhttp 5.4 demands it for app modules).

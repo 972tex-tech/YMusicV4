@@ -183,6 +183,8 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         loginBrowser = { url, state, onPageChanged, modifier ->
             IosLoginBrowser(url, state, onPageChanged, modifier)
         },
+        exportSessionCookies = { cookies.exportSessionCookies() },
+        scanQrCode = { iosScanQrCode() },
     ) { modifier -> IosMseVideo(mseHole, msePlayer, modifier) }
     IosPipHost.hole = mseHole
     IosPipHost.pip = graph.pip

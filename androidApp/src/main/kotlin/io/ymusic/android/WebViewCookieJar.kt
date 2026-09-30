@@ -1,6 +1,7 @@
 package io.ymusic.android
 
 import android.webkit.CookieManager
+import io.ymusic.ui.SessionCookie
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -39,5 +40,33 @@ class WebViewCookieJar : CookieJar {
             if (name.isEmpty()) null
             else Cookie.Builder().name(name).value(value).domain(url.host).build()
         }
+    }
+
+    fun exportSessionCookies(): List<SessionCookie> {
+        val seen = LinkedHashMap<Pair<String, String>, SessionCookie>()
+        fun take(url: String, domain: String) {
+            val header = manager.getCookie(url) ?: return
+            for (pair in header.split(';')) {
+                val eq = pair.indexOf('=')
+                if (eq <= 0) continue
+                val name = pair.substring(0, eq).trim()
+                val value = pair.substring(eq + 1).trim()
+                if (name.isEmpty()) continue
+                seen[name to domain] = SessionCookie(
+                    name = name,
+                    value = value,
+                    domain = domain,
+                    secure = true,
+                    httpOnly = true,
+                )
+            }
+        }
+        take("https://www.youtube.com/", "youtube.com")
+        take("https://m.youtube.com/", "youtube.com")
+        take("https://youtube.com/", "youtube.com")
+        take("https://accounts.youtube.com/", "youtube.com")
+        take("https://www.google.com/", "google.com")
+        take("https://accounts.google.com/", "google.com")
+        return seen.values.toList()
     }
 }
