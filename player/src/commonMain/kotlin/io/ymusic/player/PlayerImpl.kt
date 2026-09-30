@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.random.Random
 
 internal class PlayerImpl(
@@ -28,6 +29,9 @@ internal class PlayerImpl(
 
     private var playWhenReadyIntent = false
     private var released = false
+    /** Seek target held across in-flight ticks whose play-head is still the pre-seek position. */
+    private var pendingSeekMs: Long? = null
+    private var pendingSeekTicks = 0
 
     /** Monotonic stamp for the `Pair<String, Long>` preference fields — freshest choice wins a restore. */
     private var configSeq = 0L
@@ -203,7 +207,13 @@ internal class PlayerImpl(
     }
 
     override fun seekTo(positionMs: Long) {
-        _currentEngine.value?.seekTo(positionMs)
+        if (released) return
+        val engine = _currentEngine.value ?: return
+        val ms = positionMs.coerceAtLeast(0L)
+        pendingSeekMs = ms
+        pendingSeekTicks = 0
+        _progress.value = _progress.value.copy(positionMs = ms)
+        engine.seekTo(ms)
     }
 
     override fun skipNext() {
@@ -426,6 +436,7 @@ internal class PlayerImpl(
 
     private fun loadCurrent(startPositionMs: Long) {
         val item = controller.state.currentItem ?: return
+        clearPendingSeek()
         loadGeneration++
         when (item) {
             is PlayableItem.LocalMedia -> {
@@ -472,7 +483,7 @@ internal class PlayerImpl(
         }
         engineJobs += scope.launch {
             engine.progress.collect {
-                _progress.value = it
+                publishProgress(it)
                 maybePreloadNext()
             }
         }
@@ -519,6 +530,7 @@ internal class PlayerImpl(
     }
 
     private fun stopActive() {
+        clearPendingSeek()
         val engine = _currentEngine.value
         if (engine != null) {
             engine.stop()
@@ -526,6 +538,26 @@ internal class PlayerImpl(
             publishStatus(PlaybackStatus())
             _progress.value = Progress()
         }
+    }
+
+    private fun clearPendingSeek() {
+        pendingSeekMs = null
+        pendingSeekTicks = 0
+    }
+
+    private fun publishProgress(snapshot: Progress) {
+        val pending = pendingSeekMs
+        if (pending != null) {
+            pendingSeekTicks++
+            val close = abs(snapshot.positionMs - pending) <= SEEK_SETTLE_MS
+            if (pendingSeekTicks == 1 || !close) {
+                _progress.value = snapshot.copy(positionMs = pending)
+                if (pendingSeekTicks >= SEEK_HOLD_TICKS) pendingSeekMs = null
+                return
+            }
+            pendingSeekMs = null
+        }
+        _progress.value = snapshot
     }
 
     private fun setPlayWhenReadyIntent(value: Boolean) {
@@ -543,5 +575,11 @@ internal class PlayerImpl(
 
         /** Cue the next item this close to the end — legacy UniPlayer. */
         const val PRELOAD_LEAD_MS = 10_000L
+
+        /** A listen tick within this of the seek target counts as landed. */
+        const val SEEK_SETTLE_MS = 500L
+
+        /** Give up the hold so a failed seek cannot pin the play-head forever. */
+        const val SEEK_HOLD_TICKS = 25
     }
 }
