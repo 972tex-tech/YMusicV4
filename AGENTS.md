@@ -88,6 +88,14 @@ When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a 
 Do **not** add tests to the project unless the user asked for them. A small throwaway test or script to verify the current job is allowed — keep it out of the tree (`/tmp`, untracked) and delete it when done. Do not land it in `src/*Test`, CI, or a commit.
 
 ### Git / commits
+Commit every change before the session ends. One logical change per commit.
+Never leave a working tree of mixed experiments uncommitted: later we cannot
+tell what used to work, what broke it, or why (engine-js vs native MSE vs player vs UI).
+
+- Message: what changed and why, not a diary of tool calls.
+- Do not mix unrelated work (engine-js vs `:mse` host vs player vs UI) in one commit.
+- Do not `git push` unless the user asks.
+- Do not commit secrets or session dumps (`log*.txt`, cookies, captured `base.js`, mitm traffic).
 - **This is a public repository — every commit is publicly visible.** Never commit personal data (recorded fixtures carrying a real account's history or identity — fixtures must hold mock data only), credentials or tokens, machine-local paths/infra notes, or private working notes. When pushing, push ONLY the current public branch — never `git push --all` / `--mirror`: other local branches may hold unpublished history.
 - **Never push. The user pushes.** Agents commit locally only — no `git push`, no force-push, ever, even when the push seems like the natural completion of a requested merge or rewrite. State the push command(s) for the user to run instead.
 - **Never make one big commit that bundles everything.** Split a batch into the smallest still-meaningful units and commit them separately, in dependency order — e.g. a toolchain/dependency bump (Kotlin/Gradle/AGP) is its own commit, separate from standalone refactors, feature work, and tests. Use path-scoped `git add <paths>` (or `git add -p` when one file's hunks belong to different units). Keep each commit building. When asked to "commit", default to this rather than a single sweep.
