@@ -2,6 +2,7 @@
 // Append/play/seek hit C trampolines (`__mse*`). Quoted names so Closure ADVANCED leaves the
 // DOM-shaped API intact for YouTube's player.
 
+import { onEvent } from "../transport";
 import { isAudioOnly } from "../logic/player/audio_only";
 import { isYmLive } from "../logic/player/live";
 import { viewportHeight, viewportWidth } from "../logic/player/viewport";
@@ -13,7 +14,9 @@ function mseLog(s: string): void {
   console.log(s);
 }
 
-function fmtRanges(b: { length: number; start(i: number): number; end(i: number): number } | null): string {
+function fmtRanges(
+  b: { length: number; start(i: number): number; end(i: number): number } | null,
+): string {
   if (!b || !b["length"]) return "-";
   const parts: string[] = [];
   for (let i = 0; i < b["length"]; i++) {
@@ -566,7 +569,11 @@ class SourceBuffer {
     const u8 = asU8(data);
     /* Chrome prepareAppend: coded-frame eviction, then QuotaExceededError while
        updating is still false so YouTube can remove() immediately. */
-    if (!isYmf(u8) && typeof __msePrepareAppend === "function" && !__msePrepareAppend(audio, u8.length)) {
+    if (
+      !isYmf(u8) &&
+      typeof __msePrepareAppend === "function" &&
+      !__msePrepareAppend(audio, u8.length)
+    ) {
       drainCalls.throw++;
       mseLog("mse quota a=" + audio + " n=" + u8.length);
       throw quotaExceeded();
@@ -867,36 +874,18 @@ function stopMediaTick(): void {
   }
 }
 
-function pipelineEnded(el: HTMLMediaElement): boolean {
-  const d = Number(el["duration"]);
-  const live = !isFinite(d) || d === Infinity || d <= 0;
-  const ms = el._ms;
-  const msEos = !!(ms && ms["readyState"] === "ended");
-  let drained = false;
-  if (typeof __mseEnded === "function") {
-    try {
-      drained = !!__mseEnded();
-    } catch (_e) {
-      drained = false;
-    }
+function pipelineEnded(): boolean {
+  if (typeof __mseEnded !== "function") return false;
+  try {
+    return !!__mseEnded();
+  } catch (_e) {
+    return false;
   }
-  const b = el["buffered"];
-  const n = b ? b["length"] : 0;
-  const bufEnd = n > 0 ? Number(b["end"](n - 1)) : NaN;
-  const ct = Number(el["currentTime"]);
-  /* DAC / last-sample slack: Chrome IsEnded is pipeline EOS, not now >= dur. */
-  const atBufEnd =
-    isFinite(bufEnd) && bufEnd > 0 && isFinite(ct) && ct >= bufEnd - 0.15;
-  const nearDur = !live && isFinite(bufEnd) && bufEnd >= d - 1.5;
-  if (msEos && (drained || atBufEnd)) return true;
-  if (!live && nearDur && (drained || atBufEnd)) return true;
-  if (!live && isFinite(ct) && ct >= d - 0.05) return true;
-  return false;
 }
 
-function maybeFireEnded(el: HTMLMediaElement): boolean {
+function maybeFireEnded(el: HTMLMediaElement, fromNative = false): boolean {
   if (el["paused"] || el["ended"] || el["loop"] || el["seeking"]) return false;
-  if (!pipelineEnded(el)) return false;
+  if (!fromNative && !pipelineEnded()) return false;
   el["ended"] = true;
   el["paused"] = true;
   stopMediaTick();
@@ -907,6 +896,11 @@ function maybeFireEnded(el: HTMLMediaElement): boolean {
   fire(el, "pause");
   return true;
 }
+
+onEvent("ended", function () {
+  const el = activeMedia;
+  if (el) maybeFireEnded(el, true);
+});
 
 function startMediaTick(el: HTMLMediaElement): void {
   stopMediaTick();

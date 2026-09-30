@@ -18,6 +18,61 @@ typedef struct {
 } JniSink;
 
 static JavaVM *g_jvm;
+static jobject g_js_bridge;
+static jmethodID g_js_fire;
+
+static void jni_js_event(const char *name)
+{
+    JNIEnv *env = NULL;
+    jstring js;
+    if (!g_jvm || !g_js_bridge || !g_js_fire || !name)
+        return;
+    if ((*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
+        if ((*g_jvm)->AttachCurrentThread(g_jvm, (void **)&env, NULL) != JNI_OK)
+            return;
+    }
+    if (!env)
+        return;
+    js = (*env)->NewStringUTF(env, name);
+    if (!js)
+        return;
+    (*env)->CallVoidMethod(env, g_js_bridge, g_js_fire, js);
+    (*env)->DeleteLocalRef(env, js);
+    if ((*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+}
+
+static void register_js_event(JNIEnv *env)
+{
+    jclass cls;
+    jfieldID inst;
+    jobject obj;
+    if (g_js_bridge)
+        return;
+    cls = (*env)->FindClass(env, "io/ymusic/mse/MseJsEventBridge");
+    if (!cls)
+        return;
+    inst = (*env)->GetStaticFieldID(env, cls, "INSTANCE", "Lio/ymusic/mse/MseJsEventBridge;");
+    if (!inst) {
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    obj = (*env)->GetStaticObjectField(env, cls, inst);
+    if (!obj) {
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    g_js_bridge = (*env)->NewGlobalRef(env, obj);
+    g_js_fire = (*env)->GetMethodID(env, cls, "fire", "(Ljava/lang/String;)V");
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, obj);
+    if (!g_js_fire) {
+        (*env)->DeleteGlobalRef(env, g_js_bridge);
+        g_js_bridge = NULL;
+        return;
+    }
+    mse_host_set_js_event(jni_js_event);
+}
 
 static JNIEnv *sink_env(JniSink *s)
 {
@@ -120,6 +175,7 @@ Java_io_ymusic_mse_MseHostNative_create(JNIEnv *env, jclass cls)
 {
     (void)cls;
     (*env)->GetJavaVM(env, &g_jvm);
+    register_js_event(env);
     return (jlong)(intptr_t)mse_host_create();
 }
 

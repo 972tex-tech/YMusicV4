@@ -29,6 +29,13 @@ static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 #define MSE_DAC 1
 #endif
 
+static void (*g_js_event)(const char *name);
+
+void mse_host_set_js_event(void (*fn)(const char *name))
+{
+    g_js_event = fn;
+}
+
 struct MseHost {
     pthread_mutex_t mu;
     pthread_mutex_t frame_mu;
@@ -42,6 +49,7 @@ struct MseHost {
     int vbusy;
     int gate;
     int eos;
+    int ended_sent;
     double hold;
     double origin_ns;
     double seek_base;
@@ -610,6 +618,32 @@ static void keep_bgra(MseHost *h, int w, int ht, uint8_t *bgra)
     pthread_mutex_unlock(&h->frame_mu);
 }
 
+static void maybe_notify_ended(MseHost *h)
+{
+    int playing;
+    void (*fn)(const char *name);
+    if (!h)
+        return;
+    pthread_mutex_lock(&h->mu);
+    playing = h->playing && !h->ended_sent;
+    pthread_mutex_unlock(&h->mu);
+    if (!playing)
+        return;
+    if (!mse_host_ended(h))
+        return;
+    pthread_mutex_lock(&h->mu);
+    if (h->ended_sent || !h->playing) {
+        pthread_mutex_unlock(&h->mu);
+        return;
+    }
+    h->ended_sent = 1;
+    pthread_mutex_unlock(&h->mu);
+    fn = g_js_event;
+    if (fn)
+        fn("ended");
+    mse_logf("mse ended notify\n");
+}
+
 static void *vid_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
@@ -689,6 +723,7 @@ static void *vid_loop(void *arg)
             h->on_frame(h->user, show_w, show_ht, show);
         if (h->on_prog)
             h->on_prog(h->user, clock, dur, w, ht);
+        maybe_notify_ended(h);
         {
             struct timespec sl;
             sl.tv_sec = 0;
@@ -854,6 +889,7 @@ static void *dec_loop(void *arg)
         }
 #endif
 
+        maybe_notify_ended(h);
         {
             struct timespec sl;
             /* Never 0: pull_audio returning 0 with packets still pending
@@ -1151,6 +1187,7 @@ void mse_host_play(MseHost *h)
         h->hold = 0;
         h->seek_base = 0;
         h->eos = 0;
+        h->ended_sent = 0;
 #ifdef MSE_DAC
         h->samples_played = 0;
         h->aq_started = 0;
@@ -1258,6 +1295,7 @@ static void seek_common(MseHost *h, double seconds)
     h->seek_base = seconds;
     h->origin_ns = now_ns();
     h->eos = 0;
+    h->ended_sent = 0;
 #ifdef MSE_DAC
     h->samples_played = 0;
     h->aq_started = 0;
@@ -1305,6 +1343,7 @@ void mse_host_reset(MseHost *h)
     h->yt_dur = 0;
     h->origin_ns = 0;
     h->eos = 0;
+    h->ended_sent = 0;
     h->vw = 0;
     h->vh = 0;
 #ifdef MSE_DAC
@@ -1398,24 +1437,20 @@ void mse_host_set_duration(MseHost *h, double seconds)
 
 int mse_host_ended(MseHost *h)
 {
-    double first = 0, last = 0, yt;
-    int have, eos;
+    int eos, ring_empty;
     if (!h)
         return 0;
-    if (!mse_av_drained(h->av))
+    if (mse_av_audio_pending(h->av))
         return 0;
-    have = mse_av_span(h->av, &first, &last);
     pthread_mutex_lock(&h->mu);
-    yt = h->yt_dur;
     eos = h->eos;
+#ifdef MSE_DAC
+    ring_empty = !h->ring || h->ring_n <= 0;
+#else
+    ring_empty = 1;
+#endif
     pthread_mutex_unlock(&h->mu);
-    if (eos)
-        return 1;
-    /* YouTube lengthSeconds is often 0.1–0.4s past the last sample. Mid-play
-       SABR starve (last ≪ duration) is waiting, not ended. */
-    if (yt > 0 && have && last + 1.5 >= yt && last <= yt + 0.75)
-        return 1;
-    return 0;
+    return eos && ring_empty;
 }
 
 void mse_host_end_of_stream(MseHost *h)
@@ -1425,6 +1460,7 @@ void mse_host_end_of_stream(MseHost *h)
     pthread_mutex_lock(&h->mu);
     h->eos = 1;
     pthread_mutex_unlock(&h->mu);
+    maybe_notify_ended(h);
 }
 
 int mse_host_video_size(MseHost *h, int *w, int *ht)

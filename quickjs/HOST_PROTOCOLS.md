@@ -3,7 +3,7 @@
 Application-layer protocols the app implements **on top of** `:quickjs` pipes (see
 [`PIPE_STREAMING.md`](PIPE_STREAMING.md)). Not part of the module — the module deliberately ships
 only the pipe transport + native JSON. This doc pins down the byte protocol so the Kotlin server
-side and the JS client side agree. The error contract (§0), HTTP (§1), Cookies (§2), and Cache (§3) are
+side and the JS client side agree. The error contract (§0), HTTP (§1), Cookies (§2), Cache (§3), and host→JS `"event"` (§3.7) are
 implemented in `:dynamic-engine`; the rest is design-only until built (each section marks its status).
 
 Direction throughout: the QuickJS **engine (JS) is the client** — it wants a capability. **Kotlin is
@@ -363,9 +363,9 @@ App control (`player/load|play|pause|seek|stop|setQuality|setSpeed|setSpeedPitch
 talks to the stub media element. Speed/pitch: `player/setSpeedPitch` → YouTube
 `setPlaybackRate` and `video.pitch` → `__mseSetSpeed` / `__mseSetPitch`. Volume and EQ stay
 on `MseVideoSurface.setVolume` / `setAudioEffect`. Kotlin must not call `MseHostNative.setSpeed`.
-`HTMLMediaElement.ended` follows Chrome `WebMediaPlayer::IsEnded`: leftover drained and
-(`MediaSource.endOfStream` / `__mseEndOfStream`, or last sample within 1.5s of
-`MediaSource.duration`). `currentTime` then clamps to `duration`. `__mseEnded()` is the native query.
+`HTMLMediaElement.ended` is a native push: C `mse_host_ended` (endOfStream and the
+audio leftover + DAC ring are empty; video leftover is ignored) → `MseJsEventBridge.fire("ended")`
+→ `"event"` pipe → `ymix.onEvent("ended")`. `__mseEnded()` is the same predicate for the JS poll backup.
 Display viewport defaults to 640×360; the host
 sends `player/setViewport` `{width,height}` (also accepted on `player/init` / `player/load`) so SABR
 ABR matches the real hole. `player/load` defaults quality `"zero"`: base.js
@@ -373,6 +373,14 @@ still builds a normal video SourceBuffer; MSE does not append video to C; dummy 
 the playhead so the player is not waiting on video bytes the server will not send (`ClientAbrState`
 field 40 = 1). Field 17 stays. `player/setQuality("zero")` drops decoded video and does not call
 YouTube's quality API (that would no-op after 144p).
+
+## 3.7 Host → JS events (`command = "event"`) — *implemented*
+
+Opposite of the usual JS-opens direction (same as `listen/player/status`). C or Kotlin calls
+`MseJsEventBridge.fire(name)` / `DynamicEngine.fire(name)` (any thread). The runtime hops onto the
+engine dispatcher, opens `"event"`, writes the UTF-8 name, END. JS `ymix.onAccept("event")` reads
+to EOF and dispatches `ymix.onEvent(name)`. Player create wires
+`MseJsEventBridge.setJsEventBridge { engine.fire(it) }`. Native MSE uses the name `"ended"`.
 
 ---
 

@@ -48,6 +48,11 @@ void mse_host_set_video_surface(void *h, void *window)
     (void)window;
 }
 
+void mse_host_set_js_event(void (*fn)(const char *name))
+{
+    (void)fn;
+}
+
 void mse_ios_log(const char *msg)
 {
     (void)msg;

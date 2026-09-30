@@ -4,6 +4,9 @@
 -keep class io.ymusic.quickjs.QuickJsNative { *; }
 -keep class io.ymusic.quickjs.QuickJsException { <init>(java.lang.String); }
 
+# mse_host_jni.c FindClass / INSTANCE / fire — C OnEnded hops here.
+-keep class io.ymusic.mse.MseJsEventBridge { *; }
+
 # WebView page JS calls bridge methods through addJavascriptInterface.
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;

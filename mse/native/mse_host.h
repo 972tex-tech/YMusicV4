@@ -19,6 +19,8 @@ void mse_host_destroy(MseHost *h);
 /* Function table for QuickJS `__mse*` trampolines. */
 const void *mse_host_vtable(void);
 void mse_host_set_sinks(MseHost *h, MseFrameFn on_frame, MsePcmFn on_pcm, MseProgressFn on_prog, void *user);
+/* Host→JS `"event"` pipe. JNI/Apple set this to MseJsEventBridge.fire. */
+void mse_host_set_js_event(void (*fn)(const char *name));
 /* JNI/app: the only host call. JS drives play/pause/currentTime via C trampolines. */
 void mse_host_set_video_surface(MseHost *h, void *window);
 /* JVM desktop: convert/scale dest. 0×0 = decode size. See mse_av_set_blit_size. */
@@ -34,7 +36,7 @@ double mse_host_current_time(MseHost *h);
 void mse_host_set_current_time(MseHost *h, double seconds);
 double mse_host_duration(MseHost *h);
 void mse_host_set_duration(MseHost *h, double seconds);
-/* Chrome WebMediaPlayer::IsEnded: leftover drained and (endOfStream or last ≈ duration). */
+/* endOfStream and the audio clock has finished (leftover + DAC ring). Video leftover is ignored. */
 int mse_host_ended(MseHost *h);
 void mse_host_end_of_stream(MseHost *h);
 int mse_host_video_size(MseHost *h, int *w, int *ht);

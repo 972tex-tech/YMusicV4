@@ -8,6 +8,7 @@ import io.ymusic.mse.cinterop.mse_host_pcm_levels
 import io.ymusic.mse.cinterop.mse_host_samples_played
 import io.ymusic.mse.cinterop.mse_host_set_bass
 import io.ymusic.mse.cinterop.mse_host_set_eq
+import io.ymusic.mse.cinterop.mse_host_set_js_event
 import io.ymusic.mse.cinterop.mse_host_set_pitch
 import io.ymusic.mse.cinterop.mse_host_set_speed
 import io.ymusic.mse.cinterop.mse_host_set_video_surface
@@ -26,13 +27,23 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toCPointer
+import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 
 @OptIn(ExperimentalForeignApi::class)
 actual object MseHostNative {
     private var frameScratch = ByteArray(0)
+
+    init {
+        mse_host_set_js_event(
+            staticCFunction { name ->
+                if (name != null) MseJsEventBridge.fire(name.toKString())
+            },
+        )
+    }
 
     fun log(msg: String) {
         mse_ios_log(msg)
