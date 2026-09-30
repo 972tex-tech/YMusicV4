@@ -664,6 +664,8 @@ private fun BoxScope.VideoOverlayControls(
         )
     }
 
+    var scrubMs by remember { mutableStateOf<Long?>(null) }
+    val labelProgress = scrubMs?.let { progress.copy(positionMs = it) } ?: progress
     Column(
         Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 11.dp, end = 11.dp, bottom = 8.dp),
     ) {
@@ -673,7 +675,7 @@ private fun BoxScope.VideoOverlayControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val overlayStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE))
-            progress.progressLabel?.let {
+            labelProgress.progressLabel?.let {
                 Text(it, style = overlayStyle)
                 Text(" / ", style = overlayStyle)
             }
@@ -695,7 +697,13 @@ private fun BoxScope.VideoOverlayControls(
                 onClick = onToggleFullscreen,
             )
         }
-        SeekSlider(player, progress, trackColor = Color.White.copy(alpha = 0.32f))
+        SeekSlider(
+            player,
+            progress,
+            trackColor = Color.White.copy(alpha = 0.32f),
+            bufferedColor = Color.White.copy(alpha = 0.55f),
+            onScrubMs = { scrubMs = it },
+        )
     }
 }
 
@@ -921,11 +929,13 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
 /** 3dp track, orange fill, 13dp orange thumb; the m:ss / h:mm:ss labels underneath. */
 @Composable
 private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
+    var scrubMs by remember { mutableStateOf<Long?>(null) }
+    val labelProgress = scrubMs?.let { progress.copy(positionMs = it) } ?: progress
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
-        SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft)
+        SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft, onScrubMs = { scrubMs = it })
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
-            Text(progress.progressLabel.orEmpty(), style = timeStyle)
+            Text(labelProgress.progressLabel.orEmpty(), style = timeStyle)
             Spacer(Modifier.weight(1f))
             DurationLabel(player, progress, timeStyle)
         }
@@ -961,12 +971,17 @@ private fun SeekSlider(
     player: io.ymusic.player.Player,
     progress: Progress,
     trackColor: Color,
+    bufferedColor: Color = DesignColors.Accent.copy(alpha = 0.35f),
+    onScrubMs: ((Long?) -> Unit)? = null,
 ) {
     val durationMs = progress.durationMs
     SlimSeekBar(
         fraction = if (durationMs > 0) progress.positionMs.toFloat() / durationMs else 0f,
+        bufferedFraction = if (durationMs > 0) progress.bufferedPositionMs.toFloat() / durationMs else 0f,
+        bufferedColor = bufferedColor,
         enabled = progress.seekable && durationMs > 0,
         onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
+        onScrub = { f -> onScrubMs?.invoke(if (f == null || durationMs <= 0) null else (f * durationMs).toLong()) },
         trackColor = trackColor,
         modifier = Modifier.fillMaxWidth(),
     )

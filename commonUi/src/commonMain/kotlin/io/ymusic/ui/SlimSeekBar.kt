@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,48 +47,55 @@ fun SlimSeekBar(
     trackColor: Color,
     modifier: Modifier = Modifier,
     fillColor: Color = DesignColors.Accent,
+    bufferedFraction: Float = 0f,
+    bufferedColor: Color = fillColor.copy(alpha = 0.35f),
     thumbColor: Color = DesignColors.Accent,
     thumbSize: Dp = 13.dp,
     trackHeight: Dp = 3.dp,
     barHeight: Dp = 20.dp,
     thumbShadow: Dp = 1.dp,
-    /** Live value while dragging. Seek overlay is skipped when this is set. */
-    onScrub: ((Float) -> Unit)? = null,
+    /** Live fraction while dragging. Null on release or cancel. */
+    onScrub: ((Float?) -> Unit)? = null,
 ) {
     var widthPx by remember { mutableStateOf(0) }
     var dragging by remember { mutableStateOf<Float?>(null) }
     val shown = (dragging ?: fraction).coerceIn(0f, 1f)
+    val buffered = bufferedFraction.coerceIn(0f, 1f)
+    val seek = rememberUpdatedState(onSeek)
+    val scrub = rememberUpdatedState(onScrub)
     Box(
         modifier
             .height(barHeight)
             .onSizeChanged { widthPx = it.width }
-            .pointerInput(enabled, onScrub) {
+            .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> onSeek((offset.x / size.width).coerceIn(0f, 1f)) }
+                detectTapGestures { offset -> seek.value((offset.x / size.width).coerceIn(0f, 1f)) }
             }
-            .pointerInput(enabled, onScrub) {
+            .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
-                        dragging = (offset.x / size.width).coerceIn(0f, 1f)
-                        if (onScrub == null) {
-                            VideoOverlayNative.scrubbing = true
-                            VideoOverlayNative.show()
-                        }
+                        val f = (offset.x / size.width).coerceIn(0f, 1f)
+                        dragging = f
+                        scrub.value?.invoke(f)
+                        VideoOverlayNative.scrubbing = true
+                        VideoOverlayNative.show()
                     },
                     onHorizontalDrag = { change, _ ->
                         val f = (change.position.x / size.width).coerceIn(0f, 1f)
                         dragging = f
-                        onScrub?.invoke(f)
+                        scrub.value?.invoke(f)
                     },
                     onDragEnd = {
-                        dragging?.let(onSeek)
+                        dragging?.let { seek.value(it) }
                         dragging = null
-                        if (onScrub == null) VideoOverlayNative.scrubbing = false
+                        scrub.value?.invoke(null)
+                        VideoOverlayNative.scrubbing = false
                     },
                     onDragCancel = {
                         dragging = null
-                        if (onScrub == null) VideoOverlayNative.scrubbing = false
+                        scrub.value?.invoke(null)
+                        VideoOverlayNative.scrubbing = false
                     },
                 )
             },
@@ -100,6 +108,9 @@ fun SlimSeekBar(
                 .clip(RoundedCornerShape(trackHeight / 2))
                 .background(trackColor),
         ) {
+            if (buffered > 0f) {
+                Box(Modifier.fillMaxWidth(buffered).fillMaxHeight().background(bufferedColor))
+            }
             Box(Modifier.fillMaxWidth(shown).fillMaxHeight().background(fillColor))
         }
         Box(

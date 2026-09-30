@@ -255,7 +255,7 @@ private fun FxBar(fraction: Float, onChange: (Float) -> Unit, modifier: Modifier
         fraction = fraction.coerceIn(0f, 1f),
         enabled = true,
         onSeek = onChange,
-        onScrub = onChange,
+        onScrub = { f -> if (f != null) onChange(f) },
         trackColor = DesignColors.OutlineSoft,
         modifier = modifier,
     )
