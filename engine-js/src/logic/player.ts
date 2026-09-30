@@ -2,7 +2,7 @@
 // calls loadVideoById (returns immediately). Host observes:
 //   listen/player/status  — event groups: progress | state | picture (webview-js split)
 //   listen/player/catalog — qualities
-// play/pause/seek/stop are playVideo/pauseVideo/seekTo.
+// play/pause/seek/stop are playVideo/pauseVideo/seekTo/stopVideo.
 
 import { onAccept } from "../transport";
 import { commandHandler, JsEngineErrorImpl } from "../protocol/command";

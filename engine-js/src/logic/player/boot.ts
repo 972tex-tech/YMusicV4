@@ -80,6 +80,7 @@ type MoviePlayer = {
   ): unknown;
   "playVideo"(): void;
   "pauseVideo"(): void;
+  "stopVideo"(): void;
   "seekTo"(t: number, allowSeekAhead?: boolean): void;
   "setLoopVideo"(enable: boolean): void;
   "setPlayerSpeed"?(speed: number): void;
@@ -1002,8 +1003,9 @@ class Player {
   }
 
   stop(): void {
-    this.pause();
-    this.seek(0);
+    const player = moviePlayer();
+    if (!player) throw new JsEngineErrorImpl("player not created", "E20084");
+    player["stopVideo"]();
   }
 
   /** Clock group: position, buffer, duration, seek window. Same payload as webview `_progress`. */
