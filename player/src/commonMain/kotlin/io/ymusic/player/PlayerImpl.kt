@@ -91,7 +91,7 @@ internal class PlayerImpl(
     override fun setQueue(items: List<PlayableItem>, playIndex: Int, startPositionMs: Long, playWhenReady: Boolean) {
         if (released) return
         controller.setQueue(items, playIndex)
-        playWhenReadyIntent = playWhenReady
+        setPlayWhenReadyIntent(playWhenReady)
         if (items.isEmpty()) {
             publishQueue()
             stopActive()
@@ -164,14 +164,14 @@ internal class PlayerImpl(
         if (released) return
         if (controller.moveTo(index)) {
             publishQueue(refreshNext = false)
-            playWhenReadyIntent = true
+            setPlayWhenReadyIntent(true)
             loadCurrent(0L)
         }
     }
 
     override fun play() {
         if (released) return
-        playWhenReadyIntent = true
+        setPlayWhenReadyIntent(true)
         // Legacy UniPlayer.play(): Prepared resumes in-place; every other state goes through the
         // load path, which initializes/resets the selected engine when required.
         val s = _status.value
@@ -188,7 +188,7 @@ internal class PlayerImpl(
 
     override fun pause() {
         if (released) return
-        playWhenReadyIntent = false
+        setPlayWhenReadyIntent(false)
         _currentEngine.value?.pause()
     }
 
@@ -198,7 +198,7 @@ internal class PlayerImpl(
 
     override fun stop() {
         if (released) return
-        playWhenReadyIntent = false
+        setPlayWhenReadyIntent(false)
         stopActive()
     }
 
@@ -437,11 +437,13 @@ internal class PlayerImpl(
                 val factory = engines.webView
                 if (factory == null) {
                     bind(null)
-                    _status.value = PlaybackStatus(
-                        state = PlaybackState.Error(PlayerError(
-                            "E60050", "queue item needs the WebView engine but none is configured",
-                            canRetry = false,
-                        )),
+                    publishStatus(
+                        PlaybackStatus(
+                            state = PlaybackState.Error(PlayerError(
+                                "E60050", "queue item needs the WebView engine but none is configured",
+                                canRetry = false,
+                            )),
+                        ),
                     )
                     return
                 }
@@ -464,7 +466,7 @@ internal class PlayerImpl(
         if (engine == null) return
         engineJobs += scope.launch {
             engine.status.collect { snapshot ->
-                _status.value = snapshot
+                publishStatus(snapshot)
                 if (snapshot.state.isEnded()) onTrackEnded() else maybePreloadNext()
             }
         }
@@ -521,9 +523,18 @@ internal class PlayerImpl(
         if (engine != null) {
             engine.stop()
         } else {
-            _status.value = PlaybackStatus()
+            publishStatus(PlaybackStatus())
             _progress.value = Progress()
         }
+    }
+
+    private fun setPlayWhenReadyIntent(value: Boolean) {
+        playWhenReadyIntent = value
+        _status.value = _status.value.copy(playWhenReady = value)
+    }
+
+    private fun publishStatus(fromEngine: PlaybackStatus) {
+        _status.value = fromEngine.copy(playWhenReady = playWhenReadyIntent)
     }
 
     private companion object {

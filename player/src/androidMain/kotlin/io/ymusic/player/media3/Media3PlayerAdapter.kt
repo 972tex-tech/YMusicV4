@@ -114,7 +114,8 @@ class Media3PlayerAdapter(
         val initializing = (status.state as? PlaybackState.Uninitialized)?.isInitializing == true
         val playbackState = when {
             items.isEmpty() || error != null -> Media3Player.STATE_IDLE
-            prepared == null -> if (initializing) Media3Player.STATE_BUFFERING else Media3Player.STATE_IDLE
+            prepared == null ->
+                if (initializing || status.playWhenReady) Media3Player.STATE_BUFFERING else Media3Player.STATE_IDLE
             prepared.ended -> Media3Player.STATE_ENDED
             prepared.buffering -> Media3Player.STATE_BUFFERING
             else -> Media3Player.STATE_READY
@@ -123,7 +124,7 @@ class Media3PlayerAdapter(
         val builder = State.Builder()
             .setAvailableCommands(COMMANDS)
             .setPlaybackState(playbackState)
-            .setPlayWhenReady(prepared?.playWhenReady == true, Media3Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            .setPlayWhenReady(status.playWhenReady, Media3Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setIsLoading(playbackState == Media3Player.STATE_BUFFERING)
             .setRepeatMode(
                 when (queue.loopMode) {

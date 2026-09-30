@@ -30,6 +30,10 @@ fun PlaybackState.isPlaying(): Boolean = (this as? PlaybackState.Prepared)?.play
 
 fun PlaybackState.isEnded(): Boolean = (this as? PlaybackState.Prepared)?.ended == true
 
+/** A current queue item and the user's play intent — true across Idle/Uninitialized load gaps. */
+fun isPlaying(status: PlaybackStatus, queue: QueueState): Boolean =
+    queue.currentItem != null && status.playWhenReady
+
 /** How the video fills its surface. Mirrors the legacy player's scale modes. */
 enum class ScaleMode { COVER, FILL, CONTAIN }
 
@@ -211,7 +215,8 @@ data class PlaybackStatus(
     val videoSize: VideoSize? = null,
     /** Unbounded stream (HTML duration Infinity). DVR vs head-only is [Progress.seekable]. */
     val live: Boolean = false,
+    /** User play intent. Independent of [state] so a load gap still counts as playing. */
+    val playWhenReady: Boolean = (state as? PlaybackState.Prepared)?.playWhenReady == true,
 ) {
-    val playWhenReady: Boolean get() = state.isPlaying()
     val error: PlayerError? get() = (state as? PlaybackState.Error)?.error
 }

@@ -91,10 +91,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.last
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -349,16 +349,19 @@ class YMusicApplication : Application() {
         // the FGS-start restriction doesn't bite; if it ever does, media3 notification actions and
         // media buttons can still revive the service.
         appScope.launch {
-            graph.player.status.map { it.state.isPlaying() }.distinctUntilChanged().filter { it }.collect {
-                try {
-                    ContextCompat.startForegroundService(
-                        this@YMusicApplication,
-                        Intent(this@YMusicApplication, PlaybackService::class.java),
-                    )
-                } catch (e: IllegalStateException) {
-                    rootLogger.fork("playback-service").log(Logger.Level.WARN, "foreground start rejected", e)
+            combine(graph.player.status, graph.player.queue) { status, queue -> isPlaying(status, queue) }
+                .distinctUntilChanged()
+                .filter { it }
+                .collect {
+                    try {
+                        ContextCompat.startForegroundService(
+                            this@YMusicApplication,
+                            Intent(this@YMusicApplication, PlaybackService::class.java),
+                        )
+                    } catch (e: IllegalStateException) {
+                        rootLogger.fork("playback-service").log(Logger.Level.WARN, "foreground start rejected", e)
+                    }
                 }
-            }
         }
         AudioFocusCoordinator(this, graph.player, appScope).start()
         // Same pattern for downloads: any change that (re)starts work also (re)starts the

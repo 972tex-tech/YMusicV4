@@ -49,10 +49,10 @@ class AudioFocusCoordinator(
                 hasFocus = false
                 resumeOnGain = false
                 restoreDuck()
-                if (player.status.value.state.isPlaying()) player.pause()
+                if (isPlaying(player.status.value, player.queue.value)) player.pause()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                if (player.status.value.state.isPlaying()) {
+                if (isPlaying(player.status.value, player.queue.value)) {
                     resumeOnGain = true
                     player.pause()
                 }
@@ -71,7 +71,7 @@ class AudioFocusCoordinator(
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY &&
-                player.status.value.state.isPlaying()
+                isPlaying(player.status.value, player.queue.value)
             ) {
                 player.pause()
             }
@@ -81,7 +81,7 @@ class AudioFocusCoordinator(
     fun start() {
         scope.launch {
             combine(player.status, player.queue) { status, queue ->
-                status.state.isPlaying() && queue.currentItem is PlayableItem.LocalMedia
+                isPlaying(status, queue) && queue.currentItem is PlayableItem.LocalMedia
             }.distinctUntilChanged().collect { playingLocal ->
                 if (playingLocal) {
                     requestFocus()

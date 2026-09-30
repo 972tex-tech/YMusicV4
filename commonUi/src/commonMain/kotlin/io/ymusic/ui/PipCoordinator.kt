@@ -31,7 +31,7 @@ class PipCoordinator(
         val q = player.videoQuality.value
         if (q.preferredQuality == VideoQualityState.AUDIO_ONLY) return false
         if (q.actualQuality == VideoQualityState.AUDIO_ONLY) return false
-        return player.status.value.state.isPlaying() || player.status.value.playWhenReady
+        return isPlaying(player.status.value, player.queue.value)
     }
 
     /** Now Playing or fullscreen, video (not AudioOnly), PiP setting on, currently playing. */

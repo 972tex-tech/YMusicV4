@@ -46,7 +46,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import androidx.media3.session.R as Media3R
 
@@ -127,7 +126,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
         serviceScope.launch {
             combine(player.status, player.queue) { status, queue ->
-                status.state.isPlaying() to queue.currentItem
+                isPlaying(status, queue) to queue.currentItem
             }.distinctUntilChanged().collect { updateNotification() }
         }
         holdLocksWhilePlaying(player)
@@ -317,7 +316,7 @@ class PlaybackService : MediaLibraryService() {
                 startForeground(NOTIFICATION_ID, buildNotification())
                 foreground = true
             }
-        } else if (foreground && player?.status?.value?.state?.isPlaying() != true) {
+        } else if (foreground && player?.let { isPlaying(it.status.value, it.queue.value) } != true) {
             // The contract-promotion that never became playback (media-button start on a dead
             // process, nothing restored): no (playing × item) transition will ever fire the
             // collector, so demote through the one owner when media3 releases the contract.
@@ -369,7 +368,7 @@ class PlaybackService : MediaLibraryService() {
             foreground = false
             return
         }
-        val playing = player.status.value.state.isPlaying()
+        val playing = isPlaying(player.status.value, player.queue.value)
         val notification = buildNotification()
         if (playing) {
             // Repeat startForeground while already foreground is the content refresh, not a
@@ -385,7 +384,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun buildNotification(): android.app.Notification {
         val item = player?.queue?.value?.currentItem
-        val playing = player?.status?.value?.state?.isPlaying() == true
+        val playing = player?.let { isPlaying(it.status.value, it.queue.value) } == true
         // Legacy three-line shape: title / artist / album as subText — v4's joined "artist · album"
         // subtitle would print the album twice, so a local item splits it here.
         val contentText: String?
@@ -520,12 +519,11 @@ class PlaybackService : MediaLibraryService() {
             .apply { setReferenceCounted(false) }
             .also { wifiLock = it }
         serviceScope.launch {
-            combine(
-                player.status.map { it.state.isPlaying() }.distinctUntilChanged(),
+            combine(player.status, player.queue) { status, queue ->
                 // The wifi lock is only worth its battery cost when something in the queue streams;
                 // pure-local playback keeps just the partial wake lock (legacy useWifi gating).
-                player.queue.map { q -> q.items.any { it is PlayableItem.YtMedia } }.distinctUntilChanged(),
-            ) { playing, online -> playing to online }.distinctUntilChanged().collectLatest { (playing, online) ->
+                isPlaying(status, queue) to queue.items.any { it is PlayableItem.YtMedia }
+            }.distinctUntilChanged().collectLatest { (playing, online) ->
                 if (playing) {
                     @Suppress("WakelockTimeout")
                     wake.acquire()
