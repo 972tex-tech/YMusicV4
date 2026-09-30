@@ -84,6 +84,9 @@ When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a 
 - **Survivors are short** — one line stating the constraint, not a paragraph.
 - **A refactor deletes narration, it doesn't carry it** — re-apply this rule to every line you move or touch; never preserve an old verbose style just because it was already there.
 
+### Tests
+Do **not** add tests to the project unless the user asked for them. A small throwaway test or script to verify the current job is allowed — keep it out of the tree (`/tmp`, untracked) and delete it when done. Do not land it in `src/*Test`, CI, or a commit.
+
 ### Git / commits
 - **This is a public repository — every commit is publicly visible.** Never commit personal data (recorded fixtures carrying a real account's history or identity — fixtures must hold mock data only), credentials or tokens, machine-local paths/infra notes, or private working notes. When pushing, push ONLY the current public branch — never `git push --all` / `--mirror`: other local branches may hold unpublished history.
 - **Never push. The user pushes.** Agents commit locally only — no `git push`, no force-push, ever, even when the push seems like the natural completion of a requested merge or rewrite. State the push command(s) for the user to run instead.
