@@ -1437,20 +1437,29 @@ void mse_host_set_duration(MseHost *h, double seconds)
 
 int mse_host_ended(MseHost *h)
 {
-    int eos, ring_empty;
+    int eos, ring_empty, near_dur;
+    double last, yt_dur;
     if (!h)
         return 0;
     if (mse_av_audio_pending(h->av))
         return 0;
+    last = mse_av_duration(h->av);
     pthread_mutex_lock(&h->mu);
     eos = h->eos;
+    yt_dur = h->yt_dur;
 #ifdef MSE_DAC
     ring_empty = !h->ring || h->ring_n <= 0;
 #else
     ring_empty = 1;
 #endif
     pthread_mutex_unlock(&h->mu);
-    return eos && ring_empty;
+    if (!ring_empty)
+        return 0;
+    /* Same window as clock_with_span near_eos. Miller skips endOfStream on
+       VOD audio-only (40=1 + fake 144p); last ≈ duration is Chrome's other
+       IsEnded path. SABR starve (last ≪ yt_dur) stays waiting. */
+    near_dur = yt_dur > 0 && last + 1.5 >= yt_dur && last <= yt_dur + 0.75;
+    return eos || near_dur;
 }
 
 void mse_host_end_of_stream(MseHost *h)
