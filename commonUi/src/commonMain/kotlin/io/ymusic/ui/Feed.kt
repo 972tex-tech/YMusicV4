@@ -446,8 +446,10 @@ private fun FeedSections(
         TrackScroll { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (topContent != null) item { topContent() }
-            item { FeedChips(state, pager) }
-            if (topContent == null && state.chips.isEmpty() && state.sort.isEmpty()) {
+            // A 0-height chip slot at index 0 makes firstVisibleItemIndex > 0 while still at the top.
+            val hasChips = state.chips.isNotEmpty() || state.sort.isNotEmpty()
+            if (hasChips) item { FeedChips(state, pager) }
+            if (topContent == null && !hasChips) {
                 // Nothing above the first item (search results, channel content tabs) — the
                 // mockups give the feed a small inset under the app bar (search.html .grid).
                 item { Spacer(Modifier.height(6.dp)) }
