@@ -2,10 +2,10 @@
 //   2  selected_format_ids       — initialized (already have init)
 //   16 selected_audio_format_ids — playable audio ladder (client-filtered)
 //   17 selected_video_format_ids — playable video ladder (client-filtered)
-// Audio-only: CAS 40=1; drop 144p from initialized (2) and playable video (17)
-// and those buffered_ranges (3). VOD: a 144p range in (3) means cover is done
-// — skip fake UMP. Live: startMs = max(playerTimeMs, 144p range end). If CAS 38
-// mediaCapabilities is present, add 144p to itagDenylist.
+// Audio-only VOD: CAS 40=1; drop 144p from initialized (2) and playable video
+// (17) and those buffered_ranges (3). A 144p range in (3) means cover is done
+// — skip fake UMP. Live AO: no 40=1, no fake UMP, keep 144p on the ladder so
+// auto-tiny loads real tiny and rest-video parks the decoder.
 // !audioOnly still drops 144p if wasFaked[itag_lmt] (set true when we inject
 // fake UMP, false on a real response). No fake/real mix.
 
@@ -17,7 +17,7 @@ const PLAYABLE_VIDEO_FORMAT_IDS = 17;
 import { isAudioOnly } from "../player/audio_only";
 import { ITAG_144P, is144pItag, isVideoItag, pickFake144 } from "../player/itag_144";
 import type { Fake144Row } from "../player/itag_144";
-import { playingVideoId } from "../player/live";
+import { isYmLive, playingVideoId } from "../player/live";
 import { videoIdForSabrUrl } from "../player/player_res";
 
 function asU8(body: unknown): Uint8Array | null {
@@ -167,7 +167,7 @@ function formatKey(itag: number, lmt: number): string {
 
 function drop144(id: { itag: number; lmt: number }, audioOnly: boolean): boolean {
   if (!is144pItag(id.itag)) return false;
-  if (audioOnly) return true;
+  if (audioOnly && !isYmLive()) return true;
   return !!wasFaked[formatKey(id.itag, id.lmt)];
 }
 
@@ -569,7 +569,7 @@ function rewriteAbr(
     const f = fs[i]!;
     if (f.field === 1 && f.wire === 2 && f.value instanceof Uint8Array) {
       playerTimeMs = casPlayerTimeMs(f.value);
-      if (audioOnly) out.push({ field: 1, wire: 2, value: rewriteCas40(f.value) });
+      if (audioOnly && !isYmLive()) out.push({ field: 1, wire: 2, value: rewriteCas40(f.value) });
       else out.push(f);
       continue;
     }
@@ -610,7 +610,7 @@ function rewriteAbr(
   const fake = videoId ? pickFake144(videoId, selItags.length ? selItags : playVid) : null;
   if (has144Buffered && !(fake && fake.live)) {
     console.log("sabr skip fake-ump 144p already buffered");
-  } else if (fake && (fake.live || fake.durationMs > 0 || !audioOnly)) {
+  } else if (fake && !fake.live && (fake.durationMs > 0 || !audioOnly)) {
     state = {
       audioOnly: audioOnly,
       videoId: videoId,
@@ -772,7 +772,7 @@ export function fakeUmpAfter(
 ): Uint8Array | null {
   if (!state) return null;
   const k = formatKey(state.row.itag, decToNum(state.row.lmt));
-  if (!state.audioOnly) {
+  if (!state.audioOnly || state.live || isYmLive()) {
     wasFaked[k] = false;
     return null;
   }

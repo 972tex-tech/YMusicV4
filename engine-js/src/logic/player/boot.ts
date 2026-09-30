@@ -809,7 +809,9 @@ class Player {
     setYmQuality(q);
     setAudioOnly(!!audioOnly);
     if (audioOnly) {
-      pinPlaybackQuality(player, this.player, "auto", "auto");
+      /* Live: real tiny + rest decoder. VOD: auto-auto, fake 144p via SABR. */
+      if (isYmLive()) pinPlaybackQuality(player, this.player, "auto", "tiny");
+      else pinPlaybackQuality(player, this.player, "auto", "auto");
       __mseRestVideo(1);
     } else {
       __mseRestVideo(0);
