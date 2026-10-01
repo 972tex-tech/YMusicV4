@@ -16,7 +16,7 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         guard #available(iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported() else { return }
         guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
         if controller == nil {
-            let source = AVPictureInPictureControllerContentSource(
+            let source = AVPictureInPictureController.ContentSource(
                 sampleBufferDisplayLayer: layer,
                 playbackDelegate: self,
             )
@@ -64,7 +64,7 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     func pictureInPictureControllerTimeRangeForPlayback(
         _ pictureInPictureController: AVPictureInPictureController,
     ) -> CMTimeRange {
-        .positiveInfinity
+        CMTimeRange(start: .zero, duration: .positiveInfinity)
     }
 
     func pictureInPictureControllerIsPlaybackPaused(
