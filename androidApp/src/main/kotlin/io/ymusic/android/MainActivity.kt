@@ -171,30 +171,12 @@ class MainActivity : FragmentActivity() {
             pendingScan?.complete(if (result.resultCode == RESULT_OK) value else null)
             pendingScan = null
         }
-    private var launchScanAfterCamera: Boolean = false
-    private val requestCamera =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted && launchScanAfterCamera) {
-                openQrScan.launch(Intent(this, QrScanActivity::class.java))
-            } else {
-                pendingScan?.complete(null)
-                pendingScan = null
-            }
-            launchScanAfterCamera = false
-        }
     private val scanQr: suspend () -> String? = {
         pendingScan?.complete(null)
         val deferred = CompletableDeferred<String?>()
         pendingScan = deferred
         withContext(Dispatchers.Main) {
-            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                openQrScan.launch(Intent(this@MainActivity, QrScanActivity::class.java))
-            } else {
-                launchScanAfterCamera = true
-                requestCamera.launch(Manifest.permission.CAMERA)
-            }
+            openQrScan.launch(Intent(this@MainActivity, QrScanActivity::class.java))
         }
         deferred.await()
     }

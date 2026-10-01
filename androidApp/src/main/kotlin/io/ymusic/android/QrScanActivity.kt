@@ -1,11 +1,14 @@
 package io.ymusic.android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -56,23 +59,34 @@ class QrScanActivity : ComponentActivity() {
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private val found = AtomicBoolean(false)
     private var cameraProvider: ProcessCameraProvider? = null
+    private lateinit var previewView: PreviewView
+    private val requestCamera =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) bindCamera() else finish()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawableResource(android.R.color.black)
         val dark = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
-        val previewView = PreviewView(this).apply {
+        previewView = PreviewView(this).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
-        bindCamera(previewView)
         setContent {
             QrScanOverlay(previewView, onClose = { finish() })
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            previewView.post { bindCamera() }
+        } else {
+            requestCamera.launch(Manifest.permission.CAMERA)
+        }
     }
 
-    private fun bindCamera(previewView: PreviewView) {
+    private fun bindCamera() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener(
             {
@@ -114,7 +128,8 @@ class QrScanActivity : ComponentActivity() {
                 try {
                     provider.unbindAll()
                     provider.bindToLifecycle(this, selector, preview, analysis)
-                } catch (_: Exception) {
+                } catch (t: Exception) {
+                    android.util.Log.e("QrScan", "bind failed", t)
                     finish()
                 }
             },
