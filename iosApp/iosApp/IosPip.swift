@@ -29,12 +29,17 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     }
 
     /// Build the controller while still in the foreground so the first leave is live frames.
+    /// Audio-only leaves no controller, so Home has nothing to auto-start.
     func prepare() {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in self?.prepare() }
             return
         }
         guard #available(iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        if !IosPipHostKt.iosPipShouldAutoEnter() {
+            dropControllerIfIdle()
+            return
+        }
         guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
         // WWDC21: the layer timebase must exist before ContentSource, or the
         // first startPictureInPicture is not possible.
@@ -49,25 +54,33 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
             pip.requiresLinearPlayback = false
             controller = pip
         }
-        let ok = IosPipHostKt.iosPipShouldAutoEnter()
-        controller?.canStartPictureInPictureAutomaticallyFromInline = ok
-        if ok {
-            controller?.invalidatePlaybackState()
-        } else if controller?.isPictureInPictureActive == true {
-            controller?.stopPictureInPicture()
-        }
+        controller?.canStartPictureInPictureAutomaticallyFromInline = true
+        controller?.invalidatePlaybackState()
     }
 
     func startIfEligible() {
+        guard IosPipHostKt.iosPipShouldAutoEnter() else {
+            dropControllerIfIdle()
+            return
+        }
         prepare()
-        guard IosPipHostKt.iosPipShouldAutoEnter() else { return }
         guard controller?.isPictureInPictureActive != true else { return }
         attemptStart(tries: 8)
     }
 
+    private func dropControllerIfIdle() {
+        controller?.canStartPictureInPictureAutomaticallyFromInline = false
+        guard controller?.isPictureInPictureActive != true else { return }
+        controller?.delegate = nil
+        controller = nil
+    }
+
     /// Home often arrives before `isPictureInPicturePossible` flips; retry while resigning.
     private func attemptStart(tries: Int) {
-        guard tries > 0, IosPipHostKt.iosPipShouldAutoEnter() else { return }
+        guard tries > 0, IosPipHostKt.iosPipShouldAutoEnter() else {
+            dropControllerIfIdle()
+            return
+        }
         guard controller?.isPictureInPictureActive != true else { return }
         if controller?.isPictureInPicturePossible == true {
             controller?.startPictureInPicture()
