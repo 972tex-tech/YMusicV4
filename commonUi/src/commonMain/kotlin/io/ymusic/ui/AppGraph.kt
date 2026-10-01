@@ -10,6 +10,8 @@ import io.ymusic.player.Player
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.InMemorySettingsStore
 import io.ymusic.settings.SettingsStore
+import io.ymusic.ui.sponsorblock.MockSponsorBlockApi
+import io.ymusic.ui.sponsorblock.SponsorBlockApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -144,6 +146,11 @@ class AppGraph(
      * `componentResized` and clears it after 300ms without another event. Unused on mobile.
      */
     val windowResizing: MutableStateFlow<Boolean> = MutableStateFlow(false),
+    /**
+     * SponsorBlock skip-segment fetch. Defaults to [MockSponsorBlockApi] until the real HTTP
+     * client is wired.
+     */
+    val sponsorBlock: SponsorBlockApi = MockSponsorBlockApi(),
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {

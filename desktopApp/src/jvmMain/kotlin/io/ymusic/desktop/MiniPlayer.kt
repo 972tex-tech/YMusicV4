@@ -55,6 +55,7 @@ import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SlimSeekBar
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.badge_live
+import io.ymusic.ui.skipSegmentFractions
 import org.jetbrains.compose.resources.stringResource
 import java.awt.SystemTray
 import java.awt.Toolkit
@@ -122,6 +123,7 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
     val status by player.status.collectAsState()
     val progress by player.progress.collectAsState()
     val queue by player.queue.collectAsState()
+    val skipSegments by player.skipSegments.collectAsState()
     val item = queue.currentItem
     val playing = status.state.isPlaying()
 
@@ -186,6 +188,7 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
                 enabled = progress.seekable && durationMs > 0,
                 onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                skipFractions = skipSegmentFractions(skipSegments, durationMs),
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                 fillColor = MaterialTheme.colorScheme.primary,
                 thumbColor = MaterialTheme.colorScheme.primary,

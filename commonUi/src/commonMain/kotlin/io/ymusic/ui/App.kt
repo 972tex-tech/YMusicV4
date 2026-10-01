@@ -113,6 +113,7 @@ import io.ymusic.ui.resources.tab_home
 import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
+import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -274,6 +275,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        remember { SponsorBlockCoordinator(graph, scope) }
         val inPip by graph.pip.inPip.collectAsState()
         if (inPip) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {

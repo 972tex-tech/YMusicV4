@@ -20,14 +20,35 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import io.ymusic.player.SkipSegment
 import kotlin.math.roundToInt
+
+/** Amber marks on the seek track — contrast against the orange fill, like the legacy skip overlay. */
+val DefaultSkipSegmentColor = Color(0xFFFFC107)
+
+fun skipSegmentFractions(segments: List<SkipSegment>, durationMs: Long): List<Pair<Float, Float>> {
+    if (durationMs <= 0L || segments.isEmpty()) return emptyList()
+    return segments.map { seg ->
+        val start = (seg.startMs.toFloat() / durationMs).coerceIn(0f, 1f)
+        val endMs = seg.startMs + seg.lengthMs
+        val end = if (endMs >= durationMs - 1_000L) {
+            1f
+        } else {
+            (endMs.toFloat() / durationMs).coerceIn(0f, 1f)
+        }
+        start to end
+    }
+}
 
 /**
  * The app's slim seek bar, built from scratch: the M3 `Slider`'s internal layout does not center
@@ -56,6 +77,8 @@ fun SlimSeekBar(
     thumbShadow: Dp = 1.dp,
     /** Live fraction while dragging. Null on release or cancel. */
     onScrub: ((Float?) -> Unit)? = null,
+    skipFractions: List<Pair<Float, Float>> = emptyList(),
+    skipColor: Color = DefaultSkipSegmentColor,
 ) {
     var widthPx by remember { mutableStateOf(0) }
     var dragging by remember { mutableStateOf<Float?>(null) }
@@ -106,7 +129,21 @@ fun SlimSeekBar(
                 .fillMaxWidth()
                 .height(trackHeight)
                 .clip(RoundedCornerShape(trackHeight / 2))
-                .background(trackColor),
+                .background(trackColor)
+                .drawWithContent {
+                    drawContent()
+                    skipFractions.forEach { (begin, end) ->
+                        val left = size.width * begin.coerceIn(0f, 1f)
+                        val right = size.width * end.coerceIn(0f, 1f)
+                        if (right > left) {
+                            drawRect(
+                                skipColor,
+                                topLeft = Offset(left, 0f),
+                                size = Size(right - left, size.height),
+                            )
+                        }
+                    }
+                },
         ) {
             if (buffered > 0f) {
                 Box(Modifier.fillMaxWidth(buffered).fillMaxHeight().background(bufferedColor))

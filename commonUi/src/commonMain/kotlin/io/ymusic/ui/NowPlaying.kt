@@ -975,6 +975,7 @@ private fun SeekSlider(
     onScrubMs: ((Long?) -> Unit)? = null,
 ) {
     val durationMs = progress.durationMs
+    val skipSegments by player.skipSegments.collectAsState()
     SlimSeekBar(
         fraction = if (durationMs > 0) progress.positionMs.toFloat() / durationMs else 0f,
         bufferedFraction = if (durationMs > 0) progress.bufferedPositionMs.toFloat() / durationMs else 0f,
@@ -983,6 +984,7 @@ private fun SeekSlider(
         onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
         onScrub = { f -> onScrubMs?.invoke(if (f == null || durationMs <= 0) null else (f * durationMs).toLong()) },
         trackColor = trackColor,
+        skipFractions = skipSegmentFractions(skipSegments, durationMs),
         modifier = Modifier.fillMaxWidth(),
     )
 }
