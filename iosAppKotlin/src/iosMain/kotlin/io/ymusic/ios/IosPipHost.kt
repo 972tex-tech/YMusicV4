@@ -29,6 +29,9 @@ fun iosPipDisplayLayer(): AVSampleBufferDisplayLayer? = IosPipHost.hole?.view?.v
 
 fun iosPipShouldAutoEnter(): Boolean = IosPipHost.pip?.autoEnterEligible() == true
 
+/** Video is on screen (not audio-only). The PiP controller can be built before Now Playing opens. */
+fun iosPipPlayingVideo(): Boolean = IosPipHost.pip?.playingVideo() == true
+
 fun iosOnLeaveWithoutPip() {
     IosPipHost.pip?.onLeaveWithoutPip()
 }

@@ -28,15 +28,15 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         }
     }
 
-    /// Build the controller while still in the foreground so the first leave is live frames.
-    /// Audio-only leaves no controller, so Home has nothing to auto-start.
+    /// Attach the controller while video is playing in the foreground. Auto-enter
+    /// is only armed for Now Playing / fullscreen. Audio-only drops the controller.
     func prepare() {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in self?.prepare() }
             return
         }
         guard #available(iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported() else { return }
-        if !IosPipHostKt.iosPipShouldAutoEnter() {
+        if !IosPipHostKt.iosPipPlayingVideo() {
             dropControllerIfIdle()
             return
         }
@@ -54,41 +54,58 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
             pip.requiresLinearPlayback = false
             controller = pip
         }
-        controller?.canStartPictureInPictureAutomaticallyFromInline = true
+        let auto = IosPipHostKt.iosPipShouldAutoEnter()
+        controller?.canStartPictureInPictureAutomaticallyFromInline = auto
         controller?.invalidatePlaybackState()
+        if auto { armUntilPossible() }
     }
 
     func startIfEligible() {
-        guard IosPipHostKt.iosPipShouldAutoEnter() else {
+        if !IosPipHostKt.iosPipPlayingVideo() {
             dropControllerIfIdle()
             return
         }
         prepare()
+        guard IosPipHostKt.iosPipShouldAutoEnter() else { return }
         guard controller?.isPictureInPictureActive != true else { return }
-        attemptStart(tries: 8)
+        // Auto-enter is already armed. start() only if the system reports possible;
+        // calling it on a cold controller during Home misses the first leave.
+        if controller?.isPictureInPicturePossible == true {
+            controller?.startPictureInPicture()
+        }
     }
 
     private func dropControllerIfIdle() {
+        armTimer?.invalidate()
+        armTimer = nil
         controller?.canStartPictureInPictureAutomaticallyFromInline = false
         guard controller?.isPictureInPictureActive != true else { return }
         controller?.delegate = nil
         controller = nil
     }
 
-    /// Home often arrives before `isPictureInPicturePossible` flips; retry while resigning.
-    private func attemptStart(tries: Int) {
-        guard tries > 0, IosPipHostKt.iosPipShouldAutoEnter() else {
-            dropControllerIfIdle()
-            return
+    /// Keep the playhead inside the reported range until iOS flips possible, while still active.
+    private var armTimer: Timer?
+    private func armUntilPossible() {
+        armTimer?.invalidate()
+        armTimer = nil
+        guard controller?.isPictureInPicturePossible != true else { return }
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            guard UIApplication.shared.applicationState == .active,
+                  IosPipHostKt.iosPipPlayingVideo()
+            else {
+                t.invalidate()
+                return
+            }
+            self.syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
+            self.controller?.invalidatePlaybackState()
+            if self.controller?.isPictureInPicturePossible == true {
+                t.invalidate()
+            }
         }
-        guard controller?.isPictureInPictureActive != true else { return }
-        if controller?.isPictureInPicturePossible == true {
-            controller?.startPictureInPicture()
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.attemptStart(tries: tries - 1)
-        }
+        RunLoop.main.add(timer, forMode: .common)
+        armTimer = timer
     }
 
     /// After a leave with no PiP, park VT so foreground recover can unstick the last frame.
@@ -123,6 +140,8 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        armTimer?.invalidate()
+        armTimer = nil
         parkIfNoPip?.cancel()
         parkIfNoPip = nil
         needsRecover = false

@@ -70,6 +70,7 @@ internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier
                     host.backgroundColor = UIColor.blackColor
                     host.opaque = true
                     adopt(hole.view, host)
+                    iosNotifyPipPrepare()
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -77,6 +78,7 @@ internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier
                 host.backgroundColor = UIColor.blackColor
                 host.opaque = true
                 adopt(hole.view, host)
+                if (hole.view.window != null) iosNotifyPipPrepare()
             },
             onRelease = { host ->
                 if (hole.view.superview === host) hole.view.removeFromSuperview()
