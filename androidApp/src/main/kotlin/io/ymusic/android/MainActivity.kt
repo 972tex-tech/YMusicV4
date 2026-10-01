@@ -165,18 +165,13 @@ class MainActivity : FragmentActivity() {
     }
 
     private var pendingScan: CompletableDeferred<String?>? = null
-    private val openQrScan =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val value = result.data?.getStringExtra(QrScanActivity.EXTRA_VALUE)
-            pendingScan?.complete(if (result.resultCode == RESULT_OK) value else null)
-            pendingScan = null
-        }
     private val scanQr: suspend () -> String? = {
         pendingScan?.complete(null)
         val deferred = CompletableDeferred<String?>()
         pendingScan = deferred
         withContext(Dispatchers.Main) {
-            openQrScan.launch(Intent(this@MainActivity, QrScanActivity::class.java))
+            @Suppress("DEPRECATION")
+            startActivityForResult(Intent(this@MainActivity, QrScanActivity::class.java), REQ_QR_SCAN)
         }
         deferred.await()
     }
@@ -415,6 +410,18 @@ class MainActivity : FragmentActivity() {
         sectionFor(intent)?.let { pendingSection.value = it }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQ_QR_SCAN) {
+            val value = data?.getStringExtra(QrScanActivity.EXTRA_VALUE)
+            pendingScan?.complete(if (resultCode == RESULT_OK) value else null)
+            pendingScan = null
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     private fun sectionFor(intent: Intent?): AppSection? = when (intent?.action) {
         ACTION_OPEN_DOWNLOADS -> AppSection.Downloads
         else -> null
@@ -423,6 +430,9 @@ class MainActivity : FragmentActivity() {
     companion object {
         /** Launch intent action landing on the Download manager (the download notifications). */
         const val ACTION_OPEN_DOWNLOADS = "io.ymusic.android.action.OPEN_DOWNLOADS"
+
+        /** FragmentActivity rejects Activity Result request codes above 16 bits. */
+        private const val REQ_QR_SCAN = 0x51
     }
 
     private fun requestNotificationAccess() {
