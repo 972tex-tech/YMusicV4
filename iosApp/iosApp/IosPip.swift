@@ -10,6 +10,7 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     private var controller: AVPictureInPictureController?
     /// Set in restoreUserInterface… (expand). X-close never calls that method.
     private var restoringFromPip = false
+    private var stateTimer: Timer?
     var isActive: Bool { controller?.isPictureInPictureActive ?? false }
 
     func syncEligible() {
@@ -37,6 +38,13 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         IosPipHostKt.iosOnPipStarted()
+        pictureInPictureController.invalidatePlaybackState()
+        stateTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak pictureInPictureController] _ in
+            pictureInPictureController?.invalidatePlaybackState()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        stateTimer = timer
     }
 
     func pictureInPictureController(
@@ -48,6 +56,8 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        stateTimer?.invalidate()
+        stateTimer = nil
         let restore = restoringFromPip
         restoringFromPip = false
         let foreground = restore || UIApplication.shared.applicationState == .active
@@ -59,12 +69,17 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         setPlaying playing: Bool,
     ) {
         if playing { IosPipHostKt.iosPipPlay() } else { IosPipHostKt.iosPipPause() }
+        pictureInPictureController.invalidatePlaybackState()
     }
 
     func pictureInPictureControllerTimeRangeForPlayback(
         _ pictureInPictureController: AVPictureInPictureController,
     ) -> CMTimeRange {
-        CMTimeRange(start: .zero, duration: .positiveInfinity)
+        let dur = IosPipHostKt.iosPipDurationSeconds()
+        if dur <= 0 {
+            return CMTimeRange(start: .zero, duration: .positiveInfinity)
+        }
+        return CMTimeRange(start: .zero, duration: CMTime(seconds: dur, preferredTimescale: 600))
     }
 
     func pictureInPictureControllerIsPlaybackPaused(
@@ -76,13 +91,17 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     func pictureInPictureController(
         _ pictureInPictureController: AVPictureInPictureController,
         didTransitionToRenderSize newRenderSize: CMVideoDimensions,
-    ) {}
+    ) {
+        IosPipHostKt.iosPipSetRenderSize(width: Int32(newRenderSize.width), height: Int32(newRenderSize.height))
+    }
 
     func pictureInPictureController(
         _ pictureInPictureController: AVPictureInPictureController,
         skipByInterval skipInterval: CMTime,
         completion completionHandler: @escaping () -> Void,
     ) {
+        IosPipHostKt.iosPipSeekBySeconds(delta: CMTimeGetSeconds(skipInterval))
+        pictureInPictureController.invalidatePlaybackState()
         completionHandler()
     }
 }

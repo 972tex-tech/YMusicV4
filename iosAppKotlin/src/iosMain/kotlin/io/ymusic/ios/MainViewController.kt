@@ -190,6 +190,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     IosPipHost.hole = mseHole
     IosPipHost.pip = graph.pip
     IosPipHost.player = player
+    IosPipHost.mse = msePlayer
     return graph
 }
 

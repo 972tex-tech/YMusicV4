@@ -5,9 +5,6 @@
 #import <TargetConditionals.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
-#if TARGET_OS_IPHONE
-#import <UIKit/UIKit.h>
-#endif
 #import <QuartzCore/QuartzCore.h>
 #import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
@@ -220,12 +217,9 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
     if (!p || !pb)
         return -1;
     layer = (__bridge AVSampleBufferDisplayLayer *)p;
-#if TARGET_OS_IPHONE
-    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) {
-        vt_missed_bg = 1;
-        return -1;
-    }
-#endif
+    /* Keep enqueueing while backgrounded: AVPictureInPictureController shows this
+       same layer. Skipping here froze PiP on the last in-app frame and set
+       vt_missed_bg, which made recover-on-foreground intermittent black. */
     if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) {
         NSError *err = layer.error;
         os_log(os_log_create("com.ymusic.mse", "v"),

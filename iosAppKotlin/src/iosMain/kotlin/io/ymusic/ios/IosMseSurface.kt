@@ -59,7 +59,9 @@ internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier
     Box(
         modifier
             .background(Color.Black)
-            .onSizeChanged { player.setViewport(it.width.coerceAtLeast(1), it.height.coerceAtLeast(1)) },
+            .onSizeChanged { size ->
+                if (size.width > 1 && size.height > 1) player.setViewport(size.width, size.height)
+            },
     ) {
         UIKitView(
             factory = {
