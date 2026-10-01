@@ -120,7 +120,7 @@ private class IosQrScannerController(
         close.setTitle("✕", UIControlStateNormal)
         close.setTitleColor(UIColor.whiteColor, UIControlStateNormal)
         close.addTarget(this, NSSelectorFromString("onClose"), UIControlEventTouchUpInside)
-        close.frame = CGRectMake(16.0, 48.0, 44.0, 44.0)
+        close.setFrame(CGRectMake(16.0, 48.0, 44.0, 44.0))
         view.addSubview(close)
 
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT.toLong(), 0u)) {
@@ -130,7 +130,7 @@ private class IosQrScannerController(
 
     override fun viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
+        previewLayer?.setFrame(view.bounds)
     }
 
     @ObjCAction
