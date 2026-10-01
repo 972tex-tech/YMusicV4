@@ -33,7 +33,7 @@ internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("LAME (linked into FFmpeg)", "LGPL-2.0+", scope = "Android / Desktop"),
     OssComponent("Shine (linked into FFmpeg)", "LGPL-2.0+", scope = "Android / Desktop"),
     OssComponent("SQLite", "Public Domain"),
-    OssComponent("AndroidX (core, lifecycle, activity)", "Apache-2.0", scope = "Android"),
+    OssComponent("AndroidX (core, lifecycle, activity, biometric)", "Apache-2.0", scope = "Android"),
     OssComponent("Media3 / ExoPlayer", "Apache-2.0", scope = "Android"),
     OssComponent("sqlite-jdbc (Xerial)", "Apache-2.0", scope = "Desktop"),
     OssComponent("ZXing", "Apache-2.0", scope = "Desktop"),

@@ -129,7 +129,9 @@ fun SettingsScreen(graph: AppGraph) {
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
-        if (graph.exportSessionCookies != null && graph.scanQrCode != null) {
+        if (graph.exportSessionCookies != null && graph.scanQrCode != null &&
+            graph.confirmDeviceOwner != null
+        ) {
             LinkDevicesRow(graph)
         }
         SoundRow(graph, speed = true)

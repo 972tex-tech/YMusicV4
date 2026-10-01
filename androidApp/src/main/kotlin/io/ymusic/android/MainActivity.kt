@@ -1,6 +1,7 @@
 package io.ymusic.android
 
 import android.Manifest
+import android.app.KeyguardManager
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,11 +10,12 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Rational
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -56,7 +60,7 @@ import kotlinx.coroutines.withContext
  * (see [YMusicApplication] — playback outlives this Activity in the [PlaybackService]). The
  * Activity contributes only what needs one: the SAF folder pick and the notification permission.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     /** A section requested by a platform surface (download notification tap), consumed by the
      *  composition once the graph is up — survives arriving before the app finishes booting. */
     private val pendingSection = mutableStateOf<AppSection?>(null)
@@ -190,6 +194,61 @@ class MainActivity : ComponentActivity() {
         deferred.await()
     }
 
+    private var pendingOwner: CompletableDeferred<Boolean>? = null
+    private val confirmOwner: suspend (String, String) -> Boolean = { title, subtitle ->
+        pendingOwner?.complete(false)
+        val deferred = CompletableDeferred<Boolean>()
+        pendingOwner = deferred
+        withContext(Dispatchers.Main) {
+            val km = getSystemService(KeyguardManager::class.java)
+            if (km == null || !km.isDeviceSecure) {
+                pendingOwner = null
+                error("no-lock")
+            }
+            val prompt = BiometricPrompt(
+                this@MainActivity,
+                ContextCompat.getMainExecutor(this@MainActivity),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        pendingOwner?.complete(true)
+                        pendingOwner = null
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        val d = pendingOwner
+                        pendingOwner = null
+                        when (errorCode) {
+                            BiometricPrompt.ERROR_USER_CANCELED,
+                            BiometricPrompt.ERROR_CANCELED,
+                            BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+                            -> d?.complete(false)
+                            BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
+                            -> d?.completeExceptionally(IllegalStateException("no-lock"))
+                            else -> d?.completeExceptionally(IllegalStateException("auth"))
+                        }
+                    }
+                },
+            )
+            val info = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .apply {
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        setAllowedAuthenticators(
+                            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        setDeviceCredentialAllowed(true)
+                    }
+                }
+                .build()
+            prompt.authenticate(info)
+        }
+        deferred.await()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         val app = application as YMusicApplication
@@ -202,6 +261,9 @@ class MainActivity : ComponentActivity() {
         if (app.qrScanner === scanQr) app.qrScanner = null
         pendingScan?.complete(null)
         pendingScan = null
+        if (app.deviceOwnerAuth === confirmOwner) app.deviceOwnerAuth = null
+        pendingOwner?.complete(false)
+        pendingOwner = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -227,6 +289,7 @@ class MainActivity : ComponentActivity() {
         (application as YMusicApplication).folderPicker = pickFolder
         (application as YMusicApplication).feedbackFilePicker = pickFeedbackFiles
         (application as YMusicApplication).qrScanner = scanQr
+        (application as YMusicApplication).deviceOwnerAuth = confirmOwner
         sectionFor(intent)?.let { pendingSection.value = it }
         setContent {
             if (BuildConfig.DEBUG) CompositionClockProbe()

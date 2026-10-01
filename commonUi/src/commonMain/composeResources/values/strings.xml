@@ -231,6 +231,7 @@
     <string name="signin_qr_title">Scan with the YMusic app</string>
     <string name="signin_qr_hint">On your phone, open YMusic → Settings → Link devices → Open camera, then scan this code.</string>
     <string name="signin_qr_waiting">Waiting for the phone…</string>
+    <string name="signin_qr_sas_hint">Your phone will show this same code. Send only if they match.</string>
     <string name="signin_or_paste">Or paste cookies from a browser</string>
     <string name="signin_paste_hint">In Chrome, open youtube.com → Developer tools → Application → Cookies. Select the cookies and copy them, then paste here. HttpOnly cookies only appear in that table, not in document.cookie.</string>
     <string name="signin_paste_label">Cookies</string>
@@ -243,12 +244,17 @@
     <string name="device_link_title">Link devices</string>
     <string name="device_link_intro">Scan the QR code shown in YMusic on your computer. This phone must already be signed in.</string>
     <string name="device_link_open_camera">Open camera</string>
+    <string name="device_link_sas_hint">This code must match the computer. If it doesn’t, tap Cancel.</string>
+    <string name="device_link_send">Send sign-in</string>
+    <string name="device_link_unlock_title">Confirm it’s you</string>
+    <string name="device_link_unlock_hint">Unlock this phone to send your YouTube sign-in to the computer.</string>
     <string name="device_link_sending">Sending sign-in to your computer…</string>
     <string name="device_link_done">Sent — finish signing in on the computer</string>
     <string name="device_link_error_network">Couldn’t reach the link service. Check your connection and try again.</string>
     <string name="device_link_error_timeout">The computer stopped waiting. Generate a new QR code and scan again.</string>
     <string name="device_link_error_payload">That QR code isn’t valid. Generate a new one on the computer and scan again.</string>
     <string name="device_link_error_generic">Something went wrong. Try again.</string>
+    <string name="device_link_error_no_lock">Set a screen lock (PIN, pattern, or password) on this phone, then try again.</string>
     <string name="device_link_not_signed_in">Sign in on this phone first, then scan the computer’s QR code.</string>
     <string name="device_link_empty_cookies">No YouTube cookies to send. Sign in on this phone, then try again.</string>
     <string name="account_sign_out">Sign out</string>

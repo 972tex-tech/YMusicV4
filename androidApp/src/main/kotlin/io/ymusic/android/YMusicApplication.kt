@@ -149,6 +149,9 @@ class YMusicApplication : Application() {
     /** The current Activity's QR scan — same lifecycle as [folderPicker]. */
     @Volatile var qrScanner: (suspend () -> String?)? = null
 
+    /** The current Activity's PIN / biometric prompt — same lifecycle as [folderPicker]. */
+    @Volatile var deviceOwnerAuth: (suspend (String, String) -> Boolean)? = null
+
     // For onTrimMemory, which cannot await the deferred; set once the build completes.
     @Volatile private var builtImageLoader: ImageLoader? = null
 
@@ -540,6 +543,10 @@ class YMusicApplication : Application() {
             },
             exportSessionCookies = { shared.cookies.exportSessionCookies() },
             scanQrCode = { qrScanner?.invoke() },
+            confirmDeviceOwner = { title, subtitle ->
+                val fn = deviceOwnerAuth ?: error("no-lock")
+                fn(title, subtitle)
+            },
             downloads = downloadService,
             sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
             pickFeedbackFiles = { feedbackFilePicker?.invoke() ?: emptyList() },

@@ -3,11 +3,14 @@ package io.ymusic.ui
 import kmphttp.CookieBuilder
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
+import kmphttp.MediaTypeX.toMediaType
 import kmphttp.RequestBodyX.toRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.create
+import kmphttp.deleteWithoutBody
 import kmphttp.saveFromResponse
 import kmphttp.toHttpUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -53,12 +56,13 @@ internal fun parseDeviceLinkQr(raw: String): Pair<String, ByteArray>? {
 }
 
 internal suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOffer {
+    val json = """{"expiry":$TOKEN_EXPIRY_SEC,"request_limit":1}"""
     val body = client.execute(
         RequestBuilder()
             .url(WEBHOOK_TOKEN)
             .header("Accept", "application/json")
             .header("User-Agent", USER_AGENT)
-            .post("{}".toRequestBody(null))
+            .post(json.toRequestBody("application/json".toMediaType()))
             .build(),
     ).use { response ->
         if (!response.isSuccessful) error("network")
@@ -68,6 +72,32 @@ internal suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOff
     val url = "$WEBHOOK_ORIGIN/$uuid"
     check(WEBHOOK_INBOX.matches(url))
     return DeviceLinkOffer(url, uuid, deviceLinkRandomBytes(KEY_LEN))
+}
+
+/** Drops the webhook.site inbox. Failures are ignored — the token also expires at [TOKEN_EXPIRY_SEC]. */
+internal suspend fun deleteDeviceLinkToken(client: KmpHttpClient, tokenId: String) {
+    try {
+        client.execute(
+            RequestBuilder()
+                .url("$WEBHOOK_ORIGIN/token/$tokenId")
+                .header("User-Agent", USER_AGENT)
+                .deleteWithoutBody()
+                .build(),
+        ).use { }
+    } catch (c: CancellationException) {
+        throw c
+    } catch (_: Throwable) {
+        // Fire-and-forget cleanup of the one-shot inbox.
+    }
+}
+
+internal fun deviceLinkSas(key: ByteArray): String {
+    require(key.size == KEY_LEN)
+    val mac = hmac(key, SAS_LABEL)
+    var n = 0L
+    for (i in 0 until 4) n = (n shl 8) or (mac[i].toLong() and 0xffL)
+    val digits = (n % 1_000_000L).toString().padStart(6, '0')
+    return digits.substring(0, 3) + "\u00a0" + digits.substring(3)
 }
 
 internal suspend fun pollDeviceLinkCookies(
@@ -82,14 +112,15 @@ internal suspend fun pollDeviceLinkCookies(
             .get()
             .build(),
     )
-    response.use {
+    val raw = response.use {
         if (it.code == 404) return null
         if (!it.isSuccessful) error("network")
-        val raw = it.body.string().trim().trim('"')
-        val blob = raw.decodeBase64Url() ?: error("bad-payload")
-        val plain = deviceLinkDecrypt(offer.key, blob)
-        return decodeCookies(plain).ifEmpty { error("bad-payload") }
+        it.body.string().trim().trim('"')
     }
+    deleteDeviceLinkToken(client, offer.tokenId)
+    val blob = raw.decodeBase64Url() ?: error("bad-payload")
+    val plain = deviceLinkDecrypt(offer.key, blob)
+    return decodeCookies(plain).ifEmpty { error("bad-payload") }
 }
 
 internal suspend fun postDeviceLinkCookies(
@@ -407,10 +438,12 @@ private const val IV_LEN = 16
 private const val MAC_LEN = 32
 private const val ENC_LABEL = "enc"
 private const val MAC_LABEL = "mac"
+private const val SAS_LABEL = "sas"
 private const val PERSIST_MS = 400L * 24 * 60 * 60 * 1000
+private const val TOKEN_EXPIRY_SEC = 600
 
 internal const val DEVICE_LINK_POLL_MS = 2_000L
-internal const val DEVICE_LINK_TIMEOUT_MS = 10 * 60 * 1000L
+internal const val DEVICE_LINK_TIMEOUT_MS = TOKEN_EXPIRY_SEC * 1000L
 
 internal fun newDeviceLinkHttpClient(): KmpHttpClient = KmpHttpClient.create {}
 
@@ -440,5 +473,6 @@ internal suspend fun awaitDeviceLinkCookies(
         delay(DEVICE_LINK_POLL_MS)
         waited += DEVICE_LINK_POLL_MS
     }
+    deleteDeviceLinkToken(client, offer.tokenId)
     error("timeout")
 }

@@ -119,6 +119,7 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.foundation)
     implementation(Libs.PlayServices.codeScanner)
+    implementation(Libs.AndroidX.biometric)
 }
 
 // The injected YouTube player script rides as an asset — copied from the built webview-js bundle

@@ -105,6 +105,12 @@ class AppGraph(
      */
     val scanQrCode: (suspend () -> String?)? = null,
     /**
+     * OS PIN / biometric / passcode prompt. True if the user unlocked, false if they canceled.
+     * Throws with message `no-lock` when the phone has no screen lock. Null hides Settings →
+     * Link devices together with [exportSessionCookies] and [scanQrCode].
+     */
+    val confirmDeviceOwner: (suspend (title: String, subtitle: String) -> Boolean)? = null,
+    /**
      * The offline-download queue service; null on a shell that can't download (no WebView stack, or a
      * headless test graph) — the Downloads screen then shows an unavailable note. Built once per shell,
      * like [mediaStore].

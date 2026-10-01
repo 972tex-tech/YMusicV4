@@ -67,6 +67,7 @@ object Libs {
         const val coreKtx = "androidx.core:core-ktx:${Versions.coreKtx}"
         const val lifecycleRuntimeKtx = "androidx.lifecycle:lifecycle-runtime-ktx:${Versions.lifecycleRuntimeKtx}"
         const val activityCompose = "androidx.activity:activity-compose:${Versions.activityCompose}"
+        const val biometric = "androidx.biometric:biometric:1.1.0"
 
         object Compose {
             const val bom = "androidx.compose:compose-bom:${Versions.composeBom}"

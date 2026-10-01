@@ -23,5 +23,7 @@
     <array><string>audio</string></array>
     <key>NSCameraUsageDescription</key>
     <string>YMusic uses the camera to scan a QR code shown on your computer so you can sign in on desktop.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>YMusic asks you to unlock the phone before sending your YouTube sign-in to a computer.</string>
 </dict>
 </plist>

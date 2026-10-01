@@ -176,6 +176,7 @@
     <string name="signin_qr_title">امسح بتطبيق YMusic</string>
     <string name="signin_qr_hint">على هاتفك، افتح YMusic ← الإعدادات ← ربط الأجهزة ← فتح الكاميرا، ثم امسح هذا الرمز.</string>
     <string name="signin_qr_waiting">بانتظار الهاتف…</string>
+    <string name="signin_qr_sas_hint">سيظهر هاتفك الرمز نفسه. أرسل فقط إذا تطابقا.</string>
     <string name="signin_or_paste">أو الصق ملفات تعريف الارتباط من المتصفح</string>
     <string name="signin_paste_hint">في Chrome، افتح youtube.com ← أدوات المطوّر ← Application ← Cookies. حدّد ملفات تعريف الارتباط وانسخها ثم الصقها هنا. ملفات HttpOnly تظهر في ذلك الجدول فقط، وليس في document.cookie.</string>
     <string name="signin_paste_label">ملفات تعريف الارتباط</string>
@@ -188,12 +189,17 @@
     <string name="device_link_title">ربط الأجهزة</string>
     <string name="device_link_intro">امسح رمز QR المعروض في YMusic على حاسوبك. يجب أن يكون هذا الهاتف مسجّل الدخول مسبقاً.</string>
     <string name="device_link_open_camera">فتح الكاميرا</string>
+    <string name="device_link_sas_hint">يجب أن يطابق هذا الرمز الرمز على الحاسوب. إن لم يطابق، ألغِ.</string>
+    <string name="device_link_send">إرسال تسجيل الدخول</string>
+    <string name="device_link_unlock_title">أكّد أنه أنت</string>
+    <string name="device_link_unlock_hint">افتح قفل هذا الهاتف لإرسال تسجيل الدخول إلى YouTube إلى الحاسوب.</string>
     <string name="device_link_sending">جارٍ إرسال تسجيل الدخول إلى حاسوبك…</string>
     <string name="device_link_done">أُرسل — أكمل تسجيل الدخول على الحاسوب</string>
     <string name="device_link_error_network">تعذّر الوصول إلى خدمة الربط. تحقق من الاتصال ثم أعد المحاولة.</string>
     <string name="device_link_error_timeout">توقف الحاسوب عن الانتظار. أنشئ رمز QR جديداً وامسحه مجدداً.</string>
     <string name="device_link_error_payload">رمز QR هذا غير صالح. أنشئ رمزاً جديداً على الحاسوب وامسحه مجدداً.</string>
     <string name="device_link_error_generic">حدث خطأ. أعد المحاولة.</string>
+    <string name="device_link_error_no_lock">اضبط قفل شاشة (رمز PIN أو نمط أو كلمة مرور) على هذا الهاتف ثم أعد المحاولة.</string>
     <string name="device_link_not_signed_in">سجّل الدخول على هذا الهاتف أولاً، ثم امسح رمز QR على الحاسوب.</string>
     <string name="device_link_empty_cookies">لا توجد ملفات تعريف ارتباط لـ YouTube لإرسالها. سجّل الدخول على هذا الهاتف ثم أعد المحاولة.</string>
     <string name="sound_title">الصوت</string>

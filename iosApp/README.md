@@ -58,5 +58,5 @@ Signing is the only manual step — this environment can't enter your Apple ID; 
   media-store SQLDelight native driver can be wired later (it already compiles for `iosArm64`).
 - Local video isn't hosted in the shared surface on iOS yet (AVFoundation renders via `AVPlayerLayer`
   in the player-lab spike); the shared surface hosts the WebView. Audio (the music default) is fine.
-- Settings → Link devices uses the camera (`NSCameraUsageDescription`) to scan a desktop QR and POST
-  the encrypted YouTube cookies to that inbox.
+- Settings → Link devices uses the camera (`NSCameraUsageDescription`) to scan a desktop QR, then
+  PIN/Face ID (`NSFaceIDUsageDescription`) before POSTing the encrypted YouTube cookies.

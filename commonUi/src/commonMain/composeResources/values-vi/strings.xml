@@ -171,6 +171,7 @@
     <string name="signin_qr_title">Quét bằng ứng dụng YMusic</string>
     <string name="signin_qr_hint">Trên điện thoại, mở YMusic → Cài đặt → Liên kết thiết bị → Mở camera, rồi quét mã này.</string>
     <string name="signin_qr_waiting">Đang chờ điện thoại…</string>
+    <string name="signin_qr_sas_hint">Điện thoại sẽ hiện cùng mã này. Chỉ gửi khi hai mã trùng nhau.</string>
     <string name="signin_or_paste">Hoặc dán cookie từ trình duyệt</string>
     <string name="signin_paste_hint">Trong Chrome, mở youtube.com → Công cụ cho nhà phát triển → Application → Cookies. Chọn cookie rồi sao chép, sau đó dán vào đây. Cookie HttpOnly chỉ có trong bảng đó, không có trong document.cookie.</string>
     <string name="signin_paste_label">Cookie</string>
@@ -183,12 +184,17 @@
     <string name="device_link_title">Liên kết thiết bị</string>
     <string name="device_link_intro">Quét mã QR hiện trong YMusic trên máy tính. Điện thoại này phải đã đăng nhập.</string>
     <string name="device_link_open_camera">Mở camera</string>
+    <string name="device_link_sas_hint">Mã này phải trùng với mã trên máy tính. Nếu không, hãy huỷ.</string>
+    <string name="device_link_send">Gửi đăng nhập</string>
+    <string name="device_link_unlock_title">Xác nhận chính chủ</string>
+    <string name="device_link_unlock_hint">Mở khoá điện thoại để gửi đăng nhập YouTube sang máy tính.</string>
     <string name="device_link_sending">Đang gửi đăng nhập tới máy tính…</string>
     <string name="device_link_done">Đã gửi — hoàn tất đăng nhập trên máy tính</string>
     <string name="device_link_error_network">Không kết nối được dịch vụ liên kết. Kiểm tra mạng rồi thử lại.</string>
     <string name="device_link_error_timeout">Máy tính đã ngừng chờ. Tạo mã QR mới rồi quét lại.</string>
     <string name="device_link_error_payload">Mã QR này không hợp lệ. Tạo mã mới trên máy tính rồi quét lại.</string>
     <string name="device_link_error_generic">Đã xảy ra lỗi. Hãy thử lại.</string>
+    <string name="device_link_error_no_lock">Hãy đặt khoá màn hình (PIN, hình vẽ hoặc mật khẩu) trên điện thoại này, rồi thử lại.</string>
     <string name="device_link_not_signed_in">Hãy đăng nhập trên điện thoại này trước, rồi quét mã QR trên máy tính.</string>
     <string name="device_link_empty_cookies">Không có cookie YouTube để gửi. Đăng nhập trên điện thoại này rồi thử lại.</string>
     <string name="sound_title">Âm thanh</string>

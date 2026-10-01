@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,13 +44,18 @@ import io.ymusic.ui.resources.device_link_done
 import io.ymusic.ui.resources.device_link_empty_cookies
 import io.ymusic.ui.resources.device_link_error_generic
 import io.ymusic.ui.resources.device_link_error_network
+import io.ymusic.ui.resources.device_link_error_no_lock
 import io.ymusic.ui.resources.device_link_error_payload
 import io.ymusic.ui.resources.device_link_error_timeout
 import io.ymusic.ui.resources.device_link_intro
 import io.ymusic.ui.resources.device_link_not_signed_in
 import io.ymusic.ui.resources.device_link_open_camera
+import io.ymusic.ui.resources.device_link_sas_hint
+import io.ymusic.ui.resources.device_link_send
 import io.ymusic.ui.resources.device_link_sending
 import io.ymusic.ui.resources.device_link_title
+import io.ymusic.ui.resources.device_link_unlock_hint
+import io.ymusic.ui.resources.device_link_unlock_title
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.settings_link_devices
 import io.ymusic.ui.resources.settings_link_devices_hint
@@ -60,6 +66,7 @@ import io.ymusic.ui.resources.signin_paste_hint
 import io.ymusic.ui.resources.signin_paste_label
 import io.ymusic.ui.resources.signin_paste_submit
 import io.ymusic.ui.resources.signin_qr_hint
+import io.ymusic.ui.resources.signin_qr_sas_hint
 import io.ymusic.ui.resources.signin_qr_title
 import io.ymusic.ui.resources.signin_qr_waiting
 import kmpcommon.log.Logger
@@ -112,8 +119,9 @@ internal fun DesktopCookieSignIn(graph: AppGraph, onComplete: () -> Unit) {
     }
 
     LaunchedEffect(Unit) {
+        var minted: DeviceLinkOffer? = null
         try {
-            val minted = createDeviceLinkOffer(client)
+            minted = createDeviceLinkOffer(client)
             offer = minted
             finish(awaitDeviceLinkCookies(client, minted))
         } catch (c: CancellationException) {
@@ -121,6 +129,8 @@ internal fun DesktopCookieSignIn(graph: AppGraph, onComplete: () -> Unit) {
         } catch (t: Throwable) {
             log?.log(Logger.Level.WARN, "device-link offer/poll failed", t)
             offerError = deviceLinkErrorText(t)
+        } finally {
+            minted?.let { deleteDeviceLinkToken(client, it.tokenId) }
         }
     }
 
@@ -144,7 +154,7 @@ internal fun DesktopCookieSignIn(graph: AppGraph, onComplete: () -> Unit) {
         val qrCd = stringResource(Res.string.cd_device_link_qr)
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             val payload = offer?.qrPayload
-            if (payload != null) {
+            if (payload != null && !finished) {
                 DeviceLinkQrCode(
                     payload,
                     Modifier
@@ -152,9 +162,13 @@ internal fun DesktopCookieSignIn(graph: AppGraph, onComplete: () -> Unit) {
                         .padding(DesignSpacing.Space8)
                         .semantics { contentDescription = qrCd },
                 )
-            } else if (offerError == null) {
+            } else if (offerError == null && !finished) {
                 CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
             }
+        }
+        val sas = offer?.let { deviceLinkSas(it.key) }
+        if (sas != null && !finished) {
+            DeviceLinkSasBlock(sas, stringResource(Res.string.signin_qr_sas_hint))
         }
         when {
             offerError != null -> Text(
@@ -244,18 +258,42 @@ private fun LinkDevicesDialog(graph: AppGraph, onDismiss: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var done by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf<Pair<String, ByteArray>?>(null) }
     val scroll = rememberScrollState()
 
-    suspend fun sendFromCamera() {
+    suspend fun scanFromCamera() {
         error = null
         try {
             val raw = graph.scanQrCode!!() ?: return
-            busy = true
             val parsed = parseDeviceLinkQr(raw)
             if (parsed == null) {
                 error = getString(Res.string.device_link_error_payload)
                 return
             }
+            if (!graph.engines.ytLoginStatus()) {
+                error = getString(Res.string.device_link_not_signed_in)
+                return
+            }
+            pending = parsed
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            log?.captureError(t, "device-link scan failed")
+            error = deviceLinkErrorText(t)
+        }
+    }
+
+    suspend fun sendPending() {
+        val parsed = pending ?: return
+        error = null
+        busy = true
+        try {
+            val unlock = graph.confirmDeviceOwner ?: error("no-lock")
+            val unlocked = unlock(
+                getString(Res.string.device_link_unlock_title),
+                getString(Res.string.device_link_unlock_hint),
+            )
+            if (!unlocked) return
             if (!graph.engines.ytLoginStatus()) {
                 error = getString(Res.string.device_link_not_signed_in)
                 return
@@ -267,13 +305,14 @@ private fun LinkDevicesDialog(graph: AppGraph, onDismiss: () -> Unit) {
             }
             postDeviceLinkCookies(client, parsed.first, parsed.second, cookies)
             done = true
+            pending = null
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
             log?.captureError(t, "device-link send failed")
             error = deviceLinkErrorText(t)
         } finally {
-            busy = false
+            if (!done) busy = false
         }
     }
 
@@ -312,10 +351,21 @@ private fun LinkDevicesDialog(graph: AppGraph, onDismiss: () -> Unit) {
                         style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
                     )
                 }
+                pending != null -> {
+                    DeviceLinkSasBlock(
+                        deviceLinkSas(pending!!.second),
+                        stringResource(Res.string.device_link_sas_hint),
+                    )
+                    AccentButton(
+                        text = stringResource(Res.string.device_link_send),
+                        enabled = true,
+                        onClick = { scope.launch { sendPending() } },
+                    )
+                }
                 else -> AccentButton(
                     text = stringResource(Res.string.device_link_open_camera),
                     enabled = true,
-                    onClick = { scope.launch { sendFromCamera() } },
+                    onClick = { scope.launch { scanFromCamera() } },
                 )
             }
             error?.let {
@@ -345,9 +395,34 @@ private fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
+@Composable
+private fun DeviceLinkSasBlock(code: String, hint: String) {
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+    ) {
+        Text(
+            code,
+            style = TextStyle(
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 2.sp,
+                color = DesignColors.Ink,
+            ),
+        )
+        Text(
+            hint,
+            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+        )
+    }
+}
+
 private suspend fun deviceLinkErrorText(t: Throwable): String = when (t.message) {
     "network" -> getString(Res.string.device_link_error_network)
     "timeout" -> getString(Res.string.device_link_error_timeout)
     "bad-payload" -> getString(Res.string.device_link_error_payload)
+    "no-lock" -> getString(Res.string.device_link_error_no_lock)
     else -> getString(Res.string.device_link_error_generic)
 }

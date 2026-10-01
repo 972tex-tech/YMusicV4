@@ -26,6 +26,7 @@ kotlin {
                 linkerOpts("-undefined", "dynamic_lookup")
             }
             linkerOpts("-framework", "MediaPlayer")
+            linkerOpts("-framework", "LocalAuthentication")
             // Same as :playground: cinterop linkerOpts is ignored; bake libav + VT here.
             val lib = ffmpegSlug?.let {
                 rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$it/lib")
