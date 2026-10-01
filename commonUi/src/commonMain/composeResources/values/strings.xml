@@ -237,6 +237,12 @@
     <string name="signin_paste_label">Cookies</string>
     <string name="signin_paste_submit">Use these cookies</string>
     <string name="signin_paste_empty">Paste cookies copied from your browser</string>
+    <string name="signin_paste_guide_address">Hover the address bar</string>
+    <string name="signin_paste_guide_f12">Press F12 to open Developer tools</string>
+    <string name="signin_paste_guide_application">Open the Application panel</string>
+    <string name="signin_paste_guide_cookies">Open Cookies → youtube.com</string>
+    <string name="signin_paste_guide_copy">Select the table (Ctrl+A) and copy (Ctrl+C)</string>
+    <string name="cd_signin_paste_guide">Animation showing how to copy YouTube cookies from Chrome</string>
     <string name="signin_cookies_rejected">Those cookies didn’t sign in. Copy every YouTube cookie from the Application tab, including HttpOnly ones.</string>
     <string name="cd_device_link_qr">QR code to scan with the YMusic app</string>
     <string name="settings_link_devices">Link devices</string>

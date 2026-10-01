@@ -163,6 +163,7 @@ internal fun DesktopCookieSignIn(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    CookieCopyGuide()
                     Text(
                         stringResource(Res.string.signin_paste_hint),
                         style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),

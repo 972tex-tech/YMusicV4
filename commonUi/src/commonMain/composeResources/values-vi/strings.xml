@@ -177,6 +177,12 @@
     <string name="signin_paste_label">Cookie</string>
     <string name="signin_paste_submit">Dùng các cookie này</string>
     <string name="signin_paste_empty">Dán cookie đã sao chép từ trình duyệt</string>
+    <string name="signin_paste_guide_address">Di chuột tới thanh địa chỉ</string>
+    <string name="signin_paste_guide_f12">Nhấn F12 để mở Công cụ cho nhà phát triển</string>
+    <string name="signin_paste_guide_application">Mở bảng Application</string>
+    <string name="signin_paste_guide_cookies">Mở Cookies → youtube.com</string>
+    <string name="signin_paste_guide_copy">Chọn bảng (Ctrl+A) rồi sao chép (Ctrl+C)</string>
+    <string name="cd_signin_paste_guide">Hoạt ảnh hướng dẫn sao chép cookie YouTube từ Chrome</string>
     <string name="signin_cookies_rejected">Các cookie này không đăng nhập được. Hãy sao chép mọi cookie YouTube từ tab Application, kể cả cookie HttpOnly.</string>
     <string name="cd_device_link_qr">Mã QR để quét bằng ứng dụng YMusic</string>
     <string name="settings_link_devices">Liên kết thiết bị</string>

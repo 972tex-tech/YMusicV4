@@ -182,6 +182,12 @@
     <string name="signin_paste_label">ملفات تعريف الارتباط</string>
     <string name="signin_paste_submit">استخدام ملفات تعريف الارتباط هذه</string>
     <string name="signin_paste_empty">الصق ملفات تعريف الارتباط المنسوخة من المتصفح</string>
+    <string name="signin_paste_guide_address">مرّر المؤشر إلى شريط العنوان</string>
+    <string name="signin_paste_guide_f12">اضغط F12 لفتح أدوات المطوّر</string>
+    <string name="signin_paste_guide_application">افتح لوحة Application</string>
+    <string name="signin_paste_guide_cookies">افتح Cookies ← youtube.com</string>
+    <string name="signin_paste_guide_copy">حدّد الجدول (Ctrl+A) ثم انسخ (Ctrl+C)</string>
+    <string name="cd_signin_paste_guide">رسم متحرك يوضح كيفية نسخ ملفات تعريف ارتباط YouTube من Chrome</string>
     <string name="signin_cookies_rejected">لم تسجّل ملفات تعريف الارتباط هذه الدخول. انسخ كل ملفات YouTube من تبويب Application، بما فيها HttpOnly.</string>
     <string name="cd_device_link_qr">رمز QR للمسح بتطبيق YMusic</string>
     <string name="settings_link_devices">ربط الأجهزة</string>
