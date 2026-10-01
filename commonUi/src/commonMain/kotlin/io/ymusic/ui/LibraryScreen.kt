@@ -118,6 +118,7 @@ import io.ymusic.ui.resources.menu_download_location
 import io.ymusic.ui.resources.menu_exclude_folder
 import io.ymusic.ui.resources.menu_include_folder
 import io.ymusic.ui.resources.menu_play
+import io.ymusic.ui.resources.menu_remove
 import io.ymusic.ui.resources.menu_remove_folder
 import io.ymusic.ui.resources.menu_remove_from_disk
 import io.ymusic.ui.resources.menu_remove_from_playlist
@@ -194,6 +195,9 @@ internal val LocalAddToPlaylist = compositionLocalOf<((MediaStoreItem) -> Unit)?
 /** A song's "Remove from playlist" action — provided only inside an opened user playlist, so the menu
  *  item shows there and nowhere else. */
 internal val LocalPlaylistRemove = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
+
+/** A song's "Remove" action on Library Top tracks — drops the local watch-time row. Null elsewhere. */
+internal val LocalRemoveFromPlayHistory = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
 
 /** The local library over [AppGraph.mediaStore]: an empty state with the scan action until the first
  *  scan lands, then the Folders/Playlists/Songs/Artists/Albums/Genres tabs. Styled with
@@ -937,14 +941,26 @@ private fun PlaylistsTab(
         isUser -> playlistSongSort.sort(userItems.orEmpty(), playlistSongSortOptions).map { it.mediaItem }
         else -> systemSongs.orEmpty()
     }
-    // A user playlist offers "Remove from playlist" on each song row; the list level / system lists don't.
+    // A user playlist offers "Remove from playlist" on each song row; Top tracks offers "Remove"
+    // (drops the watch-time row). Other system lists and the playlist index have neither.
     val removeFromPlaylist: ((MediaStoreItem) -> Unit)? = remember(open?.first) {
         val id = open?.first
         if (id != null && id > 0) ({ song: MediaStoreItem -> scope.launch { store.removeFromPlaylist(id, song.playlistCode) }; Unit }) else null
     }
+    val removeFromPlayHistory: ((MediaStoreItem) -> Unit)? = remember(open?.first, playHistory) {
+        val history = playHistory
+        if (open?.first == SMART_TOP_TRACKS && history != null) {
+            { song: MediaStoreItem -> scope.launch { history.deleteLocal(song.playlistCode) } }
+        } else {
+            null
+        }
+    }
 
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
-    CompositionLocalProvider(LocalPlaylistRemove provides removeFromPlaylist) {
+    CompositionLocalProvider(
+        LocalPlaylistRemove provides removeFromPlaylist,
+        LocalRemoveFromPlayHistory provides removeFromPlayHistory,
+    ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (maxWidth >= LibraryGridMinWidth) {
                 LazyVerticalGrid(
@@ -1398,12 +1414,14 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
     val last = stringResource(Res.string.queue_last)
     val addToPlaylistLabel = stringResource(Res.string.cd_add_to_playlist)
     val removeFromPlaylistLabel = stringResource(Res.string.menu_remove_from_playlist)
+    val removeFromTopTracks = stringResource(Res.string.menu_remove)
     val showInFolder = stringResource(Res.string.menu_show_in_folder)
     val removeFromDisk = stringResource(Res.string.menu_remove_from_disk)
     val reveal = LocalLibraryReveal.current
     val requestDelete = LocalLibraryDelete.current
     val addToPlaylist = LocalAddToPlaylist.current
     val removeFromPlaylist = LocalPlaylistRemove.current
+    val removeFromHistory = LocalRemoveFromPlayHistory.current
     return ItemActions(
         buildList {
             add(play to { coordinator.playLocalSingle(song) })
@@ -1411,6 +1429,7 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
             add(last to { coordinator.queueLocalLast(song) })
             if (addToPlaylist != null) add(addToPlaylistLabel to { addToPlaylist(song) })
             if (removeFromPlaylist != null) add(removeFromPlaylistLabel to { removeFromPlaylist(song) })
+            if (removeFromHistory != null) add(removeFromTopTracks to { removeFromHistory(song) })
             if (reveal != null && song.bucketId != null) add(showInFolder to { reveal(song) })
             if (requestDelete != null) add(removeFromDisk to { requestDelete(song) })
         },

@@ -39,6 +39,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,7 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.feed_empty
+import io.ymusic.ui.resources.menu_remove
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
 import io.ymusic.ui.resources.reload
@@ -618,15 +620,22 @@ private fun itemClick(
     else -> null
 }
 
+/** Overflow "Remove" on Discover Top tracks. Null everywhere else hides the item. */
+internal val LocalRemoveFromTopTracks = compositionLocalOf<((YtFeedItem) -> Unit)?> { null }
+
 @Composable
 private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions {
     val downloadLauncher = LocalDownloadLauncher.current
+    val removeFromTopTracks = LocalRemoveFromTopTracks.current
     return ItemActions(
         if (item.kind == YtFeedItem.KIND_VIDEO) {
             buildList {
                 add(stringResource(Res.string.queue_next) to { coordinator.playNext(item) })
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
                 if (downloadLauncher != null) add("Download" to { downloadLauncher.launch(item) })
+                if (removeFromTopTracks != null) {
+                    add(stringResource(Res.string.menu_remove) to { removeFromTopTracks(item) })
+                }
             }
         } else {
             emptyList()

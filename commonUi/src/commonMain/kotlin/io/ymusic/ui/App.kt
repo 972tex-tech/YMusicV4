@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtFeedPage
 import io.ymusic.dynamicengine.yt.YtSection
 import io.ymusic.dynamicengine.yt.extractAccountLibrary
@@ -1008,21 +1009,34 @@ private fun DiscoverFeed(
                 }
             }
         }
-        FeedList(
-            session.pager,
-            coordinator,
-            emptyMessage = stringResource(
-                when (tab) {
-                    DiscoverTab.Music -> Res.string.discover_no_trending
-                    DiscoverTab.Recommended -> Res.string.discover_no_recommendations
-                    DiscoverTab.TopTracks -> Res.string.discover_no_top_tracks
-                    else -> Res.string.discover_no_anonymous_home
-                },
-            ),
-            onOpen = onOpen,
-            listState = session.listState,
-            onDeeplink = onDeeplink,
-        )
+        val removeFromTopTracks: ((YtFeedItem) -> Unit)? =
+            if (tab == DiscoverTab.TopTracks) {
+                { item ->
+                    localScope.launch {
+                        graph.playHistory?.deleteYoutube(item.id)
+                        session.pager.reload()
+                    }
+                }
+            } else {
+                null
+            }
+        CompositionLocalProvider(LocalRemoveFromTopTracks provides removeFromTopTracks) {
+            FeedList(
+                session.pager,
+                coordinator,
+                emptyMessage = stringResource(
+                    when (tab) {
+                        DiscoverTab.Music -> Res.string.discover_no_trending
+                        DiscoverTab.Recommended -> Res.string.discover_no_recommendations
+                        DiscoverTab.TopTracks -> Res.string.discover_no_top_tracks
+                        else -> Res.string.discover_no_anonymous_home
+                    },
+                ),
+                onOpen = onOpen,
+                listState = session.listState,
+                onDeeplink = onDeeplink,
+            )
+        }
     }
 }
 

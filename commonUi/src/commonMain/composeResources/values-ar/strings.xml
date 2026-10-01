@@ -47,6 +47,7 @@
     <string name="menu_download_location">موقع التنزيل</string>
     <string name="queue_next">التشغيل تاليًا</string>
     <string name="queue_last">إضافة إلى نهاية قائمة الانتظار</string>
+    <string name="menu_remove">إزالة</string>
     <string name="badge_live">مباشر</string>
 
     <string name="search_youtube">البحث في YouTube</string>

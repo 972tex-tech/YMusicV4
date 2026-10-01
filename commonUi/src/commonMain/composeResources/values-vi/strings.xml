@@ -47,6 +47,7 @@
     <string name="menu_download_location">Thư mục tải xuống</string>
     <string name="queue_next">Phát tiếp theo</string>
     <string name="queue_last">Thêm vào cuối hàng đợi</string>
+    <string name="menu_remove">Loại bỏ</string>
     <string name="badge_live">TRỰC TIẾP</string>
 
     <string name="search_youtube">Tìm kiếm trên YouTube</string>

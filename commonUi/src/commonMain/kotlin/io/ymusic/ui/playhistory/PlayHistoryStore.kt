@@ -142,6 +142,26 @@ class PlayHistoryStore(
         )
     }
 
+    suspend fun deleteLocal(code: String) {
+        if (code.isEmpty()) return
+        withContext(io) {
+            driver.execute(null, "DELETE FROM local_play_history WHERE code = ?", 1) {
+                bindString(0, code)
+            }
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    suspend fun deleteYoutube(videoId: String) {
+        if (videoId.isEmpty()) return
+        withContext(io) {
+            driver.execute(null, "DELETE FROM yt_play_history WHERE video_id = ?", 1) {
+                bindString(0, videoId)
+            }
+        }
+        _changes.tryEmit(Unit)
+    }
+
     suspend fun youtubeTopChart(limit: Int = retain): List<YtFeedItem> = withContext(io) {
         val ids = queryIds(
             "SELECT video_id FROM yt_play_history ORDER BY watch_time DESC, tracked_at DESC LIMIT ?",
