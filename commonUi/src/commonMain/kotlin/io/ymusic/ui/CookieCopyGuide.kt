@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -252,7 +251,7 @@ internal fun CookieCopyGuide(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .widthIn(max = 380.dp)
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height(220.dp)
                     .clearAndSetSemantics { contentDescription = cd },
             )
         }
@@ -347,7 +346,8 @@ private fun CookieCopyWindow(
         else -> 1f
     }
     val addressOn = beat == CookieCopyBeat.AddressBar && progress > 0.28f
-    val networkOn = beat >= CookieCopyBeat.Network
+    val networkOn = beat >= CookieCopyBeat.Network ||
+        (beat == CookieCopyBeat.DevTools && progress > 0.55f)
     val originOn = beat >= CookieCopyBeat.Request &&
         (beat != CookieCopyBeat.Request || progress > 0.45f)
     val tableOn = beat == CookieCopyBeat.Copy && progress > 0.22f
@@ -392,7 +392,7 @@ private fun CookieCopyWindow(
                     anchors = anchors,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(108.dp * toolsOpen)
+                        .height(140.dp * toolsOpen)
                         .clipToBounds(),
                 )
             }
@@ -533,17 +533,16 @@ private fun CookieCopyDevTools(
                 .height(24.dp)
                 .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ToolsTab("Elements", selected = !networkOn)
-            ToolsTab("Console", selected = false)
             ToolsTab(
                 label = "Network",
                 selected = networkOn,
                 pulse = if (networkOn) pulse else 0f,
                 accent = accent,
                 modifier = Modifier
-                    .wrapContentWidth()
+                    .widthIn(min = 64.dp)
                     .trackAnchor(anchors) { anchors.application = it },
             )
         }
@@ -568,58 +567,74 @@ private fun CookieCopyNetworkPane(
     anchors: CookieCopyAnchors,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier) {
-        Column(
-            Modifier
-                .width(150.dp)
-                .fillMaxHeight()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            TreeLine(
-                label = "GET  youtube.com",
-                selected = originOn,
+    Box(modifier.background(CookieCopyChrome.Surface)) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val head = TextStyle(fontSize = 8.sp, fontWeight = FontWeight.SemiBold, color = CookieCopyChrome.TextMuted)
+                Text("Name", style = head, modifier = Modifier.weight(1f), maxLines = 1)
+                Text("Status", style = head, maxLines = 1)
+                Text("Type", style = head, maxLines = 1)
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(CookieCopyChrome.ToolsLine))
+            NetworkRequestRow(
+                name = "youtube.com",
+                status = "200",
+                type = "document",
+                selected = originOn && !tableOn,
                 pulse = if (originOn && !tableOn) pulse else 0f,
                 accent = accent,
                 modifier = Modifier.trackAnchor(anchors) { anchors.cookiesOrigin = it },
             )
-            TreeLine("GET  www.youtube.com")
-            TreeLine("GET  googlevideo")
+            NetworkRequestRow(name = "www.youtube.com", status = "200", type = "fetch", accent = accent)
+            NetworkRequestRow(name = "googlevideo", status = "206", type = "media", accent = accent)
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(CookieCopyChrome.ToolsLine))
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            if (tableOn) {
-                CookieCopyCurlMenu(
-                    pulse = pulse,
-                    accent = accent,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(horizontal = 6.dp, vertical = 6.dp)
-                        .trackAnchor(anchors) { anchors.table = it },
-                )
-            } else {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .background(CookieCopyChrome.Surface)
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                ) {
-                    val style = TextStyle(fontSize = 7.sp, color = CookieCopyChrome.Text)
-                    Text(
-                        "Headers",
-                        style = style.copy(fontWeight = FontWeight.SemiBold, color = CookieCopyChrome.TextMuted),
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text("Host: www.youtube.com", style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        "Cookie: SID=•••; HSID=•••; LOGIN_INFO=•••",
-                        style = style,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+        if (tableOn) {
+            CookieCopyCurlMenu(
+                pulse = pulse,
+                accent = accent,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 20.dp, top = 22.dp)
+                    .trackAnchor(anchors) { anchors.table = it },
+            )
         }
+    }
+}
+
+@Composable
+private fun NetworkRequestRow(
+    name: String,
+    status: String,
+    type: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    pulse: Float = 0f,
+    accent: Color = DesignColors.Accent,
+) {
+    val wash = if (selected) accent.copy(alpha = 0.22f + 0.12f * pulse) else Color.Transparent
+    val color = if (selected) accent else CookieCopyChrome.Text
+    val style = TextStyle(
+        fontSize = 8.sp,
+        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        color = color,
+    )
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(wash)
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(name, style = style, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(status, style = style, maxLines = 1)
+        Text(type, style = style, maxLines = 1)
     }
 }
 
@@ -684,7 +699,7 @@ private fun ToolsTab(
         Text(
             label,
             style = TextStyle(
-                fontSize = 8.sp,
+                fontSize = 10.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = color,
             ),
@@ -700,38 +715,6 @@ private fun ToolsTab(
                 .background(if (selected) accent else Color.Transparent),
         )
     }
-}
-
-@Composable
-private fun TreeLine(
-    label: String,
-    modifier: Modifier = Modifier,
-    indent: Int = 0,
-    selected: Boolean = false,
-    accented: Boolean = false,
-    pulse: Float = 0f,
-    accent: Color = DesignColors.Accent,
-) {
-    val wash = when {
-        selected -> accent.copy(alpha = 0.22f + 0.12f * pulse)
-        accented -> accent.copy(alpha = 0.12f + 0.10f * pulse)
-        else -> Color.Transparent
-    }
-    Text(
-        label,
-        style = TextStyle(
-            fontSize = 8.sp,
-            fontWeight = if (selected || accented) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected || accented) accent else CookieCopyChrome.Text,
-        ),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(3.dp))
-            .background(wash)
-            .padding(start = (4 + indent * 8).dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-    )
 }
 
 @Composable
