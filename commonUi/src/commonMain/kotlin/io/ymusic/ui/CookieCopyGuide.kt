@@ -10,6 +10,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,13 +24,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +59,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -63,11 +70,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_signin_paste_guide
+import io.ymusic.ui.resources.cd_signin_paste_pause
+import io.ymusic.ui.resources.cd_signin_paste_play
+import io.ymusic.ui.resources.signin_paste_browser_chrome
+import io.ymusic.ui.resources.signin_paste_browser_firefox
+import io.ymusic.ui.resources.signin_paste_browser_safari
 import io.ymusic.ui.resources.signin_paste_guide_address
-import io.ymusic.ui.resources.signin_paste_guide_application
-import io.ymusic.ui.resources.signin_paste_guide_cookies
 import io.ymusic.ui.resources.signin_paste_guide_copy
 import io.ymusic.ui.resources.signin_paste_guide_f12
+import io.ymusic.ui.resources.signin_paste_guide_inspector
+import io.ymusic.ui.resources.signin_paste_guide_network
+import io.ymusic.ui.resources.signin_paste_guide_request
+import io.ymusic.ui.resources.signin_paste_hint
+import io.ymusic.ui.resources.signin_paste_hint_firefox
+import io.ymusic.ui.resources.signin_paste_hint_safari
 import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -79,12 +95,35 @@ private enum class CookieCopyBeat(
     val moveStart: Float,
     val moveEnd: Float,
 ) {
-    AddressBar(2000, 0f, 0.34f),
-    DevTools(1800, 0f, 0.01f),
-    Application(1800, 0f, 0.36f),
-    Cookies(2200, 0.22f, 0.55f),
-    Copy(2600, 0f, 0.28f),
+    AddressBar(4000, 0f, 0.34f),
+    DevTools(3600, 0f, 0.01f),
+    Network(3600, 0f, 0.36f),
+    Request(4400, 0.22f, 0.55f),
+    Copy(5200, 0f, 0.28f),
 }
+
+private enum class CookieCopyBrowser {
+    Chrome,
+    Firefox,
+    Safari,
+}
+
+private val CookieCopyBrowser.label: StringResource
+    get() = when (this) {
+        CookieCopyBrowser.Chrome -> Res.string.signin_paste_browser_chrome
+        CookieCopyBrowser.Firefox -> Res.string.signin_paste_browser_firefox
+        CookieCopyBrowser.Safari -> Res.string.signin_paste_browser_safari
+    }
+
+private val CookieCopyBrowser.hint: StringResource
+    get() = when (this) {
+        CookieCopyBrowser.Chrome -> Res.string.signin_paste_hint
+        CookieCopyBrowser.Firefox -> Res.string.signin_paste_hint_firefox
+        CookieCopyBrowser.Safari -> Res.string.signin_paste_hint_safari
+    }
+
+private val CookieCopyBrowser.devtoolsKey: String
+    get() = if (this == CookieCopyBrowser.Safari) "⌥⌘I" else "F12"
 
 /** Light schematic chrome — stays light in the dark theme so it still reads as a browser window. */
 private object CookieCopyChrome {
@@ -98,7 +137,6 @@ private object CookieCopyChrome {
     val ToolsLine = Color(0xFFD0D4DA)
     val Text = Color(0xFF3C4043)
     val TextMuted = Color(0xFF80868B)
-    val Row = Color(0xFFF7F8FA)
 }
 
 private class CookieCopyAnchors {
@@ -110,8 +148,8 @@ private class CookieCopyAnchors {
 
     fun target(beat: CookieCopyBeat): Offset = when (beat) {
         CookieCopyBeat.AddressBar, CookieCopyBeat.DevTools -> address
-        CookieCopyBeat.Application -> application
-        CookieCopyBeat.Cookies -> cookiesOrigin
+        CookieCopyBeat.Network -> application
+        CookieCopyBeat.Request -> cookiesOrigin
         CookieCopyBeat.Copy -> table
     }
 }
@@ -119,32 +157,49 @@ private class CookieCopyAnchors {
 @Composable
 internal fun CookieCopyGuide(modifier: Modifier = Modifier) {
     val cd = stringResource(Res.string.cd_signin_paste_guide)
+    val pauseCd = stringResource(Res.string.cd_signin_paste_pause)
+    val playCd = stringResource(Res.string.cd_signin_paste_play)
+    var browser by remember { mutableStateOf(CookieCopyBrowser.Chrome) }
+    var paused by remember { mutableStateOf(false) }
+    var stepIndex by remember { mutableIntStateOf(0) }
+    var stepEpoch by remember { mutableIntStateOf(0) }
     var beat by remember { mutableStateOf(CookieCopyBeat.AddressBar) }
     var progress by remember { mutableStateOf(0f) }
     var cursor by remember { mutableStateOf(Offset(0.78f, 0.46f)) }
     val anchors = remember { CookieCopyAnchors() }
+    val steps = CookieCopyBeat.entries
 
-    LaunchedEffect(Unit) {
-        var from = Offset(0.78f, 0.46f)
+    LaunchedEffect(browser, stepIndex, stepEpoch) {
+        val b = steps[stepIndex]
+        beat = b
+        progress = 0f
+        val from = if (stepIndex == 0) Offset(0.78f, 0.46f) else anchors.target(steps[stepIndex - 1])
+        cursor = from
+        var startNs = withFrameNanos { it }
+        var pausedAcc = 0L
+        var pauseAt = 0L
+        val durNs = b.durationMs * 1_000_000L
+        var dest = anchors.target(b)
         while (isActive) {
-            for (b in CookieCopyBeat.entries) {
-                beat = b
-                val startNs = withFrameNanos { it }
-                val durNs = b.durationMs * 1_000_000L
-                var dest = anchors.target(b)
-                while (isActive) {
-                    val t = ((withFrameNanos { it } - startNs).toFloat() / durNs).coerceAtMost(1f)
-                    progress = t
-                    dest = anchors.target(b)
-                    val mt = FastOutSlowInEasing.transform(
-                        ((t - b.moveStart) / (b.moveEnd - b.moveStart)).coerceIn(0f, 1f),
-                    )
-                    cursor = lerp(from, dest, mt)
-                    if (t >= 1f) break
-                }
-                from = dest
+            val now = withFrameNanos { it }
+            if (paused) {
+                if (pauseAt == 0L) pauseAt = now
+                continue
             }
+            if (pauseAt != 0L) {
+                pausedAcc += now - pauseAt
+                pauseAt = 0L
+            }
+            val t = ((now - startNs - pausedAcc).toFloat() / durNs).coerceAtMost(1f)
+            progress = t
+            dest = anchors.target(b)
+            val mt = FastOutSlowInEasing.transform(
+                ((t - b.moveStart) / (b.moveEnd - b.moveStart)).coerceIn(0f, 1f),
+            )
+            cursor = lerp(from, dest, mt)
+            if (t >= 1f) break
         }
+        if (isActive) stepIndex = (stepIndex + 1) % steps.size
     }
 
     Column(
@@ -152,14 +207,31 @@ internal fun CookieCopyGuide(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        ) {
+            CookieCopyBrowser.entries.forEach { b ->
+                FeedChip(
+                    title = stringResource(b.label),
+                    selected = browser == b,
+                    onClick = {
+                        browser = b
+                        paused = false
+                        stepIndex = 0
+                        stepEpoch++
+                    },
+                )
+            }
+        }
         AnimatedContent(
-            targetState = beat,
+            targetState = beat to browser,
             transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(180)) },
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
-        ) { b ->
+        ) { (b, br) ->
             Text(
-                stringResource(b.caption),
+                stringResource(b.caption(br)),
                 style = TextStyle(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
@@ -169,9 +241,10 @@ internal fun CookieCopyGuide(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        // Chrome's own UI is LTR; flipping the schematic in Arabic would mis-teach the click path.
+        // Browser chrome is LTR; flipping the schematic in Arabic would mis-teach the click path.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             CookieCopyWindow(
+                browser = browser,
                 beat = beat,
                 progress = progress,
                 cursor = cursor,
@@ -183,20 +256,82 @@ internal fun CookieCopyGuide(modifier: Modifier = Modifier) {
                     .clearAndSetSemantics { contentDescription = cd },
             )
         }
+        Row(
+            Modifier.widthIn(max = 380.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ActionIcon(
+                if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                if (paused) playCd else pauseCd,
+                iconSize = 20.dp,
+                hitSize = 36.dp,
+                onClick = { paused = !paused },
+            )
+            Row(
+                Modifier.weight(1f).height(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                steps.forEachIndexed { i, step ->
+                    val fill = when {
+                        i < stepIndex -> 1f
+                        i == stepIndex -> progress
+                        else -> 0f
+                    }
+                    val stepCd = stringResource(step.caption(browser))
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable {
+                                stepIndex = i
+                                stepEpoch++
+                            }
+                            .semantics { contentDescription = stepCd },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(99.dp))
+                                .background(DesignColors.OutlineSoft),
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(fill)
+                                    .background(DesignColors.Accent),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Text(
+            stringResource(browser.hint),
+            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
-private val CookieCopyBeat.caption: StringResource
-    get() = when (this) {
-        CookieCopyBeat.AddressBar -> Res.string.signin_paste_guide_address
-        CookieCopyBeat.DevTools -> Res.string.signin_paste_guide_f12
-        CookieCopyBeat.Application -> Res.string.signin_paste_guide_application
-        CookieCopyBeat.Cookies -> Res.string.signin_paste_guide_cookies
-        CookieCopyBeat.Copy -> Res.string.signin_paste_guide_copy
+private fun CookieCopyBeat.caption(browser: CookieCopyBrowser): StringResource = when (this) {
+    CookieCopyBeat.AddressBar -> Res.string.signin_paste_guide_address
+    CookieCopyBeat.DevTools -> when (browser) {
+        CookieCopyBrowser.Safari -> Res.string.signin_paste_guide_inspector
+        else -> Res.string.signin_paste_guide_f12
     }
+    CookieCopyBeat.Network -> Res.string.signin_paste_guide_network
+    CookieCopyBeat.Request -> Res.string.signin_paste_guide_request
+    CookieCopyBeat.Copy -> Res.string.signin_paste_guide_copy
+}
 
 @Composable
 private fun CookieCopyWindow(
+    browser: CookieCopyBrowser,
     beat: CookieCopyBeat,
     progress: Float,
     cursor: Offset,
@@ -212,19 +347,19 @@ private fun CookieCopyWindow(
         else -> 1f
     }
     val addressOn = beat == CookieCopyBeat.AddressBar && progress > 0.28f
-    val applicationOn = beat >= CookieCopyBeat.Application
-    val cookiesOpen = beat >= CookieCopyBeat.Cookies
-    val originOn = beat >= CookieCopyBeat.Cookies &&
-        (beat != CookieCopyBeat.Cookies || progress > 0.45f)
+    val networkOn = beat >= CookieCopyBeat.Network
+    val originOn = beat >= CookieCopyBeat.Request &&
+        (beat != CookieCopyBeat.Request || progress > 0.45f)
     val tableOn = beat == CookieCopyBeat.Copy && progress > 0.22f
     val showF12 = beat == CookieCopyBeat.DevTools && progress < 0.78f
-    val showCtrlA = beat == CookieCopyBeat.Copy && progress in 0.18f..0.52f
-    val showCtrlC = beat == CookieCopyBeat.Copy && progress > 0.52f
+    val showReload = beat == CookieCopyBeat.Request && progress < 0.45f
+    val showCopyCurl = beat == CookieCopyBeat.Copy && progress > 0.28f
     val pulse = 0.5f + 0.5f * sin(progress * 6.0 * PI).toFloat()
     val clickScale = when {
         beat == CookieCopyBeat.AddressBar && progress in 0.42f..0.56f -> 0.86f
-        beat == CookieCopyBeat.Application && progress in 0.38f..0.52f -> 0.86f
-        beat == CookieCopyBeat.Cookies && progress in 0.52f..0.66f -> 0.86f
+        beat == CookieCopyBeat.Network && progress in 0.38f..0.52f -> 0.86f
+        beat == CookieCopyBeat.Request && progress in 0.52f..0.66f -> 0.86f
+        beat == CookieCopyBeat.Copy && progress in 0.38f..0.52f -> 0.86f
         else -> 1f
     }
     val shape = RoundedCornerShape(10.dp)
@@ -249,8 +384,7 @@ private fun CookieCopyWindow(
             }
             if (toolsOpen > 0f) {
                 CookieCopyDevTools(
-                    applicationOn = applicationOn,
-                    cookiesOpen = cookiesOpen,
+                    networkOn = networkOn,
                     originOn = originOn,
                     tableOn = tableOn,
                     pulse = pulse,
@@ -268,19 +402,19 @@ private fun CookieCopyWindow(
             drawCursor(origin, clickScale, accent)
         }
         KeyChip(
-            label = "F12",
+            label = browser.devtoolsKey,
             visible = showF12,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 12.dp),
         )
         KeyChip(
-            label = "Ctrl+A",
-            visible = showCtrlA,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 20.dp),
+            label = "F5",
+            visible = showReload,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 12.dp),
         )
         KeyChip(
-            label = "Ctrl+C",
-            visible = showCtrlC,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 20.dp),
+            label = "Copy as cURL",
+            visible = showCopyCurl,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 12.dp),
         )
     }
 }
@@ -384,8 +518,7 @@ private fun CookieCopyPage() {
 
 @Composable
 private fun CookieCopyDevTools(
-    applicationOn: Boolean,
-    cookiesOpen: Boolean,
+    networkOn: Boolean,
     originOn: Boolean,
     tableOn: Boolean,
     pulse: Float,
@@ -397,62 +530,139 @@ private fun CookieCopyDevTools(
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(20.dp)
-                .padding(horizontal = 8.dp),
+                .height(24.dp)
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ToolsTab("Elements", selected = !applicationOn)
+            ToolsTab("Elements", selected = !networkOn)
             ToolsTab("Console", selected = false)
-            ToolsTab("Sources", selected = false)
-            ToolsTab("Network", selected = false)
             ToolsTab(
-                label = "Application",
-                selected = applicationOn,
-                pulse = if (applicationOn) pulse else 0f,
+                label = "Network",
+                selected = networkOn,
+                pulse = if (networkOn) pulse else 0f,
                 accent = accent,
-                modifier = Modifier.trackAnchor(anchors) { anchors.application = it },
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .trackAnchor(anchors) { anchors.application = it },
             )
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(CookieCopyChrome.ToolsLine))
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Column(
-                Modifier
-                    .width(118.dp)
-                    .fillMaxHeight()
-                    .background(CookieCopyChrome.Tools)
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                TreeLine("Storage")
-                TreeLine(
-                    label = "Cookies",
-                    accented = cookiesOpen,
-                    pulse = if (cookiesOpen && !originOn) pulse else 0f,
+        CookieCopyNetworkPane(
+            originOn = originOn,
+            tableOn = tableOn,
+            pulse = pulse,
+            accent = accent,
+            anchors = anchors,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun CookieCopyNetworkPane(
+    originOn: Boolean,
+    tableOn: Boolean,
+    pulse: Float,
+    accent: Color,
+    anchors: CookieCopyAnchors,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier) {
+        Column(
+            Modifier
+                .width(150.dp)
+                .fillMaxHeight()
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            TreeLine(
+                label = "GET  youtube.com",
+                selected = originOn,
+                pulse = if (originOn && !tableOn) pulse else 0f,
+                accent = accent,
+                modifier = Modifier.trackAnchor(anchors) { anchors.cookiesOrigin = it },
+            )
+            TreeLine("GET  www.youtube.com")
+            TreeLine("GET  googlevideo")
+        }
+        Box(Modifier.width(1.dp).fillMaxHeight().background(CookieCopyChrome.ToolsLine))
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+            if (tableOn) {
+                CookieCopyCurlMenu(
+                    pulse = pulse,
                     accent = accent,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(horizontal = 6.dp, vertical = 6.dp)
+                        .trackAnchor(anchors) { anchors.table = it },
                 )
-                if (cookiesOpen) {
-                    TreeLine(
-                        label = "https://www.youtube.com",
-                        indent = 1,
-                        selected = originOn,
-                        pulse = if (originOn && !tableOn) pulse else 0f,
-                        accent = accent,
-                        modifier = Modifier.trackAnchor(anchors) { anchors.cookiesOrigin = it },
+            } else {
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .background(CookieCopyChrome.Surface)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    val style = TextStyle(fontSize = 7.sp, color = CookieCopyChrome.Text)
+                    Text(
+                        "Headers",
+                        style = style.copy(fontWeight = FontWeight.SemiBold, color = CookieCopyChrome.TextMuted),
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text("Host: www.youtube.com", style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "Cookie: SID=•••; HSID=•••; LOGIN_INFO=•••",
+                        style = style,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            Box(Modifier.width(1.dp).fillMaxHeight().background(CookieCopyChrome.ToolsLine))
-            CookieCopyTable(
-                selected = tableOn,
-                accent = accent,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .trackAnchor(anchors) { anchors.table = it },
-            )
         }
     }
+}
+
+@Composable
+private fun CookieCopyCurlMenu(
+    pulse: Float,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .width(128.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(CookieCopyChrome.Surface)
+            .border(1.dp, CookieCopyChrome.ToolsLine, RoundedCornerShape(4.dp))
+            .padding(vertical = 3.dp),
+    ) {
+        CurlMenuRow("Copy")
+        CurlMenuRow("Copy as cURL", selected = true, pulse = pulse, accent = accent)
+        CurlMenuRow("Copy as fetch")
+    }
+}
+
+@Composable
+private fun CurlMenuRow(
+    label: String,
+    selected: Boolean = false,
+    pulse: Float = 0f,
+    accent: Color = CookieCopyChrome.Text,
+) {
+    Text(
+        label,
+        style = TextStyle(
+            fontSize = 8.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) accent else CookieCopyChrome.Text,
+        ),
+        maxLines = 1,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) accent.copy(alpha = 0.22f + 0.12f * pulse) else Color.Transparent)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
 }
 
 @Composable
@@ -465,7 +675,10 @@ private fun ToolsTab(
 ) {
     val color = if (selected) accent else CookieCopyChrome.TextMuted
     Column(
-        modifier.padding(top = 3.dp),
+        modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (selected) accent.copy(alpha = 0.22f + 0.14f * pulse) else Color.Transparent)
+            .padding(horizontal = 5.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -476,13 +689,15 @@ private fun ToolsTab(
                 color = color,
             ),
             maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
         )
         Spacer(Modifier.height(2.dp))
         Box(
             Modifier
                 .height(2.dp)
                 .fillMaxWidth()
-                .background(if (selected) accent.copy(alpha = 0.55f + 0.45f * pulse) else Color.Transparent),
+                .background(if (selected) accent else Color.Transparent),
         )
     }
 }
@@ -517,77 +732,6 @@ private fun TreeLine(
             .background(wash)
             .padding(start = (4 + indent * 8).dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
     )
-}
-
-private val DemoCookies = listOf(
-    Triple("VISITOR_INFO1_LIVE", "•••", ".youtube.com"),
-    Triple("SID", "•••", ".youtube.com"),
-    Triple("HSID", "•••", ".google.com"),
-    Triple("LOGIN_INFO", "•••", ".youtube.com"),
-    Triple("PREF", "•••", ".youtube.com"),
-)
-
-@Composable
-private fun CookieCopyTable(
-    selected: Boolean,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier
-            .background(if (selected) accent.copy(alpha = 0.10f) else CookieCopyChrome.Surface)
-            .then(
-                if (selected) {
-                    Modifier.border(1.5.dp, accent.copy(alpha = 0.7f))
-                } else {
-                    Modifier
-                },
-            )
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-    ) {
-        CookieRow("Name", "Value", "Domain", header = true)
-        DemoCookies.forEachIndexed { i, row ->
-            CookieRow(
-                name = row.first,
-                value = row.second,
-                domain = row.third,
-                striped = i % 2 == 1,
-                selected = selected,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CookieRow(
-    name: String,
-    value: String,
-    domain: String,
-    header: Boolean = false,
-    striped: Boolean = false,
-    selected: Boolean = false,
-) {
-    val style = TextStyle(
-        fontSize = 7.sp,
-        fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
-        color = if (header) CookieCopyChrome.TextMuted else CookieCopyChrome.Text,
-    )
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(
-                when {
-                    selected && !header -> DesignColors.Accent.copy(alpha = 0.16f)
-                    striped -> CookieCopyChrome.Row
-                    else -> Color.Transparent
-                },
-            )
-            .padding(vertical = 1.dp),
-    ) {
-        Text(name, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1.3f))
-        Text(value, style = style, maxLines = 1, modifier = Modifier.weight(0.5f))
-        Text(domain, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-    }
 }
 
 @Composable
