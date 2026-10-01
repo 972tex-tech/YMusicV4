@@ -2426,7 +2426,10 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                 *initp = NULL;
                 *initn = 0;
             }
-            if (!*initn && fmp4_init_len(a->pend[idx], a->pend_n[idx], &ilen) && ilen > 0) {
+            /* A later ftyp/moov on this SourceBuffer is a new init (MSE). */
+            if (fmp4_init_len(a->pend[idx], a->pend_n[idx], &ilen) && ilen > 0) {
+                if (*initn)
+                    vlog("fmp4 init-replace n=%zu was=%zu a=%d", ilen, *initn, audio);
                 uint8_t *np = realloc(*initp, ilen);
                 if (np) {
                     *initp = np;
