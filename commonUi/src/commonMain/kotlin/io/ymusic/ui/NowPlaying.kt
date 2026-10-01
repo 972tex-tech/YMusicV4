@@ -854,7 +854,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
             ActionIcon(
                 painterResource(Res.drawable.ic_sponsor_block),
                 if (included) includedMsg else excludedMsg,
-                modifier = Modifier.graphicsLayer { alpha = if (included) 1f else 0.5f },
+                tint = if (included) DesignColors.Accent else DesignColors.InkMuted,
                 onClick = {
                     val id = videoId ?: return@ActionIcon
                     showSnackbar(if (included) excludedMsg else includedMsg)
