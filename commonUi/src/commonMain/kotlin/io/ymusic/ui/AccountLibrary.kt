@@ -19,10 +19,13 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +64,11 @@ internal fun AccountLibraryScreen(
     onOpen: ((YtFeedItem) -> Unit)?,
     onDeeplink: ((link: String, title: String?) -> Unit)?,
 ) {
+    val feedState by session.pager.state.collectAsState()
+    if (feedState is Pager.State.Loading) {
+        CenteredBox { CircularProgressIndicator() }
+        return
+    }
     FeedList(
         session.pager,
         coordinator,
@@ -68,13 +76,15 @@ internal fun AccountLibraryScreen(
         onOpen = onOpen,
         listState = session.listState,
         onDeeplink = onDeeplink,
-        topContent = { AccountLibraryHeader(account, onSignOut, onSwitchAccount, onDeeplink) },
+        topContent = account?.let { acct ->
+            { AccountLibraryHeader(acct, onSignOut, onSwitchAccount, onDeeplink) }
+        },
     )
 }
 
 @Composable
 private fun AccountLibraryHeader(
-    account: YtAccountInfo?,
+    account: YtAccountInfo,
     onSignOut: () -> Unit,
     onSwitchAccount: () -> Unit,
     onDeeplink: ((link: String, title: String?) -> Unit)?,
@@ -87,9 +97,9 @@ private fun AccountLibraryHeader(
         // are fixed chrome (icons + localized labels), not engine content — a deliberate exception
         // to "urls come from the engine": if WL/LL ever rot, no engine-composed url would save
         // rows the app draws itself.
-        val name = account?.name
+        val name = account.name
         val navRows = buildList {
-            account?.channelId?.let {
+            account.channelId?.let {
                 add(NavTarget(Icons.Outlined.AccountCircle, stringResource(Res.string.account_my_channel), "/channel/$it", name))
             }
             add(NavTarget(Icons.Outlined.History, stringResource(Res.string.account_watch_history), "/feed/history", null))
@@ -123,7 +133,7 @@ private class NavTarget(
 )
 
 @Composable
-private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit, onSwitchAccount: () -> Unit) {
+private fun AccountCard(account: YtAccountInfo, onSignOut: () -> Unit, onSwitchAccount: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 15.dp, bottom = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -133,8 +143,8 @@ private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit, onSwitch
             Modifier.size(46.dp).background(DesignColors.Ink, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            val thumbs = account?.thumbs ?: emptyList()
-            val initial = account?.name?.firstOrNull()?.uppercaseChar()
+            val thumbs = account.thumbs
+            val initial = account.name?.firstOrNull()?.uppercaseChar()
             when {
                 thumbs.isNotEmpty() -> ThumbImage(thumbs, 46.dp, CircleShape)
                 initial != null -> Text(
@@ -150,12 +160,12 @@ private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit, onSwitch
         }
         Column(Modifier.weight(1f)) {
             Text(
-                account?.name.orEmpty(),
+                account.name.orEmpty(),
                 style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            (account?.email ?: account?.handle)?.let { line ->
+            (account.email ?: account.handle)?.let { line ->
                 Text(
                     line,
                     style = TextStyle(fontSize = 12.sp, color = DesignColors.InkMuted),

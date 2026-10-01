@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.OndemandVideo
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -287,6 +288,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         val accountController = remember { AccountController(graph, scope) }
         val signedIn by accountController.signedIn.collectAsState()
         val account by accountController.account.collectAsState()
+        val profileReady by accountController.profileReady.collectAsState()
         val loginEpoch by accountController.loginEpoch.collectAsState()
         // The Recommended feed's raw material: the playing page reports YouTube's related items for
         // a music video and the engine keeps them. Pure hand-off — the app parses nothing, and a
@@ -758,6 +760,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                         discoverSessions,
                                                         scope,
                                                         signedIn = signedIn,
+                                                        profileReady = profileReady,
                                                         account = account,
                                                         onLogin = openLogin,
                                                         onSignOut = { accountController.signOut() },
@@ -920,6 +923,7 @@ private fun DiscoverFeed(
     sessions: MutableMap<String, FeedSession>,
     scope: kotlinx.coroutines.CoroutineScope,
     signedIn: Boolean,
+    profileReady: Boolean,
     account: io.ymusic.dynamicengine.yt.YtAccountInfo?,
     onLogin: () -> Unit,
     onSignOut: () -> Unit,
@@ -928,8 +932,11 @@ private fun DiscoverFeed(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     if (tab == DiscoverTab.Account) {
-        // The user/library tab: the sign-in preface when logged out, the account library when in.
-        if (signedIn) {
+        // The user/library tab: spinner until the profile probe finishes, then the sign-in
+        // preface when logged out or the account library when in.
+        if (!profileReady) {
+            CenteredBox { CircularProgressIndicator() }
+        } else if (signedIn) {
             // Cached like the other tabs (cleared with them on a locale/login epoch change).
             val session = remember(tab, localeEpoch, loginEpoch) {
                 sessions.getOrPut(tab.name) {

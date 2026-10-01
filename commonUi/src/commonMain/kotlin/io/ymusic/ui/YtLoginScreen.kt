@@ -142,6 +142,10 @@ internal class AccountController(
     private val _account = MutableStateFlow<YtAccountInfo?>(null)
     val account: StateFlow<YtAccountInfo?> = _account.asStateFlow()
 
+    /** False until the first login-status + account probe (or post-login fetch) finishes. */
+    private val _profileReady = MutableStateFlow(false)
+    val profileReady: StateFlow<Boolean> = _profileReady.asStateFlow()
+
     /** Bumped on every sign-in/out so the feed caches clear and reload (mirrors [AppGraph.localeEpoch]). */
     val loginEpoch = MutableStateFlow(0)
 
@@ -171,6 +175,7 @@ internal class AccountController(
                     _account.value = acct
                 }
             }
+            _profileReady.value = true
         }
     }
 
@@ -178,6 +183,7 @@ internal class AccountController(
      *  stale the player's page so the next track re-fetches /embed authenticated. */
     fun onLoginComplete() {
         scope.launch {
+            _profileReady.value = false
             _signedIn.value = true
             // Re-scrape the session under the new cookies so authenticated calls carry the account's
             // SESSION_INDEX before the account fetch and feed reload below. A failure means every
@@ -189,6 +195,7 @@ internal class AccountController(
                 .onFailure { log?.log(Logger.Level.WARN, "post-login account fetch failed", it) }
                 .getOrNull()
             loginEpoch.value += 1
+            _profileReady.value = true
             graph.player.refreshOnNext()
             graph.requestRefresh()
         }
