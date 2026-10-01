@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import CoreMedia
 import UIKit
 import YMusicApp
 
@@ -13,7 +14,8 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     private var stateTimer: Timer?
     var isActive: Bool { controller?.isPictureInPictureActive ?? false }
 
-    func syncEligible() {
+    /// Build the controller while still in the foreground so the first leave is live frames.
+    func prepare() {
         guard #available(iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported() else { return }
         guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
         if controller == nil {
@@ -21,26 +23,40 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
                 sampleBufferDisplayLayer: layer,
                 playbackDelegate: self,
             )
-            controller = AVPictureInPictureController(contentSource: source)
-            controller?.delegate = self
+            let pip = AVPictureInPictureController(contentSource: source)
+            pip.delegate = self
+            pip.requiresLinearPlayback = false
+            controller = pip
         }
+        syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
         let ok = IosPipHostKt.iosPipShouldAutoEnter()
         controller?.canStartPictureInPictureAutomaticallyFromInline = ok
+        if !ok, controller?.isPictureInPictureActive == true {
+            controller?.stopPictureInPicture()
+        }
     }
 
     func startIfEligible() {
-        syncEligible()
+        prepare()
         guard IosPipHostKt.iosPipShouldAutoEnter() else { return }
-        if controller?.isPictureInPictureActive != true {
+        guard controller?.isPictureInPictureActive != true else { return }
+        if controller?.isPictureInPicturePossible == true {
             controller?.startPictureInPicture()
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, IosPipHostKt.iosPipShouldAutoEnter() else { return }
+                self.controller?.startPictureInPicture()
+            }
         }
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         IosPipHostKt.iosOnPipStarted()
+        syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
         pictureInPictureController.invalidatePlaybackState()
         stateTimer?.invalidate()
-        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak pictureInPictureController] _ in
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self, weak pictureInPictureController] _ in
+            self?.syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
             pictureInPictureController?.invalidatePlaybackState()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -69,6 +85,7 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         setPlaying playing: Bool,
     ) {
         if playing { IosPipHostKt.iosPipPlay() } else { IosPipHostKt.iosPipPause() }
+        syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
         pictureInPictureController.invalidatePlaybackState()
     }
 
@@ -100,8 +117,26 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         skipByInterval skipInterval: CMTime,
         completion completionHandler: @escaping () -> Void,
     ) {
-        IosPipHostKt.iosPipSeekBySeconds(delta: CMTimeGetSeconds(skipInterval))
-        pictureInPictureController.invalidatePlaybackState()
+        let at = IosPipHostKt.iosPipSeekBySeconds(delta: CMTimeGetSeconds(skipInterval))
+        syncTimebase(at: at)
+        controller?.invalidatePlaybackState()
         completionHandler()
+    }
+
+    /// PiP draws the playhead from this layer's timebase (WWDC21). DisplayImmediately
+    /// still presents frames; the clock is only for the chrome.
+    private func syncTimebase(at seconds: Double) {
+        guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
+        if layer.controlTimebase == nil {
+            var tb: CMTimebase?
+            CMTimebaseCreateWithSourceClock(kCFAllocatorDefault, CMClockGetHostTimeClock(), &tb)
+            if let tb {
+                CMTimebaseSetRate(tb, rate: 0)
+                layer.controlTimebase = tb
+            }
+        }
+        guard let tb = layer.controlTimebase else { return }
+        CMTimebaseSetTime(tb, time: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
+        CMTimebaseSetRate(tb, rate: IosPipHostKt.iosPipIsPlaying() ? 1.0 : 0.0)
     }
 }

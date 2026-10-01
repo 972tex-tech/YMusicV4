@@ -22,15 +22,20 @@ struct iOSApp: App {
         // Let audio keep playing when the app is backgrounded/locked.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
+        IosPipHostKt.iosSetPipPrepare {
+            IosPip.shared.prepare()
+        }
     }
 
     var body: some Scene {
         WindowGroup {
             ComposeView().ignoresSafeArea()
+                .onAppear { IosPip.shared.prepare() }
                 .onChange(of: scenePhase) { phase in
                     switch phase {
                     case .inactive:
-                        IosPip.shared.syncEligible()
+                        // Start while still presenting so PiP is not a still of the last frame.
+                        IosPip.shared.startIfEligible()
                     case .background:
                         if IosPip.shared.isActive {
                             break
@@ -42,6 +47,7 @@ struct iOSApp: App {
                         }
                     case .active:
                         IosPipHostKt.iosOnEnterForeground()
+                        IosPip.shared.prepare()
                         DispatchQueue.main.async {
                             IosMseSurfaceKt.iosMseBecameActive()
                         }

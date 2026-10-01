@@ -28,6 +28,7 @@ class PipCoordinator(
 
     fun playingVideo(): Boolean {
         if (player.config.value.audioOnly) return false
+        if (player.status.value.videoSize == null) return false
         val q = player.videoQuality.value
         if (q.preferredQuality == VideoQualityState.AUDIO_ONLY) return false
         if (q.actualQuality == VideoQualityState.AUDIO_ONLY) return false

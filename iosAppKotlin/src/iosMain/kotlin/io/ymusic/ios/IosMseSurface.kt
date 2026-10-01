@@ -19,6 +19,7 @@ import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.interpretCPointer
 import kotlinx.cinterop.objcPtr
+import kotlinx.coroutines.launch
 import platform.AVFoundation.AVLayerVideoGravityResize
 import platform.AVFoundation.AVSampleBufferDisplayLayer
 import platform.CoreGraphics.CGRectMake
@@ -89,6 +90,11 @@ internal fun IosMseVideo(hole: IosMseHole, player: MsePlayer, modifier: Modifier
     LaunchedEffect(player) {
         val lp = hole.layerPtr() ?: return@LaunchedEffect
         player.setVideoSurface(MseVideoSurface().apply { layer = lp })
+        iosNotifyPipPrepare()
+        kotlinx.coroutines.coroutineScope {
+            launch { player.status.collect { iosNotifyPipPrepare() } }
+            launch { player.videoQuality.collect { iosNotifyPipPrepare() } }
+        }
     }
 }
 

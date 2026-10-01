@@ -13,6 +13,15 @@ internal object IosPipHost {
     var pip: PipCoordinator? = null
     var player: Player? = null
     var mse: MsePlayer? = null
+    var onPrepare: (() -> Unit)? = null
+}
+
+fun iosSetPipPrepare(callback: () -> Unit) {
+    IosPipHost.onPrepare = callback
+}
+
+fun iosNotifyPipPrepare() {
+    IosPipHost.onPrepare?.invoke()
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -55,10 +64,20 @@ fun iosPipDurationSeconds(): Double {
     return if (ms > 0L && ms != Progress.DURATION_UNKNOWN) ms / 1000.0 else 0.0
 }
 
-fun iosPipSeekBySeconds(delta: Double) {
-    val player = IosPipHost.player ?: return
-    val pos = player.progress.value.positionMs
-    player.seekTo((pos + (delta * 1000.0).toLong()).coerceAtLeast(0L))
+fun iosPipPositionSeconds(): Double {
+    val ms = IosPipHost.player?.progress?.value?.positionMs ?: 0L
+    return ms.coerceAtLeast(0L) / 1000.0
+}
+
+/** Seeks by [delta] seconds and returns the target position so the PiP timebase can update first. */
+fun iosPipSeekBySeconds(delta: Double): Double {
+    val player = IosPipHost.player ?: return 0.0
+    val p = player.progress.value
+    val next = (p.positionMs + (delta * 1000.0).toLong()).coerceAtLeast(0L).let { ms ->
+        if (p.durationMs > 0L) ms.coerceAtMost(p.durationMs) else ms
+    }
+    player.seekTo(next)
+    return next / 1000.0
 }
 
 fun iosPipSetRenderSize(width: Int, height: Int) {
