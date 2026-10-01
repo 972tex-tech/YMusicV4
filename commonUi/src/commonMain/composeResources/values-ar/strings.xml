@@ -19,6 +19,7 @@
     <string name="discover_no_anonymous_home">لا يقدم YouTube صفحة رئيسية دون تسجيل الدخول — استخدم البحث أو سجّل الدخول (قريبًا)</string>
     <string name="discover_no_trending">لا توجد قوائم رائجة لهذه المنطقة</string>
     <string name="discover_no_recommendations">شغّل بعض الأغاني وستظهر توصياتك هنا</string>
+    <string name="discover_no_top_tracks">شغّل بعض الفيديوهات وستظهر أكثر مقاطعك استماعاً هنا</string>
 
     <string name="chart_trending_music_videos">فيديوهات موسيقية رائجة</string>
     <string name="chart_top_songs">أفضل الأغاني</string>

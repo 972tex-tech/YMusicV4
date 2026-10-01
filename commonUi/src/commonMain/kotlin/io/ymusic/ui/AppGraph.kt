@@ -10,6 +10,7 @@ import io.ymusic.player.Player
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.InMemorySettingsStore
 import io.ymusic.settings.SettingsStore
+import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.sponsorblock.MockSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,6 +38,8 @@ typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
  * into it and owns that surface's visibility, so the UI never needs to know which engine is active.
  *
  * [mediaStore] backs the Library screen; a shell without one (no local library yet) leaves it null.
+ * [playHistory] is watch-time ranking (Library Recent play / Top tracks, Discover Top tracks);
+ * null skips recording.
  * [scanLibraryFolder] is the shell's directory-pick + scan action (desktop's FileDialog + media
  * scanner): it returns a user-facing summary line, or null when the pick was canceled.
  */
@@ -44,6 +47,7 @@ class AppGraph(
     val engines: DynamicEngineManager,
     val player: Player,
     val mediaStore: BetterMediaStore? = null,
+    val playHistory: PlayHistoryStore? = null,
     val scanLibraryFolder: ScanAction? = null,
     /**
      * Opens the OS folder picker and registers the chosen folder as a Library bucket (a lightweight

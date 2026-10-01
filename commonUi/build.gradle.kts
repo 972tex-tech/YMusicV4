@@ -64,6 +64,7 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 implementation(Libs.Zxing.core)
+                implementation(Libs.SqlDelight.sqliteDriver)
             }
         }
 
@@ -71,6 +72,14 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation(Libs.AndroidX.activityCompose)
+                implementation(Libs.SqlDelight.androidDriver)
+            }
+        }
+
+        // Lazy: iosMain only exists once the (host-gated) ios targets are configured.
+        sourceSets.matching { it.name == "iosMain" }.configureEach {
+            dependencies {
+                api(Libs.SqlDelight.nativeDriver)
             }
         }
 

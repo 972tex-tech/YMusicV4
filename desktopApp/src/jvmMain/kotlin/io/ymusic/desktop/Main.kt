@@ -121,6 +121,8 @@ import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.importSessionCookies
 import io.ymusic.ui.mediaStoreArtFetcher
+import io.ymusic.ui.playhistory.PlayHistoryStore
+import io.ymusic.ui.playhistory.playHistoryJdbcDriver
 import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.ymusic_logo
@@ -714,6 +716,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         player,
         logger = rootLogger,
         mediaStore = mediaStore,
+        playHistory = PlayHistoryStore(playHistoryJdbcDriver(File(dataDir, "play-history.db").absolutePath)),
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
         libraryFolderPicker = { pickAndRegisterFolder(mediaStore) },
         rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },

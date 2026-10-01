@@ -21,6 +21,8 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   inbox. The desktop deletes the inbox as soon as it receives the payload.
 
 - **PlaybackCoordinator** — play-now-with-watch-next-autoplay + display metadata for queue items.
+  Watch-time ranking (Library Recent play / Top tracks, Discover Top tracks) lives in
+  `PlayHistoryStore` (its own SQLite file), not `:media-store`.
 
 - **Thumbnails** — render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null
   keeps placeholder boxes).

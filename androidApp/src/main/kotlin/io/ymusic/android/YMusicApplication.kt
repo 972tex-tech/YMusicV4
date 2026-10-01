@@ -69,6 +69,8 @@ import io.ymusic.ui.downloadCaptionPreference
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.mediaStoreArtFetcher
+import io.ymusic.ui.playhistory.PlayHistoryStore
+import io.ymusic.ui.playhistory.playHistoryAndroidDriver
 import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
@@ -519,6 +521,7 @@ class YMusicApplication : Application() {
             logger = rootLogger,
             stats = shared.stats,
             mediaStore = shared.mediaStore,
+            playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
             rescanLibrary = { onProgress -> rescanKnownRoots(shared.mediaStore, onProgress) },

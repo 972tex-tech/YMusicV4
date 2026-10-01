@@ -5,20 +5,26 @@ import io.ymusic.dynamicengine.yt.YtThumb
 import io.ymusic.dynamicengine.yt.watchNext
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
+import io.ymusic.player.PlaybackState
 import io.ymusic.player.Player
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.time.TimeSource
 
 /**
  * UI-side playback glue over the [Player] facade. Every queue item is self-describing — a
  * [PlayableItem.LocalMedia] / [PlayableItem.YtMedia] carries its own id + display metadata — so the
  * coordinator holds NO side map: Now Playing reads the item's `display*` accessors straight off the
- * item, and play-recording keys on the item's own id. Implements "play now" as YouTube-style autoplay — load the
- * tapped video, then append its watch-next as the rest of the queue.
+ * item. Watch-time ranking (when [AppGraph.playHistory] is set) credits elapsed play while Prepared.
+ * Implements "play now" as YouTube-style autoplay — load the tapped video, then append its watch-next
+ * as the rest of the queue.
  */
 class PlaybackCoordinator(
     private val graph: AppGraph,
@@ -27,6 +33,8 @@ class PlaybackCoordinator(
     val player: Player get() = graph.player
 
     private val log = graph.logger?.fork("player")
+    private val playHistory = graph.playHistory
+    private val mediaStore = graph.mediaStore
 
     init {
         // The player surfaces failure as state, not a throw — this transition IS the job-death
@@ -43,27 +51,49 @@ class PlaybackCoordinator(
                 }
             }
         }
-        // Record library plays for the computed "Recent play" / "Top tracks" playlists: every time a
-        // local library item becomes the current item, bump its play stats by row id (carried on the
-        // item, stable across moves/rescans). Items with no id (a stream, or a download with no
-        // library row) simply aren't recorded.
-        val store = graph.mediaStore
-        if (store != null) {
+        // Watch-time ranking: credit elapsedRealtime only while Prepared + playing, not buffering.
+        // Same item staying playing (volume/size ticks) keeps the mark — resetting it would drop time.
+        if (playHistory != null) {
             scope.launch {
-                player.queue
-                    .map { it.currentItem }
-                    .distinctUntilChanged()
-                    .collect { item ->
-                        val id = (item as? PlayableItem.LocalMedia)?.mediaId ?: return@collect
-                        try {
-                            store.recordLocalPlay(id)
-                        } catch (c: kotlinx.coroutines.CancellationException) {
-                            throw c
-                        } catch (e: Exception) {
-                            // Play stats are best-effort; a failure never interrupts playback.
-                            log?.log(Logger.Level.WARN, "recordLocalPlay failed", e)
-                        }
+                var trackingItem: PlayableItem? = null
+                var trackedAt: TimeSource.Monotonic.ValueTimeMark? = null
+                suspend fun flush() {
+                    val item = trackingItem
+                    val mark = trackedAt
+                    trackingItem = null
+                    trackedAt = null
+                    if (item == null || mark == null) return
+                    val watchTimeMs = mark.elapsedNow().inWholeMilliseconds
+                    if (watchTimeMs <= 0L) return
+                    try {
+                        addWatchTime(item, watchTimeMs)
+                    } catch (c: kotlinx.coroutines.CancellationException) {
+                        throw c
+                    } catch (e: Exception) {
+                        log?.log(Logger.Level.WARN, "addWatchTime failed", e)
                     }
+                }
+                try {
+                    combine(player.status, player.queue) { status, queue -> status to queue }
+                        .collect { (status, queue) ->
+                            val item = queue.currentItem
+                            val prepared = status.state as? PlaybackState.Prepared
+                            val playing = prepared != null &&
+                                prepared.playWhenReady &&
+                                !prepared.buffering &&
+                                !prepared.ended &&
+                                item != null
+                            if (!playing) {
+                                flush()
+                            } else if (item != trackingItem) {
+                                flush()
+                                trackingItem = item
+                                trackedAt = TimeSource.Monotonic.markNow()
+                            }
+                        }
+                } finally {
+                    withContext(NonCancellable) { flush() }
+                }
             }
         }
     }
@@ -146,6 +176,40 @@ class PlaybackCoordinator(
 
     fun playLater(video: YtFeedItem) {
         player.add(listOf(video.toYtMedia()))
+    }
+
+    private suspend fun addWatchTime(item: PlayableItem, watchTimeMs: Long) {
+        val history = playHistory ?: return
+        when (item) {
+            is PlayableItem.LocalMedia -> {
+                val id = item.mediaId ?: return
+                val row = mediaStore?.findItem(id) ?: return
+                history.trackLocal(row.playlistCode, watchTimeMs)
+                val vid = row.youtubeVid
+                if (vid != null) {
+                    history.trackYoutube(
+                        videoId = vid,
+                        watchTimeMs = watchTimeMs,
+                        title = row.title,
+                        artist = row.artist,
+                        thumbnailUrl = youtubeThumbUrl(vid),
+                        durationMs = row.durationMs,
+                    )
+                }
+            }
+            is PlayableItem.YtMedia -> {
+                history.trackYoutube(
+                    videoId = item.videoId,
+                    watchTimeMs = watchTimeMs,
+                    title = item.title ?: item.videoId,
+                    artist = item.artist,
+                    thumbnailUrl = item.thumbnailUrl ?: youtubeThumbUrl(item.videoId),
+                    duration = item.duration,
+                    durationMs = item.durationMs,
+                    live = item.live,
+                )
+            }
+        }
     }
 }
 

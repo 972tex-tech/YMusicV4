@@ -19,6 +19,7 @@ import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.localArtUrl
+import io.ymusic.ui.playhistory.mediaItemsByPlayHistoryCodes
 import io.ymusic.ui.toLocalMedia
 import io.ymusic.ui.toYtMedia
 import io.ymusic.ui.youtubeThumbUrl
@@ -167,8 +168,11 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
         val store = graph.mediaStore ?: return emptyList()
         return when (val list = containerId.removePrefix(LOCAL_LIST_PREFIX)) {
             LIB_SONGS -> store.allItems()
-            LIST_RECENT -> store.recentlyPlayed()
-            LIST_TOP -> store.topTracks()
+            LIST_RECENT, LIST_TOP -> {
+                val history = graph.playHistory ?: return emptyList()
+                val codes = if (list == LIST_RECENT) history.localRecent() else history.localTopChart()
+                mediaItemsByPlayHistoryCodes(store.allItems(), codes)
+            }
             else -> list.toLongOrNull()?.let { id -> store.playlistItemDetails(id).map { it.mediaItem } }.orEmpty()
         }
     }

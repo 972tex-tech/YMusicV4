@@ -82,6 +82,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import io.ymusic.dynamicengine.yt.YtFeedPage
+import io.ymusic.dynamicengine.yt.YtSection
 import io.ymusic.dynamicengine.yt.extractAccountLibrary
 import io.ymusic.dynamicengine.yt.extractHomeFeed
 import io.ymusic.dynamicengine.yt.extractMusicBrowse
@@ -97,6 +99,7 @@ import io.ymusic.ui.resources.coming_soon
 import io.ymusic.ui.resources.discover_needs_account
 import io.ymusic.ui.resources.discover_no_anonymous_home
 import io.ymusic.ui.resources.discover_no_recommendations
+import io.ymusic.ui.resources.discover_no_top_tracks
 import io.ymusic.ui.resources.discover_no_trending
 import io.ymusic.ui.resources.section_catalogue
 import io.ymusic.ui.resources.section_discover
@@ -846,13 +849,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
     }
 }
 
-/** Discover's five feed tabs (design §1). Home and Music have anonymous backing feeds; the rest
- *  light up with accounts (they mirror the signed-in YouTube surfaces). */
+/** Discover's five feed tabs (design §1). Home and Music have anonymous backing feeds;
+ *  Recommended and Top tracks are built from local play; Account is the signed-in library. */
 enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
     Home(Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
     Music(Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
     Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = true),
-    TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = false),
+    TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = true),
     Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
@@ -968,18 +971,24 @@ private fun DiscoverFeed(
             )
         }
     } else {
-        // Recommended is the exception to the session cache below: it costs no network, it grows as
-        // the user plays, and it reshuffles per read — so it is rebuilt on every visit, on a scope
-        // that dies with the tab, instead of being frozen at whatever the first visit loaded.
+        // Recommended and Top tracks cost no network and grow as the user plays, so they rebuild
+        // on every visit on a scope that dies with the tab instead of freezing the first read.
         val localScope = rememberCoroutineScope()
-        val recommended = tab == DiscoverTab.Recommended
+        val localFeed = tab == DiscoverTab.Recommended || tab == DiscoverTab.TopTracks
         // Cached per tab (and on the app scope): coming back to the tab — or back from
         // search / a detail page — shows the feed as it was, no reload. Re-keyed on loginEpoch so a
         // sign-in/out rebuilds the feed under the new (personalized/anonymous) identity.
         val session = remember(tab, localeEpoch, loginEpoch) {
-            if (recommended) {
-                FeedSession(localScope, graph.logger?.fork("Recommended")) {
-                    graph.engines.getRecommendedFeed()
+            if (localFeed) {
+                FeedSession(localScope, graph.logger?.fork(tab.name)) {
+                    when (tab) {
+                        DiscoverTab.TopTracks -> YtFeedPage(
+                            sections = listOf(
+                                YtSection(items = graph.playHistory?.youtubeTopChart().orEmpty()),
+                            ),
+                        )
+                        else -> graph.engines.getRecommendedFeed()
+                    }
                 }.also { it.pager.refresh() }
             } else {
                 sessions.getOrPut(tab.name) {
@@ -1006,6 +1015,7 @@ private fun DiscoverFeed(
                 when (tab) {
                     DiscoverTab.Music -> Res.string.discover_no_trending
                     DiscoverTab.Recommended -> Res.string.discover_no_recommendations
+                    DiscoverTab.TopTracks -> Res.string.discover_no_top_tracks
                     else -> Res.string.discover_no_anonymous_home
                 },
             ),

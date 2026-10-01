@@ -87,6 +87,8 @@ import io.ymusic.mediastore.model.PlaylistItemDetail
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
+import io.ymusic.ui.playhistory.PlayHistoryStore
+import io.ymusic.ui.playhistory.mediaItemsByPlayHistoryCodes
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.add_to_playlist_new
 import io.ymusic.ui.resources.cd_add_to_playlist
@@ -321,7 +323,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     downloadLocation = downloadLocation,
                                     onToggleDownloadLocation = onToggleDownloadLocation,
                                 )
-                                LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator)
+                                LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator, graph.playHistory)
                                 LibraryTab.Songs -> {
                                     val sort = rememberSortState("sort.songs")
                                     SongList(
@@ -786,8 +788,8 @@ private fun DeleteFromDiskDialog(
 // ---- playlists ----
 
 // Sentinel ids for the computed "system" playlists — they aren't rows in the store (see
-// media-store MediaItem.sq recentlyPlayed/recentlyAdded/topTracks), so they use negative ids that
-// AUTOINCREMENT user playlists (always positive) never collide with.
+// PlayHistoryStore), so they use negative ids that AUTOINCREMENT user playlists (always positive)
+// never collide with.
 private const val SMART_RECENT_PLAY = -1L
 private const val SMART_TOP_TRACKS = -3L
 
@@ -815,7 +817,12 @@ private val smartPlaylists = listOf(
 )
 
 @Composable
-private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coordinator: PlaybackCoordinator) {
+private fun PlaylistsTab(
+    store: BetterMediaStore,
+    content: LibraryContent,
+    coordinator: PlaybackCoordinator,
+    playHistory: PlayHistoryStore?,
+) {
     // (id, name) — saveable, so the opened playlist survives the tab leaving composition. Negative ids
     // are the system playlists; the name is the resolved display title.
     var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
@@ -842,12 +849,24 @@ private fun PlaylistsTab(store: BetterMediaStore, content: LibraryContent, coord
     // a user playlist reads its live membership so add/remove/reorder reflect at once. We DON'T clear
     // the previous list first — it stays until the new one lands (Folders-style), so drilling in
     // doesn't flash empty then reflow.
-    LaunchedEffect(selected?.first, content) {
+    LaunchedEffect(selected?.first, content, playHistory) {
         val id = selected?.first ?: return@LaunchedEffect
-        when (id) {
-            SMART_RECENT_PLAY -> systemSongs = store.recentlyPlayed()
-            SMART_TOP_TRACKS -> systemSongs = store.topTracks()
-            else -> store.playlistChanges(id).collect { userItems = store.playlistItemDetails(id) }
+        if (id > 0) {
+            store.playlistChanges(id).collect { userItems = store.playlistItemDetails(id) }
+            return@LaunchedEffect
+        }
+        val history = playHistory
+        if (history == null) {
+            systemSongs = emptyList()
+            return@LaunchedEffect
+        }
+        history.changes.onStart { emit(Unit) }.collect {
+            val codes = when (id) {
+                SMART_RECENT_PLAY -> history.localRecent()
+                SMART_TOP_TRACKS -> history.localTopChart()
+                else -> emptyList()
+            }
+            systemSongs = mediaItemsByPlayHistoryCodes(content.songs, codes)
         }
     }
 
