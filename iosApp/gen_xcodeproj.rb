@@ -34,6 +34,7 @@ target.add_resources([
 gradle_phase = target.new_shell_script_build_phase("Build & embed YMusicApp.framework (Compose/Kotlin)")
 gradle_phase.shell_script = <<~SH
   set -e
+  export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
   if [ ! -x "${JAVA_HOME:-}/bin/java" ]; then
     if [ -x /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin/java ]; then
       export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home

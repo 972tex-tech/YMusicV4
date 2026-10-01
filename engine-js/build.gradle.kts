@@ -68,11 +68,19 @@ val playerBundleFile = layout.buildDirectory.file("dist/player.js")
 val playerBundleMapFile = layout.buildDirectory.file("dist/player.js.map")
 val testBundleFile = layout.buildDirectory.file("dist/engine-test.js")
 
+fun Exec.unixPath() {
+    environment(
+        "PATH",
+        "/opt/homebrew/bin:/usr/local/bin:" + (System.getenv("PATH") ?: "/usr/bin:/bin"),
+    )
+}
+
 val typecheckJs by tasks.registering(Exec::class) {
     inputs.dir(srcDir)
     inputs.file(tsconfig)
     outputs.file(layout.buildDirectory.file("typecheck.ok"))
     workingDir = projectDir
+    unixPath()
     commandLine("npx", "-y", "-p", "typescript@${Versions.typescript}", "tsc", "--noEmit", "-p", ".")
     doLast { outputs.files.singleFile.writeText("ok") }
 }
@@ -87,6 +95,7 @@ val bundleRawJs by tasks.registering(Exec::class) {
     inputs.property("defines", esbuildDefines.joinToString(" ")) // Exec doesn't track commandLine
     outputs.files(rawBundleFile, rawBundleMeta)
     workingDir = projectDir
+    unixPath()
     commandLine(
         "npx", "-y", "esbuild@${Versions.esbuild}",
         "src/index.ts", "--bundle",
@@ -195,6 +204,7 @@ val bundleRawPlayerJs by tasks.registering(Exec::class) {
     inputs.property("defines", esbuildDefines.joinToString(" "))
     outputs.files(rawPlayerBundleFile, rawPlayerBundleMeta)
     workingDir = projectDir
+    unixPath()
     commandLine(
         "npx", "-y", "esbuild@${Versions.esbuild}",
         "src/player-index.ts", "--bundle",
@@ -234,6 +244,7 @@ val bundleRawTestJs by tasks.registering(Exec::class) {
     inputs.property("defines", esbuildDefines.joinToString(" ")) // Exec doesn't track commandLine
     outputs.files(rawTestBundleFile, rawTestBundleMeta)
     workingDir = projectDir
+    unixPath()
     commandLine(
         "npx", "-y", "esbuild@${Versions.esbuild}",
         "src/test/index.ts", "--bundle",
