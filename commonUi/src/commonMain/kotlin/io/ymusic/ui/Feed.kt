@@ -56,10 +56,13 @@ import io.ymusic.dynamicengine.yt.YtChip
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtSection
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.feed_empty
+import io.ymusic.ui.resources.menu_play_single
 import io.ymusic.ui.resources.menu_remove
+import io.ymusic.ui.resources.menu_start_radio
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
 import io.ymusic.ui.resources.reload
@@ -630,9 +633,15 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
     return ItemActions(
         if (item.kind == YtFeedItem.KIND_VIDEO) {
             buildList {
+                if (removeFromTopTracks != null) {
+                    add(stringResource(Res.string.menu_play_single) to { coordinator.playSingle(item) })
+                    add(stringResource(Res.string.menu_start_radio) to { coordinator.playNow(item) })
+                }
                 add(stringResource(Res.string.queue_next) to { coordinator.playNext(item) })
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
-                if (downloadLauncher != null) add("Download" to { downloadLauncher.launch(item) })
+                if (downloadLauncher != null) {
+                    add(stringResource(Res.string.cd_download) to { downloadLauncher.launch(item) })
+                }
                 if (removeFromTopTracks != null) {
                     add(stringResource(Res.string.menu_remove) to { removeFromTopTracks(item) })
                 }

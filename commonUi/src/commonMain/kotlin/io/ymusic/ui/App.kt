@@ -1033,6 +1033,20 @@ private fun DiscoverFeed(
                     },
                 ),
                 onOpen = onOpen,
+                onPlayItem = if (tab == DiscoverTab.TopTracks) {
+                    { tapped ->
+                        val videos = (session.pager.state.value as? Pager.State.Ready)
+                            ?.sections.orEmpty()
+                            .flatMap { it.items }
+                            .filter { it.kind == YtFeedItem.KIND_VIDEO }
+                        coordinator.playAll(
+                            videos,
+                            startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
+                        )
+                    }
+                } else {
+                    null
+                },
                 listState = session.listState,
                 onDeeplink = onDeeplink,
             )

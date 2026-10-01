@@ -40,6 +40,8 @@
     <string name="show_more_n">Xem thêm (%1$d)</string>
     <string name="show_less">Thu gọn</string>
     <string name="menu_play">Phát</string>
+    <string name="menu_play_single">Phát đơn</string>
+    <string name="menu_start_radio">Bắt đầu radio</string>
     <string name="menu_show_in_folder">Hiện trong thư mục</string>
     <string name="menu_remove_folder">Gỡ khỏi danh sách</string>
     <string name="menu_exclude_folder">Loại trừ thư mục</string>

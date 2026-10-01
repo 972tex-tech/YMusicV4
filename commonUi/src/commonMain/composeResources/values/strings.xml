@@ -61,6 +61,8 @@
     <string name="show_more_n">Show more (%1$d)</string>
     <string name="show_less">Show less</string>
     <string name="menu_play">Play</string>
+    <string name="menu_play_single">Play single</string>
+    <string name="menu_start_radio">Start radio</string>
     <string name="menu_show_in_folder">Show in folder</string>
     <string name="menu_remove_folder">Remove from list</string>
     <string name="menu_exclude_folder">Exclude folder</string>

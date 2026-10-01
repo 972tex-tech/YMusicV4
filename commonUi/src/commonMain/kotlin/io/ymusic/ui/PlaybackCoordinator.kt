@@ -133,6 +133,11 @@ class PlaybackCoordinator(
         }
     }
 
+    /** Play [video] alone — no watch-next radio. */
+    fun playSingle(video: YtFeedItem) {
+        player.setQueue(listOf(video.toYtMedia()))
+    }
+
     /** Play [videos] as the whole queue (a playlist page), starting at [startIndex]. */
     fun playAll(videos: List<YtFeedItem>, startIndex: Int = 0, shuffle: Boolean = false) {
         val playable = videos.filter { it.kind == YtFeedItem.KIND_VIDEO }
