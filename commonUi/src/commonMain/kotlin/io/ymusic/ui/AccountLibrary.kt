@@ -166,10 +166,12 @@ private fun AccountCard(account: YtAccountInfo?, onSignOut: () -> Unit, onSwitch
         }
         MoreMenu(
             ItemActions(
-                listOf(
-                    stringResource(Res.string.account_switch) to onSwitchAccount,
-                    stringResource(Res.string.account_sign_out) to onSignOut,
-                ),
+                buildList {
+                    if (platformUsesTouch) {
+                        add(stringResource(Res.string.account_switch) to onSwitchAccount)
+                    }
+                    add(stringResource(Res.string.account_sign_out) to onSignOut)
+                },
             ),
         )
     }

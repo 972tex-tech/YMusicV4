@@ -4,7 +4,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -163,49 +162,6 @@ class AccountLibraryScreenTest {
                 onNodeWithContentDescription("Library").performClick()
                 waitUntilAtLeastOneExists(hasText("Sign in with YouTube"), 20_000)
                 onAllNodesWithText("Watch history").assertCountEquals(0)
-            }
-        } finally {
-            runBlocking { engines.close() }
-        }
-    }
-
-    @Test
-    fun switch_account_opens_the_switcher_and_closing_refreshes_the_account() {
-        Locale.setDefault(Locale.ENGLISH)
-        val accountMenuCalls = java.util.concurrent.atomic.AtomicInteger(0)
-        val fixture = resource("yt-library-live.json")
-        val client = CannedHttp { request, body ->
-            val url = request.url.toString()
-            when {
-                request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") ->
-                    textResponse(request, HOMEPAGE_FIXTURE, "text/html")
-                url.contains("account_menu") -> {
-                    accountMenuCalls.incrementAndGet()
-                    textResponse(request, accountMenuFixture, "application/json")
-                }
-                else -> textResponse(request, fixture, "application/json")
-            }
-        }
-        signIn(client)
-        val engines = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource())
-        runBlocking { engines.start() }
-        try {
-            runComposeUiTest {
-                setContent { App(AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})) }
-                onNodeWithContentDescription("Library").performClick()
-                waitUntilAtLeastOneExists(hasText("Mock Account"), 20_000)
-                val calls = accountMenuCalls.get()
-
-                // Overflow → Switch account: the switcher layer opens with its dismissable hint
-                // (no shell browser in tests, so the hint + unavailable text stand in for the page).
-                // First "More" = the account card's (the header composes before the feed items).
-                onAllNodesWithContentDescription("More").onFirst().performClick()
-                onNodeWithText("Switch account").performClick()
-                waitUntilAtLeastOneExists(hasText("Pick the account you want", substring = true), 20_000)
-
-                // Closing the layer IS completion: the account re-fetches under the new identity.
-                onNodeWithContentDescription("Back").performClick()
-                waitUntil(timeoutMillis = 20_000) { accountMenuCalls.get() > calls }
             }
         } finally {
             runBlocking { engines.close() }
