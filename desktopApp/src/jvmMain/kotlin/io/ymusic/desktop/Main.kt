@@ -126,6 +126,8 @@ import io.ymusic.ui.playhistory.playHistoryJdbcDriver
 import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.ymusic_logo
+import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
+import io.ymusic.ui.sponsorblock.sponsorBlockJdbcDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -717,6 +719,9 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         logger = rootLogger,
         mediaStore = mediaStore,
         playHistory = PlayHistoryStore(playHistoryJdbcDriver(File(dataDir, "play-history.db").absolutePath)),
+        sponsorBlockStore = SqliteSponsorBlockStore(
+            sponsorBlockJdbcDriver(File(dataDir, "sponsor-block.db").absolutePath),
+        ),
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
         libraryFolderPicker = { pickAndRegisterFolder(mediaStore) },
         rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },

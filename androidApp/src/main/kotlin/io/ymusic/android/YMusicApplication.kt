@@ -72,6 +72,8 @@ import io.ymusic.ui.mediaStoreArtFetcher
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryAndroidDriver
 import io.ymusic.ui.registerCompletedDownload
+import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
+import io.ymusic.ui.sponsorblock.sponsorBlockAndroidDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -522,6 +524,7 @@ class YMusicApplication : Application() {
             stats = shared.stats,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
+            sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
             rescanLibrary = { onProgress -> rescanKnownRoots(shared.mediaStore, onProgress) },

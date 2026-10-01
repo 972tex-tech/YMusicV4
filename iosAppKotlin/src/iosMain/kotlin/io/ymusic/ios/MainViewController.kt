@@ -35,6 +35,8 @@ import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryNativeDriver
+import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
+import io.ymusic.ui.sponsorblock.sponsorBlockNativeDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -194,6 +196,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         logger = rootLogger,
         mediaStore = null,
         playHistory = PlayHistoryStore(playHistoryNativeDriver()),
+        sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockNativeDriver()),
         scanLibraryFolder = null,
         imageLoader = imageLoader,
         settings = settings,
