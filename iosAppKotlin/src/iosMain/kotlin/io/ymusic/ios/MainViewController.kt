@@ -27,6 +27,8 @@ import io.ymusic.player.PlayerEngines
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.mse.MsePlayer
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.flow
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -41,6 +43,7 @@ import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.create
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.flow.combine
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import platform.Foundation.NSCachesDirectory
@@ -50,6 +53,7 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
+
 /**
  * The iOS entry point — the Swift app hosts `MainViewControllerKt.MainViewController()`. Builds the
  * [AppGraph] (scraping engine + player facade over AVFoundation local + MSE YouTube, VideoToolbox
@@ -83,6 +87,17 @@ private fun IosAppRoot() {
         else -> {
             LaunchedEffect(g) {
                 connectIosMediaSession(g.player, this, g.logger?.fork("now-playing"), g.imageLoader)
+            }
+            LaunchedEffect(g) {
+                combine(
+                    g.settings.flow(AppSettings.enablePip),
+                    g.pip.nowPlayingOpen,
+                    g.pip.videoFullscreen,
+                    g.player.status,
+                    g.player.videoQuality,
+                ) { _, _, _, _, _ -> }
+                    .combine(g.player.config) { _, _ -> }
+                    .collect { iosNotifyPipPrepare() }
             }
             App(g)
         }

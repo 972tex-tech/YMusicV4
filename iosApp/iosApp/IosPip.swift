@@ -16,7 +16,19 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
 
     /// Build the controller while still in the foreground so the first leave is live frames.
     func prepare() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.prepare() }
+            return
+        }
         guard #available(iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        let ok = IosPipHostKt.iosPipShouldAutoEnter()
+        if !ok {
+            controller?.canStartPictureInPictureAutomaticallyFromInline = false
+            if controller?.isPictureInPictureActive == true {
+                controller?.stopPictureInPicture()
+            }
+            return
+        }
         guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
         if controller == nil {
             let source = AVPictureInPictureController.ContentSource(
@@ -29,11 +41,7 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
             controller = pip
         }
         syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
-        let ok = IosPipHostKt.iosPipShouldAutoEnter()
-        controller?.canStartPictureInPictureAutomaticallyFromInline = ok
-        if !ok, controller?.isPictureInPictureActive == true {
-            controller?.stopPictureInPicture()
-        }
+        controller?.canStartPictureInPictureAutomaticallyFromInline = true
     }
 
     func startIfEligible() {
@@ -129,7 +137,11 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
         guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
         if layer.controlTimebase == nil {
             var tb: CMTimebase?
-            CMTimebaseCreateWithSourceClock(kCFAllocatorDefault, CMClockGetHostTimeClock(), &tb)
+            CMTimebaseCreateWithSourceClock(
+                allocator: kCFAllocatorDefault,
+                sourceClock: CMClockGetHostTimeClock(),
+                timebaseOut: &tb,
+            )
             if let tb {
                 CMTimebaseSetRate(tb, rate: 0)
                 layer.controlTimebase = tb
