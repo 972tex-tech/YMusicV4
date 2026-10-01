@@ -122,4 +122,10 @@ object AppSettings {
 
     /** Always fetch the media's own default caption track, on top of any [preferredCaptionLanguages]. */
     val downloadDefaultCaption = BoolSetting("download.captionDefault", true)
+
+    /**
+     * Skip SponsorBlock segments on YouTube items. Default on; a per-video whitelist still
+     * excludes individual videos.
+     */
+    val sponsorBlockEnabled = BoolSetting("playback.sponsorBlock", true)
 }

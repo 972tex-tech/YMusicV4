@@ -11,8 +11,11 @@ import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.InMemorySettingsStore
 import io.ymusic.settings.SettingsStore
 import io.ymusic.ui.playhistory.PlayHistoryStore
+import io.ymusic.ui.sponsorblock.InMemorySponsorBlockStore
 import io.ymusic.ui.sponsorblock.MockSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockApi
+import io.ymusic.ui.sponsorblock.SponsorBlockService
+import io.ymusic.ui.sponsorblock.SponsorBlockStore
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -152,12 +155,14 @@ class AppGraph(
     val windowResizing: MutableStateFlow<Boolean> = MutableStateFlow(false),
     /**
      * SponsorBlock skip-segment fetch. Defaults to [MockSponsorBlockApi] until the real HTTP
-     * client is wired.
+     * client is wired. Shells pass a SQLite [sponsorBlockStore] for cache + per-video whitelist.
      */
-    val sponsorBlock: SponsorBlockApi = MockSponsorBlockApi(),
+    sponsorBlockApi: SponsorBlockApi = MockSponsorBlockApi(),
+    sponsorBlockStore: SponsorBlockStore = InMemorySponsorBlockStore(),
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
+    val sponsorBlock = SponsorBlockService(sponsorBlockApi, sponsorBlockStore, settings, logger)
     /**
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.
