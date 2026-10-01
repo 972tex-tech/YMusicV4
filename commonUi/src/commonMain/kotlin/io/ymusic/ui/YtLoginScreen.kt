@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -351,56 +354,77 @@ private fun LoginChrome(state: LoginWebViewState, onBack: () -> Unit) = Elevated
  *  legacy LoginIntroduceFragment). */
 @Composable
 internal fun LoginPreface(onSignIn: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(
-                Modifier.size(56.dp).background(Color(0xFFFF0000), RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(34.dp))
-            }
-            Column {
-                Text(
-                    stringResource(Res.string.signin_preface_title),
-                    style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
-                )
-                Text(
-                    stringResource(Res.string.signin_preface_subtitle),
-                    style = TextStyle(fontSize = 14.sp, color = DesignColors.InkMuted),
-                )
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-        HorizontalDivider(color = DesignColors.Divider)
-        Spacer(Modifier.height(20.dp))
-        Text(
-            stringResource(Res.string.signin_enables),
-            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
-        )
-        Spacer(Modifier.height(12.dp))
-        for (feature in LOGIN_FEATURES) {
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Box(Modifier.size(10.dp).background(DesignColors.Accent, CircleShape))
-                Text(stringResource(feature), style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink))
-            }
-        }
-        Spacer(Modifier.height(28.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(DesignColors.Accent, RoundedCornerShape(8.dp))
-                .clickable(onClick = onSignIn)
-                .padding(vertical = 14.dp),
-            contentAlignment = Alignment.Center,
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val margin = gridMetricsFor(maxWidth).margin
+        val centerVertically = maxWidth >= 840.dp && maxHeight >= 600.dp
+        val viewportHeight = maxHeight
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                stringResource(Res.string.signin_button).uppercase(),
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
-            )
+            Column(
+                Modifier
+                    .widthIn(max = DesignSpacing.FormMaxWidth)
+                    .fillMaxWidth()
+                    .then(if (centerVertically) Modifier.heightIn(min = viewportHeight) else Modifier)
+                    .padding(horizontal = margin, vertical = DesignSpacing.Space16),
+                verticalArrangement = if (centerVertically) {
+                    Arrangement.Center
+                } else {
+                    Arrangement.Top
+                },
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box(
+                        Modifier.size(56.dp).background(Color(0xFFFF0000), RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(34.dp))
+                    }
+                    Column {
+                        Text(
+                            stringResource(Res.string.signin_preface_title),
+                            style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                        )
+                        Text(
+                            stringResource(Res.string.signin_preface_subtitle),
+                            style = TextStyle(fontSize = 14.sp, color = DesignColors.InkMuted),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                HorizontalDivider(color = DesignColors.Divider)
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    stringResource(Res.string.signin_enables),
+                    style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
+                )
+                Spacer(Modifier.height(12.dp))
+                for (feature in LOGIN_FEATURES) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Box(Modifier.size(10.dp).background(DesignColors.Accent, CircleShape))
+                        Text(stringResource(feature), style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink))
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(DesignColors.Accent, RoundedCornerShape(8.dp))
+                        .clickable(onClick = onSignIn)
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        stringResource(Res.string.signin_button).uppercase(),
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
+                    )
+                }
+            }
         }
     }
 }
