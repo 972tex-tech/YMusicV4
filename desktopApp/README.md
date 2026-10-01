@@ -9,6 +9,6 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   - a file-backed `:media-store` + `:media-scanner` "Scan folder…" (packed ffmpeg, or `-Dio.ymusic.ffmpeg` / PATH)
   - assembles the facade over ffmpeg local + MSE YouTube, injects the SwingPanel MSE surface.
 
-- **Cookies** — `PersistentCookieJar` JSON file under `~/.ymusic/api-cookies.json`. No Chromium. Sign-in is cookie import: scan a QR from the phone app (Settings → Link devices; matching confirmation code + phone unlock), or paste cookies copied from Chrome’s Application tab. The webhook inbox is deleted as soon as the desktop receives it.
+- **Cookies** — `PersistentCookieJar` JSON file under `~/.ymusic/api-cookies.json`. No Chromium. Sign-in is owned here (`DesktopCookieSignIn` via `AppGraph.cookieSignIn`): scan a QR from the phone app (Settings → Link devices; matching confirmation code + phone unlock), or paste a Copy as cURL dump from Chrome / Firefox / Safari Network. The webhook inbox is deleted as soon as the desktop receives it.
 
 - **Assets** — needs the built `engine-js` bundle in the jar.

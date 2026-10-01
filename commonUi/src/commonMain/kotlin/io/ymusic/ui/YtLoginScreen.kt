@@ -119,6 +119,12 @@ typealias LoginBrowser = @Composable (
     modifier: Modifier,
 ) -> Unit
 
+/** Desktop cookie sign-in (QR / paste), injected by the shell like [LoginBrowser]. */
+typealias CookieSignIn = @Composable (
+    onComplete: () -> Unit,
+    onBack: () -> Unit,
+) -> Unit
+
 private const val LOGIN_POLL_MS = 1_000L
 
 /**
@@ -235,13 +241,16 @@ internal fun YtLoginScreen(
     }
 
     val browser = graph.loginBrowser
-    val cookieSignIn = !switchAccount && browser == null && graph.importSessionCookies != null
+    val cookieSignIn = graph.cookieSignIn
+    if (!switchAccount && cookieSignIn != null) {
+        cookieSignIn(onComplete, onBack)
+        return
+    }
     // Poll the cookie gate while the user signs in. Cookie-only, so polling costs nothing and never
     // disturbs the half-set jar. Stops itself the instant it flips (onComplete pops this screen).
     // The account switcher doesn't poll — the jar is signed in throughout; closing IS completion.
-    // Desktop cookie sign-in polls its own webhook and calls onComplete itself.
-    LaunchedEffect(browser, switchAccount, cookieSignIn) {
-        if (browser == null || switchAccount || cookieSignIn) return@LaunchedEffect
+    LaunchedEffect(browser, switchAccount) {
+        if (browser == null || switchAccount) return@LaunchedEffect
         var done = false
         while (isActive && !done) {
             delay(LOGIN_POLL_MS)
@@ -255,22 +264,14 @@ internal fun YtLoginScreen(
         }
     }
 
-    var cookiePaste by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
-        LoginChrome(state, onBack = {
-            if (cookieSignIn && cookiePaste) {
-                cookiePaste = false
-            } else {
-                onBack()
-            }
-        })
+        LoginChrome(state, onBack = onBack)
         var hintDismissed by remember { mutableStateOf(false) }
         if (switchAccount && !hintDismissed) {
             SwitchAccountHint { hintDismissed = true }
         }
         val url = entryUrl
         when {
-            cookieSignIn -> DesktopCookieSignIn(graph, onComplete, cookiePaste) { cookiePaste = true }
             browser == null -> CenteredBox {
                 Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
             }

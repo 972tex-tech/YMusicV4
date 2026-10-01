@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
  * the floor for the tightest spots).
  */
 @Composable
-internal fun ActionIcon(
+fun ActionIcon(
     icon: ImageVector,
     contentDescription: String?,
     modifier: Modifier = Modifier,

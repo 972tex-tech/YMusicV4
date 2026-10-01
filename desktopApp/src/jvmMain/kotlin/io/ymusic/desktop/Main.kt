@@ -75,6 +75,7 @@ import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.desktopEngineCacheStore
+import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.defaultMemoryCacheBudget
@@ -736,7 +737,15 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         // MSE blit and ffmpeg frames scale; safe to display at art-tile size.
         surfaceScalesDown = true,
         loginBrowser = null,
-        importSessionCookies = { cookies.importSessionCookies(it) },
+        cookieSignIn = { onComplete, onBack ->
+            DesktopCookieSignIn(
+                importCookies = { cookies.importSessionCookies(it) },
+                loginStatus = { engines.ytLoginStatus() },
+                logger = rootLogger,
+                onComplete = onComplete,
+                onBack = onBack,
+            )
+        },
         downloads = downloadService,
         updates = desktopUpdates,
         stats = stats,

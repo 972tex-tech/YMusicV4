@@ -5,6 +5,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 @Composable
-internal actual fun DeviceLinkQrCode(payload: String, modifier: Modifier) {
+actual fun DeviceLinkQrCode(payload: String, modifier: Modifier) {
     Box(modifier)
 }

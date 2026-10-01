@@ -4,15 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,7 +17,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,8 +24,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -45,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.ui.resources.Res
-import io.ymusic.ui.resources.cd_device_link_qr
 import io.ymusic.ui.resources.device_link_done
 import io.ymusic.ui.resources.device_link_empty_cookies
 import io.ymusic.ui.resources.device_link_error_generic
@@ -67,215 +59,10 @@ import io.ymusic.ui.resources.device_link_unlock_title
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.settings_link_devices
 import io.ymusic.ui.resources.settings_link_devices_hint
-import io.ymusic.ui.resources.signin_cookies_rejected
-import io.ymusic.ui.resources.signin_or_paste
-import io.ymusic.ui.resources.signin_paste_empty
-import io.ymusic.ui.resources.signin_paste_hint
-import io.ymusic.ui.resources.signin_paste_label
-import io.ymusic.ui.resources.signin_paste_submit
-import io.ymusic.ui.resources.signin_qr_hint
-import io.ymusic.ui.resources.signin_qr_sas_hint
-import io.ymusic.ui.resources.signin_qr_title
-import io.ymusic.ui.resources.signin_qr_waiting
-import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
-
-@Composable
-internal fun DesktopCookieSignIn(
-    graph: AppGraph,
-    onComplete: () -> Unit,
-    pasteFlow: Boolean,
-    onOpenPaste: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val client = remember { newDeviceLinkHttpClient() }
-    val log = remember(graph) { graph.logger?.fork("device-link") }
-    val lock = remember { Mutex() }
-    var offer by remember { mutableStateOf<DeviceLinkOffer?>(null) }
-    var offerError by remember { mutableStateOf<String?>(null) }
-    var paste by remember { mutableStateOf("") }
-    var pasteError by remember { mutableStateOf<String?>(null) }
-    var importing by remember { mutableStateOf(false) }
-    var finished by remember { mutableStateOf(false) }
-
-    suspend fun finish(cookies: List<SessionCookie>) {
-        lock.withLock {
-            if (finished) return
-            importing = true
-            pasteError = null
-            try {
-                if (!cookies.looksSignedIn()) {
-                    pasteError = getString(Res.string.signin_cookies_rejected)
-                    return
-                }
-                graph.importSessionCookies!!(cookies)
-                if (!graph.engines.ytLoginStatus()) {
-                    pasteError = getString(Res.string.signin_cookies_rejected)
-                    return
-                }
-                finished = true
-                onComplete()
-            } catch (c: CancellationException) {
-                throw c
-            } catch (t: Throwable) {
-                log?.captureError(t, "cookie import failed")
-                pasteError = getString(Res.string.device_link_error_generic)
-            } finally {
-                if (!finished) importing = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        var minted: DeviceLinkOffer? = null
-        try {
-            minted = createDeviceLinkOffer(client)
-            offer = minted
-            finish(awaitDeviceLinkCookies(client, minted))
-        } catch (c: CancellationException) {
-            throw c
-        } catch (t: Throwable) {
-            log?.log(Logger.Level.WARN, "device-link offer/poll failed", t)
-            offerError = deviceLinkErrorText(t)
-        } finally {
-            minted?.let { deleteDeviceLinkToken(client, it.tokenId) }
-        }
-    }
-
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val viewportHeight = maxHeight
-        val scroll = rememberScrollState()
-        TrackScroll { scroll.canScrollBackward }
-        Column(
-            Modifier.fillMaxSize().verticalScroll(scroll),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Column(
-                Modifier
-                    .widthIn(max = DesignSpacing.FormMaxWidth)
-                    .fillMaxWidth()
-                    .heightIn(min = viewportHeight)
-                    .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space16),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16, Alignment.CenterVertically),
-            ) {
-                if (pasteFlow) {
-                    Text(
-                        stringResource(Res.string.signin_or_paste),
-                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    CookieCopyGuide()
-                    Text(
-                        stringResource(Res.string.signin_paste_hint),
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    AppTextField(
-                        value = paste,
-                        onValueChange = { paste = it; pasteError = null },
-                        label = stringResource(Res.string.signin_paste_label),
-                        singleLine = false,
-                        isError = pasteError != null,
-                        supportingText = pasteError,
-                        modifier = Modifier.heightIn(min = 120.dp),
-                    )
-                    AccentButton(
-                        text = stringResource(Res.string.signin_paste_submit),
-                        enabled = paste.isNotBlank() && !importing,
-                        onClick = {
-                            scope.launch {
-                                val cookies = parseCookiePaste(paste)
-                                if (cookies.isEmpty()) {
-                                    pasteError = getString(Res.string.signin_paste_empty)
-                                } else {
-                                    finish(cookies)
-                                }
-                            }
-                        },
-                    )
-                } else {
-                    Text(
-                        stringResource(Res.string.signin_qr_title),
-                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        stringResource(Res.string.signin_qr_hint),
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    val qrCd = stringResource(Res.string.cd_device_link_qr)
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        val payload = offer?.qrPayload
-                        if (payload != null && !finished) {
-                            DeviceLinkQrCode(
-                                payload,
-                                Modifier
-                                    .size(220.dp)
-                                    .padding(DesignSpacing.Space8)
-                                    .semantics { contentDescription = qrCd },
-                            )
-                        } else if (offerError == null && !finished) {
-                            CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
-                        }
-                    }
-                    val sas = offer?.let { deviceLinkSas(it.key) }
-                    if (sas != null && !finished) {
-                        DeviceLinkSasBlock(sas, stringResource(Res.string.signin_qr_sas_hint))
-                    }
-                    when {
-                        offerError != null -> Text(
-                            offerError!!,
-                            style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        pasteError != null -> Text(
-                            pasteError!!,
-                            style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        offer != null && !finished && !importing -> Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(
-                                DesignSpacing.Space8,
-                                Alignment.CenterHorizontally,
-                            ),
-                        ) {
-                            CircularProgressIndicator(
-                                Modifier.size(16.dp),
-                                color = DesignColors.Accent,
-                                strokeWidth = 2.dp,
-                            )
-                            Text(
-                                stringResource(Res.string.signin_qr_waiting),
-                                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-                            )
-                        }
-                    }
-                    Text(
-                        stringResource(Res.string.signin_or_paste),
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.Accent),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.clickable(onClick = onOpenPaste).padding(vertical = DesignSpacing.Space8),
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 internal fun LinkDevicesRow(graph: AppGraph, signedIn: Boolean, onLogin: () -> Unit) {

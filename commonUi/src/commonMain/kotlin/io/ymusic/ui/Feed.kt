@@ -721,7 +721,7 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
 
 /** One feed filter pill. */
 @Composable
-internal fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
+fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         title,
         style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),

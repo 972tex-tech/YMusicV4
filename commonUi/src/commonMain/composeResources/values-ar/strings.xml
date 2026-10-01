@@ -178,9 +178,9 @@
     <string name="signin_qr_waiting">بانتظار الهاتف…</string>
     <string name="signin_qr_sas_hint">سيظهر هاتفك الرمز نفسه. أرسل فقط إذا تطابقا.</string>
     <string name="signin_or_paste">أو الصق ملفات تعريف الارتباط من المتصفح</string>
-    <string name="signin_paste_hint">في Chrome، افتح youtube.com ← أدوات المطوّر ← Network. أعد التحميل، انقر أي طلب youtube.com، Copy as cURL، ثم الصق هنا.</string>
-    <string name="signin_paste_hint_firefox">في Firefox، افتح youtube.com ← أدوات المطوّر ← Network. أعد التحميل، انقر أي طلب youtube.com، Copy as cURL، ثم الصق هنا.</string>
-    <string name="signin_paste_hint_safari">في Safari، فعّل Develop (Safari ← الإعدادات ← Advanced ← Show features for web developers). افتح youtube.com ← Web Inspector ← Network. أعد التحميل، انقر أي طلب youtube.com، Copy as cURL، ثم الصق هنا.</string>
+    <string name="signin_paste_hint">في Chrome، افتح youtube.com ← أدوات المطوّر ← Network. أعد التحميل، انقر أي طلب youtube.com، انقر بزر الماوس الأيمن ← Copy as cURL، ثم الصق هنا.</string>
+    <string name="signin_paste_hint_firefox">في Firefox، افتح youtube.com ← أدوات المطوّر ← Network. أعد التحميل، انقر أي طلب youtube.com، انقر بزر الماوس الأيمن ← Copy as cURL، ثم الصق هنا.</string>
+    <string name="signin_paste_hint_safari">في Safari، فعّل Develop (Safari ← الإعدادات ← Advanced ← Show features for web developers). افتح youtube.com ← Web Inspector ← Network. أعد التحميل، انقر أي طلب youtube.com، انقر بزر الماوس الأيمن ← Copy as cURL، ثم الصق هنا.</string>
     <string name="signin_paste_label">ملفات تعريف الارتباط</string>
     <string name="signin_paste_submit">استخدام ملفات تعريف الارتباط هذه</string>
     <string name="signin_paste_empty">الصق ملفات تعريف الارتباط المنسوخة من المتصفح</string>
@@ -189,11 +189,11 @@
     <string name="signin_paste_guide_inspector">اضغط ⌥⌘I لفتح Web Inspector</string>
     <string name="signin_paste_guide_network">افتح لوحة Network</string>
     <string name="signin_paste_guide_request">أعد التحميل ثم انقر أي طلب youtube.com</string>
-    <string name="signin_paste_guide_copy">Copy as cURL ثم الصق هنا</string>
+    <string name="signin_paste_guide_copy">انقر بزر الماوس الأيمن ← Copy as cURL ثم الصق هنا</string>
     <string name="cd_signin_paste_guide">رسم متحرك يوضح كيفية نسخ ملفات تعريف ارتباط YouTube من المتصفح</string>
     <string name="cd_signin_paste_pause">إيقاف الدليل مؤقتًا</string>
     <string name="cd_signin_paste_play">تشغيل الدليل</string>
-    <string name="signin_cookies_rejected">لم تسجّل ملفات تعريف الارتباط هذه الدخول. انسخ Copy as cURL من أي طلب youtube.com في لوحة Network.</string>
+    <string name="signin_cookies_rejected">لم تسجّل ملفات تعريف الارتباط هذه الدخول. انقر بزر الماوس الأيمن أي طلب youtube.com في لوحة Network ثم Copy as cURL.</string>
     <string name="cd_device_link_qr">رمز QR للمسح بتطبيق YMusic</string>
     <string name="settings_link_devices">ربط الأجهزة</string>
     <string name="settings_link_devices_hint">سجّل الدخول على الحاسوب بمسح رمز QR الخاص به</string>

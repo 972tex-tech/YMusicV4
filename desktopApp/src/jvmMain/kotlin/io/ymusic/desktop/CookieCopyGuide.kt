@@ -1,4 +1,4 @@
-package io.ymusic.ui
+package io.ymusic.desktop
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -14,12 +14,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -64,9 +67,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ymusic.ui.ActionIcon
+import io.ymusic.ui.DesignColors
+import io.ymusic.ui.DesignSpacing
+import io.ymusic.ui.FeedChip
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_signin_paste_guide
 import io.ymusic.ui.resources.cd_signin_paste_pause
@@ -87,6 +95,7 @@ import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private enum class CookieCopyBeat(
@@ -143,13 +152,11 @@ private class CookieCopyAnchors {
     var address = Offset(0.48f, 0.185f)
     var application = Offset(0.58f, 0.50f)
     var cookiesOrigin = Offset(0.17f, 0.80f)
-    var table = Offset(0.62f, 0.76f)
 
     fun target(beat: CookieCopyBeat): Offset = when (beat) {
         CookieCopyBeat.AddressBar, CookieCopyBeat.DevTools -> address
         CookieCopyBeat.Network -> application
-        CookieCopyBeat.Request -> cookiesOrigin
-        CookieCopyBeat.Copy -> table
+        CookieCopyBeat.Request, CookieCopyBeat.Copy -> cookiesOrigin
     }
 }
 
@@ -206,54 +213,65 @@ internal fun CookieCopyGuide(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
-        Row(
+        Column(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         ) {
-            CookieCopyBrowser.entries.forEach { b ->
-                FeedChip(
-                    title = stringResource(b.label),
-                    selected = browser == b,
-                    onClick = {
-                        browser = b
-                        paused = false
-                        stepIndex = 0
-                        stepEpoch++
-                    },
-                )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            ) {
+                CookieCopyBrowser.entries.forEach { b ->
+                    FeedChip(
+                        title = stringResource(b.label),
+                        selected = browser == b,
+                        onClick = {
+                            browser = b
+                            paused = false
+                            stepIndex = 0
+                            stepEpoch++
+                        },
+                    )
+                }
             }
-        }
-        AnimatedContent(
-            targetState = beat to browser,
-            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(180)) },
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) { (b, br) ->
-            Text(
-                stringResource(b.caption(br)),
-                style = TextStyle(
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = DesignColors.Ink,
-                ),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        // Browser chrome is LTR; flipping the schematic in Arabic would mis-teach the click path.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            CookieCopyWindow(
-                browser = browser,
-                beat = beat,
-                progress = progress,
-                cursor = cursor,
-                anchors = anchors,
-                modifier = Modifier
-                    .widthIn(max = 380.dp)
-                    .fillMaxWidth()
-                    .height(220.dp)
-                    .clearAndSetSemantics { contentDescription = cd },
-            )
+            Column(
+                Modifier.widthIn(max = 380.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            ) {
+                // Browser chrome is LTR; flipping the schematic in Arabic would mis-teach the click path.
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    CookieCopyWindow(
+                        browser = browser,
+                        beat = beat,
+                        progress = progress,
+                        cursor = cursor,
+                        anchors = anchors,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clearAndSetSemantics { contentDescription = cd },
+                    )
+                }
+                AnimatedContent(
+                    targetState = beat to browser,
+                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(180)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) { (b, br) ->
+                    Text(
+                        stringResource(b.caption(br)),
+                        style = TextStyle(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = DesignColors.Ink,
+                        ),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
         }
         Row(
             Modifier.widthIn(max = 380.dp).fillMaxWidth(),
@@ -338,6 +356,7 @@ private fun CookieCopyWindow(
     modifier: Modifier = Modifier,
 ) {
     val accent = DesignColors.Accent
+    val density = LocalDensity.current
     val toolsOpen = when (beat) {
         CookieCopyBeat.AddressBar -> 0f
         CookieCopyBeat.DevTools -> FastOutSlowInEasing.transform(
@@ -350,10 +369,10 @@ private fun CookieCopyWindow(
         (beat == CookieCopyBeat.DevTools && progress > 0.55f)
     val originOn = beat >= CookieCopyBeat.Request &&
         (beat != CookieCopyBeat.Request || progress > 0.45f)
-    val tableOn = beat == CookieCopyBeat.Copy && progress > 0.22f
+    val tableOn = beat == CookieCopyBeat.Copy && progress > 0.52f
     val showF12 = beat == CookieCopyBeat.DevTools && progress < 0.78f
     val showReload = beat == CookieCopyBeat.Request && progress < 0.45f
-    val showCopyCurl = beat == CookieCopyBeat.Copy && progress > 0.28f
+    val showCopyCurl = beat == CookieCopyBeat.Copy && progress in 0.18f..0.62f
     val pulse = 0.5f + 0.5f * sin(progress * 6.0 * PI).toFloat()
     val clickScale = when {
         beat == CookieCopyBeat.AddressBar && progress in 0.42f..0.56f -> 0.86f
@@ -386,7 +405,6 @@ private fun CookieCopyWindow(
                 CookieCopyDevTools(
                     networkOn = networkOn,
                     originOn = originOn,
-                    tableOn = tableOn,
                     pulse = pulse,
                     accent = accent,
                     anchors = anchors,
@@ -396,6 +414,29 @@ private fun CookieCopyWindow(
                         .clipToBounds(),
                 )
             }
+        }
+        if (tableOn) {
+            CookieCopyCurlMenu(
+                pulse = pulse,
+                accent = accent,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset {
+                        val win = anchors.window?.size ?: return@offset IntOffset.Zero
+                        val pad = with(density) { 6.dp.roundToPx() }
+                        val menuW = with(density) { 128.dp.roundToPx() }
+                        val menuH = with(density) { 58.dp.roundToPx() }
+                        val cx = cursor.x * win.width + pad
+                        val cy = cursor.y * win.height + pad
+                        val x = cx.roundToInt().coerceIn(pad, (win.width - menuW - pad).coerceAtLeast(pad))
+                        val y = if (cy + menuH > win.height - pad) {
+                            (cursor.y * win.height - menuH - pad).roundToInt()
+                        } else {
+                            cy.roundToInt()
+                        }.coerceAtLeast(pad)
+                        IntOffset(x, y)
+                    },
+            )
         }
         Canvas(Modifier.fillMaxSize()) {
             val origin = Offset(cursor.x * size.width, cursor.y * size.height)
@@ -412,7 +453,7 @@ private fun CookieCopyWindow(
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 12.dp),
         )
         KeyChip(
-            label = "Copy as cURL",
+            label = "Right click",
             visible = showCopyCurl,
             modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 12.dp),
         )
@@ -520,7 +561,6 @@ private fun CookieCopyPage() {
 private fun CookieCopyDevTools(
     networkOn: Boolean,
     originOn: Boolean,
-    tableOn: Boolean,
     pulse: Float,
     accent: Color,
     anchors: CookieCopyAnchors,
@@ -549,7 +589,6 @@ private fun CookieCopyDevTools(
         Box(Modifier.fillMaxWidth().height(1.dp).background(CookieCopyChrome.ToolsLine))
         CookieCopyNetworkPane(
             originOn = originOn,
-            tableOn = tableOn,
             pulse = pulse,
             accent = accent,
             anchors = anchors,
@@ -561,49 +600,36 @@ private fun CookieCopyDevTools(
 @Composable
 private fun CookieCopyNetworkPane(
     originOn: Boolean,
-    tableOn: Boolean,
     pulse: Float,
     accent: Color,
     anchors: CookieCopyAnchors,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.background(CookieCopyChrome.Surface)) {
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val head = TextStyle(fontSize = 8.sp, fontWeight = FontWeight.SemiBold, color = CookieCopyChrome.TextMuted)
-                Text("Name", style = head, modifier = Modifier.weight(1f), maxLines = 1)
-                Text("Status", style = head, maxLines = 1)
-                Text("Type", style = head, maxLines = 1)
-            }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(CookieCopyChrome.ToolsLine))
-            NetworkRequestRow(
-                name = "youtube.com",
-                status = "200",
-                type = "document",
-                selected = originOn && !tableOn,
-                pulse = if (originOn && !tableOn) pulse else 0f,
-                accent = accent,
-                modifier = Modifier.trackAnchor(anchors) { anchors.cookiesOrigin = it },
-            )
-            NetworkRequestRow(name = "www.youtube.com", status = "200", type = "fetch", accent = accent)
-            NetworkRequestRow(name = "googlevideo", status = "206", type = "media", accent = accent)
+    Column(modifier.background(CookieCopyChrome.Surface)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val head = TextStyle(fontSize = 8.sp, fontWeight = FontWeight.SemiBold, color = CookieCopyChrome.TextMuted)
+            Text("Name", style = head, modifier = Modifier.weight(1f), maxLines = 1)
+            Text("Status", style = head, maxLines = 1)
+            Text("Type", style = head, maxLines = 1)
         }
-        if (tableOn) {
-            CookieCopyCurlMenu(
-                pulse = pulse,
-                accent = accent,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 20.dp, top = 22.dp)
-                    .trackAnchor(anchors) { anchors.table = it },
-            )
-        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(CookieCopyChrome.ToolsLine))
+        NetworkRequestRow(
+            name = "youtube.com",
+            status = "200",
+            type = "document",
+            selected = originOn,
+            pulse = if (originOn) pulse else 0f,
+            accent = accent,
+            modifier = Modifier.trackAnchor(anchors) { anchors.cookiesOrigin = it },
+        )
+        NetworkRequestRow(name = "www.youtube.com", status = "200", type = "fetch", accent = accent)
+        NetworkRequestRow(name = "googlevideo", status = "206", type = "media", accent = accent)
     }
 }
 
@@ -691,6 +717,7 @@ private fun ToolsTab(
     val color = if (selected) accent else CookieCopyChrome.TextMuted
     Column(
         modifier
+            .width(IntrinsicSize.Max)
             .clip(RoundedCornerShape(3.dp))
             .background(if (selected) accent.copy(alpha = 0.22f + 0.14f * pulse) else Color.Transparent)
             .padding(horizontal = 5.dp, vertical = 2.dp),

@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AppTextField(
+fun AppTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,

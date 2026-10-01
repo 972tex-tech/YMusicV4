@@ -14,7 +14,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 @Composable
-internal actual fun DeviceLinkQrCode(payload: String, modifier: Modifier) {
+actual fun DeviceLinkQrCode(payload: String, modifier: Modifier) {
     val matrix = remember(payload) {
         QRCodeWriter().encode(
             payload,

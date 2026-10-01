@@ -84,16 +84,16 @@ class AppGraph(
     /**
      * The platform browser WebView for the YouTube sign-in flow, provided by the shell (like
      * [playerSurface]) so the shared UI carries no WebView dependency. Null hosts fall through to
-     * [importSessionCookies] (desktop QR / paste) or a "sign-in unavailable" note. It MUST use the
+     * [cookieSignIn] (desktop QR / paste) or a "sign-in unavailable" note. It MUST use the
      * platform's default cookie store — the same jar the engine reads — so sign-in cookies reach the
      * login gate.
      */
     val loginBrowser: LoginBrowser? = null,
     /**
-     * Writes YouTube session cookies into the shell's jar. Desktop sign-in (QR / paste) uses this;
-     * null hides that path (mobile keeps [loginBrowser]).
+     * Desktop YouTube sign-in (QR / DevTools paste), provided by the shell like [loginBrowser].
+     * Null on mobile.
      */
-    val importSessionCookies: (suspend (List<SessionCookie>) -> Unit)? = null,
+    val cookieSignIn: CookieSignIn? = null,
     /**
      * Reads the current YouTube/Google cookies from the shell's store. Null hides Settings →
      * Link devices together with [scanQrCode].
