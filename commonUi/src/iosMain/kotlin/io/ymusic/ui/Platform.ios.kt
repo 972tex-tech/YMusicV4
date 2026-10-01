@@ -1,8 +1,7 @@
 package io.ymusic.ui
 
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -29,18 +28,9 @@ internal actual fun SyncSensorRotation(enabled: Boolean) {
 
 @Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {
-    val vc = androidx.compose.ui.uikit.LocalUIViewController.current
-    androidx.compose.runtime.DisposableEffect(immersive) {
-        platform.UIKit.UIApplication.sharedApplication.setStatusBarHidden(immersive, true)
-        vc.setNeedsStatusBarAppearanceUpdate()
-        onDispose {
-            platform.UIKit.UIApplication.sharedApplication.setStatusBarHidden(false, true)
-            vc.setNeedsStatusBarAppearanceUpdate()
-        }
-    }
+    // UIApplication.setStatusBarHidden is not in the iOS 26 Kotlin bindings.
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal actual fun Modifier.keepBelowStatusBar(): Modifier =
-    windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+    windowInsetsPadding(WindowInsets.statusBars)

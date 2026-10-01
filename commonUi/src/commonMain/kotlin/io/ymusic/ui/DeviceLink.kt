@@ -10,8 +10,10 @@ import kmphttp.create
 import kmphttp.deleteWithoutBody
 import kmphttp.saveFromResponse
 import kmphttp.toHttpUrl
+import kmphttp.utf8String
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okio.Buffer
@@ -66,7 +68,7 @@ suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOffer {
             .build(),
     ).use { response ->
         if (!response.isSuccessful) error("network")
-        response.body.string()
+        response.body.utf8String()
     }
     val uuid = UUID_FIELD.find(body)?.groupValues?.get(1) ?: error("network")
     val url = "$WEBHOOK_ORIGIN/$uuid"
@@ -115,7 +117,7 @@ internal suspend fun pollDeviceLinkCookies(
     val raw = response.use {
         if (it.code == 404) return null
         if (!it.isSuccessful) error("network")
-        it.body.string().trim().trim('"')
+        it.body.utf8String().trim().trim('"')
     }
     deleteDeviceLinkToken(client, offer.tokenId)
     val blob = raw.decodeBase64Url() ?: error("bad-payload")
