@@ -481,14 +481,23 @@ private fun FoldersTab(
                     modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Breadcrumb(path.map { it.second }, Modifier.weight(1f)) { depth -> path = path.take(depth) }
-                    if (scopedRescan != null && scanController != null) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RescanButton(scopedRescan, scanController)
-                            if (scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
+                    // fill=false: a short trail shrinks so the icon hugs the last crumb; a long one scrolls.
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Breadcrumb(
+                            path.map { it.second },
+                            Modifier.weight(1f, fill = false),
+                        ) { depth -> path = path.take(depth) }
+                        if (scopedRescan != null && scanController != null) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RescanButton(scopedRescan, scanController)
+                                if (scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
+                            }
                         }
                     }
                     SortControl(folderSortOptions.map { it.label }, sort)
@@ -654,7 +663,7 @@ internal fun Breadcrumb(
         modifier
             .horizontalWheelScroll(scrollState)
             .horizontalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CrumbText(stringResource(Res.string.library_crumb_root), last = path.isEmpty()) { onNavigate(0) }
