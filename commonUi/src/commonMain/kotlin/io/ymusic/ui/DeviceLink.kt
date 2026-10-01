@@ -33,7 +33,7 @@ data class SessionCookie(
 )
 
 /** Desktop-minted inbox: a webhook.site URL plus the AES-equivalent key encoded in the QR. */
-internal class DeviceLinkOffer(
+class DeviceLinkOffer(
     val webhookUrl: String,
     val tokenId: String,
     val key: ByteArray,
@@ -55,7 +55,7 @@ internal fun parseDeviceLinkQr(raw: String): Pair<String, ByteArray>? {
     return url to key
 }
 
-internal suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOffer {
+suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOffer {
     val json = """{"expiry":$TOKEN_EXPIRY_SEC,"request_limit":1}"""
     val body = client.execute(
         RequestBuilder()
@@ -75,7 +75,7 @@ internal suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOff
 }
 
 /** Drops the webhook.site inbox. Failures are ignored — the token also expires at [TOKEN_EXPIRY_SEC]. */
-internal suspend fun deleteDeviceLinkToken(client: KmpHttpClient, tokenId: String) {
+suspend fun deleteDeviceLinkToken(client: KmpHttpClient, tokenId: String) {
     try {
         client.execute(
             RequestBuilder()
@@ -91,7 +91,7 @@ internal suspend fun deleteDeviceLinkToken(client: KmpHttpClient, tokenId: Strin
     }
 }
 
-internal fun deviceLinkSas(key: ByteArray): String {
+fun deviceLinkSas(key: ByteArray): String {
     require(key.size == KEY_LEN)
     val mac = hmac(key, SAS_LABEL)
     var n = 0L
@@ -165,7 +165,7 @@ suspend fun CookieJar.importSessionCookies(cookies: List<SessionCookie>) {
     }
 }
 
-internal fun parseCookiePaste(text: String): List<SessionCookie> {
+fun parseCookiePaste(text: String): List<SessionCookie> {
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return emptyList()
     val json = parseJsonCookiePaste(trimmed)
@@ -182,6 +182,11 @@ internal fun parseCookiePaste(text: String): List<SessionCookie> {
         if (netscape.isNotEmpty()) return netscape
         val tsv = parseChromeTsv(lines)
         if (tsv.isNotEmpty()) return tsv
+    }
+    val payload = cookiePayloadFromPaste(trimmed)
+    if (payload != null) {
+        val extracted = parseCookieHeader(payload)
+        if (extracted.size >= 2 || looksLikeCurl(trimmed)) return extracted
     }
     val headerCookies = parseCookieHeader(trimmed)
     if (headerCookies.size >= 2) return headerCookies
@@ -276,15 +281,65 @@ private fun decodeCookies(bytes: ByteArray): List<SessionCookie> =
         )
     }
 
+private fun flattenShellContinuations(text: String): String = buildString(text.length) {
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (c == '\\' || c == '^' || c == '`') {
+            val next = text.getOrNull(i + 1)
+            if (next == '\n') {
+                append(' ')
+                i += 2
+                continue
+            }
+            if (next == '\r' && text.getOrNull(i + 2) == '\n') {
+                append(' ')
+                i += 3
+                continue
+            }
+        }
+        if (c == '\n' || c == '\r') append(' ') else append(c)
+        i++
+    }
+}
+
+private val CURL_CMD = Regex("""\bcurl(?:\.exe)?\s+""", RegexOption.IGNORE_CASE)
+private val CURL_HEADER_COOKIE = Regex(
+    """(?:-H|--header)(?:\s+|=)\$?(['"])\s*[Cc]ookie\s*:\s*(.*?)\1""",
+)
+private val CURL_COOKIE_FLAG = Regex(
+    """(?:(?:^|[\s])(?:-b|--cookie))(?:\s+|=)(['"])(.*?)\1""",
+)
+private val COOKIE_HEADER_LINE = Regex("""^[Cc]ookie\s*:\s*(.+)$""", RegexOption.MULTILINE)
+
+private fun looksLikeCurl(text: String): Boolean = CURL_CMD.containsMatchIn(text)
+
+private fun cookiePayloadFromPaste(text: String): String? {
+    val flat = flattenShellContinuations(text)
+    if (looksLikeCurl(flat)) return cookieValueFromCurl(flat).orEmpty()
+    return COOKIE_HEADER_LINE.find(text)?.groupValues?.get(1)?.trim()
+}
+
+private fun cookieValueFromCurl(flat: String): String? {
+    CURL_HEADER_COOKIE.find(flat)?.groupValues?.get(2)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    CURL_COOKIE_FLAG.find(flat)?.groupValues?.get(2)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    return null
+}
+
 private fun parseCookieHeader(text: String): List<SessionCookie> {
-    val chunk = text.replace('\n', ' ').replace('\r', ' ')
-    if (!chunk.contains('=')) return emptyList()
-    return chunk.split(';').mapNotNull { pair ->
+    val collapsed = text.replace('\n', ' ').replace('\r', ' ').trim()
+    val body = if (collapsed.startsWith("Cookie:", ignoreCase = true)) {
+        collapsed.substringAfter(':').trim()
+    } else {
+        collapsed
+    }
+    if (!body.contains('=')) return emptyList()
+    return body.split(';').mapNotNull { pair ->
         val eq = pair.indexOf('=')
         if (eq <= 0) return@mapNotNull null
         val name = pair.substring(0, eq).trim()
         val value = pair.substring(eq + 1).trim()
-        if (name.isEmpty() || '=' in name) return@mapNotNull null
+        if (name.isEmpty() || '=' in name || ' ' in name || ':' in name) return@mapNotNull null
         SessionCookie(name, value, domainForName(name), httpOnly = false)
     }
 }
@@ -445,7 +500,7 @@ private const val TOKEN_EXPIRY_SEC = 600
 internal const val DEVICE_LINK_POLL_MS = 2_000L
 internal const val DEVICE_LINK_TIMEOUT_MS = TOKEN_EXPIRY_SEC * 1000L
 
-internal fun newDeviceLinkHttpClient(): KmpHttpClient = KmpHttpClient.create {}
+fun newDeviceLinkHttpClient(): KmpHttpClient = KmpHttpClient.create {}
 
 internal val ESSENTIAL_COOKIE_NAMES = setOf(
     "LOGIN_INFO",
@@ -458,10 +513,10 @@ internal val ESSENTIAL_COOKIE_NAMES = setOf(
     "__Secure-3PAPISID",
 )
 
-internal fun List<SessionCookie>.looksSignedIn(): Boolean =
+fun List<SessionCookie>.looksSignedIn(): Boolean =
     any { it.name in ESSENTIAL_COOKIE_NAMES && it.value.isNotEmpty() }
 
-internal suspend fun awaitDeviceLinkCookies(
+suspend fun awaitDeviceLinkCookies(
     client: KmpHttpClient,
     offer: DeviceLinkOffer,
 ): List<SessionCookie> {
