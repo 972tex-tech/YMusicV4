@@ -58,6 +58,8 @@ import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
 import io.ymusic.ui.resources.settings_speed_hint
+import io.ymusic.ui.resources.settings_sponsor_block
+import io.ymusic.ui.resources.settings_sponsor_block_hint
 import io.ymusic.ui.resources.settings_stats
 import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
@@ -137,6 +139,12 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
         SoundRow(graph, speed = true)
         SoundRow(graph, speed = false)
         ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
+        ToggleRow(
+            graph,
+            AppSettings.sponsorBlockEnabled,
+            Res.string.settings_sponsor_block,
+            Res.string.settings_sponsor_block_hint,
+        )
         // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
         // on also makes future releases apply on the next start.
         if (graph.updates != null) {

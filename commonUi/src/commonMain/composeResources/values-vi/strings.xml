@@ -165,6 +165,10 @@
     <!-- Updates -->
     <string name="settings_auto_update">Tự động tải bản cập nhật</string>
     <string name="settings_auto_update_hint">Tải bản mới ở chế độ nền và cài đặt trong lần khởi động kế tiếp.</string>
+    <string name="settings_sponsor_block">Chặn quảng cáo trong video</string>
+    <string name="settings_sponsor_block_hint">Tự động bỏ qua các đoạn được tài trợ trong video YouTube. Tắt cho một video từ Đang phát.</string>
+    <string name="sponsor_block_included">Chặn quảng cáo trong video này</string>
+    <string name="sponsor_block_excluded">Bỏ chặn quảng cáo trong video này</string>
     <string name="settings_sound">Âm thanh</string>
     <string name="settings_sound_hint">Âm lượng, tốc độ, equalizer và virtualizer</string>
     <string name="settings_speed_hint">Tốc độ phát và cao độ</string>

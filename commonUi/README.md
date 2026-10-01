@@ -9,9 +9,11 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   flows; the persistent mini-player + full Now Playing (transport, sleep timer, capability selectors, queue).
 
 - **SponsorBlock seam** — `ymusic.ui.sponsorblock`: `SponsorBlockApi` + `MockSponsorBlockApi` +
-  `SponsorBlockCoordinator` (queue videoId → `Player.setSkipSegments`). The mock returns a 0–10s
-  intro and a 60–75s mid-roll; swap `AppGraph.sponsorBlock` for the real `/sponsorBlock/getSkipSegments`
-  client when that lands. Seek bars draw the ranges on `SlimSeekBar`.
+  SQLite cache/whitelist (`SponsorBlockStore`) + `SponsorBlockService` + `SponsorBlockCoordinator`
+  (queue videoId → `Player.setSkipSegments`). The mock returns a 0–10s intro and a 60–75s mid-roll;
+  swap `AppGraph`'s `sponsorBlockApi` for the real `/sponsorBlock/getSkipSegments` client when that
+  lands. Enable is `AppSettings.sponsorBlockEnabled` (Settings row); per-video whitelist is the Now
+  Playing toggle (hidden when there are no segments). Seek bars draw the ranges on `SlimSeekBar`.
 
 - **AppGraph** — shells construct `AppGraph` (engines + `Player` facade + optional mediaStore/scan callback + the
   platform `playerSurface(modifier)` composable, which hosts the one shared video container the shell handed the

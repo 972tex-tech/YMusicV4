@@ -79,6 +79,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -107,6 +108,8 @@ import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.Progress
 import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.flow
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.audio_only
 import io.ymusic.ui.resources.badge_live
@@ -128,6 +131,7 @@ import io.ymusic.ui.resources.cd_repeat
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.cd_sleep_timer
+import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.playback_failed
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
@@ -135,10 +139,15 @@ import io.ymusic.ui.resources.sleep_minutes
 import io.ymusic.ui.resources.sleep_off_remaining
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
+import io.ymusic.ui.resources.sponsor_block_excluded
+import io.ymusic.ui.resources.sponsor_block_included
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_quality_auto
+import io.ymusic.ui.sponsorblock.SponsorBlockState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 internal fun formatMillis(ms: Long): String {
@@ -788,7 +797,7 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
     }
 }
 
-/** chevron-down · [right:] download · sleep timer · quality chip · ⋮ (reload + tracks). */
+/** chevron-down · [right:] download · sponsorblock · sleep timer · quality chip · ⋮ (reload + tracks). */
 @Composable
 private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClose: () -> Unit) {
     val player = coordinator.player
@@ -804,6 +813,24 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     val queue by player.queue.collectAsState()
     val downloadLauncher = LocalDownloadLauncher.current
     val downloadable = coordinator.downloadable(queue.currentItem)
+    val videoId = (queue.currentItem as? PlayableItem.YtMedia)?.videoId
+    val sponsorBlock = coordinator.graph.sponsorBlock
+    val sbChanges by sponsorBlock.changes.collectAsState()
+    val sbEnabled by remember(coordinator.graph) {
+        coordinator.graph.settings.flow(AppSettings.sponsorBlockEnabled)
+    }.collectAsState()
+    var sbState by remember { mutableStateOf(SponsorBlockState.Unavailable) }
+    LaunchedEffect(videoId, sbChanges, sbEnabled) {
+        sbState = if (videoId == null) {
+            SponsorBlockState.Unavailable
+        } else {
+            sponsorBlock.load(videoId).state
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val showSnackbar = LocalSnackbar.current
+    val includedMsg = stringResource(Res.string.sponsor_block_included)
+    val excludedMsg = stringResource(Res.string.sponsor_block_excluded)
 
     Row(
         // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
@@ -822,6 +849,21 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
             enabled = downloadLauncher != null && downloadable != null,
             onClick = { downloadable?.let { downloadLauncher?.launch(it) } },
         )
+        if (sbState != SponsorBlockState.Unavailable) {
+            val included = sbState == SponsorBlockState.Available
+            ActionIcon(
+                painterResource(Res.drawable.ic_sponsor_block),
+                if (included) includedMsg else excludedMsg,
+                modifier = Modifier.graphicsLayer { alpha = if (included) 1f else 0.5f },
+                onClick = {
+                    val id = videoId ?: return@ActionIcon
+                    showSnackbar(if (included) excludedMsg else includedMsg)
+                    scope.launch {
+                        if (included) sponsorBlock.addToWhitelist(id) else sponsorBlock.removeFromWhitelist(id)
+                    }
+                },
+            )
+        }
         SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
         if (quality.options.isNotEmpty()) {
             QualityChip(

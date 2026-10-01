@@ -27,7 +27,7 @@ import kotlin.time.TimeSource
  * as the rest of the queue.
  */
 class PlaybackCoordinator(
-    private val graph: AppGraph,
+    internal val graph: AppGraph,
     private val scope: CoroutineScope,
 ) {
     val player: Player get() = graph.player

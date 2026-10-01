@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,35 @@ fun ActionIcon(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    ActionIconBox(modifier, hitSize, enabled, onClick) {
+        Icon(icon, contentDescription, Modifier.size(iconSize), tint = tint)
+    }
+}
+
+@Composable
+fun ActionIcon(
+    painter: Painter,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 22.dp,
+    hitSize: Dp = 32.dp,
+    tint: Color = DesignColors.InkMuted,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    ActionIconBox(modifier, hitSize, enabled, onClick) {
+        Icon(painter, contentDescription, Modifier.size(iconSize), tint = tint)
+    }
+}
+
+@Composable
+private fun ActionIconBox(
+    modifier: Modifier,
+    hitSize: Dp,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
     Box(
         modifier
             .size(hitSize)
@@ -37,6 +67,6 @@ fun ActionIcon(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription, Modifier.size(iconSize), tint = tint)
+        content()
     }
 }

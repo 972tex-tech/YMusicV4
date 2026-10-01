@@ -170,6 +170,10 @@
     <!-- Updates -->
     <string name="settings_auto_update">تنزيل التحديثات تلقائيًا</string>
     <string name="settings_auto_update_hint">تنزيل الإصدارات الجديدة في الخلفية وتثبيتها عند التشغيل التالي.</string>
+    <string name="settings_sponsor_block">مانع الإعلانات</string>
+    <string name="settings_sponsor_block_hint">تخطي مقاطع الرعاية في فيديوهات يوتيوب تلقائيًا. يمكن إيقافه لفيديو من قيد التشغيل.</string>
+    <string name="sponsor_block_included">حجب الإعلانات المموَّلة لهذا الفيديو</string>
+    <string name="sponsor_block_excluded">عرض الإعلانات المموَّلة لهذا الفيديو</string>
     <string name="settings_sound">الصوت</string>
     <string name="settings_sound_hint">مستوى الصوت والسرعة والمعادل والمحاكي</string>
     <string name="settings_speed_hint">سرعة التشغيل وطبقة الصوت</string>

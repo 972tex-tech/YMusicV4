@@ -297,6 +297,10 @@
     <string name="settings_stats_hint">Share anonymous usage signals to help improve the app.</string>
     <string name="settings_enable_pip">Picture in picture</string>
     <string name="settings_enable_pip_hint">When watching video in Now Playing or fullscreen, continue in a small window if you leave the app. Otherwise video switches to audio-only until you return.</string>
+    <string name="settings_sponsor_block">SponsorBlock</string>
+    <string name="settings_sponsor_block_hint">Automatically skip sponsored segments in YouTube videos. Turn off for a video from Now Playing.</string>
+    <string name="sponsor_block_included">SponsorBlock enabled for this video</string>
+    <string name="sponsor_block_excluded">SponsorBlock disabled for this video</string>
     <string name="settings_sound">Sound</string>
     <string name="settings_sound_hint">Volume, speed, equalizer, and virtualizer</string>
     <string name="settings_speed_hint">Playback speed and pitch</string>
