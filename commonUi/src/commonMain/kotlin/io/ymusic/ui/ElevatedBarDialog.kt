@@ -39,7 +39,7 @@ import androidx.compose.ui.zIndex
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ElevatedBarDialog(
+fun ElevatedBarDialog(
     title: String,
     onDismiss: () -> Unit,
     canScrollBackward: Boolean,

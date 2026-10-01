@@ -620,16 +620,16 @@ private fun CookieCopyNetworkPane(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(CookieCopyChrome.ToolsLine))
         NetworkRequestRow(
-            name = "youtube.com",
-            status = "200",
-            type = "document",
+            name = "generate_204",
+            status = "204",
+            type = "xhr",
             selected = originOn,
             pulse = if (originOn) pulse else 0f,
             accent = accent,
             modifier = Modifier.trackAnchor(anchors) { anchors.cookiesOrigin = it },
         )
-        NetworkRequestRow(name = "www.youtube.com", status = "200", type = "fetch", accent = accent)
-        NetworkRequestRow(name = "googlevideo", status = "206", type = "media", accent = accent)
+        NetworkRequestRow(name = "getDatasyncIdsEndpoint", status = "200", type = "fetch", accent = accent)
+        NetworkRequestRow(name = "base.js", status = "200", type = "script", accent = accent)
     }
 }
 

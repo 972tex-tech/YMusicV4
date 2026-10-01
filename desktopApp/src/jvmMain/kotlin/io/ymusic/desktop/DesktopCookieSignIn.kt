@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,11 +47,13 @@ import io.ymusic.ui.DesignColors
 import io.ymusic.ui.DesignSpacing
 import io.ymusic.ui.DeviceLinkOffer
 import io.ymusic.ui.DeviceLinkQrCode
+import io.ymusic.ui.ElevatedBarDialog
 import io.ymusic.ui.SessionCookie
 import io.ymusic.ui.awaitDeviceLinkCookies
 import io.ymusic.ui.createDeviceLinkOffer
 import io.ymusic.ui.deleteDeviceLinkToken
 import io.ymusic.ui.deviceLinkSas
+import io.ymusic.ui.looksLikeCurlPaste
 import io.ymusic.ui.looksSignedIn
 import io.ymusic.ui.newDeviceLinkHttpClient
 import io.ymusic.ui.parseCookiePaste
@@ -65,6 +68,9 @@ import io.ymusic.ui.resources.signin_cookies_rejected
 import io.ymusic.ui.resources.signin_or_paste
 import io.ymusic.ui.resources.signin_paste_empty
 import io.ymusic.ui.resources.signin_paste_label
+import io.ymusic.ui.resources.signin_paste_no_cookie_body
+import io.ymusic.ui.resources.signin_paste_no_cookie_ok
+import io.ymusic.ui.resources.signin_paste_no_cookie_title
 import io.ymusic.ui.resources.signin_paste_submit
 import io.ymusic.ui.resources.signin_qr_hint
 import io.ymusic.ui.resources.signin_qr_sas_hint
@@ -96,6 +102,7 @@ fun DesktopCookieSignIn(
     var offerError by remember { mutableStateOf<String?>(null) }
     var paste by remember { mutableStateOf("") }
     var pasteError by remember { mutableStateOf<String?>(null) }
+    var noCookieDialog by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
 
@@ -196,7 +203,7 @@ fun DesktopCookieSignIn(
                             singleLine = false,
                             isError = pasteError != null,
                             supportingText = pasteError,
-                            modifier = Modifier.heightIn(min = 120.dp),
+                            modifier = Modifier.height(120.dp),
                         )
                         AccentButton(
                             text = stringResource(Res.string.signin_paste_submit),
@@ -204,10 +211,12 @@ fun DesktopCookieSignIn(
                             onClick = {
                                 scope.launch {
                                     val cookies = parseCookiePaste(paste)
-                                    if (cookies.isEmpty()) {
-                                        pasteError = getString(Res.string.signin_paste_empty)
-                                    } else {
-                                        finish(cookies)
+                                    when {
+                                        cookies.isEmpty() && looksLikeCurlPaste(paste) ->
+                                            noCookieDialog = true
+                                        cookies.isEmpty() ->
+                                            pasteError = getString(Res.string.signin_paste_empty)
+                                        else -> finish(cookies)
                                     }
                                 }
                             },
@@ -314,6 +323,28 @@ fun DesktopCookieSignIn(
                     }
                 }
             }
+        }
+    }
+    if (noCookieDialog) {
+        ElevatedBarDialog(
+            title = stringResource(Res.string.signin_paste_no_cookie_title),
+            onDismiss = { noCookieDialog = false },
+            canScrollBackward = false,
+            canScrollForward = false,
+            buttons = {
+                TextButton(onClick = { noCookieDialog = false }) {
+                    Text(stringResource(Res.string.signin_paste_no_cookie_ok), color = DesignColors.Accent)
+                }
+            },
+        ) {
+            Text(
+                stringResource(Res.string.signin_paste_no_cookie_body),
+                style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink, lineHeight = 20.sp),
+                modifier = Modifier.padding(
+                    horizontal = DesignSpacing.DialogRowHorizontal,
+                    vertical = DesignSpacing.Space16,
+                ),
+            )
         }
     }
 }

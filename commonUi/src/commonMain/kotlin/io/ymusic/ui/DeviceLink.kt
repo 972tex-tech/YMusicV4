@@ -312,7 +312,9 @@ private val CURL_COOKIE_FLAG = Regex(
 )
 private val COOKIE_HEADER_LINE = Regex("""^[Cc]ookie\s*:\s*(.+)$""", RegexOption.MULTILINE)
 
-private fun looksLikeCurl(text: String): Boolean = CURL_CMD.containsMatchIn(text)
+fun looksLikeCurlPaste(text: String): Boolean = CURL_CMD.containsMatchIn(text.trim())
+
+private fun looksLikeCurl(text: String): Boolean = looksLikeCurlPaste(text)
 
 private fun cookiePayloadFromPaste(text: String): String? {
     val flat = flattenShellContinuations(text)
