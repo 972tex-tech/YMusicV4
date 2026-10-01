@@ -50,7 +50,7 @@ class ScanNotificationTest {
                     scanLibraryFolder = { "picked" },
                     // Report progress, then block until the test lets it finish — so it is still
                     // in-flight when we navigate away.
-                    rescanLibrary = { onProgress -> onProgress(5); gate.await(); "RESCAN_ELSEWHERE" },
+                    rescanLibrary = { _, onProgress -> onProgress(5); gate.await(); "RESCAN_ELSEWHERE" },
                 )
                 val section = mutableStateOf(AppSection.Library)
                 setContent { App(graph, section) }

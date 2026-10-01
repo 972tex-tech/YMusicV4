@@ -34,6 +34,13 @@ const val PlaybackEqKey = "player.eq"
 typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
 
 /**
+ * Re-scan already-indexed folders. [folderUri] null means every library root; otherwise only that
+ * folder and its children. Reports the running scanned-file count through [onProgress] and returns
+ * a user-facing summary line.
+ */
+typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int) -> Unit) -> String?
+
+/**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
  * running engine manager, the player facade, and the platform video surface. [playerSurface] hosts
  * the **one** shared video container the shell handed to the engines (a Swing panel on desktop, a
@@ -61,10 +68,10 @@ class AppGraph(
      */
     val libraryFolderPicker: (suspend () -> String?)? = null,
     /**
-     * Re-scans the already-added root folders in place (no folder pick). Null when the shell can't
-     * scan, or has no notion of persisted roots.
+     * Re-scans already-added folders in place (no folder pick). [folderUri] null means every library
+     * root; otherwise only that folder and its children. Null when the shell can't scan.
      */
-    val rescanLibrary: ScanAction? = null,
+    val rescanLibrary: RescanAction? = null,
     /**
      * Permanently deletes the item's FILE from storage (okio delete on desktop, SAF
      * DocumentsContract on Android) — the destructive half of the Library's "Remove from disk";

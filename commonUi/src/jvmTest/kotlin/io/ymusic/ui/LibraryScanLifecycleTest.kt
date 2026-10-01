@@ -48,7 +48,7 @@ class LibraryScanLifecycleTest {
                     mediaStore = store,
                     scanLibraryFolder = { "picked" },
                     // Report 129 then park, so the scan stays in-flight for the whole test.
-                    rescanLibrary = { onProgress -> onProgress(129); CompletableDeferred<String?>().await() },
+                    rescanLibrary = { _, onProgress -> onProgress(129); CompletableDeferred<String?>().await() },
                 )
                 val section = androidx.compose.runtime.mutableStateOf(AppSection.Library)
                 setContent { App(graph, section) }

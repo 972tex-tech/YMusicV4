@@ -724,7 +724,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         ),
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
         libraryFolderPicker = { pickAndRegisterFolder(mediaStore) },
-        rescanLibrary = { onProgress -> rescanKnownRoots(mediaStore, onProgress) },
+        rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(mediaStore, folderUri, onProgress) },
         deleteFromDisk = { item ->
             withContext(Dispatchers.IO) {
                 check(item.uri.scheme.contentEquals("file")) { "not a local file: ${item.uri}" }
@@ -1130,11 +1130,16 @@ private suspend fun pickAndRegisterFolder(store: BetterMediaStore): String? {
     return uri.toString()
 }
 
-/** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */
-private suspend fun rescanKnownRoots(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
-    val roots = store.childBuckets(null)
-    if (roots.isEmpty()) return "No folders to rescan — add one first"
-    return scanUris(store, roots.map { it.uri }, onProgress)
+/** Re-scans [folderUri] (and its children) in place, or every already-added root when null. */
+private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): String? {
+    val uris = if (folderUri != null) {
+        listOf(Uri.parse(folderUri))
+    } else {
+        val roots = store.childBuckets(null)
+        if (roots.isEmpty()) return "No folders to rescan — add one first"
+        roots.map { it.uri }
+    }
+    return scanUris(store, uris, onProgress)
 }
 
 /** Scans each root [uris] into [store], reporting the running file count through [onProgress] and

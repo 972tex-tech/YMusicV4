@@ -382,14 +382,15 @@ private fun EmptyLibrary(scan: ScanAction?, controller: ScanController?) {
 // ---- folders ----
 
 /** Browse the bucket tree: breadcrumb + child folders + this folder's songs (root = orphan items).
- *  The root level carries the "+ Add folder" scan action, so more folders can join the library. */
+ *  The root level carries the "+ Add folder" scan action; rescan is available at every depth and
+ *  targets the folder currently open. */
 @Composable
 private fun FoldersTab(
     store: BetterMediaStore,
     content: LibraryContent,
     coordinator: PlaybackCoordinator,
     scan: ScanAction?,
-    rescan: ScanAction?,
+    rescan: RescanAction?,
     scanController: ScanController?,
     revealBucket: Long?,
     onRevealHandled: () -> Unit,
@@ -445,23 +446,31 @@ private fun FoldersTab(
         val onInclude: (MediaStoreBucket) -> Unit = { b ->
             scope.launch {
                 store.setBucketExcluded(b.id, false)
-                if (rescan != null && scanController != null) scanController.start(rescan)
+                if (rescan != null && scanController != null) {
+                    scanController.start { onProgress -> rescan(b.uri.toString(), onProgress) }
+                }
             }
         }
         val sort = rememberSortState("sort.folders")
         val sortedFolders = sort.sort(children, folderSortOptions)
         val sortedItems = sort.sort(items, songSortOptions)
-        val showScan = path.isEmpty() && scan != null
+        val folderId = path.lastOrNull()?.first
+        val scopedRescan: ScanAction? = rescan?.let { action ->
+            { onProgress ->
+                val uri = folderId?.let { store.findBucket(it)?.uri?.toString() }
+                action(uri, onProgress)
+            }
+        }
         val hasContent = children.isNotEmpty() || items.isNotEmpty()
         // The scan/sort toolbar scrolls away with the content (only the app bar and tab row stay
-        // pinned). At root the left side holds the scan actions; in a subfolder those are gone, so the
-        // breadcrumb takes their place on the same line as the sort control.
+        // pinned). At root the left side holds add-folder + rescan; in a subfolder the breadcrumb
+        // takes add-folder's place and rescan stays, targeting the open folder.
         val header: @Composable () -> Unit = {
             if (path.isEmpty()) {
-                if (showScan || hasContent) {
+                if (scan != null || scopedRescan != null || hasContent) {
                     FoldersToolbar(
-                        scan = if (showScan) scan else null,
-                        rescan = if (showScan) rescan else null,
+                        scan = scan,
+                        rescan = scopedRescan,
                         scanController = scanController,
                         sort = if (hasContent) sort else null,
                         sortLabels = folderSortOptions.map { it.label },
@@ -473,6 +482,15 @@ private fun FoldersTab(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Breadcrumb(path.map { it.second }, Modifier.weight(1f)) { depth -> path = path.take(depth) }
+                    if (scopedRescan != null && scanController != null) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RescanButton(scopedRescan, scanController)
+                            if (scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
+                        }
+                    }
                     SortControl(folderSortOptions.map { it.label }, sort)
                 }
             }
@@ -1303,9 +1321,8 @@ private fun ScanPill(scan: ScanAction, controller: ScanController, label: String
     )
 }
 
-/** The Folders tab toolbar: the scan actions (add-folder pill + rescan button, root level only) on
- *  the left, the sort control on the right. Any side may be absent (a subfolder has no scan; an
- *  empty root has no sort; no scan controller means no scan controls). */
+/** The Folders tab toolbar: add-folder pill + rescan on the left, sort on the right. Any side may
+ *  be absent (an empty root has no sort; no scan controller means no scan controls). */
 @Composable
 private fun FoldersToolbar(
     scan: ScanAction?,
@@ -1321,24 +1338,29 @@ private fun FoldersToolbar(
     ) {
         if (scan != null && scanController != null) {
             ScanPill(scan, scanController, label = stringResource(Res.string.library_add_folder))
-            if (rescan != null) {
-                IconButton(
-                    onClick = { scanController.start(rescan) },
-                    enabled = !scanController.running,
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = stringResource(Res.string.library_rescan),
-                        modifier = Modifier.size(19.dp),
-                        tint = DesignColors.InkSoft,
-                    )
-                }
-            }
-            if (scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
         }
+        if (rescan != null && scanController != null) {
+            RescanButton(rescan, scanController)
+        }
+        if (scanController != null && scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
         Spacer(Modifier.weight(1f))
         if (sort != null) SortControl(sortLabels, sort)
+    }
+}
+
+@Composable
+private fun RescanButton(rescan: ScanAction, controller: ScanController) {
+    IconButton(
+        onClick = { controller.start(rescan) },
+        enabled = !controller.running,
+        modifier = Modifier.size(32.dp),
+    ) {
+        Icon(
+            Icons.Default.Refresh,
+            contentDescription = stringResource(Res.string.library_rescan),
+            modifier = Modifier.size(19.dp),
+            tint = DesignColors.InkSoft,
+        )
     }
 }
 

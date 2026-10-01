@@ -527,7 +527,7 @@ class YMusicApplication : Application() {
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
-            rescanLibrary = { onProgress -> rescanKnownRoots(shared.mediaStore, onProgress) },
+            rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(shared.mediaStore, folderUri, onProgress) },
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {
                     val uri = android.net.Uri.parse(item.uri.toString())
@@ -636,11 +636,16 @@ class YMusicApplication : Application() {
         return folder.uri.toString()
     }
 
-    /** Re-scans every already-added root folder in place (no pick), reconciling deletions/edits. */
-    private suspend fun rescanKnownRoots(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
-        val roots = store.childBuckets(null)
-        if (roots.isEmpty()) return "No folders to rescan — add one first"
-        return scanUris(store, roots.map { it.uri }, onProgress)
+    /** Re-scans [folderUri] (and its children) in place, or every already-added root when null. */
+    private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): String? {
+        val uris = if (folderUri != null) {
+            listOf(Uri.parse(folderUri))
+        } else {
+            val roots = store.childBuckets(null)
+            if (roots.isEmpty()) return "No folders to rescan — add one first"
+            roots.map { it.uri }
+        }
+        return scanUris(store, uris, onProgress)
     }
 
     /** Scans each root [uris] into [store] via SAF + the bundled ffmpeg (content:// proxied over ymix),
