@@ -200,6 +200,7 @@
     <string name="device_link_title">ربط الأجهزة</string>
     <string name="device_link_intro">امسح رمز QR المعروض في YMusic على حاسوبك. يجب أن يكون هذا الهاتف مسجّل الدخول مسبقاً.</string>
     <string name="device_link_open_camera">فتح الكاميرا</string>
+    <string name="device_link_scan_hint">وجّه الكاميرا نحو رمز QR على الحاسوب</string>
     <string name="device_link_sas_hint">يجب أن يطابق هذا الرمز الرمز على الحاسوب. إن لم يطابق، ألغِ.</string>
     <string name="device_link_send">إرسال تسجيل الدخول</string>
     <string name="device_link_unlock_title">أكّد أنه أنت</string>

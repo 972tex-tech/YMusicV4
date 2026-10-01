@@ -195,6 +195,7 @@
     <string name="device_link_title">Liên kết thiết bị</string>
     <string name="device_link_intro">Quét mã QR hiện trong YMusic trên máy tính. Điện thoại này phải đã đăng nhập.</string>
     <string name="device_link_open_camera">Mở camera</string>
+    <string name="device_link_scan_hint">Hướng camera vào mã QR trên máy tính</string>
     <string name="device_link_sas_hint">Mã này phải trùng với mã trên máy tính. Nếu không, hãy huỷ.</string>
     <string name="device_link_send">Gửi đăng nhập</string>
     <string name="device_link_unlock_title">Xác nhận chính chủ</string>

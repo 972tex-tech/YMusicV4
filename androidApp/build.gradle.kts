@@ -118,8 +118,13 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     implementation(compose.material3)
     implementation(compose.foundation)
-    implementation(Libs.PlayServices.codeScanner)
+    implementation(compose.components.resources)
     implementation(Libs.AndroidX.biometric)
+    implementation(Libs.AndroidX.cameraCore)
+    implementation(Libs.AndroidX.cameraCamera2)
+    implementation(Libs.AndroidX.cameraLifecycle)
+    implementation(Libs.AndroidX.cameraView)
+    implementation(Libs.Zxing.core)
 }
 
 // The injected YouTube player script rides as an asset — copied from the built webview-js bundle

@@ -31,6 +31,7 @@ object Versions {
     const val coreKtx = "1.15.0"
     const val lifecycleRuntimeKtx = "2.8.7"
     const val activityCompose = "1.9.3"
+    const val cameraX = "1.4.2"
     const val composeBom = "2024.12.01"
 
     // JS toolchain (:engine-js, run via npx — Node required at build)
@@ -68,6 +69,10 @@ object Libs {
         const val lifecycleRuntimeKtx = "androidx.lifecycle:lifecycle-runtime-ktx:${Versions.lifecycleRuntimeKtx}"
         const val activityCompose = "androidx.activity:activity-compose:${Versions.activityCompose}"
         const val biometric = "androidx.biometric:biometric:1.1.0"
+        const val cameraCore = "androidx.camera:camera-core:${Versions.cameraX}"
+        const val cameraCamera2 = "androidx.camera:camera-camera2:${Versions.cameraX}"
+        const val cameraLifecycle = "androidx.camera:camera-lifecycle:${Versions.cameraX}"
+        const val cameraView = "androidx.camera:camera-view:${Versions.cameraX}"
 
         object Compose {
             const val bom = "androidx.compose:compose-bom:${Versions.composeBom}"
@@ -140,9 +145,5 @@ object Libs {
 
     object Zxing {
         const val core = "com.google.zxing:core:3.5.3"
-    }
-
-    object PlayServices {
-        const val codeScanner = "com.google.android.gms:play-services-code-scanner:16.1.0"
     }
 }

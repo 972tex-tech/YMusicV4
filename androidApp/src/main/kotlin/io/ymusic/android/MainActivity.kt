@@ -39,9 +39,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.ui.App
@@ -168,28 +165,36 @@ class MainActivity : FragmentActivity() {
     }
 
     private var pendingScan: CompletableDeferred<String?>? = null
+    private val openQrScan =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val value = result.data?.getStringExtra(QrScanActivity.EXTRA_VALUE)
+            pendingScan?.complete(if (result.resultCode == RESULT_OK) value else null)
+            pendingScan = null
+        }
+    private var launchScanAfterCamera: Boolean = false
+    private val requestCamera =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted && launchScanAfterCamera) {
+                openQrScan.launch(Intent(this, QrScanActivity::class.java))
+            } else {
+                pendingScan?.complete(null)
+                pendingScan = null
+            }
+            launchScanAfterCamera = false
+        }
     private val scanQr: suspend () -> String? = {
         pendingScan?.complete(null)
         val deferred = CompletableDeferred<String?>()
         pendingScan = deferred
         withContext(Dispatchers.Main) {
-            val options = GmsBarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build()
-            GmsBarcodeScanning.getClient(this@MainActivity, options)
-                .startScan()
-                .addOnSuccessListener { barcode ->
-                    pendingScan?.complete(barcode.rawValue)
-                    pendingScan = null
-                }
-                .addOnCanceledListener {
-                    pendingScan?.complete(null)
-                    pendingScan = null
-                }
-                .addOnFailureListener { e ->
-                    pendingScan?.completeExceptionally(e)
-                    pendingScan = null
-                }
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                openQrScan.launch(Intent(this@MainActivity, QrScanActivity::class.java))
+            } else {
+                launchScanAfterCamera = true
+                requestCamera.launch(Manifest.permission.CAMERA)
+            }
         }
         deferred.await()
     }

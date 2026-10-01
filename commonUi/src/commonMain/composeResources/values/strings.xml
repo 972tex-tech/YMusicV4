@@ -258,6 +258,7 @@
     <string name="device_link_title">Link devices</string>
     <string name="device_link_intro">Scan the QR code shown in YMusic on your computer. This phone must already be signed in.</string>
     <string name="device_link_open_camera">Open camera</string>
+    <string name="device_link_scan_hint">Point the camera at the computer’s QR code</string>
     <string name="device_link_sas_hint">This code must match the computer. If it doesn’t, tap Cancel.</string>
     <string name="device_link_send">Send sign-in</string>
     <string name="device_link_unlock_title">Confirm it’s you</string>
