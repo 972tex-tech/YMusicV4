@@ -16,16 +16,18 @@ import kotlin.time.ExperimentalTime
 /**
  * Watch-time ranking for Library Recent play / Top tracks and Discover Top tracks.
  *
- * Local rows are keyed by [MediaStoreItem.playlistCode] (YouTube id or `@fileSize:durationSec`) so a
- * move/rescan that keeps the file still ranks. YouTube rows are keyed by video id and carry the
- * display fields the Discover chart needs.
+ * Local rows are keyed by [MediaStoreItem.playlistCode] so a move/rescan that keeps the file still
+ * ranks. YouTube watch time is keyed by video id; display fields live in yt_video_metadata and are
+ * filled only from a YouTube play (a tagged local file can rank without a card until then).
  */
 class PlayHistoryStore(
     private val driver: SqlDriver,
     private val retain: Int = DEFAULT_RETAIN,
+    private val metadataQuota: Int = METADATA_QUOTA,
 ) {
     private val io = playHistoryDispatcher()
-    private var cleaned = false
+    private var historyCleaned = false
+    private var metadataSaves = 0
 
     private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val changes: Flow<Unit> = _changes.asSharedFlow()
@@ -34,15 +36,25 @@ class PlayHistoryStore(
         require(watchTimeMs >= 0)
         if (watchTimeMs == 0L || code.isEmpty()) return
         withContext(io) {
-            cleanupIfNeeded()
-            upsertLocal(code, watchTimeMs)
+            cleanupHistoryIfNeeded()
+            upsertWatchTime("local_play_history", "code", code, watchTimeMs)
         }
         _changes.tryEmit(Unit)
     }
 
-    suspend fun trackYoutube(
+    suspend fun trackYoutube(videoId: String, watchTimeMs: Long) {
+        require(watchTimeMs >= 0)
+        if (watchTimeMs == 0L || videoId.isEmpty()) return
+        withContext(io) {
+            cleanupHistoryIfNeeded()
+            upsertWatchTime("yt_play_history", "video_id", videoId, watchTimeMs)
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    /** Snapshot for the Discover chart. Live streams are skipped; a thin card only inserts if missing. */
+    suspend fun saveYoutubeMetadata(
         videoId: String,
-        watchTimeMs: Long,
         title: String,
         artist: String? = null,
         thumbnailUrl: String? = null,
@@ -50,11 +62,68 @@ class PlayHistoryStore(
         durationMs: Long? = null,
         live: Boolean = false,
     ) {
-        require(watchTimeMs >= 0)
-        if (watchTimeMs == 0L || videoId.isEmpty()) return
+        if (live || videoId.isEmpty() || title.isEmpty()) return
         withContext(io) {
-            cleanupIfNeeded()
-            upsertYoutube(videoId, watchTimeMs, title, artist, thumbnailUrl, duration, durationMs, live)
+            val ts = now()
+            val replace = durationMs != null && durationMs > 0
+            if (replace) {
+                driver.execute(
+                    null,
+                    """
+                    INSERT INTO yt_video_metadata(
+                        video_id, title, artist, thumbnail_url, duration, duration_ms, last_updated
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(video_id) DO UPDATE SET
+                        title = excluded.title,
+                        artist = excluded.artist,
+                        thumbnail_url = excluded.thumbnail_url,
+                        duration = excluded.duration,
+                        duration_ms = excluded.duration_ms,
+                        last_updated = excluded.last_updated
+                    """.trimIndent(),
+                    7,
+                ) {
+                    bindString(0, videoId)
+                    bindString(1, title)
+                    bindString(2, artist)
+                    bindString(3, thumbnailUrl)
+                    bindString(4, duration)
+                    bindLong(5, durationMs)
+                    bindLong(6, ts)
+                }
+            } else {
+                val updated = driver.execute(
+                    null,
+                    "UPDATE yt_video_metadata SET last_updated = ? WHERE video_id = ?",
+                    2,
+                ) {
+                    bindLong(0, ts)
+                    bindString(1, videoId)
+                }.value
+                if (updated == 0L) {
+                    driver.execute(
+                        null,
+                        """
+                        INSERT INTO yt_video_metadata(
+                            video_id, title, artist, thumbnail_url, duration, duration_ms, last_updated
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """.trimIndent(),
+                        7,
+                    ) {
+                        bindString(0, videoId)
+                        bindString(1, title)
+                        bindString(2, artist)
+                        bindString(3, thumbnailUrl)
+                        bindString(4, duration)
+                        bindLong(5, durationMs)
+                        bindLong(6, ts)
+                    }
+                }
+            }
+            metadataSaves++
+            if (metadataSaves == 1 || metadataSaves % METADATA_CLEANUP_EVERY == 0) {
+                cleanupTable("yt_video_metadata", "video_id", "last_updated", metadataQuota)
+            }
         }
         _changes.tryEmit(Unit)
     }
@@ -74,20 +143,25 @@ class PlayHistoryStore(
     }
 
     suspend fun youtubeTopChart(limit: Int = retain): List<YtFeedItem> = withContext(io) {
-        driver.executeQuery(
+        val ids = queryIds(
+            "SELECT video_id FROM yt_play_history ORDER BY watch_time DESC, tracked_at DESC LIMIT ?",
+            limit,
+        )
+        if (ids.isEmpty()) return@withContext emptyList()
+        val placeholders = ids.joinToString(",") { "?" }
+        val byId = driver.executeQuery(
             null,
             """
-            SELECT video_id, title, artist, thumbnail_url, duration, duration_ms, live
-            FROM yt_play_history
-            ORDER BY watch_time DESC, tracked_at DESC
-            LIMIT ?
+            SELECT video_id, title, artist, thumbnail_url, duration, duration_ms
+            FROM yt_video_metadata
+            WHERE video_id IN ($placeholders)
             """.trimIndent(),
             { cursor ->
-                val out = mutableListOf<YtFeedItem>()
+                val map = mutableMapOf<String, YtFeedItem>()
                 while (cursor.next().value) {
                     val videoId = cursor.getString(0)!!
                     val thumb = cursor.getString(3)
-                    out += YtFeedItem(
+                    map[videoId] = YtFeedItem(
                         kind = YtFeedItem.KIND_VIDEO,
                         id = videoId,
                         title = cursor.getString(1)!!,
@@ -95,74 +169,35 @@ class PlayHistoryStore(
                         thumbs = listOf(YtThumb(thumb ?: youtubeThumbUrl(videoId))),
                         duration = cursor.getString(4),
                         durationMs = cursor.getLong(5),
-                        live = (cursor.getLong(6) ?: 0L) != 0L,
                     )
                 }
-                QueryResult.Value(out)
+                QueryResult.Value(map)
             },
-            1,
-        ) { bindLong(0, limit.toLong()) }.value
+            ids.size,
+        ) {
+            ids.forEachIndexed { i, id -> bindString(i, id) }
+        }.value
+        ids.mapNotNull { byId[it] }
     }
 
     @OptIn(ExperimentalTime::class)
     private fun now(): Long = Clock.System.now().toEpochMilliseconds()
 
-    private fun upsertLocal(code: String, watchTimeMs: Long) {
+    private fun upsertWatchTime(table: String, idColumn: String, id: String, watchTimeMs: Long) {
         val ts = now()
         driver.execute(
             null,
             """
-            INSERT INTO local_play_history(code, watch_time, tracked_at) VALUES (?, ?, ?)
-            ON CONFLICT(code) DO UPDATE SET
+            INSERT INTO $table($idColumn, watch_time, tracked_at) VALUES (?, ?, ?)
+            ON CONFLICT($idColumn) DO UPDATE SET
                 watch_time = watch_time + excluded.watch_time,
                 tracked_at = excluded.tracked_at
             """.trimIndent(),
             3,
         ) {
-            bindString(0, code)
+            bindString(0, id)
             bindLong(1, watchTimeMs)
             bindLong(2, ts)
-        }
-    }
-
-    private fun upsertYoutube(
-        videoId: String,
-        watchTimeMs: Long,
-        title: String,
-        artist: String?,
-        thumbnailUrl: String?,
-        duration: String?,
-        durationMs: Long?,
-        live: Boolean,
-    ) {
-        val ts = now()
-        driver.execute(
-            null,
-            """
-            INSERT INTO yt_play_history(
-                video_id, watch_time, tracked_at, title, artist, thumbnail_url, duration, duration_ms, live
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(video_id) DO UPDATE SET
-                watch_time = watch_time + excluded.watch_time,
-                tracked_at = excluded.tracked_at,
-                title = excluded.title,
-                artist = excluded.artist,
-                thumbnail_url = excluded.thumbnail_url,
-                duration = excluded.duration,
-                duration_ms = excluded.duration_ms,
-                live = excluded.live
-            """.trimIndent(),
-            9,
-        ) {
-            bindString(0, videoId)
-            bindLong(1, watchTimeMs)
-            bindLong(2, ts)
-            bindString(3, title)
-            bindString(4, artist)
-            bindString(5, thumbnailUrl)
-            bindString(6, duration)
-            bindLong(7, durationMs)
-            bindLong(8, if (live) 1L else 0L)
         }
     }
 
@@ -180,28 +215,30 @@ class PlayHistoryStore(
             1,
         ) { bindLong(0, limit.toLong()) }.value
 
-    private fun cleanupIfNeeded() {
-        if (cleaned) return
-        cleaned = true
-        cleanupTable("local_play_history", "code")
-        cleanupTable("yt_play_history", "video_id")
+    private fun cleanupHistoryIfNeeded() {
+        if (historyCleaned) return
+        historyCleaned = true
+        cleanupTable("local_play_history", "code", "tracked_at", retain)
+        cleanupTable("yt_play_history", "video_id", "tracked_at", retain)
     }
 
-    private fun cleanupTable(table: String, idColumn: String) {
+    private fun cleanupTable(table: String, idColumn: String, orderColumn: String, keep: Int) {
         driver.execute(
             null,
             """
             DELETE FROM $table
             WHERE $idColumn IN (
-                SELECT $idColumn FROM $table ORDER BY tracked_at DESC LIMIT 999 OFFSET ?
+                SELECT $idColumn FROM $table ORDER BY $orderColumn DESC LIMIT 999 OFFSET ?
             )
             """.trimIndent(),
             1,
-        ) { bindLong(0, retain.toLong()) }
+        ) { bindLong(0, keep.toLong()) }
     }
 
     companion object {
         const val DEFAULT_RETAIN = 200
+        const val METADATA_QUOTA = 100
+        private const val METADATA_CLEANUP_EVERY = 10
     }
 }
 

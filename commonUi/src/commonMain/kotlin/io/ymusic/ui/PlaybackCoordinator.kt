@@ -186,21 +186,11 @@ class PlaybackCoordinator(
                 val row = mediaStore?.findItem(id) ?: return
                 history.trackLocal(row.playlistCode, watchTimeMs)
                 val vid = row.youtubeVid
-                if (vid != null) {
-                    history.trackYoutube(
-                        videoId = vid,
-                        watchTimeMs = watchTimeMs,
-                        title = row.title,
-                        artist = row.artist,
-                        thumbnailUrl = youtubeThumbUrl(vid),
-                        durationMs = row.durationMs,
-                    )
-                }
+                if (vid != null) history.trackYoutube(vid, watchTimeMs)
             }
             is PlayableItem.YtMedia -> {
-                history.trackYoutube(
+                history.saveYoutubeMetadata(
                     videoId = item.videoId,
-                    watchTimeMs = watchTimeMs,
                     title = item.title ?: item.videoId,
                     artist = item.artist,
                     thumbnailUrl = item.thumbnailUrl ?: youtubeThumbUrl(item.videoId),
@@ -208,6 +198,7 @@ class PlaybackCoordinator(
                     durationMs = item.durationMs,
                     live = item.live,
                 )
+                history.trackYoutube(item.videoId, watchTimeMs)
             }
         }
     }
