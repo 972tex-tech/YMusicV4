@@ -37,19 +37,12 @@ struct iOSApp: App {
                         // Start while still presenting so PiP is not a still of the last frame.
                         IosPip.shared.startIfEligible()
                     case .background:
-                        if IosPip.shared.isActive {
-                            break
-                        }
-                        if IosPipHostKt.iosPipShouldAutoEnter() {
-                            IosPip.shared.startIfEligible()
-                        } else {
-                            IosPipHostKt.iosOnLeaveWithoutPip()
-                        }
+                        IosPip.shared.noteLeftWithoutPip()
                     case .active:
                         IosPipHostKt.iosOnEnterForeground()
                         IosPip.shared.prepare()
                         DispatchQueue.main.async {
-                            IosMseSurfaceKt.iosMseBecameActive()
+                            IosPip.shared.recoverIfNeeded()
                         }
                     default:
                         break

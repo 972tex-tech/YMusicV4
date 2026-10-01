@@ -44,6 +44,7 @@ void mse_av_rest_video(MseAv *a, int on, double clock);
 int mse_av_video_resting(const MseAv *a);
 #ifdef __APPLE__
 void mse_av_park_video(MseAv *a);
+int mse_av_video_parked(const MseAv *a);
 #endif
 void mse_av_seek(MseAv *a, double seconds);
 

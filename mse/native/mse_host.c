@@ -1861,7 +1861,9 @@ void mse_ios_recover_playback(void)
         mse_ios_log("mse-v recover-skip audio-only rest");
         return;
     }
-    if (mse_vt_picture_ok(layer)) {
+    /* Enqueue still succeeds on a frozen background layer, so picture-ok is
+       true after a failed PiP leave. Parked sessions must unpark anyway. */
+    if (!mse_av_video_parked(g_ios_host->av) && mse_vt_picture_ok(layer)) {
         mse_ios_log("mse-v recover-skip picture-ok");
         return;
     }

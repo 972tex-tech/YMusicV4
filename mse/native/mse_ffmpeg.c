@@ -2785,6 +2785,11 @@ void mse_av_park_video(MseAv *a)
     vlog("bg-park vf=%zu", a->vf.n);
     pthread_mutex_unlock(&a->mu);
 }
+
+int mse_av_video_parked(const MseAv *a)
+{
+    return a && a->v_bg_park;
+}
 #endif
 
 size_t mse_av_leftover_bytes(MseAv *a, int audio)

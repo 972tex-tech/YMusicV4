@@ -12,7 +12,21 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
     /// Set in restoreUserInterface… (expand). X-close never calls that method.
     private var restoringFromPip = false
     private var stateTimer: Timer?
+    private var parkIfNoPip: DispatchWorkItem?
+    /// Set when we leave without an active PiP session; recover on the next foreground.
+    private var needsRecover = false
     var isActive: Bool { controller?.isPictureInPictureActive ?? false }
+
+    private override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main,
+        ) { [weak self] _ in
+            self?.startIfEligible()
+        }
+    }
 
     /// Build the controller while still in the foreground so the first leave is live frames.
     func prepare() {
@@ -21,15 +35,10 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
             return
         }
         guard #available(iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported() else { return }
-        let ok = IosPipHostKt.iosPipShouldAutoEnter()
-        if !ok {
-            controller?.canStartPictureInPictureAutomaticallyFromInline = false
-            if controller?.isPictureInPictureActive == true {
-                controller?.stopPictureInPicture()
-            }
-            return
-        }
         guard let layer = IosPipHostKt.iosPipDisplayLayer() else { return }
+        // WWDC21: the layer timebase must exist before ContentSource, or the
+        // first startPictureInPicture is not possible.
+        syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
         if controller == nil {
             let source = AVPictureInPictureController.ContentSource(
                 sampleBufferDisplayLayer: layer,
@@ -40,25 +49,70 @@ final class IosPip: NSObject, AVPictureInPictureControllerDelegate, AVPictureInP
             pip.requiresLinearPlayback = false
             controller = pip
         }
-        syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
-        controller?.canStartPictureInPictureAutomaticallyFromInline = true
+        let ok = IosPipHostKt.iosPipShouldAutoEnter()
+        controller?.canStartPictureInPictureAutomaticallyFromInline = ok
+        if ok {
+            controller?.invalidatePlaybackState()
+        } else if controller?.isPictureInPictureActive == true {
+            controller?.stopPictureInPicture()
+        }
     }
 
     func startIfEligible() {
         prepare()
         guard IosPipHostKt.iosPipShouldAutoEnter() else { return }
         guard controller?.isPictureInPictureActive != true else { return }
+        attemptStart(tries: 8)
+    }
+
+    /// Home often arrives before `isPictureInPicturePossible` flips; retry while resigning.
+    private func attemptStart(tries: Int) {
+        guard tries > 0, IosPipHostKt.iosPipShouldAutoEnter() else { return }
+        guard controller?.isPictureInPictureActive != true else { return }
         if controller?.isPictureInPicturePossible == true {
             controller?.startPictureInPicture()
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                guard let self, IosPipHostKt.iosPipShouldAutoEnter() else { return }
-                self.controller?.startPictureInPicture()
-            }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.attemptStart(tries: tries - 1)
         }
     }
 
+    /// After a leave with no PiP, park VT so foreground recover can unstick the last frame.
+    func noteLeftWithoutPip() {
+        if isActive {
+            parkIfNoPip?.cancel()
+            parkIfNoPip = nil
+            needsRecover = false
+            return
+        }
+        needsRecover = true
+        parkIfNoPip?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.isActive else { return }
+            IosMseSurfaceKt.iosMseWentBackground()
+            if !IosPipHostKt.iosPipShouldAutoEnter() {
+                IosPipHostKt.iosOnLeaveWithoutPip()
+            }
+        }
+        parkIfNoPip = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    func recoverIfNeeded() {
+        parkIfNoPip?.cancel()
+        parkIfNoPip = nil
+        if needsRecover {
+            needsRecover = false
+            IosMseSurfaceKt.iosMseWentBackground()
+        }
+        IosMseSurfaceKt.iosMseBecameActive()
+    }
+
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        parkIfNoPip?.cancel()
+        parkIfNoPip = nil
+        needsRecover = false
         IosPipHostKt.iosOnPipStarted()
         syncTimebase(at: IosPipHostKt.iosPipPositionSeconds())
         pictureInPictureController.invalidatePlaybackState()
