@@ -46,6 +46,9 @@ interface Player {
      */
     val watchNextSeen: SharedFlow<WatchNextSeen>
 
+    /** SponsorBlock ranges for the current item; empty when none are armed. */
+    val skipSegments: StateFlow<List<SkipSegment>>
+
     /** Replace the queue and load [playIndex]. An empty [items] clears and stops. */
     fun setQueue(
         items: List<PlayableItem>,
@@ -87,6 +90,14 @@ interface Player {
     fun stop()
 
     fun seekTo(positionMs: Long)
+
+    /**
+     * Arm SponsorBlock skips for [item]. Ranges shorter than 1 s are dropped. The skip loop only
+     * fires while [item] is still the current queue item.
+     */
+    fun setSkipSegments(item: PlayableItem, segments: List<SkipSegment>)
+
+    fun clearSkipSegments()
 
     fun skipNext()
 
@@ -186,3 +197,6 @@ fun createPlayer(
  * verbatim. Opaque to the app and to the player — only the scraping engine parses it.
  */
 data class WatchNextSeen(val videoId: String, val contentsJson: String)
+
+/** A SponsorBlock skip range in media time. [startMs] is the play-head that arms the skip. */
+data class SkipSegment(val startMs: Long, val lengthMs: Long)

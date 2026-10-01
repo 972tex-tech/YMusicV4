@@ -118,6 +118,7 @@ internal class StubPlayer : Player {
     /** Tests drive the harvest by emitting here — no WebView engine is involved. */
     val watchNextReports = MutableSharedFlow<io.ymusic.player.WatchNextSeen>(extraBufferCapacity = 8)
     override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<io.ymusic.player.WatchNextSeen> = watchNextReports
+    override val skipSegments: StateFlow<List<io.ymusic.player.SkipSegment>> = MutableStateFlow(emptyList())
 
     var lastQueue: List<PlayableItem>? = null
         private set
@@ -162,6 +163,10 @@ internal class StubPlayer : Player {
     override fun stop() {}
 
     override fun seekTo(positionMs: Long) {}
+
+    override fun setSkipSegments(item: PlayableItem, segments: List<io.ymusic.player.SkipSegment>) {}
+
+    override fun clearSkipSegments() {}
 
     override fun skipNext() {}
 

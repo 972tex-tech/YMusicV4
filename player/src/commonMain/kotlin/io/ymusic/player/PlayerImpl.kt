@@ -72,6 +72,10 @@ internal class PlayerImpl(
     private val _watchNextSeen = MutableSharedFlow<WatchNextSeen>(extraBufferCapacity = 8)
     override val watchNextSeen: SharedFlow<WatchNextSeen> = _watchNextSeen.asSharedFlow()
 
+    private val _skipSegments = MutableStateFlow<List<SkipSegment>>(emptyList())
+    override val skipSegments: StateFlow<List<SkipSegment>> = _skipSegments.asStateFlow()
+    private var skipSegmentData: SkipSegmentData? = null
+
     private val _config = MutableStateFlow(PlaybackConfig())
     override val config: StateFlow<PlaybackConfig> = _config.asStateFlow()
     private var currentConfig: PlaybackConfig
@@ -87,6 +91,7 @@ internal class PlayerImpl(
             delay(3_000)
             prepareYoutubeEngine()
         }
+        scope.launch { skipSponsorLoop() }
     }
 
     private val _sleepTimerMs = MutableStateFlow<Long?>(null)
@@ -216,6 +221,18 @@ internal class PlayerImpl(
         engine.seekTo(ms)
     }
 
+    override fun setSkipSegments(item: PlayableItem, segments: List<SkipSegment>) {
+        if (released) return
+        val usable = segments.filter { it.lengthMs >= MIN_SKIP_LENGTH_MS }
+        skipSegmentData = SkipSegmentData(item, usable.associateBy { it.startMs / 1_000L })
+        _skipSegments.value = usable
+    }
+
+    override fun clearSkipSegments() {
+        skipSegmentData = null
+        _skipSegments.value = emptyList()
+    }
+
     override fun skipNext() {
         if (released) return
         val next = controller.advance(userInitiated = true)
@@ -227,8 +244,9 @@ internal class PlayerImpl(
 
     override fun skipPrev() {
         if (released) return
-        if (progress.value.positionMs > SMART_PREV_THRESHOLD_MS) {
-            seekTo(0L)
+        val introEnd = skipRestartMs()
+        if (progress.value.positionMs > SMART_PREV_THRESHOLD_MS + introEnd) {
+            seekTo(introEnd)
             return
         }
         val prev = controller.previous()
@@ -569,6 +587,55 @@ internal class PlayerImpl(
         _status.value = fromEngine.copy(playWhenReady = playWhenReadyIntent)
     }
 
+    private fun skipRestartMs(): Long {
+        val data = skipSegmentData ?: return 0L
+        if (data.playableItem != controller.state.currentItem) return 0L
+        val intro = data.skipSegments[0] ?: return 0L
+        return intro.startMs + intro.lengthMs
+    }
+
+    private suspend fun skipSponsorLoop() {
+        var skippedSeg: SkipSegment? = null
+        var lastItem: PlayableItem? = null
+        _progress.collect { snapshot ->
+            val playbackPosition = snapshot.positionMs
+            var nowPlaying = controller.state.currentItem
+            if (skippedSeg != null && (lastItem != nowPlaying || skipSegmentData == null)) {
+                skippedSeg = null
+                lastItem = null
+            }
+            val data = skipSegmentData
+            if (data == null || nowPlaying != data.playableItem) return@collect
+            // A late fetch in the first 3s still matches an intro that starts in second 0.
+            val nearest = data.skipSegments[playbackPosition / 1_000L]
+                ?: data.skipSegments[playbackPosition / 3_000L]
+            if (skippedSeg == nearest && nowPlaying == lastItem) {
+                return@collect
+            } else {
+                skippedSeg = null
+                lastItem = null
+            }
+            if (nearest == null) return@collect
+            val endTime = nearest.startMs + nearest.lengthMs
+            if (playbackPosition >= endTime) return@collect
+            if (nearest.startMs > playbackPosition) {
+                delay(nearest.startMs - playbackPosition)
+            }
+            nowPlaying = controller.state.currentItem
+            if (!_status.value.state.isPlaying() || nowPlaying != skipSegmentData?.playableItem) {
+                return@collect
+            }
+            seekTo(endTime)
+            skippedSeg = nearest
+            lastItem = nowPlaying
+        }
+    }
+
+    private data class SkipSegmentData(
+        val playableItem: PlayableItem,
+        val skipSegments: Map<Long, SkipSegment>,
+    )
+
     private companion object {
         /** Played longer than this, "previous" restarts the current track instead. */
         const val SMART_PREV_THRESHOLD_MS = 3_000L
@@ -581,5 +648,7 @@ internal class PlayerImpl(
 
         /** Give up the hold so a failed seek cannot pin the play-head forever. */
         const val SEEK_HOLD_TICKS = 25
+
+        const val MIN_SKIP_LENGTH_MS = 1_000L
     }
 }

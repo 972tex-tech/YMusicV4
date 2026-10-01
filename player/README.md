@@ -25,7 +25,10 @@ The cross-platform playback layer.
 
 - **Player facade** — keeps granular public setters (`setVolume`/`setAudioOnly`/`selectVideoQuality`/…) that
   read-modify-write its held `config` and push it — the UI reads `Player.config` for the audio-only/quality state
-  (there is no `PlaybackStatus.audioOnly`).
+  (there is no `PlaybackStatus.audioOnly`). SponsorBlock skip ranges ride `setSkipSegments` /
+  `skipSegments`: on a play-head tick in the segment's start second the facade delays to the exact
+  start then seeks to the end (ranges under 1 s are dropped). "Previous" restarts after a 0s intro
+  skip when one is armed.
 
 - **PlayableItem** — the sealed source type (`LocalUri` | `YtVideoId`; the router picks an engine by variant).
 
