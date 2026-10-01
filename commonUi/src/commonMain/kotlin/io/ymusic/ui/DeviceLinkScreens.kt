@@ -31,10 +31,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.ytLoginStatus
@@ -48,6 +54,8 @@ import io.ymusic.ui.resources.device_link_error_no_lock
 import io.ymusic.ui.resources.device_link_error_payload
 import io.ymusic.ui.resources.device_link_error_timeout
 import io.ymusic.ui.resources.device_link_intro
+import io.ymusic.ui.resources.device_link_need_login
+import io.ymusic.ui.resources.device_link_need_login_action
 import io.ymusic.ui.resources.device_link_not_signed_in
 import io.ymusic.ui.resources.device_link_open_camera
 import io.ymusic.ui.resources.device_link_sas_hint
@@ -270,7 +278,7 @@ internal fun DesktopCookieSignIn(
 }
 
 @Composable
-internal fun LinkDevicesRow(graph: AppGraph) {
+internal fun LinkDevicesRow(graph: AppGraph, signedIn: Boolean, onLogin: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Row(
         Modifier
@@ -293,12 +301,25 @@ internal fun LinkDevicesRow(graph: AppGraph) {
         }
     }
     if (open) {
-        LinkDevicesDialog(graph, onDismiss = { open = false })
+        LinkDevicesDialog(
+            graph,
+            signedIn = signedIn,
+            onDismiss = { open = false },
+            onLogin = {
+                open = false
+                onLogin()
+            },
+        )
     }
 }
 
 @Composable
-private fun LinkDevicesDialog(graph: AppGraph, onDismiss: () -> Unit) {
+private fun LinkDevicesDialog(
+    graph: AppGraph,
+    signedIn: Boolean,
+    onDismiss: () -> Unit,
+    onLogin: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val client = remember { newDeviceLinkHttpClient() }
     val log = remember(graph) { graph.logger?.fork("device-link") }
@@ -311,14 +332,11 @@ private fun LinkDevicesDialog(graph: AppGraph, onDismiss: () -> Unit) {
     suspend fun scanFromCamera() {
         error = null
         try {
+            if (!signedIn || !graph.engines.ytLoginStatus()) return
             val raw = graph.scanQrCode!!() ?: return
             val parsed = parseDeviceLinkQr(raw)
             if (parsed == null) {
                 error = getString(Res.string.device_link_error_payload)
-                return
-            }
-            if (!graph.engines.ytLoginStatus()) {
-                error = getString(Res.string.device_link_not_signed_in)
                 return
             }
             pending = parsed
@@ -409,17 +427,51 @@ private fun LinkDevicesDialog(graph: AppGraph, onDismiss: () -> Unit) {
                         onClick = { scope.launch { sendPending() } },
                     )
                 }
-                else -> AccentButton(
-                    text = stringResource(Res.string.device_link_open_camera),
-                    enabled = true,
-                    onClick = { scope.launch { scanFromCamera() } },
-                )
+                else -> {
+                    if (!signedIn) DeviceLinkNeedLogin(onLogin)
+                    AccentButton(
+                        text = stringResource(Res.string.device_link_open_camera),
+                        enabled = signedIn,
+                        onClick = { scope.launch { scanFromCamera() } },
+                    )
+                }
             }
             error?.let {
                 Text(it, style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error))
             }
         }
     }
+}
+
+@Composable
+private fun DeviceLinkNeedLogin(onLogin: () -> Unit) {
+    val action = stringResource(Res.string.device_link_need_login_action)
+    val line = stringResource(Res.string.device_link_need_login, action)
+    val start = line.indexOf(action)
+    val text = buildAnnotatedString {
+        if (start < 0) {
+            append(line)
+            return@buildAnnotatedString
+        }
+        append(line.substring(0, start))
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "login",
+                styles = TextLinkStyles(
+                    style = SpanStyle(
+                        color = DesignColors.Accent,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                ),
+                linkInteractionListener = { onLogin() },
+            ),
+        ) {
+            append(action)
+        }
+        append(line.substring(start + action.length))
+    }
+    Text(text, style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error))
 }
 
 @Composable

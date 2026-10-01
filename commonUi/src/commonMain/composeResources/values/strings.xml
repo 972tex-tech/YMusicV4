@@ -262,6 +262,8 @@
     <string name="device_link_error_generic">Something went wrong. Try again.</string>
     <string name="device_link_error_no_lock">Set a screen lock (PIN, pattern, or password) on this phone, then try again.</string>
     <string name="device_link_not_signed_in">Sign in on this phone first, then scan the computer’s QR code.</string>
+    <string name="device_link_need_login">You must sign in first, %1$s</string>
+    <string name="device_link_need_login_action">click here to sign in</string>
     <string name="device_link_empty_cookies">No YouTube cookies to send. Sign in on this phone, then try again.</string>
     <string name="account_sign_out">Sign out</string>
     <string name="account_switch">Switch account</string>

@@ -207,6 +207,8 @@
     <string name="device_link_error_generic">حدث خطأ. أعد المحاولة.</string>
     <string name="device_link_error_no_lock">اضبط قفل شاشة (رمز PIN أو نمط أو كلمة مرور) على هذا الهاتف ثم أعد المحاولة.</string>
     <string name="device_link_not_signed_in">سجّل الدخول على هذا الهاتف أولاً، ثم امسح رمز QR على الحاسوب.</string>
+    <string name="device_link_need_login">يجب تسجيل الدخول أولاً، %1$s</string>
+    <string name="device_link_need_login_action">اضغط هنا لتسجيل الدخول</string>
     <string name="device_link_empty_cookies">لا توجد ملفات تعريف ارتباط لـ YouTube لإرسالها. سجّل الدخول على هذا الهاتف ثم أعد المحاولة.</string>
     <string name="sound_title">الصوت</string>
     <string name="sound_playback">التشغيل</string>

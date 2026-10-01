@@ -779,7 +779,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 )
                                                 AppSection.Library -> LibraryScreen(graph, coordinator)
                                                 AppSection.Downloads -> DownloadsScreen(graph, coordinator)
-                                                AppSection.Settings -> SettingsScreen(graph)
+                                                AppSection.Settings -> SettingsScreen(
+                                                    graph,
+                                                    signedIn = signedIn,
+                                                    onLogin = openLogin,
+                                                )
                                                 AppSection.Feedback ->
                                                     if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
                                                     else ComingSoon(section)

@@ -72,7 +72,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun SettingsScreen(graph: AppGraph) {
+fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
@@ -132,7 +132,7 @@ fun SettingsScreen(graph: AppGraph) {
         if (graph.exportSessionCookies != null && graph.scanQrCode != null &&
             graph.confirmDeviceOwner != null
         ) {
-            LinkDevicesRow(graph)
+            LinkDevicesRow(graph, signedIn = signedIn, onLogin = onLogin)
         }
         SoundRow(graph, speed = true)
         SoundRow(graph, speed = false)

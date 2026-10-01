@@ -202,6 +202,8 @@
     <string name="device_link_error_generic">Đã xảy ra lỗi. Hãy thử lại.</string>
     <string name="device_link_error_no_lock">Hãy đặt khoá màn hình (PIN, hình vẽ hoặc mật khẩu) trên điện thoại này, rồi thử lại.</string>
     <string name="device_link_not_signed_in">Hãy đăng nhập trên điện thoại này trước, rồi quét mã QR trên máy tính.</string>
+    <string name="device_link_need_login">Bạn phải đăng nhập trước, %1$s</string>
+    <string name="device_link_need_login_action">nhấn vào đây để đăng nhập</string>
     <string name="device_link_empty_cookies">Không có cookie YouTube để gửi. Đăng nhập trên điện thoại này rồi thử lại.</string>
     <string name="sound_title">Âm thanh</string>
     <string name="sound_playback">Phát</string>
