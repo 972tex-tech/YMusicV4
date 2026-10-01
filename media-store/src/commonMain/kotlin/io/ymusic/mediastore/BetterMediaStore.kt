@@ -108,22 +108,6 @@ interface BetterMediaStore {
     /** Playlist rows joined with the (non-deleted) media item each [PlaylistItem.code] resolves to, in order. */
     suspend fun playlistItemDetails(playlistId: Long): List<PlaylistItemDetail>
 
-    // ---- system (computed) playlists ----
-    //
-    // Recent play / Last added / Top tracks aren't rows in the playlist table — they're live queries
-    // over the media items, so they need no membership upkeep and never go stale.
-
-    /** Record a play of the library item [itemId] (bumps its play count + last-played time). Keyed on
-     *  the row id — not the uri — so it survives a move/rescan rewriting the file's uri; a no-op for a
-     *  stale/unknown id, so it's safe to call for anything that isn't a live library row. */
-    suspend fun recordLocalPlay(itemId: Long)
-
-    /** "Recent play": items by most-recent play, newest first (only items played at least once). */
-    suspend fun recentlyPlayed(limit: Int = 200): List<MediaStoreItem>
-
-    /** "Top tracks": the most-played items first (only items played at least once). */
-    suspend fun topTracks(limit: Int = 200): List<MediaStoreItem>
-
     // ---- reactive ----
 
     /** Emits whenever the items table changes. */

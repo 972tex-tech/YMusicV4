@@ -1,6 +1,5 @@
--- User-created playlists only. The "system" playlists (Recent play / Last added / Top tracks) are
--- computed queries over mediaItem, not rows here (see MediaItem.sq recentlyPlayed/recentlyAdded/
--- topTracks), so this table holds nothing until the user makes a playlist.
+-- User-created playlists only. Recent play / Top tracks are not rows here, so this table
+-- holds nothing until the user makes a playlist.
 CREATE TABLE playlist (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     name      TEXT    NOT NULL,

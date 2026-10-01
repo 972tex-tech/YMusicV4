@@ -327,20 +327,6 @@ internal class BetterMediaStoreImpl(
         return itemQ.findItemByVideoId(code).executeAsList().firstOrNull()?.toModel()
     }
 
-    // ---- system (computed) playlists ----
-
-    override suspend fun recordLocalPlay(itemId: Long): Unit = withContext(io) {
-        itemQ.recordPlay(ts = now(), id = itemId)
-    }
-
-    override suspend fun recentlyPlayed(limit: Int): List<MediaStoreItem> = withContext(io) {
-        itemQ.recentlyPlayed(limit.toLong()).executeAsList().map { it.toModel() }
-    }
-
-    override suspend fun topTracks(limit: Int): List<MediaStoreItem> = withContext(io) {
-        itemQ.topTracks(limit.toLong()).executeAsList().map { it.toModel() }
-    }
-
     // ---- reactive ----
 
     override fun itemsChanges(): Flow<Unit> = tableChanges("mediaItem")

@@ -320,40 +320,6 @@ class MediaStoreTest {
         assertEquals(i.playlistCode, details[0].code)
     }
 
-    // ---- system (computed) playlists ----
-
-    @Test
-    fun recentlyPlayed_and_topTracks_reflect_recorded_plays() = runTest {
-        val b = bucket("file:///music")
-        val a = item(b.id, "file:///music/a.mp3", fileSize = 1)
-        val c = item(b.id, "file:///music/c.mp3", fileSize = 2)
-
-        // Nothing played yet: both computed lists are empty.
-        assertTrue(store.recentlyPlayed().isEmpty())
-        assertTrue(store.topTracks().isEmpty())
-
-        store.recordLocalPlay(a.id)
-        store.recordLocalPlay(c.id)
-        store.recordLocalPlay(c.id)
-
-        // Only played items surface (order by time is left to SQL; assert membership to avoid ms ties).
-        assertEquals(setOf(a.uri, c.uri), store.recentlyPlayed().map { it.uri }.toSet())
-        // Top tracks ranks by play count — c(2) before a(1), deterministic.
-        assertEquals(listOf(c.uri, a.uri), store.topTracks().map { it.uri })
-
-        // A never-played item stays out of both.
-        val d = item(b.id, "file:///music/d.mp3", fileSize = 3)
-        assertTrue(store.recentlyPlayed().none { it.uri == d.uri })
-        assertTrue(store.topTracks().none { it.uri == d.uri })
-    }
-
-    @Test
-    fun recordLocalPlay_ignores_unknown_ids() = runTest {
-        // A stream / a download with no library row (the coordinator has no id for it): a no-op.
-        store.recordLocalPlay(999_999L)
-        assertTrue(store.recentlyPlayed().isEmpty())
-    }
-
     // ---- reactive ----
 
     @Test
