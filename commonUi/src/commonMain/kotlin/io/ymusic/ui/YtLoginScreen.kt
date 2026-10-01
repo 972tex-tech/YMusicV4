@@ -255,15 +255,22 @@ internal fun YtLoginScreen(
         }
     }
 
+    var cookiePaste by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
-        LoginChrome(state, onBack)
+        LoginChrome(state, onBack = {
+            if (cookieSignIn && cookiePaste) {
+                cookiePaste = false
+            } else {
+                onBack()
+            }
+        })
         var hintDismissed by remember { mutableStateOf(false) }
         if (switchAccount && !hintDismissed) {
             SwitchAccountHint { hintDismissed = true }
         }
         val url = entryUrl
         when {
-            cookieSignIn -> DesktopCookieSignIn(graph, onComplete)
+            cookieSignIn -> DesktopCookieSignIn(graph, onComplete, cookiePaste) { cookiePaste = true }
             browser == null -> CenteredBox {
                 Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
             }

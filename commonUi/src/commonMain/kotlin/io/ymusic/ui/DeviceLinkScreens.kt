@@ -4,20 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +34,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.ytLoginStatus
@@ -78,7 +78,12 @@ import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-internal fun DesktopCookieSignIn(graph: AppGraph, onComplete: () -> Unit) {
+internal fun DesktopCookieSignIn(
+    graph: AppGraph,
+    onComplete: () -> Unit,
+    pasteFlow: Boolean,
+    onOpenPaste: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val client = remember { newDeviceLinkHttpClient() }
     val log = remember(graph) { graph.logger?.fork("device-link") }
@@ -134,91 +139,132 @@ internal fun DesktopCookieSignIn(graph: AppGraph, onComplete: () -> Unit) {
         }
     }
 
-    val scroll = rememberScrollState()
-    TrackScroll { scroll.canScrollBackward }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space16),
-        verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-    ) {
-        Text(
-            stringResource(Res.string.signin_qr_title),
-            style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-        )
-        Text(
-            stringResource(Res.string.signin_qr_hint),
-            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-        )
-        val qrCd = stringResource(Res.string.cd_device_link_qr)
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            val payload = offer?.qrPayload
-            if (payload != null && !finished) {
-                DeviceLinkQrCode(
-                    payload,
-                    Modifier
-                        .size(220.dp)
-                        .padding(DesignSpacing.Space8)
-                        .semantics { contentDescription = qrCd },
-                )
-            } else if (offerError == null && !finished) {
-                CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
-            }
-        }
-        val sas = offer?.let { deviceLinkSas(it.key) }
-        if (sas != null && !finished) {
-            DeviceLinkSasBlock(sas, stringResource(Res.string.signin_qr_sas_hint))
-        }
-        when {
-            offerError != null -> Text(
-                offerError!!,
-                style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error),
-            )
-            offer != null && !finished && !importing -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val viewportHeight = maxHeight
+        val scroll = rememberScrollState()
+        TrackScroll { scroll.canScrollBackward }
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scroll),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(
+                Modifier
+                    .widthIn(max = DesignSpacing.FormMaxWidth)
+                    .fillMaxWidth()
+                    .heightIn(min = viewportHeight)
+                    .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space16),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16, Alignment.CenterVertically),
             ) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
-                Text(
-                    stringResource(Res.string.signin_qr_waiting),
-                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-                )
+                if (pasteFlow) {
+                    Text(
+                        stringResource(Res.string.signin_or_paste),
+                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        stringResource(Res.string.signin_paste_hint),
+                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    AppTextField(
+                        value = paste,
+                        onValueChange = { paste = it; pasteError = null },
+                        label = stringResource(Res.string.signin_paste_label),
+                        singleLine = false,
+                        isError = pasteError != null,
+                        supportingText = pasteError,
+                        modifier = Modifier.heightIn(min = 120.dp),
+                    )
+                    AccentButton(
+                        text = stringResource(Res.string.signin_paste_submit),
+                        enabled = paste.isNotBlank() && !importing,
+                        onClick = {
+                            scope.launch {
+                                val cookies = parseCookiePaste(paste)
+                                if (cookies.isEmpty()) {
+                                    pasteError = getString(Res.string.signin_paste_empty)
+                                } else {
+                                    finish(cookies)
+                                }
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        stringResource(Res.string.signin_qr_title),
+                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        stringResource(Res.string.signin_qr_hint),
+                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val qrCd = stringResource(Res.string.cd_device_link_qr)
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        val payload = offer?.qrPayload
+                        if (payload != null && !finished) {
+                            DeviceLinkQrCode(
+                                payload,
+                                Modifier
+                                    .size(220.dp)
+                                    .padding(DesignSpacing.Space8)
+                                    .semantics { contentDescription = qrCd },
+                            )
+                        } else if (offerError == null && !finished) {
+                            CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
+                        }
+                    }
+                    val sas = offer?.let { deviceLinkSas(it.key) }
+                    if (sas != null && !finished) {
+                        DeviceLinkSasBlock(sas, stringResource(Res.string.signin_qr_sas_hint))
+                    }
+                    when {
+                        offerError != null -> Text(
+                            offerError!!,
+                            style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        pasteError != null -> Text(
+                            pasteError!!,
+                            style = TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.error),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        offer != null && !finished && !importing -> Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(
+                                DesignSpacing.Space8,
+                                Alignment.CenterHorizontally,
+                            ),
+                        ) {
+                            CircularProgressIndicator(
+                                Modifier.size(16.dp),
+                                color = DesignColors.Accent,
+                                strokeWidth = 2.dp,
+                            )
+                            Text(
+                                stringResource(Res.string.signin_qr_waiting),
+                                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(Res.string.signin_or_paste),
+                        style = TextStyle(fontSize = 13.sp, color = DesignColors.Accent),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.clickable(onClick = onOpenPaste).padding(vertical = DesignSpacing.Space8),
+                    )
+                }
             }
         }
-        HorizontalDivider(color = DesignColors.Divider)
-        Text(
-            stringResource(Res.string.signin_or_paste),
-            style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-        )
-        Text(
-            stringResource(Res.string.signin_paste_hint),
-            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
-        )
-        AppTextField(
-            value = paste,
-            onValueChange = { paste = it; pasteError = null },
-            label = stringResource(Res.string.signin_paste_label),
-            singleLine = false,
-            isError = pasteError != null,
-            supportingText = pasteError,
-            modifier = Modifier.heightIn(min = 120.dp),
-        )
-        AccentButton(
-            text = stringResource(Res.string.signin_paste_submit),
-            enabled = paste.isNotBlank() && !importing,
-            onClick = {
-                scope.launch {
-                    val cookies = parseCookiePaste(paste)
-                    if (cookies.isEmpty()) {
-                        pasteError = getString(Res.string.signin_paste_empty)
-                    } else {
-                        finish(cookies)
-                    }
-                }
-            },
-        )
-        Spacer(Modifier.height(DesignSpacing.Space16))
     }
 }
 
@@ -411,10 +457,12 @@ private fun DeviceLinkSasBlock(code: String, hint: String) {
                 letterSpacing = 2.sp,
                 color = DesignColors.Ink,
             ),
+            textAlign = TextAlign.Center,
         )
         Text(
             hint,
             style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+            textAlign = TextAlign.Center,
         )
     }
 }
