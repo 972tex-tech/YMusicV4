@@ -134,7 +134,9 @@ import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.FileLogger
 import kmpcommon.log.Logger
+import kmpcommon.log.LoggingWorker
 import kmpcommon.log.TeeLogger
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
@@ -181,8 +183,11 @@ import java.awt.Color as AwtColor
  * The desktop shell: boots the scraping engine, assembles the [AppGraph] (player facade over ffmpeg
  * local + MSE YouTube playback), and runs the shared [App].
  */
-// Sentry logs/captures (no-op when Sentry wasn't initialized) teed with stdout.
-private val rootLogger: Logger = TeeLogger(SentryLogger(), StdoutLogger())
+private val logWorker = LoggingWorker(File(ymusicDataDir(), "logs").absolutePath.toPath())
+
+// File + Sentry (no-op when Sentry wasn't initialized) teed with stdout.
+private val rootLogger: Logger =
+    TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(logWorker), StdoutLogger()))
 
 /** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */
 @Volatile private var autoDownloadUpdates: Boolean = false
@@ -1236,11 +1241,14 @@ private fun saveWindowPrefs(size: DpSize, position: WindowPosition) {
 /** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
 private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
     withContext(Dispatchers.IO) {
+        val log = runCatching { logWorker.snapshot() }.getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { io.sentry.kotlin.multiplatform.Attachment(it, "ymusic.log", "text/plain") }
         sendSentryFeedback(
             comments = draft.message,
             name = draft.name,
             email = draft.email,
-            attachments = draft.attachments.mapNotNull { f ->
+            attachments = listOfNotNull(log) + draft.attachments.mapNotNull { f ->
                 f.bytes?.let { b -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename) }
             },
         )

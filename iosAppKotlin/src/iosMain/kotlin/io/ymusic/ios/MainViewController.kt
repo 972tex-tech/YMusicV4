@@ -43,6 +43,9 @@ import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.nativeSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.FileLogger
+import kmpcommon.log.LoggingWorker
+import kmpcommon.log.TeeLogger
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.create
@@ -115,7 +118,11 @@ private fun Center(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalForeignApi::class)
 private suspend fun buildIosGraph(container: UIView): AppGraph {
-    val rootLogger = IosLogger()
+    val logDir = (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
+        .toPath()
+        .resolve("ymusic-logs")
+    val logWorker = LoggingWorker(logDir)
+    val rootLogger = TeeLogger(FileLogger(logWorker), IosLogger())
     val cookies = IosWebViewCookieJar()
     val http = AppHttpClients(
         (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)

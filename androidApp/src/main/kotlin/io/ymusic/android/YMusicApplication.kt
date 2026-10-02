@@ -80,7 +80,9 @@ import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
+import kmpcommon.log.FileLogger
 import kmpcommon.log.Logger
+import kmpcommon.log.LoggingWorker
 import kmpcommon.log.TeeLogger
 import kmpcommon.uri.Uri
 import kmpffmpeg.AndroidFfInputResolver
@@ -130,8 +132,13 @@ class SharedServices(
 
 class YMusicApplication : Application() {
 
-    /** The app's root logger: Sentry logs/captures (no-op until Sentry.init) teed with logcat. */
-    val rootLogger: Logger = TeeLogger(SentryLogger(), LogcatLogger())
+    /** Rotating file sink (`filesDir/logs/ymusic.log`, 5 MiB × 3). Lazy: needs [filesDir]. */
+    val logWorker: LoggingWorker by lazy { LoggingWorker(File(filesDir, "logs").toOkioPath()) }
+
+    /** The app's root logger: file + Sentry (no-op until Sentry.init) teed with logcat. */
+    val rootLogger: Logger by lazy {
+        TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(logWorker), LogcatLogger()))
+    }
 
     /** Escaped coroutine failures are still one job dying — capture, don't crash the process. */
     private fun uncaught(scopeName: String) = CoroutineExceptionHandler { _, e ->
@@ -607,11 +614,14 @@ class YMusicApplication : Application() {
     /** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
     private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
         withContext(Dispatchers.IO) {
+            val log = runCatching { logWorker.snapshot() }.getOrNull()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { io.sentry.kotlin.multiplatform.Attachment(it, "ymusic.log", "text/plain") }
             sendSentryFeedback(
                 comments = draft.message,
                 name = draft.name,
                 email = draft.email,
-                attachments = draft.attachments.mapNotNull { f ->
+                attachments = listOfNotNull(log) + draft.attachments.mapNotNull { f ->
                     f.bytes?.let { b ->
                         f.contentType?.let { type -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename, type) }
                             ?: io.sentry.kotlin.multiplatform.Attachment(b, f.filename)

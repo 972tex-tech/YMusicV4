@@ -8,6 +8,7 @@ import kmpcommon.error.codedError
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
+import kmpcommon.log.LoggingWorker
 import kmpcommon.log.trailMark
 
 /**
@@ -18,11 +19,12 @@ import kmpcommon.log.trailMark
  */
 class SentryLogger private constructor(
     crumbs: List<Crumb>,
+    private val logFile: LoggingWorker?,
 ) : CrumbLogger(crumbs) {
 
-    constructor() : this(emptyList())
+    constructor(logFile: LoggingWorker? = null) : this(emptyList(), logFile)
 
-    override fun fork(crumbs: List<Crumb>): CrumbLogger = SentryLogger(crumbs)
+    override fun fork(crumbs: List<Crumb>): CrumbLogger = SentryLogger(crumbs, logFile)
 
     /** The trail's props flattened root→leaf (leaf wins) — every log line carries them as
      *  attributes, which is how one job's lines stay filterable next to a concurrent twin's. */
@@ -78,6 +80,11 @@ class SentryLogger private constructor(
                     is ByteArray -> scope.addAttachment(Attachment(v, k))
                     else -> scope.setContext("capture.$k", v)
                 }
+            }
+            logFile?.requestFlush()
+            logFile?.filePaths()?.forEach { path ->
+                val name = path.substringAfterLast('/').substringAfterLast('\\')
+                scope.addAttachment(Attachment(path, name, "text/plain"))
             }
         }
     }
