@@ -5,10 +5,13 @@ import io.ymusic.dynamicengine.yt.YtThumb
 import io.ymusic.dynamicengine.yt.watchNext
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
+import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
+import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.Player
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
+import kmpcommon.log.info
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.combine
@@ -40,6 +43,11 @@ class PlaybackCoordinator(
         // The player surfaces failure as state, not a throw — this transition IS the job-death
         // frame, so the one crash record per playback failure is captured here.
         if (log != null) {
+            scope.launch {
+                combine(player.status, player.queue, player.config) { status, queue, config ->
+                    playTrail(status, queue.currentItem, config)
+                }.distinctUntilChanged().collect { log.info(it) }
+            }
             scope.launch {
                 player.status.map { it.error }.distinctUntilChanged().collect { err ->
                     if (err != null) {
@@ -206,6 +214,39 @@ class PlaybackCoordinator(
                 history.trackYoutube(item.videoId, watchTimeMs)
             }
         }
+    }
+}
+
+/** One line per playback-state change — what a report needs for buffering / black screen / stuck. */
+private fun playTrail(status: PlaybackStatus, item: PlayableItem?, config: PlaybackConfig): String {
+    val id = when (item) {
+        is PlayableItem.YtMedia -> item.videoId
+        is PlayableItem.LocalMedia -> item.uri.substringAfterLast('/')
+        null -> "-"
+    }
+    val phase = when (val st = status.state) {
+        is PlaybackState.Uninitialized -> if (st.isInitializing) "init" else "uninit"
+        is PlaybackState.Idle -> "idle"
+        is PlaybackState.Error -> "error ${st.error.code}"
+        is PlaybackState.Prepared -> when {
+            st.ended -> "ended"
+            st.buffering -> "buffering"
+            st.playWhenReady -> "playing"
+            else -> "paused"
+        }
+    }
+    val size = status.videoSize?.let { "${it.width}x${it.height}" } ?: "-"
+    return buildString {
+        append(phase)
+        append(" id=")
+        append(id)
+        if (status.live) append(" live")
+        append(" ao=")
+        append(if (config.audioOnly) "1" else "0")
+        append(" q=")
+        append(config.preferVideoQuality.first)
+        append(' ')
+        append(size)
     }
 }
 

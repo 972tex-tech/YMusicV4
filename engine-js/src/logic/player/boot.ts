@@ -821,15 +821,14 @@ class Player {
       pinPlaybackQuality(player, this.player, q, q);
     }
     resetDrainCounts();
-    if (MSE_DEBUG)
-      console.log(
-        "mse setQuality q=" +
-          q +
-          " audioOnly=" +
-          (audioOnly ? "1" : "0") +
-          " clock=" +
-          (activeHtmlMedia() ? __mseCurrentTime() : 0),
-      );
+    console.info(
+      "mse setQuality q=" +
+        q +
+        " audioOnly=" +
+        (audioOnly ? "1" : "0") +
+        " clock=" +
+        (activeHtmlMedia() ? __mseCurrentTime() : 0),
+    );
     dumpDrain("setQuality-" + q + (audioOnly ? "-ao" : ""));
     notifyCatalog();
   }
@@ -985,7 +984,7 @@ class Player {
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20081");
     const ct = activeHtmlMedia() ? __mseCurrentTime() : -1;
-    if (MSE_DEBUG) console.log("mse seek fire t=" + t + " ct=" + ct);
+    console.info("mse seek t=" + t + " ct=" + ct);
     player["seekTo"](t, true);
     onCaptionSeek();
   }
@@ -1120,9 +1119,9 @@ class Player {
     if (media && media["ended"]) {
       out["newState"] = "ended";
       out["playWhenReady"] = false;
-      if (MSE_DEBUG && lastYtPlayerState !== 0) {
+      if (lastYtPlayerState !== 0) {
         lastYtPlayerState = 0;
-        console.log("mse ytState ended ct=" + Number(media["currentTime"]).toFixed(3));
+        console.info("mse ytState ended ct=" + Number(media["currentTime"]).toFixed(3));
       }
       return out;
     }
@@ -1159,9 +1158,9 @@ class Player {
       5: "idle",
     };
     out["newState"] = mapped[st] || "idle";
-    if (MSE_DEBUG && st !== lastYtPlayerState) {
+    if (st !== lastYtPlayerState) {
       lastYtPlayerState = st;
-      console.log(
+      console.info(
         "mse ytState " +
           st +
           "=" +

@@ -550,6 +550,8 @@ function rewriteCas40(cas: Uint8Array): Uint8Array {
   return writeFields(out);
 }
 
+let lastPlayable = "";
+
 function rewriteAbr(
   u: Uint8Array,
   videoId: string,
@@ -605,7 +607,12 @@ function rewriteAbr(
     }
     out.push(f);
   }
-  console.log("sabr playable audio=[" + playAud.join(",") + "] video=[" + playVid.join(",") + "]");
+  const playable =
+    "sabr playable audio=[" + playAud.join(",") + "] video=[" + playVid.join(",") + "]";
+  if (playable !== lastPlayable) {
+    lastPlayable = playable;
+    console.info(playable);
+  }
   let state: SabrRequestState | null = null;
   const fake = videoId ? pickFake144(videoId, selItags.length ? selItags : playVid) : null;
   if (has144Buffered && !(fake && fake.live)) {

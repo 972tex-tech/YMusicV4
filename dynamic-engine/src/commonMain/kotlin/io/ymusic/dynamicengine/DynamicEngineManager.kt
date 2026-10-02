@@ -137,7 +137,8 @@ class DynamicEngineManager(
                         val budget = if (booting) BOOT_STINT_MS else SLOW_STINT_MS
                         val message = "engine thread held for ${ms}ms by one task (budget ${budget}ms) — " +
                             "every pipe, timer and command stalls while the thread is held\n$detail"
-                        stintLog?.log(Logger.Level.ERROR, message)
+                        val level = if (ms >= BOOT_STINT_MS) Logger.Level.ERROR else Logger.Level.WARN
+                        stintLog?.log(level, message)
                         /* A 50ms stint is a bug to find, not a reason to kill playback.
                            Throw only past the boot budget — that is a real hang. */
                         if (ms >= BOOT_STINT_MS) throw IllegalStateException(message)

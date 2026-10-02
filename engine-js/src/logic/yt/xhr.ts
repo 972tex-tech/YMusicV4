@@ -270,7 +270,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   const url = self._url;
   noteSabrPlaybackUrl(url);
   if (!allowEngineJsUrl(url)) {
-    console.warn("js deny " + url);
+    console.log("js deny " + url);
     Promise.resolve().then(function () {
       if (self._aborted) return;
       self["status"] = 404;

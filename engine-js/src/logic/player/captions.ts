@@ -140,7 +140,7 @@ export function ingestPlayerCaptions(rec: Record<string, unknown>): void {
     if (!ok) selectedVss = null;
   }
   cues = [];
-  console.info("caption ingest tracks=" + out.length + " vid=" + videoId);
+  console.log("caption ingest tracks=" + out.length + " vid=" + videoId);
   noteIngest();
   if (sessionSink) void reloadCues();
 }
@@ -190,7 +190,8 @@ function withFmtJson3(url: string): string {
 function setQuery(url: string, key: string, val: string): string {
   const k = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const enc = encodeURIComponent(val);
-  if (hasQuery(url, key)) return url.replace(new RegExp("([?&])" + k + "=[^&]*"), "$1" + key + "=" + enc);
+  if (hasQuery(url, key))
+    return url.replace(new RegExp("([?&])" + k + "=[^&]*"), "$1" + key + "=" + enc);
   return url + (url.indexOf("?") >= 0 ? "&" : "?") + key + "=" + enc;
 }
 
@@ -460,7 +461,7 @@ async function reloadCues(): Promise<void> {
     : "https://www.youtube.com/";
   const cver = ytcfgStr("INNERTUBE_CLIENT_VERSION");
   const visitor = ytcfgStr("VISITOR_DATA");
-  console.info("caption timedtext GET " + queryFlags(url));
+  console.log("caption timedtext GET " + queryFlags(url));
   try {
     const req = HttpRequest.get(url)
       .setHeader("User-Agent", DESKTOP_UA)
@@ -499,7 +500,7 @@ async function reloadCues(): Promise<void> {
       ctype +
       " head=" +
       body.slice(0, 80).replace(/\n/g, " ");
-    if (cues.length) console.info(line);
+    if (cues.length) console.log(line);
     else console.warn(line);
   } catch (e) {
     if (g !== fetchGen) return;

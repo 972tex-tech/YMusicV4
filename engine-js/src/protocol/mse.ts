@@ -14,19 +14,8 @@ function mseLog(s: string): void {
   console.log(s);
 }
 
-function fmtRanges(
-  b: { length: number; start(i: number): number; end(i: number): number } | null,
-): string {
-  if (!b || !b["length"]) return "-";
-  const parts: string[] = [];
-  for (let i = 0; i < b["length"]; i++) {
-    parts.push(b["start"](i).toFixed(3) + ".." + b["end"](i).toFixed(3));
-  }
-  return parts.join(",");
-}
-
-function mseMediaLog(el: HTMLMediaElement, ev: string): void {
-  mseLog(
+function mseStateLog(el: HTMLMediaElement, ev: string): void {
+  console.info(
     "mse " +
       ev +
       " ct=" +
@@ -37,13 +26,22 @@ function mseMediaLog(el: HTMLMediaElement, ev: string): void {
       (el["paused"] ? "1" : "0") +
       " ended=" +
       (el["ended"] ? "1" : "0") +
-      " rate=" +
-      Number(el["playbackRate"]).toFixed(3) +
       " buf=" +
       fmtRanges(el["buffered"]) +
       " dur=" +
       Number(el["duration"]),
   );
+}
+
+function fmtRanges(
+  b: { length: number; start(i: number): number; end(i: number): number } | null,
+): string {
+  if (!b || !b["length"]) return "-";
+  const parts: string[] = [];
+  for (let i = 0; i < b["length"]; i++) {
+    parts.push(b["start"](i).toFixed(3) + ".." + b["end"](i).toFixed(3));
+  }
+  return parts.join(",");
 }
 
 /** src= / load() destroy MseAv (v_rest=0). Put the decoder back to sleep. */
@@ -451,7 +449,7 @@ function syncReadyState(el: HTMLMediaElement | null): void {
     el["readyState"] = 1;
     if (!el._stalled) {
       el._stalled = true;
-      mseMediaLog(el, "waiting");
+      mseStateLog(el, "waiting");
       fire(el, "waiting");
     }
   }
@@ -1034,17 +1032,17 @@ class HTMLMediaElement {
     __msePlay();
     startMediaTick(self);
     return Promise.resolve().then(function () {
-      mseMediaLog(self, "play");
+      mseStateLog(self, "play");
       fire(self, "play");
       if (playheadBuffered(self)) {
         self["readyState"] = 3;
         self._stalled = false;
-        mseMediaLog(self, "playing");
+        mseStateLog(self, "playing");
         fire(self, "playing");
       } else {
         self["readyState"] = 1;
         self._stalled = true;
-        mseMediaLog(self, "waiting");
+        mseStateLog(self, "waiting");
         fire(self, "waiting");
       }
     });
@@ -1055,7 +1053,7 @@ class HTMLMediaElement {
     const self = this;
     stopMediaTick();
     __msePause();
-    mseMediaLog(self, "pause");
+    mseStateLog(self, "pause");
     Promise.resolve().then(function () {
       fire(self, "pause");
     });

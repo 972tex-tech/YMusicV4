@@ -82,7 +82,7 @@
           fireScript(el, "load");
         })
         .catch(function (e) {
-          console.warn("script fetch failed " + src + " " + (e && e.message ? e.message : e));
+          console.log("script fetch failed " + src + " " + (e && e.message ? e.message : e));
           scriptResult[src] = { ok: false };
           fireScript(el, "error");
         });
