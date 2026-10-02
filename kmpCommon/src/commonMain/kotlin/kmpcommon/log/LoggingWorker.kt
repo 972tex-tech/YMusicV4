@@ -6,18 +6,15 @@ import kmpcommon.nowMs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.select
-import okio.Buffer
 import okio.BufferedSink
 import okio.FileSystem
 import okio.Path
 import okio.buffer
-import okio.use
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -40,8 +37,8 @@ class LoggingWorker(
     private val dir = directory
     private val current = dir / fileName
     private val lines = Channel<Line>(queueCapacity, BufferOverflow.DROP_OLDEST)
-    private val commands = Channel<Cmd>(Channel.UNLIMITED)
-    private val job: Job
+    private val commands = Channel<Flush>(Channel.UNLIMITED)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
     private var sink: BufferedSink? = null
     private var written = 0L
@@ -50,28 +47,17 @@ class LoggingWorker(
     init {
         require(keepFiles >= 1)
         require(maxFileBytes > 0L)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        job = scope.launch {
+        scope.launch {
             try {
-                while (true) {
-                    select<Unit> {
-                        commands.onReceive { cmd ->
-                            when (cmd) {
-                                is Cmd.Flush -> {
-                                    runCatching { sink?.flush() }
-                                    cmd.done?.complete(Unit)
-                                }
-                                is Cmd.Snapshot -> {
-                                    runCatching { sink?.flush() }
-                                    cmd.done.complete(runCatching { readFiles() }.getOrDefault(ByteArray(0)))
-                                }
-                            }
-                        }
-                        lines.onReceive { writeLine(it) }
-                    }
-                }
+                for (line in lines) writeLine(line)
             } finally {
                 closeSink()
+            }
+        }
+        scope.launch {
+            for (cmd in commands) {
+                runCatching { sink?.flush() }
+                cmd.done?.complete(Unit)
             }
         }
     }
@@ -86,20 +72,13 @@ class LoggingWorker(
 
     /** Best-effort: wake the worker to flush the live sink. Does not wait. */
     fun requestFlush() {
-        commands.trySend(Cmd.Flush(null))
+        commands.trySend(Flush(null))
     }
 
     suspend fun flush() {
         val done = CompletableDeferred<Unit>()
-        commands.send(Cmd.Flush(done))
+        commands.send(Flush(done))
         done.await()
-    }
-
-    /** Flush, then concatenate oldest→newest (`.2`, `.1`, live) for a report attachment. */
-    suspend fun snapshot(): ByteArray {
-        val done = CompletableDeferred<ByteArray>()
-        commands.send(Cmd.Snapshot(done))
-        return done.await()
     }
 
     /** Live + rotated paths that currently exist, oldest first. Stat-only; no flush. */
@@ -113,7 +92,7 @@ class LoggingWorker(
     }
 
     fun close() {
-        job.cancel()
+        scope.cancel()
     }
 
     private fun writeLine(e: Line) {
@@ -184,16 +163,6 @@ class LoggingWorker(
         }
     }
 
-    private fun readFiles(): ByteArray {
-        val out = Buffer()
-        for (i in keepFiles - 1 downTo 0) {
-            val p = fileAt(i)
-            if (!fs.exists(p)) continue
-            fs.source(p).use { src -> out.writeAll(src) }
-        }
-        return out.readByteArray()
-    }
-
     private class Line(
         val ts: Long,
         val level: Logger.Level,
@@ -202,10 +171,7 @@ class LoggingWorker(
         val error: Throwable?,
     )
 
-    private sealed interface Cmd {
-        class Flush(val done: CompletableDeferred<Unit>?) : Cmd
-        class Snapshot(val done: CompletableDeferred<ByteArray>) : Cmd
-    }
+    private class Flush(val done: CompletableDeferred<Unit>?)
 
     private companion object {
         const val STACK_CAP = 2000

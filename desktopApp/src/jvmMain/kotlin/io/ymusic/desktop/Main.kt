@@ -1241,14 +1241,16 @@ private fun saveWindowPrefs(size: DpSize, position: WindowPosition) {
 /** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
 private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
     withContext(Dispatchers.IO) {
-        val log = runCatching { logWorker.snapshot() }.getOrNull()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { io.sentry.kotlin.multiplatform.Attachment(it, "ymusic.log", "text/plain") }
+        runCatching { logWorker.flush() }
+        val logs = logWorker.filePaths().map { path ->
+            val name = path.substringAfterLast('/').substringAfterLast('\\')
+            io.sentry.kotlin.multiplatform.Attachment(path, name, "text/plain")
+        }
         sendSentryFeedback(
             comments = draft.message,
             name = draft.name,
             email = draft.email,
-            attachments = listOfNotNull(log) + draft.attachments.mapNotNull { f ->
+            attachments = logs + draft.attachments.mapNotNull { f ->
                 f.bytes?.let { b -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename) }
             },
         )
