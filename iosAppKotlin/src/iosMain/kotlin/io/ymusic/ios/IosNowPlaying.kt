@@ -4,6 +4,7 @@ import io.ymusic.imageloader.ImageLoader
 import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
@@ -133,7 +134,7 @@ private suspend fun loadArtwork(loader: ImageLoader, url: String, logger: Logger
         val size = image.size
         MPMediaItemArtwork(boundsSize = size) { _ -> image }
     }.onFailure {
-        logger?.log(Logger.Level.DEBUG, "now-playing artwork failed for $url", it)
+        logger?.debug { "now-playing artwork failed for $url: $it" }
     }.getOrNull()
 }
 
