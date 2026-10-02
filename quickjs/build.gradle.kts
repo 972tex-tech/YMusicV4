@@ -11,7 +11,18 @@ plugins {
 // ---------------------------------------------------------------------------------------------
 // Native (Kotlin/Native) QuickJS static lib: compiled per Konan target and linked into the klib.
 // ---------------------------------------------------------------------------------------------
-val nativeSrc = projectDir.resolve("native")
+val nativeSrc: File = run {
+    val raw = (findProperty("quickjs.nativeDir") as String?)?.trim().orEmpty()
+    if (raw.isEmpty()) {
+        projectDir.resolve("native")
+    } else {
+        val f = File(raw)
+        val resolved = if (f.isAbsolute) f else rootProject.file(raw)
+        require(resolved.isDirectory) { "quickjs.nativeDir is not a directory: $resolved" }
+        logger.lifecycle("quickjs.nativeDir=$resolved")
+        resolved
+    }
+}
 val nativeLibTasks = mutableListOf<TaskProvider<Exec>>()
 
 fun sdkPath(sdk: String): String =
@@ -43,12 +54,14 @@ fun registerNativeLib(targetName: String): TaskProvider<Exec> {
         inputs.dir(nativeSrc)
         outputs.file(File(out, "libqjscore.a"))
         workingDir(out)
-        val srcs = mutableListOf(
+        val srcFiles = mutableListOf(
             "quickjs/quickjs.c", "quickjs/cutils.c", "quickjs/libregexp.c",
             "quickjs/libunicode.c", "quickjs/dtoa.c", "quickjs_native.c", "quickjs_json.c",
             "quickjs_pipe.c", "quickjs_hostfn.c", "quickjs_web.c",
             "quickjs_mse.c",
-        ).joinToString(" ") { "'${nativeSrc.resolve(it)}'" }
+        )
+        if (nativeSrc.resolve("quickjs_bg_trace.c").isFile) srcFiles += "quickjs_bg_trace.c"
+        val srcs = srcFiles.joinToString(" ") { "'${nativeSrc.resolve(it)}'" }
         val arch = clangArch(targetName).joinToString(" ")
         val cmd = "set -e; cc $arch -O2 -w -funsigned-char -DCONFIG_VERSION='\"2026-06-04\"' -D_GNU_SOURCE " +
             "-I'${nativeSrc.resolve("quickjs")}' -I'$nativeSrc' -c $srcs && ar rcs libqjscore.a *.o"
@@ -110,7 +123,7 @@ kotlin {
         val libDir = nativeLibDir(targetName)
         compilations.getByName("main").cinterops.create("qjs") {
             defFile(project.file("native/cinterop/qjs.def"))
-            includeDirs(project.file("native"))
+            includeDirs(nativeSrc)
             extraOpts("-libraryPath", libDir.absolutePath)
         }
         // cinterop reads libqjscore.a to embed it: build it first, and re-embed when it changes.
