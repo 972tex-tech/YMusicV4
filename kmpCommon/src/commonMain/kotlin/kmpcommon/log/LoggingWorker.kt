@@ -11,12 +11,16 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import okio.Buffer
 import okio.BufferedSink
 import okio.FileSystem
 import okio.Path
 import okio.buffer
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /**
  * Bounded in-memory log queue plus a single-file-writer coroutine. [enqueue] timestamps on the
@@ -101,7 +105,7 @@ class LoggingWorker(
             val s = openSink()
             val buf = s.buffer
             val start = buf.size
-            buf.writeDecimalLong(e.ts)
+            writeTimestamp(buf, e.ts)
             buf.writeByte(' '.code)
             buf.writeUtf8(e.level.name)
             if (e.path.isNotEmpty()) {
@@ -175,6 +179,28 @@ class LoggingWorker(
 
     private companion object {
         const val STACK_CAP = 2000
+
+        fun writeTimestamp(buf: Buffer, epochMs: Long) {
+            val t = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(TimeZone.currentSystemDefault())
+            buf.writePad2(t.hour)
+            buf.writeByte('.'.code)
+            buf.writePad2(t.minute)
+            buf.writeByte('.'.code)
+            buf.writePad2(t.second)
+            buf.writeByte('.'.code)
+            buf.writePad3(t.nanosecond / 1_000_000)
+        }
+
+        fun Buffer.writePad2(n: Int) {
+            writeByte('0'.code + n / 10)
+            writeByte('0'.code + n % 10)
+        }
+
+        fun Buffer.writePad3(n: Int) {
+            writeByte('0'.code + n / 100)
+            writeByte('0'.code + (n / 10) % 10)
+            writeByte('0'.code + n % 10)
+        }
     }
 }
 
