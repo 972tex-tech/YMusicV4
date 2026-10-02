@@ -159,14 +159,14 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             }
 
             val exchange = launch {
+                val reqUrl = prepared.request.url
+                val reqLine = "${prepared.request.method} ${reqUrl.host}${reqUrl.encodedPath}"
+                log?.log(Logger.Level.INFO, reqLine)
                 val cookieNames = prepared.request.header("Cookie")
                     ?.split(';')
                     ?.mapNotNull { it.substringBefore('=').trim().takeIf(String::isNotEmpty) }
                     .orEmpty()
-                log?.debug {
-                    "${prepared.request.method} ${prepared.request.url.host}${prepared.request.url.encodedPath} " +
-                        "cookies=${cookieNames.joinToString(",")}"
-                }
+                log?.debug { "cookies=${cookieNames.joinToString(",")}" }
                 val response = try {
                     client.execute(prepared.request, prepared.redirects, prepared.timeout)
                 } catch (e: IOException) {
@@ -181,19 +181,15 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     }
                     // Cookie NAMES only — values are session credentials and must never enter a log line.
                     val url = response.request.url
+                    val status = "HTTP ${response.code} ${url.host}${url.encodedPath}"
                     if (response.code >= 400) {
-                        log?.log(
-                            Logger.Level.WARN,
-                            "HTTP ${response.code} ${prepared.request.method} ${url.host}${url.encodedPath}",
-                        )
+                        log?.log(Logger.Level.WARN, status)
                     } else {
+                        log?.log(Logger.Level.INFO, status)
+                    }
+                    if (setCookies.isNotEmpty()) {
                         log?.debug {
-                            "HTTP ${response.code} ${url.host}" +
-                                if (setCookies.isEmpty()) {
-                                    ""
-                                } else {
-                                    " set-cookie=${setCookies.joinToString(",") { it.substringBefore('=') }}"
-                                }
+                            "set-cookie=${setCookies.joinToString(",") { it.substringBefore('=') }}"
                         }
                     }
                     val tmp = Buffer()
