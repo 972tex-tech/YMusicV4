@@ -160,8 +160,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
 
             val exchange = launch {
                 val reqUrl = prepared.request.url
-                val reqLine = "${prepared.request.method} ${reqUrl.host}${reqUrl.encodedPath}"
-                log?.log(Logger.Level.INFO, reqLine)
+                log?.log(Logger.Level.INFO, "${prepared.request.method} ${reqUrl.host}${reqUrl.encodedPath}")
                 val cookieNames = prepared.request.header("Cookie")
                     ?.split(';')
                     ?.mapNotNull { it.substringBefore('=').trim().takeIf(String::isNotEmpty) }
@@ -181,12 +180,7 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                     }
                     // Cookie NAMES only — values are session credentials and must never enter a log line.
                     val url = response.request.url
-                    val status = "HTTP ${response.code} ${url.host}${url.encodedPath}"
-                    if (response.code >= 400) {
-                        log?.log(Logger.Level.WARN, status)
-                    } else {
-                        log?.log(Logger.Level.INFO, status)
-                    }
+                    log?.log(Logger.Level.INFO, "HTTP ${response.code} ${url.host}${url.encodedPath}")
                     if (setCookies.isNotEmpty()) {
                         log?.debug {
                             "set-cookie=${setCookies.joinToString(",") { it.substringBefore('=') }}"
