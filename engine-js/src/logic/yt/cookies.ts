@@ -279,7 +279,7 @@ async function applySetCookieValues(url: string, values: string[]): Promise<void
   try {
     await Cookies.set(url, values);
   } catch (e) {
-    console.log("cookie store write failed: " + (e instanceof Error ? e.message : String(e)));
+    console.warn("cookie store write failed: " + (e instanceof Error ? e.message : String(e)));
   }
   let wiped = false;
   for (const v of values) {
@@ -289,11 +289,11 @@ async function applySetCookieValues(url: string, values: string[]): Promise<void
     }
   }
   if (wiped && onLoginInfoWiped !== undefined) {
-    console.log("remote logout: server wiped LOGIN_INFO (" + url + ")");
+    console.info("remote logout: server wiped LOGIN_INFO (" + url + ")");
     try {
       await onLoginInfoWiped();
     } catch (e) {
-      console.log("remote logout cleanup failed: " + (e instanceof Error ? e.message : String(e)));
+      console.warn("remote logout cleanup failed: " + (e instanceof Error ? e.message : String(e)));
     }
   }
 }

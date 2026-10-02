@@ -704,7 +704,7 @@ class Player {
     }
     out["baseJsSrc"] = "cdn";
     out["baseJsLen"] = baseJs.length;
-    console.log("base.js source=cdn len=" + baseJs.length + " jsUrl=" + jsUrl);
+    console.info("base.js source=cdn len=" + baseJs.length + " jsUrl=" + jsUrl);
     try {
       (0, eval)(baseJs);
     } catch (e) {

@@ -465,6 +465,8 @@ static void vlog_hold_far(const char *why, double clock, double extra)
 {
     static double last;
     double now = now_ms();
+    if (extra < 1.0)
+        return;
     if (now - last < 1000.0)
         return;
     last = now;
@@ -474,13 +476,15 @@ static void vlog_hold_far(const char *why, double clock, double extra)
 static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
 {
     double nxt = a->vf.f[rd].pts;
+    double extra = nxt - clock;
     if (nxt == a->starve_log_pts && clock - a->starve_log_clock < 1.0)
         return;
     a->starve_log_pts = nxt;
     a->starve_log_clock = clock;
-    mse_critf(MSE_LOG_INFO, "mse-v starve-ahead clock=%.3f extra=%.3f vf=%zu/%zu next=%.3f",
-              clock, nxt - clock, rd, a->vf.n, nxt);
-    vlog_state(a, clock, "starve-ahead", nxt - clock);
+    if (extra >= 1.0)
+        mse_critf(MSE_LOG_INFO, "mse-v starve-ahead clock=%.3f extra=%.3f vf=%zu/%zu next=%.3f",
+                  clock, extra, rd, a->vf.n, nxt);
+    vlog_state(a, clock, "starve-ahead", extra);
 }
 
 static void vlog_starve_empty(MseAv *a, double clock, double extra)

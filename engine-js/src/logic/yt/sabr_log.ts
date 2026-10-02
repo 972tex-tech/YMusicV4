@@ -489,7 +489,7 @@ export function createSabrTee(): SabrTee {
     if (partId === 42 && payload) {
       const fid = protoBytes(payload, 2);
       const itag = fid ? protoVarint(fid, 1) : protoVarint(payload, 3);
-      console.log("sabr FORMAT_INIT itag=" + (itag != null ? itag : "-"));
+      console.info("sabr FORMAT_INIT itag=" + (itag != null ? itag : "-"));
     }
     if (partId === 20 && payload) {
       const hid = protoVarint(payload, 1);

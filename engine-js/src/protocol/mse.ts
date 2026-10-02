@@ -39,9 +39,17 @@ function fmtRanges(
   return parts.join(",");
 }
 
+type AppendDigest = { t: number; n: number; bytes: number; started: boolean };
+const appendDigest: [AppendDigest, AppendDigest] = [
+  { t: 0, n: 0, bytes: 0, started: false },
+  { t: 0, n: 0, bytes: 0, started: false },
+];
+
 /** src= / load() destroy MseAv (v_rest=0). Put the decoder back to sleep. */
 function resetPipeline(): void {
   __mseReset();
+  appendDigest[0] = { t: 0, n: 0, bytes: 0, started: false };
+  appendDigest[1] = { t: 0, n: 0, bytes: 0, started: false };
   if (isAudioOnly()) __mseRestVideo(1);
 }
 
@@ -114,32 +122,6 @@ export function resetDrainCounts(): void {
   drainCalls.lisErr = 0;
 }
 
-function logChangeType(audio: number, prev: string, next: string): void {
-  if (!MSE_DEBUG) return;
-  try {
-    const ct = __mseCurrentTime();
-    const br = nativeRanges(audio);
-    if (MSE_DEBUG)
-      console.log(
-        "mse changeType a=" +
-          audio +
-          " from=" +
-          prev +
-          " to=" +
-          next +
-          " ct=" +
-          ct.toFixed(3) +
-          " leftover=" +
-          leftoverMs(br, ct) +
-          " br=[" +
-          fmtBr(br) +
-          "]",
-      );
-  } catch (_e) {
-    if (MSE_DEBUG) console.log("mse changeType a=" + audio + " from=" + prev + " to=" + next);
-  }
-}
-
 function logAppend(
   audio: number,
   bytes: number,
@@ -148,32 +130,48 @@ function logAppend(
   winStart: number,
   winEnd: number,
 ): void {
-  if (!MSE_DEBUG) return;
+  const d = appendDigest[audio]!;
+  d.n++;
+  d.bytes += bytes;
+  let left = "-";
+  let ranges: ReturnType<typeof nativeRanges> = null;
   try {
     const ct = __mseCurrentTime();
-    const ranges = nativeRanges(audio);
-    if (MSE_DEBUG)
-      console.log(
-        "mse append a=" +
-          audio +
-          " bytes=" +
-          bytes +
-          " mime=" +
-          mime +
-          " tsOff=" +
-          tsOff +
-          " win=" +
-          winStart +
-          ".." +
-          winEnd +
-          " leftover=" +
-          leftoverMs(ranges, ct) +
-          " br=[" +
-          fmtBr(ranges) +
-          "]",
-      );
+    ranges = nativeRanges(audio);
+    left = leftoverMs(ranges, ct);
   } catch (_e) {
-    if (MSE_DEBUG) console.log("mse append a=" + audio + " bytes=" + bytes);
+    left = "-";
+  }
+  if (MSE_DEBUG) {
+    console.log(
+      "mse append a=" +
+        audio +
+        " bytes=" +
+        bytes +
+        " mime=" +
+        mime +
+        " tsOff=" +
+        tsOff +
+        " win=" +
+        winStart +
+        ".." +
+        winEnd +
+        " leftover=" +
+        left +
+        " br=[" +
+        fmtBr(ranges) +
+        "]",
+    );
+  }
+  const leftN = left === "-" ? -1 : +left;
+  const hole = left === "-" || !(leftN >= 1000);
+  const now = Date.now();
+  if (!d.started || hole || now - d.t >= 1000) {
+    console.info("mse append a=" + audio + " n=" + d.n + " bytes=" + d.bytes + " leftover=" + left);
+    d.t = now;
+    d.n = 0;
+    d.bytes = 0;
+    d.started = true;
   }
 }
 
@@ -255,8 +253,7 @@ function fire(
       drainCalls.lisErr++;
       const err = e instanceof Error ? e : new Error(String(e));
       const st = err.stack ? " " + err.stack.replace(/\s+/g, " ").slice(0, 240) : "";
-      if (MSE_DEBUG)
-        console.log("mse listener " + type + " err=" + err.name + " " + err.message + st);
+      console.warn("mse listener " + type + " err=" + err.name + " " + err.message + st);
     }
   }
 }
@@ -552,7 +549,7 @@ class SourceBuffer {
     }
     const prev = String(this["mimeType"] || "");
     const audio = audioFlag(next);
-    logChangeType(audio, prev, next);
+    console.info("mse changeType a=" + audio + " from=" + prev + " to=" + next);
     this["mimeType"] = next;
     __mseChangeType(audio);
   }
@@ -562,7 +559,7 @@ class SourceBuffer {
     const audio = audioFlag(this["mimeType"]);
     if (this["updating"]) {
       drainCalls.throw++;
-      if (MSE_DEBUG) console.log("mse append throw updating a=" + audio);
+      console.warn("mse append throw updating a=" + audio);
       throw invalidState("SourceBuffer.appendBuffer: updating");
     }
     const u8 = asU8(data);
@@ -574,7 +571,7 @@ class SourceBuffer {
       !__msePrepareAppend(audio, u8.length)
     ) {
       drainCalls.throw++;
-      if (MSE_DEBUG) console.log("mse quota a=" + audio + " n=" + u8.length);
+      console.warn("mse quota a=" + audio + " n=" + u8.length);
       throw quotaExceeded();
     }
     this["updating"] = true;
@@ -599,8 +596,7 @@ class SourceBuffer {
       drainCalls.throw++;
       self["updating"] = false;
       const err = e instanceof Error ? e : new Error(String(e));
-      if (MSE_DEBUG)
-        console.log("mse append throw " + err.name + " a=" + audio + " " + err.message);
+      console.warn("mse append throw " + err.name + " a=" + audio + " " + err.message);
       throw e;
     }
     completeUpdate(self);
@@ -716,7 +712,7 @@ class MediaSource {
     this.__id = nextId++;
     this._openFired = false;
     lastMs = this;
-    if (MSE_DEBUG) console.log("mse MediaSource create");
+    console.info("mse MediaSource create");
   }
 
   get ["duration"](): number {
@@ -772,10 +768,10 @@ class MediaSource {
 
   ["addSourceBuffer"](mime: string): SourceBuffer {
     if (this["readyState"] !== "open") {
-      if (MSE_DEBUG) console.log("mse addSourceBuffer throw closed mime=" + mime);
+      console.warn("mse addSourceBuffer throw closed mime=" + mime);
       throw invalidState("MediaSource.addSourceBuffer: not open");
     }
-    if (MSE_DEBUG) console.log("mse addSourceBuffer " + mime);
+    console.info("mse addSourceBuffer " + mime);
     sbGen++;
     const sb = new SourceBuffer(mime, this);
     this["sourceBuffers"].push(sb);
@@ -793,7 +789,7 @@ class MediaSource {
   ["endOfStream"](): void {
     if (this["readyState"] !== "open") throw invalidState("MediaSource.endOfStream: not open");
     this["readyState"] = "ended";
-    if (MSE_DEBUG) console.log("mse endOfStream");
+    console.info("mse endOfStream");
     if (typeof __mseEndOfStream === "function") __mseEndOfStream();
     const el = activeMedia;
     if (el && el._ms === this) maybeFireEnded(el);
@@ -859,7 +855,7 @@ function notifySourceOpen(ms: MediaSource): void {
     ms._openFired = true;
     fire(ms, "sourceopen");
     fire(ms, "webkitsourceopen");
-    if (MSE_DEBUG) console.log("mse sourceopen");
+    console.info("mse sourceopen");
   });
 }
 
@@ -891,8 +887,7 @@ function maybeFireEnded(el: HTMLMediaElement): boolean {
   el["paused"] = true;
   stopMediaTick();
   __msePause();
-  if (MSE_DEBUG)
-    console.log("mse ended clock=" + __mseCurrentTime() + " dur=" + Number(el["duration"]));
+  console.info("mse ended clock=" + __mseCurrentTime() + " dur=" + Number(el["duration"]));
   fire(el, "timeupdate");
   fire(el, "ended");
   fire(el, "pause");
@@ -1070,7 +1065,7 @@ class HTMLMediaElement {
     const prev = this._ms;
     const ms = blobUrls[url] || null;
     this._src = url;
-    if (MSE_DEBUG) console.log("mse video.src " + url + (ms ? " mse" : " not-mse"));
+    console.info("mse video.src " + url + (ms ? " mse" : " not-mse"));
     if (prev !== ms) {
       /* Chrome: assigning a new media resource detaches the old MediaSource
          (readyState closed, sourceBuffers removed) and the pipeline demuxer
@@ -1372,7 +1367,7 @@ export function mseAttachLatestIfStale(prevId: number): boolean {
   if (el._ms === lastMs) return false;
   const url = "blob:mse/" + String(lastMs.__id);
   blobUrls[url] = lastMs;
-  if (MSE_DEBUG) console.log("mse attach latest " + url + " prev=" + prevId);
+  console.info("mse attach latest " + url + " prev=" + prevId);
   assignMediaSrc(el, url);
   return true;
 }
