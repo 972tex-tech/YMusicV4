@@ -1,5 +1,6 @@
 // YouTube timedtext (json3) → 2-line paint-on window. Host opens player/caption to subscribe.
 
+import { debug } from "../../debug";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { executeWithCookies } from "../yt/cookies";
@@ -140,7 +141,9 @@ export function ingestPlayerCaptions(rec: Record<string, unknown>): void {
     if (!ok) selectedVss = null;
   }
   cues = [];
-  console.log("caption ingest tracks=" + out.length + " vid=" + videoId);
+  debug(function () {
+    return "caption ingest tracks=" + out.length + " vid=" + videoId;
+  });
   noteIngest();
   if (sessionSink) void reloadCues();
 }
@@ -396,7 +399,9 @@ async function emitWindow(): Promise<void> {
   if (p) await p;
   const f = sink.flush();
   if (f) await f;
-  console.log("caption emit n=" + rows.length);
+  debug(function () {
+    return "caption emit n=" + rows.length;
+  });
 }
 
 function mediaPaused(): boolean {
@@ -461,7 +466,9 @@ async function reloadCues(): Promise<void> {
     : "https://www.youtube.com/";
   const cver = ytcfgStr("INNERTUBE_CLIENT_VERSION");
   const visitor = ytcfgStr("VISITOR_DATA");
-  console.log("caption timedtext GET " + queryFlags(url));
+  debug(function () {
+    return "caption timedtext GET " + queryFlags(url);
+  });
   try {
     const req = HttpRequest.get(url)
       .setHeader("User-Agent", DESKTOP_UA)
@@ -489,19 +496,35 @@ async function reloadCues(): Promise<void> {
     if (g !== fetchGen) return;
     cues = parseJson3(body);
     const ctype = res.headers.get("content-type") || "";
-    const line =
-      "caption timedtext ok status=" +
-      res.status +
-      " bytes=" +
-      body.length +
-      " cues=" +
-      cues.length +
-      " ctype=" +
-      ctype +
-      " head=" +
-      body.slice(0, 80).replace(/\n/g, " ");
-    if (cues.length) console.log(line);
-    else console.warn(line);
+    if (cues.length) {
+      debug(function () {
+        return (
+          "caption timedtext ok status=" +
+          res.status +
+          " bytes=" +
+          body.length +
+          " cues=" +
+          cues.length +
+          " ctype=" +
+          ctype +
+          " head=" +
+          body.slice(0, 80).replace(/\n/g, " ")
+        );
+      });
+    } else {
+      console.warn(
+        "caption timedtext ok status=" +
+          res.status +
+          " bytes=" +
+          body.length +
+          " cues=" +
+          cues.length +
+          " ctype=" +
+          ctype +
+          " head=" +
+          body.slice(0, 80).replace(/\n/g, " "),
+      );
+    }
   } catch (e) {
     if (g !== fetchGen) return;
     console.warn("caption timedtext failed: " + (e instanceof Error ? e.message : String(e)));

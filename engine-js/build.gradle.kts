@@ -32,11 +32,14 @@ plugins {
 // check reports it; the host logs it on swaps and stamps it into error reports.
 val backendVersion = Versions.engineJsBackendVersion
 
-// Compile-time define: a bare `declare const` identifier substituted inline at bundle time —
-// no runtime global, no extern. Chatty logs use console.log (DEBUG); production strips
-// via Logger.debug / -Pymusic.debugLogs=false, not a JS compile flag.
+// Compile-time defines: bare `declare const` identifiers substituted inline at bundle time —
+// no runtime global, no extern. PRODUCTION is the same -Pproduction bake as Kotlin
+// BuildFlags.PRODUCTION: `debug(function () { return concat; })` does not call the thunk
+// when true (esbuild inlines; Closure DCE drops the dead branch).
+val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
 val esbuildDefines = arrayOf(
     "--define:BACKEND_VERSION=$backendVersion",
+    "--define:PRODUCTION=$production",
 )
 
 val srcDir = layout.projectDirectory.dir("src")

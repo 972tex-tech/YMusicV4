@@ -27,8 +27,13 @@ if(NOT _avformat_shared)
     "Do not static-link libav into mseffmpegjni.")
 endif()
 
+if(NOT DEFINED PRODUCTION)
+  set(PRODUCTION 0)
+endif()
+
 set(MSE_SOURCES mse_ffmpeg.c mse_host.c mse_vt.c mse_host_jni.c file_av.c file_av_jni.c audio_fx.c audio_fx_jni.c)
 add_library(mseffmpegjni SHARED ${MSE_SOURCES})
+target_compile_definitions(mseffmpegjni PRIVATE PRODUCTION=${PRODUCTION})
 target_include_directories(mseffmpegjni PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../../quickjs/native
   ${FFMPEG_ROOT}/include)

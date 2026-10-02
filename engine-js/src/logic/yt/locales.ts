@@ -11,6 +11,7 @@
 // falling back to the cached copy when the re-fetch fails, because year-stable lists in
 // yesterday's language beat an error dialog.
 
+import { debug } from "../../debug";
 import { innertubeJson } from "./innertube";
 import { effectiveLocale } from "./session";
 import { Cache } from "../../protocol/cache";
@@ -52,7 +53,12 @@ export async function localeOptions(): Promise<WireLocales> {
 async function getMenus(hl: string, gl: string): Promise<Menus> {
   const held = inMemory ?? (await readCache());
   inMemory = held;
-  if (held !== undefined && held.hl === hl && held.gl === gl && Date.now() - held.fetchedAt < MAX_AGE_MS) {
+  if (
+    held !== undefined &&
+    held.hl === hl &&
+    held.gl === gl &&
+    Date.now() - held.fetchedAt < MAX_AGE_MS
+  ) {
     return held;
   }
 
@@ -61,7 +67,9 @@ async function getMenus(hl: string, gl: string): Promise<Menus> {
     scraped = await scrapeMenus(hl, gl);
   } catch (e) {
     if (held === undefined) throw e;
-    console.log("yt locales fetch failed, serving the cached menus: " + errText(e));
+    debug(function () {
+      return "yt locales fetch failed, serving the cached menus: " + errText(e);
+    });
     return held;
   }
   // An empty menu means a stripped/walled response, not "YouTube offers nothing" — serve it once
@@ -153,7 +161,9 @@ async function readCache(): Promise<Menus | undefined> {
     return raw === null ? undefined : fromRecord(raw);
   } catch (e) {
     // No cache store wired (capability inert) or a store error — a live scrape still works.
-    console.log("yt locales cache read skipped: " + errText(e));
+    debug(function () {
+      return "yt locales cache read skipped: " + errText(e);
+    });
     return undefined;
   }
 }
@@ -162,7 +172,9 @@ async function writeCache(m: Menus): Promise<void> {
   try {
     await Cache.setJson(CACHE_SCOPE, CACHE_KEY, toRecord(m));
   } catch (e) {
-    console.log("yt locales cache write skipped: " + errText(e));
+    debug(function () {
+      return "yt locales cache write skipped: " + errText(e);
+    });
   }
 }
 

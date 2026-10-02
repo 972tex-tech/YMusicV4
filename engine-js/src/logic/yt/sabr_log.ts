@@ -1,10 +1,11 @@
-// SABR /videoplayback debug log (console.log = DEBUG).
+// SABR /videoplayback debug log (`debug()` = DEBUG; proto parse lives in the thunk).
 // PO (query pot= + StreamerContext 19.2).
 // clientAbrState: 16 stickyRes (yt-player-quality px), 18/19 viewport, 23 bandwidth,
 // 21 bitrate cap, 13/14 last manual quality, 38 mediaCapabilities, 40 tracks, 72 quality policy.
 // bufferedRanges: 1 formatId.itag, 2 startMs, 3 durationMs.
 // selected_format_ids=2, selected_audio_format_ids=16, selected_video_format_ids=17.
 
+import { debug, debugRun } from "../../debug";
 import { isAudioOnly } from "../player/audio_only";
 import { mhAudioFromPayload } from "./sabr_abr";
 import type { LiveAudioMh } from "./sabr_abr";
@@ -506,48 +507,52 @@ export function createSabrTee(): SabrTee {
         if (!(dur > 0)) dur = 1000;
         liveAudio = { startMs: audio.startMs, seq: audio.seq, durationMs: dur };
       }
-      console.log(
-        "sabr MEDIA_HEADER hid=" +
+      debug(function () {
+        return (
+          "sabr MEDIA_HEADER hid=" +
           (hid != null ? hid : "-") +
           " itag=" +
           (itag != null ? itag : "-") +
           " init=" +
           init +
-          (seq != null ? " seq=" + seq : ""),
-      );
+          (seq != null ? " seq=" + seq : "")
+        );
+      });
     }
-    const name = UMP_NAME[partId] || String(partId);
-    if (partId === 58) {
-      parts.push("SPS=" + sps + "(" + spsLabel(sps) + ")");
-    } else if (partId === 44) {
-      parts.push("SABR_ERROR" + (err ? ":" + err : ""));
-    } else if (partId === 43) {
-      parts.push("REDIRECT");
-    } else if (partId === 42 && payload) {
-      const fi = fmtFormatInit(payload);
-      const fid = protoBytes(payload, 2);
-      const itag = fid ? protoVarint(fid, 1) : protoVarint(payload, 3);
-      parts.push("FORMAT_INIT:itag=" + (itag != null ? itag : "-"));
-      console.log("sabr " + fi);
-    } else if (partId === 20 && payload) {
-      const mh = fmtMediaHeader(payload);
-      const itag = protoVarint(payload, 3);
-      const init = protoVarint(payload, 8) === 1 ? 1 : 0;
-      const seq = protoVarint(payload, 9);
-      if (init !== 1 && seq != null && seq > 0 && (mhSeq == null || seq > mhSeq)) mhSeq = seq;
-      const t = protoVarint(payload, 11);
-      parts.push(
-        "MH:itag=" +
-          (itag != null ? itag : "-") +
-          ":init=" +
-          init +
-          (seq != null ? ":seq=" + seq : "") +
-          (t != null ? ":t=" + t : ""),
-      );
-      console.log("sabr " + mh);
-    } else {
-      parts.push(name + ":" + partSize);
-    }
+    debugRun(function () {
+      const name = UMP_NAME[partId] || String(partId);
+      if (partId === 58) {
+        parts.push("SPS=" + sps + "(" + spsLabel(sps) + ")");
+      } else if (partId === 44) {
+        parts.push("SABR_ERROR" + (err ? ":" + err : ""));
+      } else if (partId === 43) {
+        parts.push("REDIRECT");
+      } else if (partId === 42 && payload) {
+        const fi = fmtFormatInit(payload);
+        const fid = protoBytes(payload, 2);
+        const itag = fid ? protoVarint(fid, 1) : protoVarint(payload, 3);
+        parts.push("FORMAT_INIT:itag=" + (itag != null ? itag : "-"));
+        console.log("sabr " + fi);
+      } else if (partId === 20 && payload) {
+        const mh = fmtMediaHeader(payload);
+        const itag = protoVarint(payload, 3);
+        const init = protoVarint(payload, 8) === 1 ? 1 : 0;
+        const seq = protoVarint(payload, 9);
+        if (init !== 1 && seq != null && seq > 0 && (mhSeq == null || seq > mhSeq)) mhSeq = seq;
+        const t = protoVarint(payload, 11);
+        parts.push(
+          "MH:itag=" +
+            (itag != null ? itag : "-") +
+            ":init=" +
+            init +
+            (seq != null ? ":seq=" + seq : "") +
+            (t != null ? ":t=" + t : ""),
+        );
+        console.log("sabr " + mh);
+      } else {
+        parts.push(name + ":" + partSize);
+      }
+    });
   }
 
   function push(chunk: Uint8Array): void {
@@ -573,7 +578,12 @@ export function createSabrTee(): SabrTee {
         partSize = sz.v;
         partRemain = sz.v;
         i = sz.i;
-        needPayload = partId !== 21;
+        needPayload =
+          partId === 58 ||
+          partId === 44 ||
+          partId === 42 ||
+          partId === 20 ||
+          (!PRODUCTION && partId !== 21);
         pay = [];
         payN = 0;
       }
@@ -593,23 +603,25 @@ export function createSabrTee(): SabrTee {
   }
 
   function finish(_url: string, status: number): void {
-    if (inPayload || leftover.length) parts.push((UMP_NAME[partId] || String(partId)) + ":trunc");
-    let line =
-      "sabr HTTP " +
-      status +
-      " body=" +
-      bodyN +
-      " ump=[" +
-      parts.join(",") +
-      "]" +
-      " media=" +
-      media +
-      " sps=" +
-      sps;
-    if (mhSeq != null) line += " mhSeq=" + mhSeq;
-    if (sps === 2 || sps === 3) line += " PO_REJECTED";
-    if (err) line += " SABR_ERROR";
-    console.log(line);
+    debug(function () {
+      if (inPayload || leftover.length) parts.push((UMP_NAME[partId] || String(partId)) + ":trunc");
+      let line =
+        "sabr HTTP " +
+        status +
+        " body=" +
+        bodyN +
+        " ump=[" +
+        parts.join(",") +
+        "]" +
+        " media=" +
+        media +
+        " sps=" +
+        sps;
+      if (mhSeq != null) line += " mhSeq=" + mhSeq;
+      if (sps === 2 || sps === 3) line += " PO_REJECTED";
+      if (err) line += " SABR_ERROR";
+      return line;
+    });
     dumpFirstSps(sps);
     if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
     if (isAudioOnly()) {
@@ -654,59 +666,61 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
   if (url.indexOf("/videoplayback") < 0) return;
   const u = asU8(body);
   recordSabrForDump(url, u);
-  const q = (url.match(/[?&]pot=([^&]*)/) || [])[1] || "";
-  let potB = 0;
-  let potB64 = "";
-  let playerTimeMs = -1;
-  let sinceSeekMs = -1;
-  let bit40 = -1;
-  let bit46 = -1;
-  let br = "";
-  let sel = "-";
-  let aud = "-";
-  let vid = "-";
-  let clientAbrLog = "";
-  if (u && u.length > 0) {
-    const sc = protoBytes(u, 19);
-    if (sc) {
-      const pot = protoBytes(sc, 2);
-      if (pot) {
-        potB = pot.length;
-        potB64 = b64url(pot);
+  debug(function () {
+    const q = (url.match(/[?&]pot=([^&]*)/) || [])[1] || "";
+    let potB = 0;
+    let potB64 = "";
+    let playerTimeMs = -1;
+    let sinceSeekMs = -1;
+    let bit40 = -1;
+    let bit46 = -1;
+    let br = "";
+    let sel = "-";
+    let aud = "-";
+    let vid = "-";
+    let clientAbrLog = "";
+    if (u && u.length > 0) {
+      const sc = protoBytes(u, 19);
+      if (sc) {
+        const pot = protoBytes(sc, 2);
+        if (pot) {
+          potB = pot.length;
+          potB64 = b64url(pot);
+        }
       }
+      const clientAbr = protoBytes(u, 1);
+      if (clientAbr) {
+        const t = protoVarint(clientAbr, 28);
+        if (t != null) playerTimeMs = t;
+        const s = protoVarint(clientAbr, 29);
+        if (s != null) sinceSeekMs = s;
+        const f40 = protoVarint(clientAbr, 40);
+        if (f40 != null) bit40 = f40;
+        const f46 = protoVarint(clientAbr, 46);
+        if (f46 != null) bit46 = f46;
+        clientAbrLog = fmtClientAbrState(clientAbr);
+      }
+      const ranges = protoRepeated(u, 3);
+      const rangeParts: string[] = [];
+      for (let i = 0; i < ranges.length && i < 8; i++) {
+        const fid = protoBytes(ranges[i]!, 1);
+        const itag = fid ? protoVarint(fid, 1) : null;
+        const st = protoVarint(ranges[i]!, 2);
+        const d = protoVarint(ranges[i]!, 3);
+        rangeParts.push(
+          (itag != null ? itag + ":" : "") + (st != null ? st : "?") + "+" + (d != null ? d : "?"),
+        );
+      }
+      br = rangeParts.join(",");
+      sel = itagsOf(protoRepeated(u, 2));
+      aud = itagsOf(protoRepeated(u, 16));
+      vid = itagsOf(protoRepeated(u, 17));
     }
-    const clientAbr = protoBytes(u, 1);
-    if (clientAbr) {
-      const t = protoVarint(clientAbr, 28);
-      if (t != null) playerTimeMs = t;
-      const s = protoVarint(clientAbr, 29);
-      if (s != null) sinceSeekMs = s;
-      const f40 = protoVarint(clientAbr, 40);
-      if (f40 != null) bit40 = f40;
-      const f46 = protoVarint(clientAbr, 46);
-      if (f46 != null) bit46 = f46;
-      clientAbrLog = fmtClientAbrState(clientAbr);
-    }
-    const ranges = protoRepeated(u, 3);
-    const parts: string[] = [];
-    for (let i = 0; i < ranges.length && i < 8; i++) {
-      const fid = protoBytes(ranges[i]!, 1);
-      const itag = fid ? protoVarint(fid, 1) : null;
-      const st = protoVarint(ranges[i]!, 2);
-      const d = protoVarint(ranges[i]!, 3);
-      parts.push(
-        (itag != null ? itag + ":" : "") + (st != null ? st : "?") + "+" + (d != null ? d : "?"),
-      );
-    }
-    br = parts.join(",");
-    sel = itagsOf(protoRepeated(u, 2));
-    aud = itagsOf(protoRepeated(u, 16));
-    vid = itagsOf(protoRepeated(u, 17));
-  }
-  const sabr = url.indexOf("sabr=") >= 0 ? "1" : "0";
-  const st = status != null ? " HTTP " + status : "";
-  console.log(
-    "sabr" +
+    const sabr = url.indexOf("sabr=") >= 0 ? "1" : "0";
+    const st = status != null ? " HTTP " + status : "";
+    if (clientAbrLog) console.log(clientAbrLog);
+    return (
+      "sabr" +
       st +
       " sabr=" +
       sabr +
@@ -743,8 +757,8 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
       " potBody=" +
       potB +
       " pot=" +
-      potB64,
-  );
-  if (clientAbrLog) console.log(clientAbrLog);
+      potB64
+    );
+  });
   if (isAudioOnly()) dumpDrain("sabr-req");
 }

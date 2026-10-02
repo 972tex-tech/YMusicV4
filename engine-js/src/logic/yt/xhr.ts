@@ -2,6 +2,7 @@
 // builder via cookieHeaderFor. Player ads strip (skip_ads.ts) rewrites /player JSON via
 // setXhrJsonRewrite. Quoted names so Closure ADVANCED leaves the browser-shaped API intact.
 
+import { debug } from "../../debug";
 import { utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import { resolveUrl } from "../../protocol/http/headers";
@@ -270,7 +271,9 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   const url = self._url;
   noteSabrPlaybackUrl(url);
   if (!allowEngineJsUrl(url)) {
-    console.log("js deny " + url);
+    debug(function () {
+      return "js deny " + url;
+    });
     Promise.resolve().then(function () {
       if (self._aborted) return;
       self["status"] = 404;

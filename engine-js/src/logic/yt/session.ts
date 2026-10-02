@@ -7,6 +7,7 @@
 // / YSC / consent) land back in the app's cookie store — required for a normal feed even
 // logged-out. On a 403 the caller passes maxAge 0 and retries (params rotate server-side).
 
+import { debug } from "../../debug";
 import { jsLogger } from "../../protocol/logger";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
@@ -89,7 +90,9 @@ export async function getSession(maxAge: number): Promise<YtSession> {
     const stale = inMemory ?? (await readCache());
     if (stale != null) {
       inMemory = stale;
-      console.log("yt session scrape failed, serving the stale session: " + errText(e));
+      debug(function () {
+        return "yt session scrape failed, serving the stale session: " + errText(e);
+      });
       return stale;
     }
     throw e;
@@ -160,7 +163,9 @@ export async function invalidateSession(): Promise<void> {
     await Cache.delete(CACHE_SCOPE, HOMEPAGE_KEY);
     await Cache.delete(CACHE_SCOPE, PLAYER_CONFIG_KEY);
   } catch (e) {
-    console.log("yt session cache clear skipped: " + errText(e));
+    debug(function () {
+      return "yt session cache clear skipped: " + errText(e);
+    });
   }
 }
 
@@ -212,14 +217,18 @@ export async function consumeScrapedHomeData(): Promise<{
       }
     });
   } catch (e) {
-    console.log("yt homepage cache read skipped: " + errText(e));
+    debug(function () {
+      return "yt homepage cache read skipped: " + errText(e);
+    });
     return { found: settled }; // just-scraped counts as found: a re-scrape can't cure a dead cache
   }
   if (read == null) return { found: settled };
   try {
     await Cache.delete(CACHE_SCOPE, HOMEPAGE_KEY);
   } catch (e) {
-    console.log("yt homepage cache delete skipped: " + errText(e));
+    debug(function () {
+      return "yt homepage cache delete skipped: " + errText(e);
+    });
   }
   return read.data == null ? { found: true } : { found: true, data: read.data };
 }
@@ -281,7 +290,9 @@ async function scrapeSession(): Promise<YtSession> {
       if (feedStart !== -1) return sink.writeUtf8Range(html, feedStart, html.length);
     });
   } catch (e) {
-    console.log("yt homepage cache write skipped: " + errText(e));
+    debug(function () {
+      return "yt homepage cache write skipped: " + errText(e);
+    });
   }
 
   await storePlayerConfig(html);
@@ -378,7 +389,9 @@ async function readCache(): Promise<YtSession | undefined> {
     return raw == null ? undefined : fromRecord(raw);
   } catch (e) {
     // No cache store wired (capability inert) or a store error — a live scrape still works.
-    console.log("yt session cache read skipped: " + errText(e));
+    debug(function () {
+      return "yt session cache read skipped: " + errText(e);
+    });
     return undefined;
   }
 }
@@ -387,7 +400,9 @@ async function writeCache(s: YtSession): Promise<void> {
   try {
     await Cache.setJson(CACHE_SCOPE, CACHE_KEY, toRecord(s));
   } catch (e) {
-    console.log("yt session cache write skipped: " + errText(e));
+    debug(function () {
+      return "yt session cache write skipped: " + errText(e);
+    });
   }
 }
 
@@ -405,7 +420,9 @@ async function storePlayerConfig(html: string): Promise<void> {
   try {
     await Cache.setJson(CACHE_SCOPE, PLAYER_CONFIG_KEY, cfg);
   } catch (e) {
-    console.log("yt player config cache write skipped: " + errText(e));
+    debug(function () {
+      return "yt player config cache write skipped: " + errText(e);
+    });
   }
 }
 
@@ -422,7 +439,9 @@ export async function peekPlayerConfig(): Promise<Record<string, unknown> | unde
       }
     }
   } catch (e) {
-    console.log("yt player config cache read skipped: " + errText(e));
+    debug(function () {
+      return "yt player config cache read skipped: " + errText(e);
+    });
   }
   return undefined;
 }

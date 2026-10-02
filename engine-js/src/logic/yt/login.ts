@@ -10,6 +10,7 @@
 //                        the gate has passed and the cookies are settled.
 //   yt/logout         -> drop the auth cookies, keeping the anonymous identity (PREF/visitor/YSC).
 
+import { debug } from "../../debug";
 import { onAccept } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { Cookies } from "../../protocol/cookie";
@@ -116,7 +117,9 @@ async function readCachedAccount(): Promise<Record<string, unknown> | undefined>
     const raw = await Cache.getJson(ACCOUNT_SCOPE, ACCOUNT_KEY);
     if (isObj(raw) && raw["signedIn"] === true) return raw;
   } catch (e) {
-    console.log("yt account cache read skipped: " + errText(e));
+    debug(function () {
+      return "yt account cache read skipped: " + errText(e);
+    });
   }
   return undefined;
 }
@@ -125,7 +128,9 @@ async function cacheAccount(acct: WireAccount): Promise<void> {
   try {
     await Cache.setJson(ACCOUNT_SCOPE, ACCOUNT_KEY, acct);
   } catch (e) {
-    console.log("yt account cache write skipped: " + errText(e));
+    debug(function () {
+      return "yt account cache write skipped: " + errText(e);
+    });
   }
 }
 
@@ -133,7 +138,9 @@ async function clearCachedAccount(): Promise<void> {
   try {
     await Cache.delete(ACCOUNT_SCOPE, ACCOUNT_KEY);
   } catch (e) {
-    console.log("yt account cache clear skipped: " + errText(e));
+    debug(function () {
+      return "yt account cache clear skipped: " + errText(e);
+    });
   }
 }
 

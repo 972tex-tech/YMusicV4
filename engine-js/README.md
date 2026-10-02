@@ -33,9 +33,10 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **`BACKEND_VERSION`** — the manually-bumped bundle revision, in build.gradle.kts; an esbuild `--define`
   compile-time const — `declare const`, inlined, never a runtime global.
 
-- **Log levels, not compile flags.** `console.log` is DEBUG (`Logger.debug`, stripped by
-  `-Pymusic.debugLogs=false`). `console.info` / `warn` always reach the file. There is no
-  `MSE_DEBUG` / `SABR_DEBUG` / `BG_DUMP` define.
+- **PRODUCTION** — esbuild `--define` from `-Pproduction` (same bake as Kotlin
+  `BuildFlags.PRODUCTION`, default false). Chatty logs use `debug(function () { return concat; })`
+  so the thunk is not called when true. `console.info` / `warn` always reach the file. There is
+  no `MSE_DEBUG` / `SABR_DEBUG` / `BG_DUMP` / `DEBUG_LOGS` define.
 
 - **Versioning / backward compat** — the host installs the frozen, non-writable `versions` global from C (`{app}`:
   the app version identifies the whole host surface — transport, protocols, app ship as one build) before the

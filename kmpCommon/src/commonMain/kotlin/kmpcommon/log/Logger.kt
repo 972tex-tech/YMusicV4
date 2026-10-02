@@ -93,12 +93,12 @@ fun Throwable.trailMark(): List<Crumb>? {
 }
 
 /**
- * A DEBUG line whose message is built ONLY in debug-logging builds — the form for chatty paths
- * (per-request lines, per-part transfer chatter). [BuildFlags.DEBUG_LOGS] is a `const val` baked
- * by the build (-Pymusic.debugLogs, default true): it inlines as a literal into every call site
- * and the compiler drops the dead branch, so a `false` build carries none of these sites —
+ * A DEBUG line whose message is built ONLY outside production builds — the form for chatty paths
+ * (per-request lines, per-part transfer chatter). [BuildFlags.PRODUCTION] is a `const val` baked
+ * by the build (`-Pproduction`, default false): it inlines as a literal into every call site
+ * and the compiler drops the dead branch, so a production build carries none of these sites —
  * removed, not silently dropped — on every platform, no optimizer needed.
  */
 inline fun Logger.debug(message: () -> String) {
-    if (BuildFlags.DEBUG_LOGS) log(Logger.Level.DEBUG, message())
+    if (!BuildFlags.PRODUCTION) log(Logger.Level.DEBUG, message())
 }

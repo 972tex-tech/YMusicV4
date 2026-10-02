@@ -81,6 +81,10 @@ declare var versions: {
  *  (The host app's version needs no twin: read the `versions.app` global.) */
 declare const BACKEND_VERSION: number;
 
+/** Same bake as Kotlin BuildFlags.PRODUCTION (`-Pproduction`, default false).
+ *  `debug(function () { return concat; })` does not call the thunk when true. */
+declare const PRODUCTION: boolean;
+
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 

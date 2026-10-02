@@ -153,7 +153,9 @@ struct MseAv {
 #endif
 };
 
+#if !PRODUCTION
 static int vdbg_n;
+#endif
 static void vf_resync_key(MseAv *a, double t);
 static void close_video_decoder(MseAv *a);
 #ifdef __ANDROID__
@@ -335,6 +337,7 @@ void mse_set_log_callback(void (*fn)(int level, const char *msg))
     av_log_set_callback(mse_av_log);
 }
 
+#if !PRODUCTION
 void mse_logf(const char *fmt, ...)
 {
     char msg[768];
@@ -344,6 +347,7 @@ void mse_logf(const char *fmt, ...)
     va_end(ap);
     mse_emit(MSE_LOG_DEBUG, msg);
 }
+#endif
 
 void mse_critf(int level, const char *fmt, ...)
 {
@@ -355,6 +359,7 @@ void mse_critf(int level, const char *fmt, ...)
     mse_emit(level, buf);
 }
 
+#if !PRODUCTION
 static void vlog(const char *fmt, ...)
 {
     char buf[512];
@@ -366,6 +371,9 @@ static void vlog(const char *fmt, ...)
     snprintf(line, sizeof(line), "mse-v %s", buf);
     mse_emit(MSE_LOG_DEBUG, line);
 }
+#else
+#define vlog(...) ((void)0)
+#endif
 
 static double now_ms(void)
 {
@@ -374,6 +382,7 @@ static double now_ms(void)
     return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
 }
 
+#if !PRODUCTION
 static int vdbg_ok(void)
 {
     vdbg_n++;
@@ -404,6 +413,10 @@ static void vlog_state(MseAv *a, double clock, const char *why, double extra)
          why, clock, extra, a->v_sent, hp, a->vf.rd, a->vf.n, np, p0, p1, nkey, nk, a->need_rap[0],
          a->vdec ? a->vdec->delay : -1, a->vdec ? a->vdec->has_b_frames : -1);
 }
+#else
+#define vdbg_ok() 0
+#define vlog_state(...) ((void)0)
+#endif
 
 static size_t vf_send_rd(const MseAv *a)
 {
@@ -448,6 +461,7 @@ static void vlog_starve_empty(MseAv *a, double clock, double extra)
     last_empty = now;
     mse_critf(MSE_LOG_INFO, "mse-v starve-empty clock=%.3f vf=%zu", clock, a->vf.n);
     vlog_state(a, clock, "starve-empty", extra);
+    (void)extra;
 }
 
 static int cf_cmp(const void *a, const void *b)
@@ -3215,7 +3229,9 @@ void mse_av_seek(MseAv *a, double seconds)
         mse_vt_flush(a->vt_layer);
 #endif
     av_frame_free(&a->vhold);
+#if !PRODUCTION
     vdbg_n = 0;
+#endif
     maybe_apply_video_rep(a);
     av_unlock_all(a);
 }
@@ -3389,7 +3405,9 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
     int vis_w, vis_h, dw, dh, src_w, flags, y;
     int linesize[4] = { 0 };
     uint8_t *dsts[4] = { 0 };
+#if !PRODUCTION
     double t0, xfer_ms = 0, scale_ms;
+#endif
 #ifdef __APPLE__
     if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3]) {
         int tw, th;
@@ -3412,10 +3430,14 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         if (!a->hw_sw)
             return -1;
         av_frame_unref(a->hw_sw);
+#if !PRODUCTION
         t0 = now_ms();
+#endif
         if (av_hwframe_transfer_data(a->hw_sw, frame, 0) < 0)
             return -1;
+#if !PRODUCTION
         xfer_ms = now_ms() - t0;
+#endif
         sw = a->hw_sw;
     }
     if (scale_bgra_vt_sw(a, sw, bgra, w, h) == 0)
@@ -3462,9 +3484,13 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         dsts[0] = dst;
         linesize[0] = dw * 4;
     }
+#if !PRODUCTION
     t0 = now_ms();
+#endif
     sws_scale(a->sws, (const uint8_t *const *)sw->data, sw->linesize, 0, vis_h, dsts, linesize);
+#if !PRODUCTION
     scale_ms = now_ms() - t0;
+#endif
     if (dw == vis_w && dh == vis_h && src_w != vis_w) {
         size_t row = (size_t)vis_w * 4;
         for (y = 0; y < vis_h; y++)
@@ -3475,9 +3501,11 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
         a->blit_log_dh = dh;
         vlog("blit %dx%d -> %dx%d hole=%dx%d sws", vis_w, vis_h, dw, dh, a->blit_w, a->blit_h);
     }
+#if !PRODUCTION
     if (vdbg_ok())
         vlog("sws %dx%d -> %dx%d fmt=%d xfer=%.2f scale=%.2f", vis_w, vis_h, dw, dh, sw->format,
              xfer_ms, scale_ms);
+#endif
     *w = dw;
     *h = dh;
     *bgra = dst;

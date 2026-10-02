@@ -14,8 +14,16 @@ extern "C" {
 #define MSE_LOG_WARN  2
 #define MSE_LOG_ERROR 3
 void mse_set_log_callback(void (*fn)(int level, const char *msg));
-/* DEBUG: callback only; Kotlin Logger.debug strips when DEBUG_LOGS=false. Never blocks. */
+/* Chatty DEBUG: same -Pproduction bake as Kotlin BuildFlags.PRODUCTION.
+ * When PRODUCTION the macro does not evaluate arguments (no vsnprintf). Never blocks. */
+#ifndef PRODUCTION
+#define PRODUCTION 0
+#endif
+#if PRODUCTION
+#define mse_logf(...) ((void)0)
+#else
 void mse_logf(const char *fmt, ...);
+#endif
 /* INFO/WARN/ERROR: always emitted. Never blocks. */
 void mse_critf(int level, const char *fmt, ...);
 

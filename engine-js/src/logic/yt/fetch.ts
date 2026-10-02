@@ -3,6 +3,7 @@
 // the browser-shaped API intact. fetch() resolves on the response head; body bytes are pulled from
 // HttpResponse.stream() on read / text / json / arrayBuffer (clone tees that pull).
 
+import { debug } from "../../debug";
 import { utf8Decode, utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import {
@@ -614,7 +615,9 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   if (!p.url) throw new TypeError("fetch: invalid URL");
   noteSabrPlaybackUrl(p.url);
   if (!allowEngineJsUrl(p.url)) {
-    console.log("js deny " + p.url);
+    debug(function () {
+      return "js deny " + p.url;
+    });
     return deniedJsResponse(p.url);
   }
   const signal = p.signal;

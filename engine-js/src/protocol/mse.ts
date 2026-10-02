@@ -2,6 +2,7 @@
 // Append/play/seek hit C trampolines (`__mse*`). Quoted names so Closure ADVANCED leaves the
 // DOM-shaped API intact for YouTube's player.
 
+import { debug } from "../debug";
 import { onEvent } from "../transport";
 import { isAudioOnly } from "../logic/player/audio_only";
 import { isYmLive } from "../logic/player/live";
@@ -142,8 +143,9 @@ function logAppend(
   } catch (_e) {
     left = "-";
   }
-  console.log(
-    "mse append a=" +
+  debug(function () {
+    return (
+      "mse append a=" +
       audio +
       " bytes=" +
       bytes +
@@ -159,8 +161,9 @@ function logAppend(
       left +
       " br=[" +
       fmtBr(ranges) +
-      "]",
-  );
+      "]"
+    );
+  });
   const leftN = left === "-" ? -1 : +left;
   const hole = left === "-" || !(leftN >= 1000);
   const now = Date.now();
@@ -233,7 +236,9 @@ function fire(
   if (!list) return;
   if (isAudioOnly() && type === "updateend") {
     const mime = String((target as { ["mimeType"]?: string })["mimeType"] || "");
-    console.log("mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length);
+    debug(function () {
+      return "mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length;
+    });
   }
   const ev: Record<string, unknown> = {
     "type": type,
@@ -397,16 +402,18 @@ function takeFakeMedia(sb: SourceBuffer, u8: Uint8Array): void {
         sb._fakeStart = start;
         sb._fakeEnd = end;
       }
-      console.log(
-        "mse append fake-media " +
+      debug(function () {
+        return (
+          "mse append fake-media " +
           start +
           ".." +
           end +
           " span=" +
           sb._fakeStart +
           ".." +
-          sb._fakeEnd,
-      );
+          sb._fakeEnd
+        );
+      });
     } else {
       sb._fakeFollowAudio = true;
       sb._fakeStart = 0;
@@ -1415,16 +1422,23 @@ export function setHtmlPlaybackRate(speed: number, tempo: number): void {
 export function dumpDrain(why: string): void {
   const quality = why.indexOf("setQuality") >= 0;
   if (!quality && !isAudioOnly()) return;
-  try {
-    const line = "mse drain " + why + " " + dumpMseDrain();
-    if (quality) console.info(line);
-    else console.log(line);
-  } catch (e) {
-    const err = e instanceof Error ? e : new Error(String(e));
-    const line = "mse drain " + why + " err=" + err.message;
-    if (quality) console.info(line);
-    else console.log(line);
+  if (quality) {
+    try {
+      console.info("mse drain " + why + " " + dumpMseDrain());
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.info("mse drain " + why + " err=" + err.message);
+    }
+    return;
   }
+  debug(function () {
+    try {
+      return "mse drain " + why + " " + dumpMseDrain();
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      return "mse drain " + why + " err=" + err.message;
+    }
+  });
 }
 
 /** Protocol drain snapshot: audio/video append, updating, je, listeners. */

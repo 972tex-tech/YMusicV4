@@ -6,6 +6,7 @@
 // timeOrigin, and visitorData are kept but the SABR replay does not use them.
 // Payloads go through cache/put, never console. SPS≠1 → log/capture attaches the blob.
 
+import { debug } from "../../debug";
 import { callHost } from "../../protocol/command";
 import { keepCount, scopedCache } from "../../protocol/cache";
 import { DESKTOP_UA } from "../yt/session";
@@ -178,39 +179,43 @@ export function recordSabrForDump(url: string, body: Uint8Array | null): void {
 
 /** Lengths + sessionKey only. Payloads live in the cache blob. */
 export function dumpBgParams(why: string): void {
-  const rec: Record<string, unknown> = {
-    "why": why,
-    "eventId": held["eventId"] || "",
-    "clientVersion": held["clientVersion"] || "",
-    "globalName": held["globalName"] || "",
-    "interpUrl": held["interpUrl"] || "",
-    "ua": held["ua"] || "",
-    "requestKey": "O43z0dpjhgX20SCx4KAo",
-    "programLen": held["programLen"] || 0,
-    "jsLen": held["jsLen"] || 0,
-    "snapLen": held["snapLen"] || 0,
-    "itLen": held["itLen"] || 0,
-    "mintId": held["mintId"] || "",
-    "potLen": String(held["pot"] || "").length,
-    "sabrUrlLen": String(held["sabrUrl"] || "").length,
-    "entropyLen": String(held["entropy"] || "").length,
-    "sessionKey": sessionKey || utcStamp(),
-    "scope": SCOPE,
-  };
-  if (why.indexOf("sps=") === 0) rec["sps"] = Number(why.slice(4));
-  if (held["timeOrigin"] !== undefined) rec["timeOrigin"] = held["timeOrigin"];
-  else {
-    const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
-    if (perf && typeof perf.timeOrigin === "number") rec["timeOrigin"] = perf.timeOrigin;
-  }
-  console.log("bg dump meta " + JSON.stringify(rec));
+  debug(function () {
+    const rec: Record<string, unknown> = {
+      "why": why,
+      "eventId": held["eventId"] || "",
+      "clientVersion": held["clientVersion"] || "",
+      "globalName": held["globalName"] || "",
+      "interpUrl": held["interpUrl"] || "",
+      "ua": held["ua"] || "",
+      "requestKey": "O43z0dpjhgX20SCx4KAo",
+      "programLen": held["programLen"] || 0,
+      "jsLen": held["jsLen"] || 0,
+      "snapLen": held["snapLen"] || 0,
+      "itLen": held["itLen"] || 0,
+      "mintId": held["mintId"] || "",
+      "potLen": String(held["pot"] || "").length,
+      "sabrUrlLen": String(held["sabrUrl"] || "").length,
+      "entropyLen": String(held["entropy"] || "").length,
+      "sessionKey": sessionKey || utcStamp(),
+      "scope": SCOPE,
+    };
+    if (why.indexOf("sps=") === 0) rec["sps"] = Number(why.slice(4));
+    if (held["timeOrigin"] !== undefined) rec["timeOrigin"] = held["timeOrigin"];
+    else {
+      const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
+      if (perf && typeof perf.timeOrigin === "number") rec["timeOrigin"] = perf.timeOrigin;
+    }
+    return "bg dump meta " + JSON.stringify(rec);
+  });
 }
 
 export function dumpFirstSps(sps: number): void {
   if (sps <= 0) return;
   if (dumpedFirstSps !== 0) return;
   dumpedFirstSps = sps;
-  console.log("bg dump sps " + sps);
+  debug(function () {
+    return "bg dump sps " + sps;
+  });
 }
 
 /** First SPS≠1 for this mint — persist cache blob, then Sentry attach. */

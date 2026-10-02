@@ -10,6 +10,8 @@ plugins {
 }
 
 val mseNativeSrc = projectDir.resolve("native")
+val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
+val productionC = if (production) "1" else "0"
 
 fun mseSdkPath(sdk: String): String =
     ProcessBuilder("xcrun", "--sdk", sdk, "--show-sdk-path").start()
@@ -63,6 +65,7 @@ fun registerMseNativeLib(targetName: String): TaskProvider<Exec> {
             inputs.dir(qjsInc)
         }
         outputs.file(File(out, "libmsehost.a"))
+        inputs.property("production", productionC)
         workingDir(out)
         val arch = mseClangArch(targetName).joinToString(" ")
         val cmd = if (ffmpeg != null) {
@@ -70,10 +73,10 @@ fun registerMseNativeLib(targetName: String): TaskProvider<Exec> {
                 .joinToString(" ") { "'${mseNativeSrc.resolve(it)}'" }
             val objc = listOf("mse_vt_layer.m", "mse_vt_dec.m")
                 .joinToString(" ") { "'${mseNativeSrc.resolve(it)}'" }
-            "set -e; cc $arch -O2 -w -c $srcs " +
+            "set -e; cc $arch -O2 -w -DPRODUCTION=$productionC -c $srcs " +
                 "-I'${mseNativeSrc.absolutePath}' -I'${qjsInc.absolutePath}' " +
                 "-I'${File(ffmpeg, "include").absolutePath}' && " +
-                "cc $arch -O2 -w -fobjc-arc -c $objc " +
+                "cc $arch -O2 -w -fobjc-arc -DPRODUCTION=$productionC -c $objc " +
                 "-I'${mseNativeSrc.absolutePath}' && ar rcs libmsehost.a *.o"
         } else {
             "set -e; cc $arch -O2 -w -c '${mseNativeSrc.resolve("mse_stub.c")}' " +
@@ -189,12 +192,14 @@ val mseCmakeConfigure by tasks.registering(Exec::class) {
     inputs.dir(mseNativeSrc)
     inputs.property("javaHome", javaHomeForJni)
     inputs.property("ffmpegRoot", ffmpegDesktopPrefix?.absolutePath ?: "")
+    inputs.property("production", productionC)
     outputs.file(File(out, "CMakeCache.txt"))
     environment("JAVA_HOME", javaHomeForJni)
     commandLine(
         "cmake", "-S", mseNativeSrc.absolutePath, "-B", out.absolutePath,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DFFMPEG_ROOT=${ffmpegDesktopPrefix?.absolutePath ?: ""}",
+        "-DPRODUCTION=$productionC",
     )
 }
 val mseCmakeBuild by tasks.registering(Exec::class) {
@@ -271,6 +276,7 @@ val ndkDir: File? = run {
 val stageAndroidJni by tasks.registering {
     val jniLibsDir = projectDir.resolve("src/androidMain/jniLibs")
     inputs.dir(mseNativeSrc)
+    inputs.property("production", productionC)
     outputs.dir(jniLibsDir)
     onlyIf {
         ffmpegBuildDir != null && mseAndroidAbis.any { File(ffmpegBuildDir, "out/android-$it/include").isDirectory }
@@ -307,6 +313,7 @@ val stageAndroidJni by tasks.registering {
                 "-DANDROID_ABI=$abi", "-DANDROID_PLATFORM=android-${Versions.minSdk}",
                 "-DCMAKE_BUILD_TYPE=Release",
                 "-DFFMPEG_ROOT=${prefix.absolutePath}",
+                "-DPRODUCTION=$productionC",
             )
             sh("cmake", "--build", buildDir.absolutePath, "-j", "4")
             val so = File(buildDir, "libmseffmpegjni.so")

@@ -5,11 +5,11 @@ plugins {
 }
 
 // Public so the inline [Logger.debug] can see it. Feature gates use each module's own
-// DEBUG_BUILD (same -Pymusic.debugLogs bake).
-val debugLogs = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).getOrElse(true)
+// DEBUG_BUILD (`-Pymusic.debugLogs`). Log-evaluation DCE is `-Pproduction`.
+val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
 val buildFlagsDir = layout.buildDirectory.dir("generated/buildFlags")
 val generateBuildFlags by tasks.registering {
-    inputs.property("debugLogs", debugLogs)
+    inputs.property("production", production)
     outputs.dir(buildFlagsDir)
     doLast {
         buildFlagsDir.get().file("kmpcommon/log/BuildFlags.kt").asFile.apply { parentFile.mkdirs() }.writeText(
@@ -17,8 +17,8 @@ val generateBuildFlags by tasks.registering {
             |package kmpcommon.log
             |
             |object BuildFlags {
-            |    /** Baked at build time from -Pymusic.debugLogs (default true). */
-            |    const val DEBUG_LOGS: Boolean = $debugLogs
+            |    /** Baked at build time from -Pproduction (default false). */
+            |    const val PRODUCTION: Boolean = $production
             |}
             |""".trimMargin(),
         )

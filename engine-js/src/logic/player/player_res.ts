@@ -1,6 +1,8 @@
 // Cache /player JSON (pre–fake-144p) plus decoded SABR URLs captured from the
 // player's own googlevideo requests. Download uses that; we do not decipher.
 
+import { debug } from "../../debug";
+
 const CACHE_MS = 3 * 60 * 1000;
 const WAIT_MS = 20_000;
 
@@ -272,8 +274,8 @@ export function noteSabrPlaybackUrl(url: string): void {
   if (e.sabrUrls.length && e.sabrUrls[e.sabrUrls.length - 1] === url) return;
   e.sabrUrls.push(url);
   e.expires = now() + CACHE_MS;
-  console.log(
-    "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length,
-  );
+  debug(function () {
+    return "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length;
+  });
   if (complete(e)) flush(e, true);
 }

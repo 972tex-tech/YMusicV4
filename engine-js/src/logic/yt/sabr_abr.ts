@@ -14,6 +14,7 @@ const BUFFERED_RANGES = 3;
 const PLAYABLE_AUDIO_FORMAT_IDS = 16;
 const PLAYABLE_VIDEO_FORMAT_IDS = 17;
 
+import { debug } from "../../debug";
 import { isAudioOnly } from "../player/audio_only";
 import { ITAG_144P, is144pItag, isVideoItag, pickFake144 } from "../player/itag_144";
 import type { Fake144Row } from "../player/itag_144";
@@ -468,8 +469,9 @@ function buildFakeUmp(
         mediaDataUmp(mediaHid, media),
         mediaEndUmp(mediaHid),
       ];
-  console.log(
-    "mse sabr fake-ump itag=" +
+  debug(function () {
+    return (
+      "mse sabr fake-ump itag=" +
       row.itag +
       " lmt=" +
       row.lmt +
@@ -484,8 +486,9 @@ function buildFakeUmp(
       " playerTimeMs=" +
       state.playerTimeMs +
       " buf144End=" +
-      state.buffered144End,
-  );
+      state.buffered144End
+    );
+  });
   return concatU8(parts);
 }
 
@@ -535,7 +538,9 @@ function rewriteCas40(cas: Uint8Array): Uint8Array {
     const f = fs[i]!;
     if (f.field === 38 && f.wire === 2 && f.value instanceof Uint8Array) {
       out.push({ field: 38, wire: 2, value: deny144MediaCaps(f.value) });
-      console.log("sabr deny144 mediaCapabilities itags=" + ITAG_144P.join(","));
+      debug(function () {
+        return "sabr deny144 mediaCapabilities itags=" + ITAG_144P.join(",");
+      });
       continue;
     }
     if (f.field === 40) {
@@ -615,7 +620,9 @@ function rewriteAbr(
   let state: SabrRequestState | null = null;
   const fake = videoId ? pickFake144(videoId, selItags.length ? selItags : playVid) : null;
   if (has144Buffered && !(fake && fake.live)) {
-    console.log("sabr skip fake-ump 144p already buffered");
+    debug(function () {
+      return "sabr skip fake-ump 144p already buffered";
+    });
   } else if (fake && !fake.live && (fake.durationMs > 0 || !audioOnly)) {
     state = {
       audioOnly: audioOnly,

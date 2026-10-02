@@ -1,6 +1,7 @@
 // Headless content-PO minter: homepage ytcfg + ytAtN program (not WAA Create),
 // set window.yt EVENT_ID, load interpreter, snapshot (must read yt.config_.EVENT_ID), GenerateIT, mint.
 
+import { debug } from "../../debug";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
@@ -198,7 +199,9 @@ export async function minterFromConfig(
     out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
     out["snapshotPrefix"] =
       typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
-    console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
+    debug(function () {
+      return "mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"];
+    });
     out["webPo0"] = typeof webPo[0];
     out["webPoLen"] = webPo.length;
     out["ytGets"] = ytWindowGets();
