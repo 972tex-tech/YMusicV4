@@ -491,13 +491,7 @@ private fun FoldersTab(
                             Modifier.weight(1f, fill = false),
                         ) { depth -> path = path.take(depth) }
                         if (scopedRescan != null && scanController != null) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RescanButton(scopedRescan, scanController)
-                                if (scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
-                            }
+                            RescanButton(scopedRescan, scanController)
                         }
                     }
                     SortControl(folderSortOptions.map { it.label }, sort)
@@ -1351,7 +1345,6 @@ private fun FoldersToolbar(
         if (rescan != null && scanController != null) {
             RescanButton(rescan, scanController)
         }
-        if (scanController != null && scanController.running) CircularProgressIndicator(Modifier.size(20.dp))
         Spacer(Modifier.weight(1f))
         if (sort != null) SortControl(sortLabels, sort)
     }
@@ -1359,17 +1352,22 @@ private fun FoldersToolbar(
 
 @Composable
 private fun RescanButton(rescan: ScanAction, controller: ScanController) {
-    IconButton(
-        onClick = { controller.start(rescan) },
-        enabled = !controller.running,
-        modifier = Modifier.size(32.dp),
-    ) {
-        Icon(
-            Icons.Default.Refresh,
-            contentDescription = stringResource(Res.string.library_rescan),
-            modifier = Modifier.size(19.dp),
-            tint = DesignColors.InkSoft,
-        )
+    if (controller.running) {
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(20.dp))
+        }
+    } else {
+        IconButton(
+            onClick = { controller.start(rescan) },
+            modifier = Modifier.size(32.dp),
+        ) {
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = stringResource(Res.string.library_rescan),
+                modifier = Modifier.size(19.dp),
+                tint = DesignColors.InkSoft,
+            )
+        }
     }
 }
 
