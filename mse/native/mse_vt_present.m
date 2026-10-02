@@ -42,7 +42,7 @@ static void mse_bind_mouse_jni(JNIEnv *env)
         if (!local) {
             if ((*env)->ExceptionCheck(env))
                 (*env)->ExceptionClear(env);
-            mse_logf("mse-v mouse FindClass FileAvNative failed\n");
+            mse_critf(MSE_LOG_WARN, "mse-v mouse FindClass FileAvNative failed");
             return;
         }
         mse_native_cls = (*env)->NewGlobalRef(env, local);
@@ -255,12 +255,12 @@ static int jawt_bind(void)
         return 1;
     h = dlopen("libjawt.dylib", RTLD_LAZY | RTLD_GLOBAL);
     if (!h) {
-        mse_logf("mse-v jawt dlopen failed %s\n", dlerror() ? dlerror() : "?");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt dlopen failed %s", dlerror() ? dlerror() : "?");
         return 0;
     }
     mse_jawt_get_awt = (jboolean (*)(JNIEnv *, JAWT *))dlsym(h, "JAWT_GetAWT");
     if (!mse_jawt_get_awt) {
-        mse_logf("mse-v jawt dlsym JAWT_GetAWT failed\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt dlsym JAWT_GetAWT failed");
         return 0;
     }
     return 1;
@@ -621,7 +621,7 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         if (mse_vt_jawt_layer != retained)
             return;
         if (!parent) {
-            mse_logf("mse-v jawt no content view\n");
+            mse_critf(MSE_LOG_WARN, "mse-v jawt no content view");
             return;
         }
         /* Child of AWTView: the picture is visible. A sibling under AWTView is a
@@ -636,7 +636,7 @@ static void *mse_vt_host_new(CALayer *wl, CALayer *canvas_layer, jint x, jint y,
         mse_vt_jawt_view = host;
         mse_watch_live_resize(host.window);
         (void)canvas_layer;
-        mse_logf("mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s\n",
+        mse_critf(MSE_LOG_INFO, "mse-v jawt layer attached %.0fx%.0f @ %.0f,%.0f parent=%s",
                  frame.size.width, frame.size.height, frame.origin.x, frame.origin.y,
                  parent.className.UTF8String ?: "?");
     });
@@ -669,7 +669,7 @@ void *mse_vt_attach_component(void *envp, void *component)
         return NULL;
     canvas = (*env)->FindClass(env, "java/awt/Canvas");
     if (!canvas || !(*env)->IsInstanceOf(env, obj, canvas)) {
-        mse_logf("mse-v jawt not a Canvas\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt not a Canvas");
         if ((*env)->ExceptionCheck(env))
             (*env)->ExceptionClear(env);
         return NULL;
@@ -677,29 +677,29 @@ void *mse_vt_attach_component(void *envp, void *component)
     memset(&awt, 0, sizeof(awt));
     awt.version = JAWT_VERSION_1_7;
     if (mse_jawt_get_awt(env, &awt) == JNI_FALSE) {
-        mse_logf("mse-v jawt GetAWT failed\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt GetAWT failed");
         return NULL;
     }
     ds = awt.GetDrawingSurface(env, obj);
     if (!ds) {
-        mse_logf("mse-v jawt GetDrawingSurface failed\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt GetDrawingSurface failed");
         return NULL;
     }
     if ((ds->Lock(ds) & JAWT_LOCK_ERROR) != 0) {
-        mse_logf("mse-v jawt Lock failed\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt Lock failed");
         awt.FreeDrawingSurface(ds);
         return NULL;
     }
     dsi = ds->GetDrawingSurfaceInfo(ds);
     if (!dsi || !dsi->platformInfo) {
-        mse_logf("mse-v jawt GetDrawingSurfaceInfo failed\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt GetDrawingSurfaceInfo failed");
         ds->Unlock(ds);
         awt.FreeDrawingSurface(ds);
         return NULL;
     }
     sl = (__bridge id<JAWT_SurfaceLayers>)dsi->platformInfo;
     if (![(NSObject *)sl conformsToProtocol:@protocol(JAWT_SurfaceLayers)]) {
-        mse_logf("mse-v jawt platformInfo is not SurfaceLayers\n");
+        mse_critf(MSE_LOG_WARN, "mse-v jawt platformInfo is not SurfaceLayers");
         ds->FreeDrawingSurfaceInfo(dsi);
         ds->Unlock(ds);
         awt.FreeDrawingSurface(ds);

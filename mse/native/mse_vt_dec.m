@@ -97,7 +97,7 @@ static int vt_create_session(struct MseVtDec *d)
     CFRelease(spec);
     if (st != noErr || !d->session) {
         os_log(vt_oslog(), "mse-v vt-dec create status=%d", (int)st);
-        mse_logf("mse-v vt-dec create status=%d\n", (int)st);
+        mse_critf(MSE_LOG_WARN, "mse-v vt-dec create status=%d", (int)st);
         return -1;
     }
     return 0;
@@ -202,7 +202,7 @@ void *mse_vt_dec_open_vp9(const uint8_t *vpcc, int vpcc_n, int w, int h)
     }
     if (__builtin_available(macOS 11.0, iOS 14.0, *)) {
         VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9);
-        mse_logf("mse-v vt-dec vp9 hw=%d\n",
+        mse_critf(MSE_LOG_INFO, "mse-v vt-dec vp9 hw=%d",
                  (int)VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9));
     }
     d = calloc(1, sizeof(*d));
@@ -235,7 +235,7 @@ void *mse_vt_dec_open_vp9(const uint8_t *vpcc, int vpcc_n, int w, int h)
     CFRelease(ext);
     if (st != noErr || !d->fmt) {
         os_log(vt_oslog(), "mse-v vt-dec vp9 fmt status=%d", (int)st);
-        mse_logf("mse-v vt-dec vp9 fmt status=%d\n", (int)st);
+        mse_critf(MSE_LOG_WARN, "mse-v vt-dec vp9 fmt status=%d", (int)st);
         free(d);
         return NULL;
     }

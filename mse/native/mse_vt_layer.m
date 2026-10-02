@@ -122,7 +122,7 @@ static int mse_copy_try(CVPixelBufferRef pb, uint8_t *dst, int w, int h, const c
         *how = "cg";
         return 0;
     }
-    mse_logf("mse-v still fail fmt=%c%c%c%c %dx%d\n",
+    mse_critf(MSE_LOG_WARN, "mse-v still fail fmt=%c%c%c%c %dx%d",
              (char)(fmt >> 24), (char)(fmt >> 16), (char)(fmt >> 8), (char)fmt, w, h);
     return -1;
 }
@@ -166,7 +166,7 @@ int mse_vt_copy_last(uint8_t *dst, int cap, int *w, int *h)
     mean = mse_rgb_mean(dst, n);
     mse_logf("mse-v still %s %dx%d mean=%d\n", how, tw, th, mean);
     if (mean < 8) {
-        mse_logf("mse-v still black, drop\n");
+        mse_critf(MSE_LOG_WARN, "mse-v still black, drop");
         CFRelease(pb);
         return 0;
     }
@@ -259,7 +259,7 @@ int mse_vt_show(void *p, void *cv_pixel_buffer, int w, int h)
         static int shown;
         if (shown < 3) {
             shown++;
-            mse_logf("mse-v vt-show %dx%d layer=%.0fx%.0f status=%d\n",
+            mse_critf(MSE_LOG_INFO, "mse-v vt-show %dx%d layer=%.0fx%.0f status=%d",
                      w, h, layer.bounds.size.width, layer.bounds.size.height, (int)layer.status);
         }
     }

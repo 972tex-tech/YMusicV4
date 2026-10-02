@@ -398,7 +398,7 @@ function errText(e: unknown): string {
 async function storePlayerConfig(html: string): Promise<void> {
   const cfg = parsePlayerConfig(html);
   if (cfg == null) {
-    console.log("yt session: homepage has no player config");
+    console.info("yt session: homepage has no player config");
     return;
   }
   inMemoryPlayer = cfg;

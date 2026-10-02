@@ -128,7 +128,7 @@ function applyPictureFromResponse(): boolean {
       if (pictureW === iw && pictureH === ih) return false;
       pictureW = iw;
       pictureH = ih;
-      if (MSE_DEBUG) console.log("mse picture " + iw + "x" + ih);
+      console.info("mse picture " + iw + "x" + ih);
       return true;
     }
   }
@@ -897,7 +897,7 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
-    if (MSE_DEBUG) console.log("mse preload " + videoId);
+    console.info("mse preload " + videoId);
     out["ok"] = true;
     return out;
   }

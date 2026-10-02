@@ -357,15 +357,14 @@ export function dropVideoFakeOverlay(): void {
     const sb = bufs[i]!;
     if (audioFlag(sb["mimeType"])) continue;
     if (!sbHasFakeOverlay(sb)) continue;
-    if (MSE_DEBUG)
-      console.log(
-        "mse drop fake-cover follow=" +
-          (sb._fakeFollowAudio ? "1" : "0") +
-          " span=" +
-          sb._fakeStart +
-          ".." +
-          sb._fakeEnd,
-      );
+    console.info(
+      "mse drop fake-cover follow=" +
+        (sb._fakeFollowAudio ? "1" : "0") +
+        " span=" +
+        sb._fakeStart +
+        ".." +
+        sb._fakeEnd,
+    );
     clearFakeOverlay(sb);
     if (sb["updating"]) continue;
     Promise.resolve().then(function () {
@@ -385,7 +384,7 @@ function takeFakeMedia(sb: SourceBuffer, u8: Uint8Array): void {
   if (p.length >= 5 && p[1] === 0x59 && p[2] === 0x4d && p[3] === 0x46) p = p.subarray(1);
   if (p.length < 4 || p[0] !== 0x59 || p[1] !== 0x4d || p[2] !== 0x46) return;
   if (p[3] === 0x30) {
-    if (MSE_DEBUG) console.log("mse append fake-init bytes=" + p.length);
+    console.info("mse append fake-init bytes=" + p.length);
     return;
   }
   if (p[3] === 0x31 && p.length >= 20) {
@@ -416,7 +415,7 @@ function takeFakeMedia(sb: SourceBuffer, u8: Uint8Array): void {
       sb._fakeFollowAudio = true;
       sb._fakeStart = 0;
       sb._fakeEnd = 0;
-      if (MSE_DEBUG) console.log("mse append fake-media live follow-audio");
+      console.info("mse append fake-media live follow-audio");
     }
   }
 }
@@ -841,15 +840,14 @@ function notifySourceOpen(ms: MediaSource): void {
   if (ms["readyState"] === "closed") ms["readyState"] = "open";
   Promise.resolve().then(function () {
     if (ms["readyState"] !== "open" || ms._openFired) {
-      if (MSE_DEBUG)
-        console.log(
-          "mse sourceopen skip rs=" +
-            ms["readyState"] +
-            " fired=" +
-            (ms._openFired ? "1" : "0") +
-            " n=" +
-            ms["sourceBuffers"].length,
-        );
+      console.info(
+        "mse sourceopen skip rs=" +
+          ms["readyState"] +
+          " fired=" +
+          (ms._openFired ? "1" : "0") +
+          " n=" +
+          ms["sourceBuffers"].length,
+      );
       return;
     }
     ms._openFired = true;
@@ -1147,7 +1145,7 @@ class HTMLMediaElement {
     this._rate = s;
     this._tempo = s;
     if (typeof __mseSetSpeed === "function") __mseSetSpeed(s, s);
-    if (MSE_DEBUG) console.log("mse ratechange " + prev + "->" + s);
+    console.info("mse ratechange " + prev + "->" + s);
     fire(this, "ratechange");
   }
 
@@ -1167,7 +1165,7 @@ class HTMLMediaElement {
     if (prev === p) return;
     this._pitch = p;
     if (typeof __mseSetPitch === "function") __mseSetPitch(p);
-    if (MSE_DEBUG) console.log("mse pitch " + prev + "->" + p);
+    console.info("mse pitch " + prev + "->" + p);
   }
 
   get ["currentTime"](): number {
@@ -1194,7 +1192,7 @@ class HTMLMediaElement {
     this["ended"] = false;
     const self = this;
     fire(self, "seeking");
-    if (MSE_DEBUG) console.log("mse currentTime set raw=" + raw + " t=" + t + " prev=" + prev);
+    console.info("mse currentTime set raw=" + raw + " t=" + t + " prev=" + prev);
     __mseSetCurrentTime(t);
     const t0 = Date.now();
     function finishSeek(): void {
@@ -1335,7 +1333,7 @@ export function mseCreateObjectURL(obj: MediaSource | { __id?: number } | null):
   if (rec && rec.__id == null) rec.__id = nextId++;
   const url = "blob:mse/" + String(rec && rec.__id);
   if (rec) blobUrls[url] = rec;
-  if (MSE_DEBUG) console.log("mse createObjectURL " + url);
+  console.info("mse createObjectURL " + url);
   const el = activeMedia;
   /* First load: YouTube may skip video.src. Do not steal a playing
      element — that would detach leftover. Unattached MS stays closed. */
@@ -1419,13 +1417,18 @@ export function setHtmlPlaybackRate(speed: number, tempo: number): void {
 
 /** MSE-only drain line. Do not walk base.js internals. */
 export function dumpDrain(why: string): void {
-  if (!MSE_DEBUG) return;
-  if (why.indexOf("setQuality") < 0 && !isAudioOnly()) return;
+  const quality = why.indexOf("setQuality") >= 0;
+  if (!quality && !MSE_DEBUG) return;
+  if (!quality && !isAudioOnly()) return;
   try {
-    if (MSE_DEBUG) console.log("mse drain " + why + " " + dumpMseDrain());
+    const line = "mse drain " + why + " " + dumpMseDrain();
+    if (quality) console.info(line);
+    else console.log(line);
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
-    if (MSE_DEBUG) console.log("mse drain " + why + " err=" + err.message);
+    const line = "mse drain " + why + " err=" + err.message;
+    if (quality) console.info(line);
+    else if (MSE_DEBUG) console.log(line);
   }
 }
 
