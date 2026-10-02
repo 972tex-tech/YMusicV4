@@ -1,15 +1,18 @@
-// BotGuard remill dump: append-only log lines. Reproduce greps `bg dump` and glues
-// `KIND i/n` chunks. No JSON blob, no in-memory session map.
-// Last SABR POST is kept only until SPS≠1 so that reject can append it.
+// Per-session remill file over cache/put. Each record is prefix + JSON + newline, fire-and-forget.
+// keepCount(4) trims old session keys after close. Payloads are not kept in JS.
 
 import { callHost } from "../../protocol/command";
+import { keepCount, scopedCache } from "../../protocol/cache";
+import { open } from "../../transport";
 import { DESKTOP_UA } from "../yt/session";
 
-const DUMP_CHUNK = 3000;
-let lastSabrUrl = "";
-let lastSabrBody = "";
+const SCOPE = "yt.bg.session";
+const KEEP = 4;
+let dump: Pipe | null = null;
+let writeChain: Promise<void> = Promise.resolve();
+let sessionKey = "";
 let loggedSps = 0;
-let reportedReject = false;
+let dumpFinished = false;
 
 function u8ToB64url(u: Uint8Array): string {
   let s = "";
@@ -32,42 +35,104 @@ function utcStamp(): string {
   );
 }
 
-function logField(kind: string, s: string): void {
-  console.info("bg dump " + kind + " " + s);
+function wait(p: unknown): Promise<void> | void {
+  if (p && typeof (p as Promise<void>).then === "function") return p as Promise<void>;
 }
 
-function logBig(kind: string, s: string): void {
-  if (!s.length) {
-    console.info("bg dump " + kind + " 0/1 ");
+function warn(e: unknown, what: string): void {
+  console.warn("bg dump " + what + " skipped: " + (e instanceof Error ? e.message : String(e)));
+}
+
+function ensureDump(): Pipe | null {
+  if (dump) return dump;
+  sessionKey = utcStamp();
+  try {
+    dump = open("cache/put");
+  } catch (e) {
+    warn(e, "open");
+    return null;
+  }
+  const pipe = dump;
+  writeChain = Promise.resolve(
+    wait(
+      pipe.sink.writeObjectAsJson({
+        "scope": SCOPE,
+        "key": sessionKey,
+        "meta": {},
+      }),
+    ),
+  ).then(
+    function () {},
+    function (e) {
+      warn(e, "head");
+      dump = null;
+    },
+  );
+  return dump;
+}
+
+function writeJsonLine(prefix: string, value: unknown): void {
+  const pipe = ensureDump();
+  if (!pipe) return;
+  writeChain = writeChain
+    .then(function () {
+      return wait(pipe.sink.writeUtf8(prefix, " "));
+    })
+    .then(function () {
+      return wait(pipe.sink.writeObjectAsJson(value));
+    })
+    .then(function () {
+      return wait(pipe.sink.writeUtf8("\n"));
+    })
+    .then(
+      function () {},
+      function (e) {
+        warn(e, "write");
+        dump = null;
+      },
+    );
+}
+
+function finishDump(after?: () => void): void {
+  const pipe = dump;
+  dump = null;
+  if (!pipe) {
+    if (after) after();
     return;
   }
-  const n = Math.ceil(s.length / DUMP_CHUNK);
-  for (let i = 0; i < n; i++) {
-    console.info(
-      "bg dump " + kind + " " + i + "/" + n + " " + s.slice(i * DUMP_CHUNK, (i + 1) * DUMP_CHUNK),
+  writeChain = writeChain
+    .then(function () {
+      return wait(pipe.sink.close());
+    })
+    .then(function () {
+      return pipe.source.readJsonObject();
+    })
+    .then(function () {
+      pipe.source.close();
+      return scopedCache(SCOPE, keepCount(KEEP));
+    })
+    .then(
+      function () {
+        if (after) after();
+      },
+      function (e) {
+        try {
+          pipe.source.close();
+        } catch (_e) {}
+        warn(e, "close");
+        if (after) after();
+      },
     );
-  }
 }
 
-function dumpEntropy(): void {
-  if (typeof __bgEntropyDump === "function") {
-    const ent = __bgEntropyDump();
-    if (typeof ent === "string" && ent.length) logBig("entropy", ent);
-  }
-  const perf = (globalThis as unknown as { performance?: { timeOrigin?: number } }).performance;
-  if (perf && typeof perf.timeOrigin === "number") logField("timeOrigin", String(perf.timeOrigin));
-}
-
-function reportPoReject(sps: number): void {
-  if (reportedReject) return;
-  reportedReject = true;
-  dumpEntropy();
-  if (lastSabrUrl) logBig("sabrUrl", lastSabrUrl);
-  if (lastSabrBody) logBig("sabrBody", lastSabrBody);
+function captureReject(sps: number): void {
+  const key = sessionKey;
   callHost("log/capture", async function (pipe) {
     let p = pipe.sink.writeObjectAsJson({
       "code": "E20088",
       "message": "PO rejected sps=" + sps,
+      "scope": SCOPE,
+      "key": key,
     });
     if (p) await p;
     p = pipe.sink.close();
@@ -75,43 +140,47 @@ function reportPoReject(sps: number): void {
     await pipe.source.readUtf8();
   }).then(
     function () {},
-    function (e: unknown) {
+    function (e) {
       console.warn("bg po-reject report skipped: " + (e instanceof Error ? e.message : String(e)));
     },
   );
 }
 
-export function recordBgChallenge(p: Record<string, unknown>): void {
-  loggedSps = 0;
-  reportedReject = false;
-  lastSabrUrl = "";
-  lastSabrBody = "";
-  logField("sessionKey", utcStamp());
-  logField("ua", DESKTOP_UA);
-  const small = ["eventId", "clientVersion", "globalName", "interpUrl"];
-  for (let i = 0; i < small.length; i++) {
-    const k = small[i]!;
-    const v = p[k];
-    if (typeof v === "string" && v) logField(k, v);
-  }
-  const big = ["program", "snapshot", "integrityToken", "interpJs", "visitorData"];
-  for (let i = 0; i < big.length; i++) {
-    const k = big[i]!;
-    const v = p[k];
-    if (typeof v === "string" && v) logBig(k, v);
-  }
-  dumpEntropy();
+function recordEntropy(): void {
+  if (typeof __bgEntropyDump !== "function") return;
+  const ent = __bgEntropyDump();
+  if (typeof ent === "string" && ent.length) writeJsonLine("entropy", ent);
 }
 
-export function recordBgMint(id: Uint8Array, token: unknown): void {
-  logField("mintId", new TextDecoder().decode(id));
-  if (token instanceof Uint8Array) logBig("pot", u8ToB64url(token));
-  else if (typeof token === "string" && token) logBig("pot", token);
+export function recordBotguardInit(p: Record<string, unknown>): void {
+  loggedSps = 0;
+  dumpFinished = false;
+  dump = null;
+  writeChain = Promise.resolve();
+  p["ua"] = DESKTOP_UA;
+  writeJsonLine("init", p);
+}
+
+export function recordBotguardSnapshot(s: string): void {
+  writeJsonLine("snapshot", s);
+}
+
+export function recordBotguardSnapshotResponse(it: string): void {
+  writeJsonLine("snapshotResponse", it);
+}
+
+export function recordBotguardMint(id: Uint8Array, token: unknown): void {
+  const rec: Record<string, unknown> = { "id": new TextDecoder().decode(id) };
+  if (token instanceof Uint8Array) rec["pot"] = u8ToB64url(token);
+  else if (typeof token === "string") rec["pot"] = token;
+  writeJsonLine("mint", rec);
 }
 
 export function recordSabrForDump(url: string, body: Uint8Array | null): void {
-  lastSabrUrl = url;
-  lastSabrBody = body && body.length ? u8ToB64url(body) : "";
+  writeJsonLine("sabr", {
+    "url": url,
+    "body": body && body.length ? u8ToB64url(body) : "",
+  });
 }
 
 export function noteSps(sps: number): void {
@@ -120,5 +189,15 @@ export function noteSps(sps: number): void {
     loggedSps = sps;
     console.info("bg sps=" + sps);
   }
-  if (sps !== 1) reportPoReject(sps);
+  if (dumpFinished) return;
+  dumpFinished = true;
+  if (sps === 1) {
+    if (typeof __bgEntropyStop === "function") __bgEntropyStop();
+    finishDump();
+  } else {
+    recordEntropy();
+    finishDump(function () {
+      captureReject(sps);
+    });
+  }
 }

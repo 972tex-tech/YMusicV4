@@ -8,10 +8,11 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 
 - **Desktop JVM** — `./gradlew :playground:run`
 
-BotGuard remill dump is append-only log lines (`bg dump KIND …`, big fields as
-`KIND i/n` chunks). Reproduce greps the rotating log and glues chunks. Miller
-steps are `bg interp` / `bg snap` / `bg generateIT` / `bg mint` / `bg sps=N`.
-SPS≠1 appends last SABR + entropy and `log/capture` E20088. Then:
+BotGuard miller steps log at INFO (`bg interp` / `bg snap start` / `bg snap`
+/ `bg generateIT` / `bg mint` / `bg sps=N`). Remill data is a per-session
+`cache/put` file (scope `yt.bg.session`): JSONL `prefix <json>\\n`, fire-and-forget.
+SPS=1 stops entropy and keeps the file (keepCount 4). SPS≠1 appends entropy,
+closes, `log/capture` E20088. Then:
 
 ```
 python3 harness/po_replay.py mill DIR

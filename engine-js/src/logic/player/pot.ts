@@ -6,7 +6,12 @@ import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
-import { recordBgChallenge, recordBgMint } from "./bg_dump";
+import {
+  recordBotguardInit,
+  recordBotguardMint,
+  recordBotguardSnapshot,
+  recordBotguardSnapshotResponse,
+} from "./bg_dump";
 
 const REQUEST_KEY = "O43z0dpjhgX20SCx4KAo";
 const API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw";
@@ -128,6 +133,20 @@ export async function minterFromConfig(
     __bgEntropyBegin();
   }
   console.info("bg interp len=" + out["jsLen"]);
+  const interpUrl = unwrapTru(bg["interpreterUrl"]) || unwrapTru(bg["interpreterSafeUrl"]);
+  const initRec: Record<string, unknown> = {
+    "botguardJsUrl": interpUrl,
+    "eventId": out["eventId"],
+    "visitorData": out["visitorData"],
+    "clientVersion": out["clientVersion"],
+    "globalName": globalName,
+    "program": program,
+  };
+  if (!interpUrl) {
+    const js = unwrapTru(bg["interpreterJavascript"]);
+    if (js) initRec["interpJs"] = js;
+  }
+  recordBotguardInit(initRec);
   const vmA = vm && vm["a"];
   if (typeof vmA !== "function") throw new JsEngineErrorImpl("VM missing " + globalName, "E20074");
 
@@ -184,6 +203,7 @@ export async function minterFromConfig(
     });
 
     out["step"] = "snapshot";
+    console.info("bg snap start");
     botguardResponse = await new Promise(function (resolve, reject) {
       try {
         (asyncSnap as (cb: (r: unknown) => void, args: unknown[]) => void)(
@@ -200,6 +220,7 @@ export async function minterFromConfig(
     out["snapshotPrefix"] =
       typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
     console.info("bg snap len=" + out["snapshotLen"]);
+    if (typeof botguardResponse === "string") recordBotguardSnapshot(botguardResponse);
     out["webPo0"] = typeof webPo[0];
     out["webPoLen"] = webPo.length;
     out["ytGets"] = ytWindowGets();
@@ -231,27 +252,7 @@ export async function minterFromConfig(
   if (typeof integrityToken !== "string" || !integrityToken) {
     throw new JsEngineErrorImpl("Could not get integrity token", "E20074");
   }
-
-  const interpUrl = unwrapTru(bg["interpreterUrl"]) || unwrapTru(bg["interpreterSafeUrl"]);
-  const rec: Record<string, unknown> = {
-    "eventId": out["eventId"],
-    "visitorData": out["visitorData"],
-    "clientVersion": out["clientVersion"],
-    "globalName": globalName,
-    "interpUrl": interpUrl,
-    "program": program,
-    "snapshot": typeof botguardResponse === "string" ? botguardResponse : "",
-    "integrityToken": integrityToken,
-    "programLen": out["programLen"],
-    "jsLen": out["jsLen"],
-    "snapLen": out["snapshotLen"],
-    "itLen": out["integrityTokenLen"],
-  };
-  if (!interpUrl) {
-    const js = unwrapTru(bg["interpreterJavascript"]);
-    if (js) rec["interpJs"] = js;
-  }
-  recordBgChallenge(rec);
+  recordBotguardSnapshotResponse(integrityToken);
 
   out["step"] = "mint";
   let mintCallback = (webPo[0] as (t: Uint8Array) => unknown)(b64ToU8(integrityToken));
@@ -270,7 +271,7 @@ export async function minterFromConfig(
   return function millContentPo(id: Uint8Array) {
     const token = mint(id);
     function done(t: unknown): unknown {
-      recordBgMint(id, t);
+      recordBotguardMint(id, t);
       return t;
     }
     if (token instanceof Uint8Array || typeof token === "string") return done(token);
