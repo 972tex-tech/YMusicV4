@@ -65,10 +65,20 @@
       }
       fetch(src)
         .then(function (r) {
-          if (!r.ok) throw new Error("script " + r.status);
+          if (!r.ok) {
+            if (r.status !== 404) {
+              console.warn("script fetch failed " + src + " script " + r.status);
+            } else {
+              console.log("script fetch failed " + src + " script 404");
+            }
+            scriptResult[src] = { ok: false };
+            fireScript(el, "error");
+            return;
+          }
           return r.text();
         })
         .then(function (body) {
+          if (body == null) return;
           try {
             (0, eval)(body);
           } catch (e) {
@@ -82,7 +92,7 @@
           fireScript(el, "load");
         })
         .catch(function (e) {
-          console.log("script fetch failed " + src + " " + (e && e.message ? e.message : e));
+          console.warn("script fetch failed " + src + " " + (e && e.message ? e.message : e));
           scriptResult[src] = { ok: false };
           fireScript(el, "error");
         });
