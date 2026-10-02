@@ -7,10 +7,12 @@ import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
 import {
+  recordBotguardEntropy,
   recordBotguardInit,
   recordBotguardMint,
   recordBotguardSnapshot,
   recordBotguardSnapshotResponse,
+  setBgDumpExtras,
 } from "./bg_dump";
 
 const REQUEST_KEY = "O43z0dpjhgX20SCx4KAo";
@@ -56,6 +58,30 @@ function absUrl(src: string): string {
   return src;
 }
 
+function overlayReplay(cfg: Record<string, unknown>, extras: Record<string, unknown> | null): void {
+  if (!extras) return;
+  const replay = extras["replayChallenge"];
+  if (typeof replay !== "function") return;
+  const rec = asRec((replay as () => unknown)());
+  if (!rec || typeof rec["program"] !== "string") return;
+  const bg = asRec(cfg["bgChallenge"]) || {};
+  bg["program"] = rec["program"];
+  if (typeof rec["interpreterJavascript"] === "string")
+    bg["interpreterJavascript"] = rec["interpreterJavascript"];
+  if (typeof rec["interpreterUrl"] === "string") bg["interpreterUrl"] = rec["interpreterUrl"];
+  if (typeof rec["globalName"] === "string") bg["globalName"] = rec["globalName"];
+  cfg["bgChallenge"] = bg;
+  const ytcfgData = asRec(cfg["ytcfg"]) || {};
+  if (typeof rec["eventId"] === "string") {
+    cfg["eventId"] = rec["eventId"];
+    ytcfgData["EVENT_ID"] = rec["eventId"];
+  }
+  if (typeof rec["visitorData"] === "string") ytcfgData["VISITOR_DATA"] = rec["visitorData"];
+  if (typeof rec["clientVersion"] === "string")
+    ytcfgData["INNERTUBE_CLIENT_VERSION"] = rec["clientVersion"];
+  cfg["ytcfg"] = ytcfgData;
+}
+
 async function waaJson(url: string, body: string): Promise<{ status: number; json: unknown[] }> {
   const r = await HttpRequest.post(url)
     .headers(waaHeaders())
@@ -75,7 +101,9 @@ export async function minterFromConfig(
   cfg: Record<string, unknown>,
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {
-  __bgEntropyStart();
+  const extras = asRec(__bgEntropyStart());
+  setBgDumpExtras(extras);
+  overlayReplay(cfg, extras);
   const ytcfgData = asRec(cfg["ytcfg"]) || {};
   const eventId = typeof cfg["eventId"] === "string" ? (cfg["eventId"] as string) : "";
   if (eventId && ytcfgData["EVENT_ID"] === undefined) ytcfgData["EVENT_ID"] = eventId;
@@ -105,6 +133,7 @@ export async function minterFromConfig(
   out["step"] = "load";
   let vm = (globalThis as unknown as Record<string, unknown>)[globalName] as
     Record<string, unknown> | undefined;
+  let interpJs = "";
   if (!vm || typeof vm["a"] !== "function") {
     let js = unwrapTru(bg["interpreterJavascript"]);
     let interpUrl = unwrapTru(bg["interpreterUrl"]) || unwrapTru(bg["interpreterSafeUrl"]);
@@ -122,6 +151,7 @@ export async function minterFromConfig(
     }
     if (!js) throw new JsEngineErrorImpl("no interpreter javascript", "E20074");
     if (js.indexOf("//#") === 0) js = js.slice(js.indexOf("\n") + 1);
+    interpJs = js;
     out["jsLen"] = js.length;
     /* After fetch, before eval — miller --preload interp is gone so this matches. */
     __bgEntropyBegin();
@@ -142,10 +172,7 @@ export async function minterFromConfig(
     "globalName": globalName,
     "program": program,
   };
-  if (!interpUrl) {
-    const js = unwrapTru(bg["interpreterJavascript"]);
-    if (js) initRec["interpJs"] = js;
-  }
+  if (interpJs) initRec["interpJs"] = interpJs;
   recordBotguardInit(initRec);
   const vmA = vm && vm["a"];
   if (typeof vmA !== "function") throw new JsEngineErrorImpl("VM missing " + globalName, "E20074");
@@ -238,6 +265,7 @@ export async function minterFromConfig(
       );
   } finally {
     __bgEntropyEnd();
+    recordBotguardEntropy();
   }
 
   out["step"] = "generateIT";

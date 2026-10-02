@@ -215,12 +215,22 @@ function __mseReset() {}
 function __mseAv1Ok() {}
 function __mseVp9Ok() {}
 function __mseAvcMaxLevel() {}
+/** @return {?} */
 function __bgEntropyStart() {}
 function __bgEntropyBegin() {}
 function __bgEntropyEnd() {}
 function __bgEntropyStop() {}
 /** @return {?string} */
 function __bgEntropyDump() {}
+/** @return {?string} */
+function __bgDumpDir() {}
+/**
+ * @param {string} name
+ * @param {string} text
+ */
+function __bgDumpWrite(name, text) {}
+/** @return {?} */
+function __bgReplayChallenge() {}
 
 /**
  * @param {string} data
