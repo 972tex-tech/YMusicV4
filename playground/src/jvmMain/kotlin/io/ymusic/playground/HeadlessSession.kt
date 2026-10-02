@@ -83,6 +83,18 @@ internal class BgCapture(private val parentDir: File) {
                 File(dir(), "console.txt").appendText(message + "\n")
                 putMetaString("mintId", rest.substring("mintId ".length).trim())
             }
+            rest.startsWith("sessionKey ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaString("sessionKey", rest.substring("sessionKey ".length).trim())
+            }
+            rest.startsWith("globalName ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaString("globalName", rest.substring("globalName ".length).trim())
+            }
+            rest.startsWith("ua ") -> {
+                File(dir(), "console.txt").appendText(message + "\n")
+                putMetaString("ua", rest.substring("ua ".length).trim())
+            }
             rest.startsWith("sps ") -> {
                 File(dir(), "console.txt").appendText(message + "\n")
                 val sps = rest.substring("sps ".length).trim()
@@ -270,11 +282,14 @@ internal class StdoutLog private constructor(
         println(line)
         if (message.startsWith("bg dump ")) capture.ingest(message)
         if (!dumpedCookies.get() &&
-            (message.indexOf("PO_REJECTED") >= 0 || message.indexOf("bg dump meta") >= 0)
+            (message.indexOf("PO_REJECTED") >= 0 ||
+                message.indexOf("bg sps=2") >= 0 ||
+                message.indexOf("bg sps=3") >= 0)
         ) {
             if (dumpedCookies.compareAndSet(false, true)) dumpCookieJar()
         }
-        if (message.indexOf("minter GenerateIT") >= 0 ||
+        if (message.indexOf("bg generateIT") >= 0 ||
+            message.indexOf("minter GenerateIT") >= 0 ||
             message.indexOf("owl m ") >= 0 ||
             message.indexOf("SPS=") >= 0 ||
             message.indexOf("bg dump") >= 0 ||

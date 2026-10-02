@@ -8,21 +8,12 @@ One screen (`YtMsePlayerScreen`) on JVM, iOS, and Android. Video paints in a nat
 
 - **Desktop JVM** — `./gradlew :playground:run`
 
-BotGuard reproduce params (program, snapshot, IT, pot, SABR, entropy) go through
-`cache/put` into scope `yt.bg.session` (the engine cache store). Never the logger —
-newlines truncated console dumps. SPS≠1 attaches that blob on `log/capture`.
-Short `bg dump meta {sessionKey, entropyLen, …}` lines stay logs. Remill from
-the cache JSON: `python3 harness/extract_bg_dump.py bg-session.json`. `bg dump`
-lines are DEBUG (`console.log`). Watch for:
+BotGuard remill dump is append-only log lines (`bg dump KIND …`, big fields as
+`KIND i/n` chunks). Reproduce greps the rotating log and glues chunks. Miller
+steps are `bg interp` / `bg snap` / `bg generateIT` / `bg mint` / `bg sps=N`.
+SPS≠1 appends last SABR + entropy and `log/capture` E20088. Then:
 
 ```
-bg dump meta {"why":"sps=3","sessionKey":"…","entropyLen":N,…}
-```
-
-Sentry `log/capture` attaches `bg-session.json`. Then:
-
-```
-python3 harness/extract_bg_dump.py bg-session.json
 python3 harness/po_replay.py mill DIR
 python3 harness/po_replay.py sps DIR
 ```

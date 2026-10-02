@@ -9,7 +9,7 @@ import { debug, debugRun } from "../../debug";
 import { isAudioOnly } from "../player/audio_only";
 import { mhAudioFromPayload } from "./sabr_abr";
 import type { LiveAudioMh } from "./sabr_abr";
-import { dumpBgOnSps, dumpFirstSps, recordSabrForDump } from "../player/bg_dump";
+import { noteSps, recordSabrForDump } from "../player/bg_dump";
 import { dumpDrain } from "../../protocol/mse";
 
 function asU8(body: unknown): Uint8Array | null {
@@ -622,8 +622,7 @@ export function createSabrTee(): SabrTee {
       if (err) line += " SABR_ERROR";
       return line;
     });
-    dumpFirstSps(sps);
-    if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
+    noteSps(sps);
     if (isAudioOnly()) {
       dumpDrain(media > 0 ? "sabr-media" : "sabr-res");
       if (media > 0) {

@@ -1,13 +1,12 @@
 // Headless content-PO minter: homepage ytcfg + ytAtN program (not WAA Create),
 // set window.yt EVENT_ID, load interpreter, snapshot (must read yt.config_.EVENT_ID), GenerateIT, mint.
 
-import { debug } from "../../debug";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
-import { dumpBgParams, recordBgChallenge, recordBgEntropy, recordBgMint } from "./bg_dump";
+import { recordBgChallenge, recordBgMint } from "./bg_dump";
 
 const REQUEST_KEY = "O43z0dpjhgX20SCx4KAo";
 const API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw";
@@ -128,6 +127,7 @@ export async function minterFromConfig(
     out["jsLen"] = 0;
     __bgEntropyBegin();
   }
+  console.info("bg interp len=" + out["jsLen"]);
   const vmA = vm && vm["a"];
   if (typeof vmA !== "function") throw new JsEngineErrorImpl("VM missing " + globalName, "E20074");
 
@@ -199,9 +199,7 @@ export async function minterFromConfig(
     out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
     out["snapshotPrefix"] =
       typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
-    debug(function () {
-      return "mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"];
-    });
+    console.info("bg snap len=" + out["snapshotLen"]);
     out["webPo0"] = typeof webPo[0];
     out["webPoLen"] = webPo.length;
     out["ytGets"] = ytWindowGets();
@@ -229,26 +227,18 @@ export async function minterFromConfig(
   out["integrityTokenLen"] = typeof integrityToken === "string" ? integrityToken.length : 0;
   const itBytes = typeof integrityToken === "string" ? b64ToU8(integrityToken).length : 0;
   out["integrityTokenBytes"] = itBytes;
-  console.info(
-    "minter GenerateIT status=" +
-      git["status"] +
-      " ITstr=" +
-      out["integrityTokenLen"] +
-      " ITbytes=" +
-      itBytes +
-      " snap=" +
-      out["snapshotLen"],
-  );
+  console.info("bg generateIT status=" + git["status"] + " it=" + out["integrityTokenLen"]);
   if (typeof integrityToken !== "string" || !integrityToken) {
     throw new JsEngineErrorImpl("Could not get integrity token", "E20074");
   }
 
-  recordBgChallenge({
+  const interpUrl = unwrapTru(bg["interpreterUrl"]) || unwrapTru(bg["interpreterSafeUrl"]);
+  const rec: Record<string, unknown> = {
     "eventId": out["eventId"],
     "visitorData": out["visitorData"],
     "clientVersion": out["clientVersion"],
     "globalName": globalName,
-    "interpUrl": unwrapTru(bg["interpreterUrl"]) || unwrapTru(bg["interpreterSafeUrl"]),
+    "interpUrl": interpUrl,
     "program": program,
     "snapshot": typeof botguardResponse === "string" ? botguardResponse : "",
     "integrityToken": integrityToken,
@@ -256,13 +246,12 @@ export async function minterFromConfig(
     "jsLen": out["jsLen"],
     "snapLen": out["snapshotLen"],
     "itLen": out["integrityTokenLen"],
-  });
-  if (!unwrapTru(bg["interpreterUrl"]) && !unwrapTru(bg["interpreterSafeUrl"])) {
+  };
+  if (!interpUrl) {
     const js = unwrapTru(bg["interpreterJavascript"]);
-    if (js) recordBgChallenge({ "interpJs": js });
+    if (js) rec["interpJs"] = js;
   }
-  recordBgEntropy();
-  dumpBgParams("mint");
+  recordBgChallenge(rec);
 
   out["step"] = "mint";
   let mintCallback = (webPo[0] as (t: Uint8Array) => unknown)(b64ToU8(integrityToken));
@@ -275,6 +264,7 @@ export async function minterFromConfig(
     mintCallback = await (mintCallback as Promise<unknown>);
   }
   if (typeof mintCallback !== "function") throw new JsEngineErrorImpl("APF:Failed", "E20074");
+  console.info("bg mint");
   const mint = mintCallback as (id: Uint8Array) => unknown;
   /* Wrap: async return of a .then-bearing function is Promise-assimilated to undefined. */
   return function millContentPo(id: Uint8Array) {

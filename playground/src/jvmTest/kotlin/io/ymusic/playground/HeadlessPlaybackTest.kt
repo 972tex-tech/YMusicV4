@@ -90,7 +90,7 @@ class HeadlessPlaybackTest {
             )
             val proof = session.proofFile.takeIf { it.isFile }?.readText() ?: ""
             val minter = proof.lineSequence().firstOrNull {
-                it.contains("minter GenerateIT") || it.contains("owl m")
+                it.contains("bg generateIT") || it.contains("minter GenerateIT") || it.contains("owl m")
             }
             val spsLines = proof.lineSequence().filter { it.contains("SPS=") }.toList()
             val sps3 = spsLines.any { it.contains("SPS=3") }
