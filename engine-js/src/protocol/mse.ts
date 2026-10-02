@@ -612,7 +612,7 @@ class SourceBuffer {
       const audio = audioFlag(this["mimeType"]);
       __mseRemove(audio, start, end);
       drainCalls.remove++;
-      if (MSE_DEBUG) console.log("mse remove a=" + audio + " " + start + ".." + end);
+      console.info("mse remove a=" + audio + " " + start + ".." + end);
     } catch (e) {
       self["updating"] = false;
       throw e;
@@ -631,7 +631,7 @@ class SourceBuffer {
     const audio = audioFlag(this["mimeType"]);
     const wasUpdating = this["updating"];
     drainCalls.abort++;
-    if (MSE_DEBUG) console.log("mse abort a=" + audio + " upd=" + (wasUpdating ? "1" : "0"));
+    console.info("mse abort a=" + audio + " upd=" + (wasUpdating ? "1" : "0"));
     __mseAbort(audio);
     this["updating"] = false;
     /* MSE: abort/updateend only if an update was in progress. Firing updateend while
@@ -729,18 +729,18 @@ class MediaSource {
   static ["isTypeSupported"](mime: string): boolean {
     const m = String(mime).toLowerCase();
     if (chromeRejectsCodec(m)) {
-      if (MSE_DEBUG) console.log("mse isTypeSupported reject codec " + mimeCodec(m));
+      console.info("mse isTypeSupported reject codec " + mimeCodec(m));
       return false;
     }
     if (m.indexOf("av01") >= 0 || m.indexOf("av1.") >= 0) {
       if (typeof __mseAv1Ok === "function" && !__mseAv1Ok()) {
-        if (MSE_DEBUG) console.log("mse isTypeSupported reject av01");
+        console.info("mse isTypeSupported reject av01");
         return false;
       }
     }
     if (m.indexOf("vp9") >= 0 || m.indexOf("vp09") >= 0) {
       if (typeof __mseVp9Ok === "function" && !__mseVp9Ok()) {
-        if (MSE_DEBUG) console.log("mse isTypeSupported reject vp9");
+        console.info("mse isTypeSupported reject vp9");
         return false;
       }
     }
@@ -750,7 +750,7 @@ class MediaSource {
       if (hex && hex.length >= 6) {
         const lvl = parseInt(hex.slice(4, 6), 16);
         if (lvl > __mseAvcMaxLevel()) {
-          if (MSE_DEBUG) console.log("mse isTypeSupported reject avc level " + lvl.toString(16));
+          console.info("mse isTypeSupported reject avc level " + lvl.toString(16));
           return false;
         }
       }
@@ -762,7 +762,7 @@ class MediaSource {
       m.indexOf("video/mp4") === 0 ||
       m === "audio/mpeg";
     if (m.indexOf(".fake") >= 0)
-      if (MSE_DEBUG) console.log("mse isTypeSupported fake " + (ok ? "ok" : "reject") + " " + mime);
+      console.info("mse isTypeSupported fake " + (ok ? "ok" : "reject") + " " + mime);
     return ok;
   }
 
