@@ -53,6 +53,7 @@ kotlin {
             kotlin.srcDir(generateBuildFlags)
             dependencies {
                 api(Libs.Okio.core) // kmpcommon.io: AsyncSource/AsyncSink surface okio's Buffer
+                implementation(Libs.Kotlinx.coroutinesCore) // LoggingWorker channel + IO writer
             }
         }
 

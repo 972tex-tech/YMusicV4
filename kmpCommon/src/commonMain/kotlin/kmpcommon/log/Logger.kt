@@ -9,9 +9,8 @@ package kmpcommon.log
 data class Crumb(val tag: String, val prop: Map<String, Any>? = null)
 
 /**
- * An immutable scope-trail logger the app wires to its platform sink (logcat / stdout / Sentry).
- * Library code logs through it; kmpCommon ships **no implementation** — the app provides one, and a
- * `null` `Logger` means logging is off.
+ * An immutable scope-trail logger the app wires to its platform sink (logcat / stdout / Sentry /
+ * [FileLogger]). Library code logs through it; a `null` `Logger` means logging is off.
  *
  * [fork] snapshots this trail plus one hop and returns a new logger — the trail is the *logical
  * async stack* (AGENTS.md "Logging context"): each layer forks its own hop and hands the child down,
