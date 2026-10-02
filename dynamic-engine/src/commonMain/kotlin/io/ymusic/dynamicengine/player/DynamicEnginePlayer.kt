@@ -17,6 +17,7 @@ import io.ymusic.quickjs.asBufferedSource
 import io.ymusic.settings.SettingsStore
 import kmpcommon.error.CodedError
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
 import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kmphttp.json.JsonReader
@@ -320,14 +321,12 @@ internal expect fun bindNativeMse(runtime: io.ymusic.quickjs.QuickJsRuntime, sur
 fun Logger.bindMseNativeLogs() {
     val mse = fork("mse")
     MseLogBridge.setLogBridge { level, message ->
-        mse.log(
-            when (level) {
-                2 -> Logger.Level.WARN
-                3 -> Logger.Level.ERROR
-                else -> Logger.Level.INFO
-            },
-            message,
-        )
+        when (level) {
+            0 -> mse.debug { message }
+            2 -> mse.log(Logger.Level.WARN, message)
+            3 -> mse.log(Logger.Level.ERROR, message)
+            else -> mse.log(Logger.Level.INFO, message)
+        }
     }
 }
 

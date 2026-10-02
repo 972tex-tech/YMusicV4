@@ -178,7 +178,6 @@ export function recordSabrForDump(url: string, body: Uint8Array | null): void {
 
 /** Lengths + sessionKey only. Payloads live in the cache blob. */
 export function dumpBgParams(why: string): void {
-  if (!BG_DUMP) return;
   const rec: Record<string, unknown> = {
     "why": why,
     "eventId": held["eventId"] || "",
@@ -208,7 +207,6 @@ export function dumpBgParams(why: string): void {
 }
 
 export function dumpFirstSps(sps: number): void {
-  if (!BG_DUMP) return;
   if (sps <= 0) return;
   if (dumpedFirstSps !== 0) return;
   dumpedFirstSps = sps;
@@ -221,7 +219,6 @@ export function dumpBgOnSps(sps: number): void {
   if (sps === 1 || sps <= 0) return;
   recordBgEntropy();
   reportPoReject(sps);
-  if (!BG_DUMP) return;
   if (dumpedSps === sps) return;
   dumpedSps = sps;
   dumpBgParams("sps=" + sps);

@@ -1256,9 +1256,7 @@ void mse_host_pause(MseHost *h)
 static void seek_common(MseHost *h, double seconds)
 {
     double prev;
-#if MSE_DEBUG
-    mse_logf("mse seek t=%.3f\n", seconds);
-#endif
+    mse_logf("mse seek t=%.3f", seconds);
     pthread_mutex_lock(&h->mu);
     prev = h->playing ? 0 : (h->hold < 0 ? 0 : h->hold);
     pthread_mutex_unlock(&h->mu);
@@ -1615,12 +1613,10 @@ int mse_host_append(MseHost *h, int audio, const uint8_t *p, int n, double ts_of
     if (n <= 0)
         return 1;
     r = mse_av_append(h->av, audio, p, n, ts_off, win_start, win_end);
-#if MSE_DEBUG
     mse_logf(
-            "mse append a=%d bytes=%d n=%d init=%d first=%.3f last=%.3f tsOff=%.3f win=%.3g..%.3g clock=%.3f\n",
+            "mse append a=%d bytes=%d n=%d init=%d first=%.3f last=%.3f tsOff=%.3f win=%.3g..%.3g clock=%.3f",
             audio, n, r.n, r.is_init, r.first, r.last, ts_off, win_start, win_end,
             mse_host_current_time(h));
-#endif
     return r.n >= 0 ? 1 : 0;
 }
 

@@ -468,25 +468,24 @@ function buildFakeUmp(
         mediaDataUmp(mediaHid, media),
         mediaEndUmp(mediaHid),
       ];
-  if (MSE_DEBUG)
-    console.log(
-      "mse sabr fake-ump itag=" +
-        row.itag +
-        " lmt=" +
-        row.lmt +
-        " hid=" +
-        (state.live ? String(mediaHid) : initHid + "," + mediaHid) +
-        " startMs=" +
-        startMs +
-        " seq=" +
-        seq +
-        " durMs=" +
-        dur +
-        " playerTimeMs=" +
-        state.playerTimeMs +
-        " buf144End=" +
-        state.buffered144End,
-    );
+  console.log(
+    "mse sabr fake-ump itag=" +
+      row.itag +
+      " lmt=" +
+      row.lmt +
+      " hid=" +
+      (state.live ? String(mediaHid) : initHid + "," + mediaHid) +
+      " startMs=" +
+      startMs +
+      " seq=" +
+      seq +
+      " durMs=" +
+      dur +
+      " playerTimeMs=" +
+      state.playerTimeMs +
+      " buf144End=" +
+      state.buffered144End,
+  );
   return concatU8(parts);
 }
 

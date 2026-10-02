@@ -198,7 +198,7 @@ export async function minterFromConfig(
     out["snapshotLen"] = typeof botguardResponse === "string" ? botguardResponse.length : 0;
     out["snapshotPrefix"] =
       typeof botguardResponse === "string" ? (botguardResponse as string).slice(0, 48) : "";
-    if (BG_DUMP) console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
+    console.log("mill snap " + out["snapshotLen"] + " " + out["snapshotPrefix"]);
     out["webPo0"] = typeof webPo[0];
     out["webPoLen"] = webPo.length;
     out["ytGets"] = ytWindowGets();

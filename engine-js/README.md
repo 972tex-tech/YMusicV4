@@ -33,9 +33,9 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 - **`BACKEND_VERSION`** — the manually-bumped bundle revision, in build.gradle.kts; an esbuild `--define`
   compile-time const — `declare const`, inlined, never a runtime global.
 
-- **`PRODUCTION` / `SABR_DEBUG` / `MSE_DEBUG` / `BG_DUMP`** — same `--define` inlining.
-  `-Pproduction=true` for the shipped bundle (debug gates default off). Without it, the gates
-  default on. Override any one with `-PsabrDebug=true|false` / `-PmseDebug=` / `-PbgDump=`.
+- **Log levels, not compile flags.** `console.log` is DEBUG (`Logger.debug`, stripped by
+  `-Pymusic.debugLogs=false`). `console.info` / `warn` always reach the file. There is no
+  `MSE_DEBUG` / `SABR_DEBUG` / `BG_DUMP` define.
 
 - **Versioning / backward compat** — the host installs the frozen, non-writable `versions` global from C (`{app}`:
   the app version identifies the whole host surface — transport, protocols, app ship as one build) before the

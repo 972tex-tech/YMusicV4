@@ -81,18 +81,6 @@ declare var versions: {
  *  (The host app's version needs no twin: read the `versions.app` global.) */
 declare const BACKEND_VERSION: number;
 
-/** Shipped bundle. esbuild `--define` from `-Pproduction=true`. */
-declare const PRODUCTION: boolean;
-
-/** SABR /videoplayback request+response logging. Default `!PRODUCTION`. */
-declare const SABR_DEBUG: boolean;
-
-/** MSE append/src/create logs. Default `!PRODUCTION`. */
-declare const MSE_DEBUG: boolean;
-
-/** BotGuard miller/SABR/entropy dump. Default `!PRODUCTION`. */
-declare const BG_DUMP: boolean;
-
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 

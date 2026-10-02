@@ -12,8 +12,8 @@ BotGuard reproduce params (program, snapshot, IT, pot, SABR, entropy) go through
 `cache/put` into scope `yt.bg.session` (the engine cache store). Never the logger —
 newlines truncated console dumps. SPS≠1 attaches that blob on `log/capture`.
 Short `bg dump meta {sessionKey, entropyLen, …}` lines stay logs. Remill from
-the cache JSON: `python3 harness/extract_bg_dump.py bg-session.json`. `BG_DUMP`
-defaults on unless `-Pproduction=true`. Watch for:
+the cache JSON: `python3 harness/extract_bg_dump.py bg-session.json`. `bg dump`
+lines are DEBUG (`console.log`). Watch for:
 
 ```
 bg dump meta {"why":"sps=3","sessionKey":"…","entropyLen":N,…}

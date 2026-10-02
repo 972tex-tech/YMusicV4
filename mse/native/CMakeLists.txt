@@ -6,12 +6,6 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Matches engine-js MSE_DEBUG. Default off (shipped). Playground passes -DMSE_DEBUG=ON.
-option(MSE_DEBUG "Verbose MSE protocol logs (append/seek/decoder)" OFF)
-if(MSE_DEBUG)
-  add_compile_definitions(MSE_DEBUG=1)
-endif()
-
 if(NOT DEFINED FFMPEG_ROOT)
   message(FATAL_ERROR "FFMPEG_ROOT must be ffmpeg-build out/<slug> (include/ + shared lib/)")
 endif()

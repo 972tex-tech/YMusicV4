@@ -396,7 +396,7 @@ async function emitWindow(): Promise<void> {
   if (p) await p;
   const f = sink.flush();
   if (f) await f;
-  if (MSE_DEBUG) console.log("caption emit n=" + rows.length);
+  console.log("caption emit n=" + rows.length);
 }
 
 function mediaPaused(): boolean {

@@ -1,4 +1,4 @@
-// SABR /videoplayback debug log (SABR_DEBUG compile define; stripped in prod).
+// SABR /videoplayback debug log (console.log = DEBUG).
 // PO (query pot= + StreamerContext 19.2).
 // clientAbrState: 16 stickyRes (yt-player-quality px), 18/19 viewport, 23 bandwidth,
 // 21 bitrate cap, 13/14 last manual quality, 38 mediaCapabilities, 40 tracks, 72 quality policy.
@@ -445,7 +445,7 @@ function joinU8(parts: Uint8Array[], n: number): Uint8Array {
 /**
  * Scan UMP on the player-read stream without buffering MEDIA_DATA.
  * Production: SPS, SABR_ERROR, FORMAT_INIT itag, MEDIA_HEADER itag.
- * MEDIA_DATA is never buffered. SABR_DEBUG keeps the full ump=[] dump.
+ * MEDIA_DATA is never buffered. DEBUG keeps the full ump=[] dump.
  */
 export interface SabrTee {
   push(chunk: Uint8Array): void;
@@ -516,7 +516,6 @@ export function createSabrTee(): SabrTee {
           (seq != null ? " seq=" + seq : ""),
       );
     }
-    if (!SABR_DEBUG) return;
     const name = UMP_NAME[partId] || String(partId);
     if (partId === 58) {
       parts.push("SPS=" + sps + "(" + spsLabel(sps) + ")");
@@ -574,12 +573,7 @@ export function createSabrTee(): SabrTee {
         partSize = sz.v;
         partRemain = sz.v;
         i = sz.i;
-        needPayload =
-          partId === 58 ||
-          partId === 44 ||
-          partId === 42 ||
-          partId === 20 ||
-          (SABR_DEBUG && partId !== 21);
+        needPayload = partId !== 21;
         pay = [];
         payN = 0;
       }
@@ -599,25 +593,23 @@ export function createSabrTee(): SabrTee {
   }
 
   function finish(_url: string, status: number): void {
-    if (SABR_DEBUG) {
-      if (inPayload || leftover.length) parts.push((UMP_NAME[partId] || String(partId)) + ":trunc");
-      let line =
-        "sabr HTTP " +
-        status +
-        " body=" +
-        bodyN +
-        " ump=[" +
-        parts.join(",") +
-        "]" +
-        " media=" +
-        media +
-        " sps=" +
-        sps;
-      if (mhSeq != null) line += " mhSeq=" + mhSeq;
-      if (sps === 2 || sps === 3) line += " PO_REJECTED";
-      if (err) line += " SABR_ERROR";
-      console.log(line);
-    }
+    if (inPayload || leftover.length) parts.push((UMP_NAME[partId] || String(partId)) + ":trunc");
+    let line =
+      "sabr HTTP " +
+      status +
+      " body=" +
+      bodyN +
+      " ump=[" +
+      parts.join(",") +
+      "]" +
+      " media=" +
+      media +
+      " sps=" +
+      sps;
+    if (mhSeq != null) line += " mhSeq=" + mhSeq;
+    if (sps === 2 || sps === 3) line += " PO_REJECTED";
+    if (err) line += " SABR_ERROR";
+    console.log(line);
     dumpFirstSps(sps);
     if (sps !== 1 && sps > 0) dumpBgOnSps(sps);
     if (isAudioOnly()) {
@@ -662,7 +654,6 @@ export function logSabrRequest(url: string, body?: unknown, status?: number): vo
   if (url.indexOf("/videoplayback") < 0) return;
   const u = asU8(body);
   recordSabrForDump(url, u);
-  if (!SABR_DEBUG) return;
   const q = (url.match(/[?&]pot=([^&]*)/) || [])[1] || "";
   let potB = 0;
   let potB64 = "";

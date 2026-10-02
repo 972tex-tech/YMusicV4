@@ -272,9 +272,8 @@ export function noteSabrPlaybackUrl(url: string): void {
   if (e.sabrUrls.length && e.sabrUrls[e.sabrUrls.length - 1] === url) return;
   e.sabrUrls.push(url);
   e.expires = now() + CACHE_MS;
-  if (SABR_DEBUG)
-    console.log(
-      "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length,
-    );
+  console.log(
+    "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length,
+  );
   if (complete(e)) flush(e, true);
 }

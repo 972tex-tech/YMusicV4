@@ -142,27 +142,25 @@ function logAppend(
   } catch (_e) {
     left = "-";
   }
-  if (MSE_DEBUG) {
-    console.log(
-      "mse append a=" +
-        audio +
-        " bytes=" +
-        bytes +
-        " mime=" +
-        mime +
-        " tsOff=" +
-        tsOff +
-        " win=" +
-        winStart +
-        ".." +
-        winEnd +
-        " leftover=" +
-        left +
-        " br=[" +
-        fmtBr(ranges) +
-        "]",
-    );
-  }
+  console.log(
+    "mse append a=" +
+      audio +
+      " bytes=" +
+      bytes +
+      " mime=" +
+      mime +
+      " tsOff=" +
+      tsOff +
+      " win=" +
+      winStart +
+      ".." +
+      winEnd +
+      " leftover=" +
+      left +
+      " br=[" +
+      fmtBr(ranges) +
+      "]",
+  );
   const leftN = left === "-" ? -1 : +left;
   const hole = left === "-" || !(leftN >= 1000);
   const now = Date.now();
@@ -233,10 +231,9 @@ function fire(
 ): void {
   const list = target._listeners[type];
   if (!list) return;
-  if (MSE_DEBUG && isAudioOnly() && type === "updateend") {
+  if (isAudioOnly() && type === "updateend") {
     const mime = String((target as { ["mimeType"]?: string })["mimeType"] || "");
-    if (MSE_DEBUG)
-      console.log("mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length);
+    console.log("mse evt updateend " + (audioFlag(mime) ? "a" : "v") + " lis=" + list.length);
   }
   const ev: Record<string, unknown> = {
     "type": type,
@@ -400,17 +397,16 @@ function takeFakeMedia(sb: SourceBuffer, u8: Uint8Array): void {
         sb._fakeStart = start;
         sb._fakeEnd = end;
       }
-      if (MSE_DEBUG)
-        console.log(
-          "mse append fake-media " +
-            start +
-            ".." +
-            end +
-            " span=" +
-            sb._fakeStart +
-            ".." +
-            sb._fakeEnd,
-        );
+      console.log(
+        "mse append fake-media " +
+          start +
+          ".." +
+          end +
+          " span=" +
+          sb._fakeStart +
+          ".." +
+          sb._fakeEnd,
+      );
     } else {
       sb._fakeFollowAudio = true;
       sb._fakeStart = 0;
@@ -1418,7 +1414,6 @@ export function setHtmlPlaybackRate(speed: number, tempo: number): void {
 /** MSE-only drain line. Do not walk base.js internals. */
 export function dumpDrain(why: string): void {
   const quality = why.indexOf("setQuality") >= 0;
-  if (!quality && !MSE_DEBUG) return;
   if (!quality && !isAudioOnly()) return;
   try {
     const line = "mse drain " + why + " " + dumpMseDrain();
@@ -1428,7 +1423,7 @@ export function dumpDrain(why: string): void {
     const err = e instanceof Error ? e : new Error(String(e));
     const line = "mse drain " + why + " err=" + err.message;
     if (quality) console.info(line);
-    else if (MSE_DEBUG) console.log(line);
+    else console.log(line);
   }
 }
 

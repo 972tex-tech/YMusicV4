@@ -4,25 +4,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Protocol traces (append/seek/decoder). 0 in shipped builds; cmake -DMSE_DEBUG=ON
-   or -DMSE_DEBUG=1 matches engine-js MSE_DEBUG. */
-#ifndef MSE_DEBUG
-#define MSE_DEBUG 0
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* HH:mm:ss.SSS on stderr. C writes bypass Java System.err. MSE_DEBUG only. */
-void mse_logf(const char *fmt, ...);
-
-/* Logger.Level ordinals: INFO=1 WARN=2 ERROR=3. JNI/Apple hop to MseLogBridge. */
+/* Logger.Level ordinals: DEBUG=0 INFO=1 WARN=2 ERROR=3. JNI/Apple hop to MseLogBridge. */
+#define MSE_LOG_DEBUG 0
 #define MSE_LOG_INFO  1
 #define MSE_LOG_WARN  2
 #define MSE_LOG_ERROR 3
 void mse_set_log_callback(void (*fn)(int level, const char *msg));
-/* Always-on critical line: callback + (MSE_DEBUG) stderr. Never blocks. */
+/* DEBUG: callback only; Kotlin Logger.debug strips when DEBUG_LOGS=false. Never blocks. */
+void mse_logf(const char *fmt, ...);
+/* INFO/WARN/ERROR: always emitted. Never blocks. */
 void mse_critf(int level, const char *fmt, ...);
 
 typedef struct MseAv MseAv;
