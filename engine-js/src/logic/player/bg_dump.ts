@@ -13,6 +13,8 @@ let writeChain: Promise<void> = Promise.resolve();
 let sessionKey = "";
 let loggedSps = 0;
 let dumpFinished = false;
+let lastSabrUrl = "";
+let lastSabrBody = "";
 
 function u8ToB64url(u: Uint8Array): string {
   let s = "";
@@ -157,6 +159,8 @@ export function recordBotguardInit(p: Record<string, unknown>): void {
   dumpFinished = false;
   dump = null;
   writeChain = Promise.resolve();
+  lastSabrUrl = "";
+  lastSabrBody = "";
   p["ua"] = DESKTOP_UA;
   writeJsonLine("init", p);
 }
@@ -177,10 +181,8 @@ export function recordBotguardMint(id: Uint8Array, token: unknown): void {
 }
 
 export function recordSabrForDump(url: string, body: Uint8Array | null): void {
-  writeJsonLine("sabr", {
-    "url": url,
-    "body": body && body.length ? u8ToB64url(body) : "",
-  });
+  lastSabrUrl = url;
+  lastSabrBody = body && body.length ? u8ToB64url(body) : "";
 }
 
 export function noteSps(sps: number): void {
@@ -191,13 +193,16 @@ export function noteSps(sps: number): void {
   }
   if (dumpFinished) return;
   dumpFinished = true;
-  if (sps === 1) {
-    if (typeof __bgEntropyStop === "function") __bgEntropyStop();
-    finishDump();
-  } else {
+  if (sps !== 1) {
+    writeJsonLine("sabr", { "url": lastSabrUrl, "body": lastSabrBody });
     recordEntropy();
+  }
+  lastSabrUrl = "";
+  lastSabrBody = "";
+  if (typeof __bgEntropyStop === "function") __bgEntropyStop();
+  if (sps === 1) finishDump();
+  else
     finishDump(function () {
       captureReject(sps);
     });
-  }
 }

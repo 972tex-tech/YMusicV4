@@ -856,7 +856,10 @@ static void ent_clear(Ent *e)
         return;
     for (i = 0; i < e->n; i++)
         free(e->line[i]);
+    free(e->line);
+    e->line = NULL;
     e->n = 0;
+    e->cap = 0;
 }
 
 /* Install C Date.now / Math.random so BotGuard binds these, not later wrappers.
@@ -944,7 +947,15 @@ static JSValue js_bg_entropy_end(JSContext *ctx, JSValueConst this_val, int argc
 
 static JSValue js_bg_entropy_stop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    return js_bg_entropy_end(ctx, this_val, argc, argv);
+    Ent *e = ent_of(ctx);
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    if (e) {
+        e->rec = 0;
+        ent_clear(e);
+    }
+    return JS_UNDEFINED;
 }
 
 static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -974,6 +985,7 @@ static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int arg
     out[off] = 0;
     s = JS_NewStringLen(ctx, out, off);
     free(out);
+    ent_clear(e);
     return s;
 }
 
