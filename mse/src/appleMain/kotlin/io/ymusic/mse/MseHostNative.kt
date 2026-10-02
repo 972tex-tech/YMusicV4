@@ -17,6 +17,7 @@ import io.ymusic.mse.cinterop.mse_host_set_volume
 import io.ymusic.mse.cinterop.mse_host_video_size
 import io.ymusic.mse.cinterop.mse_host_vtable
 import io.ymusic.mse.cinterop.mse_ios_log
+import io.ymusic.mse.cinterop.mse_set_log_callback
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -41,6 +42,11 @@ actual object MseHostNative {
         mse_host_set_js_event(
             staticCFunction { name ->
                 if (name != null) MseJsEventBridge.fire(name.toKString())
+            },
+        )
+        mse_set_log_callback(
+            staticCFunction { level, msg ->
+                if (msg != null) MseLogBridge.fire(level, msg.toKString())
             },
         )
     }

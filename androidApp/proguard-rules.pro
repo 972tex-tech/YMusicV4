@@ -6,6 +6,7 @@
 
 # mse_host_jni.c FindClass / INSTANCE / fire — C OnEnded hops here.
 -keep class io.ymusic.mse.MseJsEventBridge { *; }
+-keep class io.ymusic.mse.MseLogBridge { *; }
 
 # WebView page JS calls bridge methods through addJavascriptInterface.
 -keepclassmembers class * {

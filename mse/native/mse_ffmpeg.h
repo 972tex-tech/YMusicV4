@@ -14,8 +14,16 @@
 extern "C" {
 #endif
 
-/* HH:mm:ss.SSS on stderr. C writes bypass Java System.err. */
+/* HH:mm:ss.SSS on stderr. C writes bypass Java System.err. MSE_DEBUG only. */
 void mse_logf(const char *fmt, ...);
+
+/* Logger.Level ordinals: INFO=1 WARN=2 ERROR=3. JNI/Apple hop to MseLogBridge. */
+#define MSE_LOG_INFO  1
+#define MSE_LOG_WARN  2
+#define MSE_LOG_ERROR 3
+void mse_set_log_callback(void (*fn)(int level, const char *msg));
+/* Always-on critical line: callback + (MSE_DEBUG) stderr. Never blocks. */
+void mse_critf(int level, const char *fmt, ...);
 
 typedef struct MseAv MseAv;
 

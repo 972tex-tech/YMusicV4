@@ -9,6 +9,7 @@ import io.ymusic.dynamicengine.internal.installMainProxy
 import io.ymusic.dynamicengine.yt.jsonCommand
 import io.ymusic.mse.MseHostNative
 import io.ymusic.mse.MseJsEventBridge
+import io.ymusic.mse.MseLogBridge
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.mse.NativeMseFrame
 import io.ymusic.quickjs.PipeResetException
@@ -300,6 +301,7 @@ class DynamicEnginePlayer private constructor(
                 }
             }
             engine.healthCheck()
+            logger?.bindMseNativeLogs()
             MseJsEventBridge.setJsEventBridge { eventName -> engine.fire(eventName) }
             return DynamicEnginePlayer(engine, nativeMse)
         }
@@ -313,6 +315,21 @@ internal interface NativeMseHost {
 }
 
 internal expect fun bindNativeMse(runtime: io.ymusic.quickjs.QuickJsRuntime, surface: MseVideoSurface): NativeMseHost
+
+/** Process-wide C→Logger hop. Safe to call more than once; last logger wins. */
+fun Logger.bindMseNativeLogs() {
+    val mse = fork("mse")
+    MseLogBridge.setLogBridge { level, message ->
+        mse.log(
+            when (level) {
+                2 -> Logger.Level.WARN
+                3 -> Logger.Level.ERROR
+                else -> Logger.Level.INFO
+            },
+            message,
+        )
+    }
+}
 
 internal class NoMainEngine : Exception("no main engine"), CodedError {
     override val code = "E20078"

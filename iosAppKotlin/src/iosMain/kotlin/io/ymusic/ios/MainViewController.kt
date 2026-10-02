@@ -17,6 +17,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.appleEngineCacheStore
 import io.ymusic.dynamicengine.embeddedEngineJsSource
+import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.fileFetcher
@@ -122,7 +123,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         .toPath()
         .resolve("ymusic-logs")
     val logWorker = LoggingWorker(logDir)
-    val rootLogger = TeeLogger(FileLogger(logWorker), IosLogger())
+    val rootLogger = TeeLogger(FileLogger(logWorker), IosLogger()).also { it.bindMseNativeLogs() }
     val cookies = IosWebViewCookieJar()
     val http = AppHttpClients(
         (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)

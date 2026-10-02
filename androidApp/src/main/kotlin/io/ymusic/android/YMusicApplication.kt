@@ -31,6 +31,7 @@ import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.androidEngineCacheStore
+import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.defaultMemoryCacheBudget
@@ -138,6 +139,7 @@ class YMusicApplication : Application() {
     /** The app's root logger: file + Sentry (no-op until Sentry.init) teed with logcat. */
     val rootLogger: Logger by lazy {
         TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(logWorker), LogcatLogger()))
+            .also { it.bindMseNativeLogs() }
     }
 
     /** Escaped coroutine failures are still one job dying — capture, don't crash the process. */

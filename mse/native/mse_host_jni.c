@@ -1,4 +1,5 @@
 #include "mse_host.h"
+#include "mse_ffmpeg.h"
 
 #include <jni.h>
 #include <limits.h>
@@ -20,6 +21,8 @@ typedef struct {
 static JavaVM *g_jvm;
 static jobject g_js_bridge;
 static jmethodID g_js_fire;
+static jobject g_log_bridge;
+static jmethodID g_log_fire;
 
 static void jni_js_event(const char *name)
 {
@@ -72,6 +75,59 @@ static void register_js_event(JNIEnv *env)
         return;
     }
     mse_host_set_js_event(jni_js_event);
+}
+
+static void jni_log(int level, const char *msg)
+{
+    JNIEnv *env = NULL;
+    jstring js;
+    if (!g_jvm || !g_log_bridge || !g_log_fire || !msg)
+        return;
+    if ((*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
+        if ((*g_jvm)->AttachCurrentThread(g_jvm, (void **)&env, NULL) != JNI_OK)
+            return;
+    }
+    if (!env)
+        return;
+    js = (*env)->NewStringUTF(env, msg);
+    if (!js)
+        return;
+    (*env)->CallVoidMethod(env, g_log_bridge, g_log_fire, (jint)level, js);
+    (*env)->DeleteLocalRef(env, js);
+    if ((*env)->ExceptionCheck(env))
+        (*env)->ExceptionClear(env);
+}
+
+static void register_log(JNIEnv *env)
+{
+    jclass cls;
+    jfieldID inst;
+    jobject obj;
+    if (g_log_bridge)
+        return;
+    cls = (*env)->FindClass(env, "io/ymusic/mse/MseLogBridge");
+    if (!cls)
+        return;
+    inst = (*env)->GetStaticFieldID(env, cls, "INSTANCE", "Lio/ymusic/mse/MseLogBridge;");
+    if (!inst) {
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    obj = (*env)->GetStaticObjectField(env, cls, inst);
+    if (!obj) {
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    g_log_bridge = (*env)->NewGlobalRef(env, obj);
+    g_log_fire = (*env)->GetMethodID(env, cls, "fire", "(ILjava/lang/String;)V");
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, obj);
+    if (!g_log_fire) {
+        (*env)->DeleteGlobalRef(env, g_log_bridge);
+        g_log_bridge = NULL;
+        return;
+    }
+    mse_set_log_callback(jni_log);
 }
 
 static JNIEnv *sink_env(JniSink *s)
@@ -162,6 +218,18 @@ static void on_prog(void *user, double pos, double dur, int w, int h)
     (*env)->CallVoidMethod(env, s->sink, s->onProgress, pos, dur, w, h);
 }
 
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
+{
+    JNIEnv *env = NULL;
+    (void)reserved;
+    g_jvm = vm;
+    if ((*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6) != JNI_OK)
+        return JNI_ERR;
+    register_js_event(env);
+    register_log(env);
+    return JNI_VERSION_1_6;
+}
+
 JNIEXPORT jlong JNICALL
 Java_io_ymusic_mse_MseHostNative_vtable(JNIEnv *env, jclass cls)
 {
@@ -176,6 +244,7 @@ Java_io_ymusic_mse_MseHostNative_create(JNIEnv *env, jclass cls)
     (void)cls;
     (*env)->GetJavaVM(env, &g_jvm);
     register_js_event(env);
+    register_log(env);
     return (jlong)(intptr_t)mse_host_create();
 }
 

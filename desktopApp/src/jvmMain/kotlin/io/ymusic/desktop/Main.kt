@@ -75,6 +75,7 @@ import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.desktopEngineCacheStore
+import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.ImageLoader
@@ -188,6 +189,7 @@ private val logWorker = LoggingWorker(File(ymusicDataDir(), "logs").absolutePath
 // File + Sentry (no-op when Sentry wasn't initialized) teed with stdout.
 private val rootLogger: Logger =
     TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(logWorker), StdoutLogger()))
+        .also { it.bindMseNativeLogs() }
 
 /** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */
 @Volatile private var autoDownloadUpdates: Boolean = false

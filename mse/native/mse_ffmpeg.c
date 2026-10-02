@@ -268,6 +268,24 @@ static int coded_is_rap(const MseAv *a, const Cf *c)
     return c->key;
 }
 
+static void (*g_log_cb)(int level, const char *msg);
+
+static void mse_emit(int level, char *msg)
+{
+    size_t n;
+    void (*fn)(int, const char *);
+    if (!msg)
+        return;
+    n = strlen(msg);
+    while (n && (msg[n - 1] == '\n' || msg[n - 1] == '\r'))
+        msg[--n] = 0;
+    if (!n)
+        return;
+    fn = g_log_cb;
+    if (fn)
+        fn(level, msg);
+}
+
 #ifdef __APPLE__
 static os_log_t mse_oslog(void)
 {
@@ -284,11 +302,13 @@ static void mse_oslog_line(os_log_type_t type, const char *msg)
 {
     os_log_with_type(mse_oslog(), type, "%{public}s", msg);
 }
+#endif
 
 static void mse_av_log(void *ptr, int level, const char *fmt, va_list vl)
 {
     if (level <= AV_LOG_ERROR) {
         char buf[512];
+        char line[528];
         va_list copy;
         size_t n;
         va_copy(copy, vl);
@@ -297,6 +317,7 @@ static void mse_av_log(void *ptr, int level, const char *fmt, va_list vl)
         n = strlen(buf);
         while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
             buf[--n] = 0;
+#ifdef __APPLE__
         os_log_with_type(mse_oslog(), OS_LOG_TYPE_ERROR, "ffmpeg %{public}s", buf);
         if (fmt && strstr(fmt, "hwaccel initialisation returned error")) {
             AVCodecContext *ctx = ptr;
@@ -304,10 +325,25 @@ static void mse_av_log(void *ptr, int level, const char *fmt, va_list vl)
             if (a && ctx->codec_id)
                 a->vt_fail_id = ctx->codec_id;
         }
-    }
-    av_log_default_callback(ptr, level, fmt, vl);
-}
 #endif
+        snprintf(line, sizeof(line), "ffmpeg %s", buf);
+        mse_emit(MSE_LOG_WARN, line);
+    }
+#if MSE_DEBUG
+    av_log_default_callback(ptr, level, fmt, vl);
+#else
+    (void)ptr;
+    (void)fmt;
+    (void)vl;
+#endif
+}
+
+void mse_set_log_callback(void (*fn)(int level, const char *msg))
+{
+    g_log_cb = fn;
+    av_log_set_level(AV_LOG_ERROR);
+    av_log_set_callback(mse_av_log);
+}
 
 void mse_logf(const char *fmt, ...)
 {
@@ -338,6 +374,19 @@ void mse_logf(const char *fmt, ...)
 #endif
 }
 
+void mse_critf(int level, const char *fmt, ...)
+{
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    mse_emit(level, buf);
+#if MSE_DEBUG
+    mse_logf("%s\n", buf);
+#endif
+}
+
 static void vlog(const char *fmt, ...)
 {
 #if MSE_DEBUG
@@ -355,14 +404,12 @@ static void vlog(const char *fmt, ...)
 #endif
 }
 
-#if MSE_DEBUG
 static double now_ms(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
 }
-#endif
 
 static int vdbg_ok(void)
 {
@@ -414,6 +461,16 @@ static size_t vf_send_rd(const MseAv *a)
     return rd;
 }
 
+static void vlog_hold_far(const char *why, double clock, double extra)
+{
+    static double last;
+    double now = now_ms();
+    if (now - last < 1000.0)
+        return;
+    last = now;
+    mse_critf(MSE_LOG_INFO, "mse-v %s clock=%.3f extra=%.3f", why, clock, extra);
+}
+
 static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
 {
     double nxt = a->vf.f[rd].pts;
@@ -421,7 +478,20 @@ static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
         return;
     a->starve_log_pts = nxt;
     a->starve_log_clock = clock;
+    mse_critf(MSE_LOG_INFO, "mse-v starve-ahead clock=%.3f extra=%.3f vf=%zu/%zu next=%.3f",
+              clock, nxt - clock, rd, a->vf.n, nxt);
     vlog_state(a, clock, "starve-ahead", nxt - clock);
+}
+
+static void vlog_starve_empty(MseAv *a, double clock, double extra)
+{
+    static double last_empty;
+    double now = now_ms();
+    if (now - last_empty <= 1000.0)
+        return;
+    last_empty = now;
+    mse_critf(MSE_LOG_INFO, "mse-v starve-empty clock=%.3f vf=%zu", clock, a->vf.n);
+    vlog_state(a, clock, "starve-empty", extra);
 }
 
 static int cf_cmp(const void *a, const void *b)
@@ -1121,13 +1191,14 @@ static int mc_open(MseAv *a)
         return -1;
     mime = mc_mime(a->vpar->codec_id);
     if (!mime) {
-        vlog("mediacodec no mime codec_id=%d", (int)a->vpar->codec_id);
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec no mime codec_id=%d", (int)a->vpar->codec_id);
         return -1;
     }
     mc_close(a);
     a->mc = AMediaCodec_createDecoderByType(mime);
     if (!a->mc) {
-        vlog("mediacodec createDecoderByType %s failed codec_id=%d", mime, (int)a->vpar->codec_id);
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec createDecoderByType %s failed codec_id=%d",
+                  mime, (int)a->vpar->codec_id);
         return -1;
     }
     fmt = AMediaFormat_new();
@@ -1145,13 +1216,14 @@ static int mc_open(MseAv *a)
     st = AMediaCodec_configure(a->mc, fmt, a->mc_win, NULL, 0);
     AMediaFormat_delete(fmt);
     if (st != AMEDIA_OK) {
-        vlog("mediacodec configure %s %dx%d fail=%d", mime, w, h, (int)st);
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec configure %s %dx%d fail=%d", mime, w, h,
+                  (int)st);
         mc_close(a);
         return -1;
     }
     st = AMediaCodec_start(a->mc);
     if (st != AMEDIA_OK) {
-        vlog("mediacodec start fail=%d", (int)st);
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec start fail=%d", (int)st);
         mc_close(a);
         return -1;
     }
@@ -1378,6 +1450,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         double p = (a->mc_hold_pts_us + a->mc_pts0) / 1e6;
         double d = p - clock;
         if (p > clock + early) {
+            if (d > 0.2)
+                vlog_hold_far("HOLD-FAR", clock, d);
             if (vdbg_ok() || d > 0.2)
                 vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             return 0;
@@ -1409,6 +1483,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 a->mc_hold = 1;
                 a->mc_hold_ix = (int)ox;
                 a->mc_hold_pts_us = info.presentationTimeUs;
+                if (d > 0.2)
+                    vlog_hold_far("RECV-HOLD-FAR", clock, d);
                 if (vdbg_ok() || d > 0.2)
                     vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 return 0;
@@ -1485,12 +1561,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             if (a->vf.rd != rd0)
                 vlog_state(a, clock, "rap-skip", a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
             if (a->vf.rd >= a->vf.n) {
-                static double last_empty;
-                double now = now_ms();
-                if (now - last_empty > 1000) {
-                    last_empty = now;
-                    vlog_state(a, clock, "starve-empty", 0);
-                }
+                vlog_starve_empty(a, clock, 0);
                 break;
             }
             if (a->vf.f[a->vf.rd].pts > clock + mc_send_ahead(a)) {
@@ -1503,7 +1574,8 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                 size_t sent_rd = a->vf.rd;
                 sr = mc_send_one(a);
                 if (sr < 0) {
-                    vlog("mediacodec send-err pts=%.3f key=%d r=%d", sp, key, sr);
+                    mse_critf(MSE_LOG_WARN, "mse-v mediacodec send-err pts=%.3f key=%d r=%d",
+                              sp, key, sr);
                     a->need_rap[0] = 1;
                     continue;
                 }
@@ -1529,7 +1601,7 @@ static int mc_try_open(MseAv *a)
         return 0;
     if (mc_open(a) < 0) {
         a->mc_fail = 1;
-        vlog("mediacodec unavailable, software blit");
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec unavailable, software blit");
         return -1;
     }
     if (a->vdec) {
@@ -1724,7 +1796,7 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         static int logged_id;
         if (logged_id != (int)par->codec_id) {
             logged_id = (int)par->codec_id;
-            vlog("no decoder id=%d", (int)par->codec_id);
+            mse_critf(MSE_LOG_WARN, "mse-v no decoder id=%d", (int)par->codec_id);
         }
         return -1;
     }
@@ -1791,7 +1863,8 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
                 goto opened;
         }
 #endif
-        vlog("open decoder fail id=%d %s", (int)par->codec_id, codec->name);
+        mse_critf(MSE_LOG_WARN, "mse-v open decoder fail id=%d %s", (int)par->codec_id,
+                  codec->name);
         avcodec_free_context(ctxp);
         return -1;
     }
@@ -1968,9 +2041,7 @@ MseAv *mse_av_create(void)
     a->need_rap[0] = 1;
     a->need_rap[1] = 1;
     av_log_set_level(AV_LOG_ERROR);
-#ifdef __APPLE__
     av_log_set_callback(mse_av_log);
-#endif
     {
         /* Alder Lake E-cores have no AVX-512. ffmpeg probes on a P-core then
            a decode worker SIGILLs (log16 leave-audio, crash thread already
@@ -2764,7 +2835,7 @@ void mse_av_rest_video(MseAv *a, int on, double clock)
         if (a->vf.rd < a->vf.n)
             a->v_sent = a->vf.f[a->vf.rd].pts;
     }
-    vlog("rest-video %d vf=%zu clock=%.3f", on, a->vf.n, clock);
+    mse_critf(MSE_LOG_INFO, "mse-v rest-video %d vf=%zu clock=%.3f", on, a->vf.n, clock);
     pthread_mutex_unlock(&a->mu);
 }
 
@@ -3577,17 +3648,17 @@ static void video_decode_error(MseAv *a, double pts, int err)
 #ifdef __APPLE__
     if (a->vdec && a->vdec->hw_device_ctx) {
         a->vt_fail_id = a->vdec->codec_id;
-        vlog("vt-fail software id=%d", (int)a->vt_fail_id);
+        mse_critf(MSE_LOG_WARN, "mse-v vt-fail software id=%d", (int)a->vt_fail_id);
     } else if (a->vdec && err == AVERROR(ENOSYS)) {
         /* Software `av1` send() is ENOSYS without libdav1d. Do not reopen.
            dav1d Invalid OBU after rest is a missing key, not ENOSYS. */
         a->vt_fail_id = a->vdec->codec_id;
-        vlog("decode-dead id=%d t=%.3f", (int)a->vt_fail_id, pts);
+        mse_critf(MSE_LOG_WARN, "mse-v decode-dead id=%d t=%.3f", (int)a->vt_fail_id, pts);
         close_video_decoder(a);
         return;
     }
 #endif
-    vlog("decode-err close-reopen t=%.3f", pts);
+    mse_critf(MSE_LOG_WARN, "mse-v decode-err close-reopen t=%.3f", pts);
     close_video_decoder(a);
     if (a->vpar)
         open_decoder(a, 1, a->vpar);
@@ -3846,6 +3917,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         double p = a->vhold->pts != AV_NOPTS_VALUE ? a->vhold->pts / 1000.0 : clock;
         double d = p - clock;
         if (p > clock + early) {
+            if (d > 0.2)
+                vlog_hold_far("HOLD-FAR", clock, d);
             if (vdbg_ok() || d > 0.2)
                 vlog_state(a, clock, d > 0.2 ? "HOLD-FAR" : "hold", d);
             pthread_mutex_unlock(&a->mu);
@@ -3885,6 +3958,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             double d = p - clock;
             if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
                 a->vhold = frame;
+                if (d > 0.2)
+                    vlog_hold_far("RECV-HOLD-FAR", clock, d);
                 if (vdbg_ok() || d > 0.2)
                     vlog_state(a, clock, d > 0.2 ? "RECV-HOLD-FAR" : "recv-hold", d);
                 pthread_mutex_unlock(&a->mu);
@@ -3938,12 +4013,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         if (vf_skip_stale(a, clock))
             break;
         if (a->vf.rd >= a->vf.n) {
-            static double last_empty;
-            double now = now_ms();
-            if (now - last_empty > 1000) {
-                last_empty = now;
-                vlog_state(a, clock, "starve-empty", got);
-            }
+            vlog_starve_empty(a, clock, got);
             break;
         }
         if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {
@@ -3958,7 +4028,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             if (sr < 0) {
                 char err[64];
                 av_strerror(sr, err, sizeof(err));
-                vlog("send-err pts=%.3f key=%d r=%d %s", sp, key, sr, err);
+                mse_critf(MSE_LOG_WARN, "mse-v send-err pts=%.3f key=%d r=%d %s", sp, key, sr,
+                          err);
                 vlog_state(a, clock, "send-fail", sp);
                 /* Split VP9 superframes without a BSF are INVALIDDATA on
                    their own — drop this packet, keep the GOP. */

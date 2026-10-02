@@ -53,6 +53,11 @@ void mse_host_set_js_event(void (*fn)(const char *name))
     (void)fn;
 }
 
+void mse_set_log_callback(void (*fn)(int level, const char *msg))
+{
+    (void)fn;
+}
+
 void mse_ios_log(const char *msg)
 {
     (void)msg;

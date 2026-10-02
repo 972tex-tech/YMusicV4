@@ -17,6 +17,10 @@
 -keep class io.ymusic.quickjs.QuickJsNative { *; }
 -keep class io.ymusic.quickjs.QuickJsException { <init>(java.lang.String); }
 
+# mse_host_jni.c FindClass / INSTANCE / fire
+-keep class io.ymusic.mse.MseJsEventBridge { *; }
+-keep class io.ymusic.mse.MseLogBridge { *; }
+
 # androidx.annotation.Keep — same contract as Android. Annotate JNI/reflection
 # entry points; do not keep whole classes. NativeMseSink.onProgress is a no-op
 # GetMethodID looks up by name (mse_host_jni.c / file_av_jni.c).

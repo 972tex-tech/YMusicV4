@@ -4,7 +4,6 @@
 
 #include <limits.h>
 #include <pthread.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -641,7 +640,7 @@ static void maybe_notify_ended(MseHost *h)
     fn = g_js_event;
     if (fn)
         fn("mse_ended");
-    mse_logf("mse ended notify\n");
+    mse_critf(MSE_LOG_INFO, "mse ended notify");
 }
 
 static void *vid_loop(void *arg)
@@ -1579,7 +1578,7 @@ static void mse_quota_caps(size_t *audio, size_t *video)
         v = 150 * MSE_MIB;
     }
     once = 1;
-    mse_logf("mse quota class ram=%zuMiB audio=%zu video=%zu\n", mib, a, v);
+    mse_critf(MSE_LOG_INFO, "mse quota class ram=%zuMiB audio=%zu video=%zu", mib, a, v);
     *audio = a;
     *video = v;
 }
@@ -1603,8 +1602,8 @@ int mse_host_prepare_append(MseHost *h, int audio, int n)
     have = mse_av_leftover_bytes(h->av, audio);
     if (have + (size_t)n <= cap)
         return 1;
-    mse_logf("mse quota a=%d have=%zu need=%d cap=%zu clock=%.3f\n", audio, have, n, cap,
-             t);
+    mse_critf(MSE_LOG_WARN, "mse quota a=%d have=%zu need=%d cap=%zu clock=%.3f", audio, have, n,
+              cap, t);
     return 0;
 }
 
@@ -1835,10 +1834,10 @@ void mse_ios_log(const char *msg)
 {
     if (!msg)
         return;
+    mse_critf(MSE_LOG_INFO, "%s", msg);
 #ifdef __APPLE__
     os_log_with_type(os_log_create("com.ymusic.mse", "v"), OS_LOG_TYPE_INFO, "%{public}s", msg);
 #endif
-    fprintf(stderr, "%s\n", msg);
 }
 
 #ifdef __APPLE__

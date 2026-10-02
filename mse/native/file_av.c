@@ -1,5 +1,6 @@
 #include "file_av.h"
 #include "audio_fx.h"
+#include "mse_ffmpeg.h"
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -317,8 +318,8 @@ static AVCodecContext *open_codec(AVStream *st, int video)
         return NULL;
     }
     if (video)
-        mse_logf("file-av open %s %dx%d vt=%d\n", c->name, ctx->width, ctx->height,
-                 ctx->hw_device_ctx ? 1 : 0);
+        mse_critf(MSE_LOG_INFO, "file-av open %s %dx%d vt=%d", c->name, ctx->width, ctx->height,
+                  ctx->hw_device_ctx ? 1 : 0);
     return ctx;
 }
 
@@ -1591,7 +1592,7 @@ static int pump_video(FileAv *p, double clock)
             break;
         if (p->logged_drop < 8) {
             p->logged_drop++;
-            mse_logf("file-av drop-stale pts=%.3f clock=%.3f\n", pts, clock);
+            mse_critf(MSE_LOG_INFO, "file-av drop-stale pts=%.3f clock=%.3f", pts, clock);
         }
         vout_pop(p);
         drops++;
@@ -2188,7 +2189,7 @@ void file_av_set_blit_size(FileAv *p, int w, int h)
     p->blit_w = nw;
     p->blit_h = nh;
     pthread_mutex_unlock(&p->mu);
-    mse_logf("file-av blit-size %dx%d\n", nw, nh);
+    mse_critf(MSE_LOG_INFO, "file-av blit-size %dx%d", nw, nh);
 }
 
 #ifdef __APPLE__
