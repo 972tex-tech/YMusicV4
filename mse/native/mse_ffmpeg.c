@@ -75,6 +75,9 @@ struct MseAv {
     int swr_rate;
     int swr_ch;
     int swr_fmt;
+    uint8_t *pcm;
+    size_t pcm_n;
+    AVFrame *afr;
     struct SwsContext *sws;
     uint8_t *sws_pad;
     size_t sws_pad_n;
@@ -100,6 +103,7 @@ struct MseAv {
     int v_reopen;
     double starve_log_pts;
     double starve_log_clock;
+    AVFrame *vfr;
     AVFrame *vhold;
     AVBSFContext *vbsf;
     AVCodecParameters *vpar;
@@ -2066,6 +2070,9 @@ void mse_av_destroy(MseAv *a)
     if (a->sws)
         sws_freeContext(a->sws);
     free(a->sws_pad);
+    free(a->pcm);
+    av_frame_free(&a->afr);
+    av_frame_free(&a->vfr);
     av_frame_free(&a->hw_sw);
 #ifdef __APPLE__
     mse_vt_blit_free(&a->vt_blit);
@@ -3308,6 +3315,19 @@ static uint8_t *sws_scratch(MseAv *a, size_t n)
     return p;
 }
 
+static uint8_t *pcm_scratch(MseAv *a, size_t n)
+{
+    uint8_t *p;
+    if (a->pcm && a->pcm_n >= n)
+        return a->pcm;
+    p = realloc(a->pcm, n);
+    if (!p)
+        return NULL;
+    a->pcm = p;
+    a->pcm_n = n;
+    return p;
+}
+
 static uint8_t *bgra_pool(MseAv *a, int w, int h)
 {
     int i = a->bgra_i ^ 1;
@@ -3913,11 +3933,14 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             av_frame_free(&a->vhold);
         }
     }
-    frame = av_frame_alloc();
-    if (!frame) {
-        pthread_mutex_unlock(&a->mu);
-        return -1;
+    if (!a->vfr) {
+        a->vfr = av_frame_alloc();
+        if (!a->vfr) {
+            pthread_mutex_unlock(&a->mu);
+            return -1;
+        }
     }
+    frame = a->vfr;
     {
     int late_skips = 0;
     for (i = 0; i < 96; i++) {
@@ -3928,7 +3951,16 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : clock;
             double d = p - clock;
             if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
-                a->vhold = frame;
+                if (!a->vhold) {
+                    a->vhold = av_frame_alloc();
+                    if (!a->vhold) {
+                        pthread_mutex_unlock(&a->mu);
+                        return -1;
+                    }
+                } else {
+                    av_frame_unref(a->vhold);
+                }
+                av_frame_move_ref(a->vhold, frame);
                 if (d > 0.2)
                     vlog_hold_far("RECV-HOLD-FAR", clock, d);
                 if (vdbg_ok() || d > 0.2)
@@ -3961,7 +3993,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
             a->show_late = 0;
             if (vdbg_ok())
                 vlog_state(a, clock, "show", d);
-            av_frame_free(&frame);
+            av_frame_unref(frame);
             pthread_mutex_unlock(&a->mu);
             return 1;
         }
@@ -4021,7 +4053,7 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         }
     }
     }
-    av_frame_free(&frame);
+    av_frame_unref(frame);
     pthread_mutex_unlock(&a->mu);
     return 0;
 }
@@ -4042,11 +4074,14 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
         av_unlock(a, 1);
         return 0;
     }
-    frame = av_frame_alloc();
-    if (!frame) {
-        av_unlock(a, 1);
-        return -1;
+    if (!a->afr) {
+        a->afr = av_frame_alloc();
+        if (!a->afr) {
+            av_unlock(a, 1);
+            return -1;
+        }
     }
+    frame = a->afr;
     got = 1;
     {
         int i;
@@ -4074,7 +4109,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
         }
     }
     if (got != 0) {
-        av_frame_free(&frame);
+        av_frame_unref(frame);
         av_unlock(a, 1);
         return 0;
     }
@@ -4096,7 +4131,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
                                     rate, 0, NULL) < 0 ||
                 swr_init(a->swr) < 0) {
                 av_channel_layout_uninit(&out_ch);
-                av_frame_free(&frame);
+                av_frame_unref(frame);
                 av_unlock(a, 1);
                 return -1;
             }
@@ -4109,9 +4144,9 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     max_out = (int)swr_get_out_samples(a->swr, frame->nb_samples) + 256;
     if (max_out < 0)
         max_out = frame->nb_samples + 256;
-    tmp = malloc((size_t)max_out * (size_t)a->channels * 2);
+    tmp = pcm_scratch(a, (size_t)max_out * (size_t)a->channels * 2);
     if (!tmp) {
-        av_frame_free(&frame);
+        av_frame_unref(frame);
         av_unlock(a, 1);
         return -1;
     }
@@ -4119,9 +4154,8 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     got = swr_convert(a->swr, dsts, max_out,
                       (const uint8_t **)frame->extended_data, frame->nb_samples);
     *pts = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : clock;
-    av_frame_free(&frame);
+    av_frame_unref(frame);
     if (got <= 0) {
-        free(tmp);
         av_unlock(a, 1);
         return 0;
     }

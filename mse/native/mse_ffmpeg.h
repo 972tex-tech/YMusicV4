@@ -73,7 +73,8 @@ void mse_av_set_blit_size(MseAv *a, int w, int h);
 /* 1 = frame, 0 = none yet, -1 = error. *bgra is borrowed from MseAv (do not
  * free). Android MediaCodec / Apple VT layer return 1 with *bgra == NULL. */
 int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, double *pts);
-/* 1 = pcm, 0 = none. *s16 is interleaved S16, caller free()s. */
+/* 1 = pcm, 0 = none. *s16 is interleaved S16, borrowed until the next
+ * pull_audio or destroy (do not free). */
 int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *rate, int *ch, double *pts);
 
 double mse_av_duration(MseAv *a);

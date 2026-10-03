@@ -98,6 +98,10 @@ struct FileAv {
     SwrContext *swr;
     SwrContext *swr_speed;
     double swr_speed_in;
+    uint8_t *pcm;
+    size_t pcm_n;
+    uint8_t *pcm2;
+    size_t pcm2_n;
     struct SwsContext *sws;
     int sws_dw, sws_dh, sws_sw, sws_sh, sws_fmt;
     uint8_t *bgra;
@@ -187,6 +191,19 @@ static int pq_push(Pq *q, AVPacket *pkt)
     }
     q->p[q->n++] = pkt;
     return 0;
+}
+
+static uint8_t *grow_bytes(uint8_t **p, size_t *cap, size_t n)
+{
+    uint8_t *np;
+    if (*p && *cap >= n)
+        return *p;
+    np = realloc(*p, n);
+    if (!np)
+        return NULL;
+    *p = np;
+    *cap = n;
+    return np;
 }
 
 static AVPacket *pq_pop(Pq *q)
@@ -1334,7 +1351,7 @@ static int decode_pcm(FileAv *p, uint8_t **out, int *nbytes)
         max_out = (int)swr_get_out_samples(p->swr, p->afr->nb_samples) + 256;
         if (max_out < 1)
             max_out = p->afr->nb_samples + 256;
-        tmp = malloc((size_t)max_out * OUT_CH * 2);
+        tmp = grow_bytes(&p->pcm, &p->pcm_n, (size_t)max_out * OUT_CH * 2);
         if (!tmp) {
             av_frame_unref(p->afr);
             return -1;
@@ -1343,19 +1360,17 @@ static int decode_pcm(FileAv *p, uint8_t **out, int *nbytes)
         got = swr_convert(p->swr, dsts, max_out,
                           (const uint8_t **)p->afr->extended_data, p->afr->nb_samples);
         av_frame_unref(p->afr);
-        if (got <= 0) {
-            free(tmp);
+        if (got <= 0)
             return 0;
-        }
         if (p->fx) {
             int cap = got * 4 + 1024;
-            int16_t *stretched = (int16_t *)malloc((size_t)cap * OUT_CH * sizeof(int16_t));
+            int16_t *stretched = (int16_t *)grow_bytes(&p->pcm2, &p->pcm2_n,
+                                                      (size_t)cap * OUT_CH * sizeof(int16_t));
             int nout;
             audio_fx_set_rate(p->fx, OUT_RATE);
             audio_fx_set_speed(p->fx, (float)p->speed);
             if (stretched) {
                 nout = audio_fx_stretch(p->fx, (int16_t *)tmp, got, stretched, cap, OUT_CH);
-                free(tmp);
                 tmp = (uint8_t *)stretched;
                 got = nout;
             }
@@ -1366,19 +1381,14 @@ static int decode_pcm(FileAv *p, uint8_t **out, int *nbytes)
             uint8_t *ins[1] = {tmp};
             if (mout < 1)
                 mout = got + 256;
-            sped = malloc((size_t)mout * OUT_CH * 2);
-            if (!sped) {
-                free(tmp);
+            sped = grow_bytes(&p->pcm2, &p->pcm2_n, (size_t)mout * OUT_CH * 2);
+            if (!sped)
                 return -1;
-            }
             dsts[0] = sped;
             got = swr_convert(p->swr_speed, dsts, mout, (const uint8_t **)ins, got);
-            free(tmp);
             tmp = sped;
-            if (got <= 0) {
-                free(tmp);
+            if (got <= 0)
                 return 0;
-            }
         }
         *nbytes = got * OUT_CH * 2;
         *out = tmp;
@@ -1411,7 +1421,6 @@ static void *a_loop(void *arg)
             if (r <= 0 || !pcm)
                 break;
             if (!p->dac && start_aq(p) != 0) {
-                free(pcm);
                 pcm = NULL;
                 if (p->origin_ns == 0)
                     p->origin_ns = now_ns();
@@ -1419,7 +1428,6 @@ static void *a_loop(void *arg)
             }
             if (!p->flushing)
                 ring_write(p, pcm, nbytes);
-            free(pcm);
             pcm = NULL;
             filled++;
             if (p->dac && !p->dac_started && ring_ms(p) >= 160) {
@@ -1472,7 +1480,7 @@ static int pump_audio(FileAv *p, double clock)
         max_out = (int)swr_get_out_samples(p->swr, p->afr->nb_samples) + 256;
         if (max_out < 1)
             max_out = p->afr->nb_samples + 256;
-        tmp = malloc((size_t)max_out * OUT_CH * 2);
+        tmp = grow_bytes(&p->pcm, &p->pcm_n, (size_t)max_out * OUT_CH * 2);
         if (!tmp) {
             av_frame_unref(p->afr);
             return -1;
@@ -1481,19 +1489,17 @@ static int pump_audio(FileAv *p, double clock)
         got = swr_convert(p->swr, dsts, max_out,
                           (const uint8_t **)p->afr->extended_data, p->afr->nb_samples);
         av_frame_unref(p->afr);
-        if (got <= 0) {
-            free(tmp);
+        if (got <= 0)
             return 0;
-        }
         if (p->fx) {
             int cap = got * 4 + 1024;
-            int16_t *stretched = (int16_t *)malloc((size_t)cap * OUT_CH * sizeof(int16_t));
+            int16_t *stretched = (int16_t *)grow_bytes(&p->pcm2, &p->pcm2_n,
+                                                      (size_t)cap * OUT_CH * sizeof(int16_t));
             int nout;
             audio_fx_set_rate(p->fx, OUT_RATE);
             audio_fx_set_speed(p->fx, (float)p->speed);
             if (stretched) {
                 nout = audio_fx_stretch(p->fx, (int16_t *)tmp, got, stretched, cap, OUT_CH);
-                free(tmp);
                 tmp = (uint8_t *)stretched;
                 got = nout;
             }
@@ -1504,26 +1510,20 @@ static int pump_audio(FileAv *p, double clock)
             uint8_t *ins[1] = {tmp};
             if (mout < 1)
                 mout = got + 256;
-            sped = malloc((size_t)mout * OUT_CH * 2);
-            if (!sped) {
-                free(tmp);
+            sped = grow_bytes(&p->pcm2, &p->pcm2_n, (size_t)mout * OUT_CH * 2);
+            if (!sped)
                 return -1;
-            }
             dsts[0] = sped;
             got = swr_convert(p->swr_speed, dsts, mout, (const uint8_t **)ins, got);
-            free(tmp);
             tmp = sped;
-            if (got <= 0) {
-                free(tmp);
+            if (got <= 0)
                 return 0;
-            }
         }
         nbytes = got * OUT_CH * 2;
         pthread_mutex_unlock(&p->mu);
         if (p->on_pcm)
             p->on_pcm(p->user, OUT_RATE, OUT_CH, (const int16_t *)tmp, nbytes);
         pthread_mutex_lock(&p->mu);
-        free(tmp);
         (void)clock;
         if (!p->opened || !p->adec)
             return 0;
@@ -1827,6 +1827,8 @@ void file_av_destroy(FileAv *p)
     av_frame_free(&p->afr);
     av_frame_free(&p->vfr);
     av_frame_free(&p->vsw);
+    free(p->pcm);
+    free(p->pcm2);
     for (i = 0; i < VOUT_N; i++)
         av_frame_free(&p->vout[i]);
     audio_fx_destroy(p->fx);

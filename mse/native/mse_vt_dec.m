@@ -17,6 +17,8 @@ struct MseVtDec {
     int logged;
     OSStatus last_st;
     CVPixelBufferRef out;
+    uint8_t *pkt;
+    size_t pkt_n;
 };
 
 static os_log_t vt_oslog(void)
@@ -261,6 +263,7 @@ void mse_vt_dec_close(void *dec)
         CFRelease(d->fmt);
     if (d->out)
         CVPixelBufferRelease(d->out);
+    free(d->pkt);
     free(d);
 }
 
@@ -282,7 +285,6 @@ int mse_vt_dec_send(void *dec, const uint8_t *data, int n, int output)
     CMBlockBufferRef bb = NULL;
     CMSampleBufferRef sbuf = NULL;
     OSStatus st;
-    void *copy;
     size_t sz;
     VTDecodeFrameFlags flags = output ? 0 : kVTDecodeFrame_DoNotOutputFrame;
     if (!d || !d->session || !data || n <= 0)
@@ -292,16 +294,18 @@ int mse_vt_dec_send(void *dec, const uint8_t *data, int n, int output)
         os_log(vt_oslog(), "mse-v vt-dec pkt n=%d b=%02x%02x%02x%02x nal_len=%d",
                n, data[0], data[1], data[2], data[3], d->nal_len);
     }
-    copy = malloc((size_t)n);
-    if (!copy)
-        return -1;
-    memcpy(copy, data, (size_t)n);
-    st = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, copy, (size_t)n,
-                                            kCFAllocatorMalloc, NULL, 0, (size_t)n, 0, &bb);
-    if (st != noErr || !bb) {
-        free(copy);
-        return -1;
+    if ((size_t)n > d->pkt_n) {
+        uint8_t *p = realloc(d->pkt, (size_t)n);
+        if (!p)
+            return -1;
+        d->pkt = p;
+        d->pkt_n = (size_t)n;
     }
+    memcpy(d->pkt, data, (size_t)n);
+    st = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, d->pkt, (size_t)n,
+                                            kCFAllocatorNull, NULL, 0, (size_t)n, 0, &bb);
+    if (st != noErr || !bb)
+        return -1;
     sz = (size_t)n;
     st = CMSampleBufferCreateReady(kCFAllocatorDefault, bb, d->fmt, 1, 0, NULL, 1, &sz, &sbuf);
     CFRelease(bb);

@@ -76,6 +76,8 @@ struct MseHost {
     int64_t samples_played;
     int64_t samples_pulled;
     AudioFx *fx;
+    int16_t *fx_pcm;
+    size_t fx_pcm_n;
 #ifdef MSE_DAC
     uint8_t *ring;
     int ring_cap;
@@ -101,6 +103,41 @@ struct MseHost {
     int sl_i;
 #endif
 };
+
+static int16_t *fx_scratch(MseHost *h, int frames, int ch)
+{
+    size_t n;
+    int16_t *p;
+    if (frames <= 0 || ch <= 0)
+        return NULL;
+    n = (size_t)frames * (size_t)ch * sizeof(int16_t);
+    if (h->fx_pcm && h->fx_pcm_n >= n)
+        return h->fx_pcm;
+    p = (int16_t *)realloc(h->fx_pcm, n);
+    if (!p)
+        return NULL;
+    h->fx_pcm = p;
+    h->fx_pcm_n = n;
+    return p;
+}
+
+static void host_stretch(MseHost *h, int16_t **pcm, int *frames, int ch, int rate)
+{
+    int16_t *tmp;
+    int nout, cap;
+    if (!h->fx || !*pcm || *frames <= 0)
+        return;
+    audio_fx_set_rate(h->fx, rate);
+    cap = *frames * 4 + 1024;
+    if (cap < *frames)
+        cap = *frames;
+    tmp = fx_scratch(h, cap, ch);
+    if (!tmp)
+        return;
+    nout = audio_fx_stretch(h->fx, *pcm, *frames, tmp, cap, ch);
+    *pcm = tmp;
+    *frames = nout;
+}
 
 static double now_ns(void)
 {
@@ -776,23 +813,8 @@ static void *dec_loop(void *arg)
             pcm = NULL;
             if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
-            if (h->fx) {
-                int16_t *tmp;
-                int nout, cap;
-                audio_fx_set_rate(h->fx, rate);
-                cap = frames * 4 + 1024;
-                if (cap < frames)
-                    cap = frames;
-                tmp = (int16_t *)malloc((size_t)cap * (size_t)ch * sizeof(int16_t));
-                if (tmp) {
-                    nout = audio_fx_stretch(h->fx, pcm, frames, tmp, cap, ch);
-                    free(pcm);
-                    pcm = tmp;
-                    frames = nout;
-                }
-            }
+            host_stretch(h, &pcm, &frames, ch, rate);
             if (frames <= 0) {
-                free(pcm);
                 pcm = NULL;
                 filled++;
                 continue;
@@ -843,7 +865,6 @@ static void *dec_loop(void *arg)
                 }
                 pthread_mutex_unlock(&h->mu);
             }
-            free(pcm);
             pcm = NULL;
             filled++;
         }
@@ -858,32 +879,16 @@ static void *dec_loop(void *arg)
 #else
         if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
             int nbytes;
-            if (h->fx) {
-                int16_t *tmp;
-                int nout, cap;
-                audio_fx_set_rate(h->fx, rate);
-                cap = frames * 4 + 1024;
-                tmp = (int16_t *)malloc((size_t)cap * (size_t)ch * sizeof(int16_t));
-                if (tmp) {
-                    nout = audio_fx_stretch(h->fx, pcm, frames, tmp, cap, ch);
-                    free(pcm);
-                    pcm = tmp;
-                    frames = nout;
-                }
-                if (frames > 0)
-                    audio_fx_color(h->fx, pcm, frames, ch);
-            }
-            if (frames <= 0) {
-                free(pcm);
-                pcm = NULL;
-            } else {
+            host_stretch(h, &pcm, &frames, ch, rate);
+            if (h->fx && frames > 0)
+                audio_fx_color(h->fx, pcm, frames, ch);
+            if (frames > 0) {
                 nbytes = frames * ch * (int)sizeof(int16_t);
                 if (h->on_pcm)
                     h->on_pcm(h->user, rate, ch, pcm, nbytes);
                 pthread_mutex_lock(&h->mu);
                 h->samples_pulled += frames;
                 pthread_mutex_unlock(&h->mu);
-                free(pcm);
             }
         }
 #endif
@@ -1069,6 +1074,7 @@ void mse_host_destroy(MseHost *h)
     pthread_mutex_unlock(&h->frame_mu);
     mse_av_destroy(h->av);
     audio_fx_destroy(h->fx);
+    free(h->fx_pcm);
     pthread_mutex_destroy(&h->frame_mu);
     pthread_mutex_destroy(&h->mu);
     pthread_cond_destroy(&h->cv);
