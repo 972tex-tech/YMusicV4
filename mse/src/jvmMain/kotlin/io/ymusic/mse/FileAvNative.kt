@@ -7,8 +7,6 @@ import java.nio.ByteBuffer
 interface FileAvSink {
     @Keep fun onFrame(width: Int, height: Int, bgra: ByteBuffer?)
 
-    @Keep fun onPcm(rate: Int, channels: Int, s16: ByteArray)
-
     @Keep fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int)
 
     @Keep fun onEvent(ended: Boolean, error: String?)

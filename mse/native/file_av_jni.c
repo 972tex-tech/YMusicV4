@@ -14,7 +14,6 @@ typedef struct {
     JavaVM *jvm;
     jobject sink;
     jmethodID onFrame;
-    jmethodID onPcm;
     jmethodID onProgress;
     jmethodID onEvent;
     jmethodID onCaption;
@@ -76,24 +75,6 @@ static void on_frame(void *user, int w, int h, const uint8_t *bgra)
     if (!buf)
         return;
     (*env)->CallVoidMethod(env, s->sink, s->onFrame, w, h, buf);
-}
-
-static void on_pcm(void *user, int rate, int ch, const int16_t *s16, int nbytes)
-{
-    JniSink *s = user;
-    JNIEnv *env;
-    jbyteArray arr;
-    if (!s || !s16 || nbytes <= 0)
-        return;
-    env = sink_env(s);
-    if (!env)
-        return;
-    arr = (*env)->NewByteArray(env, nbytes);
-    if (!arr)
-        return;
-    (*env)->SetByteArrayRegion(env, arr, 0, nbytes, (const jbyte *)s16);
-    (*env)->CallVoidMethod(env, s->sink, s->onPcm, rate, ch, arr);
-    (*env)->DeleteLocalRef(env, arr);
 }
 
 static void on_prog(void *user, double pos, double dur, int w, int h)
@@ -624,7 +605,6 @@ Java_io_ymusic_mse_FileAvNative_setSink(JNIEnv *env, jclass cls, jlong handle, j
     s->sink = (*env)->NewGlobalRef(env, sink);
     sc = (*env)->GetObjectClass(env, sink);
     s->onFrame = (*env)->GetMethodID(env, sc, "onFrame", "(IILjava/nio/ByteBuffer;)V");
-    s->onPcm = (*env)->GetMethodID(env, sc, "onPcm", "(II[B)V");
     s->onProgress = (*env)->GetMethodID(env, sc, "onProgress", "(DDII)V");
     s->onEvent = (*env)->GetMethodID(env, sc, "onEvent", "(ZLjava/lang/String;)V");
     s->onCaption = (*env)->GetMethodID(env, sc, "onCaption", "(IDDLjava/lang/String;)V");
@@ -639,5 +619,5 @@ Java_io_ymusic_mse_FileAvNative_setSink(JNIEnv *env, jclass cls, jlong handle, j
         if ((*env)->ExceptionCheck(env))
             (*env)->ExceptionClear(env);
     }
-    file_av_set_sinks(p, on_frame, on_pcm, on_prog, on_event, on_caption, s);
+    file_av_set_sinks(p, on_frame, NULL, on_prog, on_event, on_caption, s);
 }

@@ -459,9 +459,6 @@ internal class JvmLocalPlayer(
     }
 
     @Keep
-    override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
-
-    @Keep
     override fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {
         if (released || text.isBlank()) return
         val cue = LocalCue(id, startSec, endSec, text.trim())

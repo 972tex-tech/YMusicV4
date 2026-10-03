@@ -43,8 +43,6 @@ class FileAvNativeTest {
                     frames.incrementAndGet()
                 }
 
-                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
-
                 override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) {
                     lastPos.set(positionSec)
                 }
@@ -110,8 +108,6 @@ class FileAvNativeTest {
                     frames.incrementAndGet()
                 }
 
-                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
-
                 override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
 
                 override fun onEvent(ended: Boolean, error: String?) {
@@ -160,8 +156,6 @@ class FileAvNativeTest {
                 override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) {
                     if (bgra == null) hw.incrementAndGet() else cpu.incrementAndGet()
                 }
-
-                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
 
                 override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
 
@@ -225,7 +219,6 @@ class FileAvNativeTest {
             h,
             object : FileAvSink {
                 override fun onFrame(width: Int, height: Int, bgra: ByteBuffer?) = Unit
-                override fun onPcm(rate: Int, channels: Int, s16: ByteArray) = Unit
                 override fun onProgress(positionSec: Double, durationSec: Double, width: Int, height: Int) = Unit
                 override fun onEvent(ended: Boolean, error: String?) = Unit
                 override fun onCaption(id: Int, startSec: Double, endSec: Double, text: String) {
