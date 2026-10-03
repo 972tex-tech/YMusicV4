@@ -19,6 +19,7 @@ import kmphttp.RequestBodyX.asOneshotRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import okio.Buffer
+import okio.BufferedSource
 import okio.Source
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -119,6 +120,10 @@ class LocalMediaProxy(
      * this via [serve] (parsing the `/ymusicForward` query); the iOS message-channel adapter, which
      * receives the url/method/body as fields, calls it directly.
      *
+     * [body] is taken. A SABR parse reads a [Buffer.peek] so the cursor stays at 0; a network miss
+     * then drains the same buffer into the forwarded request. A cache hit never reads it. The caller
+     * must not use [body] after this returns.
+     *
      * [extraHeaders] are forwarded on a network miss (Cookie / Origin / Referer from engine-js).
      * Hop-by-hop headers are dropped.
      */
@@ -128,10 +133,10 @@ class LocalMediaProxy(
         body: Buffer?,
         extraHeaders: List<Pair<String, String>> = emptyList(),
     ): ProxyResponse {
-        val sabrReq = parseSabrRequest(url, method, body)
+        val sabrReq = body?.let { parseSabrRequest(url, method, it.peek(), it.size) }
         // A cache-serve fault must never fail the request — fall through to the network — but it's a real
         // bug (bad parse, cache read), so log it as a breadcrumb rather than swallowing it silently.
-        val hit = runCatching { serveFromCache(url, method, body, sabrReq) }
+        val hit = runCatching { serveFromCache(url, method, sabrReq) }
             .onFailure { log?.log(Logger.Level.WARN, "cache serve failed, forwarding: $url", it) }
             .getOrNull()
         return hit ?: forward(url, method, body, extraHeaders)
@@ -143,7 +148,6 @@ class LocalMediaProxy(
     private fun serveFromCache(
         url: String,
         method: String,
-        body: Buffer?,
         sabrReq: VideoPlaybackAbrRequest?,
     ): ProxyResponse? {
         val started = TimeSource.Monotonic.markNow()
@@ -271,10 +275,16 @@ class LocalMediaProxy(
     private fun isSabrCache(url: String) =
         url.contains("sabr=1") && !url.contains("live=1") && !url.contains("noclen=1")
 
-    private fun parseSabrRequest(url: String, method: String, body: Buffer?): VideoPlaybackAbrRequest? {
-        if (!url.contains("sabr=1") || method != "POST" || body == null) return null
+    /** Consumes [byteCount] bytes from [body]. The caller that still needs those bytes passes a peek. */
+    private fun parseSabrRequest(
+        url: String,
+        method: String,
+        body: BufferedSource,
+        byteCount: Long,
+    ): VideoPlaybackAbrRequest? {
+        if (!url.contains("sabr=1") || method != "POST") return null
         return runCatching {
-            VideoPlaybackAbrRequest.from(ProtoReader(body.peek(), body.size).readAllFields())
+            VideoPlaybackAbrRequest.from(ProtoReader(body, byteCount).readAllFields())
         }.getOrNull()
     }
 
