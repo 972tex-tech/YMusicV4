@@ -877,6 +877,60 @@ static JSValue js_utf8_length(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NewInt64(ctx, (int64_t)n);
 }
 
+static const char B64URL[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/* __b64urlInto(src, srcOff, srcLen, dst, dstOff) -> dst bytes written. Encodes 3-byte
+ * groups into 4 chars while they fit; a 1–2 byte tail (when srcLen < 3) emits 2 or 3
+ * chars with no padding. */
+static JSValue js_b64url_into(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t src_off = 0, src_len = 0, dst_off = 0;
+    size_t slen = 0, dlen = 0, n, room, wrote = 0;
+    uint8_t *src, *dst;
+    const uint8_t *p;
+    uint8_t *q;
+    (void)this_val;
+    (void)argc;
+    JS_ToInt64(ctx, &src_off, argv[1]);
+    JS_ToInt64(ctx, &src_len, argv[2]);
+    JS_ToInt64(ctx, &dst_off, argv[4]);
+    src = view_bytes(ctx, argv[0], &slen);
+    if (!src)
+        return JS_EXCEPTION;
+    dst = view_bytes(ctx, argv[3], &dlen);
+    if (!dst)
+        return JS_EXCEPTION;
+    if (src_off < 0 || src_len < 0 || dst_off < 0 ||
+        (uint64_t)src_off + (uint64_t)src_len > slen || (uint64_t)dst_off > dlen)
+        return JS_ThrowRangeError(ctx, "__b64urlInto range out of bounds");
+    p = src + (size_t)src_off;
+    q = dst + (size_t)dst_off;
+    n = (size_t)src_len;
+    room = dlen - (size_t)dst_off;
+    while (n >= 3 && room >= 4) {
+        unsigned v = ((unsigned)p[0] << 16) | ((unsigned)p[1] << 8) | p[2];
+        q[0] = (uint8_t)B64URL[(v >> 18) & 63];
+        q[1] = (uint8_t)B64URL[(v >> 12) & 63];
+        q[2] = (uint8_t)B64URL[(v >> 6) & 63];
+        q[3] = (uint8_t)B64URL[v & 63];
+        p += 3;
+        n -= 3;
+        q += 4;
+        room -= 4;
+        wrote += 4;
+    }
+    if (n > 0 && n < 3 && room >= (n == 1 ? 2u : 3u)) {
+        unsigned v = ((unsigned)p[0] << 16) | (n == 2 ? ((unsigned)p[1] << 8) : 0);
+        q[0] = (uint8_t)B64URL[(v >> 18) & 63];
+        q[1] = (uint8_t)B64URL[(v >> 12) & 63];
+        if (n == 2)
+            q[2] = (uint8_t)B64URL[(v >> 6) & 63];
+        wrote += n == 1 ? 2 : 3;
+    }
+    return JS_NewInt32(ctx, (int32_t)wrote);
+}
+
 /* ---- class + registration ---- */
 
 static void pipebuf_finalizer(JSRuntime *rt, JSValue val) {
@@ -932,6 +986,7 @@ QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user) 
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));
     JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Length", JS_NewCFunction(ctx, js_utf8_length, "__utf8Length", 3));
+    JS_SetPropertyStr(ctx, g, "__b64urlInto", JS_NewCFunction(ctx, js_b64url_into, "__b64urlInto", 5));
     JS_FreeValue(ctx, g);
     return pc;
 }

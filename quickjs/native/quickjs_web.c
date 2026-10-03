@@ -958,35 +958,93 @@ static JSValue js_bg_entropy_stop(JSContext *ctx, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
+static size_t json_escape_len(const char *s)
+{
+    size_t n = 0;
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t')
+            n += 2;
+        else if (c < 0x20)
+            n += 6;
+        else
+            n++;
+    }
+    return n;
+}
+
+static char *json_escape_put(char *d, const char *s)
+{
+    static const char hex[] = "0123456789abcdef";
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c == '"' || c == '\\') {
+            *d++ = '\\';
+            *d++ = (char)c;
+        } else if (c == '\n') {
+            *d++ = '\\';
+            *d++ = 'n';
+        } else if (c == '\r') {
+            *d++ = '\\';
+            *d++ = 'r';
+        } else if (c == '\t') {
+            *d++ = '\\';
+            *d++ = 't';
+        } else if (c < 0x20) {
+            memcpy(d, "\\u00", 4);
+            d += 4;
+            *d++ = hex[c >> 4];
+            *d++ = hex[c & 15];
+        } else {
+            *d++ = (char)c;
+        }
+    }
+    return d;
+}
+
+/* JSON string bytes of the tape (quoted, escaped, lines joined by \n). No JS string. */
 static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
-    size_t total = 0;
-    char *out;
+    size_t need = 2;
+    char *out, *d;
     int i;
-    size_t off = 0;
-    JSValue s;
+    JSValue ab, u8, args[3];
     (void)this_val;
     (void)argc;
     (void)argv;
     if (!e || e->n <= 0)
         return JS_NULL;
-    for (i = 0; i < e->n; i++)
-        total += strlen(e->line[i]) + 1;
-    out = (char *)malloc(total + 1);
+    for (i = 0; i < e->n; i++) {
+        need += json_escape_len(e->line[i]);
+        if (i + 1 < e->n)
+            need += 2;
+    }
+    out = (char *)js_malloc(ctx, need);
     if (!out)
         return JS_EXCEPTION;
+    d = out;
+    *d++ = '"';
     for (i = 0; i < e->n; i++) {
-        size_t ln = strlen(e->line[i]);
-        memcpy(out + off, e->line[i], ln);
-        off += ln;
-        out[off++] = '\n';
+        d = json_escape_put(d, e->line[i]);
+        if (i + 1 < e->n) {
+            *d++ = '\\';
+            *d++ = 'n';
+        }
     }
-    out[off] = 0;
-    s = JS_NewStringLen(ctx, out, off);
-    free(out);
+    *d++ = '"';
     ent_clear(e);
-    return s;
+    ab = JS_NewArrayBuffer(ctx, (uint8_t *)out, (size_t)(d - out), u8_buf_free, NULL, 0);
+    if (JS_IsException(ab)) {
+        js_free(ctx, out);
+        return ab;
+    }
+    args[0] = ab;
+    args[1] = JS_UNDEFINED;
+    args[2] = JS_UNDEFINED;
+    u8 = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+    JS_FreeValue(ctx, ab);
+    return u8;
 }
 
 static void install_performance(JSContext *ctx, JSValueConst global)

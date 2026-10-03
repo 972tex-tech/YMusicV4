@@ -14,13 +14,7 @@ let sessionKey = "";
 let loggedSps = 0;
 let dumpFinished = false;
 let lastSabrUrl = "";
-let lastSabrBody = "";
-
-function u8ToB64url(u: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]!);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
+let lastSabrBody: Uint8Array | null = null;
 
 function utcStamp(): string {
   const iso = new Date().toISOString();
@@ -158,8 +152,26 @@ function timeOriginMs(): number {
 export function recordBotguardEntropy(): void {
   if (typeof __bgEntropyDump !== "function") return;
   const ent = __bgEntropyDump();
-  if (typeof ent !== "string" || !ent.length) return;
-  writeJsonLine("entropy", ent);
+  if (!(ent instanceof Uint8Array) || !ent.length) return;
+  const pipe = ensureDump();
+  if (!pipe) return;
+  writeChain = writeChain
+    .then(function () {
+      return wait(pipe.sink.writeUtf8("entropy "));
+    })
+    .then(function () {
+      return wait(pipe.sink.writeBytes(ent));
+    })
+    .then(function () {
+      return wait(pipe.sink.writeUtf8("\n"));
+    })
+    .then(
+      function () {},
+      function (e) {
+        warn(e, "entropy");
+        dump = null;
+      },
+    );
 }
 
 export function recordBotguardInit(p: Record<string, unknown>): void {
@@ -168,7 +180,7 @@ export function recordBotguardInit(p: Record<string, unknown>): void {
   dump = null;
   writeChain = Promise.resolve();
   lastSabrUrl = "";
-  lastSabrBody = "";
+  lastSabrBody = null;
   p["ua"] = DESKTOP_UA;
   p["timeOrigin"] = timeOriginMs();
   writeJsonLine("init", p);
@@ -183,15 +195,47 @@ export function recordBotguardSnapshotResponse(it: string): void {
 }
 
 export function recordBotguardMint(id: Uint8Array, token: unknown): void {
-  const rec: Record<string, unknown> = { "id": new TextDecoder().decode(id) };
-  if (token instanceof Uint8Array) rec["pot"] = u8ToB64url(token);
-  else if (typeof token === "string") rec["pot"] = token;
-  writeJsonLine("mint", rec);
+  const pipe = ensureDump();
+  if (!pipe) return;
+  const idStr = new TextDecoder().decode(id);
+  writeChain = writeChain
+    .then(function () {
+      return wait(pipe.sink.writeUtf8('mint {"id":'));
+    })
+    .then(function () {
+      return wait(pipe.sink.writeObjectAsJson(idStr));
+    })
+    .then(function () {
+      if (typeof token === "string") {
+        return wait(pipe.sink.writeUtf8(',"pot":')).then(function () {
+          return wait(pipe.sink.writeObjectAsJson(token));
+        });
+      }
+      if (token instanceof Uint8Array && token.length) {
+        return wait(pipe.sink.writeUtf8(',"pot":"'))
+          .then(function () {
+            return wait(pipe.sink.writeBytesAsBase64url(token));
+          })
+          .then(function () {
+            return wait(pipe.sink.writeUtf8('"'));
+          });
+      }
+    })
+    .then(function () {
+      return wait(pipe.sink.writeUtf8("}\n"));
+    })
+    .then(
+      function () {},
+      function (e) {
+        warn(e, "mint");
+        dump = null;
+      },
+    );
 }
 
 export function recordSabrForDump(url: string, body: Uint8Array | null): void {
   lastSabrUrl = url;
-  lastSabrBody = body && body.length ? u8ToB64url(body) : "";
+  lastSabrBody = body && body.length ? body : null;
 }
 
 export function noteSps(sps: number): void {
@@ -203,10 +247,37 @@ export function noteSps(sps: number): void {
   if (dumpFinished) return;
   dumpFinished = true;
   if (sps !== 1) {
-    writeJsonLine("sabr", { "url": lastSabrUrl, "body": lastSabrBody });
+    const url = lastSabrUrl;
+    const body = lastSabrBody;
+    const pipe = ensureDump();
+    if (pipe) {
+      writeChain = writeChain
+        .then(function () {
+          return wait(pipe.sink.writeUtf8('sabr {"url":'));
+        })
+        .then(function () {
+          return wait(pipe.sink.writeObjectAsJson(url));
+        })
+        .then(function () {
+          return wait(pipe.sink.writeUtf8(',"body":"'));
+        })
+        .then(function () {
+          if (body) return wait(pipe.sink.writeBytesAsBase64url(body));
+        })
+        .then(function () {
+          return wait(pipe.sink.writeUtf8('"}\n'));
+        })
+        .then(
+          function () {},
+          function (e) {
+            warn(e, "sabr");
+            dump = null;
+          },
+        );
+    }
   }
   lastSabrUrl = "";
-  lastSabrBody = "";
+  lastSabrBody = null;
   if (typeof __bgEntropyStop === "function") __bgEntropyStop();
   if (sps === 1) finishDump();
   else

@@ -18,10 +18,7 @@ import {
 let progressPipe: Pipe | null = null;
 let catalogPipe: Pipe | null = null;
 
-async function emit(
-  sink: PipeSink,
-  rec: Record<string, unknown>,
-): Promise<void> {
+async function emit(sink: PipeSink, rec: Record<string, unknown>): Promise<void> {
   const p = sink.writeObjectAsJson(rec);
   if (p) await p;
   const f = sink.flush();
@@ -43,19 +40,75 @@ function snapshot(kind: ListenKind): Record<string, unknown> {
   return picturePlayer();
 }
 
+function sameProgress(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return (
+    a["progress"] === b["progress"] &&
+    a["bufferedMs"] === b["bufferedMs"] &&
+    a["duration"] === b["duration"] &&
+    a["live"] === b["live"] &&
+    a["seekable"] === b["seekable"] &&
+    a["seekableStartMs"] === b["seekableStartMs"] &&
+    a["seekableEndMs"] === b["seekableEndMs"] &&
+    a["progressLabel"] === b["progressLabel"]
+  );
+}
+
+function sameState(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return (
+    a["newState"] === b["newState"] &&
+    a["playWhenReady"] === b["playWhenReady"] &&
+    a["live"] === b["live"] &&
+    a["code"] === b["code"] &&
+    a["message"] === b["message"]
+  );
+}
+
+function samePicture(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return a["videoWidth"] === b["videoWidth"] && a["videoHeight"] === b["videoHeight"];
+}
+
+function sameCatalog(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  if (
+    a["quality"] !== b["quality"] ||
+    a["preferQuality"] !== b["preferQuality"] ||
+    a["audioOnly"] !== b["audioOnly"] ||
+    a["caption"] !== b["caption"]
+  )
+    return false;
+  const qa = a["qualities"];
+  const qb = b["qualities"];
+  if (!Array.isArray(qa) || !Array.isArray(qb) || qa.length !== qb.length) return false;
+  for (let i = 0; i < qa.length; i++) {
+    const x = qa[i] as Record<string, unknown>;
+    const y = qb[i] as Record<string, unknown>;
+    if (x["quality"] !== y["quality"] || x["label"] !== y["label"]) return false;
+  }
+  return true;
+}
+
+function sameListen(
+  kind: ListenKind,
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  if (kind === "progress") return sameProgress(a, b);
+  if (kind === "state") return sameState(a, b);
+  return samePicture(a, b);
+}
+
 export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
   if (progressPipe) throw new JsEngineErrorImpl("listen/player/status busy", "E20089");
   progressPipe = pipe;
-  const last: Record<ListenKind, string> = { progress: "", state: "", picture: "" };
+  const last: Partial<Record<ListenKind, Record<string, unknown>>> = {};
 
   function push(kinds: ListenKind[]): void {
     const rec: Record<string, unknown> = {};
     for (let i = 0; i < kinds.length; i++) {
       const kind = kinds[i]!;
       const body = snapshot(kind);
-      const js = JSON.stringify(body);
-      if (js === last[kind]) continue;
-      last[kind] = js;
+      const prev = last[kind];
+      if (prev && sameListen(kind, prev, body)) continue;
+      last[kind] = body;
       rec[kind] = body;
     }
     if (!Object.keys(rec).length) return;
@@ -78,12 +131,11 @@ export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
 export async function runCatalogSession(pipe: Pipe): Promise<void> {
   if (catalogPipe) throw new JsEngineErrorImpl("listen/player/catalog busy", "E20090");
   catalogPipe = pipe;
-  const last = { json: "" };
+  let last: Record<string, unknown> | null = null;
   const push = function (): void {
     const rec = catalogPlayer();
-    const js = JSON.stringify(rec);
-    if (js === last.json) return;
-    last.json = js;
+    if (last && sameCatalog(last, rec)) return;
+    last = rec;
     void emit(pipe.sink, rec);
   };
   setCatalogHook(push);

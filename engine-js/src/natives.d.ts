@@ -65,6 +65,14 @@ declare function __utf8Into(
 declare function __utf8Encode(str: string, from: number, to: number): Uint8Array;
 /** The exact byte count __utf8Encode(str, from, to) would produce, without encoding. */
 declare function __utf8Length(str: string, from: number, to: number): number;
+/** Encode src[srcOff, srcOff+srcLen) as base64url (no pad) into dst[dstOff..]. Returns dst bytes written. */
+declare function __b64urlInto(
+  src: Uint8Array,
+  srcOff: number,
+  srcLen: number,
+  dst: Uint8Array,
+  dstOff: number,
+): number;
 
 // ---- console/diagnostics bridge (quickjs_native.c / quickjs_jni.c) ----
 
@@ -126,7 +134,8 @@ declare function __bgEntropyStart(): unknown;
 declare function __bgEntropyBegin(): void;
 declare function __bgEntropyEnd(): void;
 declare function __bgEntropyStop(): void;
-declare function __bgEntropyDump(): string | null;
+/** JSON string bytes of the tape (quoted, escaped, lines joined by \\n), or null. */
+declare function __bgEntropyDump(): Uint8Array | null;
 
 // ---- native streaming JSON encoder (quickjs_json.c) ----
 

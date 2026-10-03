@@ -34,6 +34,8 @@ interface PipeSink {
   writeUtf8(...parts: string[]): MaybePromise;
   writeUtf8Range(str: string, from: number, to: number): MaybePromise;
   writeUtf8Line(...parts: string[]): MaybePromise;
+  /** Base64url (no padding) of [b], written in 4-char groups into the staging segment. */
+  writeBytesAsBase64url(b: Uint8Array): MaybePromise;
   /** Matches JSON.stringify (a cycle throws); streams via the native encoder. */
   writeObjectAsJson(value: unknown): MaybePromise;
   flush(): MaybePromise;
@@ -213,6 +215,17 @@ declare var HttpRequest: {
   patch(url: string): HttpRequestBuilder;
   head(url: string): HttpRequestBuilder;
   method(m: string, url: string): HttpRequestBuilder;
+  intercept(
+    fn: (chain: {
+      request: {
+        method: string;
+        url: string;
+        headers: HeaderEntry[];
+        body: HttpBody | null;
+      };
+      proceed: (req?: unknown) => Promise<HttpResponse>;
+    }) => Promise<HttpResponse>,
+  ): { remove(): void };
 };
 
 // WHATWG fetch (logic/yt/fetch.ts) — quoted names at runtime for eval'd base.js.

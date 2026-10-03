@@ -14,7 +14,7 @@
 //    source: receive(buf,off,len) (-> count or -1), buffered reads (readInt/readLong, readUtf8,
 //    readUtf8Line, readJsonObject/readJsonArray), close() (host's next send gets EPIPE).
 //    sink: send(buf,off,len), buffered writes coalescing through a lazily-allocated staging
-//    segment (writeInt/writeLong, writeBytes, writeUtf8[Range|Line], writeObjectAsJson, flush()),
+//    segment (writeInt/writeLong, writeBytes, writeUtf8[Range|Line], writeBytesAsBase64url, writeObjectAsJson, flush()),
 //    close() = flush + END, close(reason) = RESET abort. Plus pipe.command / pipe.id.
 // Kotlin opens odd pipe ids, JS opens even ones, so the two id spaces never collide.
 //
@@ -62,6 +62,7 @@ const nPbUtf8 = __pbUtf8;
 const nUtf8Encode = __utf8Encode;
 const nUtf8Into = __utf8Into;
 const nUtf8Decode = __utf8Decode;
+const nB64urlInto = __b64urlInto;
 const nJsonEncNew = __jsonEncNew;
 const nJsonEncFill = __jsonEncFill;
 const nJsonEncDone = __jsonEncDone;
@@ -384,6 +385,28 @@ function makePipe(id: number, command: string): TransportPipe {
               })
             : putByte(10),
         );
+      },
+      writeBytesAsBase64url: function (b) {
+        checkWriteBusy();
+        ensureWbuf();
+        let off = 0;
+        const n = b.length;
+        const pump = function (): MaybePromise {
+          while (off < n) {
+            const rem = n - off;
+            const need = rem >= 3 ? 4 : rem === 2 ? 3 : 2;
+            if (wlen + need > wbuf!.length) {
+              const p = flushSink();
+              if (p) return p.then(pump);
+            }
+            const wrote = nB64urlInto(b, off, rem, wbuf!, wlen);
+            if (wrote <= 0) break;
+            wlen += wrote;
+            if (rem >= 3) off += 3 * ((wrote / 4) | 0);
+            else off = n;
+          }
+        };
+        return writeLock(pump());
       },
       // matches JSON.stringify (a cycle throws TypeError); streams via the native encoder,
       // never materializing the whole JSON string
