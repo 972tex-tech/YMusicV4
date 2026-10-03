@@ -10,19 +10,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.widget.FrameLayout
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.sentry.kotlin.multiplatform.Sentry
@@ -573,43 +563,20 @@ class YMusicApplication : Application() {
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
             val status by player.status.collectAsState()
-            val fps by produceState(0, msePlayer) {
-                var prev = msePlayer?.videoSurface?.presentedFrames() ?: 0
-                while (true) {
-                    delay(1_000)
-                    val n = msePlayer?.videoSurface?.presentedFrames() ?: 0
-                    value = (n - prev).coerceAtLeast(0)
-                    prev = n
-                }
-            }
-            Box(modifier) {
-                AndroidView(
-                    factory = { context -> FrameLayout(context) },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { host ->
-                        if (videoContainer.parent !== host) {
-                            (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
-                            host.addView(videoContainer)
-                            mseBridge.reattach(mseTexture)
-                        }
-                        val showMse = status.videoSize != null
-                        mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
-                        if (showMse) mseTexture.bringToFront()
-                    },
-                )
-                if (fps > 0 && status.videoSize != null) {
-                    Text(
-                        "$fps fps",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
-            }
+            AndroidView(
+                factory = { context -> FrameLayout(context) },
+                modifier = modifier.fillMaxSize(),
+                update = { host ->
+                    if (videoContainer.parent !== host) {
+                        (videoContainer.parent as? ViewGroup)?.removeView(videoContainer)
+                        host.addView(videoContainer)
+                        mseBridge.reattach(mseTexture)
+                    }
+                    val showMse = status.videoSize != null
+                    mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
+                    if (showMse) mseTexture.bringToFront()
+                },
+            )
         }
     }
 

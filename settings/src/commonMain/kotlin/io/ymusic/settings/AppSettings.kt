@@ -128,4 +128,11 @@ object AppSettings {
      * excludes individual videos.
      */
     val sponsorBlockEnabled = BoolSetting("playback.sponsorBlock", true)
+
+    /**
+     * Overlay pictures-per-second on the Now Playing / fullscreen video hole.
+     * Off by default. Sampling runs only while that hole is composed, the window is focused,
+     * and playWhenReady is true.
+     */
+    val showFps = BoolSetting("debug.showFps", false)
 }

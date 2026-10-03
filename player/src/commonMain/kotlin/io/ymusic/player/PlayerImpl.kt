@@ -379,6 +379,9 @@ internal class PlayerImpl(
     override fun pcmLevels(out: FloatArray): Int =
         if (released || out.isEmpty()) 0 else _currentEngine.value?.pcmLevels(out) ?: 0
 
+    override fun presentedFrames(): Int =
+        if (released) 0 else _currentEngine.value?.presentedFrames() ?: 0
+
     override fun release() {
         if (released) return
         released = true

@@ -356,6 +356,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
             current?.displayThumbnailUrl,
             Modifier.fillMaxSize(),
             fill = fillScreen,
+            settings = graph.settings,
         )
         Box(Modifier.fillMaxSize()) {
             BufferingIndicator(status)
@@ -425,6 +426,7 @@ private fun PortraitNowPlaying(
                 graph.playerSurface,
                 current?.displayThumbnailUrl,
                 Modifier.fillMaxSize(),
+                settings = graph.settings,
             )
             Box(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
@@ -537,6 +539,7 @@ private fun LandscapeNowPlaying(
                 graph.playerSurface,
                 current?.displayThumbnailUrl,
                 Modifier.fillMaxSize(),
+                settings = graph.settings,
             )
             Box(
                 Modifier.fillMaxSize()

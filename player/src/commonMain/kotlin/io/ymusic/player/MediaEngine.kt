@@ -142,6 +142,9 @@ interface MediaEngine<in S : PlayableItem> {
      */
     fun pcmLevels(out: FloatArray): Int = 0
 
+    /** Pictures presented since attach. 0 when the backend has no counter. */
+    fun presentedFrames(): Int = 0
+
     /** Releases native resources. The instance is unusable afterwards. Idempotent. */
     fun release()
 }

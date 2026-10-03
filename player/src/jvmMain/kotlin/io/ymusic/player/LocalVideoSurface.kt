@@ -19,11 +19,9 @@ class LocalVideoSurface {
     private val _visible = MutableStateFlow(false)
     val visible: StateFlow<Boolean> = _visible.asStateFlow()
 
-    private val _fps = MutableStateFlow(0)
-    val fps: StateFlow<Int> = _fps.asStateFlow()
+    private var presented = 0
 
-    private var framesInWindow = 0
-    private var windowStartNs = 0L
+    fun presentedFrames(): Int = presented
 
     /** Swing hole. Invoked off the decode thread; must not recompose Compose. */
     @Volatile
@@ -114,20 +112,10 @@ class LocalVideoSurface {
     }
 
     private fun tickFps() {
-        val now = System.nanoTime()
-        if (windowStartNs == 0L) windowStartNs = now
-        framesInWindow++
-        val dt = now - windowStartNs
-        if (dt >= 1_000_000_000L) {
-            _fps.value = (framesInWindow * 1_000_000_000.0 / dt).toInt()
-            framesInWindow = 0
-            windowStartNs = now
-        }
+        presented++
     }
 
     private fun resetFps() {
-        framesInWindow = 0
-        windowStartNs = 0L
-        _fps.value = 0
+        presented = 0
     }
 }

@@ -308,6 +308,9 @@ class MsePlayer internal constructor(
     override fun pcmLevels(out: FloatArray): Int =
         if (released || out.isEmpty()) 0 else videoSurface.pcmLevels(out)
 
+    override fun presentedFrames(): Int =
+        if (released) 0 else videoSurface.presentedFrames()
+
     override fun release() {
         if (released) return
         released = true

@@ -29,7 +29,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -781,16 +780,6 @@ private fun DesktopPlayerSurface(
     modifier: Modifier,
 ) {
     val localVisible by localSurface.visible.collectAsState()
-    val localFps by localSurface.fps.collectAsState()
-    val mseFps by produceState(0, mseSurface) {
-        var prev = mseSurface.presentedFrames()
-        while (true) {
-            delay(1_000)
-            val n = mseSurface.presentedFrames()
-            value = (n - prev).coerceAtLeast(0)
-            prev = n
-        }
-    }
     val status by playbackStatus.collectAsState()
     val pauseHold = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     pauseHold.set(!status.playWhenReady)
@@ -909,19 +898,6 @@ private fun DesktopPlayerSurface(
                     Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 }
             }
-        }
-        val fps = if (localVisible) localFps else mseFps
-        if (fps > 0 && !windowResizingNow) {
-            Text(
-                "$fps fps",
-                color = Color.White,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
         }
     }
     DisposableEffect(Unit) {

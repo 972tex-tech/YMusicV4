@@ -51,12 +51,15 @@ import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_crash_reports
 import io.ymusic.ui.resources.settings_crash_reports_hint
+import io.ymusic.ui.resources.settings_debug
 import io.ymusic.ui.resources.settings_enable_pip
 import io.ymusic.ui.resources.settings_enable_pip_hint
 import io.ymusic.ui.resources.settings_eq_hint
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
+import io.ymusic.ui.resources.settings_show_fps
+import io.ymusic.ui.resources.settings_show_fps_hint
 import io.ymusic.ui.resources.settings_speed_hint
 import io.ymusic.ui.resources.settings_sponsor_block
 import io.ymusic.ui.resources.settings_sponsor_block_hint
@@ -154,6 +157,12 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
         // leaves the app while a switch is off, and no restart is needed either way.
         ToggleRow(graph, AppSettings.crashReports, Res.string.settings_crash_reports, Res.string.settings_crash_reports_hint)
         ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
+        Text(
+            stringResource(Res.string.settings_debug),
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkMuted),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        ToggleRow(graph, AppSettings.showFps, Res.string.settings_show_fps, Res.string.settings_show_fps_hint)
         LicensesRow()
     }
 }

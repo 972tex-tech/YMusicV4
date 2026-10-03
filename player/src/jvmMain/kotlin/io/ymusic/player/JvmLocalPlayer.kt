@@ -414,6 +414,9 @@ internal class JvmLocalPlayer(
         return FileAvNative.pcmLevels(h, out)
     }
 
+    override fun presentedFrames(): Int =
+        if (released) 0 else videoSurface?.presentedFrames() ?: 0
+
     override fun release() {
         if (released) return
         cmds.offer {
