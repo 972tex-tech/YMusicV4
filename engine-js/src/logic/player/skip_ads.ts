@@ -1,8 +1,11 @@
 // Strip ads config from InnerTube /player JSON (webview-js yt/skip_ads.ts
 // transformPlayerRequest / transformPlayerResponse). No PO inject — OWL mints.
+// Hooked as an HttpCall interceptor so fetch/XHR stay thin HttpRequest wrappers.
 
-import { utf8Decode, utf8Encode } from "../../transport";
-import { setXhrJsonRewrite } from "../yt/xhr";
+import { utf8Decode } from "../../transport";
+import { interceptHttp } from "../../protocol/http/intercept";
+import type { HttpChain, HttpReq } from "../../protocol/http/intercept";
+import { ParsedJsonResponse } from "../../protocol/http/intercept";
 import { ingestPlayerCaptions } from "./captions";
 import { is144pItag, recordFake144 } from "./itag_144";
 import type { Fake144Row } from "./itag_144";
@@ -22,9 +25,9 @@ function isPlayerUrl(url: string): boolean {
 
 function jsonRec(body: unknown): Record<string, unknown> | null {
   let s: string;
+  if (body == null || typeof body === "function") return null;
   if (typeof body === "string") s = body;
   else if (body instanceof Uint8Array) s = utf8Decode(body);
-  else if (body == null) return null;
   else s = String(body);
   try {
     return asRec(JSON.parse(s));
@@ -116,29 +119,40 @@ export function transformPlayerResponse(rec: Record<string, unknown>): Record<st
   return rec;
 }
 
-function rewriteRequest(url: string, body: unknown): unknown {
-  if (!isPlayerUrl(url)) return body;
-  const rec = jsonRec(body);
-  if (!rec) return body;
+export { isPlayerUrl };
+
+function rewriteReq(req: HttpReq): HttpReq {
+  const rec = jsonRec(req.body);
+  if (!rec) return req;
   try {
     transformPlayerRequest(rec);
   } catch (e) {
     console.warn("player ads: transformPlayerRequest failed: " + errText(e));
-    return body;
+    return req;
   }
-  const s = JSON.stringify(rec);
-  if (body instanceof Uint8Array) return utf8Encode(s);
-  return s;
+  const headers = req.headers.filter(function (e) {
+    return String(e[0]).toLowerCase() !== "content-length";
+  });
+  return Object.assign({}, req, {
+    headers: headers,
+    body: function (io: PipeSink) {
+      return io.writeObjectAsJson(rec);
+    },
+  });
 }
 
-function rewriteResponse(url: string, rec: Record<string, unknown>): Record<string, unknown> {
-  if (!isPlayerUrl(url)) return rec;
+async function playerAdsIntercept(chain: HttpChain): Promise<HttpResponse> {
+  let req = chain.request;
+  if (!isPlayerUrl(req.url)) return chain.proceed(req);
+  req = rewriteReq(req);
+  const res = await chain.proceed(req);
+  const rec = await res.jsonObject();
   try {
     transformPlayerResponse(rec);
   } catch (e) {
     console.warn("player ads: transformPlayerResponse failed: " + errText(e));
   }
-  return rec;
+  return new ParsedJsonResponse(res, rec);
 }
 
 let installed = false;
@@ -146,5 +160,5 @@ let installed = false;
 export function installPlayerAdStrip(): void {
   if (installed) return;
   installed = true;
-  setXhrJsonRewrite(rewriteRequest, rewriteResponse);
+  interceptHttp(playerAdsIntercept);
 }

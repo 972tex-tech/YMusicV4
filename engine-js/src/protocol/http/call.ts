@@ -1,5 +1,7 @@
 import { open, onAccept } from "../../transport";
 import { hostError } from "../command";
+import { dispatchHttp } from "./intercept";
+import type { HttpReq } from "./intercept";
 import { Response } from "./response";
 import type { BodyKind, RequestHead, RequestOpts } from "./wire";
 import type { JsLogger, LogCrumb } from "../logger";
@@ -77,6 +79,36 @@ export class HttpCallImpl implements HttpCall {
     this._started = true;
     if (this._cancelled) throw new Error("request cancelled");
     const self = this;
+    return dispatchHttp(
+      {
+        method: this._method,
+        url: this._url,
+        headers: this._headers,
+        body: this._body,
+        opts: this._opts,
+        log: this._log,
+      },
+      function (req) {
+        return self._send(req);
+      },
+    );
+  }
+
+  private async _send(req: HttpReq): Promise<HttpResponse> {
+    const self = this;
+    this._url = req.url;
+    this._headers = req.headers;
+    this._body = req.body;
+    this._opts = req.opts;
+    this._log = req.log;
+    this._method = req.method;
+    let kind: BodyKind = null;
+    if (req.body != null) {
+      if (typeof req.body === "string") kind = "text";
+      else if (req.body instanceof Uint8Array) kind = "bytes";
+      else kind = "callback";
+    }
+    this._kind = kind;
     const io = open("http");
     this._io = io;
     // The body rides its own pipe: register a one-shot command the server opens lazily, on the

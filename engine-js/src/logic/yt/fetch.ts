@@ -21,7 +21,9 @@ import { fakeUmpAfter, transformRequestBody } from "./sabr_abr";
 import type { SabrRequestState } from "./sabr_abr";
 import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
-import { applyRequestRewrite, applyResponseRewrite, taggedJsonText, wantsJsonRewrite } from "./xhr";
+import { parsedJson } from "../../protocol/http/intercept";
+import { taggedJsonText } from "../../protocol/http/tagged";
+import { wantsJsonRewrite } from "./xhr";
 
 function native(name: string, impl: Function): Function {
   if (typeof __nativeFn === "function") return __nativeFn(name, impl);
@@ -636,8 +638,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   }
   let sabrState: SabrRequestState | null = null;
   if (p.body !== undefined) {
-    const rewritten = applyRequestRewrite(p.url, p.body);
-    const sabr = transformRequestBody(p.url, rewritten);
+    const sabr = transformRequestBody(p.url, p.body);
     sabrState = sabr.state;
     builder.body(sabr.body as string | Uint8Array);
     logSabrRequest(p.url, sabr.body);
@@ -690,7 +691,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   await storeSetCookies(httpRes.url.length > 0 ? httpRes.url : p.url, httpRes);
   if (wantsJsonRewrite(p.url)) {
     try {
-      const rec = applyResponseRewrite(p.url, await httpRes.jsonObject());
+      const rec = parsedJson(httpRes) || (await httpRes.jsonObject());
       const rewritten = Object.create(ResponseImpl.prototype) as FetchResponseJs;
       fillResponse(
         rewritten,

@@ -1,11 +1,14 @@
 // XMLHttpRequest over HttpRequest, for eval'd base.js. Same place as fetch.ts: Cookie goes on the
-// builder via cookieHeaderFor. Player ads strip (skip_ads.ts) rewrites /player JSON via
-// setXhrJsonRewrite. Quoted names so Closure ADVANCED leaves the browser-shaped API intact.
+// builder via cookieHeaderFor. Player ads strip is an HttpCall interceptor (skip_ads.ts).
+// Quoted names so Closure ADVANCED leaves the browser-shaped API intact.
 
 import { debug } from "../../debug";
 import { utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import { resolveUrl } from "../../protocol/http/headers";
+import { parsedJson } from "../../protocol/http/intercept";
+import { installJsonParseHook, taggedJsonText } from "../../protocol/http/tagged";
+import { isPlayerUrl } from "../player/skip_ads";
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
@@ -45,71 +48,11 @@ function native(name: string, impl: Function): Function {
   return impl;
 }
 
-type XhrRequestRewrite = (url: string, body: unknown) => unknown;
-type XhrResponseRewrite = (url: string, rec: Record<string, unknown>) => Record<string, unknown>;
+export { taggedJsonText };
 
-let requestRewrite: XhrRequestRewrite | undefined;
-let responseRewrite: XhrResponseRewrite | undefined;
-
-export function setXhrJsonRewrite(
-  req: XhrRequestRewrite | undefined,
-  res: XhrResponseRewrite | undefined,
-): void {
-  requestRewrite = req;
-  responseRewrite = res;
-}
-
-export function applyRequestRewrite(url: string, body: unknown): unknown {
-  return requestRewrite ? requestRewrite(url, body) : body;
-}
-
-export function applyResponseRewrite(
-  url: string,
-  rec: Record<string, unknown>,
-): Record<string, unknown> {
-  return responseRewrite ? responseRewrite(url, rec) : rec;
-}
-
-/**
- * InnerTube does `text()` then `JSON.parse(e.replace(")]}'",""))`. A primitive cannot hold a
- * property, so this is a String object: `replace` keeps the box, `JSON.parse` reads `_jsonParsed`.
- */
-export function taggedJsonText(rec: unknown): string {
-  const s = new String("{}") as unknown as Record<string, unknown>;
-  Object.defineProperty(s, "_jsonParsed", { value: rec, configurable: true });
-  Object.defineProperty(s, "replace", {
-    value: function () {
-      return s;
-    },
-    configurable: true,
-  });
-  return s as unknown as string;
-}
-
-function installJsonParseHook(): void {
-  const json = JSON as unknown as Record<string, unknown>;
-  const orig = json["parse"] as (
-    text: string,
-    reviver?: (key: string, value: unknown) => unknown,
-  ) => unknown;
-  json["parse"] = native(
-    "JSON.parse",
-    function (text: unknown, reviver?: (key: string, value: unknown) => unknown) {
-      if (text != null && typeof text === "object") {
-        const rec = (text as Record<string, unknown>)["_jsonParsed"];
-        if (rec !== undefined) return rec;
-      }
-      return orig.call(JSON, text as string, reviver);
-    },
-  );
-}
-
-/** Full-body JSON rewrite is only for /player, never streaming SABR. */
+/** InnerTube /player JSON (ads interceptor already rewrote). Never streaming SABR. */
 export function wantsJsonRewrite(url: string): boolean {
-  if (!requestRewrite && !responseRewrite) return false;
-  const q = url.indexOf("?");
-  const path = q >= 0 ? url.slice(0, q) : url;
-  return path.indexOf("/youtubei/v1/player") >= 0 && path.indexOf("heartbeat") < 0;
+  return isPlayerUrl(url);
 }
 
 function fire(x: XhrJs, type: string): void {
@@ -304,7 +247,6 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   if (!hasReferer && loc && loc["href"] != null) builder.addHeader("Referer", String(loc["href"]));
   if (!hasOrigin && loc && loc["origin"] != null)
     builder.addHeader("Origin", String(loc["origin"]));
-  if (requestRewrite) body = requestRewrite(url, body);
   const sabr = transformRequestBody(url, body);
   const sabrState: SabrRequestState | null = sabr.state;
   body = sabr.body;
@@ -350,7 +292,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       self._respHeaders = res.headers.entries.slice();
       setReady(self, 2);
       if (wantsJsonRewrite(url)) {
-        const rec = applyResponseRewrite(url, await res.jsonObject());
+        const rec = parsedJson(res) || (await res.jsonObject());
         if (self["responseType"] === "json") {
           self["response"] = rec;
           self["responseText"] = "";
