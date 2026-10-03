@@ -78,7 +78,7 @@ function writeJsonLine(prefix: string, value: unknown): void {
       return wait(pipe.sink.writeObjectAsJson(value));
     })
     .then(function () {
-      return wait(pipe.sink.writeUtf8("\n"));
+      return wait(pipe.sink.putByte(10));
     })
     .then(
       function () {},

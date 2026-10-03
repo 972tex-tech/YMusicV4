@@ -14,7 +14,7 @@
 //    source: receive(buf,off,len) (-> count or -1), buffered reads (readInt/readLong, readUtf8,
 //    readUtf8Line, readJsonObject/readJsonArray), close() (host's next send gets EPIPE).
 //    sink: send(buf,off,len), buffered writes coalescing through a lazily-allocated staging
-//    segment (writeInt/writeLong, writeBytes, writeUtf8[Range|Line], writeBytesAsBase64url, writeObjectAsJson, flush()),
+//    segment (writeInt/writeLong, writeBytes, putByte, writeUtf8[Range|Line], writeBytesAsBase64url, writeObjectAsJson, flush()),
 //    close() = flush + END, close(reason) = RESET abort. Plus pipe.command / pipe.id.
 // Kotlin opens odd pipe ids, JS opens even ones, so the two id spaces never collide.
 //
@@ -325,6 +325,13 @@ function makePipe(id: number, command: string): TransportPipe {
         checkWriteBusy();
         ensureWbuf();
         return writeLock(writeBytesFn(b));
+      },
+      putByte: function (b) {
+        checkWriteBusy();
+        if (!Number.isInteger(b) || b < 0 || b > 255)
+          throw new RangeError("putByte: " + b + " is not a byte");
+        ensureWbuf();
+        return writeLock(putByte(b));
       },
       // out-of-range throws rather than silently wrapping (DataView truncates mod 2^n)
       writeInt: function (v) {

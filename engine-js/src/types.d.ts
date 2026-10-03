@@ -29,6 +29,7 @@ interface PipeSource {
 interface PipeSink {
   send(buffer: Uint8Array, offset?: number, len?: number): MaybePromise;
   writeBytes(b: Uint8Array): MaybePromise;
+  putByte(b: number): MaybePromise;
   writeInt(v: number): MaybePromise;
   writeLong(v: number | bigint): MaybePromise;
   writeUtf8(...parts: string[]): MaybePromise;

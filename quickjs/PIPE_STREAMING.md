@@ -113,7 +113,7 @@ string delegates to native `__utf8Encode`, the multi-arg concat form stays a sma
 `pipe.source` carries the raw `receive` plus buffered reads
 (`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2) and its
 `close()`; `pipe.sink` carries `send` plus buffered writes (`writeInt`/`writeLong`/`writeBytes`/
-`writeUtf8`/`writeUtf8Range`/`writeUtf8Line`/`writeObjectAsJson`, `flush`) and `close(reason?)` —
+`writeUtf8`/`writeUtf8Range`/`writeUtf8Line`/`putByte`/`writeObjectAsJson`, `flush`) and `close(reason?)` —
 the write-staging segment is allocated lazily, so a raw or read-only pipe pays nothing.
 
 Every read is a **thin native over the C `PipeBuf`** (`__pbRecv`/`__pbInt`/`__pbLong`/`__pbLine`/
