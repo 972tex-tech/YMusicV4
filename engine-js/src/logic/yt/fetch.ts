@@ -4,7 +4,7 @@
 // HttpResponse.stream() on read / text / json / arrayBuffer (clone tees that pull).
 
 import { debug } from "../../debug";
-import { utf8Decode, utf8Encode } from "../../transport";
+import { stringifyJson, utf8Decode, utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import {
   checkHeaderName,
@@ -248,7 +248,7 @@ function jsonPull(rec: unknown): PullChunk {
   return function () {
     if (done) return Promise.resolve(null);
     done = true;
-    const bytes = utf8Encode(JSON.stringify(rec));
+    const bytes = stringifyJson(rec);
     return Promise.resolve(bytes.length === 0 ? null : bytes);
   };
 }
@@ -446,7 +446,7 @@ function takeBody(res: FetchResponseJs): void {
 
 async function collect(res: FetchResponseJs): Promise<Uint8Array> {
   takeBody(res);
-  if (res._json != null) return utf8Encode(JSON.stringify(res._json));
+  if (res._json != null) return stringifyJson(res._json);
   if (res._bytes != null) return res._bytes;
   const parts: Uint8Array[] = [];
   let total = 0;

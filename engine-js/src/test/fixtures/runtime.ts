@@ -8,6 +8,7 @@ import {
   onAccept,
   utf8Encode,
   utf8Decode,
+  stringifyJson,
   setTimeout,
   setInterval,
   clearTimeout,
@@ -43,7 +44,7 @@ onAccept("test/rt/parse", async (pipe) => {
   try {
     const data =
       kind === "o" ? await pipe.source.readJsonObject() : await pipe.source.readJsonArray();
-    pipe.sink.send(utf8Encode(JSON.stringify(data)));
+    pipe.sink.send(stringifyJson(data));
   } catch (e) {
     pipe.sink.send(utf8Encode("ERR:" + (e as Error).message));
   }
