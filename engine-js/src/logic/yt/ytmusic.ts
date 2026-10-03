@@ -33,12 +33,12 @@ export async function musicJson(
   let session = await getSession(SESSION_MAX_AGE_MS);
   let res = await post(endpoint, fields, session, log);
   if (res.status === 403) {
-    res.ignoreResult();
+    res.close();
     session = await getSession(0); // rotate: re-scrape, retry once
     res = await post(endpoint, fields, session, log);
   }
   if (!res.ok) {
-    res.ignoreResult();
+    res.close();
     throw JsEngineErrorImpl.network("ytmusic " + endpoint + " HTTP " + res.status);
   }
   return res.jsonObject();

@@ -483,12 +483,12 @@ async function reloadCues(): Promise<void> {
     if (visitor) req.setHeader("X-Goog-Visitor-Id", visitor);
     const res = await executeWithCookies(url, req);
     if (g !== fetchGen) {
-      res.ignoreResult();
+      res.close();
       return;
     }
     if (!res.ok) {
       console.warn("caption timedtext HTTP " + res.status);
-      res.ignoreResult();
+      res.close();
       await emitWindow();
       return;
     }

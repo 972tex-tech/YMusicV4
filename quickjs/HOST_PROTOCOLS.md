@@ -230,10 +230,9 @@ still trust:
   truncated body.
 - Protocol violations (junk after the head → `E20010`, a torn cancel int) and server bugs throw
   out of the handler; the runtime's backstop RESETs with the raw message.
-- Client abandons the body → `res.cancel()` = `[-1]` down the control pipe + closing our read end: the
+- Client abandons the body → `res.close()` / `res.cancel()` = `[-1]` down the control pipe + closing our read end: the
   watcher aborts the exchange promptly (even mid-transport), and any in-flight server write fails
-  EPIPE. `res.ignoreResult()` instead drains to EOF in the background when the exchange should
-  complete cleanly (fire-and-forget).
+  EPIPE.
 - `HttpCall.cancel()` before a `Response` exists RESETs the control pipe's request direction
   instead (`-1` needs an idle sink; RESET is legal mid-write) — the watcher treats RESET and `-1`
   alike. Either way the body registration/pipe is retired.
@@ -561,7 +560,7 @@ call.cancel();                                      // aborts at ANY stage, even
 res.status; res.ok; res.url; res.headers.get(n); await res.json(); await res.text();
 await res.bytes();
 res.stream().read(buf, off, len);
-res.cancel(); res.ignoreResult();  // abort the body / drain it to nowhere (both fire-and-forget)
+res.close();  // abort an unused body (cancel)
 
 // App preferences — the same persistent typed store native UI uses
 const region = await Settings.get("app.gl", "US");

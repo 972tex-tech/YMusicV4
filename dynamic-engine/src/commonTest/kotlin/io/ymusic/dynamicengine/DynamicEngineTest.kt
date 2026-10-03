@@ -598,15 +598,14 @@ class DynamicEngineTest {
         }
     }
 
-    /** ignoreResult() drains the body to nowhere in the background: the server completes
-     *  normally (clean END, reusable connection) and the response body is released. */
+    /** close() cancels an unused body: the host aborts the exchange and the response is released. */
     @Test
-    fun ignore_result_drains_the_body_fire_and_forget() = runTest {
+    fun close_cancels_the_unused_body() = runTest {
         val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
         val e = createTestEngine(FakeHttpClient(canned))
         try {
-            assertEquals("200", e.scenario("ignore-result"))
-            withContext(Dispatchers.Default) { // the drain finishes in the background
+            assertEquals("200", e.scenario("close-response"))
+            withContext(Dispatchers.Default) {
                 withTimeout(5_000) {
                     while (!canned.closed) delay(10)
                 }

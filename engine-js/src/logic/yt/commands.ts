@@ -455,7 +455,7 @@ onAccept(
       encodeURIComponent(gl);
     const res = await HttpRequest.get(url).logger(hostLogger(args, "yt/suggest")).build().execute();
     if (!res.ok) {
-      res.ignoreResult();
+      res.close();
       throw JsEngineErrorImpl.network("yt suggest HTTP " + res.status);
     }
     const text = await res.text();

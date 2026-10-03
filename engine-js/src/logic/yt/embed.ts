@@ -66,7 +66,7 @@ onAccept(
         .logger(hostLogger(args, "yt/embed")),
     );
     if (!res.ok) {
-      res.ignoreResult();
+      res.close();
       throw JsEngineErrorImpl.network("yt embed HTTP " + res.status);
     }
     const html = prepareEmbedHtml(await res.text());

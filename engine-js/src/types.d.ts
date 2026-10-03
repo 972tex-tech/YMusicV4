@@ -185,7 +185,7 @@ interface HttpResponse {
   jsonArray(): Promise<unknown[]>;
   stream(): HttpBodyStream;
   cancel(): void;
-  ignoreResult(): void;
+  close(): void;
 }
 
 interface HttpCall {

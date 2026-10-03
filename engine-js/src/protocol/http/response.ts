@@ -158,22 +158,7 @@ export class Response implements HttpResponse {
     }
     io.source.close();
   }
-  // Fire-and-forget, like cancel() but polite: mark the body ignored and drain it to nowhere in
-  // the background so the exchange completes with a clean END. Nothing to await; a mid-drain
-  // failure just ends the drain (the caller declared they don't care), so it can never surface
-  // an unhandled rejection.
-  ignoreResult(): void {
-    this._take();
-    const self = this;
-    (async function () {
-      const buf = new Uint8Array(8192);
-      try {
-        for (;;) {
-          if ((await self._read(buf, 0, buf.length)) < 0) return;
-        }
-      } catch (e) {
-        // _read already retired the exchange via _fail(); the caller declared they don't care.
-      }
-    })();
+  close(): void {
+    this.cancel();
   }
 }

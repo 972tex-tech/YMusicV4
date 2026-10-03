@@ -27,12 +27,12 @@ export async function innertubeJson(
   let session = await getSession(SESSION_MAX_AGE_MS);
   let res = await post(endpoint, fields, session, log);
   if (res.status === 403) {
-    res.ignoreResult();
+    res.close();
     session = await getSession(0); // rotate: re-scrape the homepage, then retry once
     res = await post(endpoint, fields, session, log);
   }
   if (!res.ok) {
-    res.ignoreResult();
+    res.close();
     throw JsEngineErrorImpl.network("yt " + endpoint + " HTTP " + res.status);
   }
   return res.jsonObject();

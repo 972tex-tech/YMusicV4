@@ -104,5 +104,7 @@ export class ParsedJsonResponse implements HttpResponse {
   cancel(): void {
     this._inner.cancel();
   }
-  ignoreResult(): void {}
+  close(): void {
+    this.cancel();
+  }
 }

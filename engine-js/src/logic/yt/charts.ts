@@ -50,7 +50,7 @@ async function chartsBrowse(log?: JsLogger): Promise<Record<string, unknown>> {
     .logger(log ?? jsLogger("yt/trending"));
   const res = await executeWithCookies(url, builder);
   if (!res.ok) {
-    res.ignoreResult();
+    res.close();
     throw JsEngineErrorImpl.network("yt charts HTTP " + res.status);
   }
   return res.jsonObject();

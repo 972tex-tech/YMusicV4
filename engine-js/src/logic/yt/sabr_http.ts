@@ -164,8 +164,8 @@ class SabrResponse implements HttpResponse {
   cancel(): void {
     this._inner.cancel();
   }
-  ignoreResult(): void {
-    this._inner.ignoreResult();
+  close(): void {
+    this.cancel();
   }
 }
 

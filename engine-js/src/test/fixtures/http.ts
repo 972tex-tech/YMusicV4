@@ -275,9 +275,9 @@ const scenarios: Record<string, Scenario> = {
     return utf8Decode(buf, 0, n < 0 ? 0 : n);
   },
 
-  "ignore-result": async () => {
+  "close-response": async () => {
     const res = await HttpRequest.get("https://x/ping").build().execute();
-    res.ignoreResult();
+    res.close();
     return String(res.status);
   },
 

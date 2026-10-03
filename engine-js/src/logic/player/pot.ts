@@ -142,7 +142,7 @@ export async function minterFromConfig(
         HttpRequest.get(interpUrl).setHeader("User-Agent", DESKTOP_UA).timeout(30000),
       );
       if (!ir.ok) {
-        ir.ignoreResult();
+        ir.close();
         throw JsEngineErrorImpl.network("interpreter HTTP " + ir.status);
       }
       js = await ir.text();

@@ -269,7 +269,7 @@ async function scrapeSession(): Promise<YtSession> {
       .logger(jsLogger("yt/session")),
   );
   if (!res.ok) {
-    res.ignoreResult();
+    res.close();
     throw JsEngineErrorImpl.network("yt session HTTP " + res.status);
   }
   const html = await res.text();
