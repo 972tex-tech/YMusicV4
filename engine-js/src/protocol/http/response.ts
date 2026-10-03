@@ -2,6 +2,62 @@ import { buildHeaders } from "./headers";
 import { hostError } from "../command";
 import { swallow } from "./util";
 
+// Matches kmpHttp's defaultExecuteTimeout. An unused body (never text/bytes/json/stream/cancel)
+// is aborted after this, even when the builder did not set timeoutMs. First consume clears it so a
+// streaming read (SABR) is not cut off.
+const UNUSED_BODY_MS = 15000;
+
+type HttpLife = {
+  abort: () => void;
+  finish: (reason: string) => void;
+  stopIdle: () => void;
+};
+
+function httpLife(io: Pipe, retire: (reason: string) => void, timeoutMs: number): HttpLife {
+  let done = false;
+  let idle: number | undefined;
+  const stopIdle = function () {
+    const t = idle;
+    if (t === undefined) return;
+    idle = undefined;
+    clearTimeout(t);
+  };
+  const life: HttpLife = {
+    abort: function () {
+      stopIdle();
+      if (!done) {
+        done = true;
+        swallow(io.sink.writeInt(-1));
+        swallow(io.sink.close());
+        retire("cancelled");
+      }
+      io.source.close();
+    },
+    finish: function (reason: string) {
+      stopIdle();
+      if (done) return;
+      done = true;
+      swallow(io.sink.close());
+      retire(reason);
+    },
+    stopIdle: stopIdle,
+  };
+  if (timeoutMs > 0) {
+    idle = setTimeout(function () {
+      idle = undefined;
+      life.abort();
+    }, timeoutMs);
+  }
+  return life;
+}
+
+const httpGc: FinalizationRegistry<HttpLife> | null =
+  typeof FinalizationRegistry === "function"
+    ? new FinalizationRegistry<HttpLife>(function (life) {
+        life.abort();
+      })
+    : null;
+
 // A pull reader over the response body.
 class BodyStream implements HttpBodyStream {
   private _res: Response;
@@ -22,7 +78,7 @@ export class Response implements HttpResponse {
   readonly ok: boolean;
   readonly headers: ReturnType<typeof buildHeaders>;
   private _io: Pipe;
-  private _onFinished: () => void; // retires the call's body registration/pipe
+  private _life: HttpLife;
   private _consumed = false;
   private _eof = false;
 
@@ -32,7 +88,8 @@ export class Response implements HttpResponse {
     url: string,
     headers: HeaderEntry[],
     io: Pipe,
-    onFinished: () => void,
+    onFinished: (reason: string) => void,
+    timeoutMs?: number,
   ) {
     this.status = status;
     this.statusText = statusText;
@@ -40,19 +97,26 @@ export class Response implements HttpResponse {
     this.ok = status >= 200 && status < 300;
     this.headers = buildHeaders(headers);
     this._io = io;
-    this._onFinished = onFinished;
+    const life = httpLife(io, onFinished, timeoutMs !== undefined ? timeoutMs : UNUSED_BODY_MS);
+    this._life = life;
+    if (httpGc) httpGc.register(this, life, this);
+  }
+  private _unregister(): void {
+    this._life.stopIdle();
+    if (httpGc) httpGc.unregister(this);
   }
   private _take(): void {
     if (this._consumed) throw new Error("Response body has already been consumed");
     this._consumed = true;
+    this._life.stopIdle();
   }
   // The exchange is over: half-close our write side (the cancel channel) so the server's
   // watcher sees EOF and the pipe reaps, and retire the call's body plumbing.
   private _end(): void {
     if (this._eof) return;
     this._eof = true;
-    swallow(this._io.sink.close());
-    this._onFinished();
+    this._unregister();
+    this._life.finish("request finished");
   }
   // A failed body read (server RESET — e.g. "response body failed: …" when the stream died
   // after the head): the stream is unusable past this point, so retire everything and drop our
@@ -149,14 +213,9 @@ export class Response implements HttpResponse {
   // server write. Safe at any point, even mid-stream() or after consumption.
   cancel(): void {
     this._consumed = true;
-    const io = this._io;
-    if (!this._eof) {
-      this._eof = true;
-      swallow(io.sink.writeInt(-1));
-      swallow(io.sink.close());
-      this._onFinished();
-    }
-    io.source.close();
+    this._eof = true;
+    this._unregister();
+    this._life.abort();
   }
   close(): void {
     this.cancel();

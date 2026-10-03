@@ -68,7 +68,8 @@ export class HttpRequestBuilderImpl implements HttpRequestBuilder {
     }; // returned promise is awaited by execute()
     return this;
   }
-  // Per-request deadline for the whole exchange, in milliseconds (server default otherwise).
+  // Deadline until headers return, and until the body is first consumed, in milliseconds
+  // (server default otherwise). A streaming read after the first consume is not cut off.
   timeout(ms: number): this {
     if (!Number.isFinite(ms) || ms <= 0)
       throw new RangeError("timeout must be a positive number of ms");

@@ -615,6 +615,113 @@ class DynamicEngineTest {
         }
     }
 
+    /** timeoutMs also covers an unused body after headers: the host aborts when JS never reads. */
+    @Test
+    fun timeout_cancels_the_unused_body() = runTest {
+        val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
+        val e = createTestEngine(FakeHttpClient(canned))
+        try {
+            assertEquals("200", e.scenario("timeout-unused-body"))
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (!canned.closed) delay(10)
+                }
+            }
+        } finally {
+            e.close()
+        }
+    }
+
+    /** Dropping the Response without reading lets GC cancel the parked host body. */
+    @Test
+    fun gc_cancels_the_unused_body() = runTest {
+        val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
+        val e = createTestEngine(FakeHttpClient(canned))
+        try {
+            val r = e.scenario("gc-drop-response")
+            assertTrue(r.startsWith("200|"), r)
+            withContext(Dispatchers.Default) {
+                withTimeout(20_000) {
+                    while (!canned.closed) delay(10)
+                }
+            }
+        } finally {
+            e.close()
+        }
+    }
+
+    /** fetch() wraps HttpRequest: dropping the WHATWG Response cancels the unused body too. */
+    @Test
+    fun fetch_gc_cancels_the_unused_body() = runTest {
+        val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
+        val e = createTestEngine(FakeHttpClient(canned))
+        try {
+            val r = e.scenario("fetch-gc-drop")
+            assertTrue(r.startsWith("200|"), r)
+            withContext(Dispatchers.Default) {
+                withTimeout(20_000) {
+                    while (!canned.closed) delay(10)
+                }
+            }
+        } finally {
+            e.close()
+        }
+    }
+
+    /** execute() not awaited: unused-body timeout still aborts after headers. */
+    @Test
+    fun fire_and_forget_execute_cancels_the_unused_body() = runTest {
+        val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
+        val e = createTestEngine(FakeHttpClient(canned))
+        try {
+            assertEquals("started", e.scenario("fire-and-forget"))
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (!canned.closed) delay(10)
+                }
+            }
+        } finally {
+            e.close()
+        }
+    }
+
+    /** fetch() not awaited: the unused Response is dropped and GC/timeout abort the body. */
+    @Test
+    fun fetch_fire_and_forget_cancels_the_unused_body() = runTest {
+        val canned = CannedResponse.ofText("y".repeat(200_000), chunkSize = 8192)
+        val e = createTestEngine(FakeHttpClient(canned))
+        try {
+            assertEquals("started", e.scenario("fetch-fire-and-forget"))
+            withContext(Dispatchers.Default) {
+                withTimeout(20_000) {
+                    while (!canned.closed) delay(10)
+                }
+            }
+        } finally {
+            e.close()
+        }
+    }
+
+    /** XMLHttpRequest.timeout covers the whole send, including a body that never finishes. */
+    @Test
+    fun xhr_timeout_aborts_a_hanging_body() = runTest {
+        val canned = CannedResponse(
+            chunks = listOf("part1".encodeToByteArray()),
+            hangAfterChunks = true,
+        )
+        val e = createTestEngine(FakeHttpClient(canned))
+        try {
+            assertEquals("timeout", e.scenario("xhr-timeout"))
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (!canned.closed) delay(10)
+                }
+            }
+        } finally {
+            e.close()
+        }
+    }
+
     @Test
     fun reports_non_2xx_status_in_head() = runTest {
         val client = FakeHttpClient(

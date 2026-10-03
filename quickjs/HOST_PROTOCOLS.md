@@ -192,9 +192,17 @@ K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","hea
   down, RESET with the reason).
 - On the response body's EOF the client half-closes its cancel-channel write side so the pipe
   reaps.
-- Request `"opts"` (all optional; server defaults otherwise): `timeoutMs` (whole-exchange
-  deadline), `followRedirects`. Response `"url"` = the final URL after redirects
-  (`Response.request.url`).
+- Request `"opts"` (all optional; server defaults otherwise): `timeoutMs` (deadline until
+  the response head, and until the body is first consumed — an unused body is cancelled;
+  a streaming read after the first consume is not cut off), `followRedirects`. Response
+  `"url"` = the final URL after redirects (`Response.request.url`). When `timeoutMs` is
+  omitted the bundle still aborts an unused body after 15s (the host client's default
+  execute timeout). A `Response` collected without being consumed also cancels
+  (FinalizationRegistry); fetch and XHR wrap `HttpRequest`, so they inherit both.
+  A fire-and-forget `fetch(url)` (promise never awaited) still runs until headers;
+  the unused-body timer / GC then abort. The fetch Promise is not itself registered
+  — after `await fetch()`, the Promise can be collected while the Response is still
+  being read.
 
 ### Body pipe  (`command = head.bodyCmd`, only when the request has a body)
 - The client registers a **one-shot accept** for a unique command (`"http/body/" + controlPipeId`)
@@ -232,7 +240,8 @@ still trust:
   out of the handler; the runtime's backstop RESETs with the raw message.
 - Client abandons the body → `res.close()` / `res.cancel()` = `[-1]` down the control pipe + closing our read end: the
   watcher aborts the exchange promptly (even mid-transport), and any in-flight server write fails
-  EPIPE.
+  EPIPE. The same abort runs if the `Response` is garbage-collected without being consumed, or if
+  `timeoutMs` elapses before the first body read (15s when omitted).
 - `HttpCall.cancel()` before a `Response` exists RESETs the control pipe's request direction
   instead (`-1` needs an idle sink; RESET is legal mid-write) — the watcher treats RESET and `-1`
   alike. Either way the body registration/pipe is retired.

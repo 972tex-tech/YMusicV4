@@ -114,6 +114,15 @@ function __utf8Encode(str, from, to) {}
  * @return {number}
  */
 function __utf8Length(str, from, to) {}
+/**
+ * @param {!Uint8Array} src
+ * @param {number} srcOff
+ * @param {number} srcLen
+ * @param {!Uint8Array} dst
+ * @param {number} dstOff
+ * @return {number}
+ */
+function __b64urlInto(src, srcOff, srcLen, dst, dstOff) {}
 
 /* ---- native streaming JSON encoder (quickjs_json.c) ---- */
 
@@ -449,6 +458,16 @@ XMLHttpRequest.prototype.responseType;
 XMLHttpRequest.prototype.timeout;
 /** @type {boolean} */
 XMLHttpRequest.prototype.withCredentials;
+/** @type {?function()} */
+XMLHttpRequest.prototype.onreadystatechange;
+/** @type {?function()} */
+XMLHttpRequest.prototype.onload;
+/** @type {?function()} */
+XMLHttpRequest.prototype.onerror;
+/** @type {?function()} */
+XMLHttpRequest.prototype.ontimeout;
+/** @type {?function()} */
+XMLHttpRequest.prototype.onabort;
 /**
  * @param {string} method
  * @param {string} url

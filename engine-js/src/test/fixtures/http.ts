@@ -11,6 +11,17 @@ import { installPlayerAdStrip } from "../../logic/player/skip_ads";
 
 type Scenario = (args: Record<string, unknown>) => Promise<string>;
 
+function gcPressure(): Promise<void> {
+  const junk: Uint8Array[] = [];
+  for (let i = 0; i < 64; i++) junk.push(new Uint8Array(256 * 1024));
+  junk.length = 0;
+  return new Promise<void>(function (resolve) {
+    setTimeout(function () {
+      resolve();
+    }, 0);
+  });
+}
+
 const scenarios: Record<string, Scenario> = {
   "versions": async () => "app=" + versions.app,
 
@@ -281,6 +292,73 @@ const scenarios: Record<string, Scenario> = {
     return String(res.status);
   },
 
+  "timeout-unused-body": async () => {
+    const res = await HttpRequest.get("https://x/big").timeout(50).build().execute();
+    await new Promise<void>(function (resolve) {
+      setTimeout(function () {
+        resolve();
+      }, 200);
+    });
+    return String(res.status);
+  },
+
+  "gc-drop-response": async () => {
+    let res: HttpResponse | null = await HttpRequest.get("https://x/big").build().execute();
+    const status = res.status;
+    const wr = new WeakRef(res);
+    res = null;
+    await gcPressure();
+    return status + "|" + (wr.deref() == null ? "collected" : "held");
+  },
+
+  "fetch-gc-drop": async () => {
+    let res: FetchResponse | null = await fetch("https://x/big");
+    const status = res["status"];
+    const wr = new WeakRef(res);
+    res = null;
+    await gcPressure();
+    return status + "|" + (wr.deref() == null ? "collected" : "held");
+  },
+
+  "fire-and-forget": async () => {
+    HttpRequest.get("https://x/big").timeout(50).build().execute();
+    await new Promise<void>(function (resolve) {
+      setTimeout(function () {
+        resolve();
+      }, 200);
+    });
+    return "started";
+  },
+
+  "fetch-fire-and-forget": async () => {
+    fetch("https://x/big");
+    await gcPressure();
+    await new Promise<void>(function (resolve) {
+      setTimeout(function () {
+        resolve();
+      }, 200);
+    });
+    return "started";
+  },
+
+  "xhr-timeout": async () => {
+    const x = new XMLHttpRequest();
+    x["timeout"] = 50;
+    return await new Promise<string>(function (resolve) {
+      x["ontimeout"] = function () {
+        resolve("timeout");
+      };
+      x["onerror"] = function () {
+        resolve("error");
+      };
+      x["onload"] = function () {
+        resolve("load");
+      };
+      x.open("GET", "https://x/slow");
+      x.send();
+    });
+  },
+
   "status-text": async () => {
     const res = await HttpRequest.get("https://example.com/missing").build().execute();
     return res.status + " " + res.ok + " " + (await res.text());
@@ -431,10 +509,10 @@ const scenarios: Record<string, Scenario> = {
   "xhr-get-text": async () => {
     const x = new XMLHttpRequest();
     return await new Promise<string>(function (resolve, reject) {
-      x.onreadystatechange = function () {
+      x["onreadystatechange"] = function () {
         if (x.readyState === 4) resolve(x.responseText);
       };
-      x.onerror = function () {
+      x["onerror"] = function () {
         reject(new Error("xhr error"));
       };
       x.open("GET", "https://example.com");
@@ -445,10 +523,10 @@ const scenarios: Record<string, Scenario> = {
   "xhr-post": async () => {
     const x = new XMLHttpRequest();
     await new Promise<void>(function (resolve, reject) {
-      x.onload = function () {
+      x["onload"] = function () {
         resolve();
       };
-      x.onerror = function () {
+      x["onerror"] = function () {
         reject(new Error("xhr error"));
       };
       x.open("POST", "https://example.com/post");

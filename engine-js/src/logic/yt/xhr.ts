@@ -219,6 +219,17 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   }
   const ms = self["timeout"];
   if (typeof ms === "number" && ms > 0) builder.timeout(ms);
+  let timeoutHandle: number | undefined;
+  if (typeof ms === "number" && ms > 0) {
+    timeoutHandle = setTimeout(function () {
+      timeoutHandle = undefined;
+      if (self._aborted || self["readyState"] === 4) return;
+      self._aborted = true;
+      if (self._call) self._call.cancel();
+      setReady(self, 4);
+      fire(self, "timeout");
+    }, ms);
+  }
   (async function () {
     try {
       /* Cookie always (browser). SAPISIDHASH only for youtubei that did not already send Authorization. */
@@ -268,6 +279,11 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       if (self._aborted) return;
       setReady(self, 4);
       fire(self, "error");
+    } finally {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = undefined;
+      }
     }
   })();
 };

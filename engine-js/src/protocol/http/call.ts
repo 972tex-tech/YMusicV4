@@ -22,7 +22,7 @@ export class HttpCallImpl implements HttpCall {
   private _opts: RequestOpts | null;
   private _log: JsLogger | null; // the caller's crumb-trail logger for birth-site logs
   private _io: Pipe | null = null;
-  private _response: Response | null = null;
+  private _responseRef: WeakRef<Response> | null = null;
   private _bodyReg: { remove(): void } | null = null; // the body pipe's one-shot accept registration, until opened
   private _bodyPipe: Pipe | null = null; // the body pipe, while the host is pulling from it
   private _started = false;
@@ -66,7 +66,8 @@ export class HttpCallImpl implements HttpCall {
   cancel(): void {
     if (this._cancelled) return;
     this._cancelled = true;
-    if (this._response) return this._response.cancel(); // its _onFinished retires the body
+    const res = this._responseRef ? this._responseRef.deref() : undefined;
+    if (res) return res.cancel(); // its finish/abort retires the body
     this._retireBody("cancelled");
     const io = this._io;
     if (io) {
@@ -164,11 +165,12 @@ export class HttpCallImpl implements HttpCall {
         rh["url"] === undefined ? this._url : String(rh["url"]),
         (rh["headers"] as HeaderEntry[] | undefined) || [],
         io,
-        function () {
-          self._retireBody("request finished");
+        function (reason: string) {
+          self._retireBody(reason);
         },
+        this._opts ? this._opts["timeoutMs"] : undefined,
       );
-      this._response = res;
+      this._responseRef = new WeakRef(res);
       return res;
     } catch (e) {
       // No Response will be returned, so nothing else will ever own the control pipe — retire it
