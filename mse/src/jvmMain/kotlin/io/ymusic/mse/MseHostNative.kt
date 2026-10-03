@@ -18,6 +18,8 @@ interface MseHostSink {
 
 actual object MseHostNative {
     private val loaded = AtomicBoolean(false)
+    private var frameScratch = ByteArray(0)
+    private val frameMeta = IntArray(3)
 
     init {
         loadLibrary()
@@ -40,13 +42,18 @@ actual object MseHostNative {
 
     actual fun copyFrame(handle: Long, afterGen: Int): NativeMseFrame? {
         if (handle == 0L) return null
-        val meta = IntArray(3)
-        val bgra = copyFrameBytes(handle, afterGen, meta) ?: return null
-        return NativeMseFrame(meta[0], meta[1], meta[2], bgra)
+        var n = copyFrameBytes(handle, afterGen, frameMeta, frameScratch)
+        if (n <= 0) return null
+        if (n > frameScratch.size) {
+            frameScratch = ByteArray(n)
+            n = copyFrameBytes(handle, afterGen, frameMeta, frameScratch)
+            if (n <= 0 || n > frameScratch.size) return null
+        }
+        return NativeMseFrame(frameMeta[0], frameMeta[1], frameMeta[2], frameScratch)
     }
 
     @JvmStatic
-    private external fun copyFrameBytes(handle: Long, afterGen: Int, meta: IntArray): ByteArray?
+    private external fun copyFrameBytes(handle: Long, afterGen: Int, meta: IntArray, dest: ByteArray): Int
 
     @JvmStatic
     external fun setSink(handle: Long, sink: MseHostSink)

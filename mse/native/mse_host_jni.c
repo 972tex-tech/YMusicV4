@@ -296,34 +296,32 @@ Java_io_ymusic_mse_MseHostNative_samplesPlayed(JNIEnv *env, jclass cls, jlong ha
     return (jlong)mse_host_samples_played((MseHost *)(intptr_t)handle);
 }
 
-JNIEXPORT jbyteArray JNICALL
-Java_io_ymusic_mse_MseHostNative_copyFrameBytes(JNIEnv *env, jclass cls, jlong handle, jint afterGen, jintArray meta)
+JNIEXPORT jint JNICALL
+Java_io_ymusic_mse_MseHostNative_copyFrameBytes(JNIEnv *env, jclass cls, jlong handle, jint afterGen, jintArray meta, jbyteArray dest)
 {
-    int w = 0, ht = 0, gen = 0, need;
-    jbyteArray arr;
+    int w = 0, ht = 0, gen = 0, need, n;
     jbyte *dst;
     jint m[3];
     (void)cls;
     need = mse_host_copy_frame((MseHost *)(intptr_t)handle, NULL, 0, &w, &ht, &gen);
     if (need <= 0 || gen == afterGen)
-        return NULL;
-    arr = (*env)->NewByteArray(env, need);
-    if (!arr)
-        return NULL;
-    dst = (*env)->GetByteArrayElements(env, arr, NULL);
-    if (!dst) {
-        (*env)->DeleteLocalRef(env, arr);
-        return NULL;
-    }
-    mse_host_copy_frame((MseHost *)(intptr_t)handle, (uint8_t *)dst, need, &w, &ht, &gen);
-    (*env)->ReleaseByteArrayElements(env, arr, dst, 0);
+        return 0;
+    if (!dest || (*env)->GetArrayLength(env, dest) < need)
+        return need;
+    dst = (*env)->GetByteArrayElements(env, dest, NULL);
+    if (!dst)
+        return 0;
+    n = mse_host_copy_frame((MseHost *)(intptr_t)handle, (uint8_t *)dst, need, &w, &ht, &gen);
+    (*env)->ReleaseByteArrayElements(env, dest, dst, 0);
+    if (n <= 0 || n > need)
+        return 0;
     if (meta && (*env)->GetArrayLength(env, meta) >= 3) {
         m[0] = w;
         m[1] = ht;
         m[2] = gen;
         (*env)->SetIntArrayRegion(env, meta, 0, 3, m);
     }
-    return arr;
+    return n;
 }
 
 JNIEXPORT void JNICALL
