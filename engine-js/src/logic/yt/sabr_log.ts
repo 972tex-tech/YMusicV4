@@ -7,8 +7,6 @@
 
 import { debug, debugRun } from "../../debug";
 import { isAudioOnly } from "../player/audio_only";
-import { mhAudioFromPayload } from "./sabr_abr";
-import type { LiveAudioMh } from "./sabr_abr";
 import { noteSps, recordSabrForDump } from "../player/bg_dump";
 import { dumpDrain } from "../../protocol/mse";
 
@@ -450,8 +448,8 @@ function joinU8(parts: Uint8Array[], n: number): Uint8Array {
  */
 export interface SabrTee {
   push(chunk: Uint8Array): void;
+  consume(parts: Uint8Array[]): void;
   maxHid(): number;
-  liveAudio(): LiveAudioMh | null;
   finish(url: string, status: number): void;
 }
 
@@ -465,8 +463,6 @@ export function createSabrTee(): SabrTee {
   let pay: Uint8Array[] = [];
   let payN = 0;
   let maxHid = -1;
-  let liveAudio: LiveAudioMh | null = null;
-  let prevAudioStart = -1;
   let sps = -1;
   let media = 0;
   let bodyN = 0;
@@ -498,15 +494,6 @@ export function createSabrTee(): SabrTee {
       const itag = protoVarint(payload, 3);
       const init = protoVarint(payload, 8) === 1 ? 1 : 0;
       const seq = protoVarint(payload, 9);
-      const audio = mhAudioFromPayload(payload);
-      if (audio && (!liveAudio || audio.startMs >= liveAudio.startMs)) {
-        if (liveAudio) prevAudioStart = liveAudio.startMs;
-        let dur = audio.durationMs;
-        if (!(dur > 0) && prevAudioStart >= 0 && audio.startMs > prevAudioStart)
-          dur = audio.startMs - prevAudioStart;
-        if (!(dur > 0)) dur = 1000;
-        liveAudio = { startMs: audio.startMs, seq: audio.seq, durationMs: dur };
-      }
       debug(function () {
         return (
           "sabr MEDIA_HEADER hid=" +
@@ -635,11 +622,11 @@ export function createSabrTee(): SabrTee {
 
   return {
     push: push,
+    consume: function (parts) {
+      for (let i = 0; i < parts.length; i++) push(parts[i]!);
+    },
     maxHid: function () {
       return maxHid;
-    },
-    liveAudio: function () {
-      return liveAudio;
     },
     finish: finish,
   };

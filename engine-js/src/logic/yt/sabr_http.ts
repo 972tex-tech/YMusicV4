@@ -1,5 +1,5 @@
 // SABR /videoplayback as an HttpCall interceptor so fetch/XHR stay thin HttpRequest wrappers.
-// Request: rewrite ABR body. Response: tee UMP on stream()/bytes() and append fakeUmpAfter at EOF.
+// Request: rewrite ABR body. Response: tee UMP on stream()/bytes() and consume fakeUmpAfter parts at EOF.
 
 import { utf8ByteLength } from "../../protocol/http/util";
 import { addInterceptor } from "../../protocol/http/intercept";
@@ -32,6 +32,19 @@ function rewriteReq(req: HttpReq): { req: HttpReq; state: SabrRequestState | nul
   };
 }
 
+function concatHead(head: Uint8Array, parts: Uint8Array[]): Uint8Array {
+  let n = head.length;
+  for (let i = 0; i < parts.length; i++) n += parts[i]!.length;
+  const out = new Uint8Array(n);
+  out.set(head, 0);
+  let off = head.length;
+  for (let i = 0; i < parts.length; i++) {
+    out.set(parts[i]!, off);
+    off += parts[i]!.length;
+  }
+  return out;
+}
+
 function wrapSabrStream(
   inner: HttpBodyStream,
   state: SabrRequestState | null,
@@ -39,7 +52,8 @@ function wrapSabrStream(
   status: number,
 ): HttpBodyStream {
   const tee = createSabrTee();
-  let extra: Uint8Array | null = null;
+  let extra: Uint8Array[] | null = null;
+  let extraI = 0;
   let extraOff = 0;
   let innerEof = false;
   let fakeSent = false;
@@ -49,19 +63,33 @@ function wrapSabrStream(
     finished = true;
     tee.finish(url, status);
   }
+  function readExtra(buffer: Uint8Array, offset: number, len: number): number {
+    if (!extra) return -1;
+    let wrote = 0;
+    while (wrote < len && extraI < extra.length) {
+      const p = extra[extraI]!;
+      if (extraOff >= p.length) {
+        extraI++;
+        extraOff = 0;
+        continue;
+      }
+      const n = Math.min(len - wrote, p.length - extraOff);
+      buffer.set(p.subarray(extraOff, extraOff + n), offset + wrote);
+      extraOff += n;
+      wrote += n;
+      if (extraOff >= p.length) {
+        extraI++;
+        extraOff = 0;
+      }
+    }
+    if (extraI >= extra.length) extra = null;
+    return wrote > 0 ? wrote : -1;
+  }
   return {
     read: async function (buffer, offset, len) {
       if (extra) {
-        const n = Math.min(len, extra.length - extraOff);
-        if (n <= 0) {
-          extra = null;
-          end();
-          return -1;
-        }
-        buffer.set(extra.subarray(extraOff, extraOff + n), offset);
-        extraOff += n;
-        if (extraOff >= extra.length) extra = null;
-        return n;
+        const n = readExtra(buffer, offset, len);
+        if (n > 0) return n;
       }
       if (!innerEof) {
         const n = await inner.read(buffer, offset, len);
@@ -74,15 +102,14 @@ function wrapSabrStream(
       }
       if (!fakeSent) {
         fakeSent = true;
-        const fake = fakeUmpAfter(state, tee.maxHid(), tee.liveAudio());
+        const fake = fakeUmpAfter(state, tee.maxHid());
         if (fake && fake.length) {
           extra = fake;
+          extraI = 0;
           extraOff = 0;
-          const m = Math.min(len, extra.length);
-          buffer.set(extra.subarray(0, m), offset);
-          extraOff = m;
-          if (extraOff >= extra.length) extra = null;
-          return m;
+          tee.consume(fake);
+          const m = readExtra(buffer, offset, len);
+          if (m > 0) return m;
         }
       }
       end();
@@ -125,13 +152,11 @@ class SabrResponse implements HttpResponse {
     const u8 = await this._inner.bytes();
     const tee = createSabrTee();
     tee.push(u8);
-    const fake = fakeUmpAfter(this._state, tee.maxHid(), tee.liveAudio());
+    const fake = fakeUmpAfter(this._state, tee.maxHid());
+    if (fake && fake.length) tee.consume(fake);
     tee.finish(this._reqUrl, this.status);
     if (!fake || !fake.length) return u8;
-    const out = new Uint8Array(u8.length + fake.length);
-    out.set(u8, 0);
-    out.set(fake, u8.length);
-    return out;
+    return concatHead(u8, fake);
   }
   stream(): HttpBodyStream {
     return wrapSabrStream(this._inner.stream(), this._state, this._reqUrl, this.status);
