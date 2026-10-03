@@ -15,6 +15,7 @@ import kmpcommon.error.codedError
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
 import kmpcommon.io.readAll
+import kmpcommon.log.FileAttachment
 import kmpcommon.log.Logger
 import kmphttp.json.JsonReader
 import kotlinx.coroutines.CancellationException
@@ -52,7 +53,7 @@ import okio.use
  */
 /**
  * `log/capture` — JS reports a coded failure (PO reject) and optionally names a cache blob
- * to attach. Host [Logger.captureError]; [SentryLogger] turns ByteArray props into attachments.
+ * to attach. Host [Logger.captureError]; a file-backed store becomes a [FileAttachment] (pathname).
  */
 internal fun QuickJsRuntime.installCapture(store: CacheStore?, parked: ParkedLoggers) {
     onAccept("log/capture") { pipe ->
@@ -61,10 +62,11 @@ internal fun QuickJsRuntime.installCapture(store: CacheStore?, parked: ParkedLog
             val message = head["message"]?.jsonPrimitive?.contentOrNull ?: "PO rejected"
             val scopeName = head["scope"]?.jsonPrimitive?.contentOrNull
             val key = head["key"]?.jsonPrimitive?.contentOrNull
-            val bytes = if (store != null && !scopeName.isNullOrEmpty() && !key.isNullOrEmpty()) {
+            val file = if (store != null && !scopeName.isNullOrEmpty() && !key.isNullOrEmpty()) {
                 withContext(Dispatchers.IO) {
-                    val entry = store.get(scopeName, key) ?: return@withContext null
-                    BufferedAsyncSource(entry.open()).use { it.readFully().readByteArray() }
+                    store.get(scopeName, key)?.filePath?.let { path ->
+                        FileAttachment(path, "bg-session.json")
+                    }
                 }
             } else {
                 null
@@ -73,7 +75,7 @@ internal fun QuickJsRuntime.installCapture(store: CacheStore?, parked: ParkedLog
                 "cache.scope" to (scopeName ?: ""),
                 "cache.key" to (key ?: ""),
             )
-            if (bytes != null) prop["bg-session.json"] = bytes
+            if (file != null) prop["bg-session.json"] = file
             parked.root?.captureError(TechnicalException(code, message), message, prop)
         }
     }

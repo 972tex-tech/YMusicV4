@@ -41,5 +41,8 @@ interface CacheStore {
         val meta: Meta
         /** Open a fresh stream over the value; the caller closes it. */
         fun open(): AsyncSource
+
+        /** Local filesystem path of the blob, if this store is file-backed. */
+        val filePath: String? get() = null
     }
 }

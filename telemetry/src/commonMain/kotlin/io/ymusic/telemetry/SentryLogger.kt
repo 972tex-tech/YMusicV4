@@ -7,6 +7,7 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import kmpcommon.error.codedError
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
+import kmpcommon.log.FileAttachment
 import kmpcommon.log.Logger
 import kmpcommon.log.LoggingWorker
 import kmpcommon.log.trailMark
@@ -77,6 +78,7 @@ class SentryLogger private constructor(
             message?.let { scope.setExtra("capture.message", it) }
             prop?.forEach { (k, v) ->
                 when (v) {
+                    is FileAttachment -> scope.addAttachment(Attachment(v.path, v.filename, v.contentType))
                     is ByteArray -> scope.addAttachment(Attachment(v, k))
                     else -> scope.setContext("capture.$k", v)
                 }

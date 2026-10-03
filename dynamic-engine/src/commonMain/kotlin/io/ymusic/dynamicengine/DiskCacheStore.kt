@@ -59,7 +59,8 @@ class DiskCacheStore(
 
     override suspend fun get(scope: String, key: String): CacheStore.Entry? = withContext(ioDispatcher) {
         val stored = queries.selectOne(scope, key, ::toMeta).executeAsOneOrNull() ?: return@withContext null
-        if (!fileSystem.exists(blobPath(scope, key))) {
+        val blob = blobPath(scope, key)
+        if (!fileSystem.exists(blob)) {
             // A row whose blob is gone (a crash between the two, or a torn delete). Self-heal to a
             // miss so a row never outlives its blob and a later read can't fail on a missing file.
             writeLock.withLock { queries.deleteOne(scope, key) }
@@ -70,7 +71,8 @@ class DiskCacheStore(
         val meta = stored.copy(lastUsed = ts)
         object : CacheStore.Entry {
             override val meta = meta
-            override fun open(): AsyncSource = FileAsyncSource(fileSystem, blobPath(scope, key), ioDispatcher)
+            override val filePath = blob.toString()
+            override fun open(): AsyncSource = FileAsyncSource(fileSystem, blob, ioDispatcher)
         }
     }
 
