@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -332,31 +333,48 @@ internal class AppleLocalPlayer(
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
+    private fun ticking(): Boolean {
+        if (released) return false
+        val st = _status.value.state as? PlaybackState.Prepared ?: return false
+        return st.playWhenReady && !st.ended
+    }
+
+    private fun tickOnce() {
+        val item = player.currentItem ?: return
+        val st = _status.value
+        if (st.state !is PlaybackState.Prepared) return
+        val posMs = player.currentTime().toMillisOrUnknown().coerceAtLeast(0L)
+        val prevDur = _progress.value.durationMs
+        val durMs = if (prevDur > 0L) prevDur else item.duration.toMillisOrUnknown()
+        val ended = durMs > 0L && posMs >= durMs - END_EPSILON_MS && player.rate == 0f && st.playWhenReady
+        if (ended && appliedConfig.loop) {
+            player.seekToTime(cmTime(0L))
+            player.setRate(desiredSpeed)
+            _progress.update { it.copy(positionMs = 0L, durationMs = durMs) }
+        } else {
+            _progress.update { it.copy(positionMs = if (ended) durMs else posMs, durationMs = durMs) }
+            if (ended) {
+                _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
+            }
+        }
+        if (!audioOnly) {
+            val vs = item.videoSize()
+            if (vs != null && vs != st.videoSize) _status.update { it.copy(videoSize = vs) }
+        }
+    }
+
     private suspend fun tick() {
         while (scope.isActive) {
-            val item = player.currentItem
-            val st = _status.value
-            if (item != null && st.state is PlaybackState.Prepared) {
-                val posMs = player.currentTime().toMillisOrUnknown().coerceAtLeast(0L)
-                val prevDur = _progress.value.durationMs
-                val durMs = if (prevDur > 0L) prevDur else item.duration.toMillisOrUnknown()
-                val ended = durMs > 0L && posMs >= durMs - END_EPSILON_MS && player.rate == 0f && st.playWhenReady
-                if (ended && appliedConfig.loop) {
-                    player.seekToTime(cmTime(0L))
-                    player.setRate(desiredSpeed)
-                    _progress.update { it.copy(positionMs = 0L, durationMs = durMs) }
-                } else {
-                    _progress.update { it.copy(positionMs = if (ended) durMs else posMs, durationMs = durMs) }
-                    if (ended) {
-                        _status.update { it.copy(state = PlaybackState.Prepared(false, buffering = false, ended = true)) }
-                    }
-                }
-                if (!audioOnly) {
-                    val vs = item.videoSize()
-                    if (vs != null && vs != st.videoSize) _status.update { it.copy(videoSize = vs) }
+            if (ticking()) {
+                tickOnce()
+                delay(TICK_MS)
+            } else {
+                tickOnce()
+                _status.first {
+                    val st = it.state as? PlaybackState.Prepared
+                    st != null && st.playWhenReady && !st.ended
                 }
             }
-            delay(TICK_MS)
         }
     }
 

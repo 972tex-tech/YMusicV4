@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -106,8 +107,10 @@ internal class AndroidLocalPlayer(
     init {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) = syncFromPlayer(playbackState)
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 syncFromPlayer(player.playbackState)
+                snapshotProgress()
+            }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && player.currentMediaItemIndex == 1) {
@@ -455,18 +458,33 @@ internal class AndroidLocalPlayer(
         _progress.update { it.copy(durationMs = durationOrUnknown()) }
     }
 
+    private fun snapshotProgress() {
+        if (released || player.currentMediaItemIndex != 0) return
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        val buf = player.bufferedPosition.coerceAtLeast(0L)
+        _progress.update {
+            it.copy(positionMs = pos, bufferedPositionMs = buf, durationMs = durationOrUnknown())
+        }
+    }
+
+    private fun ticking(): Boolean {
+        if (released) return false
+        val st = _status.value.state as? PlaybackState.Prepared ?: return false
+        return st.playWhenReady && !st.ended
+    }
+
     private suspend fun tick() {
         while (scope.isActive) {
-            if (!released) {
-                if (player.currentMediaItemIndex == 0) {
-                    val pos = player.currentPosition.coerceAtLeast(0L)
-                    val buf = player.bufferedPosition.coerceAtLeast(0L)
-                    _progress.update {
-                        it.copy(positionMs = pos, bufferedPositionMs = buf, durationMs = durationOrUnknown())
-                    }
+            if (ticking()) {
+                snapshotProgress()
+                delay(TICK_MS)
+            } else {
+                snapshotProgress()
+                _status.first {
+                    val st = it.state as? PlaybackState.Prepared
+                    st != null && st.playWhenReady && !st.ended
                 }
             }
-            delay(TICK_MS)
         }
     }
 
