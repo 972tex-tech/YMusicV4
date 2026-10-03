@@ -12,7 +12,6 @@ import {
   recordBotguardMint,
   recordBotguardSnapshot,
   recordBotguardSnapshotResponse,
-  setBgDumpExtras,
 } from "./bg_dump";
 
 const REQUEST_KEY = "O43z0dpjhgX20SCx4KAo";
@@ -102,7 +101,6 @@ export async function minterFromConfig(
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {
   const extras = asRec(__bgEntropyStart());
-  setBgDumpExtras(extras);
   overlayReplay(cfg, extras);
   const ytcfgData = asRec(cfg["ytcfg"]) || {};
   const eventId = typeof cfg["eventId"] === "string" ? (cfg["eventId"] as string) : "";

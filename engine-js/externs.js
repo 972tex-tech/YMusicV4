@@ -222,15 +222,6 @@ function __bgEntropyEnd() {}
 function __bgEntropyStop() {}
 /** @return {?string} */
 function __bgEntropyDump() {}
-/** @return {?string} */
-function __bgDumpDir() {}
-/**
- * @param {string} name
- * @param {string} text
- */
-function __bgDumpWrite(name, text) {}
-/** @return {?} */
-function __bgReplayChallenge() {}
 
 /**
  * @param {string} data

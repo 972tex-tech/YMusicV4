@@ -120,19 +120,13 @@ declare function atob(data: string): string;
 declare function btoa(data: string): string;
 
 /** Install C Date.now / Math.random wrappers (rec off). BotGuard must bind these.
- * Overlay returns `{dumpDir, dumpWrite, replayChallenge}`; product returns undefined. */
+ * Overlay returns `{replayChallenge, …}`; product returns undefined. */
 declare function __bgEntropyStart(): unknown;
 /** Record d/p/r plus t/N/S JSON (toString, Error.name, Error.stack). */
 declare function __bgEntropyBegin(): void;
 declare function __bgEntropyEnd(): void;
 declare function __bgEntropyStop(): void;
 declare function __bgEntropyDump(): string | null;
-/** Debug overlay only: dump directory from YMUSIC_BG_DUMP, else null. */
-declare function __bgDumpDir(): string | null;
-/** Debug overlay only: write UTF-8 file `name` under the dump dir. */
-declare function __bgDumpWrite(name: string, text: string): void;
-/** Debug overlay only: program/interp/eventId from YMUSIC_BG_REPLAY_DIR, else null. */
-declare function __bgReplayChallenge(): Record<string, unknown> | null;
 
 // ---- native streaming JSON encoder (quickjs_json.c) ----
 

@@ -15,14 +15,6 @@ let loggedSps = 0;
 let dumpFinished = false;
 let lastSabrUrl = "";
 let lastSabrBody = "";
-let dumpWriteFn: ((name: string, text: string) => void) | null = null;
-
-export function setBgDumpExtras(extras: Record<string, unknown> | null): void {
-  dumpWriteFn = null;
-  if (!extras) return;
-  const w = extras["dumpWrite"];
-  if (typeof w === "function") dumpWriteFn = w as (name: string, text: string) => void;
-}
 
 function u8ToB64url(u: Uint8Array): string {
   let s = "";
@@ -156,10 +148,6 @@ function captureReject(sps: number): void {
   );
 }
 
-function dumpFile(name: string, text: string): void {
-  if (dumpWriteFn) dumpWriteFn(name, text);
-}
-
 function timeOriginMs(): number {
   const g = globalThis as unknown as Record<string, unknown>;
   const p = g["performance"] as Record<string, unknown> | undefined;
@@ -172,8 +160,6 @@ export function recordBotguardEntropy(): void {
   const ent = __bgEntropyDump();
   if (typeof ent !== "string" || !ent.length) return;
   writeJsonLine("entropy", ent);
-  const tape = ent.charAt(ent.length - 1) === "\n" ? ent : ent + "\n";
-  dumpFile("entropy.txt", "# timeOrigin " + timeOriginMs() + "\n" + tape);
 }
 
 export function recordBotguardInit(p: Record<string, unknown>): void {
@@ -186,31 +172,14 @@ export function recordBotguardInit(p: Record<string, unknown>): void {
   p["ua"] = DESKTOP_UA;
   p["timeOrigin"] = timeOriginMs();
   writeJsonLine("init", p);
-  if (typeof p["program"] === "string") dumpFile("program.txt", p["program"] as string);
-  if (typeof p["interpJs"] === "string") dumpFile("interpreter.js", p["interpJs"] as string);
-  dumpFile(
-    "meta.json",
-    JSON.stringify({
-      "eventId": p["eventId"] || "",
-      "interpUrl": p["botguardJsUrl"] || "",
-      "globalName": p["globalName"] || "trayride",
-      "visitorData": p["visitorData"] || "",
-      "clientVersion": p["clientVersion"] || "",
-      "ua": DESKTOP_UA,
-      "timeOrigin": p["timeOrigin"],
-      "sessionKey": sessionKey,
-    }) + "\n",
-  );
 }
 
 export function recordBotguardSnapshot(s: string): void {
   writeJsonLine("snapshot", s);
-  dumpFile("snapshot.txt", s);
 }
 
 export function recordBotguardSnapshotResponse(it: string): void {
   writeJsonLine("snapshotResponse", it);
-  dumpFile("integrityToken.txt", it);
 }
 
 export function recordBotguardMint(id: Uint8Array, token: unknown): void {
