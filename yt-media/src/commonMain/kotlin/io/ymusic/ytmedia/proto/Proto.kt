@@ -6,6 +6,7 @@ import kmphttp.RequestBodyX.asOneshotRequestBody
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
+import okio.ByteString
 import okio.IOException
 
 const val WIRE_TYPE_VARINT = 0
@@ -26,9 +27,9 @@ class ProtoFieldFixed32(fieldNumber: Int, val bytes: ByteArray) : ProtoField(fie
     val asFloat: Float by lazy { Float.fromBits(asInt) }
 }
 
-class ProtoFieldLen(fieldNumber: Int, val bytes: ByteArray) : ProtoField(fieldNumber, WIRE_TYPE_LEN) {
-    val asString: String by lazy { bytes.decodeToString() }
-    val asMessage: List<ProtoField> by lazy { ProtoReader(bytes).readAllFields() }
+class ProtoFieldLen(fieldNumber: Int, val payload: ByteString) : ProtoField(fieldNumber, WIRE_TYPE_LEN) {
+    val asString: String by lazy { payload.utf8() }
+    val asMessage: List<ProtoField> by lazy { ProtoReader(payload).readAllFields() }
 }
 
 /**
@@ -40,6 +41,7 @@ class ProtoFieldLen(fieldNumber: Int, val bytes: ByteArray) : ProtoField(fieldNu
 class ProtoReader(private val source: BufferedSource, private var remaining: Long) {
     /** Parse a self-contained protobuf message — its own byte length bounds it. */
     constructor(bytes: ByteArray) : this(Buffer().write(bytes), bytes.size.toLong())
+    constructor(payload: ByteString) : this(Buffer().write(payload), payload.size.toLong())
 
     fun hasMore(): Boolean = remaining > 0
 
@@ -53,6 +55,12 @@ class ProtoReader(private val source: BufferedSource, private var remaining: Lon
         if (length > remaining) throw IOException("protobuf field length $length exceeds remaining $remaining")
         remaining -= length
         return source.readByteArray(length)
+    }
+
+    private fun readByteString(length: Long): ByteString {
+        if (length > remaining) throw IOException("protobuf field length $length exceeds remaining $remaining")
+        remaining -= length
+        return source.readByteString(length)
     }
 
     private fun readVarInt(): Long {
@@ -75,7 +83,7 @@ class ProtoReader(private val source: BufferedSource, private var remaining: Lon
             WIRE_TYPE_VARINT -> ProtoFieldVarInt(fieldNumber, readVarInt())
             WIRE_TYPE_FIXED64 -> ProtoFieldFixed64(fieldNumber, readBytes(8))
             WIRE_TYPE_FIXED32 -> ProtoFieldFixed32(fieldNumber, readBytes(4))
-            WIRE_TYPE_LEN -> ProtoFieldLen(fieldNumber, readBytes(readVarInt()))
+            WIRE_TYPE_LEN -> ProtoFieldLen(fieldNumber, readByteString(readVarInt()))
             else -> throw IOException("Unsupported wire type: $wireType")
         }
     }
@@ -96,7 +104,7 @@ fun List<ProtoField>.string(fieldNumber: Int): String? =
     (find { it.fieldNumber == fieldNumber } as? ProtoFieldLen)?.asString
 
 fun List<ProtoField>.bytes(fieldNumber: Int): ByteArray? =
-    (find { it.fieldNumber == fieldNumber } as? ProtoFieldLen)?.bytes
+    (find { it.fieldNumber == fieldNumber } as? ProtoFieldLen)?.payload?.toByteArray()
 
 fun List<ProtoField>.message(fieldNumber: Int): List<ProtoField>? =
     (find { it.fieldNumber == fieldNumber } as? ProtoFieldLen)?.asMessage

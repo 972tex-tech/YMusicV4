@@ -338,7 +338,7 @@ internal class SabrCacheTee(
                 is ProtoFieldVarInt -> "${f.fieldNumber}=${f.asLong}"
                 is ProtoFieldLen -> {
                     val sub = runCatching { f.asMessage.joinToString("+") { "${it.fieldNumber}:${it.wireType}" } }.getOrNull()
-                    "${f.fieldNumber}=len[${sub ?: "${f.bytes.size}b"}]"
+                    "${f.fieldNumber}=len[${sub ?: "${f.payload.size}b"}]"
                 }
                 is ProtoFieldFixed64 -> "${f.fieldNumber}=f64(${f.asLong})"
                 is ProtoFieldFixed32 -> "${f.fieldNumber}=f32"
