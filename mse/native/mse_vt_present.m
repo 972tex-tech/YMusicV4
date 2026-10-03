@@ -27,7 +27,9 @@ static jmethodID mse_mouse_mid;
 static jmethodID mse_fs_mid;
 static id mse_fs_enter_obs;
 static id mse_fs_exit_obs;
-static NSTimer *mse_fs_timer;
+static id mse_fs_resize_obs;
+static id mse_fs_move_obs;
+static unsigned mse_fs_gen;
 static int mse_overlay_deferred_show;
 
 static void mse_bind_mouse_jni(JNIEnv *env)
@@ -387,10 +389,23 @@ static NSWindow *mse_named_window(NSString *title)
     return nil;
 }
 
+static void mse_fs_layout_unwatch(void)
+{
+    NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+    if (mse_fs_resize_obs) {
+        [nc removeObserver:mse_fs_resize_obs];
+        mse_fs_resize_obs = nil;
+    }
+    if (mse_fs_move_obs) {
+        [nc removeObserver:mse_fs_move_obs];
+        mse_fs_move_obs = nil;
+    }
+}
+
 static void mse_fs_timer_stop(void)
 {
-    [mse_fs_timer invalidate];
-    mse_fs_timer = nil;
+    mse_fs_gen++;
+    mse_fs_layout_unwatch();
 }
 
 static void mse_fs_restack(void)
@@ -413,17 +428,49 @@ static void mse_fs_restack(void)
     [video orderWindow:NSWindowBelow relativeTo:ui.windowNumber];
 }
 
+static void mse_fs_burst(unsigned gen, int left)
+{
+    if (gen != mse_fs_gen)
+        return;
+    mse_fs_restack();
+    if (left <= 0)
+        return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+                   dispatch_get_main_queue(), ^{
+                       mse_fs_burst(gen, left - 1);
+                   });
+}
+
 static void mse_fs_timer_start(void)
 {
-    if (mse_fs_timer)
-        return;
-    mse_fs_timer = [NSTimer scheduledTimerWithTimeInterval:0.05
-                                                    repeats:YES
-                                                      block:^(NSTimer *t) {
-                                                          (void)t;
-                                                          mse_fs_restack();
-                                                      }];
-    [[NSRunLoop mainRunLoop] addTimer:mse_fs_timer forMode:NSRunLoopCommonModes];
+    NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+    unsigned gen;
+    mse_fs_gen++;
+    gen = mse_fs_gen;
+    mse_fs_layout_unwatch();
+    mse_fs_resize_obs = [nc addObserverForName:NSWindowDidResizeNotification
+                                        object:nil
+                                         queue:NSOperationQueue.mainQueue
+                                    usingBlock:^(NSNotification *note) {
+                                        NSWindow *w = note.object;
+                                        NSString *t = w.title;
+                                        if (![t isEqualToString:@"YMusic"] &&
+                                            ![t isEqualToString:@"YMusic video"])
+                                            return;
+                                        mse_fs_restack();
+                                    }];
+    mse_fs_move_obs = [nc addObserverForName:NSWindowDidMoveNotification
+                                      object:nil
+                                       queue:NSOperationQueue.mainQueue
+                                  usingBlock:^(NSNotification *note) {
+                                      NSWindow *w = note.object;
+                                      NSString *t = w.title;
+                                      if (![t isEqualToString:@"YMusic"] &&
+                                          ![t isEqualToString:@"YMusic video"])
+                                          return;
+                                      mse_fs_restack();
+                                  }];
+    mse_fs_burst(gen, 8);
 }
 
 static void mse_notify_fs(int on)
