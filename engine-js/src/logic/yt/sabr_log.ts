@@ -645,13 +645,6 @@ export function createSabrTee(): SabrTee {
   };
 }
 
-export function logSabrResponse(url: string, status: number, body: Uint8Array): void {
-  if (url.indexOf("/videoplayback") < 0) return;
-  const t = createSabrTee();
-  t.push(body);
-  t.finish(url, status);
-}
-
 function itagsOf(msgs: Uint8Array[]): string {
   const out: number[] = [];
   for (let i = 0; i < msgs.length; i++) {

@@ -656,55 +656,6 @@ export function transformRequestBody(
   return rewritten;
 }
 
-function readUmpVarint(buf: Uint8Array, i: number): { v: number; i: number } | null {
-  if (i >= buf.length) return null;
-  const p = buf[i++]!;
-  if (p < 0x80) return { v: p, i: i };
-  if (i >= buf.length) return null;
-  if (p < 0xc0) return { v: (p & 0x3f) + 64 * buf[i++]!, i: i };
-  if (i + 1 >= buf.length) return null;
-  if (p < 0xe0) return { v: (p & 0x1f) + 32 * (buf[i]! + 256 * buf[i + 1]!), i: i + 2 };
-  if (i + 2 >= buf.length) return null;
-  if (p < 0xf0)
-    return {
-      v: (p & 0x0f) + 16 * (buf[i]! + 256 * (buf[i + 1]! + 256 * buf[i + 2]!)),
-      i: i + 3,
-    };
-  if (i + 3 >= buf.length) return null;
-  return {
-    v: buf[i]! + 256 * (buf[i + 1]! + 256 * (buf[i + 2]! + 256 * buf[i + 3]!)),
-    i: i + 4,
-  };
-}
-
-function maxHidInUmp(body: Uint8Array): number {
-  let i = 0;
-  let max = -1;
-  while (i < body.length) {
-    const id = readUmpVarint(body, i);
-    if (!id) break;
-    const sz = readUmpVarint(body, id.i);
-    if (!sz) break;
-    i = sz.i;
-    if (id.v === 20 && sz.v > 0 && i + sz.v <= body.length) {
-      const hid = protoHid(body.subarray(i, i + sz.v));
-      if (hid != null && hid > max) max = hid;
-    }
-    i += sz.v;
-  }
-  return max;
-}
-
-function protoHid(msg: Uint8Array): number | null {
-  const fs = readFields(msg);
-  if (!fs) return null;
-  for (let i = 0; i < fs.length; i++) {
-    const f = fs[i]!;
-    if (f.field === 1 && f.wire === 0) return f.value as number;
-  }
-  return null;
-}
-
 function mhNum(msg: Uint8Array, field: number): number | null {
   const fs = readFields(msg);
   if (!fs) return null;
@@ -751,33 +702,6 @@ export function mhAudioFromPayload(msg: Uint8Array): LiveAudioMh | null {
   return { startMs: startMs, seq: seq, durationMs: mhDurationMs(msg) };
 }
 
-/** Last non-init audio MEDIA_HEADER (highest startMs). Duration from the header, else seq step. */
-export function liveAudioMh(body: Uint8Array): LiveAudioMh | null {
-  let i = 0;
-  let best: LiveAudioMh | null = null;
-  let prevStart = -1;
-  while (i < body.length) {
-    const id = readUmpVarint(body, i);
-    if (!id) break;
-    const sz = readUmpVarint(body, id.i);
-    if (!sz) break;
-    i = sz.i;
-    if (id.v === 20 && sz.v > 0 && i + sz.v <= body.length) {
-      const one = mhAudioFromPayload(body.subarray(i, i + sz.v));
-      if (one && (!best || one.startMs >= best.startMs)) {
-        if (best) prevStart = best.startMs;
-        best = one;
-      }
-    }
-    i += sz.v;
-  }
-  if (!best) return null;
-  if (!(best.durationMs > 0) && prevStart >= 0 && best.startMs > prevStart)
-    best.durationMs = best.startMs - prevStart;
-  if (!(best.durationMs > 0)) best.durationMs = 1000;
-  return best;
-}
-
 export function fakeUmpAfter(
   state: SabrRequestState | null,
   maxHid: number,
@@ -793,13 +717,4 @@ export function fakeUmpAfter(
   if (!fake || !fake.length) return null;
   wasFaked[k] = true;
   return fake;
-}
-
-export function transformResponseBody(
-  body: Uint8Array,
-  state: SabrRequestState | null,
-): Uint8Array {
-  const extra = fakeUmpAfter(state, maxHidInUmp(body), liveAudioMh(body));
-  if (!extra) return body;
-  return concatU8([body, extra]);
 }

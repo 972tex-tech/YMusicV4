@@ -1,5 +1,5 @@
-// XMLHttpRequest over HttpRequest, for eval'd base.js. Cookie on the builder; SABR UMP
-// transform on videoplayback. Player JSON rewrite is HttpRequest.addInterceptor (skip_ads).
+// XMLHttpRequest over HttpRequest, for eval'd base.js. Cookie on the builder.
+// Player ads and SABR UMP rewrite are HttpRequest.addInterceptor (skip_ads / sabr_http).
 
 import { debug } from "../../debug";
 import { utf8Encode } from "../../transport";
@@ -8,10 +8,6 @@ import { resolveUrl } from "../../protocol/http/headers";
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
-import { logSabrRequest, logSabrResponse } from "./sabr_log";
-import { transformRequestBody, transformResponseBody } from "./sabr_abr";
-import type { SabrRequestState } from "./sabr_abr";
-import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 
 type Listener = (ev?: Record<string, unknown>) => void;
@@ -201,7 +197,6 @@ XhrImpl.prototype["getAllResponseHeaders"] = function (this: XhrJs): string {
 XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   const self = this;
   const url = self._url;
-  noteSabrPlaybackUrl(url);
   if (!allowEngineJsUrl(url)) {
     debug(function () {
       return "js deny " + url;
@@ -236,10 +231,6 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
   if (!hasReferer && loc && loc["href"] != null) builder.addHeader("Referer", String(loc["href"]));
   if (!hasOrigin && loc && loc["origin"] != null)
     builder.addHeader("Origin", String(loc["origin"]));
-  const sabr = transformRequestBody(url, body);
-  const sabrState: SabrRequestState | null = sabr.state;
-  body = sabr.body;
-  logSabrRequest(url, body);
   if (body != null && body !== "") {
     if (typeof body === "string") builder.body(body);
     else if (body instanceof Uint8Array) builder.body(body);
@@ -277,13 +268,10 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       if (self._aborted) return;
       self["status"] = res.status;
       self["statusText"] = res.statusText;
-      logSabrRequest(url, body, res.status);
       self._respHeaders = res.headers.entries.slice();
       setReady(self, 2);
       if (self["responseType"] === "arraybuffer") {
-        let u8 = await drainBytes(res);
-        u8 = transformResponseBody(u8, sabrState);
-        logSabrResponse(url, res.status, u8);
+        const u8 = await drainBytes(res);
         const copy = new Uint8Array(u8.byteLength);
         copy.set(u8);
         self["response"] = copy.buffer;

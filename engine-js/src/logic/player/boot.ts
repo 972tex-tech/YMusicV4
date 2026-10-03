@@ -16,6 +16,7 @@ import { installXhr } from "../yt/xhr";
 import { installFetch } from "../yt/fetch";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
+import { installSabrIntercept } from "../yt/sabr_http";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import { isYmLive } from "./live";
 import { installCaptionMinter, onCaptionSeek, selectedCaptionVss } from "./captions";
@@ -684,6 +685,7 @@ class Player {
 
     installPlayerTree();
     installPlayerAdStrip();
+    installSabrIntercept();
 
     const jsUrl = absUrl(jsUrlRaw);
     if (typeof cfg["jsUrl"] === "string") cfg["jsUrl"] = jsUrl;

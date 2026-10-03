@@ -48,3 +48,4 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   `get_player_config` (live EVENT_ID + `ytAtN` program) → minter on `HttpRequest` → OWL slot → eval `base.js`
   (`fetch`) → KEVLAR_WATCH `Application.create` / `loadVideoById`. Native `:mse` via `protocol/mse.ts`.
   The snapshot env must fill Chrome's 5 PDF `navigator.plugins` (empty `{length:5}` fat-snapshots and no `webPo`).
+  Player ads (`/youtubei/v1/player`) and SABR (`/videoplayback`) rewrite as `HttpRequest.addInterceptor`; fetch/XHR only build the request.

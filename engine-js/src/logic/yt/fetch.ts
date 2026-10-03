@@ -16,10 +16,6 @@ import {
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
-import { createSabrTee, logSabrRequest } from "./sabr_log";
-import { fakeUmpAfter, transformRequestBody } from "./sabr_abr";
-import type { SabrRequestState } from "./sabr_abr";
-import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
 
 function native(name: string, impl: Function): Function {
@@ -258,11 +254,12 @@ function jsonPull(rec: unknown): PullChunk {
 }
 
 function httpPull(httpRes: HttpResponse, onDone: () => void): PullChunk {
-  const stream = httpRes.stream();
   const buf = new Uint8Array(8192);
+  let stream: HttpBodyStream | null = null;
   let ended = false;
   return async function () {
     if (ended) return null;
+    if (!stream) stream = httpRes.stream();
     let n: number;
     try {
       n = await stream.read(buf, 0, buf.length);
@@ -642,7 +639,6 @@ function deniedJsResponse(url: string): FetchResponseJs {
 async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJs> {
   const p = parseInput(input, init);
   if (!p.url) throw new TypeError("fetch: invalid URL");
-  noteSabrPlaybackUrl(p.url);
   if (!allowEngineJsUrl(p.url)) {
     debug(function () {
       return "js deny " + p.url;
@@ -663,17 +659,10 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   if (!p.headers["has"]("origin") && loc && loc["origin"] != null) {
     builder.addHeader("Origin", String(loc["origin"]));
   }
-  let sabrState: SabrRequestState | null = null;
   if (p.body !== undefined) {
-    const sabr = transformRequestBody(p.url, p.body);
-    sabrState = sabr.state;
-    builder.body(sabr.body as string | Uint8Array);
-    logSabrRequest(p.url, sabr.body);
+    builder.body(p.body);
   } else if (p.method === "POST" || p.method === "PUT" || p.method === "PATCH") {
     builder.body("");
-    logSabrRequest(p.url, p.body);
-  } else {
-    logSabrRequest(p.url, p.body);
   }
   if (p.redirect === "manual" || p.redirect === "error") builder.followRedirects(false);
   /* Cookie always (browser). SAPISIDHASH only for youtubei that did not already send Authorization. */
@@ -716,27 +705,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     throw abortError();
   }
   await storeSetCookies(httpRes.url.length > 0 ? httpRes.url : p.url, httpRes);
-  const inner = httpPull(httpRes, detach);
-  let pull = inner;
-  const isSabr = p.url.indexOf("/videoplayback") >= 0;
-  if (isSabr) {
-    const tee = createSabrTee();
-    let fakeSent = false;
-    pull = async function () {
-      const c = await inner();
-      if (c) {
-        tee.push(c);
-        return c;
-      }
-      if (!fakeSent) {
-        fakeSent = true;
-        const extra = fakeUmpAfter(sabrState, tee.maxHid(), tee.liveAudio());
-        if (extra) return extra;
-      }
-      tee.finish(p.url, httpRes.status);
-      return c;
-    };
-  }
+  const pull = httpPull(httpRes, detach);
   const cancelSrc = function () {
     httpRes.cancel();
     detach();
