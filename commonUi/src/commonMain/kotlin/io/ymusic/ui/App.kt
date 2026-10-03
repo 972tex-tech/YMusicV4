@@ -335,7 +335,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // A sign-in/out changes what every feed CONTAINS (personalized vs anonymous), same as a
         // locale change — so it clears the caches too, and the feeds refetch under the new identity.
         remember(localeEpoch, loginEpoch) {
+            discoverSessions.values.forEach { it.close() }
             discoverSessions.clear()
+            ytMusicSessions.values.forEach { it.close() }
             ytMusicSessions.clear()
         }
         // Each section retains its OWN layer stack: the drawer switches sections laterally — no
