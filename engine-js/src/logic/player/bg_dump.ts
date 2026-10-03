@@ -163,7 +163,7 @@ export function recordBotguardEntropy(): void {
       return wait(pipe.sink.writeBytes(ent));
     })
     .then(function () {
-      return wait(pipe.sink.writeUtf8("\n"));
+      return wait(pipe.sink.putByte(10));
     })
     .then(
       function () {},
@@ -222,7 +222,10 @@ export function recordBotguardMint(id: Uint8Array, token: unknown): void {
       }
     })
     .then(function () {
-      return wait(pipe.sink.writeUtf8("}\n"));
+      return wait(pipe.sink.writeUtf8("}"));
+    })
+    .then(function () {
+      return wait(pipe.sink.putByte(10));
     })
     .then(
       function () {},
@@ -265,7 +268,10 @@ export function noteSps(sps: number): void {
           if (body) return wait(pipe.sink.writeBytesAsBase64url(body));
         })
         .then(function () {
-          return wait(pipe.sink.writeUtf8('"}\n'));
+          return wait(pipe.sink.writeUtf8('"}'));
+        })
+        .then(function () {
+          return wait(pipe.sink.putByte(10));
         })
         .then(
           function () {},
