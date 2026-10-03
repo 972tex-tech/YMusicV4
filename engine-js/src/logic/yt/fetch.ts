@@ -491,9 +491,8 @@ ResponseImpl.prototype["json"] = function (this: FetchResponseJs): Promise<unkno
 
 ResponseImpl.prototype["arrayBuffer"] = function (this: FetchResponseJs): Promise<ArrayBuffer> {
   return collect(this).then(function (u8) {
-    const copy = new Uint8Array(u8.byteLength);
-    copy.set(u8);
-    return copy.buffer;
+    if (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength) return u8.buffer;
+    return u8.slice().buffer;
   });
 };
 

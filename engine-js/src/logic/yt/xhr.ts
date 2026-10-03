@@ -72,22 +72,21 @@ function setReady(x: XhrJs, state: number): void {
 
 async function drainBytes(res: HttpResponse): Promise<Uint8Array> {
   const stream = res.stream();
-  const parts: Uint8Array[] = [];
+  let out = new Uint8Array(8192);
   let total = 0;
-  const buf = new Uint8Array(8192);
   for (;;) {
-    const n = await stream.read(buf, 0, buf.length);
+    if (total === out.length) {
+      const grown = new Uint8Array(out.length * 2);
+      grown.set(out);
+      out = grown;
+    }
+    const n = await stream.read(out, total, out.length - total);
     if (n < 0) break;
-    parts.push(buf.slice(0, n));
     total += n;
   }
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (let i = 0; i < parts.length; i++) {
-    out.set(parts[i]!, off);
-    off += parts[i]!.length;
-  }
-  return out;
+  if (total === 0) return new Uint8Array(0);
+  if (total === out.length) return out;
+  return out.slice(0, total);
 }
 
 function XhrImpl(this: XhrJs): XhrJs {
@@ -272,9 +271,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       setReady(self, 2);
       if (self["responseType"] === "arraybuffer") {
         const u8 = await drainBytes(res);
-        const copy = new Uint8Array(u8.byteLength);
-        copy.set(u8);
-        self["response"] = copy.buffer;
+        self["response"] = u8.buffer;
         self["responseText"] = "";
       } else if (self["responseType"] === "json") {
         self["response"] = await res.jsonObject();
