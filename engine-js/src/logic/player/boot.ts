@@ -164,31 +164,52 @@ function bindVideoProgress(player: MoviePlayer): void {
 
 /** Listeners on #movie_player. Application.create copies the IFrame API
  *  onto that node (getPlaybackQuality, setPlaybackQualityRange, …). */
-let htmlListenBound = false;
+let boundHtmlMedia: ReturnType<typeof activeHtmlMedia> = null;
 let lastYtPlayerState = -999;
+
+function onHtmlTimeupdate(): void {
+  notifyListen("progress");
+}
+function onHtmlSeeked(): void {
+  notifyListen("progress");
+}
+function onHtmlDurationchange(): void {
+  notifyListen("progress");
+}
+function onHtmlPlay(): void {
+  notifyListen("state");
+}
+function onHtmlPause(): void {
+  notifyListen("state");
+}
+function onHtmlEnded(): void {
+  notifyListen("state");
+}
+
+function unbindHtmlMediaEvents(): void {
+  const v = boundHtmlMedia;
+  if (!v) return;
+  v["removeEventListener"]("timeupdate", onHtmlTimeupdate);
+  v["removeEventListener"]("seeked", onHtmlSeeked);
+  v["removeEventListener"]("durationchange", onHtmlDurationchange);
+  v["removeEventListener"]("play", onHtmlPlay);
+  v["removeEventListener"]("pause", onHtmlPause);
+  v["removeEventListener"]("ended", onHtmlEnded);
+  boundHtmlMedia = null;
+}
 
 function bindHtmlMediaEvents(): void {
   const v = activeHtmlMedia();
-  if (!v || htmlListenBound) return;
-  htmlListenBound = true;
-  v["addEventListener"]("timeupdate", function () {
-    notifyListen("progress");
-  });
-  v["addEventListener"]("seeked", function () {
-    notifyListen("progress");
-  });
-  v["addEventListener"]("durationchange", function () {
-    notifyListen("progress");
-  });
-  v["addEventListener"]("play", function () {
-    notifyListen("state");
-  });
-  v["addEventListener"]("pause", function () {
-    notifyListen("state");
-  });
-  v["addEventListener"]("ended", function () {
-    notifyListen("state");
-  });
+  if (boundHtmlMedia === v) return;
+  unbindHtmlMediaEvents();
+  if (!v) return;
+  boundHtmlMedia = v;
+  v["addEventListener"]("timeupdate", onHtmlTimeupdate);
+  v["addEventListener"]("seeked", onHtmlSeeked);
+  v["addEventListener"]("durationchange", onHtmlDurationchange);
+  v["addEventListener"]("play", onHtmlPlay);
+  v["addEventListener"]("pause", onHtmlPause);
+  v["addEventListener"]("ended", onHtmlEnded);
 }
 
 let iframeListenBound = false;
@@ -823,6 +844,7 @@ class Player {
       pinPlaybackQuality(player, this.player, q, q);
     }
     resetDrainCounts();
+    bindHtmlMediaEvents();
     console.info(
       "mse setQuality q=" +
         q +
@@ -871,6 +893,7 @@ class Player {
         { cause: e instanceof Error ? e : undefined },
       );
     }
+    bindHtmlMediaEvents();
     this.reapplySpeedPitch();
     /* Fire-and-forget: /player, MSE, picture, catalog arrive on
        onVideoDataChange / status / catalog. load() does not wait. */
@@ -1007,6 +1030,7 @@ class Player {
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player not created", "E20084");
     player["stopVideo"]();
+    bindHtmlMediaEvents();
   }
 
   /** Clock group: position, buffer, duration, seek window. Same payload as webview `_progress`. */
@@ -1357,6 +1381,8 @@ export function setCatalogHook(fn: (() => void) | null): void {
 
 export function setListenHook(fn: ((kind: ListenKind) => void) | null): void {
   listenHook = fn;
+  if (fn) bindHtmlMediaEvents();
+  else unbindHtmlMediaEvents();
 }
 
 function notifyCatalog(): void {
