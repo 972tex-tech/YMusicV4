@@ -24,7 +24,7 @@ export type HttpInterceptor = (chain: HttpChain) => Promise<HttpResponse>;
 
 const interceptors: HttpInterceptor[] = [];
 
-export function interceptHttp(fn: HttpInterceptor): { remove(): void } {
+export function addInterceptor(fn: HttpInterceptor): { remove(): void } {
   interceptors.push(fn);
   return {
     remove: function () {
@@ -64,7 +64,6 @@ export class ParsedJsonResponse implements HttpResponse {
   readonly ok: boolean;
   readonly headers: HttpResponse["headers"];
   readonly record: Record<string, unknown>;
-  private _taken = false;
   private _inner: HttpResponse;
 
   constructor(inner: HttpResponse, record: Record<string, unknown>) {
@@ -78,19 +77,15 @@ export class ParsedJsonResponse implements HttpResponse {
   }
 
   jsonObject(): Promise<Record<string, unknown>> {
-    this._take();
     return Promise.resolve(this.record);
   }
   jsonArray(): Promise<unknown[]> {
-    this._take();
     return Promise.reject(new TypeError("ParsedJsonResponse is an object"));
   }
   text(): Promise<string> {
-    this._take();
     return Promise.resolve(taggedJsonText(this.record) as unknown as string);
   }
   stream(): HttpBodyStream {
-    this._take();
     const bytes = utf8Encode(JSON.stringify(this.record) || "");
     let off = 0;
     return {
@@ -104,18 +99,7 @@ export class ParsedJsonResponse implements HttpResponse {
     };
   }
   cancel(): void {
-    this._taken = true;
     this._inner.cancel();
   }
-  ignoreResult(): void {
-    this._taken = true;
-  }
-  private _take(): void {
-    if (this._taken) throw new Error("Response body has already been consumed");
-    this._taken = true;
-  }
-}
-
-export function parsedJson(res: HttpResponse): Record<string, unknown> | null {
-  return res instanceof ParsedJsonResponse ? res.record : null;
+  ignoreResult(): void {}
 }

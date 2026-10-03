@@ -3,9 +3,10 @@
 // Hooked as an HttpCall interceptor so fetch/XHR stay thin HttpRequest wrappers.
 
 import { utf8Decode } from "../../transport";
-import { interceptHttp } from "../../protocol/http/intercept";
+import { addInterceptor } from "../../protocol/http/intercept";
 import type { HttpChain, HttpReq } from "../../protocol/http/intercept";
 import { ParsedJsonResponse } from "../../protocol/http/intercept";
+import { installJsonParseHook } from "../../protocol/http/tagged";
 import { ingestPlayerCaptions } from "./captions";
 import { is144pItag, recordFake144 } from "./itag_144";
 import type { Fake144Row } from "./itag_144";
@@ -143,7 +144,7 @@ function rewriteReq(req: HttpReq): HttpReq {
 
 async function playerAdsIntercept(chain: HttpChain): Promise<HttpResponse> {
   let req = chain.request;
-  if (!isPlayerUrl(req.url)) return chain.proceed(req);
+  if (!isPlayerUrl(req.url)) return chain.proceed();
   req = rewriteReq(req);
   const res = await chain.proceed(req);
   const rec = await res.jsonObject();
@@ -160,5 +161,6 @@ let installed = false;
 export function installPlayerAdStrip(): void {
   if (installed) return;
   installed = true;
-  interceptHttp(playerAdsIntercept);
+  installJsonParseHook();
+  addInterceptor(playerAdsIntercept);
 }

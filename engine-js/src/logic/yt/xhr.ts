@@ -1,14 +1,10 @@
-// XMLHttpRequest over HttpRequest, for eval'd base.js. Same place as fetch.ts: Cookie goes on the
-// builder via cookieHeaderFor. Player ads strip is an HttpCall interceptor (skip_ads.ts).
-// Quoted names so Closure ADVANCED leaves the browser-shaped API intact.
+// XMLHttpRequest over HttpRequest, for eval'd base.js. Cookie on the builder; SABR UMP
+// transform on videoplayback. Player JSON rewrite is HttpRequest.addInterceptor (skip_ads).
 
 import { debug } from "../../debug";
 import { utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import { resolveUrl } from "../../protocol/http/headers";
-import { parsedJson } from "../../protocol/http/intercept";
-import { installJsonParseHook, taggedJsonText } from "../../protocol/http/tagged";
-import { isPlayerUrl } from "../player/skip_ads";
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
 import type { AuthContext } from "./cookies";
 import { getSession, SESSION_MAX_AGE_MS } from "./session";
@@ -46,13 +42,6 @@ interface XhrJs {
 function native(name: string, impl: Function): Function {
   if (typeof __nativeFn === "function") return __nativeFn(name, impl);
   return impl;
-}
-
-export { taggedJsonText };
-
-/** InnerTube /player JSON (ads interceptor already rewrote). Never streaming SABR. */
-export function wantsJsonRewrite(url: string): boolean {
-  return isPlayerUrl(url);
 }
 
 function fire(x: XhrJs, type: string): void {
@@ -291,29 +280,16 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       logSabrRequest(url, body, res.status);
       self._respHeaders = res.headers.entries.slice();
       setReady(self, 2);
-      if (wantsJsonRewrite(url)) {
-        const rec = parsedJson(res) || (await res.jsonObject());
-        if (self["responseType"] === "json") {
-          self["response"] = rec;
-          self["responseText"] = "";
-        } else if (self["responseType"] === "arraybuffer") {
-          const u8 = utf8Encode(JSON.stringify(rec));
-          const copy = new Uint8Array(u8.byteLength);
-          copy.set(u8);
-          self["response"] = copy.buffer;
-          self["responseText"] = "";
-        } else {
-          const s = taggedJsonText(rec);
-          self["responseText"] = s;
-          self["response"] = s;
-        }
-      } else if (self["responseType"] === "arraybuffer") {
+      if (self["responseType"] === "arraybuffer") {
         let u8 = await drainBytes(res);
         u8 = transformResponseBody(u8, sabrState);
         logSabrResponse(url, res.status, u8);
         const copy = new Uint8Array(u8.byteLength);
         copy.set(u8);
         self["response"] = copy.buffer;
+        self["responseText"] = "";
+      } else if (self["responseType"] === "json") {
+        self["response"] = await res.jsonObject();
         self["responseText"] = "";
       } else {
         const text = await res.text();
@@ -333,7 +309,6 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
 };
 
 export function installXhr(): void {
-  installJsonParseHook();
   const g = globalThis as unknown as Record<string, unknown>;
   const Ctor = native("XMLHttpRequest", XhrImpl);
   (Ctor as { prototype: unknown }).prototype = XhrImpl.prototype;

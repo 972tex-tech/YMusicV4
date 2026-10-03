@@ -21,9 +21,6 @@ import { fakeUmpAfter, transformRequestBody } from "./sabr_abr";
 import type { SabrRequestState } from "./sabr_abr";
 import { noteSabrPlaybackUrl } from "../player/player_res";
 import { allowEngineJsUrl } from "./jsAllow";
-import { parsedJson } from "../../protocol/http/intercept";
-import { taggedJsonText } from "../../protocol/http/tagged";
-import { wantsJsonRewrite } from "./xhr";
 
 function native(name: string, impl: Function): Function {
   if (typeof __nativeFn === "function") return __nativeFn(name, impl);
@@ -403,6 +400,7 @@ interface FetchResponseJs {
   type: string;
   _bytes: Uint8Array | null;
   _json: unknown;
+  _http: HttpResponse | null;
   text(): Promise<string>;
   json(): Promise<unknown>;
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -440,6 +438,7 @@ function ResponseImpl(this: FetchResponseJs, body?: unknown, init?: unknown) {
   fillResponse(this, status, statusText, "", headers, makeStream(memoryPull(bytes)), false);
   this._bytes = bytes;
   this._json = null;
+  this._http = null;
 }
 
 function takeBody(res: FetchResponseJs): void {
@@ -464,9 +463,13 @@ async function collect(res: FetchResponseJs): Promise<Uint8Array> {
 }
 
 ResponseImpl.prototype["text"] = function (this: FetchResponseJs): Promise<string> {
+  if (this._http) {
+    takeBody(this);
+    return this._http.text();
+  }
   if (this._json != null) {
     takeBody(this);
-    return Promise.resolve(taggedJsonText(this._json));
+    return Promise.resolve(JSON.stringify(this._json) || "");
   }
   return collect(this).then(function (u8) {
     return utf8Decode(u8);
@@ -474,6 +477,12 @@ ResponseImpl.prototype["text"] = function (this: FetchResponseJs): Promise<strin
 };
 
 ResponseImpl.prototype["json"] = function (this: FetchResponseJs): Promise<unknown> {
+  if (this._http) {
+    takeBody(this);
+    return this._http.text().then(function (t) {
+      return JSON.parse(t as string);
+    });
+  }
   if (this._json != null) {
     takeBody(this);
     return Promise.resolve(this._json);
@@ -494,6 +503,21 @@ ResponseImpl.prototype["arrayBuffer"] = function (this: FetchResponseJs): Promis
 ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchResponseJs {
   if (this["bodyUsed"] || this["body"]._locked) throw new TypeError("body already used");
   const copy = Object.create(ResponseImpl.prototype) as FetchResponseJs;
+  if (this._http) {
+    fillResponse(
+      copy,
+      this["status"],
+      this["statusText"],
+      this["url"],
+      cloneHeaders(this["headers"]),
+      makeStream(memoryPull(new Uint8Array(0))),
+      this["redirected"],
+    );
+    copy._bytes = null;
+    copy._json = null;
+    copy._http = this._http;
+    return copy;
+  }
   if (this._json != null) {
     fillResponse(
       copy,
@@ -506,6 +530,7 @@ ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchRespons
     );
     copy._bytes = null;
     copy._json = this._json;
+    copy._http = null;
     return copy;
   }
   if (this._bytes != null) {
@@ -521,6 +546,7 @@ ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchRespons
     );
     copy._bytes = bytes;
     copy._json = null;
+    copy._http = null;
     return copy;
   }
   const body = this["body"];
@@ -545,6 +571,7 @@ ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchRespons
   );
   copy._bytes = null;
   copy._json = null;
+  copy._http = null;
   return copy;
 };
 
@@ -689,26 +716,6 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
     throw abortError();
   }
   await storeSetCookies(httpRes.url.length > 0 ? httpRes.url : p.url, httpRes);
-  if (wantsJsonRewrite(p.url)) {
-    try {
-      const rec = parsedJson(httpRes) || (await httpRes.jsonObject());
-      const rewritten = Object.create(ResponseImpl.prototype) as FetchResponseJs;
-      fillResponse(
-        rewritten,
-        httpRes.status,
-        httpRes.statusText,
-        httpRes.url,
-        makeHeaders(httpRes.headers.entries),
-        makeStream(jsonPull(rec)),
-        httpRes.url !== p.url,
-      );
-      rewritten._bytes = null;
-      rewritten._json = rec;
-      return rewritten;
-    } finally {
-      detach();
-    }
-  }
   const inner = httpPull(httpRes, detach);
   let pull = inner;
   const isSabr = p.url.indexOf("/videoplayback") >= 0;
@@ -746,6 +753,7 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   );
   out._bytes = null;
   out._json = null;
+  out._http = httpRes;
   return out;
 }
 

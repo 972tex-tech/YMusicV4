@@ -215,7 +215,7 @@ declare var HttpRequest: {
   patch(url: string): HttpRequestBuilder;
   head(url: string): HttpRequestBuilder;
   method(m: string, url: string): HttpRequestBuilder;
-  intercept(
+  addInterceptor(
     fn: (chain: {
       request: {
         method: string;

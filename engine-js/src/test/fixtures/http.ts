@@ -6,7 +6,7 @@
 import { open, onAccept, utf8Decode } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
-import { taggedJsonText } from "../../logic/yt/xhr";
+import { taggedJsonText } from "../../protocol/http/tagged";
 import { installPlayerAdStrip } from "../../logic/player/skip_ads";
 
 type Scenario = (args: Record<string, unknown>) => Promise<string>;

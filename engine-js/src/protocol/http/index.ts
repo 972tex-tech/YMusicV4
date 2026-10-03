@@ -11,7 +11,7 @@
 // Bundled+minified into the :engine-js artifacts (scrape `engine.js`, player `player.js`); never shipped as source.
 
 import { HttpRequestBuilderImpl } from "./builder";
-import { interceptHttp } from "./intercept";
+import { addInterceptor } from "./intercept";
 
 function verb(method: string): (url: string) => HttpRequestBuilder {
   return function (url: string) {
@@ -29,7 +29,7 @@ export const HttpRequest = {
   method: function (m: string, url: string) {
     return new HttpRequestBuilderImpl(String(m).toUpperCase(), url);
   },
-  "intercept": interceptHttp,
+  "addInterceptor": addInterceptor,
 };
 // Global mirror for externally-evaled JS (dev/debug); in-bundle code imports. Mangles in Closure.
 globalThis.HttpRequest = HttpRequest;

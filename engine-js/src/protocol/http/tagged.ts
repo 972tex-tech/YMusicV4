@@ -13,7 +13,11 @@ export function taggedJsonText(rec: unknown): string {
   return s as unknown as string;
 }
 
+let parseHooked = false;
+
 export function installJsonParseHook(): void {
+  if (parseHooked) return;
+  parseHooked = true;
   const json = JSON as unknown as Record<string, unknown>;
   const orig = json["parse"] as (
     text: string,
@@ -28,3 +32,5 @@ export function installJsonParseHook(): void {
   };
   json["parse"] = typeof __nativeFn === "function" ? __nativeFn("JSON.parse", impl) : impl;
 }
+
+installJsonParseHook();
