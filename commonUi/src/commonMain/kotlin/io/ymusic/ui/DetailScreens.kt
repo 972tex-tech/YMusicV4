@@ -75,6 +75,10 @@ class PlaylistSession(
     init {
         feed.pager.refresh()
     }
+
+    fun close() {
+        feed.close()
+    }
 }
 
 /**
@@ -177,6 +181,10 @@ class FeedDetailSession(
     init {
         feed.pager.refresh()
     }
+
+    fun close() {
+        feed.close()
+    }
 }
 
 /** A generic feed page: back · title · search app bar over the plain feed. Playlist/channel taps
@@ -232,6 +240,10 @@ class ChannelSession(
 
     init {
         feed.pager.refresh()
+    }
+
+    fun close() {
+        feed.close()
     }
 }
 

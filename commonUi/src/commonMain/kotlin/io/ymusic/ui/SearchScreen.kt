@@ -110,6 +110,10 @@ class SearchSession(
 
     suspend fun suggest(query: String): List<String> = onSuggest(query)
 
+    fun close() {
+        pager.close()
+    }
+
     companion object {
         /** YouTube search (the Discover surface): `yt/search` + `yt/suggest`. */
         fun youtube(graph: AppGraph, scope: CoroutineScope, parentLog: Logger? = graph.logger): SearchSession {

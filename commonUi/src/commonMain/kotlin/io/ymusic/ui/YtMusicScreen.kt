@@ -156,6 +156,10 @@ class MusicBrowseSession(
     init {
         feed.pager.refresh()
     }
+
+    fun close() {
+        feed.close()
+    }
 }
 
 /**

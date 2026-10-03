@@ -441,6 +441,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         }
         val popLayer = {
             val top = layers.removeAt(layers.lastIndex)
+            when (top) {
+                is AppLayer.Search -> top.session.close()
+                is AppLayer.Playlist -> top.session.close()
+                is AppLayer.Channel -> top.session.close()
+                is AppLayer.Feed -> top.session.close()
+                is AppLayer.MusicBrowse -> top.session.close()
+                is AppLayer.LibrarySearch, is AppLayer.Login -> Unit
+            }
             // Closing the account-switcher browser IS its completion (no cookie gate flips while
             // switching): refresh session + account + feeds under whatever identity was picked.
             if (top is AppLayer.Login && top.switchAccount) accountController.onLoginComplete()

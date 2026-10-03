@@ -254,6 +254,11 @@ class Pager(
         }
     }
 
+    fun close() {
+        job?.cancel()
+        job = null
+    }
+
     companion object {
         /** The watchdog's error code — the retry page for a hung (not failed) fetch. */
         const val TIMEOUT_CODE = "E20031"
@@ -281,6 +286,10 @@ class FeedSession(
 ) {
     val pager = Pager(scope, logger = logger, fetch = fetch)
     val listState = LazyListState()
+
+    fun close() {
+        pager.close()
+    }
 }
 
 /**
