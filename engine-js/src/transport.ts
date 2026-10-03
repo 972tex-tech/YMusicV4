@@ -12,7 +12,7 @@
 //  - a pipe is the PAIR OF ENDS this side holds, like pipe(2) fds: pipe.source (readable) and
 //    pipe.sink (writable), each closed independently — closing both releases the pipe.
 //    source: receive(buf,off,len) (-> count or -1), buffered reads (readInt/readLong, readUtf8,
-//    readUtf8Line, readJsonObject/readJsonArray), close() (host's next send gets EPIPE).
+//    readBytes, readUtf8Line, readJsonObject/readJsonArray), close() (host's next send gets EPIPE).
 //    sink: send(buf,off,len), buffered writes coalescing through a lazily-allocated staging
 //    segment (writeInt/writeLong, writeBytes, putByte, writeUtf8[Range|Line], writeBytesAsBase64url, writeObjectAsJson, flush()),
 //    close() = flush + END, close(reason) = RESET abort. Plus pipe.command / pipe.id.
@@ -59,6 +59,7 @@ const nPbLong = __pbLong;
 const nPbLine = __pbLine;
 const nPbJson = __pbJson;
 const nPbUtf8 = __pbUtf8;
+const nPbBytes = __pbBytes;
 const nUtf8Encode = __utf8Encode;
 const nUtf8Into = __utf8Into;
 const nUtf8Length = __utf8Length;
@@ -310,6 +311,9 @@ function makePipe(id: number, command: string): TransportPipe {
       },
       readUtf8: function () {
         return nPbUtf8(pb);
+      },
+      readBytes: function () {
+        return nPbBytes(pb);
       },
       close: closeRead,
     },

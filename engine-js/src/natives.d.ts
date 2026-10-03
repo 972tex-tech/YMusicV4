@@ -48,6 +48,7 @@ declare function __pbJson(
   rootType: 1 | 2,
 ): Record<string, unknown> | unknown[] | Promise<Record<string, unknown> | unknown[]>;
 declare function __pbUtf8(pb: NativeHandle): string | Promise<string>;
+declare function __pbBytes(pb: NativeHandle): Uint8Array | Promise<Uint8Array>;
 /** Release the buffer and fail future reads — the read-side half of pipe teardown. */
 declare function __pbCloseRead(pb: NativeHandle): void;
 

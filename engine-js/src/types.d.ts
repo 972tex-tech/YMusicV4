@@ -22,6 +22,8 @@ interface PipeSource {
   readJsonArray(): MaybePromise<unknown[]>;
   /** The rest of the stream to EOF, decoded as UTF-8. */
   readUtf8(): MaybePromise<string>;
+  /** The rest of the stream to EOF, raw bytes. */
+  readBytes(): MaybePromise<Uint8Array>;
   close(): void;
 }
 
@@ -178,6 +180,7 @@ interface HttpResponse {
     has(name: string): boolean;
   };
   text(): Promise<string>;
+  bytes(): Promise<Uint8Array>;
   jsonObject(): Promise<Record<string, unknown>>;
   jsonArray(): Promise<unknown[]>;
   stream(): HttpBodyStream;

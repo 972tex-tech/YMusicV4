@@ -87,6 +87,19 @@ export class Response implements HttpResponse {
     this._end();
     return s;
   }
+  // Whole body as raw bytes — one C accumulator, stolen into a tight Uint8Array at EOF.
+  async bytes(): Promise<Uint8Array> {
+    this._take();
+    let u8: Uint8Array;
+    try {
+      u8 = await this._io.source.readBytes();
+    } catch (e) {
+      this._fail();
+      throw hostError(e);
+    }
+    this._end();
+    return u8;
+  }
   // Parse the body with the STREAMING JSON parser, validating the root type: jsonObject() requires
   // a `{…}` body, jsonArray() a `[…]` (readJsonObject/readJsonArray reject a mismatched root on the
   // first byte). Object vs array is the caller's to pick, not guessed.

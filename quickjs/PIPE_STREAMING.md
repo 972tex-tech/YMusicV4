@@ -112,13 +112,13 @@ string delegates to native `__utf8Encode`, several parts measure with `__utf8Len
 `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
 **no separate `buffered(pipe)` wrapper**: each end is itself the okio-`Buffer`-style object.
 `pipe.source` carries the raw `receive` plus buffered reads
-(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readJsonObject`/`readJsonArray`, §2) and its
+(`readInt`/`readLong`/`readUtf8Line`/`readUtf8`/`readBytes`/`readJsonObject`/`readJsonArray`, §2) and its
 `close()`; `pipe.sink` carries `send` plus buffered writes (`writeInt`/`writeLong`/`writeBytes`/
 `writeUtf8`/`writeUtf8Range`/`writeUtf8Line`/`putByte`/`writeObjectAsJson`, `flush`) and `close(reason?)` —
 the write-staging segment is allocated lazily, so a raw or read-only pipe pays nothing.
 
 Every read is a **thin native over the C `PipeBuf`** (`__pbRecv`/`__pbInt`/`__pbLong`/`__pbLine`/
-`__pbJson`/`__pbUtf8`): it returns the result when it is already buffered, else it parks the job
+`__pbJson`/`__pbUtf8`/`__pbBytes`): it returns the result when it is already buffered, else it parks the job
 (a `JS_NewPromiseCapability` the write path settles) and returns the Promise — await-optional by
 construction, with zero JS between the host's bytes and the scanner. The scanners run **in C over
 the segment chain** and *consume as they feed* (DRAIN always fires): `readJson*` drives the
@@ -126,9 +126,9 @@ streaming JSON parser (§2, via its C-level `qjs_jstream_*` API), `readUtf8Line`
 a line completing within one segment decodes straight from it, a spanning line accumulates in the
 buffer's DynBuf — so a line or body longer than the pipe cap grows only its own accumulator
 (memory = the value itself) and can never deadlock the parked writer, by construction rather than
-by special case. `readUtf8` — the one whole-body materializer — accumulates the same way and
-decodes once at EOF. Consumed-exactly semantics mean a head line + JSON body + tail share one
-stream position for free.
+by special case. `readUtf8` / `readBytes` — the whole-body materializers — accumulate the same way;
+utf8 decodes once at EOF, bytes steals the accumulator into a tight `Uint8Array`. Consumed-exactly
+semantics mean a head line + JSON body + tail share one stream position for free.
 
 The sink is a **fixed 8 KB segment**, not a growing buffer, so sink memory stays ~one segment no
 matter how much is written:

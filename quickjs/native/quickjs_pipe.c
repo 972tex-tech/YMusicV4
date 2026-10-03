@@ -44,7 +44,10 @@ typedef struct PbSeg {
 #define PB_SEG_CAP ((uint32_t)(QJS_SEG_SIZE - sizeof(PbSeg)))
 #define PB_SEG_DATA(s) ((uint8_t *)((s) + 1))
 
-enum { PB_JOB_NONE, PB_JOB_RECV, PB_JOB_INT, PB_JOB_LONG, PB_JOB_LINE, PB_JOB_JSON, PB_JOB_UTF8 };
+enum {
+    PB_JOB_NONE, PB_JOB_RECV, PB_JOB_INT, PB_JOB_LONG, PB_JOB_LINE, PB_JOB_JSON, PB_JOB_UTF8,
+    PB_JOB_BYTES
+};
 
 typedef struct PipeBuf PipeBuf;
 
@@ -73,7 +76,7 @@ struct PipeBuf {
     JSValue dst; /* RECV destination view (re-resolved at completion: it may have been detached) */
     uint32_t dst_off, dst_len;
     QjsJStream *jstream;    /* JSON */
-    DynBuf acc;             /* LINE span / UTF8 body */
+    DynBuf acc;             /* LINE span / UTF8 / BYTES body */
     JSValue resolve, reject; /* the parked promise capability */
 };
 
@@ -234,6 +237,41 @@ static JSValue pb_acc_take_string(PipeBuf *pb) {
     return s;
 }
 
+static void pb_acc_buf_free(JSRuntime *rt, void *opaque, void *ptr) {
+    (void)rt;
+    (void)opaque;
+    free(ptr);
+}
+
+/* Steal acc into an exact-size Uint8Array. DynBuf uses malloc/realloc, so the ArrayBuffer
+ * free callback is free(), not js_free. */
+static JSValue pb_acc_take_bytes(PipeBuf *pb) {
+    JSContext *ctx = pb->ctx;
+    size_t n = pb->acc.size;
+    uint8_t *buf = pb->acc.buf;
+    pb->acc.buf = NULL;
+    pb->acc.size = 0;
+    pb->acc.allocated_size = 0;
+    dbuf_init(&pb->acc);
+    if (n == 0) {
+        free(buf);
+        buf = NULL;
+    } else if (buf) {
+        uint8_t *tight = (uint8_t *)realloc(buf, n);
+        if (tight) buf = tight;
+    }
+    JSValue ab = JS_NewArrayBuffer(ctx, buf, n, buf ? pb_acc_buf_free : NULL, NULL, 0);
+    if (JS_IsException(ab)) {
+        free(buf);
+        return ab;
+    }
+    /* the constructor reads argv[1] (offset) and argv[2] (length) even when argc is smaller */
+    JSValue args[3] = { ab, JS_UNDEFINED, JS_UNDEFINED };
+    JSValue u8 = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+    JS_FreeValue(ctx, ab);
+    return u8;
+}
+
 /* ---- scanners (consume as they feed, so an over-cap line/body never deadlocks the writer) ---- */
 
 /* 1 = line complete (*out owned), 0 = all buffered consumed into acc, -1 = exception. */
@@ -380,6 +418,11 @@ static int pb_try(PipeBuf *pb, JSValue *out) {
         if (pb_utf8_feed(pb)) return -1;
         if (!eof) return 0;
         *out = pb_acc_take_string(pb);
+        return JS_IsException(*out) ? -1 : 1;
+    case PB_JOB_BYTES:
+        if (pb_utf8_feed(pb)) return -1;
+        if (!eof) return 0;
+        *out = pb_acc_take_bytes(pb);
         return JS_IsException(*out) ? -1 : 1;
     }
     return 0;
@@ -669,6 +712,15 @@ static JSValue js_pb_utf8(JSContext *ctx, JSValueConst this_val, int argc, JSVal
     if (!pb) return JS_EXCEPTION;
     if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
     pb->job = PB_JOB_UTF8;
+    return pb_read_finish(ctx, pb);
+}
+
+/* __pbBytes(pb) -> Uint8Array | Promise (the whole remaining body, one C accumulator). */
+static JSValue js_pb_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    PipeBuf *pb = pb_get(ctx, argv[0]);
+    if (!pb) return JS_EXCEPTION;
+    if (JS_IsException(pb_guard(ctx, pb))) return JS_EXCEPTION;
+    pb->job = PB_JOB_BYTES;
     return pb_read_finish(ctx, pb);
 }
 
@@ -981,6 +1033,7 @@ QjsPipeCtx *qjs_register_pipe(JSContext *ctx, QjsPipeDrainFn drain, void *user) 
     JS_SetPropertyStr(ctx, g, "__pbLine", JS_NewCFunction(ctx, js_pb_line, "__pbLine", 2));
     JS_SetPropertyStr(ctx, g, "__pbJson", JS_NewCFunction(ctx, js_pb_json, "__pbJson", 2));
     JS_SetPropertyStr(ctx, g, "__pbUtf8", JS_NewCFunction(ctx, js_pb_utf8, "__pbUtf8", 1));
+    JS_SetPropertyStr(ctx, g, "__pbBytes", JS_NewCFunction(ctx, js_pb_bytes, "__pbBytes", 1));
     JS_SetPropertyStr(ctx, g, "__pbCloseRead", JS_NewCFunction(ctx, js_pb_close_read, "__pbCloseRead", 1));
     JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 3));
     JS_SetPropertyStr(ctx, g, "__utf8Into", JS_NewCFunction(ctx, js_utf8_into, "__utf8Into", 5));

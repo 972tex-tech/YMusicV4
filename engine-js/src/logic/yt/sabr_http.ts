@@ -1,5 +1,5 @@
 // SABR /videoplayback as an HttpCall interceptor so fetch/XHR stay thin HttpRequest wrappers.
-// Request: rewrite ABR body. Response: tee UMP on stream() and append fakeUmpAfter at EOF.
+// Request: rewrite ABR body. Response: tee UMP on stream()/bytes() and append fakeUmpAfter at EOF.
 
 import { utf8ByteLength } from "../../protocol/http/util";
 import { addInterceptor } from "../../protocol/http/intercept";
@@ -120,6 +120,18 @@ class SabrResponse implements HttpResponse {
   }
   text(): Promise<string> {
     return this._inner.text();
+  }
+  async bytes(): Promise<Uint8Array> {
+    const u8 = await this._inner.bytes();
+    const tee = createSabrTee();
+    tee.push(u8);
+    const fake = fakeUmpAfter(this._state, tee.maxHid(), tee.liveAudio());
+    tee.finish(this._reqUrl, this.status);
+    if (!fake || !fake.length) return u8;
+    const out = new Uint8Array(u8.length + fake.length);
+    out.set(u8, 0);
+    out.set(fake, u8.length);
+    return out;
   }
   stream(): HttpBodyStream {
     return wrapSabrStream(this._inner.stream(), this._state, this._reqUrl, this.status);

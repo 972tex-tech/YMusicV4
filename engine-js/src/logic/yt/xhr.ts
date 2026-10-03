@@ -2,7 +2,6 @@
 // Player ads and SABR UMP rewrite are HttpRequest.addInterceptor (skip_ads / sabr_http).
 
 import { debug } from "../../debug";
-import { utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
 import { resolveUrl } from "../../protocol/http/headers";
 import { attachRequestIdentity, isYoutubeiUrl, storeSetCookies } from "./cookies";
@@ -68,25 +67,6 @@ function fire(x: XhrJs, type: string): void {
 function setReady(x: XhrJs, state: number): void {
   x["readyState"] = state;
   fire(x, "readystatechange");
-}
-
-async function drainBytes(res: HttpResponse): Promise<Uint8Array> {
-  const stream = res.stream();
-  let out = new Uint8Array(8192);
-  let total = 0;
-  for (;;) {
-    if (total === out.length) {
-      const grown = new Uint8Array(out.length * 2);
-      grown.set(out);
-      out = grown;
-    }
-    const n = await stream.read(out, total, out.length - total);
-    if (n < 0) break;
-    total += n;
-  }
-  if (total === 0) return new Uint8Array(0);
-  if (total === out.length) return out;
-  return out.slice(0, total);
 }
 
 function XhrImpl(this: XhrJs): XhrJs {
@@ -270,8 +250,7 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       self._respHeaders = res.headers.entries.slice();
       setReady(self, 2);
       if (self["responseType"] === "arraybuffer") {
-        const u8 = await drainBytes(res);
-        self["response"] = u8.buffer;
+        self["response"] = (await res.bytes()).buffer;
         self["responseText"] = "";
       } else if (self["responseType"] === "json") {
         self["response"] = await res.jsonObject();

@@ -85,6 +85,9 @@ export class ParsedJsonResponse implements HttpResponse {
   text(): Promise<string> {
     return Promise.resolve(taggedJsonText(this.record) as unknown as string);
   }
+  bytes(): Promise<Uint8Array> {
+    return Promise.resolve(stringifyJson(this.record));
+  }
   stream(): HttpBodyStream {
     const bytes = stringifyJson(this.record);
     let off = 0;

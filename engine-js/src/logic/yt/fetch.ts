@@ -1,7 +1,7 @@
 // WHATWG fetch over HttpRequest, for eval'd base.js. Lives next to the YouTube cookie policy so
 // fetchImpl can put Cookie on the builder (CONSENT/SOCS). Quoted names so Closure ADVANCED leaves
-// the browser-shaped API intact. fetch() resolves on the response head; body bytes are pulled from
-// HttpResponse.stream() on read / text / json / arrayBuffer (clone tees that pull).
+// the browser-shaped API intact. fetch() resolves on the response head; text/json/arrayBuffer go
+// through HttpResponse (_http.bytes for arrayBuffer). getReader pulls HttpResponse.stream().
 
 import { debug } from "../../debug";
 import { stringifyJson, utf8Decode, utf8Encode } from "../../transport";
@@ -446,6 +446,7 @@ function takeBody(res: FetchResponseJs): void {
 
 async function collect(res: FetchResponseJs): Promise<Uint8Array> {
   takeBody(res);
+  if (res._http) return res._http.bytes();
   if (res._json != null) return stringifyJson(res._json);
   if (res._bytes != null) return res._bytes;
   const parts: Uint8Array[] = [];

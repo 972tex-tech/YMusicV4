@@ -74,6 +74,11 @@ function __pbJson(pb, rootType) {}
  * @return {string|!Promise<string>}
  */
 function __pbUtf8(pb) {}
+/**
+ * @param {*} pb
+ * @return {!Uint8Array|!Promise<!Uint8Array>}
+ */
+function __pbBytes(pb) {}
 /** @param {*} pb */
 function __pbCloseRead(pb) {}
 

@@ -15,6 +15,7 @@
  *   __pbLine(pb, strict)       -> string | null | Promise     '\n'-terminated, '\r' stripped
  *   __pbJson(pb, expect)       -> value | Promise             stops at the value's end (tail stays)
  *   __pbUtf8(pb)               -> string | Promise            whole remaining body, decoded once
+ *   __pbBytes(pb)              -> Uint8Array | Promise        whole remaining body, raw bytes
  *   __pbCloseRead(pb)          abandon the read side (free segments, unregister; next write -1)
  *   __utf8Decode(u8, off, len) -> string
  *   __utf8Into(str, from, to, dst, dstOff) -> bytes written (sink encode into a staged segment)

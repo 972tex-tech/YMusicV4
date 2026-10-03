@@ -541,7 +541,7 @@ carries only the id — the reason crosses through the C pipe layer (see PIPE_ST
 non-null reason is a **RESET**: the peer's pending data is discarded and its parked/next `receive`
 throws (Kotlin: `PipeResetException(reason)`; JS: the promise rejects with the reason). Both sides
 expose `sink.close(reason: String? = null)`, and a handler that throws RESETs its pipe with the
-failure message automatically. Buffered readers propagate naturally: a `read`/`readUtf8Line`/
+failure message automatically. Buffered readers propagate naturally: a `read`/`readUtf8Line`/`readUtf8`/`readBytes`/
 `readJsonObject` in flight throws the reason. Clean END (reason `null`) still returns `-1`/`null` —
 no behavior change on the happy path. See `quickjs/PIPE_STREAMING.md` §1.
 
@@ -559,6 +559,7 @@ const call = HttpRequest.get(url).setHeader(n, v)   // .post/.put/…; body: str
 const res = await call.execute();                   // resolves the Response (once)
 call.cancel();                                      // aborts at ANY stage, even parked inside the client
 res.status; res.ok; res.url; res.headers.get(n); await res.json(); await res.text();
+await res.bytes();
 res.stream().read(buf, off, len);
 res.cancel(); res.ignoreResult();  // abort the body / drain it to nowhere (both fire-and-forget)
 
