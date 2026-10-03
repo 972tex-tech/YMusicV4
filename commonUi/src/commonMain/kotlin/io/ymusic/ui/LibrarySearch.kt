@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -45,10 +46,8 @@ import io.ymusic.ui.resources.library_tab_songs
 import io.ymusic.ui.resources.n_songs
 import io.ymusic.ui.resources.unknown_album
 import io.ymusic.ui.resources.unknown_artist
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -57,7 +56,7 @@ import org.jetbrains.compose.resources.stringResource
  * snapshot it filters (kept fresh over the store's change flow). A layer object, like
  * [SearchSession] — the flow differs (local filter-as-you-type, no suggestions, no paging).
  */
-class LibrarySearchSession(store: BetterMediaStore, scope: CoroutineScope) {
+class LibrarySearchSession(private val store: BetterMediaStore) {
     var field by mutableStateOf(TextFieldValue(""))
 
     /** Open artist/album drill-down: header title + its songs. Back clears it before popping. */
@@ -66,10 +65,8 @@ class LibrarySearchSession(store: BetterMediaStore, scope: CoroutineScope) {
     var all by mutableStateOf<List<MediaStoreItem>>(emptyList())
         private set
 
-    init {
-        scope.launch {
-            store.itemsChanges().onStart { emit(Unit) }.conflate().collect { all = store.allItems() }
-        }
+    suspend fun collectItems() {
+        store.itemsChanges().onStart { emit(Unit) }.conflate().collect { all = store.allItems() }
     }
 }
 
@@ -85,6 +82,7 @@ fun LibrarySearchScreen(
     onBack: () -> Unit,
     onSearchOnline: (String) -> Unit,
 ) {
+    LaunchedEffect(session) { session.collectItems() }
     Column(Modifier.fillMaxSize()) {
         SearchInputBar(
             value = session.field,

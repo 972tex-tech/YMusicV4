@@ -483,7 +483,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 when {
                     existing >= 0 && existing == layers.lastIndex -> Unit
                     existing >= 0 -> layers.add(layers.removeAt(existing))
-                    else -> layers.add(AppLayer.LibrarySearch(LibrarySearchSession(store, scope)))
+                    else -> layers.add(AppLayer.LibrarySearch(LibrarySearchSession(store)))
                 }
             }
         }
