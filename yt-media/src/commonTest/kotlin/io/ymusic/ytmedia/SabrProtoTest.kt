@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 class SabrProtoTest {
 
     private fun parse(writer: ProtoWriter) =
-        ProtoReader(writer.toByteArray()).readAllFields()
+        ProtoReader(writer.buffer, writer.size).readAllFields()
 
     @Test
     fun video_playback_abr_request_roundtrip() {
@@ -168,14 +168,14 @@ class SabrProtoTest {
 
     @Test
     fun control_part_payload_parsers() {
-        val error = ProtoWriter().string(1, "compliance check failed").toByteArray()
-        assertEquals("compliance check failed", SabrParts.parseErrorMessage(error))
+        val error = ProtoWriter().string(1, "compliance check failed")
+        assertEquals("compliance check failed", SabrParts.parseErrorMessage(error.buffer.readByteArray()))
 
-        val redirect = ProtoWriter().string(1, "https://r2---sn.googlevideo.com/videoplayback?x=1").toByteArray()
-        assertEquals("https://r2---sn.googlevideo.com/videoplayback?x=1", SabrParts.parseRedirectUrl(redirect))
+        val redirect = ProtoWriter().string(1, "https://r2---sn.googlevideo.com/videoplayback?x=1")
+        assertEquals("https://r2---sn.googlevideo.com/videoplayback?x=1", SabrParts.parseRedirectUrl(redirect.buffer.readByteArray()))
 
-        val protection = ProtoWriter().varint(1, 3).toByteArray()
-        assertEquals(3, SabrParts.parseStreamProtectionStatus(protection))
+        val protection = ProtoWriter().varint(1, 3)
+        assertEquals(3, SabrParts.parseStreamProtectionStatus(protection.buffer.readByteArray()))
 
         // malformed payloads are survivable
         assertNull(SabrParts.parseErrorMessage(byteArrayOf(-1, -1, -1)))

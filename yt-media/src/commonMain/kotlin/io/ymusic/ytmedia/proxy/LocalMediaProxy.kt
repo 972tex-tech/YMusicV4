@@ -274,7 +274,7 @@ class LocalMediaProxy(
     private fun parseSabrRequest(url: String, method: String, body: Buffer?): VideoPlaybackAbrRequest? {
         if (!url.contains("sabr=1") || method != "POST" || body == null) return null
         return runCatching {
-            VideoPlaybackAbrRequest.from(ProtoReader(body.copy(), body.size).readAllFields())
+            VideoPlaybackAbrRequest.from(ProtoReader(body.peek(), body.size).readAllFields())
         }.getOrNull()
     }
 

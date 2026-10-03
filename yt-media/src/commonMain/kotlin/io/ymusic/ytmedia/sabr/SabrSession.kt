@@ -19,7 +19,6 @@ import kmpcommon.log.debug
 import kmphttp.KmpHttpClient
 import kmphttp.MediaTypeX.toMediaTypeOrNull
 import kmphttp.RedirectOptions
-import kmphttp.RequestBodyX.toRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import kmphttp.header
@@ -165,7 +164,7 @@ class SabrSession(
             val httpRequest = RequestBuilder()
                 .url(requestUrl)
                 .header("user-agent", userAgent)
-                .post(request.encode().toByteArray().toRequestBody(PROTOBUF))
+                .post(request.encode().toRequestBody(PROTOBUF))
                 .build()
             val response = client.execute(httpRequest, RedirectOptions(followRedirects = false, followSslRedirects = false))
 

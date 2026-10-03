@@ -1,6 +1,10 @@
 package io.ymusic.ytmedia.proto
 
+import kmphttp.MediaType
+import kmphttp.RequestBody
+import kmphttp.RequestBodyX.asOneshotRequestBody
 import okio.Buffer
+import okio.BufferedSink
 import okio.BufferedSource
 import okio.IOException
 
@@ -102,14 +106,14 @@ fun List<ProtoField>.messages(fieldNumber: Int): List<List<ProtoField>> =
 
 /** Length-prefixed writes need the child's size first, so nested messages build in their own buffer. */
 class ProtoWriter {
-    private val buffer = Buffer()
+    val buffer = Buffer()
 
     val size: Long get() = buffer.size
 
-    fun toByteArray(): ByteArray = buffer.copy().readByteArray()
+    fun toRequestBody(contentType: MediaType? = null): RequestBody =
+        buffer.asOneshotRequestBody(contentType, buffer.size)
 
-    /** Drains this writer's bytes into [sink]; the writer is empty afterwards. */
-    fun writeTo(sink: Buffer) {
+    fun writeTo(sink: BufferedSink) {
         sink.writeAll(buffer)
     }
 

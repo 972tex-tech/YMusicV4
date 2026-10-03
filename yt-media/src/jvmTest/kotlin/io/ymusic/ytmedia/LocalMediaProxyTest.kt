@@ -18,6 +18,7 @@ import io.ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import io.ymusic.ytmedia.sabr.formatCacheKey
 import io.ymusic.ytmedia.ump.UmpPart
 import io.ymusic.ytmedia.ump.readUmpPartHeader
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmphttp.AsyncInterceptor
@@ -28,7 +29,6 @@ import kmphttp.KmpHttpClient
 import kmphttp.Protocol
 import kmphttp.RedirectOptions
 import kmphttp.Request
-import kmphttp.RequestBodyX.toRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.Response
 import kmphttp.ResponseBuilder
@@ -126,8 +126,8 @@ class LocalMediaProxyTest {
                 headerId = 1, videoId = "vid", itag = 140, lmt = 100, xtag = null,
                 startRange = 0, isInitSegment = false, segmentIndex = 60,
                 startMs = 50_000, durationMs = 10_000, contentLength = audioData.size.toLong(),
-            ).encode().toByteArray()
-            writeUmpPartHeader(UmpPart.MEDIA_HEADER, header.size.toLong()).write(header)
+            ).encode()
+            writeUmpPart(UmpPart.MEDIA_HEADER, header)
             writeUmpPartHeader(UmpPart.MEDIA_DATA, audioData.size + 1L).writeByte(1).write(audioData)
             writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(1)
         }.readByteArray()
@@ -189,7 +189,7 @@ class LocalMediaProxyTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1",
             "POST",
-            Buffer().write(abrRequest().encode().toByteArray()),
+            abrRequest().encode().buffer,
         )
         assertEquals(200, resp.status)
         val bytes = drain(resp.body)
@@ -205,7 +205,7 @@ class LocalMediaProxyTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1&live=1",
             "POST",
-            Buffer().write(abrRequest().encode().toByteArray()),
+            abrRequest().encode().buffer,
         )
         assertEquals(200, resp.status)
         val bytes = drain(resp.body)
@@ -220,7 +220,7 @@ class LocalMediaProxyTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1",
             "POST",
-            Buffer().write(abrRequest(audioOnly = false).encode().toByteArray()),
+            abrRequest(audioOnly = false).encode().buffer,
         )
         assertEquals(origin.size.toLong(), resp.contentLength)
         val bytes = drain(resp.body)
@@ -236,7 +236,7 @@ class LocalMediaProxyTest {
         val client = SabrProxyHttpClient(canned, proxy)
         val req = RequestBuilder()
             .url("https://r1.googlevideo.com/videoplayback?sabr=1")
-            .method("POST", abrRequest().encode().toByteArray().toRequestBody(null))
+            .method("POST", abrRequest().encode().toRequestBody(null))
             .build()
         val resp = client.execute(req)
         val bytes = resp.body.byteString().toByteArray()

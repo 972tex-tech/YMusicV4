@@ -21,6 +21,7 @@ import io.ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import io.ymusic.ytmedia.sabr.formatCacheKey
 import io.ymusic.ytmedia.ump.UmpPart
 import io.ymusic.ytmedia.ump.readUmpPartHeader
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
@@ -83,8 +84,8 @@ class SabrServeTest {
             // Media segment index 1 is the first, at playback time 0 → startMs = (seg-1)*1000.
             startMs = if (isInit) null else (seg - 1) * 1000L, durationMs = if (isInit) null else 1000L,
             contentLength = data.size.toLong(),
-        ).encode().toByteArray()
-        writeUmpPartHeader(UmpPart.MEDIA_HEADER, header.size.toLong()).write(header)
+        ).encode()
+        writeUmpPart(UmpPart.MEDIA_HEADER, header)
         writeUmpPartHeader(UmpPart.MEDIA_DATA, data.size + 1L).writeByte(headerId).write(data)
         writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(headerId)
     }
@@ -144,7 +145,7 @@ class SabrServeTest {
             .readResponse(asyncOf(serve.ump.toBuffer()), SabrTrack(fmt, outFile), null, null)
         assertEquals(4, outcome.completedSegments)
         val expected = ByteArray(10) { 0 } + ByteArray(10) { 1 } + ByteArray(10) { 2 } + ByteArray(10) { 3 }
-        assertContentEquals(expected, outFile.data.copy().readByteArray())
+        assertContentEquals(expected, outFile.data.peek().readByteArray())
     }
 
     @Test
@@ -171,7 +172,7 @@ class SabrServeTest {
         val fileB = MemoryFile()
         SabrSession(random = Random(4)).readResponse(asyncOf(second.ump.toBuffer()), SabrTrack(fmt, fileB), null, cache)
 
-        assertContentEquals(fileA.data.copy().readByteArray(), fileB.data.copy().readByteArray())
+        assertContentEquals(fileA.data.peek().readByteArray(), fileB.data.peek().readByteArray())
         assertEquals(40, fileB.data.size)
     }
 
@@ -208,7 +209,7 @@ class SabrServeTest {
         val resp = proxy.serveRequest(
             "https://r1.googlevideo.com/videoplayback?sabr=1",
             "POST",
-            Buffer().write(request(0, videoItag = 243).encode().toByteArray()),
+            request(0, videoItag = 243).encode().buffer,
         )
         assertEquals(200, resp.status)
         val bytes = drain(resp.body)

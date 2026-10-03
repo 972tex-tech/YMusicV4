@@ -501,10 +501,10 @@ private class RecordingHttpClient(
                 override fun read(sink: Buffer, byteCount: Long): Long {
                     val n = super.read(sink, byteCount)
                     if (n > 0) {
-                        val dup = sink.copy()
-                        val skip = dup.size - n
+                        val dup = sink.peek()
+                        val skip = sink.size - n
                         if (skip > 0) dup.skip(skip)
-                        copy.write(dup, dup.size)
+                        copy.write(dup, n)
                     }
                     return n
                 }
@@ -515,7 +515,7 @@ private class RecordingHttpClient(
     }
 
     fun sabrUmpHasItag(itag: Int): Boolean = synchronized(sabrUmp) {
-        sabrUmp.any { containsMediaItag(it.copy().readByteArray(), itag) }
+        sabrUmp.any { containsMediaItag(it.peek().readByteArray(), itag) }
     }
 
     fun lastSabr(): VideoPlaybackAbrRequest? = synchronized(log) {

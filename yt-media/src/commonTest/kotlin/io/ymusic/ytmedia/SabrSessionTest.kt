@@ -8,6 +8,7 @@ import io.ymusic.ytmedia.sabr.NextRequestPolicy
 import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrTrack
 import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
@@ -53,15 +54,17 @@ class SabrSessionTest {
             startRange = startRange, isInitSegment = isInit, segmentIndex = seg,
             startMs = if (isInit) null else seg * 1000L, durationMs = if (isInit) null else 1000L,
             contentLength = data.size.toLong(),
-        ).encode().toByteArray()
-        writeUmpPartHeader(UmpPart.MEDIA_HEADER, header.size.toLong()).write(header)
+        ).encode()
+        writeUmpPart(UmpPart.MEDIA_HEADER, header)
         writeUmpPartHeader(UmpPart.MEDIA_DATA, data.size + 1L).writeByte(headerId).write(data)
         writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(headerId)
     }
 
     private fun Buffer.putPolicy(backoffMs: Int?) {
-        val payload = NextRequestPolicy(60_000, 60_000, backoffMs, byteArrayOf(1, 2, 3), null).encode().toByteArray()
-        writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, payload.size.toLong()).write(payload)
+        writeUmpPart(
+            UmpPart.NEXT_REQUEST_POLICY,
+            NextRequestPolicy(60_000, 60_000, backoffMs, byteArrayOf(1, 2, 3), null).encode(),
+        )
     }
 
     // Regression: playerTime must advance across responses. Before the fix the round's contiguity
@@ -160,8 +163,10 @@ class SabrSessionTest {
         val session = SabrSession(random = Random(3))
         val audio = SabrTrack(audioFormat.copy(clen = 100), MemoryFile())
         val redirect = Buffer().apply {
-            val payload = ProtoWriter().string(1, "https://r2.googlevideo.com/videoplayback?sabr=1").toByteArray()
-            writeUmpPartHeader(UmpPart.SABR_REDIRECT, payload.size.toLong()).write(payload)
+            writeUmpPart(
+                UmpPart.SABR_REDIRECT,
+                ProtoWriter().string(1, "https://r2.googlevideo.com/videoplayback?sabr=1"),
+            )
         }
         val outcome = session.readResponse(asyncOf(redirect), audio, null)
         assertEquals("https://r2.googlevideo.com/videoplayback?sabr=1", outcome.redirect)

@@ -1,5 +1,6 @@
 package io.ymusic.ytmedia.ump
 
+import io.ymusic.ytmedia.proto.ProtoWriter
 import kmpcommon.io.BufferedAsyncSource
 import okio.BufferedSink
 import okio.BufferedSource
@@ -76,6 +77,12 @@ fun BufferedSource.readUmpPartHeader(): UmpPartHeader {
 
 fun <S : BufferedSink> S.writeUmpPartHeader(partId: Int, size: Long): S =
     writeUmpVarInt(partId.toLong()).writeUmpVarInt(size)
+
+fun <S : BufferedSink> S.writeUmpPart(partId: Int, payload: ProtoWriter): S {
+    writeUmpPartHeader(partId, payload.size)
+    payload.writeTo(this)
+    return this
+}
 
 internal fun BufferedSource.readUByte(): Int = readByte().toInt() and 0xFF
 

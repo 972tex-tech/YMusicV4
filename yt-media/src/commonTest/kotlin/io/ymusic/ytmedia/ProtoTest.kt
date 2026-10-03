@@ -28,9 +28,8 @@ class ProtoTest {
             .bytes(4, byteArrayOf(0, -1, 127))
             .message(5, nested)
             .messages(6, listOf(ProtoWriter().varint(1, 1), ProtoWriter().varint(1, 2)))
-            .toByteArray()
 
-        val fields = ProtoReader(encoded).readAllFields()
+        val fields = ProtoReader(encoded.buffer, encoded.size).readAllFields()
         assertEquals(Long.MAX_VALUE, fields.varint(1))
         assertEquals(0L, fields.varint(2))
         assertEquals("hello プロト", fields.string(3))
@@ -57,17 +56,20 @@ class ProtoTest {
         // Two length-delimited messages concatenated in one buffer (like consecutive UMP parts).
         val first = ProtoWriter().varint(1, 7).string(2, "a")
         val second = ProtoWriter().varint(1, 99)
-        val buffer = Buffer().write(first.toByteArray()).write(second.toByteArray())
         val firstSize = first.size
+        val secondSize = second.size
+        val buffer = Buffer()
+        first.writeTo(buffer)
+        second.writeTo(buffer)
 
         // Bounded reader consumes exactly the first message and stops, though more bytes follow.
         val fields = ProtoReader(buffer, firstSize).readAllFields()
         assertEquals(7L, fields.varint(1))
         assertEquals("a", fields.string(2))
-        assertEquals(second.size, buffer.size) // the second message is untouched
+        assertEquals(secondSize, buffer.size) // the second message is untouched
 
         // The buffer is positioned to read the second message next.
-        assertEquals(99L, ProtoReader(buffer, second.size).readAllFields().varint(1))
+        assertEquals(99L, ProtoReader(buffer, secondSize).readAllFields().varint(1))
     }
 
     @Test

@@ -7,6 +7,7 @@ import io.ymusic.ytmedia.sabr.NextRequestPolicy
 import io.ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import io.ymusic.ytmedia.sabr.formatCacheKey
 import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import okio.Buffer
 import okio.Source
@@ -113,8 +114,7 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
                 )
                 // A policy-only body — the one time we send NEXT_REQUEST_POLICY: to tell the player to back off.
                 val body = Buffer()
-                val policyBytes = policy.encode().toByteArray()
-                body.writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, policyBytes.size.toLong()).write(policyBytes)
+                body.writeUmpPart(UmpPart.NEXT_REQUEST_POLICY, policy.encode())
                 return SabrServe.Backoff(body)
             }
         }
@@ -262,8 +262,7 @@ private fun MediaCache.synthesizeUmp(segments: List<MediaHeader>): Source? {
                 head.writeUmpPartHeader(UmpPart.FORMAT_INITIALIZATION_METADATA, fim.size.toLong()).write(fim)
             }
         }
-        val headerBytes = segment.copy(headerId = headerId).encode().toByteArray()
-        head.writeUmpPartHeader(UmpPart.MEDIA_HEADER, headerBytes.size.toLong()).write(headerBytes)
+        head.writeUmpPart(UmpPart.MEDIA_HEADER, segment.copy(headerId = headerId).encode())
         head.writeUmpPartHeader(UmpPart.MEDIA_DATA, segment.contentLength + 1).writeByte(headerId)
         pieces += head // framing
         pieces += pin // segment media, streamed

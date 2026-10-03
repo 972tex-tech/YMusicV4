@@ -9,6 +9,7 @@ import io.ymusic.ytmedia.proxy.SabrCacheTee
 import io.ymusic.ytmedia.sabr.MediaHeader
 import io.ymusic.ytmedia.sabr.formatCacheKey
 import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.asAsyncSource
 import kotlinx.coroutines.Dispatchers
@@ -43,15 +44,13 @@ class SabrCacheTeeTest {
     )
 
     private fun Buffer.segment(header: MediaHeader, media: ByteArray) {
-        val hb = header.encode().toByteArray()
-        writeUmpPartHeader(UmpPart.MEDIA_HEADER, hb.size.toLong()).write(hb)
+        writeUmpPart(UmpPart.MEDIA_HEADER, header.encode())
         writeUmpPartHeader(UmpPart.MEDIA_DATA, media.size + 1L).writeByte(header.headerId).write(media)
         writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(header.headerId)
     }
 
     private fun Buffer.mediaHeader(header: MediaHeader) {
-        val hb = header.encode().toByteArray()
-        writeUmpPartHeader(UmpPart.MEDIA_HEADER, hb.size.toLong()).write(hb)
+        writeUmpPart(UmpPart.MEDIA_HEADER, header.encode())
     }
 
     private fun newCache(): MediaCache {
@@ -95,8 +94,7 @@ class SabrCacheTeeTest {
             segment(header(1, 10, 8, 2), seg1)
             // truncated tail: header promises 6 bytes, only 3 data bytes arrive, stream ends (no END)
             val h2 = header(2, 18, 6, 3)
-            val hb = h2.encode().toByteArray()
-            writeUmpPartHeader(UmpPart.MEDIA_HEADER, hb.size.toLong()).write(hb)
+            writeUmpPart(UmpPart.MEDIA_HEADER, h2.encode())
             writeUmpPartHeader(UmpPart.MEDIA_DATA, seg2Partial.size + 1L).writeByte(2).write(seg2Partial)
         }
         val original = body.snapshot().toByteArray()

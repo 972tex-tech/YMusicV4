@@ -11,6 +11,7 @@ import io.ymusic.ytmedia.sabr.MediaHeader
 import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrTrack
 import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
@@ -65,8 +66,8 @@ class ServeProgressiveTest {
             startRange = startRange, isInitSegment = isInit, segmentIndex = seg,
             startMs = if (isInit) null else (seg - 1) * 1000L, durationMs = if (isInit) null else 1000L,
             contentLength = data.size.toLong(),
-        ).encode().toByteArray()
-        writeUmpPartHeader(UmpPart.MEDIA_HEADER, header.size.toLong()).write(header)
+        ).encode()
+        writeUmpPart(UmpPart.MEDIA_HEADER, header)
         writeUmpPartHeader(UmpPart.MEDIA_DATA, data.size + 1L).writeByte(headerId).write(data)
         writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(headerId)
     }

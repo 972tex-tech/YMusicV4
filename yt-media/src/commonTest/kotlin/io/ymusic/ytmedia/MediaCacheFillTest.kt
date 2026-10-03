@@ -12,6 +12,7 @@ import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrTrack
 import io.ymusic.ytmedia.sabr.formatCacheKey
 import io.ymusic.ytmedia.ump.UmpPart
+import io.ymusic.ytmedia.ump.writeUmpPart
 import io.ymusic.ytmedia.ump.writeUmpPartHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.BufferedAsyncSource
@@ -65,8 +66,8 @@ class MediaCacheFillTest {
             startRange = startRange, isInitSegment = isInit, segmentIndex = seg,
             startMs = if (isInit) null else seg * 1000L, durationMs = if (isInit) null else 1000L,
             contentLength = data.size.toLong(),
-        ).encode().toByteArray()
-        writeUmpPartHeader(UmpPart.MEDIA_HEADER, header.size.toLong()).write(header)
+        ).encode()
+        writeUmpPart(UmpPart.MEDIA_HEADER, header)
         writeUmpPartHeader(UmpPart.MEDIA_DATA, data.size + 1L).writeByte(headerId).write(data)
         writeUmpPartHeader(UmpPart.MEDIA_END, 1).writeByte(headerId)
     }
@@ -83,8 +84,10 @@ class MediaCacheFillTest {
 
         // init(0) + seg1 + seg2 + seg3, each 10 bytes, contiguous over [0,40).
         val resp = Buffer().apply {
-            val policy = NextRequestPolicy(60_000, 60_000, null, byteArrayOf(1), null).encode().toByteArray()
-            writeUmpPartHeader(UmpPart.NEXT_REQUEST_POLICY, policy.size.toLong()).write(policy)
+            writeUmpPart(
+                UmpPart.NEXT_REQUEST_POLICY,
+                NextRequestPolicy(60_000, 60_000, null, byteArrayOf(1), null).encode(),
+            )
             putSegment(0, 0, 0, ByteArray(10) { 0 }, isInit = true)
             putSegment(1, 1, 10, ByteArray(10) { 1 }, isInit = false)
             putSegment(2, 2, 20, ByteArray(10) { 2 }, isInit = false)
@@ -94,7 +97,7 @@ class MediaCacheFillTest {
         assertEquals(4, outcome.completedSegments)
 
         val key = formatCacheKey(251, 100)
-        val fileBytes = (audio.file as MemoryFile).data.copy().readByteArray()
+        val fileBytes = (audio.file as MemoryFile).data.peek().readByteArray()
         assertEquals(40, fileBytes.size)
 
         // Blob store: the whole stream is cached and reads back byte-identical to the file.
@@ -156,9 +159,9 @@ class MediaCacheFillTest {
             headerId = 0, videoId = "vid", itag = 251, lmt = 100, xtag = null,
             startRange = 0, isInitSegment = true, segmentIndex = 0, startMs = null, durationMs = null,
             contentLength = 10,
-        ).encode().toByteArray()
+        ).encode()
         val resp = Buffer().apply {
-            writeUmpPartHeader(UmpPart.MEDIA_HEADER, header.size.toLong()).write(header)
+            writeUmpPart(UmpPart.MEDIA_HEADER, header)
             writeUmpPartHeader(UmpPart.MEDIA_DATA, 11).writeByte(0).write(ByteArray(10))
             // no MEDIA_END — the segment never seals
         }
