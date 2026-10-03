@@ -61,39 +61,39 @@ const nPbJson = __pbJson;
 const nPbUtf8 = __pbUtf8;
 const nUtf8Encode = __utf8Encode;
 const nUtf8Into = __utf8Into;
+const nUtf8Length = __utf8Length;
 const nUtf8Decode = __utf8Decode;
+const nStringifyJson = __stringifyJson;
 const nB64urlInto = __b64urlInto;
 const nJsonEncNew = __jsonEncNew;
 const nJsonEncFill = __jsonEncFill;
 const nJsonEncDone = __jsonEncDone;
 
-// Encode one or more strings to UTF-8, concatenated. A single string delegates to the native
-// one-shot; the multi-arg form (utf8Encode(str, "\n")) stream-encodes here to avoid a JS string
-// concat first — QuickJS strings are immutable, so `a + b` would allocate and copy.
+// Encode one or more strings to UTF-8, concatenated. A single string is the native one-shot;
+// several parts measure + fill in C (__utf8Length / __utf8Into) so QuickJS never concatenates
+// the strings and never walks code points in JS.
 function utf8Encode(...parts: string[]): Uint8Array {
-  if (parts.length === 1) {
-    const s = parts[0]!;
+  if (parts.length <= 1) {
+    const s = parts.length === 1 ? parts[0]! : "";
     return nUtf8Encode(s, 0, s.length);
   }
-  const out: number[] = [];
-  for (const str of parts) {
-    for (let i = 0; i < str.length; i++) {
-      const cp = str.codePointAt(i)!;
-      if (cp > 0xffff) i++;
-      if (cp < 0x80) out.push(cp);
-      else if (cp < 0x800) out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
-      else if (cp < 0x10000)
-        out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
-      else
-        out.push(
-          0xf0 | (cp >> 18),
-          0x80 | ((cp >> 12) & 0x3f),
-          0x80 | ((cp >> 6) & 0x3f),
-          0x80 | (cp & 0x3f),
-        );
-    }
+  let n = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const s = parts[i]!;
+    n += nUtf8Length(s, 0, s.length);
   }
-  return new Uint8Array(out);
+  const buf = new Uint8Array(n);
+  let off = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const s = parts[i]!;
+    off += nUtf8Into(s, 0, s.length, buf, off);
+  }
+  return buf;
+}
+
+/** JSON.stringify semantics to UTF-8 bytes in C. Throws if the value has no JSON representation. */
+function stringifyJson(value: unknown): Uint8Array {
+  return nStringifyJson(value);
 }
 
 const pipes: Record<number, TransportPipe> = {};
@@ -631,7 +631,7 @@ export function utf8Decode(bytes: Uint8Array, from?: number, to?: number): strin
   return nUtf8Decode(bytes, f, (to === undefined ? bytes.length : to) - f);
 }
 
-export { utf8Encode };
+export { utf8Encode, stringifyJson };
 
 // The global surface mirrors the module exports — in-bundle code imports these instead. Quoted
 // keys keep the names for eval'd JS after Closure ADVANCED.

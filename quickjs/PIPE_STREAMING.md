@@ -107,7 +107,8 @@ count itself is the flow control); the shim keeps its in-critical guards as chea
 Small JS helpers on `ymix`: `open`, `onAccept` (replaces same-name handlers; returns
 `{ remove() }`, a no-op once replaced — the Kotlin `onAccept` mirrors this with an
 `AcceptRegistration`), `utf8Encode` (QuickJS has no TextEncoder; a single
-string delegates to native `__utf8Encode`, the multi-arg concat form stays a small-input JS loop),
+string delegates to native `__utf8Encode`, several parts measure with `__utf8Length` and fill with
+`__utf8Into`), `stringifyJson` (native `__stringifyJson`: object → UTF-8 JSON bytes),
 `utf8Decode(bytes, from?, to?)` (native `JS_NewStringLen` — no interpreted loop). There is
 **no separate `buffered(pipe)` wrapper**: each end is itself the okio-`Buffer`-style object.
 `pipe.source` carries the raw `receive` plus buffered reads

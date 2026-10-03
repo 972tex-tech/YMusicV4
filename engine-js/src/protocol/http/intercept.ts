@@ -1,7 +1,7 @@
 // OkHttp-shaped interceptors on HttpCall.execute. fetch/XHR stay thin wrappers of HttpRequest.
 // Each interceptor may rewrite the request (url/headers/body) and/or wrap the response.
 
-import { utf8Encode } from "../../transport";
+import { stringifyJson } from "../../transport";
 import type { JsLogger } from "../logger";
 import { taggedJsonText } from "./tagged";
 import type { RequestOpts } from "./wire";
@@ -86,7 +86,7 @@ export class ParsedJsonResponse implements HttpResponse {
     return Promise.resolve(taggedJsonText(this.record) as unknown as string);
   }
   stream(): HttpBodyStream {
-    const bytes = utf8Encode(JSON.stringify(this.record) || "");
+    const bytes = stringifyJson(this.record);
     let off = 0;
     return {
       read: function (buffer, offset, len) {
