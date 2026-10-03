@@ -16,7 +16,6 @@
 package kmphttp
 
 import kmpcommon.io.AsyncSource
-import kmpcommon.io.readByteArray
 import kmpcommon.kilobytes
 import kmphttp.CookieJar
 import kmphttp.Headers
@@ -34,6 +33,7 @@ import kmphttp.curl.CurlMultiApi
 import kmphttp.curl.EasyHandle
 import kmphttp.internal.SuspendCondition
 import kmphttp.internal.http.RecoverableIOException
+import kmphttp.internal.read
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.cinterop.ByteVar
@@ -41,13 +41,12 @@ import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
-import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.asStableRef
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.readBytes
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -74,6 +73,7 @@ import libcurl.curl_easy_strerror
 import okio.Buffer
 import okio.IOException
 import platform.posix.size_t
+import platform.posix.uint8_tVar
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.time.Clock
@@ -417,7 +417,7 @@ private class RequestBodyTransfer(
      */
     fun read(dest: CPointer<ByteVar>, maxBytes: Long): Long {
         return try {
-            val bytes = synchronized(lock) {
+            synchronized(lock) {
                 sourceError?.let {
                     return CURL_READFUNC_ABORT.toLong()
                 }
@@ -429,19 +429,12 @@ private class RequestBodyTransfer(
                         return CURL_READFUNC_PAUSE.toLong()
                     }
                 }
-                val readCount = minOf(buffer.size, maxBytes)
-                buffer.readByteArray(readCount)
+                val n = buffer.read(dest.reinterpret<uint8_tVar>(), maxBytes)
+                if (buffer.size < preBufferSize) {
+                    suspendCondition.resume()
+                }
+                n
             }
-
-            if (buffer.size < preBufferSize) {
-                suspendCondition.resume()
-            }
-
-            val size = bytes.size
-            bytes.usePinned { pinned ->
-                platform.posix.memcpy(dest, pinned.addressOf(0), size.convert())
-            }
-            size.toLong()
         } catch (e: Throwable) {
             multiApi.removeAndCleanUpJob(easyHandle, e)
             CURL_READFUNC_ABORT.toLong()
