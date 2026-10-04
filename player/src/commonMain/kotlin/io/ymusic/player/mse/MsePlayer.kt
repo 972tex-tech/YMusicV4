@@ -18,6 +18,7 @@ import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
 import io.ymusic.player.VideoSize
 import io.ymusic.player.YtEngine
+import io.ymusic.player.requireMainThread
 import io.ymusic.player.webview.WebViewEvent
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
@@ -91,13 +92,16 @@ class MsePlayer internal constructor(
     private var pendingRefresh = false
     private var playWhenReady = false
     private var applied = PlaybackConfig()
+    private var pendingStartMs = 0L
+    private var pendingLoad: PlayableItem.YtMedia? = null
+    private var initJob: Job? = null
+    private var loadJob: Job? = null
+    private var preloadJob: Job? = null
     private var statusJob: Job? = null
     private var catalogJob: Job? = null
     private var captionJob: Job? = null
-    private var seekJob: Job? = null
     private var pendingVideoSurface: MseVideoSurface? = null
     private var hasPendingVideoSurface = false
-    private var lastVideoSize: VideoSize? = null
     private var viewportW: Int = 640
     private var viewportH: Int = 360
 
@@ -106,22 +110,40 @@ class MsePlayer internal constructor(
     }
 
     override fun warmUp() {
+        requireMainThread()
         if (released) return
         val state = _status.value.state
         if (state is PlaybackState.Uninitialized && !state.isInitializing) {
             _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true)) }
-            scope.launch { runCatching { ensureInit() } }
+            initJob = scope.launch {
+                try {
+                    ensureInit()
+                    pendingLoad?.let { startLoad() }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    fail(
+                        e.errorCode()
+                            ?: Regex("""E\d{5}""").find(e.message.orEmpty())?.value
+                            ?: "E60033",
+                        e.message ?: "mse init failed",
+                        e,
+                    )
+                }
+            }
         }
     }
 
     override fun preload(source: PlayableItem.YtMedia?) {
+        requireMainThread()
         source ?: return
         if (released) return
         if (!_status.value.state.readyToLoad) {
             warmUp()
             return
         }
-        scope.launch { runCatching { ensureInit().preload(source.videoId, log) } }
+        preloadJob?.cancel()
+        preloadJob = scope.launch { runCatching { engine().preload(source.videoId, log) } }
     }
 
     override fun load(
@@ -130,28 +152,43 @@ class MsePlayer internal constructor(
         playWhenReady: Boolean,
         config: PlaybackConfig,
     ) {
+        requireMainThread()
         if (released) return
+        pendingLoad = source
         this.playWhenReady = playWhenReady
-        applied = config
-        seekJob?.cancel()
+        this.applied = config
+        this.pendingStartMs = startPositionMs
         statusJob?.cancel()
         catalogJob?.cancel()
-        _status.update {
-            it.copy(
-                state = PlaybackState.Uninitialized(isInitializing = true),
-                volume = config.volume,
-                speed = config.speed,
-                videoSize = if (config.audioOnly) null else (it.videoSize ?: lastVideoSize),
-            )
-        }
+        captionJob?.cancel()
+        _captionLines.value = emptyList()
+        _status.update { it.copy(volume = config.volume, speed = config.speed) }
         _progress.value = Progress(positionMs = startPositionMs)
-        scope.launch {
+        videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
+        videoSurface.setAudioEffect(
+            FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
+            config.bassBoostDb.coerceIn(0f, 12f),
+            config.virtualizer.coerceIn(0f, 2f),
+        )
+        if (!_status.value.state.readyToLoad) {
+            warmUp()
+            return
+        }
+        startLoad()
+    }
+
+    private fun startLoad() {
+        val source = pendingLoad ?: return
+        loadJob?.cancel()
+        preloadJob?.cancel()
+        loadJob = scope.launch {
             try {
                 if (pendingRefresh) {
                     pendingRefresh = false
                     inited = false
                 }
                 val p = ensureInit()
+                val config = applied
                 val quality = config.preferVideoQuality.first
                 p.load(
                     source.videoId,
@@ -161,20 +198,15 @@ class MsePlayer internal constructor(
                     height = viewportH,
                     audioOnly = config.audioOnly,
                 )
-                if (startPositionMs > 0L) p.seekTo(startPositionMs, log)
+                val start = pendingStartMs
+                if (start > 0L) p.seekTo(start, log)
                 applyCaptionConfig(config)
                 p.setLoop(config.loop && !source.live, log)
                 if (playWhenReady) p.play(log) else p.pause(log)
-                run {
-                    val s = config.speed.coerceIn(0.25f, 3f)
-                    val pitch = config.pitchFactor.coerceIn(0.5f, 2f)
-                    p.setSpeedPitch(s, pitch, log)
-                }
-                videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
-                videoSurface.setAudioEffect(
-                    FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
-                    config.bassBoostDb.coerceIn(0f, 12f),
-                    config.virtualizer.coerceIn(0f, 2f),
+                p.setSpeedPitch(
+                    config.speed.coerceIn(0.25f, 3f),
+                    config.pitchFactor.coerceIn(0.5f, 2f),
+                    log,
                 )
                 refreshTracks()
                 startListen()
@@ -193,30 +225,32 @@ class MsePlayer internal constructor(
     }
 
     override fun play() {
+        requireMainThread()
         if (released) return
         playWhenReady = true
         scope.launch { runCatching { engine().play(log) } }
     }
 
     override fun pause() {
+        requireMainThread()
         if (released) return
         playWhenReady = false
         scope.launch { runCatching { engine().pause(log) } }
     }
 
     override fun seekTo(positionMs: Long) {
+        requireMainThread()
         if (released) return
-        val ms = positionMs.coerceAtLeast(0L)
-        val mediaMs = _progress.value.mediaSeekMs(ms)
-        _progress.update { it.copy(positionMs = ms) }
-        seekJob?.cancel()
-        seekJob = scope.launch { runCatching { engine().seekTo(mediaMs, log) } }
+        scope.launch { runCatching { engine().seekTo(positionMs, log) } }
     }
 
     override fun stop() {
+        requireMainThread()
         if (released) return
         playWhenReady = false
-        seekJob?.cancel()
+        pendingLoad = null
+        loadJob?.cancel()
+        preloadJob?.cancel()
         statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
@@ -227,6 +261,7 @@ class MsePlayer internal constructor(
     }
 
     override fun setConfig(config: PlaybackConfig) {
+        requireMainThread()
         if (released) return
         val prev = applied
         applied = config
@@ -234,7 +269,6 @@ class MsePlayer internal constructor(
             it.copy(
                 volume = config.volume.coerceIn(0f, 1f),
                 speed = config.speed,
-                videoSize = if (config.audioOnly) null else (it.videoSize ?: lastVideoSize),
             )
         }
         if (config.volume != prev.volume) {
@@ -285,6 +319,7 @@ class MsePlayer internal constructor(
 
     /** Display hole in CSS pixels. YouTube Auto ABR uses this. Never report a hole shorter than 360. */
     fun setViewport(width: Int, height: Int) {
+        requireMainThread()
         if (released) return
         var w = width.coerceAtLeast(1)
         var h = height.coerceAtLeast(1)
@@ -312,8 +347,13 @@ class MsePlayer internal constructor(
         if (released) 0 else videoSurface.presentedFrames()
 
     override fun release() {
+        requireMainThread()
         if (released) return
         released = true
+        pendingLoad = null
+        initJob?.cancel()
+        loadJob?.cancel()
+        preloadJob?.cancel()
         statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
@@ -461,11 +501,8 @@ class MsePlayer internal constructor(
     private fun applyPicture(st: JsonObject) {
         val w = (st["videoWidth"] as? JsonPrimitive)?.intOrNull ?: 0
         val h = (st["videoHeight"] as? JsonPrimitive)?.intOrNull ?: 0
-        val size = if (w > 0 && h > 0) VideoSize(w, h) else null
-        if (size != null) lastVideoSize = size
-        _status.update {
-            it.copy(videoSize = size ?: if (applied.audioOnly) null else lastVideoSize)
-        }
+        if (w <= 0 || h <= 0) return
+        _status.update { it.copy(videoSize = VideoSize(w, h)) }
     }
 
     private fun applyCatalog(st: JsonObject) {
