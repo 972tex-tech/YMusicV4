@@ -47,7 +47,9 @@ onAccept(
     applyViewport(a["width"], a["height"]);
     const quality = a["quality"] != null ? String(a["quality"]) : undefined;
     const audioOnly = a["audioOnly"] === true;
-    const result = await loadPlayer(id, quality, audioOnly);
+    const startMs = Number(a["startPositionMs"]);
+    const startSeconds = Number.isFinite(startMs) && startMs > 0 ? startMs / 1000 : 0;
+    const result = await loadPlayer(id, quality, audioOnly, startSeconds);
     const p = out.writeObjectAsJson(result);
     if (p) await p;
   }),

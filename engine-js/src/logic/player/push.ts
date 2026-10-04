@@ -49,7 +49,8 @@ function sameProgress(a: Record<string, unknown>, b: Record<string, unknown>): b
     a["seekable"] === b["seekable"] &&
     a["seekableStartMs"] === b["seekableStartMs"] &&
     a["seekableEndMs"] === b["seekableEndMs"] &&
-    a["progressLabel"] === b["progressLabel"]
+    a["progressLabel"] === b["progressLabel"] &&
+    a["videoId"] === b["videoId"]
   );
 }
 

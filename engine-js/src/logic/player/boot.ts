@@ -73,7 +73,8 @@ type MoviePlayer = {
   "getPlaybackQuality"(): string;
   "getUserPlaybackQualityPreference"(): string;
   "getAvailableQualityData"(): unknown;
-  "loadVideoById"(id: string): unknown;
+  "loadVideoById"(id: string | Record<string, unknown>): unknown;
+  "getVideoData"(): Record<string, unknown>;
   "preloadVideoByPlayerVars"(
     vars: Record<string, unknown>,
     unused?: unknown,
@@ -857,16 +858,33 @@ class Player {
     notifyCatalog();
   }
 
-  private loadById(videoId: string): void {
+  private currentVideoId(): string {
+    const player = moviePlayer();
+    if (!player) return "";
+    try {
+      const d = player["getVideoData"]();
+      const id = d["video_id"];
+      return typeof id === "string" ? id : "";
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  private loadById(videoId: string, startSeconds: number): void {
     const player = moviePlayer();
     if (!player) throw new JsEngineErrorImpl("player/load: no movie_player", "E20077");
-    player["loadVideoById"](videoId);
+    if (startSeconds > 0) {
+      player["loadVideoById"]({ "videoId": videoId, "startSeconds": startSeconds });
+    } else {
+      player["loadVideoById"](videoId);
+    }
   }
 
   async load(
     videoId: string,
     quality?: string,
     audioOnly?: boolean,
+    startSeconds?: number,
   ): Promise<Record<string, unknown>> {
     const initOut = await this.init();
     const ao = audioOnly === true;
@@ -885,7 +903,7 @@ class Player {
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     this.setQuality(q || "auto", ao);
     try {
-      this.loadById(videoId);
+      this.loadById(videoId, startSeconds && startSeconds > 0 ? startSeconds : 0);
     } catch (e) {
       throw new JsEngineErrorImpl(
         "loadVideoById: " + (e instanceof Error ? e.message : String(e)),
@@ -1112,6 +1130,7 @@ class Player {
     if (live) progressLabel = atHead ? null : "-" + fmtProgressClock(behind);
     else if (barDur > 0 || progress > 0) progressLabel = fmtProgressClock(progress);
     return {
+      "videoId": this.currentVideoId(),
       "progress": progress,
       "progressLabel": progressLabel,
       "duration": barDur,
@@ -1302,8 +1321,9 @@ export function loadPlayer(
   videoId: string,
   quality?: string,
   audioOnly?: boolean,
+  startSeconds?: number,
 ): Promise<Record<string, unknown>> {
-  return ytPlayer.load(videoId, quality, audioOnly);
+  return ytPlayer.load(videoId, quality, audioOnly, startSeconds);
 }
 
 export function preloadPlayer(videoId: string): Promise<Record<string, unknown>> {
