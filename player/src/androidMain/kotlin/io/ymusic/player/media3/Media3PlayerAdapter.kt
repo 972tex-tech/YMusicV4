@@ -82,7 +82,7 @@ class Media3PlayerAdapter(
                 // The play-head is read live via PositionSupplier — a tick needs no invalidation.
                 // A seek re-anchors the snapshot, judged against the WALL CLOCK, not the previous
                 // tick: while playing, position is expected to advance by elapsed×speed, so slow
-                // or throttled ticks (screen-off WebView timers) don't masquerade as seeks. A
+                // or throttled ticks (screen-off timers) don't masquerade as seeks. A
                 // duration re-anchors only when it meaningfully changes (appears, or moves >1s).
                 player.progress.mapNotNull { p ->
                     val now = SystemClock.elapsedRealtime()

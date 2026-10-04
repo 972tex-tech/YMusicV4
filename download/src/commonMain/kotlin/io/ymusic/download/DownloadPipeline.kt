@@ -9,8 +9,8 @@ import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 
 /**
- * Resolves the SABR inputs for a video (loads/plays it in a WebView, extracts the player response + PO
- * token). Implemented by the app shell over its `WebViewPlayer`; the download module stays headless.
+ * Resolves the SABR inputs for a video (player response + PO token). Implemented by the app shell
+ * over its `YtEngine`; the download module stays headless.
  */
 fun interface SabrSpecResolver {
     suspend fun resolve(videoId: String): SabrStreamSpec

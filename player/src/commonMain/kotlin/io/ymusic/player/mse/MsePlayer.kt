@@ -17,9 +17,9 @@ import io.ymusic.player.Progress
 import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
 import io.ymusic.player.VideoSize
+import io.ymusic.player.WatchNextSeen
 import io.ymusic.player.YtEngine
 import io.ymusic.player.requireMainThread
-import io.ymusic.player.webview.WebViewEvent
 import io.ymusic.quickjs.QuickJsRuntime
 import io.ymusic.settings.SettingsStore
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
@@ -85,8 +85,8 @@ class MsePlayer internal constructor(
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
 
-    private val _watchNextSeen = MutableSharedFlow<WebViewEvent.WatchNextSeen>(extraBufferCapacity = 8)
-    override val watchNextSeen: SharedFlow<WebViewEvent.WatchNextSeen> = _watchNextSeen.asSharedFlow()
+    private val _watchNextSeen = MutableSharedFlow<WatchNextSeen>(extraBufferCapacity = 8)
+    override val watchNextSeen: SharedFlow<WatchNextSeen> = _watchNextSeen.asSharedFlow()
 
     private var released = false
     private var inited = false
@@ -111,7 +111,7 @@ class MsePlayer internal constructor(
         if (!released) pendingRefresh = true
     }
 
-    override fun initIfNotYet() {
+    override fun init() {
         requireMainThread()
         if (released) return
         val state = _status.value.state
@@ -120,7 +120,6 @@ class MsePlayer internal constructor(
             initJob = scope.launch {
                 try {
                     ensureInit()
-                    pendingLoad?.let { startLoad() }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -136,14 +135,52 @@ class MsePlayer internal constructor(
         }
     }
 
+    override fun reset() {
+        requireMainThread()
+        if (released) return
+        pendingRefresh = false
+        pendingLoad = null
+        loadingVideoId = null
+        loadedVideoId = null
+        loadTimeoutJob?.cancel()
+        loadJob?.cancel()
+        captionJob?.cancel()
+        initJob?.cancel()
+        statusJob?.cancel()
+        catalogJob?.cancel()
+        captionJob = null
+        statusJob = null
+        catalogJob = null
+        inited = false
+        _captionLines.value = emptyList()
+        _progress.value = Progress()
+        _status.update {
+            it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null)
+        }
+        initJob = scope.launch {
+            try {
+                runCatching { player?.close() }
+                player = null
+                ensureInit()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                fail(
+                    e.errorCode()
+                        ?: Regex("""E\d{5}""").find(e.message.orEmpty())?.value
+                        ?: "E60033",
+                    e.message ?: "mse reset failed",
+                    e,
+                )
+            }
+        }
+    }
+
     override fun preload(source: PlayableItem.YtMedia?) {
         requireMainThread()
         source ?: return
         if (released) return
-        if (!_status.value.state.readyToLoad) {
-            initIfNotYet()
-            return
-        }
+        if (!_status.value.state.readyToLoad) return
         scope.launch { runCatching { engine().preload(source.videoId, log) } }
     }
 
@@ -167,10 +204,7 @@ class MsePlayer internal constructor(
             config.bassBoostDb.coerceIn(0f, 12f),
             config.virtualizer.coerceIn(0f, 2f),
         )
-        if (!_status.value.state.readyToLoad) {
-            initIfNotYet()
-            return
-        }
+        if (!_status.value.state.readyToLoad) return
         startLoad()
     }
 
@@ -181,10 +215,6 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadJob = scope.launch {
             try {
-                if (pendingRefresh) {
-                    pendingRefresh = false
-                    inited = false
-                }
                 val p = ensureInit()
                 val config = applied
                 val quality = config.preferVideoQuality.first
@@ -556,7 +586,11 @@ class MsePlayer internal constructor(
     private fun fail(code: String, message: String, error: Throwable? = null) {
         log?.log(kmpcommon.log.Logger.Level.WARN, "$code $message", error)
         _status.update {
-            it.copy(state = PlaybackState.Error(PlayerError(code, message, canRetry = true, needReset = false)))
+            it.copy(
+                state = PlaybackState.Error(
+                    PlayerError(code, message, canRetry = true, needReset = true),
+                ),
+            )
         }
     }
 

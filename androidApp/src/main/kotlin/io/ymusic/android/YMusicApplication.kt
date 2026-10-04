@@ -114,8 +114,7 @@ class SharedServices(
     val engines: DynamicEngineManager,
     val cacheStore: CacheStore,
     val mediaStore: BetterMediaStore,
-    /** The injected YouTube player script (webview-js/dist, bundled as an asset); null = the
-     *  WebView engine is absent and a YouTube item surfaces E60050. */
+    /** Bundled `webview_ymusic.js` (player-cache gate). Null disables [LocalMediaProxy]. */
     val webViewJs: String?,
     val imageLoader: ImageLoader,
     val stats: StatUsage,
@@ -268,10 +267,9 @@ class YMusicApplication : Application() {
 
         val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(this))
 
-        // The injected player script through the same provider seam — but NEVER swapped on the
-        // fly: a cached remote copy applies at the next process start (the running WebView keeps
-        // the script it was injected with). No version constant yet (embed = 0); the config
-        // service will define the numbering when it exists.
+        // Player-cache script through the same provider seam — a cached remote copy applies at
+        // the next process start. No version constant yet (embed = 0); the config service will
+        // define the numbering when it exists.
         val webViewSource = DefaultJsSourceProvider(
             client = http.engine,
             config = { remoteConfig.getConfig().wvJs?.let { it.url to it.version } },
@@ -442,7 +440,7 @@ class YMusicApplication : Application() {
         val player = createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(this, videoContainer)) },
-                webView = {
+                youtube = {
                     MsePlayer.create(
                         client = shared.http.engine,
                         appVersion = 5000,

@@ -194,7 +194,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val player = createPlayer(
         PlayerEngines(
             local = { createLocalPlayer(LocalPlayerContext(container)) },
-            webView = { msePlayer },
+            youtube = { msePlayer },
         ),
     )
 

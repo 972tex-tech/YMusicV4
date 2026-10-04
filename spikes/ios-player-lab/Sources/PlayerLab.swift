@@ -4,9 +4,9 @@ import UIKit
 import Player
 
 // Native iOS player lab — drives :player through Player.framework in the iOS Simulator (iosX64), no
-// Compose. Two tabs: the AVFoundation LocalPlayer (bundled sample.mp4) and the WKWebView
-// WebViewPlayer (YouTube). Muted by default (config volume 0) — unmute with the slider.
-// Prints player state to stdout so a headless `simctl launch --console` run is verifiable.
+// Compose. AVFoundation LocalPlayer (bundled sample.mp4). Muted by default (config volume 0) —
+// unmute with the slider. Prints player state to stdout so a headless `simctl launch --console`
+// run is verifiable.
 
 @main
 struct PlayerLabApp: App {
@@ -22,10 +22,7 @@ struct PlayerLabApp: App {
 
 struct RootView: View {
     var body: some View {
-        TabView {
-            LocalView().tabItem { Image(systemName: "waveform"); Text("Local") }
-            YouTubeView().tabItem { Image(systemName: "play.rectangle"); Text("YouTube") }
-        }
+        LocalView()
     }
 }
 
@@ -125,78 +122,6 @@ struct LocalView: View {
     }
 }
 
-// MARK: - YouTube (WKWebView)
-
-final class WebModel: ObservableObject {
-    let container = UIView()
-    let player: WebViewPlayer
-    @Published var status: PlaybackStatus
-    @Published var positionMs: Int64 = 0
-    @Published var durationMs: Int64 = 0
-    @Published var config: PlaybackConfig = AppleInteropKt.playbackConfig(volume: 0.0, speed: 1.0, audioOnly: false)
-    private var timer: Timer?
-
-    init() {
-        container.autoresizesSubviews = true
-        let engineJs = WebModel.loadEngineJs()
-        player = AppleInteropKt.createYtWebViewPlayer(
-            context: WebViewPlayerContext(container: container), engineJs: engineJs, appVersion: 1)
-        status = AppleInteropKt.currentStatus(player)
-        timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.status = AppleInteropKt.currentStatus(self.player)
-            let p = AppleInteropKt.currentProgress(self.player)
-            self.positionMs = p.positionMs
-            self.durationMs = p.durationMs
-        }
-    }
-
-    func load(_ videoId: String) {
-        print("[ios-lab] YT load \(videoId)")
-        player.load(source: PlayableItemYtVideoId(videoId: videoId),
-                    startPositionMs: 0, playWhenReady: true, config: config)
-    }
-    func setAudioOnly(_ on: Bool) {
-        config = AppleInteropKt.playbackConfig(volume: config.volume, speed: config.speed, audioOnly: on)
-        player.setConfig(config: config)
-    }
-
-    static func loadEngineJs() -> String {
-        if let url = Bundle.main.url(forResource: "webview_ymusic", withExtension: "js"),
-           let js = try? String(contentsOf: url, encoding: .utf8) { return js }
-        return "console.error('webview_ymusic.js missing from app bundle')"
-    }
-}
-
-struct YouTubeView: View {
-    @StateObject private var model = WebModel()
-    @State private var videoId = "dQw4w9WgXcQ"
-    private var duration: Int64 { model.durationMs }
-    private var position: Int64 { model.positionMs }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("WebViewPlayer — WKWebView (iOS)").font(.headline)
-            HStack {
-                TextField("YouTube video id", text: $videoId).textFieldStyle(.roundedBorder)
-                Button("Load") { model.load(videoId) }
-            }
-            Text("State: \(model.status.state.name)").font(.subheadline)
-            if let e = model.status.error { Text("Failed (\(e.code))").foregroundColor(.red) }
-            WebContainer(container: model.container).frame(minHeight: 220).background(Color.black).cornerRadius(6)
-            transport(position: position, duration: duration,
-                      seek: { f in if duration > 0 { model.player.seekTo(positionMs: Int64(f * Double(duration))) } },
-                      play: { model.player.play() }, pause: { model.player.pause() },
-                      back: { model.player.seekTo(positionMs: position - 10_000) },
-                      fwd: { model.player.seekTo(positionMs: position + 10_000) },
-                      stop: { model.player.stop() })
-            Toggle("Audio-only", isOn: Binding(get: { model.config.audioOnly }, set: { model.setAudioOnly($0) }))
-            Spacer()
-        }
-        .padding(16)
-    }
-}
-
 // MARK: - Shared bits
 
 @ViewBuilder
@@ -240,11 +165,4 @@ final class PlayerUIView: UIView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
     override func layoutSubviews() { super.layoutSubviews(); playerLayer.frame = bounds }
-}
-
-/// Hosts the plain `UIView` container the player injects its WKWebView into (container-injection).
-struct WebContainer: UIViewRepresentable {
-    let container: UIView
-    func makeUIView(context: Context) -> UIView { container }
-    func updateUIView(_ uiView: UIView, context: Context) {}
 }

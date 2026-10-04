@@ -85,6 +85,17 @@ class PlayerFacadeTest {
 
         override fun seekTo(positionMs: Long) = _progress.update { it.copy(positionMs = positionMs) }
 
+        override fun init() {
+            if (_status.value.state is PlaybackState.Uninitialized) {
+                _status.value = PlaybackStatus(state = PlaybackState.Idle)
+            }
+        }
+
+        override fun reset() {
+            _status.value = PlaybackStatus(state = PlaybackState.Idle)
+            _progress.value = Progress()
+        }
+
         override fun stop() {
             stopped++
             _status.value = PlaybackStatus(state = PlaybackState.Idle)
@@ -110,32 +121,31 @@ class PlayerFacadeTest {
 
     private class FakeLocal : FakeEngine<PlayableItem.LocalMedia>(), LocalPlayer
 
-    private class FakeWebView : FakeEngine<PlayableItem.YtMedia>(), WebViewPlayer {
+    private class FakeYt : FakeEngine<PlayableItem.YtMedia>(), YtEngine {
         /** The harvest side channel — tests emit here to drive the facade's re-exposure. */
-        val reports = kotlinx.coroutines.flow.MutableSharedFlow<io.ymusic.player.webview.WebViewEvent.WatchNextSeen>(
+        val reports = kotlinx.coroutines.flow.MutableSharedFlow<WatchNextSeen>(
             extraBufferCapacity = 4,
         )
-        override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<io.ymusic.player.webview.WebViewEvent.WatchNextSeen> =
+        override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<WatchNextSeen> =
             reports
 
         override fun refreshOnNext() = Unit
-        override fun initIfNotYet() = Unit
 
         override suspend fun requestPlayerResponse(videoId: String): String = error("not used in this test")
 
         override suspend fun requestPoToken(videoId: String): String = error("not used in this test")
     }
 
-    private class Harness(scope: TestScope, webViewFactory: Boolean = true) {
+    private class Harness(scope: TestScope, youtubeFactory: Boolean = true) {
         val local = FakeLocal()
-        val webView = FakeWebView()
+        val youtube = FakeYt()
         var localBuilds = 0
-        var webViewBuilds = 0
+        var youtubeBuilds = 0
         val player: Player = createPlayer(
             engines = PlayerEngines(
                 local = { localBuilds++; local },
-                webView = if (webViewFactory) {
-                    { webViewBuilds++; webView }
+                youtube = if (youtubeFactory) {
+                    { youtubeBuilds++; youtube }
                 } else {
                     null
                 },
@@ -156,27 +166,26 @@ class PlayerFacadeTest {
         h.player.setQueue(listOf(local(1), yt("abc")), playIndex = 0)
         runCurrent()
         assertEquals(1, h.localBuilds)
-        assertEquals(0, h.webViewBuilds, "WebView engine must not build until a yt item plays")
+        assertEquals(0, h.youtubeBuilds, "YouTube engine must not build until a yt item plays")
         assertEquals(local(1), h.local.loads.single().item, "local item routes to the local engine")
 
         h.player.skipNext()
         runCurrent()
-        assertEquals(1, h.webViewBuilds)
+        assertEquals(1, h.youtubeBuilds)
         assertEquals(1, h.local.stopped, "switching engines must stop the old one")
-        assertEquals(yt("abc"), h.webView.loads.single().item, "yt item routes to the WebView engine")
+        assertEquals(yt("abc"), h.youtube.loads.single().item, "yt item routes to the YouTube engine")
     }
 
     @Test
-    fun the_webview_engines_watch_next_reports_reach_the_facade() = runTest {
+    fun the_youtube_engines_watch_next_reports_reach_the_facade() = runTest {
         val h = Harness(this)
         val seen = mutableListOf<WatchNextSeen>()
         val job = backgroundScope.launch { h.player.watchNextSeen.collect { seen += it } }
         runCurrent()
 
-        // Nothing is routed until a YouTube item makes the facade bind the WebView engine.
         h.player.setQueue(listOf(yt("abc")), playIndex = 0)
         runCurrent()
-        h.webView.reports.emit(io.ymusic.player.webview.WebViewEvent.WatchNextSeen("abc", "[]"))
+        h.youtube.reports.emit(WatchNextSeen("abc", "[]"))
         runCurrent()
 
         assertEquals(listOf(WatchNextSeen("abc", "[]")), seen)
@@ -194,7 +203,7 @@ class PlayerFacadeTest {
 
         h.player.skipNext()
         runCurrent()
-        h.webView.tickTo(9_000)
+        h.youtube.tickTo(9_000)
         h.local.tickTo(7_777)
         runCurrent()
         assertEquals(9_000, h.player.progress.value.positionMs, "old engine's flow must be unbound")
@@ -222,8 +231,8 @@ class PlayerFacadeTest {
         runCurrent()
         h.local.tickTo(50_000)
         runCurrent()
-        assertEquals(1, h.webViewBuilds)
-        assertEquals(listOf<PlayableItem.YtMedia?>(yt("abc")), h.webView.preloads)
+        assertEquals(1, h.youtubeBuilds)
+        assertEquals(listOf<PlayableItem.YtMedia?>(yt("abc")), h.youtube.preloads)
         assertEquals(listOf<PlayableItem.LocalMedia?>(null), h.local.preloads, "other engine: drop the current engine's extra cue")
     }
 
@@ -232,9 +241,9 @@ class PlayerFacadeTest {
         val h = Harness(this)
         h.player.setQueue(listOf(PlayableItem.YtMedia("live", live = true), yt("next")), playIndex = 0)
         runCurrent()
-        h.webView.tickTo(50_000)
+        h.youtube.tickTo(50_000)
         runCurrent()
-        assertTrue(h.webView.preloads.isEmpty(), "live must not preload")
+        assertTrue(h.youtube.preloads.isEmpty(), "live must not preload")
 
         h.player.setQueue(listOf(local(1), local(2)), playIndex = 0)
         h.player.setLoopMode(LoopMode.One)
@@ -288,7 +297,7 @@ class PlayerFacadeTest {
 
         h.player.skipNext()
         runCurrent()
-        val loaded = h.webView.loads.single().config
+        val loaded = h.youtube.loads.single().config
         assertEquals(0.3f, loaded.volume)
         assertEquals(1.5f, loaded.speed)
         assertTrue(loaded.audioOnly)
@@ -312,8 +321,8 @@ class PlayerFacadeTest {
     }
 
     @Test
-    fun missing_webview_engine_reports_e60050() = runTest {
-        val h = Harness(this, webViewFactory = false)
+    fun missing_youtube_engine_reports_e60050() = runTest {
+        val h = Harness(this, youtubeFactory = false)
         h.player.setQueue(listOf(yt("a")), playIndex = 0)
         runCurrent()
         assertIs<PlaybackState.Error>(h.player.status.value.state)
@@ -388,7 +397,7 @@ class PlayerFacadeTest {
         runCurrent()
         h.player.release()
         assertEquals(1, h.local.releasedCount)
-        assertEquals(0, h.webView.releasedCount, "never-built engine is not the facade's to release")
+        assertEquals(0, h.youtube.releasedCount, "never-built engine is not the facade's to release")
 
         h.player.setQueue(listOf(local(2)), playIndex = 0)
         runCurrent()

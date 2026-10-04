@@ -1,12 +1,9 @@
 # webview-js
 
-The injected content script for the WebView-based YouTube player. The native host evals the built
-bundle **at document-start on the YouTube embed page — before any YouTube page script runs** — and it
-rewrites the YouTube JS player's behavior from the inside (fake client, SABR handling, ad skipping,
-signature decoding, audio-only, the player↔host bridge, …).
+YouTube embed content-script (host bridge, SABR, ads, signature decode). Built standalone to ES5.
+Android still copies `dist/webview_ymusic.js` as an app asset for the player-cache gate.
 
-Migrated from `ymix-server/clientSrc` (the `webview_ymusic` entry and its closure). Consumed by the
-future `:player` WebView engine, which injects `dist/webview_ymusic.js`.
+Migrated from `ymix-server/clientSrc` (the `webview_ymusic` entry and its closure).
 
 ## Layout
 

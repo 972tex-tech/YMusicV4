@@ -6,14 +6,11 @@ proof that the shared engine stack builds and runs on iOS **from an Intel Mac**.
 
 Why it exists: this dev host is Intel (x86_64), so the only iOS target it can build/run is `iosX64`
 (the Intel simulator). Compose Multiplatform 1.11.1 dropped `iosX64`, so the *shared Compose UI*
-can't build here — but `:player` (and its deps: `:kmpHttp`, the Apple AVPlayer + WKWebView bridges)
+can't build here — but `:player` (and its deps: `:kmpHttp`, the Apple AVPlayer local engine)
 has no Compose dependency and ships `iosX64`, so a native shell over the framework runs fine.
 
-Two tabs:
 - **Local** — the AVFoundation `LocalPlayer` playing a bundled `sample.mp4` (`AVPlayerLayer` video +
   transport + audio-only). Verified: `state=Ready`, `video=320x180`, position advances to `Ended`.
-- **YouTube** — the WKWebView `WebViewPlayer` (video id → load → transport), injecting the built
-  `webview-js` bundle. Needs network.
 
 Muted by default (config volume 0) — unmute with the slider.
 

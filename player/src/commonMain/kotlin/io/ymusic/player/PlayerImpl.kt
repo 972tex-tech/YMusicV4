@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.random.Random
 
@@ -25,7 +27,7 @@ internal class PlayerImpl(
     private val controller = QueueController(random)
 
     private var localEngine: LocalPlayer? = null
-    private var webViewEngine: YtEngine? = null
+    private var ytEngine: YtEngine? = null
 
     private var playWhenReadyIntent = false
     private var released = false
@@ -47,6 +49,9 @@ internal class PlayerImpl(
 
     private val engineJobs = mutableListOf<Job>()
     private var sleepJob: Job? = null
+    private var prepareJob: Job? = null
+    /** Cookie identity changed; next YouTube load [MediaEngine.reset]s first. */
+    private var ytResetOnNext = false
 
     private val _status = MutableStateFlow(PlaybackStatus())
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -354,29 +359,23 @@ internal class PlayerImpl(
     }
 
     override fun refreshOnNext() {
-        // Only the WebView (YouTube) engine has an /embed page tied to the cookie identity. If it
-        // isn't built yet, a future one loads under the new identity anyway — nothing to do.
-        webViewEngine?.refreshOnNext()
+        ytResetOnNext = true
+        ytEngine?.refreshOnNext()
     }
 
     override fun reload() {
-        val item = controller.state.currentItem ?: return
+        if (released) return
+        if (controller.state.currentItem == null) return
         val resumeMs = _progress.value.positionMs
-        // Unbind + stop the active engine before releasing it, so the rebuild's bind() sees no stale
-        // previous engine to stop.
-        bind(null)
-        when (item) {
-            is PlayableItem.YtMedia -> { webViewEngine?.release(); webViewEngine = null }
-            is PlayableItem.LocalMedia -> { localEngine?.release(); localEngine = null }
-        }
-        loadCurrent(resumeMs) // rebuilds the engine via its factory (fresh page / freshly read bundle)
+        _currentEngine.value?.reset()
+        loadCurrent(resumeMs)
     }
 
     override fun prepareYoutubeEngine() {
         if (released) return
-        val factory = engines.webView ?: return
-        val engine = webViewEngine ?: factory().also { webViewEngine = it }
-        engine.initIfNotYet()
+        val factory = engines.youtube ?: return
+        val engine = ytEngine ?: factory().also { ytEngine = it }
+        engine.init()
         engine.setConfig(currentConfig)
     }
 
@@ -391,9 +390,9 @@ internal class PlayerImpl(
         released = true
         scope.cancel()
         localEngine?.release()
-        webViewEngine?.release()
+        ytEngine?.release()
         localEngine = null
-        webViewEngine = null
+        ytEngine = null
         _currentEngine.value = null
     }
 
@@ -412,7 +411,7 @@ internal class PlayerImpl(
         is PlayableItem.LocalMedia ->
             localEngine ?: if (create) engines.local().also { localEngine = it } else null
         is PlayableItem.YtMedia ->
-            webViewEngine ?: if (create) engines.webView?.invoke()?.also { webViewEngine = it } else null
+            ytEngine ?: if (create) engines.youtube?.invoke()?.also { ytEngine = it } else null
     }
 
     private fun preloadOn(engine: MediaEngine<*>, item: PlayableItem?) {
@@ -454,7 +453,7 @@ internal class PlayerImpl(
                 preloadOn(currentEngine, null)
             }
         } else {
-            (nextEngine as? YtEngine)?.initIfNotYet()
+            nextEngine.init()
         }
         prepareNextArmed = true
     }
@@ -463,32 +462,100 @@ internal class PlayerImpl(
         val item = controller.state.currentItem ?: return
         clearPendingSeek()
         loadGeneration++
+        val gen = loadGeneration
         when (item) {
             is PlayableItem.LocalMedia -> {
                 val engine = localEngine ?: engines.local().also { localEngine = it }
                 bind(engine)
-                engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                requestLoad(engine, item, startPositionMs, gen)
             }
             is PlayableItem.YtMedia -> {
-                val factory = engines.webView
+                val factory = engines.youtube
                 if (factory == null) {
                     bind(null)
                     publishStatus(
                         PlaybackStatus(
                             state = PlaybackState.Error(PlayerError(
-                                "E60050", "queue item needs the WebView engine but none is configured",
+                                "E60050", "queue item needs the YouTube engine but none is configured",
                                 canRetry = false,
                             )),
                         ),
                     )
                     return
                 }
-                val engine = webViewEngine ?: factory().also { webViewEngine = it }
+                val engine = ytEngine ?: factory().also { ytEngine = it }
                 bind(engine)
-                engine.load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                requestLoad(engine, item, startPositionMs, gen)
             }
         }
         refreshPrepareNext()
+    }
+
+    private fun requestLoad(
+        engine: MediaEngine<*>,
+        item: PlayableItem,
+        startPositionMs: Long,
+        gen: Int,
+    ) {
+        prepareJob?.cancel()
+        val resetFirst = ytResetOnNext && engine is YtEngine
+        if (engine.status.value.state.readyToLoad && !resetFirst) {
+            loadOn(engine, item, startPositionMs)
+            return
+        }
+        prepareJob = scope.launch {
+            val error = tryMakePlayerReady(engine)
+            if (released || loadGeneration != gen) return@launch
+            if (error != null) return@launch
+            loadOn(engine, item, startPositionMs)
+        }
+    }
+
+    private fun loadOn(engine: MediaEngine<*>, item: PlayableItem, startPositionMs: Long) {
+        when (item) {
+            is PlayableItem.LocalMedia ->
+                (engine as LocalPlayer).load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+            is PlayableItem.YtMedia ->
+                (engine as YtEngine).load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+        }
+    }
+
+    /**
+     * UniPlayer `tryMakePlayerReady`: init a cold engine, reset a [PlayerError.needReset] session,
+     * wait until [PlaybackState.readyToLoad] or a new Error.
+     */
+    private suspend fun tryMakePlayerReady(engine: MediaEngine<*>): PlayerError? {
+        if (ytResetOnNext && engine is YtEngine) {
+            ytResetOnNext = false
+            engine.reset()
+        }
+        val first = engine.status.value.state
+        if (first.readyToLoad) return null
+        when (first) {
+            is PlaybackState.Uninitialized -> {
+                if (!first.isInitializing) engine.init()
+            }
+            is PlaybackState.Error -> {
+                if (!first.error.canRetry) return first.error
+                if (first.error.needReset) engine.reset() else return null
+            }
+            else -> return null
+        }
+        val next = withTimeoutOrNull(PREPARE_TIMEOUT_MS) {
+            engine.status.first { snap ->
+                when (val s = snap.state) {
+                    is PlaybackState.Error -> true
+                    is PlaybackState.Uninitialized -> false
+                    else -> s.readyToLoad
+                }
+            }.state
+        }
+        if (next == null) {
+            val err = PlayerError("E60052", "engine prepare timeout", canRetry = true, needReset = true)
+            publishStatus(PlaybackStatus(state = PlaybackState.Error(err)))
+            return err
+        }
+        return (next as? PlaybackState.Error)?.error
     }
 
     /** Switch-latest: point the facade flows at [engine], stopping whatever played before. */
@@ -516,10 +583,9 @@ internal class PlayerImpl(
         bindCapability(engine as? CaptionSelectable, _captions, CaptionState.DEFAULT) { it.captions }
         bindCapability(engine as? CaptionRenderable, _captionLines, emptyList()) { it.captionLines }
         bindCapability(engine as? AudioTrackSelectable, _audioTracks, AudioTrackState.DEFAULT) { it.audioTracks }
-        // Not a capability state but an event stream, and only the WebView engine has one.
         (engine as? YtEngine)?.let { yt ->
             engineJobs += scope.launch {
-                yt.watchNextSeen.collect { _watchNextSeen.tryEmit(WatchNextSeen(it.videoId, it.contentsJson)) }
+                yt.watchNextSeen.collect { _watchNextSeen.tryEmit(it) }
             }
         }
     }
@@ -555,6 +621,7 @@ internal class PlayerImpl(
     }
 
     private fun stopActive() {
+        prepareJob?.cancel()
         clearPendingSeek()
         val engine = _currentEngine.value
         if (engine != null) {
@@ -649,6 +716,9 @@ internal class PlayerImpl(
 
         /** Cue the next item this close to the end — legacy UniPlayer. */
         const val PRELOAD_LEAD_MS = 10_000L
+
+        /** UniPlayer `tryMakePlayerReady` timeout. */
+        const val PREPARE_TIMEOUT_MS = 10_000L
 
         /** A listen tick within this of the seek target counts as landed. */
         const val SEEK_SETTLE_MS = 500L

@@ -56,7 +56,7 @@ import androidx.media3.session.R as Media3R
  * notification is built here directly from the `Player` flows — playing keeps the service
  * foreground; pausing demotes it but keeps a dismissible notification (the legacy PlayerService
  * behavior). Started by [YMusicApplication] whenever playback begins; holds wake/wifi locks while
- * playing so the WebView engine keeps streaming with the screen off.
+ * playing so YouTube/MSE keeps streaming with the screen off.
  *
  * A browse tap arrives as the controller's setMediaItems: [LibraryCallback.onAddMediaItems]
  * re-resolves the bare mediaIds through the tree, and [applyBrowseItems] turns them into facade

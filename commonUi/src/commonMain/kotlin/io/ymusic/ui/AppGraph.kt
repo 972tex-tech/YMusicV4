@@ -44,7 +44,7 @@ typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int)
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
  * running engine manager, the player facade, and the platform video surface. [playerSurface] hosts
  * the **one** shared video container the shell handed to the engines (a Swing panel on desktop, a
- * `FrameLayout` on Android) — each engine attaches its own surface (WebView / SurfaceView / ffmpeg)
+ * `FrameLayout` on Android) — each engine attaches its own surface (MSE / SurfaceView / ffmpeg)
  * into it and owns that surface's visibility, so the UI never needs to know which engine is active.
  *
  * [mediaStore] backs the Library screen; a shell without one (no local library yet) leaves it null.
@@ -91,10 +91,9 @@ class AppGraph(
     /** App settings (UI language, theme, …); the in-memory default works but doesn't persist. */
     val settings: SettingsStore = InMemorySettingsStore(),
     /**
-     * True when [playerSurface] may be shown at any size (desktop MSE blit / ffmpeg frames scale) —
-     * the mini player then hosts it as its 36dp art tile. False for a windowed WebView (iOS): the
-     * page sizes its streams to the real viewport, so a thumbnail-sized surface kills playback and
-     * the UI must keep a real-size docked preview instead.
+     * True when [playerSurface] may be shown at any size (MSE blit / ffmpeg frames scale) —
+     * the mini player then hosts it as its 36dp art tile. False keeps a real-size docked preview
+     * instead of shrinking the surface into the mini-player art.
      */
     val surfaceScalesDown: Boolean = false,
     /**
@@ -127,8 +126,8 @@ class AppGraph(
      */
     val confirmDeviceOwner: (suspend (title: String, subtitle: String) -> Boolean)? = null,
     /**
-     * The offline-download queue service; null on a shell that can't download (no WebView stack, or a
-     * headless test graph) — the Downloads screen then shows an unavailable note. Built once per shell,
+     * The offline-download queue service; null on a shell that can't download (headless test
+     * graph) — the Downloads screen then shows an unavailable note. Built once per shell,
      * like [mediaStore].
      */
     val downloads: io.ymusic.download.DownloadService? = null,

@@ -81,9 +81,8 @@ data class PlaybackConfig(
  *
  * [canRetry]/[needReset] mirror the legacy `PlayerState.Error` flags: [canRetry] = a fresh
  * [MediaEngine.load] of the same source may succeed (false = don't offer retry — e.g. no engine for
- * the item type); [needReset] = the engine instance itself is broken (dead WebView page, auth wall),
- * not just this load. Every engine's [MediaEngine.load] tears down and rebuilds its session, so a
- * retry is always expressed as a re-load — [needReset] is a severity signal, not a separate call.
+ * the item type); [needReset] = the engine session is broken (dead page, mill failure, load timeout).
+ * The facade calls [MediaEngine.reset] before the next load when [needReset] is set.
  */
 data class PlayerError(
     override val code: String,

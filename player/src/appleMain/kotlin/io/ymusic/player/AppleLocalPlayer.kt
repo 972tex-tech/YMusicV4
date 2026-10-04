@@ -107,6 +107,13 @@ internal class AppleLocalPlayer(
         scope.launch { tick() }
     }
 
+    override fun init() {}
+
+    override fun reset() {
+        if (released) return
+        stop()
+    }
+
     override fun load(source: PlayableItem.LocalMedia, startPositionMs: Long, playWhenReady: Boolean, config: PlaybackConfig) {
         if (released) return
         val uri = source.uri

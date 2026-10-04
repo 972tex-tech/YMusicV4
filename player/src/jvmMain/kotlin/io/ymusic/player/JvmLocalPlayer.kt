@@ -187,6 +187,13 @@ internal class JvmLocalPlayer(
         }
     }
 
+    override fun init() {}
+
+    override fun reset() {
+        if (released) return
+        stop()
+    }
+
     override fun load(
         source: PlayableItem.LocalMedia,
         startPositionMs: Long,

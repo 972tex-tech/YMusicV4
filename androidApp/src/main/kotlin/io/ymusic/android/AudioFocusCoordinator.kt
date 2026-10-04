@@ -20,10 +20,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Audio-focus + becoming-noisy policy for the **local** engine only (ExoPlayer's built-in handling
- * is off). The WebView engine is deliberately excluded: Chromium runs its own AudioFocusDelegate
- * for its media element — a second focus client in the same app — so arbitrating against it pauses
- * our own playback the moment the WebView's audio starts. Chromium also pauses web media on focus
- * loss and headset unplug itself, so the YouTube engine is covered without us.
+ * is off). YouTube/MSE is not a client of this coordinator.
  *
  * Focus is requested on play and kept while paused (so a transient interruption can hand it back);
  * it is abandoned when nothing local is loaded.

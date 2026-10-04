@@ -530,10 +530,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             }
         }
 
-        // The one shared video surface must be *realized* for a WebView (iOS YouTube) source to play
-        // at all — a windowed WKWebView that is never shown never initializes, so it can't play even
-        // audio-only. Now Playing hosts it while open; otherwise the mini player's art tile does, so
-        // playback keeps going (the same single container just re-parents, which the engines tolerate).
+        // Keep the shared video surface hosted while a YouTube item or a pictured local item is
+        // current. Now Playing hosts it while open; otherwise the mini player's art tile does, so
+        // playback keeps going (the same single container re-parents, which the engines tolerate).
         val queue by graph.player.queue.collectAsState()
         val status by graph.player.status.collectAsState()
         val needsSurface = queue.currentItem is PlayableItem.YtMedia || status.videoSize != null

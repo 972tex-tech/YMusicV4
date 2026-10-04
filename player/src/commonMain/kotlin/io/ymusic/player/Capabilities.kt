@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Engine-specific **state** an engine exposes — the available video qualities, caption tracks, and
  * audio tracks it discovered for the current source. A caller queries at runtime:
- * `(engine as? VideoQualitySelectable)?.videoQuality`. Today the WebView/YouTube engine implements
+ * `(engine as? VideoQualitySelectable)?.videoQuality`. Today the YouTube engine implements
  * all three; the native-local engine implements none (yet).
  *
  * *Selecting* a quality/caption is not here — it goes through [PlaybackConfig] (`preferVideoQuality`,

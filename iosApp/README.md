@@ -1,7 +1,7 @@
 # iosApp — the shared Compose UI on iOS
 
 The iOS product shell: runs the **same** shared Compose `App` (`:commonUi`) as the desktop and Android
-shells, on a real iPhone/iPad, over the AVFoundation local + WKWebView YouTube engines. Symmetric with
+shells, on a real iPhone/iPad, over the AVFoundation local + MSE YouTube engines. Symmetric with
 `:desktopApp` and `:androidApp`.
 
 `iosApp/iOSApp.swift` (SwiftUI `@main`) hosts `MainViewControllerKt.MainViewController()` from the
@@ -57,6 +57,6 @@ Signing is the only manual step — this environment can't enter your Apple ID; 
 - `mediaStore` is null in the iOS graph for now (Library shows empty) — keeps the shell lean; the
   media-store SQLDelight native driver can be wired later (it already compiles for `iosArm64`).
 - Local video isn't hosted in the shared surface on iOS yet (AVFoundation renders via `AVPlayerLayer`
-  in the player-lab spike); the shared surface hosts the WebView. Audio (the music default) is fine.
+  in the player-lab spike); YouTube picture is MSE `copyFrame`. Audio (the music default) is fine.
 - Settings → Link devices uses the camera (`NSCameraUsageDescription`) to scan a desktop QR, then
   PIN/Face ID (`NSFaceIDUsageDescription`) before POSTing the encrypted YouTube cookies.

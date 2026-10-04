@@ -43,7 +43,7 @@ sealed interface PlayableItem {
     }
 
     /**
-     * A YouTube video, played by the WebView engine (`MediaEngine<YtMedia>`). [videoId] is all the
+     * A YouTube video, played by the YouTube engine (`MediaEngine<YtMedia>`). [videoId] is all the
      * engine needs; [title]/[artist] (channel) / [thumbnailUrl] / [duration] travel with it for the
      * UI. [live] marks a live stream (unbounded duration). Seekability is
      * [Progress.seekable] — DVR live is seekable, head-only live is not.
@@ -65,19 +65,20 @@ sealed interface PlayableItem {
 }
 
 /**
- * The engine SPI that every playback backend satisfies — today the native-local engine
- * ([LocalPlayer]); later the WebView/YouTube engine. The `Player` facade/router drives whichever
- * engine plays the current item through this one contract and merges [status]/[progress] the same
- * way regardless of which engine is active (swapping engines when the play-index crosses item types).
+ * The engine SPI that every playback backend satisfies — the native-local engine ([LocalPlayer])
+ * and the YouTube engine ([YtEngine] / [io.ymusic.player.mse.MsePlayer]). The `Player` facade/router
+ * drives whichever engine plays the current item through this one contract and merges
+ * [status]/[progress] the same way regardless of which engine is active (swapping engines when the
+ * play-index crosses item types).
  *
  * This is a deliberately **narrow common core** — only what genuinely overlaps between a native
- * decoder and a WebView player. Engine-specific features do NOT go here; they belong behind optional
- * capability interfaces queried with `engine as? Capability` (planned: audio-track selection,
- * captions, video-quality selection for YouTube, an equalizer/`audioSessionId` handle for local) —
- * never as degenerate methods every engine must stub, which was the legacy `BasicMediaPlayer` smell.
+ * decoder and the YouTube engine. Engine-specific features do NOT go here; they belong behind
+ * optional capability interfaces queried with `engine as? Capability` (audio-track selection,
+ * captions, video-quality selection for YouTube) — never as degenerate methods every engine must
+ * stub, which was the legacy `BasicMediaPlayer` smell.
  *
  * **Main-thread only.** Create the engine and call every method on the **main thread**. Each
- * backend's underlying native player (ExoPlayer / AVPlayer / ffmpeg / a WebView) does its own
+ * backend's underlying native player (ExoPlayer / AVPlayer / ffmpeg / C MSE) does its own
  * decoding/playback on its own threads; only this control surface is main-thread-bound, and no call
  * is marshaled — that is the caller's responsibility. The [status] / [progress] flows may be
  * collected from any thread.
@@ -94,12 +95,18 @@ interface MediaEngine<in S : PlayableItem> {
     val progress: StateFlow<Progress>
 
     /**
-     * Start loading [source] and return immediately. Readiness is observed through [status]: the
-     * state becomes [PlaybackState.Prepared] (first buffering, then ready), or [PlaybackState.Error]
-     * on failure — loading never throws. [startPositionMs] seeks before the
-     * first frame; playback begins as soon as it is ready when [playWhenReady]. A second [load]
-     * replaces whatever was loaded before. [S] is the engine's source variant — a mismatched source
-     * is a compile error, not a runtime failure.
+     * Bring up the engine session if [status] is cold [PlaybackState.Uninitialized].
+     * No-op when already initializing, Idle, or Prepared. Observe [status] for Idle/Error.
+     */
+    fun init()
+
+    /**
+     * Start loading [source] and return immediately. Call only when [PlaybackState.readyToLoad].
+     * Readiness is observed through [status]: the state becomes [PlaybackState.Prepared] (first
+     * buffering, then ready), or [PlaybackState.Error] on failure — loading never throws.
+     * [startPositionMs] seeks before the first frame; playback begins as soon as it is ready when
+     * [playWhenReady]. A second [load] replaces whatever was loaded before. [S] is the engine's
+     * source variant — a mismatched source is a compile error, not a runtime failure.
      *
      * [config] is applied **atomically before the first frame**, so the media starts with the right
      * settings — no full-volume blip or a video flash before audio-only. [setConfig] changes the same
@@ -127,6 +134,12 @@ interface MediaEngine<in S : PlayableItem> {
 
     /** Stop and unload the current source; returns to [PlaybackState.Idle]. The engine stays usable. */
     fun stop()
+
+    /**
+     * Rebuild the engine session. Safe in any state. YouTube re-inits mill/page; local unloads
+     * media and returns to Idle. Observe [status] for Idle/Error before the next [load].
+     */
+    fun reset()
 
     /**
      * Push the full playback settings ([PlaybackConfig]) — the single runtime-tunable path, the same

@@ -17,7 +17,7 @@ import kotlin.test.Test
 
 /**
  * Discover's Recommended tab end to end, with no network at all: the tab is empty until something
- * plays, the WebView player's watch-next report reaches the engine through the app, and the feed is
+ * plays, the YouTube player's watch-next report reaches the engine through the app, and the feed is
  * then served back out of the engine's disk cache.
  */
 @OptIn(ExperimentalTestApi::class)

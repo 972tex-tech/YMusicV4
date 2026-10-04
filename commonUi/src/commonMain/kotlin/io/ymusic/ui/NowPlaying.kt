@@ -175,8 +175,8 @@ private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
  * The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing.
  *
  * [surface] is the shared video container rendered as the 36dp art tile — only passed on platforms
- * whose surface tolerates thumbnail size ([AppGraph.surfaceScalesDown]); it keeps a WebView source
- * playing while Now Playing is closed.
+ * whose surface tolerates thumbnail size ([AppGraph.surfaceScalesDown]); it keeps picture playing
+ * while Now Playing is closed.
  */
 @Composable
 fun MiniPlayer(

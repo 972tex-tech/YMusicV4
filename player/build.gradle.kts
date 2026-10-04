@@ -32,7 +32,7 @@ kotlin {
 
     // Apple (iOS device + simulator, macOS) share ONE AVPlayer backend (appleMain). Both macOS and
     // iOS export a `Player.framework` so the native SwiftUI player-lab apps (spikes/macos-player-lab,
-    // spikes/ios-player-lab) can drive the real AVFoundation + WKWebView backends.
+    // spikes/ios-player-lab) can drive the AVFoundation local engine.
     withIosTargets {
         binaries.framework {
             baseName = "Player"
@@ -60,16 +60,12 @@ kotlin {
             dependencies {
                 api(project(":kmpCommon"))
                 api(Libs.Kotlinx.coroutinesCore)
-                // JsonElement runtime only (no @Serializable/codegen) — the WebView YouTube engine's
-                // ymusicAction command + event wire format.
+                // JsonElement runtime only (no @Serializable/codegen) — MsePlayer catalog/status JSON.
                 implementation(Libs.Kotlinx.serializationJson)
-                // The WebView engine fetches the YouTube embed HTML to inject the bundle into.
-                // `api` so KmpHttpClient (a public param of createWebViewPlayer) exports through
-                // the Apple Player.framework.
+                // `api` so KmpHttpClient (a public param of MsePlayer.create) exports through the
+                // Apple Player.framework.
                 api(project(":kmpHttp:core"))
-                // The player-cache router the WebView interception adapters serve from
-                // (shouldInterceptRequest on Android, the message channel on Apple). `api`:
-                // LocalMediaProxy is a public param of WebViewPlayerContext, so consumers (the app
+                // LocalMediaProxy is a public param of MsePlayer.create, so consumers (the app
                 // shells) must see the type to build one.
                 api(project(":yt-media"))
                 api(project(":dynamic-engine"))

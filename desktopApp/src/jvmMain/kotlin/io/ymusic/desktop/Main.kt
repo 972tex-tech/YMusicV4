@@ -614,7 +614,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         createPlayer(
             PlayerEngines(
                 local = { createLocalPlayer(LocalPlayerContext(localSurface, resolveFfmpeg())) },
-                webView = {
+                youtube = {
                     io.ymusic.player.mse.MsePlayer.create(
                         client = http.engine,
                         appVersion = 5000,

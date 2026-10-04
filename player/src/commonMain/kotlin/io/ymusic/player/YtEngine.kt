@@ -1,6 +1,5 @@
 package io.ymusic.player
 
-import io.ymusic.player.webview.WebViewEvent
 import kotlinx.coroutines.flow.SharedFlow
 
 /**
@@ -15,9 +14,8 @@ interface YtEngine :
     CaptionSelectable,
     CaptionRenderable,
     AudioTrackSelectable {
-    val watchNextSeen: SharedFlow<WebViewEvent.WatchNextSeen>
+    val watchNextSeen: SharedFlow<WatchNextSeen>
     fun refreshOnNext()
-    fun initIfNotYet()
     suspend fun requestPlayerResponse(videoId: String): String
     suspend fun requestPoToken(videoId: String): String
 }

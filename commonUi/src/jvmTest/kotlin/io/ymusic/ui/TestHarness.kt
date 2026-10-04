@@ -115,7 +115,7 @@ internal class StubPlayer : Player {
     override val config: StateFlow<PlaybackConfig> = MutableStateFlow(PlaybackConfig())
     override val sleepTimerMs: StateFlow<Long?> = MutableStateFlow(null)
 
-    /** Tests drive the harvest by emitting here — no WebView engine is involved. */
+    /** Tests drive the harvest by emitting here — no YouTube engine is involved. */
     val watchNextReports = MutableSharedFlow<io.ymusic.player.WatchNextSeen>(extraBufferCapacity = 8)
     override val watchNextSeen: kotlinx.coroutines.flow.SharedFlow<io.ymusic.player.WatchNextSeen> = watchNextReports
     override val skipSegments: StateFlow<List<io.ymusic.player.SkipSegment>> = MutableStateFlow(emptyList())

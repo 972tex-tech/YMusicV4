@@ -5,8 +5,8 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 The cross-platform playback layer.
 
 - **MediaEngine SPI** — the common SPI is **`MediaEngine`** (a deliberately NARROW core both playback backends
-  satisfy — status/progress + `load(PlayableItem, config)`/play/pause/seek/stop/`setConfig(PlaybackConfig)`/release),
-  so the future `Player` router drives any engine uniformly.
+  satisfy — status/progress + `init`/`reset` + `load` when `readyToLoad` / play/pause/seek/stop/`setConfig`/release).
+  `PlayerImpl` waits for `readyToLoad` like UniPlayer (`init` cold, `reset` on `needReset`).
 
 - **PlaybackConfig** — **all runtime-tunable settings travel through one object**, `PlaybackConfig`.
   - A faithful port of the legacy `BasicMediaPlayer.Config` (`preferVideoQuality: Pair<String,Long>` /
@@ -50,21 +50,14 @@ The cross-platform playback layer.
   dimensions.
 
 - **Video surface** — video *rendering* follows the legacy `UniPlayer` model.
-  - The shell hands **one shared video container** to the engines (via each engine's context — Android/JVM
-    `LocalPlayerContext.videoContainer` + `WebViewPlayerContext.container`).
+  - The shell hands **one shared video container** to the engines (via each engine's context —
+    Android/JVM `LocalPlayerContext.videoContainer`; MSE owns `MseVideoSurface`).
   - **Each engine owns its own surface inside it** — attaches it, and shows/hides it from its own lifecycle
     (visible while that engine is the active one, hidden when idle/stopped or another engine takes over) so only
     the playing engine's picture shows.
   - Android local = a `SurfaceView` in a `FrameLayout` (holder wires `ExoPlayer.setVideoSurface`); JVM local =
-    off-screen ffmpeg frames as a Compose `Image`; desktop YouTube = MSE blit into a SwingPanel; iOS YouTube =
-    its WKWebView, toggled via `WebViewBridge.setVideoVisible`.
-
-- **WebView realization** — **a windowed WKWebView only creates its native browser once its component is
-  *realized* on a showing window — a hidden or zero-size one never initializes and won't play at all, not
-  even audio.**
-  - So the WebView engine keeps its surface realized+visible whenever it is the active engine, **including
-    audio-only** (audio-only disables the video *track* via the engine JS, not the surface).
-  - Only engine-switching (stop/release) hides it. Desktop YouTube is MSE, not a WebView.
+    off-screen ffmpeg frames as a Compose `Image`; YouTube = MSE blit (Android TextureView / desktop SwingPanel /
+    iOS `copyFrame`).
 
 - **Surface hosting** — the UI never observes which engine is active — the facade exposes **no** `currentEngine`.
   - `AppGraph.playerSurface(modifier)` hosts the one container, and the shell keeps it hosted **persistently while

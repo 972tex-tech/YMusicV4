@@ -155,9 +155,8 @@ interface Player {
     fun refreshOnNext()
 
     /**
-     * Tear down the engine playing the current item and reload it from scratch at the current position —
-     * a full recreate, not just a re-navigate. Recovers a wedged player. No-op when nothing is loaded.
-     * Keeps the current play/pause intent.
+     * [MediaEngine.reset] the active engine and reload the current item at the current position.
+     * Recovers a wedged player. No-op when nothing is loaded. Keeps the current play/pause intent.
      */
     fun reload()
 
@@ -183,12 +182,12 @@ interface Player {
 
 /**
  * Lazy engine factories — an engine is only constructed when the queue first needs its item type.
- * [webView] may be null on hosts without a YouTube engine; a [PlayableItem.YtMedia] then fails with
+ * [youtube] may be null on hosts without a YouTube engine; a [PlayableItem.YtMedia] then fails with
  * `E60050` through [Player.status] instead of crashing.
  */
 class PlayerEngines(
     val local: () -> LocalPlayer,
-    val webView: (() -> YtEngine)? = null,
+    val youtube: (() -> YtEngine)? = null,
 )
 
 fun createPlayer(
