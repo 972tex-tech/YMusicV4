@@ -150,9 +150,7 @@ onAccept(
   commandHandler(async (src, out) => {
     const a = await src.readJsonObject();
     const ms = Number(a["positionMs"]);
-    if (!Number.isFinite(ms) || ms < 0)
-      throw new JsEngineErrorImpl("player/seek bad positionMs", "E20073");
-    seekPlayer(ms / 1000);
+    if (Number.isFinite(ms) && ms >= 0) seekPlayer(ms / 1000);
     const p = out.writeObjectAsJson({ "ok": true });
     if (p) await p;
   }),

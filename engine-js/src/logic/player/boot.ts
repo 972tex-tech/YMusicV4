@@ -1007,7 +1007,7 @@ class Player {
 
   seek(t: number): void {
     const player = moviePlayer();
-    if (!player) throw new JsEngineErrorImpl("player not created", "E20081");
+    if (!player) return;
     const ct = activeHtmlMedia() ? __mseCurrentTime() : -1;
     console.info("mse seek t=" + t + " ct=" + ct);
     player["seekTo"](t, true);
@@ -1206,8 +1206,8 @@ class Player {
 
   picture(): Record<string, unknown> {
     return {
-      "videoWidth": isAudioOnly() ? 0 : pictureW,
-      "videoHeight": isAudioOnly() ? 0 : pictureH,
+      "videoWidth": pictureW,
+      "videoHeight": pictureH,
     };
   }
 
