@@ -156,10 +156,6 @@ class MsePlayer internal constructor(
         this.playWhenReady = playWhenReady
         this.applied = config
         this.pendingStartMs = startPositionMs
-        statusJob?.cancel()
-        catalogJob?.cancel()
-        captionJob?.cancel()
-        _captionLines.value = emptyList()
         _status.update { it.copy(volume = config.volume, speed = config.speed) }
         _progress.value = Progress(positionMs = startPositionMs)
         videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
@@ -206,7 +202,6 @@ class MsePlayer internal constructor(
                     log,
                 )
                 refreshTracks()
-                startListen()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -247,8 +242,6 @@ class MsePlayer internal constructor(
         playWhenReady = false
         pendingLoad = null
         loadJob?.cancel()
-        statusJob?.cancel()
-        catalogJob?.cancel()
         captionJob?.cancel()
         _captionLines.value = emptyList()
         scope.launch { runCatching { engine().stop(log) } }
@@ -370,8 +363,11 @@ class MsePlayer internal constructor(
     private suspend fun ensureInit(): DynamicEnginePlayer {
         val p = engine()
         if (!inited) {
+            statusJob?.cancel()
+            catalogJob?.cancel()
             p.init(log, viewportW, viewportH)
             inited = true
+            startListen()
         }
         _status.update {
             if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it
@@ -428,22 +424,24 @@ class MsePlayer internal constructor(
     }
 
     private fun startListen() {
-        statusJob?.cancel()
-        catalogJob?.cancel()
-        statusJob = scope.launch {
-            try {
-                engine().collectStatus({ applyListen(it) }, log)
-            } catch (_: CancellationException) {
-                throw CancellationException()
-            } catch (_: Throwable) {
+        if (statusJob?.isActive != true) {
+            statusJob = scope.launch {
+                try {
+                    engine().collectStatus({ applyListen(it) }, log)
+                } catch (_: CancellationException) {
+                    throw CancellationException()
+                } catch (_: Throwable) {
+                }
             }
         }
-        catalogJob = scope.launch {
-            try {
-                engine().collectCatalog({ applyCatalog(it) }, log)
-            } catch (_: CancellationException) {
-                throw CancellationException()
-            } catch (_: Throwable) {
+        if (catalogJob?.isActive != true) {
+            catalogJob = scope.launch {
+                try {
+                    engine().collectCatalog({ applyCatalog(it) }, log)
+                } catch (_: CancellationException) {
+                    throw CancellationException()
+                } catch (_: Throwable) {
+                }
             }
         }
     }
