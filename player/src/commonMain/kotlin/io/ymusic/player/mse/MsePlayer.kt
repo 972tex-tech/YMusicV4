@@ -34,6 +34,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -92,10 +93,12 @@ class MsePlayer internal constructor(
     private var pendingRefresh = false
     private var playWhenReady = false
     private var applied = PlaybackConfig()
-    private var pendingStartMs = 0L
-    private var pendingLoad: PlayableItem.YtMedia? = null
+    private var pendingLoad: LoadReq? = null
+    private var loadingVideoId: String? = null
+    private var loadedVideoId: String? = null
     private var initJob: Job? = null
     private var loadJob: Job? = null
+    private var loadTimeoutJob: Job? = null
     private var statusJob: Job? = null
     private var catalogJob: Job? = null
     private var captionJob: Job? = null
@@ -152,10 +155,11 @@ class MsePlayer internal constructor(
     ) {
         requireMainThread()
         if (released) return
-        pendingLoad = source
+        pendingLoad = LoadReq(source, startPositionMs)
         this.playWhenReady = playWhenReady
         this.applied = config
-        this.pendingStartMs = startPositionMs
+        loadingVideoId = source.videoId
+        loadTimeoutJob?.cancel()
         _status.update { it.copy(volume = config.volume, speed = config.speed) }
         _progress.value = Progress(positionMs = startPositionMs)
         videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
@@ -172,8 +176,10 @@ class MsePlayer internal constructor(
     }
 
     private fun startLoad() {
-        val source = pendingLoad ?: return
+        val req = pendingLoad ?: return
+        val source = req.source
         loadJob?.cancel()
+        loadTimeoutJob?.cancel()
         loadJob = scope.launch {
             try {
                 if (pendingRefresh) {
@@ -190,9 +196,16 @@ class MsePlayer internal constructor(
                     width = viewportW,
                     height = viewportH,
                     audioOnly = config.audioOnly,
+                    startPositionMs = req.startPositionMs,
                 )
-                val start = pendingStartMs
-                if (start > 0L) p.seekTo(start, log)
+                loadTimeoutJob = launch {
+                    delay(LOAD_TIMEOUT_MS)
+                    if (loadingVideoId != null) {
+                        loadingVideoId = null
+                        loadedVideoId = null
+                        fail("E60051", "Load timeout")
+                    }
+                }
                 applyCaptionConfig(config)
                 p.setLoop(config.loop && !source.live, log)
                 if (playWhenReady) p.play(log) else p.pause(log)
@@ -241,6 +254,9 @@ class MsePlayer internal constructor(
         if (released) return
         playWhenReady = false
         pendingLoad = null
+        loadingVideoId = null
+        loadedVideoId = null
+        loadTimeoutJob?.cancel()
         loadJob?.cancel()
         captionJob?.cancel()
         _captionLines.value = emptyList()
@@ -340,6 +356,9 @@ class MsePlayer internal constructor(
         if (released) return
         released = true
         pendingLoad = null
+        loadingVideoId = null
+        loadedVideoId = null
+        loadTimeoutJob?.cancel()
         initJob?.cancel()
         loadJob?.cancel()
         statusJob?.cancel()
@@ -453,6 +472,17 @@ class MsePlayer internal constructor(
     }
 
     private fun applyProgress(st: JsonObject) {
+        val videoId = st.str("videoId")
+        val loading = loadingVideoId
+        if (loading != null) {
+            if (videoId != loading) return
+            loadingVideoId = null
+            loadedVideoId = videoId
+            loadTimeoutJob?.cancel()
+            loadTimeoutJob = null
+        } else if (videoId != loadedVideoId) {
+            return
+        }
         val dur = if (st["duration"] != null) st.long("duration") else st.long("durationMs")
         val skStart = st.long("seekableStartMs")
         val skEnd = st.long("seekableEndMs")
@@ -487,6 +517,10 @@ class MsePlayer internal constructor(
                 ),
             )
             else -> return
+        }
+        if (state is PlaybackState.Error) {
+            loadTimeoutJob?.cancel()
+            loadTimeoutJob = null
         }
         _status.update { it.copy(state = state, live = live) }
     }
@@ -534,6 +568,10 @@ class MsePlayer internal constructor(
     }
 
     companion object {
+        private const val LOAD_TIMEOUT_MS = 5_000L
+
+        private class LoadReq(val source: PlayableItem.YtMedia, val startPositionMs: Long)
+
         @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
         fun create(
             client: KmpHttpClient,

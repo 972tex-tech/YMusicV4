@@ -59,6 +59,7 @@ E60031 - failed to fetch the YouTube embed page (player webview)
 E60033 - YouTube playback error, no page-supplied code (player webview fallback)
 E60040 - WebView host not available on this platform (player webview jvm stub)
 E60050 - queue item needs the WebView engine but none is configured (player facade)
+E60051 - MsePlayer load timed out waiting for progress of the requested videoId
 
 E70001 - unclassified download failure (download DownloadService.execute fallback)
 E70010 - no SABR stream; progressive download not yet supported (download YtStreamDownloader)

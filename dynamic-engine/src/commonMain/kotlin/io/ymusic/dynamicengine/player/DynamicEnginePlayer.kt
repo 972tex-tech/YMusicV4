@@ -61,6 +61,7 @@ class DynamicEnginePlayer private constructor(
         width: Int? = null,
         height: Int? = null,
         audioOnly: Boolean = quality == null,
+        startPositionMs: Long = 0L,
     ): JsonObject {
         return engine.jsonCommand(
             "player/load",
@@ -70,6 +71,7 @@ class DynamicEnginePlayer private constructor(
                 w.name("audioOnly").value(audioOnly)
                 if (width != null) w.name("width").value(width)
                 if (height != null) w.name("height").value(height)
+                if (startPositionMs > 0L) w.name("startPositionMs").value(startPositionMs)
             },
             logger,
         ) { it.readObject() }
