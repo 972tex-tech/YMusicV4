@@ -21,7 +21,7 @@ class WebViewSabrSpecResolver(
     private val mutex = Mutex()
 
     override suspend fun resolve(videoId: String): SabrStreamSpec = mutex.withLock {
-        withContext(Dispatchers.Main) { player.warmUp() }
+        withContext(Dispatchers.Main) { player.initIfNotYet() }
         val playerResponse = player.requestPlayerResponse(videoId)
         val poToken = player.requestPoToken(videoId)
         SabrSpecBuilder.build(videoId, playerResponse, poToken)

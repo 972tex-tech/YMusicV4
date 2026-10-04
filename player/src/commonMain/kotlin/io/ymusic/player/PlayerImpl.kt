@@ -376,7 +376,7 @@ internal class PlayerImpl(
         if (released) return
         val factory = engines.webView ?: return
         val engine = webViewEngine ?: factory().also { webViewEngine = it }
-        engine.warmUp()
+        engine.initIfNotYet()
         engine.setConfig(currentConfig)
     }
 
@@ -454,7 +454,7 @@ internal class PlayerImpl(
                 preloadOn(currentEngine, null)
             }
         } else {
-            (nextEngine as? YtEngine)?.warmUp()
+            (nextEngine as? YtEngine)?.initIfNotYet()
         }
         prepareNextArmed = true
     }

@@ -17,7 +17,7 @@ interface YtEngine :
     AudioTrackSelectable {
     val watchNextSeen: SharedFlow<WebViewEvent.WatchNextSeen>
     fun refreshOnNext()
-    fun warmUp()
+    fun initIfNotYet()
     suspend fun requestPlayerResponse(videoId: String): String
     suspend fun requestPoToken(videoId: String): String
 }

@@ -111,7 +111,7 @@ class MsePlayer internal constructor(
         if (!released) pendingRefresh = true
     }
 
-    override fun warmUp() {
+    override fun initIfNotYet() {
         requireMainThread()
         if (released) return
         val state = _status.value.state
@@ -141,7 +141,7 @@ class MsePlayer internal constructor(
         source ?: return
         if (released) return
         if (!_status.value.state.readyToLoad) {
-            warmUp()
+            initIfNotYet()
             return
         }
         scope.launch { runCatching { engine().preload(source.videoId, log) } }
@@ -168,7 +168,7 @@ class MsePlayer internal constructor(
             config.virtualizer.coerceIn(0f, 2f),
         )
         if (!_status.value.state.readyToLoad) {
-            warmUp()
+            initIfNotYet()
             return
         }
         startLoad()

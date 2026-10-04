@@ -103,7 +103,7 @@ internal class WebViewPlayerImpl(
         pendingRefresh = true
     }
 
-    override fun warmUp() {
+    override fun initIfNotYet() {
         if (released) return
         // Only kick off a page init from a cold engine; if it's already initializing/Idle/playing, the
         // session is (being) built and a later load reuses it.

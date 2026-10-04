@@ -119,7 +119,7 @@ class PlayerFacadeTest {
             reports
 
         override fun refreshOnNext() = Unit
-        override fun warmUp() = Unit
+        override fun initIfNotYet() = Unit
 
         override suspend fun requestPlayerResponse(videoId: String): String = error("not used in this test")
 
