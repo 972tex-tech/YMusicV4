@@ -84,8 +84,9 @@ sealed interface PlayableItem {
  */
 interface MediaEngine<in S : PlayableItem> {
     /**
-     * Rarely-changing status: playback state, play/pause intent, volume/speed, audio-only, video
-     * size, error. Emits only on discrete events — never on a position tick (that's [progress]).
+     * Rarely-changing status: playback state, play/pause intent, video size, error.
+     * Emits only on discrete events — never on a position tick (that's [progress]).
+     * Volume and speed are applied through [setConfig] and are not published here.
      */
     val status: StateFlow<PlaybackStatus>
 

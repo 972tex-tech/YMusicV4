@@ -222,10 +222,7 @@ internal class AndroidLocalPlayer(
             .build()
         applyCaptions(config)
         _status.update {
-            it.copy(
-                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
-                volume = config.volume, speed = config.speed,
-            )
+            it.copy(state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false))
         }
         _progress.value = Progress(positionMs = startPositionMs)
         val mediaItem = MediaItem.fromUri(uri.toPlayableUri())
@@ -309,15 +306,13 @@ internal class AndroidLocalPlayer(
         appliedConfig = config
 
         if (config.volume != prev.volume) {
-            val v = config.volume.coerceIn(0f, 1f)
-            player.volume = v
-            _status.update { it.copy(volume = v) }
+            player.volume = config.volume.coerceIn(0f, 1f)
         }
         if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
-            val s = config.speed.coerceAtLeast(0.01f)
-            val p = config.pitchFactor.coerceIn(0.5f, 2f)
-            player.playbackParameters = PlaybackParameters(s, p)
-            _status.update { it.copy(speed = s) }
+            player.playbackParameters = PlaybackParameters(
+                config.speed.coerceAtLeast(0.01f),
+                config.pitchFactor.coerceIn(0.5f, 2f),
+            )
         }
         if (config.eqBands != prev.eqBands || config.bassBoostDb != prev.bassBoostDb ||
             config.virtualizer != prev.virtualizer

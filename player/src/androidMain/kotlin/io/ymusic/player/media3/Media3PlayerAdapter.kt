@@ -88,7 +88,7 @@ class Media3PlayerAdapter(
                     val now = SystemClock.elapsedRealtime()
                     val status = player.status.value
                     val expectedAdvance =
-                        if (status.state.isPlaying()) ((now - prevAtMs) * status.speed).toLong() else 0L
+                        if (status.state.isPlaying()) ((now - prevAtMs) * player.speed).toLong() else 0L
                     val jumped = abs((p.positionMs - prevPositionMs) - expectedAdvance) > POSITION_JUMP_MS
                     val durationChanged = meaningfulDurationChange(p.durationMs, prevDurationMs)
                     prevPositionMs = p.positionMs
@@ -134,9 +134,9 @@ class Media3PlayerAdapter(
                 },
             )
             .setShuffleModeEnabled(queue.shuffle)
-            .setVolume(status.volume.coerceIn(0f, 1f))
+            .setVolume(player.volume.coerceIn(0f, 1f))
             .setPlaybackParameters(
-                if (status.speed == 1f) PlaybackParameters.DEFAULT else PlaybackParameters(status.speed),
+                if (player.speed == 1f) PlaybackParameters.DEFAULT else PlaybackParameters(player.speed),
             )
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
@@ -257,11 +257,11 @@ class Media3PlayerAdapter(
     }
 
     override fun handleSetVolume(volume: Float): ListenableFuture<*> = done {
-        player.setVolume(volume.coerceIn(0f, 1f))
+        player.volume = volume.coerceIn(0f, 1f)
     }
 
     override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> = done {
-        player.setSpeed(playbackParameters.speed)
+        player.speed = playbackParameters.speed
     }
 
     // getState runs only on the main looper (as do the invalidation collectors), so the memo

@@ -218,8 +218,6 @@ internal class WebViewPlayerImpl(
         val s = config.speed.coerceAtLeast(0.01f)
         _status.update {
             it.copy(
-                volume = v,
-                speed = s,
                 // Video track goes away — the surface stays realized (see load()).
                 videoSize = if (config.audioOnly) null else it.videoSize,
             )

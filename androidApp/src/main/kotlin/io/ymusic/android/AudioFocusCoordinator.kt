@@ -139,11 +139,11 @@ class AudioFocusCoordinator(
         if (duckedFromVolume != null) return
         val volume = player.config.value.volume
         duckedFromVolume = volume
-        player.setVolume((volume * DUCK_FACTOR).coerceIn(0f, 1f))
+        player.volume = (volume * DUCK_FACTOR).coerceIn(0f, 1f)
     }
 
     private fun restoreDuck() {
-        duckedFromVolume?.let { player.setVolume(it) }
+        duckedFromVolume?.let { player.volume = it }
         duckedFromVolume = null
     }
 

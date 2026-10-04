@@ -55,8 +55,6 @@ class PlayerFacadeTest {
             lastConfig = config
             _status.value = PlaybackStatus(
                 state = PlaybackState.Prepared(playWhenReady, buffering = false, ended = false),
-                volume = config.volume,
-                speed = config.speed,
             )
             _progress.value = Progress(positionMs = startPositionMs, durationMs = 60_000)
         }
@@ -95,7 +93,6 @@ class PlayerFacadeTest {
 
         override fun setConfig(config: PlaybackConfig) {
             lastConfig = config
-            _status.update { it.copy(volume = config.volume, speed = config.speed) }
             videoQuality.update { it.copy(preferredQuality = config.preferVideoQuality.first) }
             captions.update {
                 it.copy(selectedLanguage = config.preferCaptionLanguage.first.takeIf { l -> l != PlaybackConfig.UNDETERMINED_LANGUAGE })
@@ -284,8 +281,8 @@ class PlayerFacadeTest {
         val h = Harness(this)
         h.player.setQueue(listOf(local(1), yt("a")), playIndex = 0)
         runCurrent()
-        h.player.setVolume(0.3f)
-        h.player.setSpeed(1.5f)
+        h.player.volume = 0.3f
+        h.player.speed = 1.5f
         h.player.setAudioOnly(true)
         runCurrent()
 

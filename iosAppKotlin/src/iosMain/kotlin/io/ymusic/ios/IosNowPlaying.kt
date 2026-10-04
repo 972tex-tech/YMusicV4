@@ -80,7 +80,7 @@ fun connectIosMediaSession(
         var lastAtMs = 0L
         var artUrl: String? = null
         var art: MPMediaItemArtwork? = null
-        combine(player.status, player.queue, player.progress) { status, queue, progress ->
+        combine(player.status, player.queue, player.progress, player.config) { status, queue, progress, config ->
             NowPlayingSnap(
                 title = queue.currentItem?.displayTitle,
                 artist = queue.currentItem?.displaySubtitle,
@@ -88,7 +88,7 @@ fun connectIosMediaSession(
                 playing = status.state.isPlaying(),
                 positionMs = progress.positionMs,
                 durationMs = progress.durationMs.takeIf { it > 0 },
-                speed = status.speed,
+                speed = config.speed,
                 hasItem = queue.currentItem != null,
             )
         }.collect { state ->

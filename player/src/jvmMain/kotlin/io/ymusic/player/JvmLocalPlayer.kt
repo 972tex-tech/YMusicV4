@@ -204,8 +204,6 @@ internal class JvmLocalPlayer(
             it.copy(
                 state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
                 videoSize = null,
-                volume = volume,
-                speed = config.speed,
             )
         }
         _progress.value = Progress(positionMs = startPositionMs.coerceAtLeast(0L))
@@ -338,11 +336,9 @@ internal class JvmLocalPlayer(
         loop = config.loop
         if (config.volume != prev.volume) {
             volume = config.volume.coerceIn(0f, 1f)
-            _status.update { it.copy(volume = volume) }
             dispatch { if (handle != 0L) FileAvNative.setVolume(handle, volume.toDouble()) }
         }
         if (config.speed != prev.speed) {
-            _status.update { it.copy(speed = config.speed) }
             dispatch { if (handle != 0L) FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble()) }
         }
         if (config.pitchFactor != prev.pitchFactor) {

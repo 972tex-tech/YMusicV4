@@ -182,9 +182,9 @@ internal class StubPlayer : Player {
         lastShuffle = enabled
     }
 
-    override fun setVolume(volume: Float) {}
+    override var volume: Float = 1f
 
-    override fun setSpeed(speed: Float) {}
+    override var speed: Float = 1f
 
     override fun setPitch(pitch: Float) {}
 

@@ -187,8 +187,8 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUTO).value
         if (quality != VideoQualityState.AUDIO_ONLY) graph.player.selectVideoQuality(quality)
-        graph.player.setVolume(graph.settings.string(PlaybackVolumeKey, "1").value.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
-        graph.player.setSpeed(graph.settings.string(PlaybackSpeedKey, "1").value.toFloatOrNull()?.coerceIn(0.25f, 4f) ?: 1f)
+        graph.player.volume = graph.settings.string(PlaybackVolumeKey, "1").value.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
+        graph.player.speed = graph.settings.string(PlaybackSpeedKey, "1").value.toFloatOrNull()?.coerceIn(0.25f, 4f) ?: 1f
         graph.player.setPitch(graph.settings.string(PlaybackPitchKey, "1").value.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
         graph.settings.string(PlaybackEqKey, "").value.split(',').mapNotNull { it.toFloatOrNull() }.let { n ->
             if (n.size >= 12) {

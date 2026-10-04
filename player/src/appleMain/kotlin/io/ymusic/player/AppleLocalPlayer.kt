@@ -125,10 +125,7 @@ internal class AppleLocalPlayer(
         player.replaceCurrentItemWithPlayerItem(item)
         surface?.setVisible(true)
         _status.update {
-            it.copy(
-                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
-                volume = config.volume, speed = config.speed,
-            )
+            it.copy(state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false))
         }
         _progress.value = Progress(positionMs = startPositionMs)
         scope.launch { finalizeLoad(item, uri, startPositionMs, playWhenReady) }
@@ -205,16 +202,13 @@ internal class AppleLocalPlayer(
         appliedConfig = config
 
         if (config.volume != prev.volume) {
-            val v = config.volume.coerceIn(0f, 1f)
-            player.setVolume(v)
-            _status.update { it.copy(volume = v) }
+            player.setVolume(config.volume.coerceIn(0f, 1f))
         }
         if (config.speed != prev.speed) {
             desiredSpeed = config.speed.coerceAtLeast(0.01f)
             if (_status.value.playWhenReady && _status.value.state is PlaybackState.Prepared) {
                 player.setRate(desiredSpeed)
             }
-            _status.update { it.copy(speed = desiredSpeed) }
         }
         if (config.preferVideoQuality.first != prev.preferVideoQuality.first) {
             applyVideoQuality(config.preferVideoQuality.first)

@@ -23,9 +23,9 @@ The cross-platform playback layer.
   qualities/captions/audio-tracks the engine discovered, queried `engine as? Cap`); the only immediate capability
   *action* is `AudioTrackSelectable.selectAudioTrack` (a one-shot switch, not a persisted preference).
 
-- **Player facade** — keeps granular public setters (`setVolume`/`setAudioOnly`/`selectVideoQuality`/…) that
+- **Player facade** — keeps granular public setters (`volume`/`speed`/`setAudioOnly`/`selectVideoQuality`/…) that
   read-modify-write its held `config` and push it — the UI reads `Player.config` for the audio-only/quality state
-  (there is no `PlaybackStatus.audioOnly`). SponsorBlock skip ranges ride `setSkipSegments` /
+  (there is no `PlaybackStatus.audioOnly`). Volume and speed are getter/setters, not flows. SponsorBlock skip ranges ride `setSkipSegments` /
   `skipSegments`: on a play-head tick in the segment's start second the facade delays to the exact
   start then seeks to the end (ranges under 1 s are dropped). "Previous" restarts after a 0s intro
   skip when one is armed.
@@ -79,8 +79,8 @@ The cross-platform playback layer.
 
 - **State flows** — state is **split by cadence into two flows**: `progress: StateFlow<Progress>`
   (position/duration/buffered — the ~5 Hz ticker writes ONLY this) and `status: StateFlow<PlaybackStatus>`
-  (state/playWhenReady/volume/speed/videoSize/error — discrete events only; settings intent lives in
-  `Player.config`, not here), so an observer of a rarely-changing field is never woken by a position tick (avoids
+  (state/playWhenReady/videoSize/error — discrete events only; volume/speed are `Player` getter/setters
+  that push `PlaybackConfig`), so an observer of a rarely-changing field is never woken by a position tick (avoids)
   per-tick `map`/`distinctUntilChanged` + Compose recomposition churn).
 
 - **Backends**:

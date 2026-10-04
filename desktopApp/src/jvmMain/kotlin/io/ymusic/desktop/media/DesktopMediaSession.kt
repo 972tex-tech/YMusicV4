@@ -106,14 +106,14 @@ fun connectMediaSession(player: Player, scope: CoroutineScope, logger: Logger? =
     scope.launch {
         var last: MediaSessionState? = null
         var lastAtMs = 0L
-        combine(player.status, player.queue, player.progress) { status, queue, progress ->
+        combine(player.status, player.queue, player.progress, player.config) { status, queue, progress, config ->
             MediaSessionState(
                 title = queue.currentItem?.displayTitle,
                 artist = queue.currentItem?.displaySubtitle,
                 playing = status.state.isPlaying(),
                 positionMs = progress.positionMs,
                 durationMs = progress.durationMs.takeIf { it > 0 },
-                speed = status.speed,
+                speed = config.speed,
                 hasItem = queue.currentItem != null,
             )
         }.collect { state ->

@@ -112,9 +112,11 @@ interface Player {
 
     fun setShuffle(enabled: Boolean)
 
-    fun setVolume(volume: Float)
+    /** Last applied volume. Write pushes [PlaybackConfig]; not a flow. */
+    var volume: Float
 
-    fun setSpeed(speed: Float)
+    /** Last applied playback speed. Write pushes [PlaybackConfig]; not a flow. */
+    var speed: Float
 
     fun setPitch(pitch: Float)
 

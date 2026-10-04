@@ -93,8 +93,8 @@ internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
         buttons = {
             TextButton(
                 onClick = {
-                    player.setVolume(1f)
-                    player.setSpeed(1f)
+                    player.volume = 1f
+                    player.speed = 1f
                     player.setPitch(1f)
                 },
             ) { Text(stringResource(Res.string.sound_reset), color = DesignColors.Ink) }
@@ -110,14 +110,14 @@ internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
             )
             FxBar(
                 fraction = config.volume,
-                onChange = { player.setVolume(it) },
+                onChange = { player.volume = it },
             )
             Spacer(Modifier.height(16.dp))
             RateBlock(
                 title = stringResource(Res.string.sound_speed),
                 value = config.speed,
                 range = 0.25f..3f,
-                onChange = { player.setSpeed(it) },
+                onChange = { player.speed = it },
             )
             Spacer(Modifier.height(20.dp))
             RateBlock(

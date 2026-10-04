@@ -204,13 +204,11 @@ fun formatProgressClock(ms: Long): String {
 
 /**
  * Everything about the player that is NOT the moving play-head — it changes only on discrete events
- * (load, play/pause, config, track/size discovery, error), so its flow stays quiet between them.
- * The play-head lives in [Progress].
+ * (load, play/pause, track/size discovery, error), so its flow stays quiet between them.
+ * The play-head lives in [Progress]. Volume and speed live on [PlaybackConfig].
  */
 data class PlaybackStatus(
     val state: PlaybackState = PlaybackState.Uninitialized(isInitializing = false),
-    val volume: Float = 1f,
-    val speed: Float = 1f,
     /** Dimensions of the current video track, or null for audio-only / an audio-only file. */
     val videoSize: VideoSize? = null,
     /** Unbounded stream (HTML duration Infinity). DVR vs head-only is [Progress.seekable]. */

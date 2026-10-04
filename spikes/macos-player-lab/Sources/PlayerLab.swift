@@ -123,7 +123,7 @@ struct LocalView: View {
             HStack {
                 Text("Volume")
                 Slider(value: Binding(
-                    get: { Double(model.status.volume) },
+                    get: { Double(model.config.volume) },
                     set: { model.setVolume(Float($0)) }), in: 0...1)
             }
             Spacer()

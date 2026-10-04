@@ -160,7 +160,6 @@ class MsePlayer internal constructor(
         this.applied = config
         loadingVideoId = source.videoId
         loadTimeoutJob?.cancel()
-        _status.update { it.copy(volume = config.volume, speed = config.speed) }
         _progress.value = Progress(positionMs = startPositionMs)
         videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
         videoSurface.setAudioEffect(
@@ -270,12 +269,6 @@ class MsePlayer internal constructor(
         if (released) return
         val prev = applied
         applied = config
-        _status.update {
-            it.copy(
-                volume = config.volume.coerceIn(0f, 1f),
-                speed = config.speed,
-            )
-        }
         if (config.volume != prev.volume) {
             videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
         }

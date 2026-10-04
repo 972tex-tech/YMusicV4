@@ -279,9 +279,13 @@ internal class PlayerImpl(
         publishQueue()
     }
 
-    override fun setVolume(volume: Float) = pushConfig(currentConfig.copy(volume = volume.coerceIn(0f, 1f)))
+    override var volume: Float
+        get() = currentConfig.volume
+        set(value) = pushConfig(currentConfig.copy(volume = value.coerceIn(0f, 1f)))
 
-    override fun setSpeed(speed: Float) = pushConfig(currentConfig.copy(speed = speed.coerceIn(0.25f, 4f)))
+    override var speed: Float
+        get() = currentConfig.speed
+        set(value) = pushConfig(currentConfig.copy(speed = value.coerceIn(0.25f, 4f)))
 
     override fun setPitch(pitch: Float) = pushConfig(currentConfig.copy(pitchFactor = pitch.coerceIn(0.5f, 2f)))
 
