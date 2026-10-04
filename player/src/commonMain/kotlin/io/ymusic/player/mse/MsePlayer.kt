@@ -30,7 +30,6 @@ import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CloseableCoroutineDispatcher
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -63,13 +62,12 @@ import kotlinx.serialization.json.longOrNull
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MsePlayer internal constructor(
-    dispatcher: CoroutineDispatcher,
     private val engineDispatcher: CloseableCoroutineDispatcher,
     val videoSurface: MseVideoSurface,
     private val log: Logger?,
     private val buildPlayer: () -> DynamicEnginePlayer,
 ) : YtEngine {
-    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val initMutex = Mutex()
     private var player: DynamicEnginePlayer? = null
 
@@ -617,7 +615,6 @@ class MsePlayer internal constructor(
         fun create(
             client: KmpHttpClient,
             appVersion: Int,
-            dispatcher: CoroutineDispatcher = Dispatchers.Main,
             logger: Logger? = null,
             cacheStore: CacheStore? = null,
             cookieJar: CookieJar = client.cookieJar,
@@ -628,7 +625,7 @@ class MsePlayer internal constructor(
         ): MsePlayer {
             val engineClient = if (mediaProxy != null) SabrProxyHttpClient(client, mediaProxy) else client
             val engineDispatcher = QuickJsRuntime.newDispatcher()
-            return MsePlayer(dispatcher, engineDispatcher, videoSurface, logger) {
+            return MsePlayer(engineDispatcher, videoSurface, logger) {
                 DynamicEnginePlayer.create(
                     engineClient, appVersion, engineDispatcher, logger,
                     cacheStore = cacheStore,
