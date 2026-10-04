@@ -96,7 +96,6 @@ class MsePlayer internal constructor(
     private var pendingLoad: PlayableItem.YtMedia? = null
     private var initJob: Job? = null
     private var loadJob: Job? = null
-    private var preloadJob: Job? = null
     private var statusJob: Job? = null
     private var catalogJob: Job? = null
     private var captionJob: Job? = null
@@ -142,8 +141,7 @@ class MsePlayer internal constructor(
             warmUp()
             return
         }
-        preloadJob?.cancel()
-        preloadJob = scope.launch { runCatching { engine().preload(source.videoId, log) } }
+        scope.launch { runCatching { engine().preload(source.videoId, log) } }
     }
 
     override fun load(
@@ -180,7 +178,6 @@ class MsePlayer internal constructor(
     private fun startLoad() {
         val source = pendingLoad ?: return
         loadJob?.cancel()
-        preloadJob?.cancel()
         loadJob = scope.launch {
             try {
                 if (pendingRefresh) {
@@ -250,7 +247,6 @@ class MsePlayer internal constructor(
         playWhenReady = false
         pendingLoad = null
         loadJob?.cancel()
-        preloadJob?.cancel()
         statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
@@ -353,7 +349,6 @@ class MsePlayer internal constructor(
         pendingLoad = null
         initJob?.cancel()
         loadJob?.cancel()
-        preloadJob?.cancel()
         statusJob?.cancel()
         catalogJob?.cancel()
         captionJob?.cancel()
