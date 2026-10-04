@@ -181,7 +181,7 @@ class MsePlayer internal constructor(
         source ?: return
         if (released) return
         if (!_status.value.state.readyToLoad) return
-        scope.launch { runCatching { engine().preload(source.videoId, log) } }
+        scope.launch { runCatching { checkNotNull(player).preload(source.videoId, log) } }
     }
 
     override fun load(
@@ -215,7 +215,7 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadJob = scope.launch {
             try {
-                val p = ensureInit()
+                val p = checkNotNull(player)
                 val config = applied
                 val quality = config.preferVideoQuality.first
                 p.load(
@@ -262,20 +262,20 @@ class MsePlayer internal constructor(
         requireMainThread()
         if (released) return
         playWhenReady = true
-        scope.launch { runCatching { engine().play(log) } }
+        scope.launch { runCatching { checkNotNull(player).play(log) } }
     }
 
     override fun pause() {
         requireMainThread()
         if (released) return
         playWhenReady = false
-        scope.launch { runCatching { engine().pause(log) } }
+        scope.launch { runCatching { checkNotNull(player).pause(log) } }
     }
 
     override fun seekTo(positionMs: Long) {
         requireMainThread()
         if (released) return
-        scope.launch { runCatching { engine().seekTo(positionMs, log) } }
+        scope.launch { runCatching { checkNotNull(player).seekTo(positionMs, log) } }
     }
 
     override fun stop() {
@@ -289,7 +289,7 @@ class MsePlayer internal constructor(
         loadJob?.cancel()
         captionJob?.cancel()
         _captionLines.value = emptyList()
-        scope.launch { runCatching { engine().stop(log) } }
+        scope.launch { runCatching { checkNotNull(player).stop(log) } }
         _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
         _progress.value = Progress()
     }
@@ -314,18 +314,19 @@ class MsePlayer internal constructor(
         }
         scope.launch {
             runCatching {
+                val p = checkNotNull(player)
                 val prevQ = prev.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
                     ?: VideoQualityState.AUTO
                 val nextQ = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
                     ?: VideoQualityState.AUTO
                 if (config.audioOnly != prev.audioOnly || nextQ != prevQ) {
-                    engine().setQuality(nextQ, config.audioOnly, log)
+                    p.setQuality(nextQ, config.audioOnly, log)
                 }
                 if (config.loop != prev.loop) {
-                    engine().setLoop(config.loop, log)
+                    p.setLoop(config.loop, log)
                 }
                 if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
-                    engine().setSpeedPitch(
+                    p.setSpeedPitch(
                         config.speed.coerceIn(0.25f, 3f),
                         config.pitchFactor.coerceIn(0.5f, 2f),
                         log,
@@ -363,10 +364,14 @@ class MsePlayer internal constructor(
     }
 
     override suspend fun requestPlayerResponse(videoId: String): String =
-        engine().cachedPlayerResponse(videoId, log).toString()
+        withContext(dispatcher) {
+            checkNotNull(player).cachedPlayerResponse(videoId, log).toString()
+        }
 
     override suspend fun requestPoToken(videoId: String): String =
-        engine().mintContentPoToken(videoId, log)
+        withContext(dispatcher) {
+            checkNotNull(player).mintContentPoToken(videoId, log)
+        }
 
     override fun pcmLevels(out: FloatArray): Int =
         if (released || out.isEmpty()) 0 else videoSurface.pcmLevels(out)
@@ -394,16 +399,13 @@ class MsePlayer internal constructor(
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
-    private suspend fun engine(): DynamicEnginePlayer = withContext(dispatcher) {
-        player?.let { return@withContext it }
-        val p = buildPlayer()
-        player = p
-        if (hasPendingVideoSurface) p.setVideoSurface(pendingVideoSurface)
-        p
-    }
-
-    private suspend fun ensureInit(): DynamicEnginePlayer {
-        val p = engine()
+    private suspend fun ensureInit() {
+        if (player == null) {
+            val created = buildPlayer()
+            player = created
+            if (hasPendingVideoSurface) created.setVideoSurface(pendingVideoSurface)
+        }
+        val p = checkNotNull(player)
         if (!inited) {
             statusJob?.cancel()
             catalogJob?.cancel()
@@ -414,7 +416,6 @@ class MsePlayer internal constructor(
         _status.update {
             if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it
         }
-        return p
     }
 
     private suspend fun applyCaptionConfig(config: PlaybackConfig) {
@@ -426,7 +427,7 @@ class MsePlayer internal constructor(
             tracks.firstOrNull { it.id == k || it.vssId == k || it.languageCode == k }
         } ?: tracks.firstOrNull { it.kind == "asr" } ?: tracks.firstOrNull()
         val vss = if (want) picked?.id ?: key else null
-        engine().setCaption(vss, log)
+        checkNotNull(player).setCaption(vss, log)
         syncCaptionSession(want)
     }
 
@@ -435,7 +436,7 @@ class MsePlayer internal constructor(
             if (captionJob?.isActive == true) return
             captionJob = scope.launch {
                 try {
-                    engine().collectCaptionLines({ rows ->
+                    checkNotNull(player).collectCaptionLines({ rows ->
                         _captionLines.value = rows.map { CaptionLine(it.id, it.text) }
                     }, log)
                 } catch (_: CancellationException) {
@@ -452,7 +453,7 @@ class MsePlayer internal constructor(
     }
 
     private suspend fun refreshTracks() {
-        val tracks = runCatching { engine().captionTracks(log) }.getOrDefault(emptyList())
+        val tracks = runCatching { checkNotNull(player).captionTracks(log) }.getOrDefault(emptyList())
             .filter { it.kind != "asrt" }
         val selected = applied.preferCaptionLanguage.first
             .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE && applied.captionVisible }
@@ -469,7 +470,7 @@ class MsePlayer internal constructor(
         if (statusJob?.isActive != true) {
             statusJob = scope.launch {
                 try {
-                    engine().collectStatus({ applyListen(it) }, log)
+                    checkNotNull(player).collectStatus({ applyListen(it) }, log)
                 } catch (_: CancellationException) {
                     throw CancellationException()
                 } catch (_: Throwable) {
@@ -479,7 +480,7 @@ class MsePlayer internal constructor(
         if (catalogJob?.isActive != true) {
             catalogJob = scope.launch {
                 try {
-                    engine().collectCatalog({ applyCatalog(it) }, log)
+                    checkNotNull(player).collectCatalog({ applyCatalog(it) }, log)
                 } catch (_: CancellationException) {
                     throw CancellationException()
                 } catch (_: Throwable) {
