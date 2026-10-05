@@ -1405,6 +1405,11 @@ export function catalogPlayer(): Record<string, unknown> {
   return ytPlayer.catalog();
 }
 
+/** The movie player exists only after the first player/load; until then there is no catalog. */
+export function catalogReady(): boolean {
+  return moviePlayer() != null;
+}
+
 export type ListenKind = "progress" | "state" | "picture";
 
 let catalogHook: (() => void) | null = null;

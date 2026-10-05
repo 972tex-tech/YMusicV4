@@ -7,6 +7,7 @@
 import { JsEngineErrorImpl } from "../../protocol/command";
 import {
   catalogPlayer,
+  catalogReady,
   ListenKind,
   picturePlayer,
   playerStatePlayer,
@@ -142,6 +143,7 @@ export async function runCatalogSession(pipe: Pipe): Promise<void> {
   catalogPipe = pipe;
   let last: Record<string, unknown> | null = null;
   const push = function (): void {
+    if (!catalogReady()) return;
     const rec = catalogPlayer();
     if (last && sameCatalog(last, rec)) return;
     last = rec;
