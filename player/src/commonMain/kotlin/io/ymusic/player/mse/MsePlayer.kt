@@ -102,8 +102,12 @@ class MsePlayer internal constructor(
         var player: DynamicEnginePlayer? = null
         var captionJob: Job? = null
 
-        /** What this session's JS has applied; null until the first push, so that one sends everything. */
+        /** What this session has applied (JS + native audio); null until the first push, which sends everything. */
         var config: PlaybackConfig? = null
+
+        /** Loop as last sent to JS: `config.loop` forced off while a live stream is loaded. */
+        var loop: Boolean? = null
+        var live = false
     }
 
     private var session: Session? = null
@@ -151,11 +155,17 @@ class MsePlayer internal constructor(
             log?.log(Logger.Level.WARN, "mse load(${source.videoId}) while ${_status.value.state}")
             return
         }
+        val activeSession = session ?: return
         this.config = config
-        session?.config = config
+        val previous = activeSession.config
+        val previousLoop = activeSession.loop
+        val loop = config.loop && !source.live
+        activeSession.config = config
+        activeSession.loop = loop
+        activeSession.live = source.live
         loadingVideoId = source.videoId
         _progress.value = Progress(positionMs = startPositionMs)
-        applySurfaceAudio(config)
+        applySurfaceAudio(previous, config)
         val width = viewportW
         val height = viewportH
         send { enginePlayer ->
@@ -172,15 +182,17 @@ class MsePlayer internal constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                activeSession.config = null
+                activeSession.loop = null
                 loadingVideoId = null
                 loadTimeoutJob?.cancel()
                 loadTimeoutJob = null
                 fail(error, "mse load failed", needReset = false)
                 return@send
             }
-            enginePlayer.setLoop(config.loop && !source.live, log)
+            if (loop != previousLoop) enginePlayer.setLoop(loop, log)
             if (playWhenReady) enginePlayer.play(log) else enginePlayer.pause(log)
-            enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
+            if (speedPitchChanged(previous, config)) applySpeedPitch(enginePlayer, config)
             refreshTracks(enginePlayer)
             applyCaptionConfig(enginePlayer, config)
         }
@@ -242,12 +254,15 @@ class MsePlayer internal constructor(
         requireMainThread()
         if (released) return
         this.config = config
-        applySurfaceAudio(config)
         if (!_status.value.state.readyToLoad) return
         val activeSession = session ?: return
         val previous = activeSession.config
         if (previous == config) return
+        val previousLoop = activeSession.loop
+        val loop = config.loop && !activeSession.live
         activeSession.config = config
+        activeSession.loop = loop
+        applySurfaceAudio(previous, config)
         send { enginePlayer ->
             val previousQuality = previous?.preferVideoQuality?.first?.takeIf { it != VideoQualityState.AUDIO_ONLY }
                 ?: VideoQualityState.AUTO
@@ -256,10 +271,8 @@ class MsePlayer internal constructor(
             if (previous == null || config.audioOnly != previous.audioOnly || nextQuality != previousQuality) {
                 enginePlayer.setQuality(nextQuality, config.audioOnly, log)
             }
-            if (previous == null || config.loop != previous.loop) enginePlayer.setLoop(config.loop, log)
-            if (previous == null || config.speed != previous.speed || config.pitchFactor != previous.pitchFactor) {
-                enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
-            }
+            if (loop != previousLoop) enginePlayer.setLoop(loop, log)
+            if (speedPitchChanged(previous, config)) applySpeedPitch(enginePlayer, config)
             if (previous == null ||
                 config.captionVisible != previous.captionVisible ||
                 config.preferCaptionLanguage != previous.preferCaptionLanguage
@@ -398,13 +411,29 @@ class MsePlayer internal constructor(
         enginePlayer
     }
 
-    private fun applySurfaceAudio(config: PlaybackConfig) {
-        videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
-        videoSurface.setAudioEffect(
-            FloatArray(10) { index -> config.eqBands.getOrElse(index) { 0f } },
-            config.bassBoostDb.coerceIn(0f, 12f),
-            config.virtualizer.coerceIn(0f, 2f),
-        )
+    /** Native host audio; the host is per session, so [previous] is that session's last push. */
+    private fun applySurfaceAudio(previous: PlaybackConfig?, config: PlaybackConfig) {
+        if (previous == null || config.volume != previous.volume) {
+            videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
+        }
+        if (previous == null ||
+            config.eqBands != previous.eqBands ||
+            config.bassBoostDb != previous.bassBoostDb ||
+            config.virtualizer != previous.virtualizer
+        ) {
+            videoSurface.setAudioEffect(
+                FloatArray(10) { index -> config.eqBands.getOrElse(index) { 0f } },
+                config.bassBoostDb.coerceIn(0f, 12f),
+                config.virtualizer.coerceIn(0f, 2f),
+            )
+        }
+    }
+
+    private fun speedPitchChanged(previous: PlaybackConfig?, config: PlaybackConfig): Boolean =
+        previous == null || config.speed != previous.speed || config.pitchFactor != previous.pitchFactor
+
+    private suspend fun applySpeedPitch(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
+        enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
     }
 
     private suspend fun applyCaptionConfig(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
