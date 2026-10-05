@@ -176,8 +176,9 @@ import java.awt.image.DataBufferInt
 import java.io.File
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.min
-import kotlin.math.roundToInt
 import java.awt.Color as AwtColor
 
 /**
@@ -885,11 +886,11 @@ private fun DesktopPlayerSurface(
                 val p = coords.positionInWindow()
                 val insets = win.insets
                 with(density) {
-                    // Round each edge, not origin and size apart, so the hole tracks the box's edges.
-                    val left = p.x.toDp().value.roundToInt()
-                    val top = p.y.toDp().value.roundToInt()
-                    val right = (p.x + coords.size.width).toDp().value.roundToInt()
-                    val bottom = (p.y + coords.size.height).toDp().value.roundToInt()
+                    // Round outward so the hole always covers the whole video box.
+                    val left = floor(p.x.toDp().value).toInt()
+                    val top = floor(p.y.toDp().value).toInt()
+                    val right = ceil((p.x + coords.size.width).toDp().value).toInt()
+                    val bottom = ceil((p.y + coords.size.height).toDp().value).toInt()
                     videoUnderlay.setHole(
                         loc.x + insets.left + left,
                         loc.y + insets.top + top,
