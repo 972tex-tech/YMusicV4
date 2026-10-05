@@ -6,6 +6,7 @@
 #include "quickjs_web.h"
 #include "quickjs_mse.h"
 #include "quickjs_dump.h"
+#include "quickjs_rejections.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,6 +18,8 @@ struct QjsEngine {
     QjsPipeCtx *pipe;
     void *mse;
     JSValue jsOpen, jsClose, jsCloseRead, jsDrain; /* JS mux entry points (C -> JS) */
+    QjsRejections rejections;
+    int js_depth; /* JS frames on the C stack; rejections are judged only at the outermost pump */
 };
 
 void *qjs_ctx_mse(JSContext *ctx)
@@ -40,9 +43,17 @@ static int drain_hook(void *user, uint32_t id) {
     return e->cb ? e->cb(e->user, QJS_OP_DRAIN, id, NULL, 0) : 0;
 }
 
+static void report_rejection(void *user, const char *msg, size_t len) {
+    QjsEngine *e = (QjsEngine *)user;
+    if (e->cb) e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)msg, len);
+}
+
 static void pump(QjsEngine *e) {
     JSContext *c;
+    e->js_depth++;
     while (JS_ExecutePendingJob(e->rt, &c) > 0) { /* microtasks */ }
+    e->js_depth--;
+    if (e->js_depth == 0) qjs_rejections_flush(e->ctx, &e->rejections, report_rejection, e);
 }
 
 /* ---- inbound: JS -> host (JS calls these) ---- */
@@ -146,22 +157,13 @@ static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_UNDEFINED;
 }
 
-/* Rejections nobody handles are the classic silent async failure — surface them on the log
- * channel. is_handled=true retractions are ignored: a breadcrumb, not a crash record.
- * Do not stringify via ToString/JSON: Error.message/stack are missing from both. */
+/* Rejections nobody handles are the classic silent async failure — surfaced on the log channel
+ * once the job queue drains (see quickjs_rejections.h): a breadcrumb, not a crash record. */
 static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
                                       int is_handled, void *opaque) {
-    if (is_handled) return;
     QjsEngine *e = (QjsEngine *)opaque;
-    if (!e || !e->cb) return;
-    size_t len = 0;
-    char *msg = qjs_format_rejection(ctx, reason, &len);
-    if (!msg) {
-        e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)"(unprintable reason)", 20);
-        return;
-    }
-    e->cb(e->user, QJS_OP_LOG, 4, (const uint8_t *)msg, len);
-    free(msg);
+    if (!e) return;
+    qjs_rejections_track(ctx, &e->rejections, promise, reason, is_handled);
 }
 
 /* Extract the pending JS exception into *err (malloc'd; falls back to [fallback]). */
@@ -214,7 +216,9 @@ QjsEngine *qjs_create(int app_version, QjsInboundCb cb, void *user) {
 }
 
 int qjs_eval_engine(QjsEngine *e, const char *script, char **err) {
+    e->js_depth++;
     JSValue r = JS_Eval(e->ctx, script, strlen(script), "<engine>", JS_EVAL_TYPE_GLOBAL);
+    e->js_depth--;
     if (JS_IsException(r)) {
         set_err(e->ctx, err, "engine script failed");
         return -1;
@@ -231,7 +235,9 @@ int qjs_eval_engine_bc(QjsEngine *e, const uint8_t *bytecode, size_t len, char *
         set_err(e->ctx, err, "bad bytecode");
         return -1;
     }
+    e->js_depth++;
     JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    e->js_depth--;
     if (JS_IsException(r)) {
         set_err(e->ctx, err, "engine bytecode failed");
         return -1;
@@ -276,7 +282,9 @@ uint8_t *qjs_compile(const char *script, const char *filename, size_t *out_len, 
 }
 
 char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int *isError) {
+    e->js_depth++;
     JSValue val = JS_Eval(e->ctx, script, strlen(script), filename ? filename : "<eval>", JS_EVAL_TYPE_GLOBAL);
+    e->js_depth--;
     pump(e);
     if (JS_IsException(val)) {
         JSValue exc = JS_GetException(e->ctx);
@@ -304,7 +312,9 @@ char *qjs_eval_sync(QjsEngine *e, const char *script, const char *filename, int 
  * microtask pump afterward. */
 static int call_js(QjsEngine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     JSValue g = JS_GetGlobalObject(e->ctx);
+    e->js_depth++;
     JSValue r = JS_Call(e->ctx, fn, g, argc, argv);
+    e->js_depth--;
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
     else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
@@ -350,6 +360,7 @@ void qjs_close(QjsEngine *e) {
     JS_FreeValue(e->ctx, e->jsCloseRead);
     JS_FreeValue(e->ctx, e->jsDrain);
     e->mse = NULL;
+    qjs_rejections_free(e->ctx, &e->rejections);
     qjs_pipe_ctx_release(e->pipe, e->ctx);
     JS_FreeContext(e->ctx);
     JS_FreeRuntime(e->rt); /* PipeBuf finalizers return segments to the pool -> free the ctx after */

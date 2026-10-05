@@ -38,6 +38,7 @@
 #include "quickjs_web.h"
 #include "quickjs_mse.h"
 #include "quickjs_dump.h"
+#include "quickjs_rejections.h"
 
 #define PENDING_DRAIN_MAX 16
 
@@ -57,6 +58,8 @@ typedef struct Engine {
     int in_critical;      /* a host ByteArray is held critically: JNI re-entry is forbidden */
     uint32_t pending_drains[PENDING_DRAIN_MAX];
     int pending_count;
+    QjsRejections rejections;
+    int js_depth;         /* JS frames on the C stack; rejections are judged only at the outermost pump */
     void *mse;
 } Engine;
 
@@ -147,10 +150,16 @@ static void throw_qjs(JNIEnv *env, jstring msg) {
     (*env)->Throw(env, (jthrowable)o);
 }
 
+static void report_rejection(void *user, const char *msg, size_t len);
+
 static void pump_jobs(Engine *e) {
     JSContext *c;
     JS_UpdateStackTop(e->rt);
+    e->js_depth++;
     while (JS_ExecutePendingJob(e->rt, &c) > 0) {}
+    e->js_depth--;
+    /* report_rejection calls into the JVM: never at a nested pump, never under the critical region */
+    if (e->js_depth == 0 && !e->in_critical) qjs_rejections_flush(e->ctx, &e->rejections, report_rejection, e);
 }
 
 static JNIEnv *engine_env(Engine *e) {
@@ -342,21 +351,20 @@ static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_UNDEFINED;
 }
 
-/* Rejections nobody handles are the classic silent async failure — surface them on the log
- * channel (level 4). is_handled=true retractions are ignored: a breadcrumb, not a crash record.
- * Do not JSON.stringify the reason: Error.message/stack are non-enumerable, so that was "{}". */
+/* Rejections nobody handles are the classic silent async failure — surfaced on the log channel
+ * (level 4) once the job queue drains (see quickjs_rejections.h): a breadcrumb, not a crash
+ * record. Tracking makes no JNI call, so it is safe under the critical region. */
 static void promise_rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
                                       int is_handled, void *opaque) {
-    if (is_handled) return;
     Engine *e = (Engine *)opaque;
-    if (!e || e->in_critical) return; /* never re-enter JNI under a critical region */
+    if (!e) return;
+    qjs_rejections_track(ctx, &e->rejections, promise, reason, is_handled);
+}
+
+static void report_rejection(void *user, const char *msg, size_t len) {
+    Engine *e = (Engine *)user;
     JNIEnv *env = engine_env(e);
-    size_t len = 0;
-    char *msg = qjs_format_rejection(ctx, reason, &len);
-    const char *out = msg ? msg : "(unprintable reason)";
-    if (!msg) len = 20;
-    jstring jm = utf8_to_jstring(env, out, len);
-    if (msg) free(msg);
+    jstring jm = utf8_to_jstring(env, msg, len);
     (*env)->CallStaticVoidMethod(env, e->bridgeClass, e->onLog, (jlong)(intptr_t)e, (jint)4, jm);
     (*env)->DeleteLocalRef(env, jm);
     if ((*env)->ExceptionCheck(env)) {
@@ -458,7 +466,9 @@ Java_io_ymusic_quickjs_QuickJsNative_evalEngine(JNIEnv *env, jobject thiz, jlong
         return;
     }
     JS_UpdateStackTop(e->rt);
+    e->js_depth++;
     JSValue bret = JS_Eval(e->ctx, script, blen, "<engine>", JS_EVAL_TYPE_GLOBAL);
+    e->js_depth--;
     free(script);
     if (JS_IsException(bret)) {
         throw_js_exception(env, e->ctx, "engine script failed");
@@ -482,7 +492,9 @@ Java_io_ymusic_quickjs_QuickJsNative_evalEngineBytecode(JNIEnv *env, jobject thi
         throw_js_exception(env, e->ctx, "bad bytecode");
         return;
     }
+    e->js_depth++;
     JSValue r = JS_EvalFunction(e->ctx, fn); /* consumes fn */
+    e->js_depth--;
     if (JS_IsException(r)) {
         throw_js_exception(env, e->ctx, "engine bytecode failed");
         return;
@@ -544,7 +556,9 @@ Java_io_ymusic_quickjs_QuickJsNative_evalSync(JNIEnv *env, jobject thiz, jlong h
         return NULL;
     }
     JS_UpdateStackTop(e->rt);
+    e->js_depth++;
     JSValue val = JS_Eval(e->ctx, script, slen, filename, JS_EVAL_TYPE_GLOBAL);
+    e->js_depth--;
     free(script);
     free(filename);
     pump_jobs(e);
@@ -575,7 +589,9 @@ static int call_js(Engine *e, JSValue fn, int argc, JSValue *argv, int exc_rc) {
     JSValue g, r;
     JS_UpdateStackTop(e->rt);
     g = JS_GetGlobalObject(e->ctx);
+    e->js_depth++;
     r = JS_Call(e->ctx, fn, g, argc, argv);
+    e->js_depth--;
     int rc = exc_rc;
     if (!JS_IsException(r)) JS_ToInt32(e->ctx, &rc, r);
     else JS_FreeValue(e->ctx, JS_GetException(e->ctx)); /* transport JS bug; don't leave it pending */
@@ -670,6 +686,7 @@ Java_io_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong hand
     JS_FreeValue(e->ctx, e->jsCloseRead);
     JS_FreeValue(e->ctx, e->jsDrain);
     e->mse = NULL;
+    qjs_rejections_free(e->ctx, &e->rejections);
     (*env)->DeleteGlobalRef(env, e->bridgeClass);
     qjs_pipe_ctx_release(e->pipe, e->ctx);
     JS_FreeContext(e->ctx);
