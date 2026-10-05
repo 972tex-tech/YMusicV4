@@ -220,12 +220,16 @@ class DynamicEnginePlayer private constructor(
         }
     }
 
-    suspend fun setCaption(vssId: String?, logger: Logger? = null) {
+    /**
+     * Captions on/off plus the preferred track: [vssId] may also be a language code. JS keeps the
+     * preference across videos and reports the actual pick on the catalog channel.
+     */
+    suspend fun setCaption(vssId: String?, logger: Logger? = null, visible: Boolean = vssId != null) {
         engine.jsonCommand(
             "player/setCaption",
-            { w ->
-                if (vssId == null) w.name("vssId").nullValue()
-                else w.name("vssId").value(vssId)
+            { writer ->
+                if (vssId == null) writer.name("vssId").nullValue() else writer.name("vssId").value(vssId)
+                writer.name("visible").value(visible)
             },
             logger,
         ) { it.skipValue() }
