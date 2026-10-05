@@ -146,9 +146,20 @@ export function ingestPlayerCaptions(rec: Record<string, unknown>): void {
   });
   noteIngest();
   if (sessionSink) void reloadCues();
+  if (tracksChanged) tracksChanged();
+}
+
+let tracksChanged: (() => void) | null = null;
+
+export function onCaptionTracksChanged(fn: (() => void) | null): void {
+  tracksChanged = fn;
 }
 
 export function listCaptionTracks(): Record<string, unknown> {
+  return { "tracks": captionTrackRows() };
+}
+
+export function captionTrackRows(): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < tracks.length; i++) {
     const t = tracks[i]!;
@@ -161,7 +172,7 @@ export function listCaptionTracks(): Record<string, unknown> {
       "displayName": t.displayName,
     });
   }
-  return { "tracks": rows };
+  return rows;
 }
 
 export function selectedCaptionVss(): string | null {

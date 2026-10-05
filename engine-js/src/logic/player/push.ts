@@ -84,6 +84,14 @@ function sameCatalog(a: Record<string, unknown>, b: Record<string, unknown>): bo
     const y = qb[i] as Record<string, unknown>;
     if (x["quality"] !== y["quality"] || x["label"] !== y["label"]) return false;
   }
+  const ca = a["captionTracks"];
+  const cb = b["captionTracks"];
+  if (!Array.isArray(ca) || !Array.isArray(cb) || ca.length !== cb.length) return false;
+  for (let i = 0; i < ca.length; i++) {
+    const x = ca[i] as Record<string, unknown>;
+    const y = cb[i] as Record<string, unknown>;
+    if (x["vssId"] !== y["vssId"] || x["displayName"] !== y["displayName"]) return false;
+  }
   return true;
 }
 

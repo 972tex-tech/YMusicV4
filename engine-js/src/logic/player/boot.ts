@@ -19,7 +19,13 @@ import { installPlayerAdStrip } from "./skip_ads";
 import { installSabrIntercept } from "../yt/sabr_http";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import { isYmLive } from "./live";
-import { installCaptionMinter, onCaptionSeek, selectedCaptionVss } from "./captions";
+import {
+  captionTrackRows,
+  installCaptionMinter,
+  onCaptionSeek,
+  onCaptionTracksChanged,
+  selectedCaptionVss,
+} from "./captions";
 import { playerStorageReady } from "./storage";
 import { applyViewport, viewportHeight, viewportWidth } from "./viewport";
 
@@ -1270,6 +1276,7 @@ class Player {
       "audioOnly": isAudioOnly(),
       "qualities": this.qualityOptions(),
       "caption": selectedCaptionVss(),
+      "captionTracks": captionTrackRows(),
     };
   }
 
@@ -1416,6 +1423,8 @@ export function setListenHook(fn: ((kind: ListenKind) => void) | null): void {
 function notifyCatalog(): void {
   if (catalogHook) catalogHook();
 }
+
+onCaptionTracksChanged(notifyCatalog);
 
 function notifyListen(kind: ListenKind): void {
   if (listenHook) listenHook(kind);
