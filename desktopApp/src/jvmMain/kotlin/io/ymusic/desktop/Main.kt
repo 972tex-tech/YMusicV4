@@ -177,6 +177,7 @@ import java.io.File
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.min
+import kotlin.math.roundToInt
 import java.awt.Color as AwtColor
 
 /**
@@ -884,11 +885,17 @@ private fun DesktopPlayerSurface(
                 val p = coords.positionInWindow()
                 val insets = win.insets
                 with(density) {
-                    val w = coords.size.width.toDp().value.toInt()
-                    val h = coords.size.height.toDp().value.toInt()
-                    val x = loc.x + insets.left + p.x.toDp().value.toInt()
-                    val y = loc.y + insets.top + p.y.toDp().value.toInt()
-                    videoUnderlay.setHole(x, y, w, h)
+                    // Round each edge, not origin and size apart, so the hole tracks the box's edges.
+                    val left = p.x.toDp().value.roundToInt()
+                    val top = p.y.toDp().value.roundToInt()
+                    val right = (p.x + coords.size.width).toDp().value.roundToInt()
+                    val bottom = (p.y + coords.size.height).toDp().value.roundToInt()
+                    videoUnderlay.setHole(
+                        loc.x + insets.left + left,
+                        loc.y + insets.top + top,
+                        right - left,
+                        bottom - top,
+                    )
                 }
             },
     ) {
