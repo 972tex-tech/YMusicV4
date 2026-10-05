@@ -185,12 +185,8 @@ class MsePlayer internal constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                activeSession.config = null
-                activeSession.loop = null
                 loadingVideoId = null
-                loadTimeoutJob?.cancel()
-                loadTimeoutJob = null
-                fail(error, "mse load failed", needReset = false)
+                fail(error, "mse load failed", needReset = true)
                 return@send
             }
             refreshTracks(enginePlayer)
