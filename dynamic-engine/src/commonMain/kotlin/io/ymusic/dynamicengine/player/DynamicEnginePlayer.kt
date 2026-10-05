@@ -62,16 +62,24 @@ class DynamicEnginePlayer private constructor(
         height: Int? = null,
         audioOnly: Boolean = quality == null,
         startPositionMs: Long = 0L,
+        playWhenReady: Boolean = true,
+        speed: Float = 1f,
+        pitch: Float = 1f,
+        loop: Boolean = false,
     ): JsonObject {
         return engine.jsonCommand(
             "player/load",
-            { w ->
-                w.name("videoId").value(videoId)
-                if (quality != null) w.name("quality").value(quality)
-                w.name("audioOnly").value(audioOnly)
-                if (width != null) w.name("width").value(width)
-                if (height != null) w.name("height").value(height)
-                if (startPositionMs > 0L) w.name("startPositionMs").value(startPositionMs)
+            { writer ->
+                writer.name("videoId").value(videoId)
+                if (quality != null) writer.name("quality").value(quality)
+                writer.name("audioOnly").value(audioOnly)
+                if (width != null) writer.name("width").value(width)
+                if (height != null) writer.name("height").value(height)
+                if (startPositionMs > 0L) writer.name("startPositionMs").value(startPositionMs)
+                writer.name("playWhenReady").value(playWhenReady)
+                writer.name("speed").value(speed.toString())
+                writer.name("pitch").value(pitch.toString())
+                writer.name("loop").value(loop)
             },
             logger,
         ) { it.readObject() }
