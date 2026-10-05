@@ -329,17 +329,10 @@ function parseJson3(raw: string): Cue[] {
       const utf = typeof s["utf8"] === "string" ? (s["utf8"] as string) : "";
       const off = s["tOffsetMs"] != null ? Number(s["tOffsetMs"]) : 0;
       const tOff = isFinite(off) ? off : 0;
-      if (utf === "\n") {
-        if (full.length && full.charAt(full.length - 1) !== " ") {
-          words.push({ tOffsetMs: tOff, text: " " });
-          full += " ";
-        }
-        continue;
-      }
       words.push({ tOffsetMs: tOff, text: utf });
       full += utf;
     }
-    if (!full.length) continue;
+    if (!full.trim().length) continue;
     out.push({
       id: i,
       startMs: start,
@@ -371,16 +364,39 @@ function windowAt(nowMs: number): Line[] {
   const ended = nowMs >= c.startMs + c.durationMs;
   const next = cur + 1 < cues.length ? cues[cur + 1] : null;
   if (ended && (!next || next.startMs > nowMs)) return [];
+  const track = selectedVss ? findTrack(selectedVss) : null;
+  if (!track || track.kind !== "asr") return ended ? [] : popOnLines(c);
   const lines: Line[] = [];
   if (cur > 0) {
     const prev = cues[cur - 1]!;
     let full = "";
     for (let i = 0; i < prev.words.length; i++) full += prev.words[i]!.text;
-    lines.push({ id: prev.id, text: full });
+    lines.push({ id: prev.id, text: oneRow(full) });
   }
-  lines.push({ id: c.id, text: prefixOf(c, nowMs) });
+  lines.push({ id: c.id, text: oneRow(prefixOf(c, nowMs)) });
   if (lines.length > 2) return lines.slice(lines.length - 2);
   return lines;
+}
+
+function oneRow(text: string): string {
+  return text.replace(/\s*\n\s*/g, " ").trim();
+}
+
+/* Authored tracks are pop-on: one cue at a time, its own line breaks as separate rows. */
+function popOnLines(cue: Cue): Line[] {
+  let text = "";
+  for (let i = 0; i < cue.words.length; i++) text += cue.words[i]!.text;
+  const rows: string[] = [];
+  const parts = text.split("\n");
+  for (let i = 0; i < parts.length; i++) {
+    const row = parts[i]!.trim();
+    if (row.length) rows.push(row);
+  }
+  if (!rows.length) return [];
+  /* The overlay has two rows: fold any overflow into the second. */
+  const first = { id: cue.id * 2, text: rows[0]! };
+  if (rows.length === 1) return [first];
+  return [first, { id: cue.id * 2 + 1, text: rows.slice(1).join(" ") }];
 }
 
 function nextTickMs(nowMs: number): number | null {
